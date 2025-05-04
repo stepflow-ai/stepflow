@@ -1,0 +1,10 @@
+[package]
+name = "stepflow-main"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Main stepflow binary."
+
+[dependencies]

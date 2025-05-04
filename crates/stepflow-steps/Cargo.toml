@@ -1,0 +1,10 @@
+[package]
+name = "stepflow-steps"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Types and trait for the step execution plugins."
+
+[dependencies]

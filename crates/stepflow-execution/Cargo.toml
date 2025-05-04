@@ -1,0 +1,10 @@
+[package]
+name = "stepflow-execution"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Execution logic for workflows."
+
+[dependencies]

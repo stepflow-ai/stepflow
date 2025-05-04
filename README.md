@@ -45,6 +45,7 @@ Most steps are defined in a step-service, which the executor invokes using a JSO
 - `crates/stepflow-steps-mcp` provides a step execution plugin for executing MCP tools.
 - `crates/stepflow-execution` provides the core execution logic for a workflow. It also provides
   the built-in control flow steps.
+- `crates/stepflow-main` provides the main binary for executing a workflow or running a stepflow service.
 
 ## Getting Started
 

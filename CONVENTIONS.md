@@ -24,7 +24,6 @@ This document outlines the conventions used in the Step Flow project to maintain
 - Include a `type Result<T, E = TheErrorType> = std::result::Result<T, E>` alias
 - Use `thiserror` for defining error types
 - Include context in error messages
-- Use `error-stack` for error propagation
 - Document error variants and their meanings
 
 ## Git Workflow
