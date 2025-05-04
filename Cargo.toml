@@ -1,0 +1,28 @@
+[workspace.package]
+authors = ["Ben Chambers"]
+edition = "2024"
+version = "0.1.0"
+license = "Apache-2.0"
+
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.dependencies]
+clap = { version = "4.5.35", features = ["derive", "env"] }
+error-stack = "0.5.0"
+indexmap = { version = "2.8.0", features = ["serde"] }
+jsonschema = "0.29.1"
+lazy-regex = "3.4.1"
+regex = "1.11.1"
+safer_owning_ref = "0.5.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["preserve_order"] }
+serde_yml = "0.0.12"
+thiserror = "2.0.12"
+tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros"]}
+url = { version = "2.5.4", features = ["serde"]}
+
+# Enable max optimizations for dependencies, but not for our code
+[profile.dev.package."*"]
+opt-level = 3
