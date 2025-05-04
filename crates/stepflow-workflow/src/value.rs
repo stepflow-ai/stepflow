@@ -1,13 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 /// An expression that can be either a literal value or a template expression.
-///
-/// Template expressions use the syntax `{{ <step_id>.<output_name> }}` to reference
-/// outputs from previous steps.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Expr {
-    /// A reference to an earlier step.
+    /// A reference to an output of an earlier step.
     Step {
         /// The step being referenced.
         step: String,
