@@ -19,11 +19,19 @@ pub enum Expr {
 
 impl Expr {
     pub fn literal(literal: impl Into<Value>) -> Self {
-        Self::Literal { literal: literal.into() }
+        Self::Literal {
+            literal: literal.into(),
+        }
     }
 
     pub fn step(step: impl Into<String>, output: impl Into<String>) -> Self {
-        Self::Step { step_ref: StepRef { step_id: step.into(), output: output.into() }, slot: None }
+        Self::Step {
+            step_ref: StepRef {
+                step_id: step.into(),
+                output: output.into(),
+            },
+            slot: None,
+        }
     }
 
     pub fn step_ref(&self) -> Option<&StepRef> {
@@ -78,6 +86,9 @@ mod tests {
         assert_eq!(from_yaml("{ literal: foo }"), Expr::literal("foo"));
         assert_eq!(from_yaml("{ literal: 5 }"), Expr::literal(5));
 
-        assert_eq!(from_yaml("{ step_id: \"step1\", output: \"out\" }"), Expr::step("step1", "out"));
+        assert_eq!(
+            from_yaml("{ step_id: \"step1\", output: \"out\" }"),
+            Expr::step("step1", "out")
+        );
     }
 }

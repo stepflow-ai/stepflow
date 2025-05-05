@@ -1,32 +1,34 @@
 use std::collections::HashMap;
 
-use crate::{PluginError, Result, StepPlugin};
+use crate::{DynStepPlugin, PluginError, Result, StepPlugin};
 use error_stack::ResultExt;
 use stepflow_workflow::Component;
 
-pub struct Plugins {
-    step_plugins: HashMap<String, Box<dyn StepPlugin>>,
+pub struct Plugins<'a> {
+    step_plugins: HashMap<&'static str, &'a DynStepPlugin<'a>>,
 }
 
-impl Default for Plugins {
+impl Default for Plugins<'_> {
     fn default() -> Self {
         Plugins::new()
     }
 }
 
-impl Plugins {
+impl<'a> Plugins<'a> {
     pub fn new() -> Self {
         Self {
             step_plugins: HashMap::new(),
         }
     }
 
-    pub fn register(&mut self, plugin: impl StepPlugin) {
-        self.step_plugins
-            .insert(plugin.protocol().to_owned(), Box::new(plugin));
+    pub fn register(&mut self, plugin: &'a impl StepPlugin) {
+        let protocol = plugin.protocol();
+        let plugin = DynStepPlugin::from_ref(plugin);
+
+        self.step_plugins.insert(protocol, plugin);
     }
 
-    pub fn get_dyn(&self, component: &Component) -> Result<&dyn StepPlugin> {
+    pub fn get(&self, component: &'_ Component) -> Result<&'a DynStepPlugin> {
         let protocol = component.protocol();
 
         let plugin = self
@@ -34,22 +36,13 @@ impl Plugins {
             .get(protocol)
             .ok_or_else(|| PluginError::UnknownScheme(protocol.to_owned()))
             .attach_printable_lazy(|| component.clone())?;
-        Ok(plugin.as_ref())
-    }
-
-    pub fn get<T: StepPlugin>(&self, component: &Component) -> Result<&T> {
-        let step_plugin = self.get_dyn(component)?;
-        let downcast = step_plugin
-            .downcast_ref::<T>()
-            .ok_or_else(|| PluginError::DowncastErr(component.protocol().to_owned()))?;
-
-        Ok(downcast)
+        Ok(plugin)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use stepflow_workflow::{Step, Value};
+    use stepflow_workflow::Value;
 
     use crate::{ComponentInfo, Result};
 
@@ -63,11 +56,11 @@ mod tests {
             self.0
         }
 
-        fn component_info(&self, _component: &Component) -> Result<ComponentInfo> {
+        async fn component_info(&self, _component: &Component) -> Result<ComponentInfo> {
             todo!()
         }
 
-        fn execute(&self, _component: &Component, _args: Vec<Value>) -> Result<Vec<Value>> {
+        async fn execute(&self, _component: &Component, _args: Vec<Value>) -> Result<Vec<Value>> {
             todo!()
         }
     }
@@ -75,17 +68,19 @@ mod tests {
     #[test]
     fn test_plugins() {
         let mut plugins = Plugins::new();
-        plugins.register(MockPlugin("langflow"));
-        plugins.register(MockPlugin("mcp"));
+        let langflow = MockPlugin("langflow");
+        let mcp = MockPlugin("mcp");
+        plugins.register(&langflow);
+        plugins.register(&mcp);
 
-        let langflow: &MockPlugin = plugins
+        let langflow = plugins
             .get(&Component::parse("langflow://package/class/name").unwrap())
             .unwrap();
-        assert_eq!(langflow, &MockPlugin("langflow"));
+        assert_eq!(langflow.protocol(), "langflow");
 
-        let mcp_over_http: &MockPlugin = plugins
+        let mcp_over_http = plugins
             .get(&Component::parse("mcp+http://package/class/name").unwrap())
             .unwrap();
-        assert_eq!(mcp_over_http, &MockPlugin("mcp"));
+        assert_eq!(mcp_over_http.protocol(), "mcp");
     }
 }

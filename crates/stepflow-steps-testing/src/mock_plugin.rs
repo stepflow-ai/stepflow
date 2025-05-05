@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use stepflow_workflow::{Component, StepOutput, Value};
 use stepflow_steps::{ComponentInfo, PluginError, Result, StepPlugin};
+use stepflow_workflow::{Component, StepOutput, Value};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MockPlugin {
     kind: &'static str,
-    components: HashMap<Component, MockComponent>, 
+    components: HashMap<Component, MockComponent>,
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -31,13 +31,16 @@ impl MockComponent {
 
 impl MockPlugin {
     pub fn new(kind: &'static str) -> Self {
-        Self { kind, components: HashMap::new(), }
+        Self {
+            kind,
+            components: HashMap::new(),
+        }
     }
 
     pub fn mock_component(&mut self, path: &str) -> &mut MockComponent {
-        let component=  Component::parse(path).unwrap();
+        let component = Component::parse(path).unwrap();
         println!("Mock component: {:?}", component);
-        self.components.entry(component).or_insert_with(|| MockComponent::default())
+        self.components.entry(component).or_default()
     }
 }
 
@@ -46,15 +49,18 @@ impl StepPlugin for MockPlugin {
         self.kind
     }
 
-    fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        let component = self.components.get(component).ok_or(PluginError::UdfImport)?;
+    async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
+        let component = self
+            .components
+            .get(component)
+            .ok_or(PluginError::UdfImport)?;
         Ok(ComponentInfo {
             always_execute: component.always_execute,
             outputs: component.outputs.clone(),
         })
     }
 
-    fn execute(&self, component: &Component, args: Vec<Value>) -> Result<Vec<Value>> {
+    async fn execute(&self, component: &Component, args: Vec<Value>) -> Result<Vec<Value>> {
         todo!()
     }
 }

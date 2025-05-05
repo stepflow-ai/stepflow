@@ -1,27 +1,22 @@
-use std::any::Any;
-
 use crate::Result;
-use stepflow_workflow::{Component, Step, StepOutput, Value};
+use stepflow_workflow::{Component, StepOutput, Value};
 
 pub struct ComponentInfo {
     pub always_execute: bool,
     pub outputs: Vec<StepOutput>,
 }
 
-pub trait StepPlugin: Any {
+#[trait_variant::make(SendStepPlugin: Send)]
+#[dynosaur::dynosaur(pub DynStepPlugin = dyn StepPlugin)]
+#[dynosaur::dynosaur(pub DynSendStepPlugin = dyn SendStepPlugin)]
+pub trait StepPlugin {
     fn protocol(&self) -> &'static str;
 
     /// Return the outputs for the given component.
-    fn component_info(&self, component: &Component) -> Result<ComponentInfo>;
+    async fn component_info(&self, component: &Component) -> Result<ComponentInfo>;
 
     /// Execute the step and return the resulting arguments.
     ///
     /// The arguments should be fully resolved.
-    fn execute(&self, component: &Component, args: Vec<Value>) -> Result<Vec<Value>>;
-}
-
-impl dyn StepPlugin {
-    pub fn downcast_ref<T: StepPlugin>(&self) -> Option<&T> {
-        (self as &dyn Any).downcast_ref::<T>()
-    }
+    async fn execute(&self, component: &Component, args: Vec<Value>) -> Result<Vec<Value>>;
 }

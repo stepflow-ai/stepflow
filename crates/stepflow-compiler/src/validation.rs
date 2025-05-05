@@ -8,10 +8,7 @@ pub enum ValidationError<'a> {
     #[error("flow has no execution info")]
     MissingFlowExecution,
     #[error("step {step_idx}[{step_id:?}] has no execution info")]
-    MissingStepExecution {
-        step_idx: usize,
-        step_id: &'a str,
-    },
+    MissingStepExecution { step_idx: usize, step_id: &'a str },
     #[error("step {step_idx}[{step_id:?}] input '{input_name}' has no slot assigned")]
     MissingStepInputSlot {
         step_idx: usize,
@@ -24,21 +21,27 @@ pub enum ValidationError<'a> {
         step_id: &'a str,
         output_name: &'a str,
     },
-    #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info missing slot (uses = {uses})")]
+    #[error(
+        "step {step_idx}[{step_id:?}] output '{output_name}' execution info missing slot (uses = {uses})"
+    )]
     MissingStepSlot {
         step_idx: usize,
         step_id: &'a str,
         output_name: &'a str,
         uses: u32,
     },
-    #[error("unused step {step_idx}[{step_id:?}] output '{output_name}' execution info assigned slot (slot = {slot})")]
+    #[error(
+        "unused step {step_idx}[{step_id:?}] output '{output_name}' execution info assigned slot (slot = {slot})"
+    )]
     UnusedStepAssignedSlot {
         step_idx: usize,
         step_id: &'a str,
         output_name: &'a str,
         slot: u32,
     },
-    #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info slot out of bounds (slot = {slot})")]
+    #[error(
+        "step {step_idx}[{step_id:?}] output '{output_name}' execution info slot out of bounds (slot = {slot})"
+    )]
     OutputSlotOutOfBounds {
         step_idx: usize,
         step_id: &'a str,
@@ -52,14 +55,18 @@ pub enum ValidationError<'a> {
         input_name: &'a str,
         slot: u32,
     },
-    #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info slot in use (slot = {slot})")]
+    #[error(
+        "step {step_idx}[{step_id:?}] output '{output_name}' execution info slot in use (slot = {slot})"
+    )]
     SlotInUse {
         step_idx: usize,
         step_id: &'a str,
         output_name: &'a str,
         slot: u32,
     },
-    #[error("step {step_idx}[{step_id:?}] input '{input_name}' slot dropped (slot = {slot}, step_ref = {step_ref:?})")]
+    #[error(
+        "step {step_idx}[{step_id:?}] input '{input_name}' slot dropped (slot = {slot}, step_ref = {step_ref:?})"
+    )]
     InputSlotDropped {
         step_idx: usize,
         step_id: &'a str,
@@ -67,7 +74,9 @@ pub enum ValidationError<'a> {
         step_ref: &'a StepRef,
         slot: u32,
     },
-    #[error("step {step_idx}[{step_id:?}] input '{input_name}' slot mismatch (slot = {slot}, expected = {expected_step_ref:?}, actual = {actual_step_ref:?})")]
+    #[error(
+        "step {step_idx}[{step_id:?}] input '{input_name}' slot mismatch (slot = {slot}, expected = {expected_step_ref:?}, actual = {actual_step_ref:?})"
+    )]
     InputSlotMismatch {
         step_idx: usize,
         step_id: &'a str,
@@ -77,17 +86,31 @@ pub enum ValidationError<'a> {
         actual_step_ref: StepRef,
     },
     #[error("duplicate step ID: {step_id}")]
-    DuplicateStepId {
-        step_id: &'a str,
-    },
+    DuplicateStepId { step_id: &'a str },
     #[error("step {step_idx}[{step_id:?}] drop slot {slot} out of bounds")]
-    DropSlotOutOfBounds { step_idx: usize, step_id: &'a str, slot: u32 },
+    DropSlotOutOfBounds {
+        step_idx: usize,
+        step_id: &'a str,
+        slot: u32,
+    },
     #[error("step {step_idx}[{step_id:?}] drop slot {slot} in use")]
-    DropSlotInUse { step_idx: usize, step_id: &'a str, slot: u32 },
+    DropSlotInUse {
+        step_idx: usize,
+        step_id: &'a str,
+        slot: u32,
+    },
     #[error("step {step_idx}[{step_id:?}] drop slot {slot} missing")]
-    DropSlotMissing { step_idx: usize, step_id: &'a str, slot: u32 },
+    DropSlotMissing {
+        step_idx: usize,
+        step_id: &'a str,
+        slot: u32,
+    },
     #[error("step {step_idx}[{step_id:?}] unused slot {slot} not dropped")]
-    UnusedSlotNotDropped { step_idx: usize, step_id: &'a str, slot: u32 },
+    UnusedSlotNotDropped {
+        step_idx: usize,
+        step_id: &'a str,
+        slot: u32,
+    },
 }
 
 #[derive(Clone)]
@@ -103,7 +126,11 @@ struct Validator<'a> {
 
 impl<'a> Validator<'a> {
     fn new(flow: &'a Flow) -> Result<Self, ValidationError<'a>> {
-        let slots = flow.execution.as_ref().ok_or(ValidationError::MissingFlowExecution)?.slots as usize;
+        let slots = flow
+            .execution
+            .as_ref()
+            .ok_or(ValidationError::MissingFlowExecution)?
+            .slots as usize;
         let slots: Vec<Option<SlotInfo>> = vec![None; slots];
         Ok(Self { flow, slots })
     }
@@ -117,11 +144,11 @@ impl<'a> Validator<'a> {
             if !step_ids.insert(step_id) {
                 return Err(ValidationError::DuplicateStepId { step_id });
             }
-            
-            let step_execution = step.execution.as_ref().ok_or(ValidationError::MissingStepExecution {
-                step_idx,
-                step_id,
-            })?;
+
+            let step_execution = step
+                .execution
+                .as_ref()
+                .ok_or(ValidationError::MissingStepExecution { step_idx, step_id })?;
 
             self.validate_step_inputs(step_idx, step_id, step)?;
             self.validate_step_drops(step_idx, step_id, step_execution)?;
@@ -131,8 +158,12 @@ impl<'a> Validator<'a> {
         Ok(())
     }
 
-    fn validate_step_inputs(&mut self,
-        step_idx: usize, step_id: &'a str, step: &'a Step) -> Result<(), ValidationError<'a>>{
+    fn validate_step_inputs(
+        &mut self,
+        step_idx: usize,
+        step_id: &'a str,
+        step: &'a Step,
+    ) -> Result<(), ValidationError<'a>> {
         // Validate step inputs.
         for (name, expr) in step.args.iter() {
             match expr {
@@ -144,9 +175,12 @@ impl<'a> Validator<'a> {
                         step_idx,
                         step_id,
                         input_name: name.as_str(),
-                    })
+                    });
                 }
-                Expr::Step { step_ref, slot: Some(slot) } => {
+                Expr::Step {
+                    step_ref,
+                    slot: Some(slot),
+                } => {
                     let slot = *slot;
                     if slot as usize > self.slots.len() {
                         return Err(ValidationError::InputSlotOutOfBounds {
@@ -168,7 +202,7 @@ impl<'a> Validator<'a> {
                                 slot,
                                 expected_step_ref: step_ref,
                                 actual_step_ref: slot_info.step_ref.clone(),
-                            })
+                            });
                         }
                         slot_info.remaining_uses -= 1;
                     } else {
@@ -178,16 +212,20 @@ impl<'a> Validator<'a> {
                             input_name: name.as_str(),
                             step_ref,
                             slot,
-                        })
-                    }                        
+                        });
+                    }
                 }
             }
         }
         Ok(())
     }
-    
-    fn validate_step_drops(&mut self,
-        step_idx: usize, step_id: &'a str, step_execution: &'a StepExecution) -> Result<(), ValidationError<'a>> {
+
+    fn validate_step_drops(
+        &mut self,
+        step_idx: usize,
+        step_id: &'a str,
+        step_execution: &'a StepExecution,
+    ) -> Result<(), ValidationError<'a>> {
         // 1. All slots that are dropped should be no longer used..
         for drop in step_execution.drop.iter() {
             let index = *drop as usize;
@@ -231,10 +269,12 @@ impl<'a> Validator<'a> {
         Ok(())
     }
 
-    fn validate_step_outputs(&mut self,
-        step_idx: usize, step_id: &'a str, 
-            step_execution: &'a StepExecution) -> Result<(), ValidationError<'a>>{
-        
+    fn validate_step_outputs(
+        &mut self,
+        step_idx: usize,
+        step_id: &'a str,
+        step_execution: &'a StepExecution,
+    ) -> Result<(), ValidationError<'a>> {
         // Validate step outputs.
         for output in &step_execution.outputs {
             let output_name = output.name.as_str();
@@ -250,9 +290,14 @@ impl<'a> Validator<'a> {
         Ok(())
     }
 
-    fn validate_step_output(&mut self,
-        step_idx: usize, step_id: &'a str, output_name: &'a str, slot: Option<u32>, uses: u32) -> Result<(), ValidationError<'a>> {
-
+    fn validate_step_output(
+        &mut self,
+        step_idx: usize,
+        step_id: &'a str,
+        output_name: &'a str,
+        slot: Option<u32>,
+        uses: u32,
+    ) -> Result<(), ValidationError<'a>> {
         if uses == 0 {
             if let Some(slot) = slot {
                 return Err(ValidationError::UnusedStepAssignedSlot {
@@ -268,7 +313,7 @@ impl<'a> Validator<'a> {
                 step_id,
                 output_name,
                 uses,
-            })?;        
+            })?;
 
             if slot as usize >= self.slots.len() {
                 return Err(ValidationError::OutputSlotOutOfBounds {
@@ -288,7 +333,10 @@ impl<'a> Validator<'a> {
             }
             self.slots[slot as usize] = Some(SlotInfo {
                 remaining_uses: uses,
-                step_ref: StepRef { step_id: step_id.to_owned(), output: output_name.to_owned() },
+                step_ref: StepRef {
+                    step_id: step_id.to_owned(),
+                    output: output_name.to_owned(),
+                },
             });
         }
 
@@ -297,7 +345,7 @@ impl<'a> Validator<'a> {
 }
 
 /// Validates a compiled flow.
-/// 
+///
 /// This ensures that:
 /// - All steps, step references, and the flow itself have execution information.
 /// - All step references are valid.

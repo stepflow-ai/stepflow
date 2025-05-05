@@ -10,18 +10,32 @@ fn valid_snapshot() {
     let mut plugins = Plugins::new();
 
     let mut mock_plugin = MockPlugin::new("mock");
-    mock_plugin.mock_component("mock://one_output").outputs(&["output"]);
-    mock_plugin.mock_component("mock://two_outputs").outputs(&["a", "b"]);
-    plugins.register(mock_plugin);
+    mock_plugin
+        .mock_component("mock://one_output")
+        .outputs(&["output"]);
+    mock_plugin
+        .mock_component("mock://two_outputs")
+        .outputs(&["a", "b"]);
+    plugins.register(&mut mock_plugin);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
 
     insta::glob!("valid/*.yaml", |path| {
-        let file = File::open(path).unwrap();
-        let reader = BufReader::new(file);
+        rt.block_on(async {
+            let file = File::open(path).unwrap();
+            let reader = BufReader::new(file);
 
-        let flow = stepflow_workflow::Flow::from_yaml_reader(reader).unwrap();
-        let compiled = compile(&plugins, flow).map_err(|e| e.to_string()).unwrap();
-        insta::assert_yaml_snapshot!("compiled", compiled);
+            let flow = stepflow_workflow::Flow::from_yaml_reader(reader).unwrap();
+            let compiled = compile(&plugins, flow)
+                .await
+                .map_err(|e| e.to_string())
+                .unwrap();
+            insta::assert_yaml_snapshot!("compiled", compiled);
 
-        validate_flow(&compiled).unwrap();
+            validate_flow(&compiled).unwrap();
+        })
     })
 }

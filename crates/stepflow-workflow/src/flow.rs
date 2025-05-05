@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::{step::Step, Expr};
+use crate::{Expr, step::Step};
 
 /// A workflow consisting of a sequence of steps and their outputs.
 ///
@@ -14,7 +14,11 @@ pub struct Flow {
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(default, with = "outputs_serde", skip_serializing_if = "IndexMap::is_empty")]
+    #[serde(
+        default,
+        with = "outputs_serde",
+        skip_serializing_if = "IndexMap::is_empty"
+    )]
     pub outputs: IndexMap<String, Expr>,
 
     /// Flow execution information.

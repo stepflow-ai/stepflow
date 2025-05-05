@@ -9,7 +9,10 @@ pub struct VecState {
 
 impl VecState {
     pub fn try_new(flow: &Flow) -> Result<Self> {
-        let execution = flow.execution.as_ref().ok_or(ExecutionError::FlowNotCompiled)?;
+        let execution = flow
+            .execution
+            .as_ref()
+            .ok_or(ExecutionError::FlowNotCompiled)?;
         let slots = execution.slots as usize;
         let slots = vec![Value::NULL; slots];
         Ok(Self { slots })
@@ -34,11 +37,12 @@ impl VecState {
                 Expr::Step { slot, step_ref } => {
                     // Resolve the step output to an actual argument
                     let slot = slot.ok_or(ExecutionError::FlowNotCompiled)?;
-                    let resolved_arg = self.get_value(slot)
+                    let resolved_arg = self
+                        .get_value(slot)
                         .attach_printable_lazy(|| format!("step {step_ref:?} has no slot"))?;
                     resolved_args.push(resolved_arg.clone());
                 }
-                Expr::Literal{literal} => {
+                Expr::Literal { literal } => {
                     // Literal arguments can be added directly
                     resolved_args.push(literal.clone());
                 }

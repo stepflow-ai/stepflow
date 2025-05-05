@@ -15,7 +15,8 @@ stepflow-workflow.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-serde_yml.workspace = true
-url.workspace = true
 insta.workspace = true
+serde_yml.workspace = true
 stepflow-steps-testing.workspace = true
+tokio.workspace = true
+url.workspace = true

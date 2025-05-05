@@ -8,11 +8,13 @@ publish = false
 description = "Types and trait for the step execution plugins."
 
 [dependencies]
+dynosaur.workspace = true
 error-stack.workspace = true
 indexmap.workspace = true
 stepflow-workflow.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+trait-variant.workspace = true
 
 [dev-dependencies]
 stepflow-steps-testing.workspace = true

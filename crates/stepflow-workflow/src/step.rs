@@ -1,5 +1,5 @@
-use crate::component::Component;
 use crate::Expr;
+use crate::component::Component;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -58,13 +58,12 @@ pub struct Step {
     pub args: IndexMap<String, Expr>,
 
     /// Details related to execution of steps.
-    /// 
+    ///
     /// This is filled in prior to executing a workflow. If a workflow
     /// is to be executed many times, the generation of the execution
     /// information (~compilation) may be cached.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub execution: Option<StepExecution>,
-
     // TODO: Optional UI layout information?,
 }
 

@@ -1,18 +1,19 @@
 use error_stack::ResultExt as _;
+use stepflow_steps::{Plugins, StepPlugin as _};
 use stepflow_workflow::{Flow, StepExecution};
-use stepflow_steps::Plugins;
 
 use crate::error::{CompileError, Result};
 
-pub(crate) fn populate(plugins: &Plugins, flow: &mut Flow) -> Result<()> {
+pub(crate) async fn populate<'a>(plugins: &'a Plugins<'a>, flow: &mut Flow) -> Result<()> {
     for (index, step) in flow.steps.iter_mut().enumerate() {
         println!("Populating step: {step:?}");
         let plugin = plugins
-            .get_dyn(&step.component)
+            .get(&step.component)
             .change_context(CompileError::NoPluginFound)?;
 
         let component_info = plugin
             .component_info(&step.component)
+            .await
             .change_context(CompileError::ComponentInfo)?;
         if let Some(step_execution) = &step.execution {
             error_stack::ensure!(

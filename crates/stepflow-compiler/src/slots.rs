@@ -21,7 +21,7 @@ struct Slots {
 }
 
 impl Slots {
-    fn release_args<'a>(&mut self, args: impl Iterator<Item = &'a mut Expr>) -> Result<Vec<u32>>{
+    fn release_args<'a>(&mut self, args: impl Iterator<Item = &'a mut Expr>) -> Result<Vec<u32>> {
         let mut drop_slots = Vec::new();
         for arg in args {
             match arg {
@@ -34,8 +34,8 @@ impl Slots {
                         self.free.push(allocated.slot);
                         self.allocated.remove(step_ref);
                     }
-                },
-                Expr::Literal { .. } => {} ,
+                }
+                Expr::Literal { .. } => {}
             }
         }
 
@@ -55,10 +55,7 @@ impl Slots {
             self.next_slot += 1;
             slot
         };
-        self.allocated.insert(step_ref, Allocated {
-            slot,
-            uses
-        });
+        self.allocated.insert(step_ref, Allocated { slot, uses });
         Some(slot)
     }
 
@@ -70,11 +67,13 @@ impl Slots {
             execution.drop = self.release_args(step.args.values_mut())?;
 
             for output in execution.outputs.iter_mut() {
-                output.slot = self.assign_slot(StepRef {
-                    step_id: step.id.clone(),
-                    output: output.name.clone(),
-                },
-                output.uses);
+                output.slot = self.assign_slot(
+                    StepRef {
+                        step_id: step.id.clone(),
+                        output: output.name.clone(),
+                    },
+                    output.uses,
+                );
             }
         }
 

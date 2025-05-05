@@ -18,12 +18,18 @@ impl Uses {
     fn update_uses(&mut self, flow: &mut Flow) -> Result<()> {
         // First, iterate over the steps and initialize the use counts.
         for step in flow.steps.iter_mut() {
-            let step_execution = step.execution.as_mut().ok_or(CompileError::MissingStepExecution)?;
+            let step_execution = step
+                .execution
+                .as_mut()
+                .ok_or(CompileError::MissingStepExecution)?;
             for output in step_execution.outputs.iter() {
-                self.uses.insert(StepRef {
-                    step_id: step.id.clone(),
-                    output: output.name.clone(),
-                }, 0);
+                self.uses.insert(
+                    StepRef {
+                        step_id: step.id.clone(),
+                        output: output.name.clone(),
+                    },
+                    0,
+                );
             }
         }
 
@@ -33,14 +39,23 @@ impl Uses {
         }
 
         for step in flow.steps.iter_mut().rev() {
-            let execution = step.execution.as_mut().ok_or(CompileError::MissingStepExecution)?;
+            let execution = step
+                .execution
+                .as_mut()
+                .ok_or(CompileError::MissingStepExecution)?;
             let mut needs_args = execution.always_execute;
 
             // By the time we reach a step, it should be finalized.
             // So, we write the usage information to the step.
             for output in execution.outputs.iter_mut() {
-                let step_ref = StepRef { step_id: step.id.clone(), output: output.name.clone() };
-                let uses = self.uses.remove(&step_ref).expect("all outputs registered earlier");
+                let step_ref = StepRef {
+                    step_id: step.id.clone(),
+                    output: output.name.clone(),
+                };
+                let uses = self
+                    .uses
+                    .remove(&step_ref)
+                    .expect("all outputs registered earlier");
                 output.uses = Some(uses);
                 if uses > 0 {
                     needs_args = true;
@@ -68,5 +83,4 @@ impl Uses {
         }
         Ok(())
     }
-
 }

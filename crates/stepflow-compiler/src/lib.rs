@@ -1,20 +1,20 @@
 mod component_info;
 mod error;
-mod uses;
 mod slots;
+mod uses;
 
 mod validation;
 
 use std::collections::HashSet;
 
 pub use error::{CompileError, Result};
-use stepflow_workflow::{Flow};
 use stepflow_steps::Plugins;
+use stepflow_workflow::Flow;
 pub use validation::validate_flow;
 
-pub fn compile(plugins: &Plugins, mut flow: Flow) -> Result<Flow> {
+pub async fn compile<'a>(plugins: &'a Plugins<'a>, mut flow: Flow) -> Result<Flow> {
     // 1. Fill in information about components.
-    component_info::populate(plugins, &mut flow)?;
+    component_info::populate(plugins, &mut flow).await?;
 
     // 2. Validate the flow is well-formed.
     //
