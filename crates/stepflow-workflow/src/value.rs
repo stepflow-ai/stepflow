@@ -40,6 +40,10 @@ impl Expr {
 #[repr(transparent)]
 pub struct Value(serde_json::Value);
 
+impl Value {
+    pub const NULL: Self = Self(serde_json::Value::Null);
+}
+
 impl From<serde_json::Value> for Value {
     fn from(value: serde_json::Value) -> Self {
         Self(value)

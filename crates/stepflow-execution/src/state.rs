@@ -1,23 +1,7 @@
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt;
 use indexmap::IndexMap;
-use stepflow_workflow::{Expr, Flow, Value};
-
-pub trait State {
-    /// Resolve any references in the given arguments.
-    ///
-    /// The resulting `Arg`s should *not* include any references to another step's output.
-    fn resolve(&mut self, args: &IndexMap<String, Expr>) -> Result<Vec<Value>>;
-
-    /// Record results for the given step.
-    ///
-    /// This may fail if the given step is not the next step and out-of-order
-    /// execution is not supported by this state backend.
-    ///
-    /// The outputs must all be literal `Arg` and should *not* be references
-    /// to other step's output.
-    fn record_results(&mut self, outputs: Vec<Value>) -> Result<()>;
-}
+use stepflow_workflow::{Expr, Flow, StepExecution, Value};
 
 pub struct VecState {
     pub slots: Vec<Value>,
@@ -27,24 +11,22 @@ impl VecState {
     pub fn try_new(flow: &Flow) -> Result<Self> {
         let execution = flow.execution.as_ref().ok_or(ExecutionError::FlowNotCompiled)?;
         let slots = execution.slots as usize;
-        let slots = Vec::with_capacity(slots);
+        let slots = vec![Value::NULL; slots];
         Ok(Self { slots })
     }
 
     fn get_value(&mut self, slot: u32) -> Result<&Value> {
-        // Ensure the step index exists
-        // TODO: Error handling? Mention the step? Or push this to validation and
-        // assume no errors?
         let Some(output) = self.slots.get(slot as usize) else {
             error_stack::bail!(ExecutionError::SlotOutOfBounds { slot });
         };
 
         Ok(output)
     }
-}
 
-impl State for VecState {
-    fn resolve(&mut self, args: &IndexMap<String, Expr>) -> Result<Vec<Value>> {
+    /// Resolve any references in the given arguments.
+    ///
+    /// The resulting `Arg`s should *not* include any references to another step's output.
+    pub fn resolve(&mut self, args: &IndexMap<String, Expr>) -> Result<Vec<Value>> {
         let mut resolved_args = Vec::new();
 
         for arg in args.values() {
@@ -66,10 +48,22 @@ impl State for VecState {
         Ok(resolved_args)
     }
 
-    fn record_results(&mut self, outputs: Vec<Value>) -> Result<()> {
-        // TODO: Ensure that all outputs are literals and not references
-        // TODO: debug_assert the outputs match the next step?
-        self.slots.extend(outputs);
+    /// Record results for the given step.
+    ///
+    /// This may fail if the given step is not the next step and out-of-order
+    /// execution is not supported by this state backend.
+    ///
+    /// The outputs must all be literal `Arg` and should *not* be references
+    /// to other step's output.
+    pub fn record_results(&mut self, step: &StepExecution, results: Vec<Value>) -> Result<()> {
+        for slot in &step.drop {
+            self.slots[*slot as usize] = Value::NULL;
+        }
+
+        for (output, result) in step.outputs.iter().zip(results) {
+            let slot = output.slot.ok_or(ExecutionError::FlowNotCompiled)? as usize;
+            self.slots[slot] = result;
+        }
         Ok(())
     }
 }

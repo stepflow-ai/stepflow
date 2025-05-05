@@ -1,12 +1,14 @@
+use stepflow_workflow::Component;
 use thiserror::Error;
-use url::Url;
 
 #[derive(Error, Debug)]
 pub enum ExecutionError {
     #[error("slot {slot} out of bounds")]
     SlotOutOfBounds { slot: u32 },
-    #[error("error executing plugin for '{0}'")]
-    PluginError(Url),
+    #[error("error executing plugin")]
+    PluginError,
+    #[error("plugin not found")]
+    PluginNotFound,
     #[error("flow not compiled")]
     FlowNotCompiled,
 }

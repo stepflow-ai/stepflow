@@ -16,7 +16,7 @@ pub struct Flow {
     #[serde(default, with = "outputs_serde")]
     pub outputs: IndexMap<String, Expr>,
 
-    /// Flow execution informaiton.
+    /// Flow execution information.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub execution: Option<FlowExecution>,
 }
@@ -169,7 +169,7 @@ mod tests {
             Flow {
                 steps: vec![
                     Step {
-                        id: Some("s1".to_owned()),
+                        id: "s1".to_owned(),
                         component: Component::parse("langflow://echo").unwrap(),
                         args: indexmap! {
                             "a".to_owned() => Expr::literal("hello world"),
@@ -177,7 +177,7 @@ mod tests {
                         execution: None,
                     },
                     Step {
-                        id: Some("s2".to_owned()),
+                        id: "s2".to_owned(),
                         component: Component::parse("mcp+http://foo/bar").unwrap(),
                         args: indexmap! {
                             "a".to_owned() => Expr::literal("hello world 2"),

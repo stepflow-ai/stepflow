@@ -39,8 +39,7 @@ pub struct StepOutput {
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
 pub struct Step {
     /// Optional identifier for the step
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub id: Option<String>,
+    pub id: String,
 
     /// The component to execute in this step
     pub component: Component,
@@ -77,14 +76,6 @@ pub struct StepExecution {
 }
 
 impl Step {
-    pub fn execution(&self) -> Result<&StepExecution> {
-        Ok(self.execution.as_ref().ok_or(StepError::MissingExecution)?)
-    }
-
-    pub fn execution_mut(&mut self) -> Result<&mut StepExecution> {
-        Ok(self.execution.as_mut().ok_or(StepError::MissingExecution)?)
-    }
-
     /// Returns true if any of the step's outputs are used in the workflow
     pub fn used(&self) -> bool {
         self.execution

@@ -67,7 +67,7 @@ mod tests {
             todo!()
         }
 
-        fn execute(&self, _step: &Step) -> Result<Vec<Value>> {
+        fn execute(&self, _component: &Component, _args: Vec<Value>) -> Result<Vec<Value>> {
             todo!()
         }
     }

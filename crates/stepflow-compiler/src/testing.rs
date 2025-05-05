@@ -20,7 +20,7 @@ impl StepPlugin for MockPlugin {
         todo!()
     }
 
-    fn execute(&self, step: &Step) -> Result<Vec<Value>> {
+    fn execute(&self, component: &Component, args: Vec<Value>) -> Result<Vec<Value>> {
         todo!()
     }
 }

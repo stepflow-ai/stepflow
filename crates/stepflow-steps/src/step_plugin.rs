@@ -17,7 +17,7 @@ pub trait StepPlugin: Any {
     /// Execute the step and return the resulting arguments.
     ///
     /// The arguments should be fully resolved.
-    fn execute(&self, step: &Step) -> Result<Vec<Value>>;
+    fn execute(&self, component: &Component, args: Vec<Value>) -> Result<Vec<Value>>;
 }
 
 impl dyn StepPlugin {
