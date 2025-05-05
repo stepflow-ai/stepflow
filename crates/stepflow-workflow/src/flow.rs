@@ -7,13 +7,14 @@ use crate::{step::Step, Expr};
 /// A flow represents a complete workflow that can be executed. It contains:
 /// - A sequence of steps to execute
 /// - Named outputs that can reference step outputs
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 pub struct Flow {
     /// The steps to execute for the flow.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(default, with = "outputs_serde")]
+    #[serde(default, with = "outputs_serde", skip_serializing_if = "IndexMap::is_empty")]
     pub outputs: IndexMap<String, Expr>,
 
     /// Flow execution information.
@@ -108,6 +109,15 @@ impl Flow {
     /// Returns an error if the YAML is invalid or cannot be deserialized into a Flow.
     pub fn from_yaml_string(yaml: &str) -> serde_yml::Result<Self> {
         serde_yml::from_str(yaml)
+    }
+
+    /// Parses a flow from a YAML reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the YAML is invalid or cannot be deserialized into a Flow.
+    pub fn from_yaml_reader(rdr: impl std::io::Read) -> serde_yml::Result<Self> {
+        serde_yml::from_reader(rdr)
     }
 
     /// Parses a flow from a JSON string.

@@ -102,9 +102,10 @@ struct Validator<'a> {
 }
 
 impl<'a> Validator<'a> {
-    fn new(flow: &'a Flow) -> Self {
-        let slots: Vec<Option<SlotInfo>> = vec![None; flow.execution.as_ref().unwrap().slots as usize];
-        Self { flow, slots }
+    fn new(flow: &'a Flow) -> Result<Self, ValidationError<'a>> {
+        let slots = flow.execution.as_ref().ok_or(ValidationError::MissingFlowExecution)?.slots as usize;
+        let slots: Vec<Option<SlotInfo>> = vec![None; slots];
+        Ok(Self { flow, slots })
     }
 
     fn validate_flow(&mut self) -> Result<(), ValidationError<'a>> {
@@ -305,5 +306,5 @@ impl<'a> Validator<'a> {
 /// - Step outputs are not referenced after the corresponding slot is dropped.
 /// - Step outputs are not referenced before the step has executed.
 pub fn validate_flow(flow: &Flow) -> Result<(), ValidationError<'_>> {
-    Validator::new(flow).validate_flow()
+    Validator::new(flow)?.validate_flow()
 }

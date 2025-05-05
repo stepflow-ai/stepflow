@@ -25,7 +25,7 @@ pub enum CompileError {
     },
     #[error("missing step execution info")]
     MissingStepExecution,
-    #[error("compilation produced invalid flow: {0}")]
+    #[error("invalid compilation: {0}")]
     Validation(String),
 }
 

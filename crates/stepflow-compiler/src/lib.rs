@@ -2,8 +2,7 @@ mod component_info;
 mod error;
 mod uses;
 
-#[cfg(test)]
-mod testing;
+pub mod testing;
 mod validation;
 
 use std::collections::HashSet;
