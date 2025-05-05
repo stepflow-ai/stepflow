@@ -21,9 +21,9 @@ impl Plugins {
         }
     }
 
-    pub fn register(&mut self, plugin: Box<dyn StepPlugin>) {
+    pub fn register(&mut self, plugin: impl StepPlugin) {
         self.step_plugins
-            .insert(plugin.protocol().to_owned(), plugin);
+            .insert(plugin.protocol().to_owned(), Box::new(plugin));
     }
 
     pub fn get_dyn(&self, component: &Component) -> Result<&dyn StepPlugin> {
@@ -75,8 +75,8 @@ mod tests {
     #[test]
     fn test_plugins() {
         let mut plugins = Plugins::new();
-        plugins.register(Box::new(MockPlugin("langflow")));
-        plugins.register(Box::new(MockPlugin("mcp")));
+        plugins.register(MockPlugin("langflow"));
+        plugins.register(MockPlugin("mcp"));
 
         let langflow: &MockPlugin = plugins
             .get(&Component::parse("langflow://package/class/name").unwrap())

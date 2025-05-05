@@ -25,8 +25,6 @@ pub enum CompileError {
     },
     #[error("missing step execution info")]
     MissingStepExecution,
-    #[error("invalid compilation: {0}")]
-    Validation(String),
 }
 
 pub type Result<T, E = error_stack::Report<CompileError>> = std::result::Result<T, E>;

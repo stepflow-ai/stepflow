@@ -1,0 +1,7 @@
+---
+source: crates/stepflow-compiler/tests/snapshot.rs
+expression: compiled
+input_file: crates/stepflow-compiler/tests/valid/empty_flow_missing_execution.yaml
+---
+execution:
+  slots: 0

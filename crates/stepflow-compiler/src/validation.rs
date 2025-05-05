@@ -24,7 +24,7 @@ pub enum ValidationError<'a> {
         step_id: &'a str,
         output_name: &'a str,
     },
-    #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info missing slot (uses = {uses}")]
+    #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info missing slot (uses = {uses})")]
     MissingStepSlot {
         step_idx: usize,
         step_id: &'a str,
@@ -38,14 +38,14 @@ pub enum ValidationError<'a> {
         output_name: &'a str,
         slot: u32,
     },
-    #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info slot out of bounds (slot = {slot}")]
+    #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info slot out of bounds (slot = {slot})")]
     OutputSlotOutOfBounds {
         step_idx: usize,
         step_id: &'a str,
         output_name: &'a str,
         slot: u32,
     },
-    #[error("step {step_idx}[{step_id:?}] input '{input_name}' slot out of bounds (slot = {slot}")]
+    #[error("step {step_idx}[{step_id:?}] input '{input_name}' slot out of bounds (slot = {slot})")]
     InputSlotOutOfBounds {
         step_idx: usize,
         step_id: &'a str,
@@ -218,7 +218,7 @@ impl<'a> Validator<'a> {
         // 2. All slots that are no longer used should be dropped.
         for (slot, slot_info) in self.slots.iter().enumerate() {
             if let Some(slot_info) = slot_info {
-                if slot_info.remaining_uses > 0 {
+                if slot_info.remaining_uses == 0 {
                     return Err(ValidationError::UnusedSlotNotDropped {
                         step_idx,
                         step_id,

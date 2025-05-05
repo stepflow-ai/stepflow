@@ -456,6 +456,7 @@ dependencies = [
  "insta",
  "serde_yml",
  "stepflow-steps",
+ "stepflow-steps-testing",
  "stepflow-workflow",
  "thiserror",
  "url",
@@ -495,6 +496,7 @@ dependencies = [
  "error-stack",
  "indexmap",
  "serde_json",
+ "stepflow-steps-testing",
  "stepflow-workflow",
  "thiserror",
 ]
@@ -506,6 +508,14 @@ version = "0.1.0"
 [[package]]
 name = "stepflow-steps-mcp"
 version = "0.1.0"
+
+[[package]]
+name = "stepflow-steps-testing"
+version = "0.1.0"
+dependencies = [
+ "stepflow-steps",
+ "stepflow-workflow",
+]
 
 [[package]]
 name = "stepflow-workflow"

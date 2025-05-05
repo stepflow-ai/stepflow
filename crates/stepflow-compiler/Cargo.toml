@@ -18,3 +18,4 @@ thiserror.workspace = true
 serde_yml.workspace = true
 url.workspace = true
 insta.workspace = true
+stepflow-steps-testing.workspace = true

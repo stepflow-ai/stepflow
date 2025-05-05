@@ -1,0 +1,20 @@
+steps:
+  # 
+  - component: mock://two_outputs
+    id: s1
+    args:
+      foo: { literal: "hello" }
+      bar: { literal: 42 }
+  - component: mock://one_output
+    id: s2
+    args:
+      a: { step_id: s1, output: a }
+      b: { step_id: s1, output: b }
+      c: { literal: 5 }
+outputs:
+  - name: out1
+    value: { step_id: s1, output: a }
+  - name: out2
+    value: { step_id: s2, output: output }
+  - name: outLiteral
+    value: { literal: 5 }

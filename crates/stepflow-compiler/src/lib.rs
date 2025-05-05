@@ -1,14 +1,14 @@
 mod component_info;
 mod error;
 mod uses;
+mod slots;
 
-pub mod testing;
 mod validation;
 
 use std::collections::HashSet;
 
 pub use error::{CompileError, Result};
-use stepflow_workflow::Flow;
+use stepflow_workflow::{Flow};
 use stepflow_steps::Plugins;
 pub use validation::validate_flow;
 
@@ -26,9 +26,8 @@ pub fn compile(plugins: &Plugins, mut flow: Flow) -> Result<Flow> {
     // 3. Compute which outputs are used.
     uses::compute_uses(&mut flow)?;
 
-    // 4. Validate the result is valid.
-    validate_flow(&flow)
-        .map_err(|e| CompileError::Validation(e.to_string()))?;
+    // 4. Assign slots.
+    slots::assign_slots(&mut flow)?;
 
     Ok(flow)
 }

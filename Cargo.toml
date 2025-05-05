@@ -22,6 +22,7 @@ stepflow-execution = { path = "./crates/stepflow-execution" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
 stepflow-steps = { path = "./crates/stepflow-steps" }
 stepflow-steps-client = { path = "./crates/stepflow-steps-client" }
+stepflow-steps-testing = { path = "./crates/stepflow-steps-testing" }
 stepflow-steps-mcp = { path = "./crates/stepflow-steps-mcp" }
 stepflow-workflow = { path = "./crates/stepflow-workflow" }
 thiserror = "2.0.12"

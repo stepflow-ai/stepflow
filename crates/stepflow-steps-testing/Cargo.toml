@@ -1,0 +1,12 @@
+[package]
+name = "stepflow-steps-testing"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Step execution plugin(s) used for tests."
+
+[dependencies]
+stepflow-steps.workspace = true
+stepflow-workflow.workspace = true

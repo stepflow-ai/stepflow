@@ -1,6 +1,0 @@
----
-source: crates/stepflow-compiler/tests/snapshot.rs
-expression: result
-input_file: crates/stepflow-compiler/tests/inputs/basic.yaml
----
-Err: No plugin found

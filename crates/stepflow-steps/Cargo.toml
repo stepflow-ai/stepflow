@@ -13,3 +13,6 @@ indexmap.workspace = true
 stepflow-workflow.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+stepflow-steps-testing.workspace = true

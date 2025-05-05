@@ -1,20 +1,27 @@
 use std::fs::File;
 use std::io::BufReader;
 
-use stepflow_compile::compile;
+use stepflow_compile::{compile, validate_flow};
 use stepflow_steps::Plugins;
+use stepflow_steps_testing::MockPlugin;
 
 #[test]
-fn inputs_snapshot() {
-    let plugins = Plugins::new();
+fn valid_snapshot() {
+    let mut plugins = Plugins::new();
 
-    insta::glob!("inputs/*.yaml", |path| {
+    let mut mock_plugin = MockPlugin::new("mock");
+    mock_plugin.mock_component("mock://one_output").outputs(&["output"]);
+    mock_plugin.mock_component("mock://two_outputs").outputs(&["a", "b"]);
+    plugins.register(mock_plugin);
+
+    insta::glob!("valid/*.yaml", |path| {
         let file = File::open(path).unwrap();
         let reader = BufReader::new(file);
 
         let flow = stepflow_workflow::Flow::from_yaml_reader(reader).unwrap();
-        let result = compile(&plugins, flow).map_err(|e| e.to_string());
+        let compiled = compile(&plugins, flow).map_err(|e| e.to_string()).unwrap();
+        insta::assert_yaml_snapshot!("compiled", compiled);
 
-        insta::assert_yaml_snapshot!(result)
+        validate_flow(&compiled).unwrap();
     })
 }

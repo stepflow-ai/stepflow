@@ -1,0 +1,58 @@
+---
+source: crates/stepflow-compiler/tests/snapshot.rs
+expression: compiled
+input_file: crates/stepflow-compiler/tests/valid/basic.yaml
+---
+steps:
+  - id: s1
+    component: "mock://two_outputs"
+    args:
+      foo:
+        literal: hello
+      bar:
+        literal: 42
+    execution:
+      outputs:
+        - name: a
+          uses: 2
+          slot: 0
+        - name: b
+          uses: 1
+          slot: 1
+      always_execute: false
+      drop: []
+  - id: s2
+    component: "mock://one_output"
+    args:
+      a:
+        step_id: s1
+        output: a
+        slot: 0
+      b:
+        step_id: s1
+        output: b
+        slot: 1
+      c:
+        literal: 5
+    execution:
+      outputs:
+        - name: output
+          uses: 1
+          slot: 1
+      always_execute: false
+      drop:
+        - 1
+outputs:
+  - name: out1
+    value:
+      step_id: s1
+      output: a
+  - name: out2
+    value:
+      step_id: s2
+      output: output
+  - name: outLiteral
+    value:
+      literal: 5
+execution:
+  slots: 2

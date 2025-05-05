@@ -35,6 +35,16 @@ pub struct StepOutput {
     pub slot: Option<u32>,
 }
 
+impl StepOutput {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            uses: None,
+            slot: None,
+        }
+    }
+}
+
 /// A step in a workflow that executes a component with specific arguments.
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
 pub struct Step {
