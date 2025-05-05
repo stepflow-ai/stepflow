@@ -149,9 +149,9 @@ mod tests {
               a: { literal: "hello world 2" }
         outputs:
             - name: s1a
-              value: { step: "s1", output: "a" }
+              value: { step_id: "s1", output: "a" }
             - name: s2b
-              value: { step: "s2", output: "a" }
+              value: { step_id: "s2", output: "a" }
         "#;
         let flow: Flow = serde_yml::from_str(yaml).unwrap();
         assert_eq!(

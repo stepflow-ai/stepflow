@@ -37,8 +37,8 @@ Most steps are defined in a step-service, which the executor invokes using a JSO
 ### Organization
 
 - `crates/stepflow-protocol` defines the JSON-RPC protocol using Rust structs and `serde`.
-- `crates/stepflow-workflow` defines the Rust structs representing a workflow, as well as logic
-  for validating a workflow and filling in execution information.
+- `crates/stepflow-workflow` defines the Rust structs representing a workflow.
+- `crates/stepflow-compile` defines the logic for validating and compiling workflows.
 - `crates/stepflow-steps` provides the trait for step execution plugins.
 - `crates/stepflow-steps-client` provides a step execution plugin using the stepflow protocol.
   It supports JSON-RPC over stdio (similar to LSP and MCP) and JSON-RPC over HTTP.

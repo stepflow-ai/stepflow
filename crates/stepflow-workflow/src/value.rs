@@ -1,16 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+use crate::StepRef;
+
 /// An expression that can be either a literal value or a template expression.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Expr {
     /// A reference to an output of an earlier step.
-    Step {
-        /// The step being referenced.
-        step: String,
-        /// The name of the step output being referenced.
-        output: String,
-    },
+    Step(StepRef),
     /// A literal JSON value.
     Literal { literal: Value },
 }
@@ -21,7 +18,15 @@ impl Expr {
     }
 
     pub fn step(step: impl Into<String>, output: impl Into<String>) -> Self {
-        Self::Step { step: step.into(), output: output.into() }
+        Self::Step(StepRef { step_id: step.into(), output: output.into() })
+    }
+
+    pub fn step_ref(&self) -> Option<&StepRef> {
+        if let Self::Step(step_ref) = self {
+            Some(step_ref)
+        } else {
+            None
+        }
     }
 }
 
@@ -64,6 +69,6 @@ mod tests {
         assert_eq!(from_yaml("{ literal: foo }"), Expr::literal("foo"));
         assert_eq!(from_yaml("{ literal: 5 }"), Expr::literal(5));
 
-        assert_eq!(from_yaml("{ step: \"step1\", output: \"out\" }"), Expr::step("step1", "out"));
+        assert_eq!(from_yaml("{ step_id: \"step1\", output: \"out\" }"), Expr::step("step1", "out"));
     }
 }

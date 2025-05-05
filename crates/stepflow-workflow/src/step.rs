@@ -1,10 +1,16 @@
-use std::fmt;
-
 use crate::component::Component;
 use crate::Expr;
 use indexmap::IndexMap;
-use serde::Deserialize;
-use serde::ser::SerializeStruct as _;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum StepError {
+    #[error("step has no execution info")]
+    MissingExecution,
+}
+
+type Result<T, E = StepError> = std::result::Result<T, E>;
 
 /// A reference to a step's output, including the step ID, output name, and optional slot index.
 #[derive(
@@ -15,69 +21,16 @@ pub struct StepRef {
     pub step_id: String,
     /// The name of the output from the step
     pub output: String,
-    /// Optional slot index used for this value
-    pub slot: Option<u32>,
 }
 
 /// Represents a step output with its name and optional usage count
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct StepOutput {
     /// The name of the output
     pub name: String,
     /// Optional count of how many times this output is used
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub uses: Option<u32>,
-}
-
-impl serde::Serialize for StepOutput {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        if self.uses.is_none() {
-            serializer.serialize_str(&self.name)
-        } else {
-            let mut output = serializer.serialize_struct("StepOutput", 3)?;
-            output.serialize_field("name", &self.name)?;
-            output.serialize_field("uses", &self.uses)?;
-            output.end()
-        }
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for StepOutput {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_any(StepOutputVisitor)
-    }
-}
-
-struct StepOutputVisitor;
-
-impl<'de> serde::de::Visitor<'de> for StepOutputVisitor {
-    type Value = StepOutput;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("string or step output")
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<StepOutput, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(StepOutput {
-            name: value.to_owned(),
-            uses: None,
-        })
-    }
-
-    fn visit_map<M>(self, map: M) -> Result<StepOutput, M::Error>
-    where
-        M: serde::de::MapAccess<'de>,
-    {
-        Deserialize::deserialize(serde::de::value::MapAccessDeserializer::new(map))
-    }
 }
 
 /// A step in a workflow that executes a component with specific arguments.
@@ -105,7 +58,7 @@ pub struct Step {
 }
 
 /// Details related to execution of steps.
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Default)]
 pub struct StepExecution {
     /// Information about the step's outputs.
     ///
@@ -117,11 +70,19 @@ pub struct StepExecution {
     /// Whether this step should execute if none of its outputs are used.
     pub always_execute: bool,
 
-    /// Slots which can be dropped after this step.
-    pub drop_slots: Vec<u32>,
+    /// Step outputs which can be dropped after this step.
+    pub drop: Vec<StepRef>,
 }
 
 impl Step {
+    pub fn execution(&self) -> Result<&StepExecution> {
+        Ok(self.execution.as_ref().ok_or(StepError::MissingExecution)?)
+    }
+
+    pub fn execution_mut(&mut self) -> Result<&mut StepExecution> {
+        Ok(self.execution.as_mut().ok_or(StepError::MissingExecution)?)
+    }
+
     /// Returns true if any of the step's outputs are used in the workflow
     pub fn used(&self) -> bool {
         self.execution
