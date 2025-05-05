@@ -31,6 +31,8 @@ pub struct StepOutput {
     /// Optional count of how many times this output is used
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub uses: Option<u32>,
+    /// The slot assigned to this step output.
+    pub slot: Option<u32>,
 }
 
 /// A step in a workflow that executes a component with specific arguments.
@@ -71,7 +73,7 @@ pub struct StepExecution {
     pub always_execute: bool,
 
     /// Step outputs which can be dropped after this step.
-    pub drop: Vec<StepRef>,
+    pub drop: Vec<u32>,
 }
 
 impl Step {

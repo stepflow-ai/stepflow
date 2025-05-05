@@ -7,7 +7,12 @@ use crate::StepRef;
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Expr {
     /// A reference to an output of an earlier step.
-    Step(StepRef),
+    Step {
+        #[serde(flatten)]
+        step_ref: StepRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        slot: Option<u32>,
+    },
     /// A literal JSON value.
     Literal { literal: Value },
 }
@@ -18,11 +23,11 @@ impl Expr {
     }
 
     pub fn step(step: impl Into<String>, output: impl Into<String>) -> Self {
-        Self::Step(StepRef { step_id: step.into(), output: output.into() })
+        Self::Step { step_ref: StepRef { step_id: step.into(), output: output.into() }, slot: None }
     }
 
     pub fn step_ref(&self) -> Option<&StepRef> {
-        if let Self::Step(step_ref) = self {
+        if let Self::Step { step_ref, .. } = self {
             Some(step_ref)
         } else {
             None

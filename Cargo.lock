@@ -349,6 +349,14 @@ dependencies = [
 [[package]]
 name = "stepflow-execution"
 version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "indexmap",
+ "stepflow-steps",
+ "stepflow-workflow",
+ "thiserror",
+ "url",
+]
 
 [[package]]
 name = "stepflow-main"

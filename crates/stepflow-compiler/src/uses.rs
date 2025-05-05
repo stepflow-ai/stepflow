@@ -74,7 +74,7 @@ impl Uses {
     }
 
     fn increment_use(&mut self, arg: &Expr) -> Result<()> {
-        if let Expr::Step(step_ref) = arg {
+        if let Some(step_ref) = arg.step_ref() {
             let uses = self
                 .uses
                 .get_mut(step_ref)
