@@ -15,44 +15,55 @@ steps:
       outputs:
         - name: a
           uses: 2
-          slot: 0
+          value_ref:
+            step_index: 0
+            output_index: 0
         - name: b
           uses: 1
-          slot: 1
+          value_ref:
+            step_index: 0
+            output_index: 1
       always_execute: false
-      drop: []
   - id: s2
     component: "mock://one_output"
     args:
       a:
         step_id: s1
         output: a
-        slot: 0
+        value_ref:
+          step_index: 0
+          output_index: 0
       b:
         step_id: s1
         output: b
-        slot: 1
+        value_ref:
+          step_index: 0
+          output_index: 1
       c:
         literal: 5
     execution:
       outputs:
         - name: output
           uses: 1
-          slot: 1
+          value_ref:
+            step_index: 1
+            output_index: 0
       always_execute: false
-      drop:
-        - 1
 outputs:
   - name: out1
     value:
       step_id: s1
       output: a
+      value_ref:
+        step_index: 0
+        output_index: 0
   - name: out2
     value:
       step_id: s2
       output: output
+      value_ref:
+        step_index: 1
+        output_index: 0
   - name: outLiteral
     value:
       literal: 5
-execution:
-  slots: 2

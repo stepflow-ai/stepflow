@@ -12,7 +12,7 @@ pub async fn execute<'a>(
     flow: &Flow,
     inputs: Vec<Value>,
 ) -> Result<Vec<Value>> {
-    let mut state = VecState::try_new(flow)?;
+    let mut state = VecState::new();
 
     if !inputs.is_empty() {
         todo!("flow inputs not yet supported")

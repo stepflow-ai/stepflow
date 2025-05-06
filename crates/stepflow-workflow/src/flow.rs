@@ -20,16 +20,6 @@ pub struct Flow {
         skip_serializing_if = "IndexMap::is_empty"
     )]
     pub outputs: IndexMap<String, Expr>,
-
-    /// Flow execution information.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub execution: Option<FlowExecution>,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-pub struct FlowExecution {
-    /// The number of slots needed for the flow.
-    pub slots: u32,
 }
 
 mod outputs_serde {
@@ -203,7 +193,6 @@ mod tests {
                     "s1a".to_owned() => Expr::step("s1", "a"),
                     "s2b".to_owned() => Expr::step("s2", "a"),
                 },
-                execution: None,
             }
         );
     }

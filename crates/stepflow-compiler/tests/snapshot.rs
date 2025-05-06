@@ -31,7 +31,6 @@ fn valid_snapshot() {
             let flow = stepflow_workflow::Flow::from_yaml_reader(reader).unwrap();
             let compiled = compile(&plugins, flow)
                 .await
-                .map_err(|e| e.to_string())
                 .unwrap();
             insta::assert_yaml_snapshot!("compiled", compiled);
 

@@ -1,26 +1,21 @@
+use std::collections::HashMap;
+
 use crate::{ExecutionError, Result};
-use error_stack::ResultExt;
 use indexmap::IndexMap;
-use stepflow_workflow::{Expr, Flow, StepExecution, Value};
+use stepflow_workflow::{Expr, StepExecution, StepRef, Value, ValueRef};
 
 pub struct VecState {
-    pub slots: Vec<Value>,
+    pub values: HashMap<ValueRef, Value>,
 }
 
 impl VecState {
-    pub fn try_new(flow: &Flow) -> Result<Self> {
-        let execution = flow
-            .execution
-            .as_ref()
-            .ok_or(ExecutionError::FlowNotCompiled)?;
-        let slots = execution.slots as usize;
-        let slots = vec![Value::NULL; slots];
-        Ok(Self { slots })
+    pub fn new() -> Self {
+        Self { values: HashMap::new() }
     }
 
-    fn get_value(&mut self, slot: u32) -> Result<&Value> {
-        let Some(output) = self.slots.get(slot as usize) else {
-            error_stack::bail!(ExecutionError::SlotOutOfBounds { slot });
+    fn get_value(&mut self, step: &StepRef, value_ref: &ValueRef) -> Result<&Value> {
+        let Some(output) = self.values.get(value_ref) else {
+            error_stack::bail!(ExecutionError::UndefinedValue { step_ref: step.clone(), value_ref: value_ref.clone() });
         };
 
         Ok(output)
@@ -34,12 +29,11 @@ impl VecState {
 
         for arg in args.values() {
             match arg {
-                Expr::Step { slot, step_ref } => {
+                Expr::Step { value_ref, step_ref } => {
                     // Resolve the step output to an actual argument
-                    let slot = slot.ok_or(ExecutionError::FlowNotCompiled)?;
+                    let value_ref = value_ref.as_ref().ok_or(ExecutionError::FlowNotCompiled)?;
                     let resolved_arg = self
-                        .get_value(slot)
-                        .attach_printable_lazy(|| format!("step {step_ref:?} has no slot"))?;
+                        .get_value(step_ref, value_ref)?;
                     resolved_args.push(resolved_arg.clone());
                 }
                 Expr::Literal { literal } => {
@@ -60,13 +54,9 @@ impl VecState {
     /// The outputs must all be literal `Arg` and should *not* be references
     /// to other step's output.
     pub fn record_results(&mut self, step: &StepExecution, results: Vec<Value>) -> Result<()> {
-        for slot in &step.drop {
-            self.slots[*slot as usize] = Value::NULL;
-        }
-
         for (output, result) in step.outputs.iter().zip(results) {
-            let slot = output.slot.ok_or(ExecutionError::FlowNotCompiled)? as usize;
-            self.slots[slot] = result;
+            let value_ref = output.value_ref.ok_or(ExecutionError::FlowNotCompiled)?;
+            self.values.insert(value_ref, result);
         }
         Ok(())
     }

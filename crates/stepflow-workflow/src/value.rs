@@ -11,10 +11,23 @@ pub enum Expr {
         #[serde(flatten)]
         step_ref: StepRef,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        slot: Option<u32>,
+        value_ref: Option<ValueRef>,
     },
     /// A literal JSON value.
     Literal { literal: Value },
+}
+
+/// A reference to a specific output of a step.
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize)]
+pub struct ValueRef {
+    pub step_index: u32,
+    pub output_index: u32,
+}
+
+impl std::fmt::Display for ValueRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "step{}.output{}", self.step_index, self.output_index)
+    }
 }
 
 impl Expr {
@@ -30,15 +43,7 @@ impl Expr {
                 step_id: step.into(),
                 output: output.into(),
             },
-            slot: None,
-        }
-    }
-
-    pub fn step_ref(&self) -> Option<&StepRef> {
-        if let Self::Step { step_ref, .. } = self {
-            Some(step_ref)
-        } else {
-            None
+            value_ref: None,
         }
     }
 }

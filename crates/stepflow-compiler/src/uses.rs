@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use stepflow_workflow::{Expr, Flow, StepRef};
+use stepflow_workflow::{Expr, Flow, ValueRef};
 
 use crate::{CompileError, Result};
 
@@ -11,7 +11,7 @@ pub(crate) fn compute_uses(flow: &mut Flow) -> error_stack::Result<(), CompileEr
 #[derive(Default)]
 struct Uses {
     /// Uses of each (step, output).
-    uses: HashMap<StepRef, u32>,
+    uses: HashMap<ValueRef, u32>,
 }
 
 impl Uses {
@@ -24,10 +24,7 @@ impl Uses {
                 .ok_or(CompileError::MissingStepExecution)?;
             for output in step_execution.outputs.iter() {
                 self.uses.insert(
-                    StepRef {
-                        step_id: step.id.clone(),
-                        output: output.name.clone(),
-                    },
+                    output.value_ref.as_ref().unwrap().clone(),
                     0,
                 );
             }
@@ -48,13 +45,9 @@ impl Uses {
             // By the time we reach a step, it should be finalized.
             // So, we write the usage information to the step.
             for output in execution.outputs.iter_mut() {
-                let step_ref = StepRef {
-                    step_id: step.id.clone(),
-                    output: output.name.clone(),
-                };
                 let uses = self
                     .uses
-                    .remove(&step_ref)
+                    .remove(output.value_ref.as_ref().unwrap())
                     .expect("all outputs registered earlier");
                 output.uses = Some(uses);
                 if uses > 0 {
@@ -65,6 +58,7 @@ impl Uses {
             // If the step is always executed, or at least one of it's outputs is used,
             // then we need to evaluate the arguments, so increment those uses.
             if needs_args {
+                println!("STEP: {step:?}");
                 for arg in step.args.values() {
                     self.increment_use(arg)?;
                 }
@@ -74,12 +68,16 @@ impl Uses {
     }
 
     fn increment_use(&mut self, arg: &Expr) -> Result<()> {
-        if let Some(step_ref) = arg.step_ref() {
-            let uses = self
-                .uses
-                .get_mut(step_ref)
-                .ok_or(CompileError::InvalidStepRef(step_ref.clone()))?;
-            *uses += 1;
+        match arg {
+            Expr::Literal { .. } => {}
+            Expr::Step { step_ref, value_ref, .. } => {
+                let value_ref = value_ref.as_ref().ok_or(CompileError::InvalidValueRefFor(step_ref.clone()))?;
+                let uses = self
+                    .uses
+                    .get_mut(value_ref)
+                    .ok_or(CompileError::InvalidValueRef(value_ref.clone()))?;
+                *uses += 1;
+            }
         }
         Ok(())
     }

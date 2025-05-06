@@ -1,6 +1,5 @@
 mod component_info;
 mod error;
-mod slots;
 mod uses;
 
 mod validation;
@@ -25,9 +24,6 @@ pub async fn compile<'a>(plugins: &'a Plugins<'a>, mut flow: Flow) -> Result<Flo
 
     // 3. Compute which outputs are used.
     uses::compute_uses(&mut flow)?;
-
-    // 4. Assign slots.
-    slots::assign_slots(&mut flow)?;
 
     Ok(flow)
 }

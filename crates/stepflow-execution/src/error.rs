@@ -1,9 +1,13 @@
+use stepflow_workflow::{StepRef, ValueRef};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ExecutionError {
-    #[error("slot {slot} out of bounds")]
-    SlotOutOfBounds { slot: u32 },
+    #[error("undefined value {value_ref:?} for step '{}' output '{}'", step_ref.step_id, step_ref.output)]
+    UndefinedValue {
+        step_ref: StepRef,
+        value_ref: ValueRef,
+    },
     #[error("error executing plugin")]
     PluginError,
     #[error("plugin not found")]

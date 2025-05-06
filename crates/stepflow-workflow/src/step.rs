@@ -1,4 +1,4 @@
-use crate::Expr;
+use crate::{Expr, ValueRef};
 use crate::component::Component;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,6 @@ pub enum StepError {
     #[error("step has no execution info")]
     MissingExecution,
 }
-
-type Result<T, E = StepError> = std::result::Result<T, E>;
 
 /// A reference to a step's output, including the step ID, output name, and optional slot index.
 #[derive(
@@ -31,8 +29,8 @@ pub struct StepOutput {
     /// Optional count of how many times this output is used
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub uses: Option<u32>,
-    /// The slot assigned to this step output.
-    pub slot: Option<u32>,
+    /// The ValueRef assigned to this step output.
+    pub value_ref: Option<ValueRef>,
 }
 
 impl StepOutput {
@@ -40,7 +38,7 @@ impl StepOutput {
         Self {
             name: name.to_owned(),
             uses: None,
-            slot: None,
+            value_ref: None,
         }
     }
 }
@@ -79,9 +77,6 @@ pub struct StepExecution {
 
     /// Whether this step should execute if none of its outputs are used.
     pub always_execute: bool,
-
-    /// Step outputs which can be dropped after this step.
-    pub drop: Vec<u32>,
 }
 
 impl Step {

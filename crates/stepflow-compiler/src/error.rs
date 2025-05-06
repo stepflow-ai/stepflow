@@ -1,12 +1,12 @@
-use stepflow_workflow::{StepOutput, StepRef};
+use stepflow_workflow::{StepOutput, StepRef, ValueRef};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CompileError {
     #[error("Duplicate step name '{0}'")]
     DuplicateStepId(String),
-    #[error("Invalid reference to output '{}' from step '{}'", .0.step_id, .0.output)]
-    InvalidStepRef(StepRef),
+    #[error("Invalid reference to output {0}")]
+    InvalidValueRef(ValueRef),
     #[error("No plugin found")]
     NoPluginFound,
     #[error("Failed to get info for component")]
@@ -25,6 +25,8 @@ pub enum CompileError {
     },
     #[error("missing step execution info")]
     MissingStepExecution,
+    #[error("no value ref for step '{}' output '{}'", .0.step_id, .0.output)]
+    InvalidValueRefFor(StepRef),
 }
 
 pub type Result<T, E = error_stack::Report<CompileError>> = std::result::Result<T, E>;
