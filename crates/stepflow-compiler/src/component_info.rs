@@ -35,7 +35,7 @@ pub(crate) async fn populate<'a>(plugins: &'a Plugins<'a>, flow: &mut Flow) -> R
             };
             println!("Using value ref: {value_ref:?} for step {} output '{}'", step.id, output.name);
             value_refs.insert(StepRef {
-                step_id: step.id.clone(),
+                step: step.id.clone(),
                 output: output.name.clone(),
             }, value_ref.clone());
             output.value_ref = Some(value_ref);

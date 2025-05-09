@@ -16,7 +16,7 @@ pub enum StepError {
 )]
 pub struct StepRef {
     /// The ID of the step that produced this output.
-    pub step_id: String,
+    pub step: String,
     /// The name of the output from the step
     pub output: String,
 }

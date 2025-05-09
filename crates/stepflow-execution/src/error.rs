@@ -3,7 +3,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ExecutionError {
-    #[error("undefined value {value_ref:?} for step '{}' output '{}'", step_ref.step_id, step_ref.output)]
+    #[error("undefined value {value_ref:?} for step '{}' output '{}'", step_ref.step, step_ref.output)]
     UndefinedValue {
         step_ref: StepRef,
         value_ref: ValueRef,

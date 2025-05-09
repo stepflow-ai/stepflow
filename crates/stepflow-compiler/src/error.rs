@@ -25,7 +25,7 @@ pub enum CompileError {
     },
     #[error("missing step execution info")]
     MissingStepExecution,
-    #[error("no value ref for step '{}' output '{}'", .0.step_id, .0.output)]
+    #[error("no value ref for step '{}' output '{}'", .0.step, .0.output)]
     InvalidValueRefFor(StepRef),
 }
 

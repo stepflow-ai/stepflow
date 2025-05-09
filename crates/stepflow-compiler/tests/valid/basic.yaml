@@ -8,13 +8,13 @@ steps:
   - component: mock://one_output
     id: s2
     args:
-      a: { step_id: s1, output: a }
-      b: { step_id: s1, output: b }
+      a: { step: s1, output: a }
+      b: { step: s1, output: b }
       c: { literal: 5 }
 outputs:
   - name: out1
-    value: { step_id: s1, output: a }
+    value: { step: s1, output: a }
   - name: out2
-    value: { step_id: s2, output: output }
+    value: { step: s2, output: output }
   - name: outLiteral
     value: { literal: 5 }

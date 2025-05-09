@@ -40,7 +40,7 @@ impl Expr {
     pub fn step(step: impl Into<String>, output: impl Into<String>) -> Self {
         Self::Step {
             step_ref: StepRef {
-                step_id: step.into(),
+                step: step.into(),
                 output: output.into(),
             },
             value_ref: None,
@@ -92,7 +92,7 @@ mod tests {
         assert_eq!(from_yaml("{ literal: 5 }"), Expr::literal(5));
 
         assert_eq!(
-            from_yaml("{ step_id: \"step1\", output: \"out\" }"),
+            from_yaml("{ step: \"step1\", output: \"out\" }"),
             Expr::step("step1", "out")
         );
     }

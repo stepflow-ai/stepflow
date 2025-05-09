@@ -28,13 +28,13 @@ steps:
     component: "mock://one_output"
     args:
       a:
-        step_id: s1
+        step: s1
         output: a
         value_ref:
           step_index: 0
           output_index: 0
       b:
-        step_id: s1
+        step: s1
         output: b
         value_ref:
           step_index: 0
@@ -52,14 +52,14 @@ steps:
 outputs:
   - name: out1
     value:
-      step_id: s1
+      step: s1
       output: a
       value_ref:
         step_index: 0
         output_index: 0
   - name: out2
     value:
-      step_id: s2
+      step: s2
       output: output
       value_ref:
         step_index: 1

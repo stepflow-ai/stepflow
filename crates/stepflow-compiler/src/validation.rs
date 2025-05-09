@@ -5,9 +5,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
-    #[error("invalid step {step_id}: {message}")]
+    #[error("invalid step {step}: {message}")]
     StepError {
-        step_id: String,
+        step: String,
         message: String,
     },
 }
@@ -15,116 +15,10 @@ pub enum ValidationError {
 impl ValidationError {
     fn step(step: &Step, message: impl Into<String>) -> Self {
         Self::StepError {
-            step_id: step.id.clone(),
+            step: step.id.clone(),
             message: message.into(),
         }
     }
-    // #[error("flow has no execution info")]
-    // MissingFlowExecution,
-    // #[error("step {step_idx}[{step_id:?}] has no execution info")]
-    // MissingStepExecution { step_idx: usize, step_id: &'a str },
-    // #[error("step {step_idx}[{step_id:?}] arg '{input_name}' has no value ref assigned")]
-    // MissingStepInputValueRef {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     arg_name: &'a str,
-    // },
-    // #[error("step {step_idx}[{step_id:?}] output '{output_name}' execution info missing uses")]
-    // MissingStepUses {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     output_name: &'a str,
-    // },
-    // #[error(
-    //     "step {step_idx}[{step_id:?}] output '{output_name}' execution info missing slot (uses = {uses})"
-    // )]
-    // MissingStepSlot {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     output_name: &'a str,
-    //     uses: u32,
-    // },
-    // #[error(
-    //     "unused step {step_idx}[{step_id:?}] output '{output_name}' execution info assigned slot (slot = {slot})"
-    // )]
-    // UnusedStepAssignedSlot {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     output_name: &'a str,
-    //     slot: u32,
-    // },
-    // #[error(
-    //     "step {step_idx}[{step_id:?}] output '{output_name}' execution info slot out of bounds (slot = {slot})"
-    // )]
-    // OutputSlotOutOfBounds {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     output_name: &'a str,
-    //     slot: u32,
-    // },
-    // #[error("step {step_idx}[{step_id:?}] input '{input_name}' slot out of bounds (slot = {slot})")]
-    // InputSlotOutOfBounds {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     input_name: &'a str,
-    //     slot: u32,
-    // },
-    // #[error(
-    //     "step {step_idx}[{step_id:?}] output '{output_name}' execution info slot in use (slot = {slot})"
-    // )]
-    // SlotInUse {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     output_name: &'a str,
-    //     slot: u32,
-    // },
-    // #[error(
-    //     "step {step_idx}[{step_id:?}] input '{input_name}' slot dropped (slot = {slot}, step_ref = {step_ref:?})"
-    // )]
-    // InputSlotDropped {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     input_name: &'a str,
-    //     step_ref: &'a StepRef,
-    //     slot: u32,
-    // },
-    // #[error(
-    //     "step {step_idx}[{step_id:?}] input '{input_name}' slot mismatch (slot = {slot}, expected = {expected_step_ref:?}, actual = {actual_step_ref:?})"
-    // )]
-    // InputValueRefMismatch {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     input_name: &'a str,
-    //     slot: u32,
-    //     expected_step_ref: &'a StepRef,
-    //     actual_step_ref: StepRef,
-    // },
-    // #[error("duplicate step ID: {step_id}")]
-    // DuplicateStepId { step_id: &'a str },
-    // #[error("step {step_idx}[{step_id:?}] drop slot {slot} out of bounds")]
-    // DropSlotOutOfBounds {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     slot: u32,
-    // },
-    // #[error("step {step_idx}[{step_id:?}] drop slot {slot} in use")]
-    // DropSlotInUse {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     slot: u32,
-    // },
-    // #[error("step {step_idx}[{step_id:?}] drop slot {slot} missing")]
-    // DropSlotMissing {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     slot: u32,
-    // },
-    // #[error("step {step_idx}[{step_id:?}] unused slot {slot} not dropped")]
-    // UnusedSlotNotDropped {
-    //     step_idx: usize,
-    //     step_id: &'a str,
-    //     slot: u32,
-    // },
 }
 
 #[derive(Clone)]
@@ -241,7 +135,7 @@ impl<'a> Validator<'a> {
         self.values.insert(value_ref.clone(), ValueInfo {
             remaining_uses: uses,
             step_ref: StepRef {
-                step_id: step.id.to_owned(),
+                step: step.id.to_owned(),
                 output: output_name.to_owned(),
             },
         });
