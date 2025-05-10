@@ -1,6 +1,6 @@
-mod component_info;
 mod error;
 mod uses;
+mod value_refs;
 
 mod validation;
 
@@ -13,7 +13,7 @@ pub use validation::validate_flow;
 
 pub async fn compile<'a>(plugins: &'a Plugins<'a>, mut flow: Flow) -> Result<Flow> {
     // 1. Fill in information about components.
-    component_info::populate(plugins, &mut flow).await?;
+    value_refs::populate(plugins, &mut flow).await?;
 
     // 2. Validate the flow is well-formed.
     //

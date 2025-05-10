@@ -16,21 +16,25 @@ struct Uses {
 
 impl Uses {
     fn update_uses(&mut self, flow: &mut Flow) -> Result<()> {
-        // First, iterate over the steps and initialize the use counts.
+        // Iterate over the inputs and initialize the use counts.
+        for input in flow.inputs.values() {
+            self.uses
+                .insert(input.value_ref.as_ref().unwrap().clone(), 0);
+        }
+
+        // Iterate over the steps and initialize the use counts.
         for step in flow.steps.iter_mut() {
             let step_execution = step
                 .execution
                 .as_mut()
                 .ok_or(CompileError::MissingStepExecution)?;
             for output in step_execution.outputs.iter() {
-                self.uses.insert(
-                    output.value_ref.as_ref().unwrap().clone(),
-                    0,
-                );
+                self.uses
+                    .insert(output.value_ref.as_ref().unwrap().clone(), 0);
             }
         }
 
-        // Now, compute the uses. We do this starting from the flow outputs.
+        // Compute the uses. We do this starting from the flow outputs.
         for output in flow.outputs.values() {
             self.increment_use(output)?;
         }
@@ -48,7 +52,7 @@ impl Uses {
                 let uses = self
                     .uses
                     .remove(output.value_ref.as_ref().unwrap())
-                    .expect("all outputs registered earlier");
+                    .expect("step outputs registered earlier");
                 output.uses = Some(uses);
                 if uses > 0 {
                     needs_args = true;
@@ -64,14 +68,43 @@ impl Uses {
                 }
             }
         }
+
+        // Finally, write the input uses.
+        for input in flow.inputs.values_mut() {
+            let value_ref = input.value_ref.as_ref().unwrap();
+            let uses = self
+                .uses
+                .remove(value_ref)
+                .expect("inputs registered earlier");
+            input.uses = Some(uses);
+        }
+
         Ok(())
     }
 
     fn increment_use(&mut self, arg: &Expr) -> Result<()> {
         match arg {
             Expr::Literal { .. } => {}
-            Expr::Step { step_ref, value_ref, .. } => {
-                let value_ref = value_ref.as_ref().ok_or(CompileError::InvalidValueRefFor(step_ref.clone()))?;
+            Expr::Input {
+                input, value_ref, ..
+            } => {
+                let value_ref = value_ref
+                    .as_ref()
+                    .ok_or(CompileError::InvalidInputRef(input.to_string()))?;
+                let uses = self
+                    .uses
+                    .get_mut(value_ref)
+                    .ok_or(CompileError::InvalidValueRef(value_ref.clone()))?;
+                *uses += 1;
+            }
+            Expr::Step {
+                step_ref,
+                value_ref,
+                ..
+            } => {
+                let value_ref = value_ref
+                    .as_ref()
+                    .ok_or(CompileError::InvalidStepRef(step_ref.clone()))?;
                 let uses = self
                     .uses
                     .get_mut(value_ref)

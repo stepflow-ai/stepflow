@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::{Expr, step::Step};
+use crate::{Expr, ValueRef, step::Step};
 
 /// A workflow consisting of a sequence of steps and their outputs.
 ///
@@ -9,6 +9,10 @@ use crate::{Expr, step::Step};
 /// - Named outputs that can reference step outputs
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 pub struct Flow {
+    /// The inputs of the flow, mapping input names to their JSON schemas.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub inputs: IndexMap<String, FlowInput>,
+
     /// The steps to execute for the flow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<Step>,
@@ -20,6 +24,15 @@ pub struct Flow {
         skip_serializing_if = "IndexMap::is_empty"
     )]
     pub outputs: IndexMap<String, Expr>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct FlowInput {
+    pub schema: schemars::schema::Schema,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uses: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_ref: Option<ValueRef>,
 }
 
 mod outputs_serde {
@@ -146,12 +159,21 @@ impl Flow {
 mod tests {
     use crate::{Component, Expr};
     use indexmap::indexmap;
+    use schemars::schema::Schema;
 
     use super::*;
 
     #[test]
     fn test_flow_from_yaml() {
         let yaml = r#"
+        inputs:
+            name:
+                schema:
+                    type: string
+                    description: The name to echo
+            count:
+                schema:
+                    type: integer
         steps:
           - component: langflow://echo
             id: s1
@@ -171,6 +193,18 @@ mod tests {
         assert_eq!(
             flow,
             Flow {
+                inputs: indexmap! {
+                    "name".to_owned() => FlowInput {
+                        schema: serde_json::from_str::<Schema>(r#"{"type":"string","description":"The name to echo"}"#).unwrap(),
+                        uses: None,
+                        value_ref: None,
+                    },
+                    "count".to_owned() => FlowInput {
+                        schema: serde_json::from_str::<Schema>(r#"{"type":"integer"}"#).unwrap(),
+                        uses: None,
+                        value_ref: None,
+                    },
+                },
                 steps: vec![
                     Step {
                         id: "s1".to_owned(),

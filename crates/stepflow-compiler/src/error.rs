@@ -25,8 +25,10 @@ pub enum CompileError {
     },
     #[error("missing step execution info")]
     MissingStepExecution,
+    #[error("no value ref for input {0}")]
+    InvalidInputRef(String),
     #[error("no value ref for step '{}' output '{}'", .0.step, .0.output)]
-    InvalidValueRefFor(StepRef),
+    InvalidStepRef(StepRef),
 }
 
 pub type Result<T, E = error_stack::Report<CompileError>> = std::result::Result<T, E>;

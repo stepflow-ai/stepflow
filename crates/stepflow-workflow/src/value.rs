@@ -6,6 +6,12 @@ use crate::StepRef;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Expr {
+    /// A reference to an input of the flow.
+    Input {
+        input: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value_ref: Option<ValueRef>,
+    },
     /// A reference to an output of an earlier step.
     Step {
         #[serde(flatten)]
@@ -19,14 +25,18 @@ pub enum Expr {
 
 /// A reference to a specific output of a step.
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize)]
-pub struct ValueRef {
-    pub step_index: u32,
-    pub output_index: u32,
+#[serde(rename_all = "snake_case", untagged)]
+pub enum ValueRef {
+    Input { input: u32 },
+    Step { step: u32, output: u32 },
 }
 
 impl std::fmt::Display for ValueRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "step{}.output{}", self.step_index, self.output_index)
+        match self {
+            Self::Input { input } => write!(f, "input{input}"),
+            Self::Step { step, output } => write!(f, "step{step}.output{output}"),
+        }
     }
 }
 

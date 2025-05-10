@@ -1,9 +1,16 @@
+inputs:
+  in1:
+    schema:
+      type: number
+  in2:
+    schema:
+      type: string
 steps:
   # 
   - component: mock://two_outputs
     id: s1
     args:
-      foo: { literal: "hello" }
+      foo: { input: in1 }
       bar: { literal: 42 }
   - component: mock://one_output
     id: s2

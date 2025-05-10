@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{ExecutionError, Result};
 use indexmap::IndexMap;
-use stepflow_workflow::{Expr, StepExecution, StepRef, Value, ValueRef};
+use stepflow_workflow::{Expr, StepExecution, Value, ValueRef};
 
 pub struct VecState {
     pub values: HashMap<ValueRef, Value>,
@@ -10,12 +10,14 @@ pub struct VecState {
 
 impl VecState {
     pub fn new() -> Self {
-        Self { values: HashMap::new() }
+        Self {
+            values: HashMap::new(),
+        }
     }
 
-    fn get_value(&mut self, step: &StepRef, value_ref: &ValueRef) -> Result<&Value> {
+    fn get_value(&mut self, value_ref: &ValueRef) -> Result<&Value> {
         let Some(output) = self.values.get(value_ref) else {
-            error_stack::bail!(ExecutionError::UndefinedValue { step_ref: step.clone(), value_ref: value_ref.clone() });
+            error_stack::bail!(ExecutionError::UndefinedValue(value_ref.clone()));
         };
 
         Ok(output)
@@ -29,11 +31,15 @@ impl VecState {
 
         for arg in args.values() {
             match arg {
-                Expr::Step { value_ref, step_ref } => {
+                Expr::Step { value_ref, .. } => {
                     // Resolve the step output to an actual argument
                     let value_ref = value_ref.as_ref().ok_or(ExecutionError::FlowNotCompiled)?;
-                    let resolved_arg = self
-                        .get_value(step_ref, value_ref)?;
+                    let resolved_arg = self.get_value(value_ref)?;
+                    resolved_args.push(resolved_arg.clone());
+                }
+                Expr::Input { value_ref, .. } => {
+                    let value_ref = value_ref.as_ref().ok_or(ExecutionError::FlowNotCompiled)?;
+                    let resolved_arg = self.get_value(value_ref)?;
                     resolved_args.push(resolved_arg.clone());
                 }
                 Expr::Literal { literal } => {
