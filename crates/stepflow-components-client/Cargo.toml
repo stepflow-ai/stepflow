@@ -1,5 +1,5 @@
 [package]
-name = "stepflow-steps-client"
+name = "stepflow-components-client"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

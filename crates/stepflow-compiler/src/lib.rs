@@ -7,7 +7,7 @@ mod validation;
 use std::collections::HashSet;
 
 pub use error::{CompileError, Result};
-use stepflow_steps::Plugins;
+use stepflow_components::Plugins;
 use stepflow_workflow::Flow;
 pub use validation::validate_flow;
 

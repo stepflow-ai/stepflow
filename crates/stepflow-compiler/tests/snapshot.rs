@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::BufReader;
 
 use stepflow_compile::{compile, validate_flow};
-use stepflow_steps::Plugins;
-use stepflow_steps_testing::MockPlugin;
+use stepflow_components::Plugins;
+use stepflow_components_testing::MockPlugin;
 
 #[test]
 fn valid_snapshot() {
@@ -29,9 +29,7 @@ fn valid_snapshot() {
             let reader = BufReader::new(file);
 
             let flow = stepflow_workflow::Flow::from_yaml_reader(reader).unwrap();
-            let compiled = compile(&plugins, flow)
-                .await
-                .unwrap();
+            let compiled = compile(&plugins, flow).await.unwrap();
             insta::assert_yaml_snapshot!("compiled", compiled);
 
             validate_flow(&compiled).unwrap();

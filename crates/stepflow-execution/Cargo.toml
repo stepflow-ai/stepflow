@@ -10,7 +10,7 @@ description = "Execution logic for workflows."
 [dependencies]
 error-stack.workspace = true
 indexmap.workspace = true
-stepflow-steps.workspace = true
+stepflow-components.workspace = true
 stepflow-workflow.workspace = true
 thiserror.workspace = true
 url.workspace = true

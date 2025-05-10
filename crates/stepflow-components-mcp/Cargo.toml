@@ -1,5 +1,5 @@
 [package]
-name = "stepflow-steps-mcp"
+name = "stepflow-components-mcp"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

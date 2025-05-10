@@ -22,10 +22,10 @@ serde_yml = "0.0.12"
 stepflow-compiler = { path = "./crates/stepflow-compiler" }
 stepflow-execution = { path = "./crates/stepflow-execution" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
-stepflow-steps = { path = "./crates/stepflow-steps" }
-stepflow-steps-client = { path = "./crates/stepflow-steps-client" }
-stepflow-steps-testing = { path = "./crates/stepflow-steps-testing" }
-stepflow-steps-mcp = { path = "./crates/stepflow-steps-mcp" }
+stepflow-components = { path = "./crates/stepflow-components" }
+stepflow-components-client = { path = "./crates/stepflow-components-client" }
+stepflow-components-testing = { path = "./crates/stepflow-components-testing" }
+stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }
 stepflow-workflow = { path = "./crates/stepflow-workflow" }
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros"]}

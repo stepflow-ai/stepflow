@@ -589,8 +589,8 @@ dependencies = [
  "indexmap",
  "insta",
  "serde_yml",
- "stepflow-steps",
- "stepflow-steps-testing",
+ "stepflow-components",
+ "stepflow-components-testing",
  "stepflow-workflow",
  "thiserror",
  "tokio",
@@ -599,12 +599,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "stepflow-components"
+version = "0.1.0"
+dependencies = [
+ "dynosaur",
+ "error-stack",
+ "indexmap",
+ "serde_json",
+ "stepflow-components-testing",
+ "stepflow-workflow",
+ "thiserror",
+ "trait-variant",
+]
+
+[[package]]
+name = "stepflow-components-client"
+version = "0.1.0"
+
+[[package]]
+name = "stepflow-components-mcp"
+version = "0.1.0"
+
+[[package]]
+name = "stepflow-components-testing"
+version = "0.1.0"
+dependencies = [
+ "stepflow-components",
+ "stepflow-workflow",
+]
+
+[[package]]
 name = "stepflow-execution"
 version = "0.1.0"
 dependencies = [
  "error-stack",
  "indexmap",
- "stepflow-steps",
+ "stepflow-components",
  "stepflow-workflow",
  "thiserror",
  "url",
@@ -623,36 +653,6 @@ dependencies = [
  "serde_json",
  "serde_yml",
  "url",
-]
-
-[[package]]
-name = "stepflow-steps"
-version = "0.1.0"
-dependencies = [
- "dynosaur",
- "error-stack",
- "indexmap",
- "serde_json",
- "stepflow-steps-testing",
- "stepflow-workflow",
- "thiserror",
- "trait-variant",
-]
-
-[[package]]
-name = "stepflow-steps-client"
-version = "0.1.0"
-
-[[package]]
-name = "stepflow-steps-mcp"
-version = "0.1.0"
-
-[[package]]
-name = "stepflow-steps-testing"
-version = "0.1.0"
-dependencies = [
- "stepflow-steps",
- "stepflow-workflow",
 ]
 
 [[package]]

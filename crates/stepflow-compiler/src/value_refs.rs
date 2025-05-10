@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use error_stack::ResultExt as _;
-use stepflow_steps::{Plugins, StepPlugin as _};
+use stepflow_components::{Plugins, StepPlugin as _};
 use stepflow_workflow::{Expr, Flow, StepExecution, StepRef, ValueRef};
 
 use crate::error::{CompileError, Result};

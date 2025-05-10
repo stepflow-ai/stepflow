@@ -4,7 +4,7 @@ mod state;
 pub use error::{ExecutionError, Result};
 use error_stack::ResultExt;
 use state::VecState;
-use stepflow_steps::{Plugins, StepPlugin as _};
+use stepflow_components::{Plugins, StepPlugin as _};
 use stepflow_workflow::{Flow, Step, Value};
 
 pub async fn execute<'a>(

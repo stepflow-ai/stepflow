@@ -1,5 +1,5 @@
 [package]
-name = "stepflow-steps-testing"
+name = "stepflow-components-testing"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -8,5 +8,5 @@ publish = false
 description = "Step execution plugin(s) used for tests."
 
 [dependencies]
-stepflow-steps.workspace = true
+stepflow-components.workspace = true
 stepflow-workflow.workspace = true

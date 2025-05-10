@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use stepflow_steps::{ComponentInfo, PluginError, Result, StepPlugin};
+use stepflow_components::{ComponentInfo, PluginError, Result, StepPlugin};
 use stepflow_workflow::{Component, StepOutput, Value};
 
 #[derive(Debug, PartialEq, Eq)]
