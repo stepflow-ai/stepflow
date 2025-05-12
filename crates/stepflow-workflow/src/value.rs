@@ -1,9 +1,10 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::StepRef;
 
 /// An expression that can be either a literal value or a template expression.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Expr {
     /// A reference to an input of the flow.
@@ -20,11 +21,12 @@ pub enum Expr {
         value_ref: Option<ValueRef>,
     },
     /// A literal JSON value.
+    #[schemars()]
     Literal { literal: Value },
 }
 
 /// A reference to a specific output of a step.
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum ValueRef {
     Input { input: u32 },
@@ -59,7 +61,7 @@ impl Expr {
 }
 
 // A literal value which may be passed to a component.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[repr(transparent)]
 pub struct Value(serde_json::Value);
 

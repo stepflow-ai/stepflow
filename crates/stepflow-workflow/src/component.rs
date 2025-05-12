@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use schemars::JsonSchema;
 use url::Url;
 
 /// Identifies a specific plugin and atomic functionality to execute.
@@ -8,7 +9,7 @@ use url::Url;
 /// - The protocol (e.g., "langflow", "mcp")
 /// - The transport (e.g., "http", "stdio")
 /// - The path to the specific functionality
-#[derive(Debug, Eq, PartialEq, Clone, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct Component {
     url: Url,
