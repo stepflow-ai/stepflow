@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use schemars::JsonSchema;
 
 use crate::{Expr, ValueRef, step::Step};
 
@@ -7,7 +8,7 @@ use crate::{Expr, ValueRef, step::Step};
 /// A flow represents a complete workflow that can be executed. It contains:
 /// - A sequence of steps to execute
 /// - Named outputs that can reference step outputs
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema)]
 pub struct Flow {
     /// The inputs of the flow, mapping input names to their JSON schemas.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
@@ -23,10 +24,11 @@ pub struct Flow {
         with = "outputs_serde",
         skip_serializing_if = "IndexMap::is_empty"
     )]
+    #[schemars(with = "Vec<outputs_serde::Output>")]
     pub outputs: IndexMap<String, Expr>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema)]
 pub struct FlowInput {
     pub schema: schemars::schema::Schema,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -37,13 +39,14 @@ pub struct FlowInput {
 
 mod outputs_serde {
     use indexmap::IndexMap;
+    use schemars::JsonSchema;
     use serde::de::Visitor;
     use serde::{Deserializer, Serializer};
 
     use crate::Expr;
 
-    #[derive(serde::Serialize, serde::Deserialize)]
-    struct Output {
+    #[derive(serde::Serialize, serde::Deserialize, JsonSchema)]
+    pub(super) struct Output {
         name: String,
         value: Expr,
     }

@@ -1,6 +1,7 @@
-use crate::{Expr, ValueRef};
 use crate::component::Component;
+use crate::{Expr, ValueRef};
 use indexmap::IndexMap;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -12,7 +13,16 @@ pub enum StepError {
 
 /// A reference to a step's output, including the step ID, output name, and optional slot index.
 #[derive(
-    serde::Serialize, serde::Deserialize, Debug, Clone, Eq, PartialEq, Hash, PartialOrd, Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Debug,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    PartialOrd,
+    Ord,
+    JsonSchema,
 )]
 pub struct StepRef {
     /// The ID of the step that produced this output.
@@ -22,7 +32,7 @@ pub struct StepRef {
 }
 
 /// Represents a step output with its name and optional usage count
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StepOutput {
     /// The name of the output
     pub name: String,
@@ -44,7 +54,7 @@ impl StepOutput {
 }
 
 /// A step in a workflow that executes a component with specific arguments.
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema)]
 pub struct Step {
     /// Optional identifier for the step
     pub id: String,
@@ -66,7 +76,7 @@ pub struct Step {
 }
 
 /// Details related to execution of steps.
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Default, JsonSchema)]
 pub struct StepExecution {
     /// Information about the step's outputs.
     ///
