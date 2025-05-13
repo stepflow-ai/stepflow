@@ -9,4 +9,6 @@ description = "Step execution plugin(s) used for tests."
 
 [dependencies]
 stepflow-plugin.workspace = true
+stepflow-protocol.workspace = true
+stepflow-schema.workspace = true
 stepflow-workflow.workspace = true

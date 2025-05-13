@@ -15,9 +15,11 @@ pub struct SchemaPart<'a>(&'a SchemaObject);
 pub struct SchemaPartMut<'a>(&'a mut SchemaObject);
 
 /// Wrapper around a JSON object schema.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema)]
 #[repr(transparent)]
+#[derive(Default)]
 pub struct ObjectSchema(SchemaObject);
+
 
 fn ensure_simple_object(schema: &SchemaObject) -> Result<()> {
     error_stack::ensure!(schema.array.is_none(), SchemaError::Unexpected("array"));
@@ -83,7 +85,7 @@ impl ObjectSchema {
         extract_uses(self.0.extensions.get("uses"))
     }
 
-    pub fn set_uses(&mut self, uses: u32) -> () {
+    pub fn set_uses(&mut self, uses: u32) {
         self.0
             .extensions
             .insert("uses".to_owned(), Value::Number(uses.into()));
@@ -107,18 +109,18 @@ impl ObjectSchema {
     }
 }
 
-impl<'a> SchemaPart<'a> {
+impl SchemaPart<'_> {
     pub fn uses(&self) -> Result<u32> {
         extract_uses(self.0.extensions.get("uses"))
     }
 }
 
-impl<'a> SchemaPartMut<'a> {
+impl SchemaPartMut<'_> {
     pub fn uses(&self) -> Result<u32> {
         extract_uses(self.0.extensions.get("uses"))
     }
 
-    pub fn set_uses(&mut self, uses: u32) -> () {
+    pub fn set_uses(&mut self, uses: u32) {
         self.0
             .extensions
             .insert("uses".to_owned(), Value::Number(uses.into()));

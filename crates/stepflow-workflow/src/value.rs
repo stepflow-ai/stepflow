@@ -72,6 +72,12 @@ impl Expr {
 #[repr(transparent)]
 pub struct Value(Arc<serde_json::Value>);
 
+impl<T: Into<serde_json::Value>> From<T> for Value {
+    fn from(value: T) -> Self {
+        Self::new(value.into())
+    }
+}
+
 impl Value {
     pub fn new(value: serde_json::Value) -> Self {
         Self(Arc::new(value))
@@ -81,30 +87,6 @@ impl Value {
 impl AsRef<serde_json::Value> for Value {
     fn as_ref(&self) -> &serde_json::Value {
         &self.0
-    }
-}
-
-impl From<serde_json::Value> for Value {
-    fn from(value: serde_json::Value) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<i64> for Value {
-    fn from(value: i64) -> Self {
-        Self::new(serde_json::Value::Number(value.into()))
-    }
-}
-
-impl From<String> for Value {
-    fn from(value: String) -> Self {
-        Self::new(serde_json::Value::String(value))
-    }
-}
-
-impl From<&str> for Value {
-    fn from(value: &str) -> Self {
-        Self(Arc::new(serde_json::Value::String(value.to_owned())))
     }
 }
 

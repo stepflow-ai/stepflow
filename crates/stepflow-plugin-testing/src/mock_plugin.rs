@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use stepflow_plugin::{ComponentInfo, Plugin, PluginError, Result};
+use stepflow_plugin::{Plugin, PluginError, Result};
+use stepflow_protocol::component_info::ComponentInfo;
+use stepflow_schema::ObjectSchema;
 use stepflow_workflow::{Component, Value};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,7 +33,6 @@ impl MockPlugin {
 
     pub fn mock_component(&mut self, path: &str) -> &mut MockComponent {
         let component = Component::parse(path).unwrap();
-        println!("Mock component: {:?}", component);
         self.components.entry(component).or_default()
     }
 }
@@ -52,6 +53,8 @@ impl Plugin for MockPlugin {
             .ok_or(PluginError::UdfImport)?;
         Ok(ComponentInfo {
             always_execute: component.always_execute,
+            input_schema: ObjectSchema::default(),
+            output_schema: ObjectSchema::default(),
         })
     }
 

@@ -15,7 +15,7 @@ impl VecState {
         }
     }
 
-    fn get_value<'a>(&mut self, expr: &'a Expr) -> Result<serde_json::Value> {
+    fn get_value(&mut self, expr: &Expr) -> Result<serde_json::Value> {
         if let Expr::Literal { literal } = expr {
             return Ok(literal.as_ref().clone());
         }

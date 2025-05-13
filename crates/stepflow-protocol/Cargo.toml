@@ -8,8 +8,14 @@ publish = false
 description = "Types defining the stepflow JSON-RPC protocol."
 
 [dependencies]
+error-stack.workspace = true
 indexmap.workspace = true
+thiserror.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yml.workspace = true
+stepflow-schema.workspace = true
+stepflow-workflow.workspace = true
 url.workspace = true
+uuid.workspace = true

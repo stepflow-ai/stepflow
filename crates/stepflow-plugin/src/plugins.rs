@@ -42,9 +42,10 @@ impl<'a> Plugins<'a> {
 
 #[cfg(test)]
 mod tests {
+    use stepflow_protocol::component_info::ComponentInfo;
     use stepflow_workflow::Value;
 
-    use crate::{ComponentInfo, Result};
+    use crate::Result;
 
     use super::*;
 

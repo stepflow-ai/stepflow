@@ -1,9 +1,6 @@
 use crate::Result;
+use stepflow_protocol::component_info::ComponentInfo;
 use stepflow_workflow::{Component, Value};
-
-pub struct ComponentInfo {
-    pub always_execute: bool,
-}
 
 #[trait_variant::make(SendPlugin: Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]

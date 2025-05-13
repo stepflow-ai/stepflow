@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PluginError {
+    #[error("error initializing plugin")]
+    Initializing,
+    #[error("error getting component info")]
+    ComponentInfo,
+    #[error("error executing component")]
+    Execution,
     #[error("error importing user-defined function")]
     UdfImport,
     #[error("error executing user-defined function")]

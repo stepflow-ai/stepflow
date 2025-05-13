@@ -14,7 +14,7 @@ fn valid_snapshot() {
     // .outputs(&["output"]);
     mock_plugin.mock_component("mock://two_outputs");
     // .outputs(&["a", "b"]);
-    plugins.register(&mut mock_plugin);
+    plugins.register(&mock_plugin);
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -23,7 +23,6 @@ fn valid_snapshot() {
 
     insta::glob!("valid/*.yaml", |path| {
         rt.block_on(async {
-            println!("Case: {}", path.display());
             let file = File::open(path).unwrap();
             let reader = BufReader::new(file);
 
