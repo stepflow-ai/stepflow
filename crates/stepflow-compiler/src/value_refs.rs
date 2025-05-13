@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use error_stack::ResultExt as _;
-use stepflow_components::{Plugins, StepPlugin as _};
+use stepflow_plugin::{Plugin as _, Plugins};
 use stepflow_workflow::{Expr, Flow, StepExecution, StepRef, ValueRef};
 
 use crate::error::{CompileError, Result};
@@ -49,7 +49,7 @@ pub(crate) async fn populate<'a>(plugins: &'a Plugins<'a>, flow: &mut Flow) -> R
             step_value_refs.insert(
                 StepRef {
                     step: step.id.clone(),
-                    output: output.name.clone(),
+                    field: output.name.clone(),
                 },
                 value_ref.clone(),
             );

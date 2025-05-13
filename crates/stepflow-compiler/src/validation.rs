@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use stepflow_workflow::{Expr, Flow, FlowInput, Step, StepExecution, StepRef, ValueRef};
+use stepflow_workflow::{Expr, Flow, Step, StepExecution, StepRef};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -36,7 +36,7 @@ struct ValueInfo {
 
 struct Validator<'a> {
     flow: &'a Flow,
-    values: HashMap<ValueRef, ValueInfo>,
+    values: HashMap<Expr, ValueInfo>,
 }
 
 impl<'a> Validator<'a> {
@@ -46,11 +46,6 @@ impl<'a> Validator<'a> {
     }
 
     fn validate_flow(&mut self) -> Result<(), ValidationError> {
-        // Iterate over the inputs.
-        for (name, input) in self.flow.inputs.iter() {
-            self.validate_flow_input(name, input)?;
-        }
-
         // Iterate over the steps.
         let mut step_ids = HashSet::new();
         for (step_index, step) in self.flow.steps.iter().enumerate() {
@@ -234,7 +229,7 @@ impl<'a> Validator<'a> {
                 remaining_uses: uses,
                 step_ref: Some(StepRef {
                     step: step.id.to_owned(),
-                    output: output_name.to_owned(),
+                    field: output_name.to_owned(),
                 }),
                 input: None,
             },

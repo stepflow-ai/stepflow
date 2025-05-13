@@ -4,14 +4,14 @@ mod state;
 pub use error::{ExecutionError, Result};
 use error_stack::ResultExt;
 use state::VecState;
-use stepflow_components::{Plugins, StepPlugin as _};
-use stepflow_workflow::{Flow, Step, Value};
+use stepflow_plugin::{Plugin as _, Plugins};
+use stepflow_workflow::{BaseRef, Flow, Step, Value};
 
 pub async fn execute<'a>(
     plugins: &'a Plugins<'a>,
     flow: &Flow,
     inputs: Vec<Value>,
-) -> Result<Vec<Value>> {
+) -> Result<Value> {
     let mut state = VecState::new();
 
     if !inputs.is_empty() {
@@ -24,8 +24,8 @@ pub async fn execute<'a>(
             .attach_printable_lazy(|| format!("error executing step {:?}", step))?;
     }
 
-    let resolved_outputs = state.resolve(&flow.outputs)?;
-    Ok(resolved_outputs)
+    let output = state.resolve(flow.outputs())?;
+    Ok(output)
 }
 
 async fn execute_step<'a>(
@@ -36,20 +36,19 @@ async fn execute_step<'a>(
     let plugin = plugins
         .get(&step.component)
         .change_context(ExecutionError::PluginNotFound)?;
-    // TODO: Resolving should return references to values. Builtins and other things
-    // likely should not create copies.
-    let args = state.resolve(&step.args)?;
+    let input = state.resolve(&step.args)?;
 
     let results = plugin
-        .execute(&step.component, args)
+        .execute(&step.component, input)
         .await
         .change_context(ExecutionError::PluginError)?;
 
-    let step_execution = step
-        .execution
-        .as_ref()
-        .ok_or(ExecutionError::FlowNotCompiled)?;
-    state.record_results(step_execution, results)?;
+    state.record_value(
+        BaseRef::Step {
+            step: step.id.clone(),
+        },
+        results,
+    )?;
 
     Ok(())
 }

@@ -1,95 +1,110 @@
+use std::sync::Arc;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::StepRef;
+/// An expression that can be either a literal value or a template expression.
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+pub enum BaseRef {
+    /// Reference the output of an earlier step.
+    Step { step: String },
+    /// Reference to the input of the flow.
+    Input,
+}
 
 /// An expression that can be either a literal value or a template expression.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Expr {
-    /// A reference to an input of the flow.
+    Literal {
+        literal: Value,
+    },
     Input {
-        input: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        value_ref: Option<ValueRef>,
+        #[serde(rename = "input")]
+        field: String,
     },
-    /// A reference to an output of an earlier step.
     Step {
-        #[serde(flatten)]
-        step_ref: StepRef,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        value_ref: Option<ValueRef>,
+        step: String,
+        field: Option<String>,
     },
-    /// A literal JSON value.
-    #[schemars()]
-    Literal { literal: Value },
-}
-
-/// A reference to a specific output of a step.
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case", untagged)]
-pub enum ValueRef {
-    Input { input: u32 },
-    Step { step: u32, output: u32 },
-}
-
-impl std::fmt::Display for ValueRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Input { input } => write!(f, "input{input}"),
-            Self::Step { step, output } => write!(f, "step{step}.output{output}"),
-        }
-    }
 }
 
 impl Expr {
     pub fn literal(literal: impl Into<Value>) -> Self {
-        Self::Literal {
-            literal: literal.into(),
+        let literal = literal.into();
+        Self::Literal { literal }
+    }
+
+    pub fn step_field(step: impl Into<String>, field: impl Into<String>) -> Self {
+        Self::Step {
+            step: step.into(),
+            field: Some(field.into()),
         }
     }
 
-    pub fn step(step: impl Into<String>, output: impl Into<String>) -> Self {
-        Self::Step {
-            step_ref: StepRef {
-                step: step.into(),
-                output: output.into(),
-            },
-            value_ref: None,
+    pub fn input_field(field: impl Into<String>) -> Self {
+        Self::Input {
+            field: field.into(),
+        }
+    }
+
+    pub fn base_ref(&self) -> Option<BaseRef> {
+        match self {
+            Self::Literal { .. } => None,
+            Self::Input { .. } => Some(BaseRef::Input),
+            Self::Step { step, .. } => Some(BaseRef::Step { step: step.clone() }),
+        }
+    }
+
+    pub fn field(&self) -> Option<&str> {
+        match self {
+            Self::Literal { .. } => None,
+            Self::Input { field, .. } => Some(field.as_str()),
+            Self::Step { field, .. } => field.as_deref(),
         }
     }
 }
 
-// A literal value which may be passed to a component.
+/// A literal value which may be passed to a component.
+
+// TODO: Change value representation to avoid copying?
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[repr(transparent)]
-pub struct Value(serde_json::Value);
+pub struct Value(Arc<serde_json::Value>);
 
 impl Value {
-    pub const NULL: Self = Self(serde_json::Value::Null);
+    pub fn new(value: serde_json::Value) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl AsRef<serde_json::Value> for Value {
+    fn as_ref(&self) -> &serde_json::Value {
+        &self.0
+    }
 }
 
 impl From<serde_json::Value> for Value {
     fn from(value: serde_json::Value) -> Self {
-        Self(value)
+        Self::new(value)
     }
 }
 
 impl From<i64> for Value {
     fn from(value: i64) -> Self {
-        Self(serde_json::Value::Number(value.into()))
+        Self::new(serde_json::Value::Number(value.into()))
     }
 }
 
 impl From<String> for Value {
     fn from(value: String) -> Self {
-        Self(serde_json::Value::String(value))
+        Self::new(serde_json::Value::String(value))
     }
 }
 
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
-        Self(serde_json::Value::String(value.to_owned()))
+        Self(Arc::new(serde_json::Value::String(value.to_owned())))
     }
 }
 
@@ -98,14 +113,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_arg_to_yaml() {
+        let to_yaml = |e: &Expr| serde_yml::to_string(e).unwrap();
+        assert_eq!(to_yaml(&Expr::literal("foo")), "literal: foo\n");
+        assert_eq!(to_yaml(&Expr::literal(5)), "literal: 5\n");
+
+        assert_eq!(to_yaml(&Expr::input_field("out")), "input_field: out\n");
+
+        assert_eq!(
+            to_yaml(&Expr::step_field("step1", "out")),
+            "step: step1\nfield: out\n"
+        );
+    }
+
+    #[test]
     fn test_arg_from_yaml() {
         let from_yaml = |s| serde_yml::from_str::<Expr>(s).unwrap();
         assert_eq!(from_yaml("{ literal: foo }"), Expr::literal("foo"));
         assert_eq!(from_yaml("{ literal: 5 }"), Expr::literal(5));
 
         assert_eq!(
-            from_yaml("{ step: \"step1\", output: \"out\" }"),
-            Expr::step("step1", "out")
+            from_yaml("{ step: \"step1\", field: \"out\" }"),
+            Expr::step_field("step1", "out")
         );
     }
 }

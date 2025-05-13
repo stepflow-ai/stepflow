@@ -16,12 +16,6 @@ struct Uses {
 
 impl Uses {
     fn update_uses(&mut self, flow: &mut Flow) -> Result<()> {
-        // Iterate over the inputs and initialize the use counts.
-        for input in flow.inputs.values() {
-            self.uses
-                .insert(input.value_ref.as_ref().unwrap().clone(), 0);
-        }
-
         // Iterate over the steps and initialize the use counts.
         for step in flow.steps.iter_mut() {
             let step_execution = step

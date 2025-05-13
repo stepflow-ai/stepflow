@@ -1,19 +1,17 @@
 mod error;
-mod uses;
-mod value_refs;
-
-mod validation;
+// mod uses;
+// mod value_refs;
+// mod validation;
 
 use std::collections::HashSet;
 
 pub use error::{CompileError, Result};
-use stepflow_components::Plugins;
+use stepflow_plugin::Plugins;
 use stepflow_workflow::Flow;
-pub use validation::validate_flow;
 
 pub async fn compile<'a>(plugins: &'a Plugins<'a>, mut flow: Flow) -> Result<Flow> {
     // 1. Fill in information about components.
-    value_refs::populate(plugins, &mut flow).await?;
+    // value_refs::populate(plugins, &mut flow).await?;
 
     // 2. Validate the flow is well-formed.
     //
@@ -23,7 +21,7 @@ pub async fn compile<'a>(plugins: &'a Plugins<'a>, mut flow: Flow) -> Result<Flo
     validate_references(&flow)?;
 
     // 3. Compute which outputs are used.
-    uses::compute_uses(&mut flow)?;
+    // uses::compute_uses(&mut flow)?;
 
     Ok(flow)
 }

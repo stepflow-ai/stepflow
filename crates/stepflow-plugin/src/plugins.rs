@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use crate::{DynStepPlugin, PluginError, Result, StepPlugin};
+use crate::{DynPlugin, Plugin, PluginError, Result};
 use error_stack::ResultExt;
 use stepflow_workflow::Component;
 
 pub struct Plugins<'a> {
-    step_plugins: HashMap<&'static str, &'a DynStepPlugin<'a>>,
+    step_plugins: HashMap<&'static str, &'a DynPlugin<'a>>,
 }
 
 impl Default for Plugins<'_> {
@@ -21,14 +21,14 @@ impl<'a> Plugins<'a> {
         }
     }
 
-    pub fn register(&mut self, plugin: &'a impl StepPlugin) {
+    pub fn register(&mut self, plugin: &'a impl Plugin) {
         let protocol = plugin.protocol();
-        let plugin = DynStepPlugin::from_ref(plugin);
+        let plugin = DynPlugin::from_ref(plugin);
 
         self.step_plugins.insert(protocol, plugin);
     }
 
-    pub fn get(&self, component: &'_ Component) -> Result<&'a DynStepPlugin> {
+    pub fn get(&self, component: &'_ Component) -> Result<&'a DynPlugin> {
         let protocol = component.protocol();
 
         let plugin = self
@@ -51,16 +51,20 @@ mod tests {
     #[derive(Eq, PartialEq, Debug)]
     struct MockPlugin(&'static str);
 
-    impl StepPlugin for MockPlugin {
+    impl Plugin for MockPlugin {
         fn protocol(&self) -> &'static str {
             self.0
+        }
+
+        async fn init(&self) -> Result<()> {
+            Ok(())
         }
 
         async fn component_info(&self, _component: &Component) -> Result<ComponentInfo> {
             todo!()
         }
 
-        async fn execute(&self, _component: &Component, _args: Vec<Value>) -> Result<Vec<Value>> {
+        async fn execute(&self, _component: &Component, _input: Value) -> Result<Value> {
             todo!()
         }
     }

@@ -3,82 +3,38 @@ source: crates/stepflow-compiler/tests/snapshot.rs
 expression: compiled
 input_file: crates/stepflow-compiler/tests/valid/basic.yaml
 ---
-inputs:
-  in1:
-    schema:
-      type: number
-    uses: 1
-    value_ref:
-      input: 0
-  in2:
-    schema:
-      type: string
-    uses: 0
-    value_ref:
-      input: 1
+input_schema:
+  object:
+    properties:
+      in1:
+        type: number
+      in2:
+        type: string
 steps:
   - id: s1
     component: "mock://two_outputs"
     args:
       foo:
         input: in1
-        value_ref:
-          input: 0
       bar:
         literal: 42
-    execution:
-      outputs:
-        - name: a
-          uses: 2
-          value_ref:
-            step: 0
-            output: 0
-        - name: b
-          uses: 1
-          value_ref:
-            step: 0
-            output: 1
-      always_execute: false
   - id: s2
     component: "mock://one_output"
     args:
       a:
         step: s1
-        output: a
-        value_ref:
-          step: 0
-          output: 0
+        field: ~
       b:
         step: s1
-        output: b
-        value_ref:
-          step: 0
-          output: 1
+        field: ~
       c:
         literal: 5
-    execution:
-      outputs:
-        - name: output
-          uses: 1
-          value_ref:
-            step: 1
-            output: 0
-      always_execute: false
 outputs:
-  - name: out1
-    value:
-      step: s1
-      output: a
-      value_ref:
-        step: 0
-        output: 0
-  - name: out2
-    value:
-      step: s2
-      output: output
-      value_ref:
-        step: 1
-        output: 0
-  - name: outLiteral
-    value:
-      literal: 5
+  out1:
+    step: s1
+    field: ~
+  out2:
+    step: s1
+    field: ~
+  outLiteral:
+    literal: 5

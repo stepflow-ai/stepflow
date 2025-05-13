@@ -1,7 +1,8 @@
 use indexmap::IndexMap;
 use schemars::JsonSchema;
+use stepflow_schema::ObjectSchema;
 
-use crate::{Expr, ValueRef, step::Step};
+use crate::{Expr, step::Step};
 
 /// A workflow consisting of a sequence of steps and their outputs.
 ///
@@ -11,85 +12,20 @@ use crate::{Expr, ValueRef, step::Step};
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema)]
 pub struct Flow {
     /// The inputs of the flow, mapping input names to their JSON schemas.
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    pub inputs: IndexMap<String, FlowInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<ObjectSchema>,
+
+    /// The output schema of the flow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<ObjectSchema>,
 
     /// The steps to execute for the flow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(
-        default,
-        with = "outputs_serde",
-        skip_serializing_if = "IndexMap::is_empty"
-    )]
-    #[schemars(with = "Vec<outputs_serde::Output>")]
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub outputs: IndexMap<String, Expr>,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema)]
-pub struct FlowInput {
-    pub schema: schemars::schema::Schema,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub uses: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value_ref: Option<ValueRef>,
-}
-
-mod outputs_serde {
-    use indexmap::IndexMap;
-    use schemars::JsonSchema;
-    use serde::de::Visitor;
-    use serde::{Deserializer, Serializer};
-
-    use crate::Expr;
-
-    #[derive(serde::Serialize, serde::Deserialize, JsonSchema)]
-    pub(super) struct Output {
-        name: String,
-        value: Expr,
-    }
-
-    pub fn serialize<S>(outputs: &IndexMap<String, Expr>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.collect_seq(outputs.iter().map(|(k, v)| Output {
-            name: k.clone(),
-            value: v.clone(),
-        }))
-    }
-
-    struct OutputMapVisitor;
-
-    impl<'de> Visitor<'de> for OutputMapVisitor {
-        // The type that our Visitor is going to produce.
-        type Value = IndexMap<String, Expr>;
-
-        // Format a message stating what data this Visitor expects to receive.
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("output map")
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: serde::de::SeqAccess<'de>,
-        {
-            let mut map = IndexMap::with_capacity(seq.size_hint().unwrap_or(1));
-            while let Some(Output { name, value }) = seq.next_element()? {
-                map.insert(name, value);
-            }
-            Ok(map)
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexMap<String, Expr>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_seq(OutputMapVisitor)
-    }
 }
 
 impl Flow {
@@ -162,21 +98,20 @@ impl Flow {
 mod tests {
     use crate::{Component, Expr};
     use indexmap::indexmap;
-    use schemars::schema::Schema;
 
     use super::*;
 
     #[test]
     fn test_flow_from_yaml() {
         let yaml = r#"
-        inputs:
-            name:
-                schema:
-                    type: string
-                    description: The name to echo
-            count:
-                schema:
-                    type: integer
+        input_schema:
+            object:
+                properties:
+                    name:
+                        type: string
+                        description: The name to echo
+                    count:
+                        type: integer
         steps:
           - component: langflow://echo
             id: s1
@@ -187,27 +122,26 @@ mod tests {
             args:
               a: { literal: "hello world 2" }
         outputs:
-            - name: s1a
-              value: { step: "s1", output: "a" }
-            - name: s2b
-              value: { step: "s2", output: "a" }
+            s1a: { step: "s1", output: "a" }
+            s2b: { step: "s2", output: "a" }
+        output_schema:
+            object:
+                properties:
+                    s1a:
+                        type: string
+                    s2b:
+                        type: string
         "#;
         let flow: Flow = serde_yml::from_str(yaml).unwrap();
+        let input_schema = ObjectSchema::parse(r#"{"type":"object","properties":{"name":{"type":"string","description":"The name to echo"},"count":{"type":"integer"}}}"#).unwrap();
+        let output_schema = ObjectSchema::parse(
+            r#"{"type":"object","properties":{"s1a":{"type":"string"},"s2b":{"type":"string"}}}"#,
+        )
+        .unwrap();
         assert_eq!(
             flow,
             Flow {
-                inputs: indexmap! {
-                    "name".to_owned() => FlowInput {
-                        schema: serde_json::from_str::<Schema>(r#"{"type":"string","description":"The name to echo"}"#).unwrap(),
-                        uses: None,
-                        value_ref: None,
-                    },
-                    "count".to_owned() => FlowInput {
-                        schema: serde_json::from_str::<Schema>(r#"{"type":"integer"}"#).unwrap(),
-                        uses: None,
-                        value_ref: None,
-                    },
-                },
+                input_schema: Some(input_schema),
                 steps: vec![
                     Step {
                         id: "s1".to_owned(),
@@ -227,9 +161,10 @@ mod tests {
                     }
                 ],
                 outputs: indexmap! {
-                    "s1a".to_owned() => Expr::step("s1", "a"),
-                    "s2b".to_owned() => Expr::step("s2", "a"),
+                    "s1a".to_owned() => Expr::step_field("s1", "a"),
+                    "s2b".to_owned() => Expr::step_field("s2", "a"),
                 },
+                output_schema: Some(output_schema),
             }
         );
     }

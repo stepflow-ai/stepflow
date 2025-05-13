@@ -1,5 +1,5 @@
 [package]
-name = "stepflow-components"
+name = "stepflow-plugin"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -17,4 +17,4 @@ thiserror.workspace = true
 trait-variant.workspace = true
 
 [dev-dependencies]
-stepflow-components-testing.workspace = true
+stepflow-plugin-testing.workspace = true

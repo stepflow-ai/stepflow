@@ -33,12 +33,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
-name = "autocfg"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
-
-[[package]]
 name = "backtrace"
 version = "0.3.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -171,12 +165,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
-name = "hashbrown"
 version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84b26c544d002229e640969970a2e74021aadf6e2f96372b9c58eff97de08eb3"
@@ -290,23 +278,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "1.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
-dependencies = [
- "autocfg",
- "hashbrown 0.12.3",
- "serde",
-]
-
-[[package]]
-name = "indexmap"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
 dependencies = [
  "equivalent",
- "hashbrown 0.15.3",
+ "hashbrown",
  "serde",
 ]
 
@@ -481,8 +458,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
 dependencies = [
  "dyn-clone",
- "indexmap 1.9.3",
- "indexmap 2.9.0",
+ "indexmap",
  "schemars_derive",
  "serde",
  "serde_json",
@@ -544,7 +520,7 @@ version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
 dependencies = [
- "indexmap 2.9.0",
+ "indexmap",
  "itoa",
  "memchr",
  "ryu",
@@ -557,7 +533,7 @@ version = "0.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59e2dd588bf1597a252c3b920e0143eb99b0f76e4e082f4c92ce34fbc9e71ddd"
 dependencies = [
- "indexmap 2.9.0",
+ "indexmap",
  "itoa",
  "libyml",
  "memchr",
@@ -589,30 +565,16 @@ name = "stepflow-compile"
 version = "0.1.0"
 dependencies = [
  "error-stack",
- "indexmap 2.9.0",
+ "indexmap",
  "insta",
  "serde_yml",
- "stepflow-components",
- "stepflow-components-testing",
+ "stepflow-plugin",
+ "stepflow-plugin-testing",
  "stepflow-workflow",
  "thiserror",
  "tokio",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "stepflow-components"
-version = "0.1.0"
-dependencies = [
- "dynosaur",
- "error-stack",
- "indexmap 2.9.0",
- "serde_json",
- "stepflow-components-testing",
- "stepflow-workflow",
- "thiserror",
- "trait-variant",
 ]
 
 [[package]]
@@ -624,20 +586,14 @@ name = "stepflow-components-mcp"
 version = "0.1.0"
 
 [[package]]
-name = "stepflow-components-testing"
-version = "0.1.0"
-dependencies = [
- "stepflow-components",
- "stepflow-workflow",
-]
-
-[[package]]
 name = "stepflow-execution"
 version = "0.1.0"
 dependencies = [
  "error-stack",
- "indexmap 2.9.0",
- "stepflow-components",
+ "indexmap",
+ "serde_json",
+ "stepflow-plugin",
+ "stepflow-schema",
  "stepflow-workflow",
  "thiserror",
  "url",
@@ -648,10 +604,32 @@ name = "stepflow-main"
 version = "0.1.0"
 
 [[package]]
+name = "stepflow-plugin"
+version = "0.1.0"
+dependencies = [
+ "dynosaur",
+ "error-stack",
+ "indexmap",
+ "serde_json",
+ "stepflow-plugin-testing",
+ "stepflow-workflow",
+ "thiserror",
+ "trait-variant",
+]
+
+[[package]]
+name = "stepflow-plugin-testing"
+version = "0.1.0"
+dependencies = [
+ "stepflow-plugin",
+ "stepflow-workflow",
+]
+
+[[package]]
 name = "stepflow-protocol"
 version = "0.1.0"
 dependencies = [
- "indexmap 2.9.0",
+ "indexmap",
  "serde",
  "serde_json",
  "serde_yml",
@@ -659,14 +637,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "stepflow-workflow"
+name = "stepflow-schema"
 version = "0.1.0"
 dependencies = [
- "indexmap 2.9.0",
+ "error-stack",
+ "indexmap",
  "schemars",
  "serde",
  "serde_json",
  "serde_yml",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "stepflow-workflow"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "stepflow-schema",
  "thiserror",
  "url",
 ]

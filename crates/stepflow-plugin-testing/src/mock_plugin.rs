@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use stepflow_components::{ComponentInfo, PluginError, Result, StepPlugin};
-use stepflow_workflow::{Component, StepOutput, Value};
+use stepflow_plugin::{ComponentInfo, Plugin, PluginError, Result};
+use stepflow_workflow::{Component, Value};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MockPlugin {
@@ -12,19 +12,11 @@ pub struct MockPlugin {
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct MockComponent {
     always_execute: bool,
-    outputs: Vec<StepOutput>,
 }
 
 impl MockComponent {
     pub fn always_execute(&mut self, always_execute: bool) -> &mut Self {
         self.always_execute = always_execute;
-        self
-    }
-
-    pub fn outputs(&mut self, names: &[&str]) -> &mut Self {
-        for name in names {
-            self.outputs.push(StepOutput::new(name));
-        }
         self
     }
 }
@@ -44,9 +36,13 @@ impl MockPlugin {
     }
 }
 
-impl StepPlugin for MockPlugin {
+impl Plugin for MockPlugin {
     fn protocol(&self) -> &'static str {
         self.kind
+    }
+
+    async fn init(&self) -> Result<()> {
+        Ok(())
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
@@ -56,11 +52,10 @@ impl StepPlugin for MockPlugin {
             .ok_or(PluginError::UdfImport)?;
         Ok(ComponentInfo {
             always_execute: component.always_execute,
-            outputs: component.outputs.clone(),
         })
     }
 
-    async fn execute(&self, component: &Component, args: Vec<Value>) -> Result<Vec<Value>> {
+    async fn execute(&self, component: &Component, input: Value) -> Result<Value> {
         todo!()
     }
 }

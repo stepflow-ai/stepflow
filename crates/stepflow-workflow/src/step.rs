@@ -1,56 +1,14 @@
+use crate::Expr;
 use crate::component::Component;
-use crate::{Expr, ValueRef};
 use indexmap::IndexMap;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use stepflow_schema::ObjectSchema;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum StepError {
     #[error("step has no execution info")]
     MissingExecution,
-}
-
-/// A reference to a step's output, including the step ID, output name, and optional slot index.
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    PartialOrd,
-    Ord,
-    JsonSchema,
-)]
-pub struct StepRef {
-    /// The ID of the step that produced this output.
-    pub step: String,
-    /// The name of the output from the step.
-    pub output: String,
-}
-
-/// Represents a step output with its name and optional usage count
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct StepOutput {
-    /// The name of the output
-    pub name: String,
-    /// Optional count of how many times this output is used
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub uses: Option<u32>,
-    /// The ValueRef assigned to this step output.
-    pub value_ref: Option<ValueRef>,
-}
-
-impl StepOutput {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            uses: None,
-            value_ref: None,
-        }
-    }
 }
 
 /// A step in a workflow that executes a component with specific arguments.
@@ -78,25 +36,12 @@ pub struct Step {
 /// Details related to execution of steps.
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Default, JsonSchema)]
 pub struct StepExecution {
-    /// Information about the step's outputs.
-    ///
-    /// Not all outputs of the component need to be named
-    /// in the `outputs` of a step. In that case, it indicates
-    /// the unnamed outputs aren't needed.
-    pub outputs: Vec<StepOutput>,
+    /// The input schema for this step.
+    pub input_schema: Option<ObjectSchema>,
+
+    /// The output schema for this step.
+    pub output_schema: Option<ObjectSchema>,
 
     /// Whether this step should execute if none of its outputs are used.
     pub always_execute: bool,
-}
-
-impl Step {
-    /// Returns true if any of the step's outputs are used in the workflow
-    pub fn used(&self) -> bool {
-        self.execution
-            .as_ref()
-            .expect("missing execution info")
-            .outputs
-            .iter()
-            .any(|output| output.uses.unwrap_or(0) > 0)
-    }
 }

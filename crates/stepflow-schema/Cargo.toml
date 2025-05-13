@@ -1,18 +1,18 @@
 [package]
-name = "stepflow-execution"
+name = "stepflow-schema"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Execution logic for workflows."
+description = "Schema representation used for flows, components and steps."
 
 [dependencies]
 error-stack.workspace = true
 indexmap.workspace = true
+schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true
-stepflow-plugin.workspace = true
-stepflow-schema.workspace = true
-stepflow-workflow.workspace = true
+serde_yml.workspace = true
 thiserror.workspace = true
 url.workspace = true

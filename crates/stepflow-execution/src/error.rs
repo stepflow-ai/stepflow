@@ -1,10 +1,12 @@
-use stepflow_workflow::ValueRef;
+use stepflow_workflow::{BaseRef, Value};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ExecutionError {
     #[error("undefined value {0:?}")]
-    UndefinedValue(ValueRef),
+    UndefinedValue(BaseRef),
+    #[error("undefined field {field:?} in {value:?}")]
+    UndefinedField { field: String, value: Value },
     #[error("error executing plugin")]
     PluginError,
     #[error("plugin not found")]
