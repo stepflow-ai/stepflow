@@ -16,3 +16,6 @@ serde_yml.workspace = true
 stepflow-schema.workspace = true
 thiserror.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+similar-asserts.workspace = true

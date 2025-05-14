@@ -105,13 +105,13 @@ mod tests {
     fn test_flow_from_yaml() {
         let yaml = r#"
         input_schema:
-            object:
-                properties:
-                    name:
-                        type: string
-                        description: The name to echo
-                    count:
-                        type: integer
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: The name to echo
+                count:
+                    type: integer
         steps:
           - component: langflow://echo
             id: s1
@@ -122,15 +122,15 @@ mod tests {
             args:
               a: { literal: "hello world 2" }
         outputs:
-            s1a: { step: "s1", output: "a" }
-            s2b: { step: "s2", output: "a" }
+            s1a: { step: "s1", field: "a" }
+            s2b: { step: "s2", field: "a" }
         output_schema:
-            object:
-                properties:
-                    s1a:
-                        type: string
-                    s2b:
-                        type: string
+            type: object
+            properties:
+                s1a:
+                    type: string
+                s2b:
+                    type: string
         "#;
         let flow: Flow = serde_yml::from_str(yaml).unwrap();
         let input_schema = ObjectSchema::parse(r#"{"type":"object","properties":{"name":{"type":"string","description":"The name to echo"},"count":{"type":"integer"}}}"#).unwrap();
@@ -138,7 +138,7 @@ mod tests {
             r#"{"type":"object","properties":{"s1a":{"type":"string"},"s2b":{"type":"string"}}}"#,
         )
         .unwrap();
-        assert_eq!(
+        similar_asserts::assert_serde_eq!(
             flow,
             Flow {
                 input_schema: Some(input_schema),

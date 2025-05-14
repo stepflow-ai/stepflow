@@ -4,11 +4,33 @@
   "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains: - A sequence of steps to execute - Named outputs that can reference step outputs",
   "type": "object",
   "properties": {
-    "inputs": {
+    "input_schema": {
       "description": "The inputs of the flow, mapping input names to their JSON schemas.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ObjectSchema"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "output_schema": {
+      "description": "The output schema of the flow.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ObjectSchema"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "outputs": {
+      "description": "The outputs of the flow, mapping output names to their values.",
       "type": "object",
       "additionalProperties": {
-        "$ref": "#/definitions/FlowInput"
+        "$ref": "#/definitions/Expr"
       }
     },
     "steps": {
@@ -17,44 +39,73 @@
       "items": {
         "$ref": "#/definitions/Step"
       }
-    },
-    "outputs": {
-      "description": "The outputs of the flow, mapping output names to their values.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Output"
-      }
     }
   },
   "definitions": {
-    "FlowInput": {
-      "type": "object",
-      "required": [
-        "schema"
-      ],
-      "properties": {
-        "schema": {
-          "$ref": "#/definitions/Schema"
-        },
-        "uses": {
-          "type": [
-            "integer",
-            "null"
+    "Expr": {
+      "description": "An expression that can be either a literal value or a template expression.",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "literal"
           ],
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "value_ref": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ValueRef"
-            },
-            {
-              "type": "null"
+          "properties": {
+            "literal": {
+              "$ref": "#/definitions/Value"
             }
-          ]
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "input"
+          ],
+          "properties": {
+            "input": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "step"
+          ],
+          "properties": {
+            "field": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "step": {
+              "type": "string"
+            }
+          }
         }
-      }
+      ]
+    },
+    "InstanceType": {
+      "description": "The possible types of values in JSON Schema documents.\n\nSee [JSON Schema 4.2.1. Instance Data Model](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-4.2.1).",
+      "type": "string",
+      "enum": [
+        "null",
+        "boolean",
+        "object",
+        "array",
+        "number",
+        "string",
+        "integer"
+      ]
+    },
+    "ObjectSchema": {
+      "description": "Wrapper around a JSON object schema.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SchemaObject"
+        }
+      ]
     },
     "Schema": {
       "description": "A JSON Schema.",
@@ -77,34 +128,12 @@
       "description": "A JSON Schema object.",
       "type": "object",
       "properties": {
-        "type": {
-          "description": "The `type` keyword.\n\nSee [JSON Schema Validation 6.1.1. \"type\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.1.1) and [JSON Schema 4.2.1. Instance Data Model](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-4.2.1).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/SingleOrVec_for_InstanceType"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "format": {
-          "description": "The `format` keyword.\n\nSee [JSON Schema Validation 7. A Vocabulary for Semantic Content With \"format\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-7).",
+        "$id": {
+          "description": "The `$id` keyword.\n\nSee [JSON Schema 8.2.2. The \"$id\" Keyword](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-8.2.2).",
           "type": [
             "string",
             "null"
           ]
-        },
-        "enum": {
-          "description": "The `enum` keyword.\n\nSee [JSON Schema Validation 6.1.2. \"enum\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.1.2)",
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": true
-        },
-        "const": {
-          "description": "The `const` keyword.\n\nSee [JSON Schema Validation 6.1.3. \"const\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.1.3)"
         },
         "$ref": {
           "description": "The `$ref` keyword.\n\nSee [JSON Schema 8.2.4.1. Direct References with \"$ref\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-8.2.4.1).",
@@ -113,46 +142,27 @@
             "null"
           ]
         },
-        "$id": {
-          "description": "The `$id` keyword.\n\nSee [JSON Schema 8.2.2. The \"$id\" Keyword](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-8.2.2).",
-          "type": [
-            "string",
-            "null"
+        "additionalItems": {
+          "description": "The `additionalItems` keyword.\n\nSee [JSON Schema 9.3.1.2. \"additionalItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.1.2).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Schema"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
-        "title": {
-          "description": "The `title` keyword.\n\nSee [JSON Schema Validation 9.1. \"title\" and \"description\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.1).",
-          "type": [
-            "string",
-            "null"
+        "additionalProperties": {
+          "description": "The `additionalProperties` keyword.\n\nSee [JSON Schema 9.3.2.3. \"additionalProperties\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.2.3).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Schema"
+            },
+            {
+              "type": "null"
+            }
           ]
-        },
-        "description": {
-          "description": "The `description` keyword.\n\nSee [JSON Schema Validation 9.1. \"title\" and \"description\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.1).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "default": {
-          "description": "The `default` keyword.\n\nSee [JSON Schema Validation 9.2. \"default\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.2)."
-        },
-        "deprecated": {
-          "description": "The `deprecated` keyword.\n\nSee [JSON Schema Validation 9.3. \"deprecated\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.3).",
-          "type": "boolean"
-        },
-        "readOnly": {
-          "description": "The `readOnly` keyword.\n\nSee [JSON Schema Validation 9.4. \"readOnly\" and \"writeOnly\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.4).",
-          "type": "boolean"
-        },
-        "writeOnly": {
-          "description": "The `writeOnly` keyword.\n\nSee [JSON Schema Validation 9.4. \"readOnly\" and \"writeOnly\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.4).",
-          "type": "boolean"
-        },
-        "examples": {
-          "description": "The `examples` keyword.\n\nSee [JSON Schema Validation 9.5. \"examples\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.5).",
-          "type": "array",
-          "items": true
         },
         "allOf": {
           "description": "The `allOf` keyword.\n\nSee [JSON Schema 9.2.1.1. \"allOf\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.1.1).",
@@ -174,47 +184,32 @@
             "$ref": "#/definitions/Schema"
           }
         },
-        "oneOf": {
-          "description": "The `oneOf` keyword.\n\nSee [JSON Schema 9.2.1.3. \"oneOf\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.1.3).",
+        "const": {
+          "description": "The `const` keyword.\n\nSee [JSON Schema Validation 6.1.3. \"const\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.1.3)"
+        },
+        "contains": {
+          "description": "The `contains` keyword.\n\nSee [JSON Schema 9.3.1.4. \"contains\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.1.4).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default": {
+          "description": "The `default` keyword.\n\nSee [JSON Schema Validation 9.2. \"default\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.2)."
+        },
+        "deprecated": {
+          "description": "The `deprecated` keyword.\n\nSee [JSON Schema Validation 9.3. \"deprecated\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.3).",
+          "type": "boolean"
+        },
+        "description": {
+          "description": "The `description` keyword.\n\nSee [JSON Schema Validation 9.1. \"title\" and \"description\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.1).",
           "type": [
-            "array",
+            "string",
             "null"
-          ],
-          "items": {
-            "$ref": "#/definitions/Schema"
-          }
-        },
-        "not": {
-          "description": "The `not` keyword.\n\nSee [JSON Schema 9.2.1.4. \"not\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.1.4).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "if": {
-          "description": "The `if` keyword.\n\nSee [JSON Schema 9.2.2.1. \"if\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.2.1).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "then": {
-          "description": "The `then` keyword.\n\nSee [JSON Schema 9.2.2.2. \"then\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.2.2).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/Schema"
-            },
-            {
-              "type": "null"
-            }
           ]
         },
         "else": {
@@ -228,32 +223,21 @@
             }
           ]
         },
-        "multipleOf": {
-          "description": "The `multipleOf` keyword.\n\nSee [JSON Schema Validation 6.2.1. \"multipleOf\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.2.1).",
+        "enum": {
+          "description": "The `enum` keyword.\n\nSee [JSON Schema Validation 6.1.2. \"enum\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.1.2)",
           "type": [
-            "number",
+            "array",
             "null"
           ],
-          "format": "double"
+          "items": true
         },
-        "maximum": {
-          "description": "The `maximum` keyword.\n\nSee [JSON Schema Validation 6.2.2. \"maximum\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.2.2).",
-          "type": [
-            "number",
-            "null"
-          ],
-          "format": "double"
+        "examples": {
+          "description": "The `examples` keyword.\n\nSee [JSON Schema Validation 9.5. \"examples\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.5).",
+          "type": "array",
+          "items": true
         },
         "exclusiveMaximum": {
           "description": "The `exclusiveMaximum` keyword.\n\nSee [JSON Schema Validation 6.2.3. \"exclusiveMaximum\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.2.3).",
-          "type": [
-            "number",
-            "null"
-          ],
-          "format": "double"
-        },
-        "minimum": {
-          "description": "The `minimum` keyword.\n\nSee [JSON Schema Validation 6.2.4. \"minimum\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.2.4).",
           "type": [
             "number",
             "null"
@@ -268,8 +252,72 @@
           ],
           "format": "double"
         },
+        "format": {
+          "description": "The `format` keyword.\n\nSee [JSON Schema Validation 7. A Vocabulary for Semantic Content With \"format\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-7).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "if": {
+          "description": "The `if` keyword.\n\nSee [JSON Schema 9.2.2.1. \"if\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.2.1).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "items": {
+          "description": "The `items` keyword.\n\nSee [JSON Schema 9.3.1.1. \"items\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.1.1).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SingleOrVec_for_Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "maxItems": {
+          "description": "The `maxItems` keyword.\n\nSee [JSON Schema Validation 6.4.1. \"maxItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.4.1).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
         "maxLength": {
           "description": "The `maxLength` keyword.\n\nSee [JSON Schema Validation 6.3.1. \"maxLength\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.3.1).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "maxProperties": {
+          "description": "The `maxProperties` keyword.\n\nSee [JSON Schema Validation 6.5.1. \"maxProperties\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.5.1).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "maximum": {
+          "description": "The `maximum` keyword.\n\nSee [JSON Schema Validation 6.2.2. \"maximum\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.2.2).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "minItems": {
+          "description": "The `minItems` keyword.\n\nSee [JSON Schema Validation 6.4.2. \"minItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.4.2).",
           "type": [
             "integer",
             "null"
@@ -286,80 +334,6 @@
           "format": "uint32",
           "minimum": 0.0
         },
-        "pattern": {
-          "description": "The `pattern` keyword.\n\nSee [JSON Schema Validation 6.3.3. \"pattern\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.3.3).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "items": {
-          "description": "The `items` keyword.\n\nSee [JSON Schema 9.3.1.1. \"items\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.1.1).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/SingleOrVec_for_Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "additionalItems": {
-          "description": "The `additionalItems` keyword.\n\nSee [JSON Schema 9.3.1.2. \"additionalItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.1.2).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "maxItems": {
-          "description": "The `maxItems` keyword.\n\nSee [JSON Schema Validation 6.4.1. \"maxItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.4.1).",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "minItems": {
-          "description": "The `minItems` keyword.\n\nSee [JSON Schema Validation 6.4.2. \"minItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.4.2).",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "uniqueItems": {
-          "description": "The `uniqueItems` keyword.\n\nSee [JSON Schema Validation 6.4.3. \"uniqueItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.4.3).",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "contains": {
-          "description": "The `contains` keyword.\n\nSee [JSON Schema 9.3.1.4. \"contains\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.1.4).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "maxProperties": {
-          "description": "The `maxProperties` keyword.\n\nSee [JSON Schema Validation 6.5.1. \"maxProperties\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.5.1).",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0.0
-        },
         "minProperties": {
           "description": "The `minProperties` keyword.\n\nSee [JSON Schema Validation 6.5.2. \"minProperties\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.5.2).",
           "type": [
@@ -369,30 +343,24 @@
           "format": "uint32",
           "minimum": 0.0
         },
-        "required": {
-          "description": "The `required` keyword.\n\nSee [JSON Schema Validation 6.5.3. \"required\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.5.3).",
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "uniqueItems": true
+        "minimum": {
+          "description": "The `minimum` keyword.\n\nSee [JSON Schema Validation 6.2.4. \"minimum\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.2.4).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
-        "properties": {
-          "description": "The `properties` keyword.\n\nSee [JSON Schema 9.3.2.1. \"properties\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.2.1).",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/Schema"
-          }
+        "multipleOf": {
+          "description": "The `multipleOf` keyword.\n\nSee [JSON Schema Validation 6.2.1. \"multipleOf\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.2.1).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
-        "patternProperties": {
-          "description": "The `patternProperties` keyword.\n\nSee [JSON Schema 9.3.2.2. \"patternProperties\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.2.2).",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/Schema"
-          }
-        },
-        "additionalProperties": {
-          "description": "The `additionalProperties` keyword.\n\nSee [JSON Schema 9.3.2.3. \"additionalProperties\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.2.3).",
+        "not": {
+          "description": "The `not` keyword.\n\nSee [JSON Schema 9.2.1.4. \"not\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.1.4).",
           "anyOf": [
             {
               "$ref": "#/definitions/Schema"
@@ -401,6 +369,37 @@
               "type": "null"
             }
           ]
+        },
+        "oneOf": {
+          "description": "The `oneOf` keyword.\n\nSee [JSON Schema 9.2.1.3. \"oneOf\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.1.3).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Schema"
+          }
+        },
+        "pattern": {
+          "description": "The `pattern` keyword.\n\nSee [JSON Schema Validation 6.3.3. \"pattern\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.3.3).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patternProperties": {
+          "description": "The `patternProperties` keyword.\n\nSee [JSON Schema 9.3.2.2. \"patternProperties\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.2.2).",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Schema"
+          }
+        },
+        "properties": {
+          "description": "The `properties` keyword.\n\nSee [JSON Schema 9.3.2.1. \"properties\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.2.1).",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Schema"
+          }
         },
         "propertyNames": {
           "description": "The `propertyNames` keyword.\n\nSee [JSON Schema 9.3.2.5. \"propertyNames\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.3.2.5).",
@@ -412,6 +411,58 @@
               "type": "null"
             }
           ]
+        },
+        "readOnly": {
+          "description": "The `readOnly` keyword.\n\nSee [JSON Schema Validation 9.4. \"readOnly\" and \"writeOnly\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.4).",
+          "type": "boolean"
+        },
+        "required": {
+          "description": "The `required` keyword.\n\nSee [JSON Schema Validation 6.5.3. \"required\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.5.3).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "then": {
+          "description": "The `then` keyword.\n\nSee [JSON Schema 9.2.2.2. \"then\"](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-9.2.2.2).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "description": "The `title` keyword.\n\nSee [JSON Schema Validation 9.1. \"title\" and \"description\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.1).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "description": "The `type` keyword.\n\nSee [JSON Schema Validation 6.1.1. \"type\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.1.1) and [JSON Schema 4.2.1. Instance Data Model](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-4.2.1).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SingleOrVec_for_InstanceType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "uniqueItems": {
+          "description": "The `uniqueItems` keyword.\n\nSee [JSON Schema Validation 6.4.3. \"uniqueItems\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-6.4.3).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "writeOnly": {
+          "description": "The `writeOnly` keyword.\n\nSee [JSON Schema Validation 9.4. \"readOnly\" and \"writeOnly\"](https://tools.ietf.org/html/draft-handrews-json-schema-validation-02#section-9.4).",
+          "type": "boolean"
         }
       },
       "additionalProperties": true
@@ -430,19 +481,6 @@
         }
       ]
     },
-    "InstanceType": {
-      "description": "The possible types of values in JSON Schema documents.\n\nSee [JSON Schema 4.2.1. Instance Data Model](https://tools.ietf.org/html/draft-handrews-json-schema-02#section-4.2.1).",
-      "type": "string",
-      "enum": [
-        "null",
-        "boolean",
-        "object",
-        "array",
-        "number",
-        "string",
-        "integer"
-      ]
-    },
     "SingleOrVec_for_Schema": {
       "description": "A type which can be serialized as a single item, or multiple items.\n\nIn some contexts, a `Single` may be semantically distinct from a `Vec` containing only item.",
       "anyOf": [
@@ -457,43 +495,6 @@
         }
       ]
     },
-    "ValueRef": {
-      "description": "A reference to a specific output of a step.",
-      "anyOf": [
-        {
-          "type": "object",
-          "required": [
-            "input"
-          ],
-          "properties": {
-            "input": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "output",
-            "step"
-          ],
-          "properties": {
-            "step": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            },
-            "output": {
-              "type": "integer",
-              "format": "uint32",
-              "minimum": 0.0
-            }
-          }
-        }
-      ]
-    },
     "Step": {
       "description": "A step in a workflow that executes a component with specific arguments.",
       "type": "object",
@@ -503,21 +504,17 @@
         "id"
       ],
       "properties": {
-        "id": {
-          "description": "Optional identifier for the step",
-          "type": "string"
-        },
-        "component": {
-          "description": "The component to execute in this step",
-          "type": "string",
-          "format": "uri"
-        },
         "args": {
           "description": "Arguments to pass to the component for this step",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/Expr"
           }
+        },
+        "component": {
+          "description": "The component to execute in this step",
+          "type": "string",
+          "format": "uri"
         },
         "execution": {
           "description": "Details related to execution of steps.\n\nThis is filled in prior to executing a workflow. If a workflow is to be executed many times, the generation of the execution information (~compilation) may be cached.",
@@ -529,123 +526,40 @@
               "type": "null"
             }
           ]
+        },
+        "id": {
+          "description": "Optional identifier for the step",
+          "type": "string"
         }
       }
     },
-    "Expr": {
-      "description": "An expression that can be either a literal value or a template expression.",
-      "anyOf": [
-        {
-          "description": "A reference to an input of the flow.",
-          "type": "object",
-          "required": [
-            "input"
-          ],
-          "properties": {
-            "input": {
-              "type": "string"
-            },
-            "value_ref": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/ValueRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "description": "A reference to an output of an earlier step.",
-          "type": "object",
-          "required": [
-            "output",
-            "step"
-          ],
-          "properties": {
-            "value_ref": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/ValueRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "step": {
-              "description": "The ID of the step that produced this output.",
-              "type": "string"
-            },
-            "output": {
-              "description": "The name of the output from the step.",
-              "type": "string"
-            }
-          }
-        },
-        {
-          "description": "A literal JSON value.",
-          "type": "object",
-          "required": [
-            "literal"
-          ],
-          "properties": {
-            "literal": {
-              "$ref": "#/definitions/Value"
-            }
-          }
-        }
-      ]
-    },
-    "Value": true,
     "StepExecution": {
       "description": "Details related to execution of steps.",
       "type": "object",
       "required": [
-        "always_execute",
-        "outputs"
+        "always_execute"
       ],
       "properties": {
-        "outputs": {
-          "description": "Information about the step's outputs.\n\nNot all outputs of the component need to be named in the `outputs` of a step. In that case, it indicates the unnamed outputs aren't needed.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/StepOutput"
-          }
-        },
         "always_execute": {
           "description": "Whether this step should execute if none of its outputs are used.",
           "type": "boolean"
-        }
-      }
-    },
-    "StepOutput": {
-      "description": "Represents a step output with its name and optional usage count",
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "name": {
-          "description": "The name of the output",
-          "type": "string"
         },
-        "uses": {
-          "description": "Optional count of how many times this output is used",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "value_ref": {
-          "description": "The ValueRef assigned to this step output.",
+        "input_schema": {
+          "description": "The input schema for this step.",
           "anyOf": [
             {
-              "$ref": "#/definitions/ValueRef"
+              "$ref": "#/definitions/ObjectSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_schema": {
+          "description": "The output schema for this step.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ObjectSchema"
             },
             {
               "type": "null"
@@ -654,20 +568,8 @@
         }
       }
     },
-    "Output": {
-      "type": "object",
-      "required": [
-        "name",
-        "value"
-      ],
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "value": {
-          "$ref": "#/definitions/Expr"
-        }
-      }
+    "Value": {
+      "description": "A literal value which may be passed to a component."
     }
   }
 }

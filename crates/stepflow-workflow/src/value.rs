@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(to_yaml(&Expr::literal("foo")), "literal: foo\n");
         assert_eq!(to_yaml(&Expr::literal(5)), "literal: 5\n");
 
-        assert_eq!(to_yaml(&Expr::input_field("out")), "input_field: out\n");
+        assert_eq!(to_yaml(&Expr::input_field("out")), "input: out\n");
 
         assert_eq!(
             to_yaml(&Expr::step_field("step1", "out")),

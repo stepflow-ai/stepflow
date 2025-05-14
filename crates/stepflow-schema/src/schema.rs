@@ -1,5 +1,8 @@
 use error_stack::ResultExt as _;
-use schemars::{JsonSchema, schema::SchemaObject};
+use schemars::{
+    JsonSchema,
+    schema::{InstanceType, SchemaObject},
+};
 use serde_json::Value;
 
 use crate::{Result, SchemaError};
@@ -32,7 +35,7 @@ fn ensure_simple_object(schema: &SchemaObject) -> Result<()> {
         SchemaError::Unexpected("enum_values")
     );
     error_stack::ensure!(
-        schema.instance_type.is_none(),
+        schema.has_type(InstanceType::Object),
         SchemaError::Unexpected("instance_type")
     );
     error_stack::ensure!(schema.format.is_none(), SchemaError::Unexpected("format"));

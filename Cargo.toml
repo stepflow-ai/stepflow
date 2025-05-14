@@ -19,6 +19,8 @@ schemars = { version = "0.8.22", features = ["indexmap2", "impl_json_schema", "u
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["preserve_order"] }
 serde_yml = "0.0.12"
+similar = "2.7.0"
+similar-asserts = { version = "1.7.0", features = ["serde" ] }
 stepflow-compiler = { path = "./crates/stepflow-compiler" }
 stepflow-components-client = { path = "./crates/stepflow-components-client" }
 stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }

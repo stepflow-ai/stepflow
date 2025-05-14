@@ -17,7 +17,7 @@ fn test_schema_up_to_date() {
         std::fs::write(&schema_path, schema).unwrap();
     } else if schema_path.is_file() {
         let expected_schema = std::fs::read_to_string(&schema_path).unwrap();
-        assert_eq!(schema, expected_schema);
+        similar_asserts::assert_serde_eq!(schema, expected_schema);
     } else {
         panic!("{} not found", schema_path.display());
     }
