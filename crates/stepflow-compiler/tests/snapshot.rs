@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::BufReader;
 
-use stepflow_compile::compile;
+use stepflow_compiler::compile;
 use stepflow_plugin::Plugins;
 use stepflow_plugin_testing::MockPlugin;
 
