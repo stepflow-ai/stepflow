@@ -7,6 +7,7 @@ from uuid import UUID
 
 from stepflow_sdk.server import StepflowStdioServer, ComponentEntry
 from stepflow_sdk.transport import Incoming, MethodResponse
+from stepflow_sdk.protocol import ComponentInfoRequest, ComponentInfoResponse, ComponentExecuteRequest, ComponentExecuteResponse
 
 # Test message classes
 class ValidInput(msgspec.Struct):
@@ -36,7 +37,7 @@ def test_component_registration(server):
         )
     
     assert "test_component" in server._components
-    component = server.get_component("test_component")
+    component = server.get_component("python://test_component")
     assert isinstance(component, ComponentEntry)
     assert component.name == "test_component"
     assert component.input_type == ValidInput
@@ -51,7 +52,7 @@ def test_component_with_custom_name(server):
         )
     
     assert "custom_name" in server._components
-    component = server.get_component("custom_name")
+    component = server.get_component("python://custom_name")
     assert isinstance(component, ComponentEntry)
     assert component.name == "custom_name"
     assert component.input_type == ValidInput
@@ -76,7 +77,7 @@ def test_component_execution(server):
             age_next_year=input_data.age + 1
         )
     
-    component = server.get_component("test_component")
+    component = server.get_component("python://test_component")
     assert component is not None
     result = component.function(ValidInput(name="Alice", age=25))
     assert isinstance(result, ValidOutput)
@@ -105,14 +106,27 @@ def test_list_components(server):
 
 @pytest.mark.asyncio
 async def test_handle_initialize(server):
+    # Runtime -> Server: Initialize method request.
     request = Incoming(
         id=UUID(int=1),
         method="initialize",
         params={}
     )
+    # Runtime <- Server. Initialize method response.
     response = await server._handle_message(request)
     assert response.id == request.id
     assert response.result == {"server_protocol_version": 1}
+
+    assert server._initialized == False
+
+    # Runtime -> Server: Initialized notification.
+    notification = Incoming(
+        method="initialized",
+        params={}
+    )
+    response = await server._handle_message(notification)
+    assert response is None
+
     assert server._initialized == True
 
 @pytest.mark.asyncio
@@ -125,14 +139,13 @@ async def test_handle_component_info(server):
     request = Incoming(
         id=UUID(int=1),
         method="component_info",
-        params={"name": "test_component"}
+        params=msgspec.json.encode(ComponentInfoRequest(component = "python://test_component")),
     )
     response = await server._handle_message(request)
     assert response.id == request.id
-    assert "name" in response.result
-    assert "input_schema" in response.result
-    assert "output_schema" in response.result
-    assert response.result["name"] == "test_component"
+    assert response.result is not None
+    assert response.result.input_schema == msgspec.json.schema(ValidInput)
+    assert response.result.output_schema == msgspec.json.schema(ValidOutput)
 
 @pytest.mark.asyncio
 async def test_handle_component_info_not_found(server):
@@ -141,7 +154,7 @@ async def test_handle_component_info_not_found(server):
     request = Incoming(
         id=UUID(int=1),
         method="component_info",
-        params={"name": "nonexistent"}
+        params=msgspec.json.encode(ComponentInfoRequest(component = "python://non_existent")),
     )
     response = await server._handle_message(request)
     assert response.id == request.id
@@ -163,15 +176,19 @@ async def test_handle_component_execute(server):
     request = Incoming(
         id=UUID(int=1),
         method="component_execute",
-        params={
-            "name": "test_component",
-            "input": {"name": "Alice", "age": 25}
-        }
+        params=msgspec.json.encode(ComponentExecuteRequest(
+            component = "python://test_component",
+            input = {
+                "name": "Alice",
+                "age": 25
+            }
+        ))
     )
     response = await server._handle_message(request)
     assert response.id == request.id
-    assert response.result.greeting == "Hello Alice!"
-    assert response.result.age_next_year == 26
+    output = msgspec.json.decode(response.result.output, type=ValidOutput)
+    assert output.greeting == "Hello Alice!"
+    assert output.age_next_year == 26
 
 @pytest.mark.asyncio
 async def test_handle_component_execute_invalid_input(server):
@@ -183,10 +200,12 @@ async def test_handle_component_execute_invalid_input(server):
     request = Incoming(
         id=UUID(int=1),
         method="component_execute",
-        params={
-            "name": "test_component",
-            "input": {"invalid": "input"}
-        }
+        params=msgspec.json.encode(ComponentExecuteRequest(
+            component = "python://test_component",
+            input = {
+                "invalid": "input"
+            }
+        ))
     )
     response = await server._handle_message(request)
     assert response.id == request.id
