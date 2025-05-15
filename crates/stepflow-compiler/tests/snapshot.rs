@@ -14,7 +14,7 @@ fn valid_snapshot() {
     // .outputs(&["output"]);
     mock_plugin.mock_component("mock://two_outputs");
     // .outputs(&["a", "b"]);
-    plugins.register(&mock_plugin);
+    plugins.register(mock_plugin);
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

@@ -1,7 +1,7 @@
 use stepflow_workflow::{BaseRef, Value};
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum ExecutionError {
     #[error("undefined value {0:?}")]
     UndefinedValue(BaseRef),
@@ -13,6 +13,14 @@ pub enum ExecutionError {
     PluginNotFound,
     #[error("flow not compiled")]
     FlowNotCompiled,
+    #[error("error receiving input")]
+    RecvInput,
+    #[error("error recording result")]
+    RecordResult,
+    #[error("internal error")]
+    Internal,
+    #[error("step panic")]
+    StepPanic,
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

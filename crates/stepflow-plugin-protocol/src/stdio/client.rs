@@ -64,7 +64,7 @@ pub struct ClientHandle {
 impl ClientHandle {
     pub async fn request<I>(&self, params: &I) -> Result<I::Response>
     where
-        I: Method + serde::Serialize,
+        I: Method + serde::Serialize + Send + Sync,
         I::Response: DeserializeOwned + Send + Sync + 'static,
     {
         let response = self.request_dyn(I::METHOD_NAME, params).await?;
@@ -76,7 +76,7 @@ impl ClientHandle {
 
     pub async fn notify<I>(&self, params: &I) -> Result<()>
     where
-        I: Notification + serde::Serialize,
+        I: Notification + serde::Serialize + Send + Sync,
     {
         self.send(&Request {
             jsonrpc: "2.0",
@@ -89,7 +89,7 @@ impl ClientHandle {
         Ok(())
     }
 
-    async fn send(&self, msg: &dyn erased_serde::Serialize) -> Result<()> {
+    async fn send(&self, msg: &(dyn erased_serde::Serialize + Send + Sync)) -> Result<()> {
         let msg = serde_json::to_string(&msg).change_context(StdioError::Send)?;
         self.outgoing_tx
             .send(msg)
@@ -102,7 +102,7 @@ impl ClientHandle {
     async fn request_dyn(
         &self,
         method: &str,
-        params: &dyn erased_serde::Serialize,
+        params: &(dyn erased_serde::Serialize + Send + Sync),
     ) -> Result<OwnedIncoming> {
         let id = Uuid::new_v4();
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();

@@ -3,5 +3,5 @@ mod plugin;
 mod plugins;
 
 pub use error::{PluginError, Result};
-pub use plugin::{DynPlugin, DynSendPlugin, Plugin};
+pub use plugin::{DynPlugin, Plugin};
 pub use plugins::Plugins;

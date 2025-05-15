@@ -20,7 +20,6 @@ pub struct SchemaPartMut<'a>(&'a mut SchemaObject);
 #[derive(Default)]
 pub struct ObjectSchema(SchemaObject);
 
-
 fn ensure_simple_object(schema: &SchemaObject) -> Result<()> {
     error_stack::ensure!(schema.array.is_none(), SchemaError::Unexpected("array"));
     error_stack::ensure!(

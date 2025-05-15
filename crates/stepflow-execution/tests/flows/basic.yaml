@@ -1,0 +1,35 @@
+input_schema:
+  type: object
+  properties:
+    name:
+      type: string
+output_schema:
+  type: object
+  properties:
+    name:
+      type: string
+    x:
+      type: integer
+    y:
+      type: integer
+steps:
+  - id: step1
+    component: mock://one_output
+    args:
+      input: { input: name }
+  - id: step2
+    component: mock://two_outputs
+    args:
+      input: { step: step1, field: output }
+outputs:
+    name: { step: step1, field: output }
+    x: { step: step2, field: x }
+    y: { step: step2, field: y }
+test_cases:
+  - input:
+      name: a
+  - input:
+      name: hello
+  - input:
+      name: world
+    expect_failure: true

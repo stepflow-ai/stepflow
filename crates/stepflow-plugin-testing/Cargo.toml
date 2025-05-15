@@ -8,7 +8,11 @@ publish = false
 description = "Step execution plugin(s) used for tests."
 
 [dependencies]
+error-stack.workspace = true
 stepflow-plugin.workspace = true
 stepflow-protocol.workspace = true
 stepflow-schema.workspace = true
 stepflow-workflow.workspace = true
+
+[dev-dependencies]
+static_assertions.workspace = true

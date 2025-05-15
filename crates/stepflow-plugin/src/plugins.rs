@@ -1,34 +1,34 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{DynPlugin, Plugin, PluginError, Result};
 use error_stack::ResultExt;
 use stepflow_workflow::Component;
 
-pub struct Plugins<'a> {
-    step_plugins: HashMap<&'static str, &'a DynPlugin<'a>>,
+pub struct Plugins {
+    step_plugins: HashMap<&'static str, Arc<DynPlugin<'static>>>,
 }
 
-impl Default for Plugins<'_> {
+impl Default for Plugins {
     fn default() -> Self {
         Plugins::new()
     }
 }
 
-impl<'a> Plugins<'a> {
+impl Plugins {
     pub fn new() -> Self {
         Self {
             step_plugins: HashMap::new(),
         }
     }
 
-    pub fn register(&mut self, plugin: &'a impl Plugin) {
+    pub fn register<P: Plugin + 'static>(&mut self, plugin: P) {
         let protocol = plugin.protocol();
-        let plugin = DynPlugin::from_ref(plugin);
-
+        let plugin = DynPlugin::boxed(plugin);
+        let plugin: Arc<DynPlugin<'static>> = Arc::from(plugin);
         self.step_plugins.insert(protocol, plugin);
     }
 
-    pub fn get(&self, component: &'_ Component) -> Result<&'a DynPlugin> {
+    pub fn get(&self, component: &'_ Component) -> Result<Arc<DynPlugin<'static>>> {
         let protocol = component.protocol();
 
         let plugin = self
@@ -36,7 +36,7 @@ impl<'a> Plugins<'a> {
             .get(protocol)
             .ok_or_else(|| PluginError::UnknownScheme(protocol.to_owned()))
             .attach_printable_lazy(|| component.clone())?;
-        Ok(plugin)
+        Ok(plugin.clone())
     }
 }
 
@@ -45,7 +45,7 @@ mod tests {
     use stepflow_protocol::component_info::ComponentInfo;
     use stepflow_workflow::Value;
 
-    use crate::Result;
+    use crate::{Plugin, Result};
 
     use super::*;
 
@@ -73,10 +73,8 @@ mod tests {
     #[test]
     fn test_plugins() {
         let mut plugins = Plugins::new();
-        let langflow = MockPlugin("langflow");
-        let mcp = MockPlugin("mcp");
-        plugins.register(&langflow);
-        plugins.register(&mcp);
+        plugins.register(MockPlugin("langflow"));
+        plugins.register(MockPlugin("mcp"));
 
         let langflow = plugins
             .get(&Component::parse("langflow://package/class/name").unwrap())

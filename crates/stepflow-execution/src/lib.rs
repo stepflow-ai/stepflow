@@ -1,54 +1,106 @@
 mod error;
 mod state;
 
+use std::sync::Arc;
+
 pub use error::{ExecutionError, Result};
 use error_stack::ResultExt;
-use state::VecState;
-use stepflow_plugin::{Plugin as _, Plugins};
-use stepflow_workflow::{BaseRef, Flow, Step, Value};
+use futures::{FutureExt as _, StreamExt as _, stream::FuturesUnordered};
+use state::State;
+use stepflow_plugin::{DynPlugin, Plugin as _, Plugins};
+use stepflow_workflow::{BaseRef, Component, Flow, Value};
+use tokio::sync::oneshot;
+use tracing::Instrument as _;
 
-pub async fn execute<'a>(
-    plugins: &'a Plugins<'a>,
-    flow: &Flow,
-    inputs: Vec<Value>,
-) -> Result<Value> {
-    let mut state = VecState::new();
+pub async fn execute(plugins: &Plugins, flow: &Flow, input: Value) -> Result<Value> {
+    tracing::info!("Creating flow futures");
+    let mut state = State::new();
 
-    if !inputs.is_empty() {
-        todo!("flow inputs not yet supported")
-    }
+    tracing::debug!("Recording input {input:?}");
+    state.record_literal(BaseRef::Input, input)?;
 
+    let mut step_tasks = FuturesUnordered::new();
     for step in flow.steps.iter() {
-        execute_step(&mut state, step, plugins)
-            .await
-            .attach_printable_lazy(|| format!("error executing step {:?}", step))?;
+        tracing::debug!("Creating future for step {step:?}");
+        // Record the future step result.
+        let result_tx = state.record_future(BaseRef::Step {
+            step: step.id.clone(),
+        })?;
+
+        let plugin = plugins
+            .get(&step.component)
+            .change_context(ExecutionError::PluginNotFound)?;
+
+        let input = state.resolve(&step.args)?;
+        // TODO: Eliminate cloning? Arc the component?
+        let step_span = tracing::info_span!("step", id = step.id);
+        let step =
+            execute_step(plugin, step.component.clone(), input, result_tx).instrument(step_span);
+        let step_task = tokio::spawn(step);
+        step_tasks.push(step_task);
     }
 
-    let output = state.resolve(flow.outputs())?;
-    Ok(output)
+    tracing::info!("Resolving output");
+    loop {
+        tokio::select! {
+            output_result = state.resolve(flow.outputs())? => {
+                match output_result {
+                    Ok(output) => return Ok(output),
+                    Err(e) => {
+                        if e.current_context() == &ExecutionError::RecvInput {
+                        // Look at the step tasks to see if we can find a more interesting error.
+                            while let Some(step_result) = step_tasks.next().await {
+                                match step_result {
+                                    Ok(Err(e)) if e.current_context() != &ExecutionError::RecvInput => {
+                                        return Err(e)
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        return Err(e);
+                    }
+                }
+            }
+            Some(step_result) = step_tasks.next() => {
+                match step_result {
+                    Ok(Ok(())) => {
+                        // nothing to do -- step completed
+                        continue
+                    }
+                    Ok(Err(e)) => {
+                        tracing::error!(?e, "Error during step execution.");
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        tracing::error!(?e, "Panic during step execution.");
+                        error_stack::bail!(ExecutionError::StepPanic);
+                    }
+                }
+            }
+        }
+    }
 }
 
 async fn execute_step<'a>(
-    state: &mut VecState,
-    step: &Step,
-    plugins: &'a Plugins<'a>,
+    plugin: Arc<DynPlugin<'static>>,
+    component: Component,
+    input: impl Future<Output = Result<Value>>,
+    result_tx: oneshot::Sender<Value>,
 ) -> Result<()> {
-    let plugin = plugins
-        .get(&step.component)
-        .change_context(ExecutionError::PluginNotFound)?;
-    let input = state.resolve(&step.args)?;
+    tracing::info!("Waiting for inputs.");
+    let input = input.await?;
 
-    let results = plugin
-        .execute(&step.component, input)
+    tracing::info!("Executing step {component:?}");
+    let result = plugin
+        .execute(&component, input)
         .await
         .change_context(ExecutionError::PluginError)?;
 
-    state.record_value(
-        BaseRef::Step {
-            step: step.id.clone(),
-        },
-        results,
-    )?;
+    tracing::info!("Sending result {result:?}");
+    result_tx
+        .send(result)
+        .map_err(|_| ExecutionError::RecordResult)?;
 
     Ok(())
 }

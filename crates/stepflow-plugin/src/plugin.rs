@@ -2,10 +2,10 @@ use crate::Result;
 use stepflow_protocol::component_info::ComponentInfo;
 use stepflow_workflow::{Component, Value};
 
-#[trait_variant::make(SendPlugin: Send)]
+#[trait_variant::make(Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]
-#[dynosaur::dynosaur(pub DynSendPlugin = dyn SendPlugin)]
-pub trait Plugin {
+// #[dynosaur::dynosaur(pub DynSendPlugin = dyn SendPlugin)]
+pub trait Plugin: Send + Sync {
     fn protocol(&self) -> &'static str;
 
     async fn init(&self) -> Result<()>;

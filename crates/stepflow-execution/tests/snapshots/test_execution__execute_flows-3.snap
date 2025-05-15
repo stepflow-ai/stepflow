@@ -1,0 +1,14 @@
+---
+source: crates/stepflow-execution/tests/test_execution.rs
+description: case 2
+expression: result
+info:
+  name: world
+input_file: crates/stepflow-execution/tests/flows/basic.yaml
+---
+- context: error executing plugin
+  attachments: []
+  sources:
+    - context: error importing user-defined function
+      attachments: []
+      sources: []

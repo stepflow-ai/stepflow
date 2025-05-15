@@ -68,7 +68,7 @@ impl Expr {
 /// A literal value which may be passed to a component.
 
 // TODO: Change value representation to avoid copying?
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema, Hash, Eq)]
 #[repr(transparent)]
 pub struct Value(Arc<serde_json::Value>);
 

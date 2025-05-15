@@ -9,10 +9,21 @@ description = "Execution logic for workflows."
 
 [dependencies]
 error-stack.workspace = true
+futures.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 stepflow-plugin.workspace = true
 stepflow-schema.workspace = true
 stepflow-workflow.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+serde_yml.workspace = true
+stepflow-plugin-testing.workspace = true
+insta.workspace = true
+tracing-error.workspace = true
+tracing-subscriber.workspace = true
