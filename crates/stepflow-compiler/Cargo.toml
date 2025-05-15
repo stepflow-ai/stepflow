@@ -1,5 +1,5 @@
 [package]
-name = "stepflow-compile"
+name = "stepflow-compiler"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
