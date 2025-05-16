@@ -36,7 +36,7 @@ async fn test_initialize_disconnect() {
     let python_dir = std::path::Path::new(&manifest_dir).join("../../sdks/python");
     let python_dir = python_dir.to_str().unwrap();
 
-    let client = Client::builder("/Users/benjamin.chambers/.local/bin/uv")
+    let client = Client::builder(uv)
         .args(["--project", python_dir, "run", "stepflow_sdk"])
         .build()
         .await

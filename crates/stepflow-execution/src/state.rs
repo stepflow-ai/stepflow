@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt;
@@ -61,7 +61,7 @@ impl State {
                     .get(&field)
                     .ok_or(ExecutionError::UndefinedField {
                         value: base.clone(),
-                        field: field,
+                        field,
                     })?;
                 tracing::info!("Returning {value:?}");
                 Ok(value.clone())

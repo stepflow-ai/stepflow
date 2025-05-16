@@ -13,6 +13,7 @@ stepflow-plugin.workspace = true
 stepflow-protocol.workspace = true
 stepflow-schema.workspace = true
 stepflow-workflow.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 static_assertions.workspace = true

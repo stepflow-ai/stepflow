@@ -6,7 +6,7 @@ pub use error::{CompileError, Result};
 use stepflow_plugin::Plugins;
 use stepflow_workflow::Flow;
 
-pub async fn compile<'a>(plugins: &'a Plugins, flow: Flow) -> Result<Flow> {
+pub async fn compile(_plugins: &Plugins, flow: Flow) -> Result<Flow> {
     // 1. Fill in information about components.
     // value_refs::populate(plugins, &mut flow).await?;
 

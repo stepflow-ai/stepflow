@@ -166,6 +166,7 @@ class StepflowStdioServer:
 
     async def _process_messages(self, message_queue: asyncio.Queue):
         """Process messages from the queue asynchronously."""
+        print("Starting process messages", file=sys.stderr)
         while True:
             request_bytes = await message_queue.get()
             try:
