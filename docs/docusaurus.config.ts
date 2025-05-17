@@ -103,7 +103,7 @@ const config: Config = {
           position: 'left',
           label: 'Specification',
         },
-        { to: '/blog', label: 'Blog', position: 'left' },
+        // { to: '/blog', label: 'Blog', position: 'left' },
         {
           href: 'https://github.com/facebook/docusaurus',
           label: 'GitHub',
@@ -119,11 +119,11 @@ const config: Config = {
           items: [
             {
               label: 'Docs',
-              to: '/docs/intro',
+              to: '/docs/introduction',
             },
             {
               label: 'Specification',
-              to: '/specification',
+              to: '/specification/overview',
             },
           ],
         },
@@ -147,10 +147,10 @@ const config: Config = {
         {
           title: 'More',
           items: [
-            {
-              label: 'Blog',
-              to: '/blog',
-            },
+            // {
+            //   label: 'Blog',
+            //   to: '/blog',
+            // },
             {
               label: 'GitHub',
               href: 'https://github.com/facebook/docusaurus',
