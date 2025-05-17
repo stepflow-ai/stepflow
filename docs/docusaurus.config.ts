@@ -163,12 +163,16 @@ const config: Config = {
     prism: {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
+      additionalLanguages: ["json", "json5"],
     },
   } satisfies Preset.ThemeConfig,
   markdown: {
     mermaid: true,
   },
-  themes: ['@docusaurus/theme-mermaid'],
+  themes: [
+    '@docusaurus/theme-mermaid',
+    "docusaurus-json-schema-plugin",
+  ],
 };
 
 export default config;
