@@ -16,7 +16,7 @@ class Incoming(Struct, kw_only=True):
     The request id. If not set, this is a notification.
     """
 
-    method: str | int
+    method: str
     """
     The method to execute.
     """
