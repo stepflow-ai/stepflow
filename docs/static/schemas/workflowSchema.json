@@ -1,0 +1,180 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Flow",
+    "description": "A flow represents a complete workflow that can be executed.",
+    "type": "object",
+    "properties": {
+        "input_schema": {
+            "description": "The inputs of the flow, mapping input names to their JSON schemas.",
+            "anyOf": [
+                {
+                    "$ref": "#/defs/Schema"
+                },
+                {
+                    "type": "null"
+                }
+            ]
+        },
+        "output_schema": {
+            "description": "The output schema of the flow.",
+            "anyOf": [
+                {
+                    "$ref": "#/defs/Schema"
+                },
+                {
+                    "type": "null"
+                }
+            ]
+        },
+        "outputs": {
+            "description": "The outputs of the flow, mapping output names to their values.",
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/defs/Expr"
+            }
+        },
+        "steps": {
+            "description": "The steps to execute for the flow.",
+            "type": "array",
+            "items": {
+                "$ref": "#/defs/Step"
+            }
+        }
+    },
+    "defs": {
+        "Schema": {
+            "title": "Schema",
+            "description": "JSON Schema",
+            "$ref": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "Expr": {
+            "description": "An expression that can be either a literal value or a template expression.",
+            "anyOf": [
+                {
+                    "type": "object",
+                    "title": "Literal",
+                    "description": "A literal JSON value passed to a component.",
+                    "required": [
+                        "literal"
+                    ],
+                    "properties": {
+                        "literal": {
+                            "description": "A literal JSON value passed to a component."
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "title": "Input Reference",
+                    "description": "A reference to an input value.",
+                    "required": [
+                        "input"
+                    ],
+                    "properties": {
+                        "input": {
+                            "type": "string",
+                            "description": "The name of the input field to reference."
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "title": "Step Output Reference",
+                    "description": "A reference to an output value from a step.",
+                    "required": [
+                        "step"
+                    ],
+                    "properties": {
+                        "field": {
+                            "title": "Field",
+                            "description": "The name of the field to reference.",
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "step": {
+                            "title": "Step",
+                            "description": "The id of the step to reference.",
+                            "type": "string"
+                        }
+                    }
+                }
+            ]
+        },
+        "Step": {
+            "description": "A step in a workflow that executes a component with specific arguments.",
+            "type": "object",
+            "required": [
+                "args",
+                "component",
+                "id"
+            ],
+            "properties": {
+                "args": {
+                    "description": "Arguments to pass to the component for this step",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/defs/Expr"
+                    }
+                },
+                "component": {
+                    "description": "The component to execute in this step",
+                    "type": "string",
+                    "format": "uri"
+                },
+                "execution": {
+                    "description": "Details related to execution of steps.\n\nThis is filled in prior to executing a workflow. If a workflow is to be executed many times, the generation of the execution information (~compilation) may be cached.",
+                    "anyOf": [
+                        {
+                            "$ref": "#/defs/StepExecution"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "id": {
+                    "description": "Optional identifier for the step",
+                    "type": "string"
+                }
+            }
+        },
+        "StepExecution": {
+            "description": "Details related to execution of steps.",
+            "type": "object",
+            "required": [
+                "sideEffects"
+            ],
+            "properties": {
+                "sideEffects": {
+                    "description": "Whether this step has side-effects.",
+                    "type": "boolean",
+                    "default": true
+                },
+                "input_schema": {
+                    "description": "The input schema for this step.",
+                    "anyOf": [
+                        {
+                            "$ref": "#/defs/Schema"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "output_schema": {
+                    "description": "The output schema for this step.",
+                    "anyOf": [
+                        {
+                            "$ref": "#/defs/Schema"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}
