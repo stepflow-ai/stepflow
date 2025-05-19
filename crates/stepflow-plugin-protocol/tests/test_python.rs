@@ -56,10 +56,10 @@ async fn test_initialize_disconnect() {
     let add_info = plugin.component_info(&add_component).await.unwrap();
 
     let expected_input_schema = json!({
-        "$ref": "#/$defs/AddInput",
+        "$ref": "#/$defs/MathInput",
         "$defs": {
-          "AddInput": {
-            "title": "AddInput",
+          "MathInput": {
+            "title": "MathInput",
             "type": "object",
             "properties": {
               "a": {
