@@ -29,8 +29,8 @@ flowchart LR
         Host <-->|"StepFlow Protocol"| S1
         Host <-->|"StepFlow Protocol"| S2
         Host <-->|"StepFlow Protocol"| S3
-        S1 <--> D1[("Local\nData Source A")]
-        S2 <--> D2[("Local\nData Source B")]
+        S1 <--> D1[("Local<br>Data Source A")]
+        S2 <--> D2[("Local<br>Data Source B")]
     end
     subgraph "Internet"
         S3 <-->|"Web APIs"| D3[("Remote\nService C")]
