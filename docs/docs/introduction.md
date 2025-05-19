@@ -33,7 +33,7 @@ flowchart LR
         S2 <--> D2[("Local<br>Data Source B")]
     end
     subgraph "Internet"
-        S3 <-->|"Web APIs"| D3[("Remote\nService C")]
+        S3 <-->|"Web APIs"| D3[("Remote<br>Service C")]
     end
 ```
 
