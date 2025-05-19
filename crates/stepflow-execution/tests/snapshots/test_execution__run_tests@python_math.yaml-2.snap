@@ -1,0 +1,12 @@
+---
+source: crates/stepflow-execution/tests/test_execution.rs
+description: case 1
+expression: result
+info:
+  m: 8
+  n: 10
+input_file: crates/stepflow-execution/tests/flows/python_math.yaml
+---
+m_times_n: 80
+m_plus_n: 18
+m_plus_n_times_n: 180

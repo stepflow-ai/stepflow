@@ -1,9 +1,11 @@
 use std::fs::File;
 use std::io::BufReader;
 
+use error_stack::ResultExt as _;
 use serde::Deserialize;
 use stepflow_execution::execute;
-use stepflow_plugin::Plugins;
+use stepflow_plugin::{Plugin, Plugins};
+use stepflow_plugin_protocol::stdio::{Client, StdioPlugin};
 use stepflow_plugin_testing::{MockComponentBehavior, MockPlugin};
 use stepflow_workflow::Value;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
@@ -41,12 +43,7 @@ struct TestCase {
     expect_failure: bool,
 }
 
-#[test]
-fn execute_flows() {
-    init_test_logging();
-
-    let mut plugins = Plugins::new();
-
+fn create_mock_plugin() -> MockPlugin {
     let mut mock_plugin = MockPlugin::new("mock");
     mock_plugin
         .mock_component("mock://one_output")
@@ -76,13 +73,41 @@ fn execute_flows() {
                 output: Value::new(serde_json::json!({ "x": 2, "y": 8 })),
             },
         );
-    plugins.register(mock_plugin);
+    mock_plugin
+}
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
+/// Simple error we can wrap any other errors in.
+#[derive(Debug, thiserror::Error)]
+#[error("test error")]
+struct TestError;
+
+async fn create_python_plugin() -> error_stack::Result<StdioPlugin, TestError> {
+    let uv = which::which("uv").change_context(TestError)?;
+    tracing::info!("Found uv at {uv:?}");
+
+    // Determine the path to the `sdks/python` directory from the CARGO_MANIFEST_DIR.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").change_context(TestError)?;
+    let python_dir = std::path::Path::new(&manifest_dir)
+        .parent()
+        .ok_or(TestError)?
+        .parent()
+        .ok_or(TestError)?
+        .join("sdks")
+        .join("python");
+    let python_dir = python_dir.to_str().ok_or(TestError)?;
+
+    let client = Client::builder(uv)
+        .args(["--project", python_dir, "run", "stepflow_sdk"])
         .build()
-        .unwrap();
+        .await
+        .change_context(TestError)?;
 
+    let plugin = StdioPlugin::new(client.handle());
+    plugin.init().await.change_context(TestError)?;
+    Ok(plugin)
+}
+
+fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
     insta::glob!("flows/*.yaml", |path| {
         rt.block_on(async {
             let file = File::open(path).unwrap();
@@ -111,5 +136,20 @@ fn execute_flows() {
                 }
             }
         })
-    })
+    });
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn execute_flows() {
+    init_test_logging();
+
+    let mut plugins = Plugins::new();
+
+    plugins.register("mock".to_owned(), create_mock_plugin());
+    plugins.register("python".to_owned(), create_python_plugin().await.unwrap());
+
+    let rt = tokio::runtime::Handle::current();
+
+    let handle = rt.clone().spawn_blocking(|| run_tests(plugins, rt));
+    handle.await.unwrap();
 }

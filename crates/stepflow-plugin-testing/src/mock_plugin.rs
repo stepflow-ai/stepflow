@@ -66,10 +66,6 @@ impl MockPlugin {
 }
 
 impl Plugin for MockPlugin {
-    fn protocol(&self) -> &'static str {
-        self.kind
-    }
-
     async fn init(&self) -> Result<()> {
         Ok(())
     }

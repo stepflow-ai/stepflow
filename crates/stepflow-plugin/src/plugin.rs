@@ -6,8 +6,6 @@ use stepflow_workflow::{Component, Value};
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]
 // #[dynosaur::dynosaur(pub DynSendPlugin = dyn SendPlugin)]
 pub trait Plugin: Send + Sync {
-    fn protocol(&self) -> &'static str;
-
     async fn init(&self) -> Result<()>;
 
     /// Return the outputs for the given component.

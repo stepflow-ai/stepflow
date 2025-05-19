@@ -903,6 +903,7 @@ dependencies = [
  "serde_json",
  "serde_yml",
  "stepflow-plugin",
+ "stepflow-plugin-protocol",
  "stepflow-plugin-testing",
  "stepflow-schema",
  "stepflow-workflow",
@@ -912,6 +913,7 @@ dependencies = [
  "tracing-error",
  "tracing-subscriber",
  "url",
+ "which",
 ]
 
 [[package]]

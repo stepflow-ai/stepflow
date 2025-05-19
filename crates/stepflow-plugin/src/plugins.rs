@@ -5,7 +5,7 @@ use error_stack::ResultExt;
 use stepflow_workflow::Component;
 
 pub struct Plugins {
-    step_plugins: HashMap<&'static str, Arc<DynPlugin<'static>>>,
+    step_plugins: HashMap<String, Arc<DynPlugin<'static>>>,
 }
 
 impl Default for Plugins {
@@ -21,8 +21,7 @@ impl Plugins {
         }
     }
 
-    pub fn register<P: Plugin + 'static>(&mut self, plugin: P) {
-        let protocol = plugin.protocol();
+    pub fn register<P: Plugin + 'static>(&mut self, protocol: String, plugin: P) {
         let plugin = DynPlugin::boxed(plugin);
         let plugin: Arc<DynPlugin<'static>> = Arc::from(plugin);
         self.step_plugins.insert(protocol, plugin);
@@ -53,10 +52,6 @@ mod tests {
     struct MockPlugin(&'static str);
 
     impl Plugin for MockPlugin {
-        fn protocol(&self) -> &'static str {
-            self.0
-        }
-
         async fn init(&self) -> Result<()> {
             Ok(())
         }
@@ -73,17 +68,15 @@ mod tests {
     #[test]
     fn test_plugins() {
         let mut plugins = Plugins::new();
-        plugins.register(MockPlugin("langflow"));
-        plugins.register(MockPlugin("mcp"));
+        plugins.register("langflow".to_owned(), MockPlugin("langflow"));
+        plugins.register("mcp".to_owned(), MockPlugin("mcp"));
 
-        let langflow = plugins
+        plugins
             .get(&Component::parse("langflow://package/class/name").unwrap())
             .unwrap();
-        assert_eq!(langflow.protocol(), "langflow");
 
-        let mcp_over_http = plugins
+        plugins
             .get(&Component::parse("mcp+http://package/class/name").unwrap())
             .unwrap();
-        assert_eq!(mcp_over_http.protocol(), "mcp");
     }
 }
