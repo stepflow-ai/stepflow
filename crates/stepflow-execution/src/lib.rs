@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 pub use error::{ExecutionError, Result};
 use error_stack::ResultExt;
-use futures::{FutureExt as _, StreamExt as _, stream::FuturesUnordered};
+use futures::{StreamExt as _, stream::FuturesUnordered};
 use state::State;
 use stepflow_plugin::{DynPlugin, Plugin as _, Plugins};
 use stepflow_workflow::{BaseRef, Component, Flow, Value};
@@ -82,7 +82,7 @@ pub async fn execute(plugins: &Plugins, flow: &Flow, input: Value) -> Result<Val
     }
 }
 
-async fn execute_step<'a>(
+async fn execute_step(
     plugin: Arc<DynPlugin<'static>>,
     component: Component,
     input: impl Future<Output = Result<Value>>,

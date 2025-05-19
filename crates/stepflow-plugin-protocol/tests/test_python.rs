@@ -33,10 +33,16 @@ async fn test_initialize_disconnect() {
 
     // Determine the path to the `sdks/python` directory from the CARGO_MANIFEST_DIR.
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let python_dir = std::path::Path::new(&manifest_dir).join("../../sdks/python");
+    let python_dir = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("sdks")
+        .join("python");
     let python_dir = python_dir.to_str().unwrap();
 
-    let client = Client::builder("/Users/benjamin.chambers/.local/bin/uv")
+    let client = Client::builder(uv)
         .args(["--project", python_dir, "run", "stepflow_sdk"])
         .build()
         .await

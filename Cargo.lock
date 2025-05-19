@@ -971,6 +971,7 @@ dependencies = [
  "stepflow-protocol",
  "stepflow-schema",
  "stepflow-workflow",
+ "tracing",
 ]
 
 [[package]]

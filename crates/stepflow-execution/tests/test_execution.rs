@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::BufReader;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use stepflow_execution::execute;
 use stepflow_plugin::Plugins;
 use stepflow_plugin_testing::{MockComponentBehavior, MockPlugin};

@@ -33,6 +33,8 @@ impl Client {
     }
 
     pub async fn try_new(command: PathBuf, args: Vec<OsString>) -> Result<Self> {
+        error_stack::ensure!(command.is_file(), StdioError::InvalidCommand(command));
+
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
         let (pending_tx, pending_rx) = mpsc::channel(100);
 
@@ -91,6 +93,7 @@ impl ClientHandle {
 
     async fn send(&self, msg: &(dyn erased_serde::Serialize + Send + Sync)) -> Result<()> {
         let msg = serde_json::to_string(&msg).change_context(StdioError::Send)?;
+
         self.outgoing_tx
             .send(msg)
             .await

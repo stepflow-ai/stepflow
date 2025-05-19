@@ -91,11 +91,11 @@ impl ObjectSchema {
     }
 
     /// Get the field of a specific schema.
-    pub fn field(&self, name: &str) -> Option<SchemaPart<'_>> {
+    pub fn field(&self, _name: &str) -> Option<SchemaPart<'_>> {
         todo!()
     }
 
-    pub fn field_mut(&mut self, name: &str) -> Option<SchemaPartMut<'_>> {
+    pub fn field_mut(&mut self, _name: &str) -> Option<SchemaPartMut<'_>> {
         todo!()
     }
 

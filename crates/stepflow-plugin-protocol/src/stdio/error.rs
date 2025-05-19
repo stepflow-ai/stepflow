@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -22,8 +24,10 @@ pub enum StdioError {
     ServerFailure { exit_code: Option<i32> },
     #[error("error closing stepflow component process")]
     Close,
-    #[error("no such command: {0}")]
-    NoSuchCommand(String),
+    #[error("invalid command: {}", .0.display())]
+    InvalidCommand(PathBuf),
+    #[error("error in receive loop")]
+    RecvLoop,
 }
 
 pub type Result<T, E = error_stack::Report<StdioError>> = std::result::Result<T, E>;

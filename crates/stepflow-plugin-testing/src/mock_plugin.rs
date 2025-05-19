@@ -91,10 +91,11 @@ impl Plugin for MockPlugin {
             .components
             .get(component)
             .ok_or(PluginError::UdfImport)?;
+        tracing::debug!("Executing component: {:?} on input: {:?}", component, input);
         let output = component
             .behaviors
             .get(&input)
-            .ok_or(PluginError::UdfImport)?;
+            .ok_or(PluginError::UdfExecution)?;
 
         match output {
             MockComponentBehavior::Error { .. } => error_stack::bail!(PluginError::UdfExecution),
