@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde_json::json;
 use stepflow_plugin::Plugin;
 use stepflow_plugin_protocol::stdio::{Client, StdioPlugin};
@@ -33,7 +35,9 @@ async fn test_initialize_disconnect() {
 
     // Determine the path to the `sdks/python` directory from the CARGO_MANIFEST_DIR.
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let python_dir = std::path::Path::new(&manifest_dir).join("../../sdks/python");
+    let python_dir: PathBuf = [&manifest_dir, "..", "..", "sdks", "python"]
+        .iter()
+        .collect();
     let python_dir = python_dir.to_str().unwrap();
 
     let client = Client::builder(uv)
