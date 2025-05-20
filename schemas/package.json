@@ -1,0 +1,43 @@
+{
+  "name": "@stepflow/schemas",
+  "version": "0.1.0",
+  "description": "TypeScript Zod schemas for StepFlow",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "stepflow",
+    "schemas",
+    "zod",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^18.15.0",
+    "@typescript-eslint/eslint-plugin": "^5.54.0",
+    "@typescript-eslint/parser": "^5.54.0",
+    "eslint": "^8.35.0",
+    "jest": "^29.5.0",
+    "prettier": "^2.8.4",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "peerDependencies": {
+    "zod": "^3.22.4"
+  }
+}
