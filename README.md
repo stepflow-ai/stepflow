@@ -51,6 +51,25 @@ Most steps are defined in a step-service, which the executor invokes using a JSO
 
 *[Installation and usage instructions will be added as the project develops]*
 
+### Build and Run
+
+The easiest way to run a workflow is to run it locally.
+To do this, you need to create a `stepflow-config.yaml`.
+If you don't specify one, the CLI will attempt to locate one in the directory containing the workflow.
+
+The following command builds and uses the CLI to run a workflow.
+
+```sh
+cargo run -- run --flow=<flow.yaml> --input=<input_path.json>
+```
+
+If you wish to build and run separately, you can use the following commands:
+
+```sh
+cargo build
+./target/debug/stepflow-main run --flow=<flow.yaml> --input=<input_path.json>
+```
+
 ## Development
 
 This project is built in Rust and uses:

@@ -32,7 +32,11 @@ impl Client {
         Builder::new(command)
     }
 
-    pub async fn try_new(command: PathBuf, args: Vec<OsString>) -> Result<Self> {
+    pub async fn try_new(
+        command: PathBuf,
+        args: Vec<OsString>,
+        working_directory: PathBuf,
+    ) -> Result<Self> {
         error_stack::ensure!(command.is_file(), StdioError::InvalidCommand(command));
 
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
@@ -40,7 +44,8 @@ impl Client {
 
         let recv_span = tracing::info_span!("recv_message_loop", command = ?command, args = ?args);
         let loop_handle = tokio::spawn(
-            recv_message_loop(command, args, outgoing_rx, pending_rx).instrument(recv_span),
+            recv_message_loop(command, args, working_directory, outgoing_rx, pending_rx)
+                .instrument(recv_span),
         );
 
         Ok(Self {
@@ -132,6 +137,7 @@ impl ClientHandle {
 pub struct Builder {
     command: PathBuf,
     args: Vec<OsString>,
+    working_directory: PathBuf,
 }
 
 impl Builder {
@@ -139,6 +145,8 @@ impl Builder {
         Self {
             command: command.into(),
             args: Vec::new(),
+            working_directory: std::env::current_dir()
+                .unwrap_or_else(|_| panic!("Failed to get current directory")),
         }
     }
 
@@ -154,8 +162,13 @@ impl Builder {
         self
     }
 
+    pub fn working_directory(mut self, working_directory: impl Into<PathBuf>) -> Self {
+        self.working_directory = working_directory.into();
+        self
+    }
+
     pub async fn build(self) -> Result<Client> {
-        let client = Client::try_new(self.command, self.args).await?;
+        let client = Client::try_new(self.command, self.args, self.working_directory).await?;
         Ok(client)
     }
 }

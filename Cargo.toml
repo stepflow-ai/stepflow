@@ -39,7 +39,7 @@ tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "process"
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
 tracing = "0.1.41"
 tracing-error = "0.2.1"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "json" ] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "json", "local-time" ] }
 trait-variant = "0.1.2"
 url = { version = "2.5.4", features = ["serde"]}
 uuid = { version = "1.16.0", features = ["v4", "serde"]}
