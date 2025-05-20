@@ -21,6 +21,20 @@ pub enum MockComponentBehavior {
     Valid { output: Value },
 }
 
+impl MockComponentBehavior {
+    pub fn valid(output: impl Into<Value>) -> Self {
+        Self::Valid {
+            output: output.into(),
+        }
+    }
+
+    pub fn error(message: impl Into<String>) -> Self {
+        Self::Error {
+            message: message.into(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Default)]
 pub struct MockComponent {
     always_execute: bool,
@@ -45,8 +59,12 @@ impl MockComponent {
         self
     }
 
-    pub fn behavior(&mut self, input: Value, behavior: MockComponentBehavior) -> &mut Self {
-        self.behaviors.insert(input, behavior);
+    pub fn behavior(
+        &mut self,
+        input: impl Into<Value>,
+        behavior: MockComponentBehavior,
+    ) -> &mut Self {
+        self.behaviors.insert(input.into(), behavior);
         self
     }
 }
