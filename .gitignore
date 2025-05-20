@@ -2,3 +2,16 @@ target
 .vscode
 .idea
 .DS_Store
+
+# TypeScript specific
+node_modules
+dist
+coverage
+.nyc_output
+*.log
+*.tsbuildinfo
+.npm
+.eslintcache
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
