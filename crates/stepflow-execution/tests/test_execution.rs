@@ -167,8 +167,12 @@ async fn execute_flows() {
 
     let mut plugins = Plugins::new();
 
-    plugins.register("mock".to_owned(), create_mock_plugin());
-    plugins.register("python".to_owned(), create_python_plugin().await.unwrap());
+    plugins
+        .register("mock".to_owned(), create_mock_plugin())
+        .unwrap();
+    plugins
+        .register("python".to_owned(), create_python_plugin().await.unwrap())
+        .unwrap();
 
     let rt = tokio::runtime::Handle::current();
 

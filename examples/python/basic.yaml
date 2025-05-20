@@ -1,0 +1,34 @@
+input_schema:
+  type: object
+  properties:
+    m:
+      type: integer
+    n:
+      type: integer
+output_schema:
+  type: object
+  properties:
+    x:
+      type: integer
+    y:
+      type: integer
+steps:
+  - id: m_plus_n
+    component: python://add
+    args:
+      a: { input: m }
+      b: { input: n }
+  - id: m_times_n
+    component: python://multiply
+    args:
+      a: { input: m }
+      b: { input: n }
+  - id: m_plus_n_times_n
+    component: python://multiply
+    args:
+      a: { step: m_plus_n, field: result }
+      b: { input: n }
+outputs:
+  m_plus_n_times_n: { step: m_plus_n_times_n, field: result }
+  m_times_n: { step: m_times_n, field: result }
+  m_plus_n: { step: m_plus_n, field: result }

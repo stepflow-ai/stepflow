@@ -5,6 +5,21 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Main stepflow binary."
+description = "Stepflow CLI."
 
 [dependencies]
+clap.workspace = true
+error-stack.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yml.workspace = true
+stepflow-execution.workspace = true
+stepflow-plugin.workspace = true
+stepflow-plugin-protocol.workspace = true
+stepflow-workflow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+which.workspace = true

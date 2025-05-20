@@ -23,8 +23,9 @@ struct ReceiveMessageLoop {
 }
 
 impl ReceiveMessageLoop {
-    fn try_new(command: PathBuf, args: Vec<OsString>) -> Result<Self> {
+    fn try_new(command: PathBuf, args: Vec<OsString>, working_directory: PathBuf) -> Result<Self> {
         let child = tokio::process::Command::new(&command)
+            .current_dir(&working_directory)
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -141,10 +142,11 @@ impl ReceiveMessageLoop {
 pub async fn recv_message_loop(
     command: PathBuf,
     args: Vec<OsString>,
+    working_directory: PathBuf,
     mut outgoing_rx: mpsc::Receiver<String>,
     mut pending_rx: mpsc::Receiver<(Uuid, oneshot::Sender<OwnedIncoming>)>,
 ) -> Result<()> {
-    let mut recv_loop = ReceiveMessageLoop::try_new(command, args)?;
+    let mut recv_loop = ReceiveMessageLoop::try_new(command, args, working_directory)?;
 
     loop {
         match recv_loop.iteration(&mut outgoing_rx, &mut pending_rx).await {

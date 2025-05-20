@@ -18,6 +18,8 @@ pub enum PluginError {
     UnknownScheme(String),
     #[error("unable to downcast plugin for protocol '{0}'")]
     DowncastErr(String),
+    #[error("plugins already initialized")]
+    AlreadyInitialized,
 }
 
 pub type Result<T, E = error_stack::Report<PluginError>> = std::result::Result<T, E>;
