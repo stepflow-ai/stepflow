@@ -5,17 +5,22 @@ from stepflow_sdk.server import StepflowStdioServer
 server = StepflowStdioServer()
 
 # Example input/output types
-class AddInput(msgspec.Struct):
+class MathInput(msgspec.Struct):
     a: int
     b: int
 
-class AddOutput(msgspec.Struct):
+class MathOutput(msgspec.Struct):
     result: int
 
 # Register a simple addition component
 @server.component
-def add(input: AddInput) -> AddOutput:
-    return AddOutput(result=input.a + input.b)
+def add(input: MathInput) -> MathOutput:
+    return MathOutput(result=input.a + input.b)
+
+# Register a simple multiplication component
+@server.component
+def multiply(input: MathInput) -> MathOutput:
+    return MathOutput(result=input.a * input.b)
 
 def main():
     # Start the server

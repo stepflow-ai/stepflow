@@ -58,6 +58,10 @@ This project is built in Rust and uses:
 - JSON-RPC for service communication
 - Async runtime for parallel execution
 
+Run tests with `cargo test` or `cargo insta test --unreferenced=delete --review`.
+The latter runs uses `insta` to delete outdated snapshots and review any changes after the tests run.
+Both commands will fail if any test fails, including if the snapshot output doesn't match the actual output.
+
 ## License
 
 *[License information to be added]*

@@ -16,10 +16,6 @@ impl StdioPlugin {
 }
 
 impl Plugin for StdioPlugin {
-    fn protocol(&self) -> &'static str {
-        "stdio"
-    }
-
     async fn init(&self) -> Result<()> {
         self.client
             .request(&stepflow_protocol::initialization::Request {
