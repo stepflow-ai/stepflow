@@ -8,13 +8,6 @@ pub enum CompileError {
     NoPluginFound,
     #[error("Failed to get info for component")]
     ComponentInfo,
-    #[error("steps[{step}].always_execute={actual} but plugin info says {expected}")]
-    AlwaysExecuteDisagreement {
-        step: usize,
-        expected: bool,
-        actual: bool,
-    },
-
     #[error("missing step execution info")]
     MissingStepExecution,
 }

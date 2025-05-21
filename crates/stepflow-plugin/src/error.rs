@@ -1,3 +1,4 @@
+use stepflow_workflow::Component;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -6,6 +7,8 @@ pub enum PluginError {
     Initializing,
     #[error("error getting component info")]
     ComponentInfo,
+    #[error("unknown component: {0}")]
+    UnknownComponent(Component),
     #[error("error executing component")]
     Execution,
     #[error("error importing user-defined function")]
@@ -20,6 +23,8 @@ pub enum PluginError {
     DowncastErr(String),
     #[error("plugins already initialized")]
     AlreadyInitialized,
+    #[error("invalid input")]
+    InvalidInput,
 }
 
 pub type Result<T, E = error_stack::Report<PluginError>> = std::result::Result<T, E>;

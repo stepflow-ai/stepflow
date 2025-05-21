@@ -21,6 +21,8 @@ impl std::fmt::Display for Component {
     }
 }
 
+pub type ComponentKey<'a> = (Option<&'a str>, &'a str);
+
 impl Component {
     /// Creates a new component from a URL.
     pub fn new(url: Url) -> Self {
@@ -75,5 +77,9 @@ impl Component {
     pub fn parse(url: &str) -> Result<Self, url::ParseError> {
         let url = Url::from_str(url)?;
         Ok(Self::new(url))
+    }
+
+    pub fn key(&self) -> ComponentKey {
+        (self.host(), self.path())
     }
 }

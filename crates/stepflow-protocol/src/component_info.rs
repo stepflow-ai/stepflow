@@ -21,10 +21,6 @@ pub struct ComponentInfo {
     ///
     /// This should be a JSON object.
     pub output_schema: ObjectSchema,
-
-    /// Whether the component should be executed even if it has no inputs.
-    #[serde(default)]
-    pub always_execute: bool,
 }
 
 /// Response to the initializaiton request.

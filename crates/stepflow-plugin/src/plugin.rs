@@ -4,7 +4,6 @@ use stepflow_workflow::{Component, Value};
 
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]
-// #[dynosaur::dynosaur(pub DynSendPlugin = dyn SendPlugin)]
 pub trait Plugin: Send + Sync {
     async fn init(&self) -> Result<()>;
 

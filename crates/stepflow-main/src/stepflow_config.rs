@@ -23,6 +23,9 @@ pub enum PluginConfig {
         command: String,
         args: Vec<String>,
     },
+    Builtin {
+        name: String,
+    },
 }
 
 impl StepflowConfig {
@@ -67,6 +70,13 @@ impl PluginConfig {
                     .change_context(MainError::InstantiatePlugin)?;
 
                 let plugin = StdioPlugin::new(client.handle());
+                plugins
+                    .register(name, plugin)
+                    .change_context(MainError::InstantiatePlugin)?;
+            },
+            Self::Builtin { name } => {
+                // Register the built-in plugin
+                let plugin = stepflow_builtins::Builtins::new();
                 plugins
                     .register(name, plugin)
                     .change_context(MainError::InstantiatePlugin)?;

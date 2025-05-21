@@ -37,18 +37,12 @@ impl MockComponentBehavior {
 
 #[derive(Debug, PartialEq, Default)]
 pub struct MockComponent {
-    always_execute: bool,
     input_schema: ObjectSchema,
     output_schema: ObjectSchema,
     behaviors: HashMap<Value, MockComponentBehavior>,
 }
 
 impl MockComponent {
-    pub fn always_execute(&mut self, always_execute: bool) -> &mut Self {
-        self.always_execute = always_execute;
-        self
-    }
-
     pub fn input_schema(&mut self, input_schema: ObjectSchema) -> &mut Self {
         self.input_schema = input_schema;
         self
@@ -94,7 +88,6 @@ impl Plugin for MockPlugin {
             .get(component)
             .ok_or(PluginError::UdfImport)?;
         Ok(ComponentInfo {
-            always_execute: component.always_execute,
             input_schema: component.input_schema.clone(),
             output_schema: component.output_schema.clone(),
         })
