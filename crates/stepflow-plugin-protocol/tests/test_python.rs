@@ -42,11 +42,13 @@ async fn test_initialize_disconnect() {
         .join("python");
     let python_dir = python_dir.to_str().unwrap();
 
-    let client = Client::builder(uv)
-        .args(["--project", python_dir, "run", "stepflow_sdk"])
-        .build()
-        .await
-        .unwrap();
+    let client = Client::try_new(
+        uv,
+        vec!["--project", python_dir, "run", "stepflow_sdk"],
+        std::env::current_dir().unwrap(),
+    )
+    .await
+    .unwrap();
 
     let plugin = StdioPlugin::new(client.handle());
     plugin.init().await.unwrap();

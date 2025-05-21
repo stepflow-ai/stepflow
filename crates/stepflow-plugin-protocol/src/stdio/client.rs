@@ -28,13 +28,9 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn builder(command: impl Into<PathBuf>) -> Builder {
-        Builder::new(command)
-    }
-
-    pub async fn try_new(
+    pub async fn try_new<S: Into<OsString>>(
         command: PathBuf,
-        args: Vec<OsString>,
+        args: Vec<S>,
         working_directory: PathBuf,
     ) -> Result<Self> {
         error_stack::ensure!(command.is_file(), StdioError::InvalidCommand(command));
@@ -42,6 +38,7 @@ impl Client {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
         let (pending_tx, pending_rx) = mpsc::channel(100);
 
+        let args: Vec<OsString> = args.into_iter().map(|s| s.into()).collect();
         let recv_span = tracing::info_span!("recv_message_loop", command = ?command, args = ?args);
         let loop_handle = tokio::spawn(
             recv_message_loop(command, args, working_directory, outgoing_rx, pending_rx)
@@ -131,44 +128,5 @@ impl ClientHandle {
         let response = response_rx.await.change_context(StdioError::Recv)?;
         debug_assert_eq!(response.id, Some(id));
         Ok(response)
-    }
-}
-
-pub struct Builder {
-    command: PathBuf,
-    args: Vec<OsString>,
-    working_directory: PathBuf,
-}
-
-impl Builder {
-    pub(crate) fn new(command: impl Into<PathBuf>) -> Self {
-        Self {
-            command: command.into(),
-            args: Vec::new(),
-            working_directory: std::env::current_dir()
-                .unwrap_or_else(|_| panic!("Failed to get current directory")),
-        }
-    }
-
-    pub fn arg(mut self, arg: impl Into<OsString>) -> Self {
-        self.args.push(arg.into());
-        self
-    }
-
-    pub fn args<I: Into<OsString>>(mut self, args: impl IntoIterator<Item = I>) -> Self {
-        for arg in args {
-            self.args.push(arg.into());
-        }
-        self
-    }
-
-    pub fn working_directory(mut self, working_directory: impl Into<PathBuf>) -> Self {
-        self.working_directory = working_directory.into();
-        self
-    }
-
-    pub async fn build(self) -> Result<Client> {
-        let client = Client::try_new(self.command, self.args, self.working_directory).await?;
-        Ok(client)
     }
 }

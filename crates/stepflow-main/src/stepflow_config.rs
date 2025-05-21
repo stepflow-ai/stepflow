@@ -62,10 +62,7 @@ impl PluginConfig {
                     .first_result()
                     .change_context(MainError::MissingCommand(command))?;
 
-                let client = Client::builder(command)
-                    .args(args)
-                    .working_directory(working_directory)
-                    .build()
+                let client = Client::try_new(command, args, working_directory.to_owned())
                     .await
                     .change_context(MainError::InstantiatePlugin)?;
 

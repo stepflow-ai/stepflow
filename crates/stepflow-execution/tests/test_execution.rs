@@ -88,11 +88,13 @@ async fn create_python_plugin() -> error_stack::Result<StdioPlugin, TestError> {
         .join("python");
     let python_dir = python_dir.to_str().ok_or(TestError)?;
 
-    let client = Client::builder(uv)
-        .args(["--project", python_dir, "run", "stepflow_sdk"])
-        .build()
-        .await
-        .change_context(TestError)?;
+    let client = Client::try_new(
+        uv,
+        vec!["--project", python_dir, "run", "stepflow_sdk"],
+        std::env::current_dir().unwrap(),
+    )
+    .await
+    .change_context(TestError)?;
 
     let plugin = StdioPlugin::new(client.handle());
     plugin.init().await.change_context(TestError)?;
