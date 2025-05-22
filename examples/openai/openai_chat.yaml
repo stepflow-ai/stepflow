@@ -11,15 +11,16 @@ inputs:
       default: "You are a helpful assistant, explaining complex things in simple terms."
 
 steps:
+  - id: create_messages
+    component: "builtins://create_messages"
+    args:
+      system_instructions: { input: system_message }
+      user_prompt: { input: prompt }
+
   - id: send_message
     component: "builtins://openai"
     args:
-      messages:
-        literal:
-          - role: system
-            content: system_message
-          - role: user
-            content: prompt
+      messages: { step: create_messages, field: messages }
   
 outputs:
   response: { step: send_message, field: response }

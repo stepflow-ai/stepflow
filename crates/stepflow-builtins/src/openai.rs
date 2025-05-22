@@ -27,31 +27,31 @@ struct OpenAIInput {
     messages: Vec<ChatMessage>,
 
     /// Max tokens to generate (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u16>,
 
     /// Temperature setting (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
 
     /// API key override (optional - uses environment variable if not provided)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     api_key: Option<String>,
 }
 
 /// Chat message format
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
-struct ChatMessage {
+pub struct ChatMessage {
     /// The role of the message sender (system, user, assistant)
-    role: ChatMessageRole,
+    pub role: ChatMessageRole,
 
     /// The content of the message
-    content: String,
+    pub content: String,
 }
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-enum ChatMessageRole {
+pub enum ChatMessageRole {
     System,
     User,
     Assistant,
