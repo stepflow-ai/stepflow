@@ -35,7 +35,6 @@ pub(crate) async fn populate<'a>(plugins: &'a Plugins<'a>, flow: &mut Flow) -> R
 
         populate_arg_value_refs(&input_value_refs, &step_value_refs, step.args.values_mut())?;
 
-        let always_execute = component_info.always_execute;
         let mut outputs = component_info.outputs;
         for (output_idx, output) in outputs.iter_mut().enumerate() {
             let value_ref = ValueRef::Step {
@@ -56,10 +55,7 @@ pub(crate) async fn populate<'a>(plugins: &'a Plugins<'a>, flow: &mut Flow) -> R
             output.value_ref = Some(value_ref);
         }
 
-        step.execution = Some(StepExecution {
-            always_execute,
-            outputs,
-        });
+        step.execution = Some(StepExecution { outputs });
     }
 
     populate_arg_value_refs(

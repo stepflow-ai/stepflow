@@ -41,7 +41,4 @@ pub struct StepExecution {
 
     /// The output schema for this step.
     pub output_schema: Option<ObjectSchema>,
-
-    /// Whether this step should execute if none of its outputs are used.
-    pub always_execute: bool,
 }

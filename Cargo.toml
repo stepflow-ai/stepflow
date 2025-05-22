@@ -16,6 +16,7 @@ error-stack = { version = "0.5.0", features = ["serde"] }
 futures = "0.3.31"
 indexmap = { version = "2.8.0", features = ["serde"] }
 insta = { version = "1.34.0", features = ["glob", "yaml" ] }
+openai-api-rs = "6.0.6"
 safer_owning_ref = "0.5.0"
 schemars = { version = "0.8.22", features = ["indexmap2", "impl_json_schema", "url"] }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
@@ -24,6 +25,7 @@ serde_yml = "0.0.12"
 similar = "2.7.0"
 similar-asserts = { version = "1.7.0", features = ["serde" ] }
 static_assertions = "1.1.0"
+stepflow-builtins = { path = "./crates/stepflow-builtins" }
 stepflow-compiler = { path = "./crates/stepflow-compiler" }
 stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }
 stepflow-components-stdio = { path = "./crates/stepflow-components-client" }
@@ -34,6 +36,7 @@ stepflow-plugin-testing = { path = "./crates/stepflow-plugin-testing" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
 stepflow-schema = { path = "./crates/stepflow-schema" }
 stepflow-workflow = { path = "./crates/stepflow-workflow" }
+test-with = { version = "0.14.10", features = ["runtime"] }
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "process", "sync", "io-util", "time"]}
 tokio-stream = { version = "0.1.17", features = ["io-util"] }

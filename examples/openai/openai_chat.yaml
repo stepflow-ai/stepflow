@@ -1,0 +1,25 @@
+inputs:
+  type: object
+  required: [prompt]
+  properties:
+    prompt:
+      type: string
+      description: "The prompt to send to OpenAI"
+    system_message:
+      type: string
+      description: "Optional system message to set context"
+      default: "You are a helpful assistant, explaining complex things in simple terms."
+
+steps:
+  - id: send_message
+    component: "builtins://openai"
+    args:
+      messages:
+        literal:
+          - role: system
+            content: system_message
+          - role: user
+            content: prompt
+  
+outputs:
+  response: { step: send_message, field: response }

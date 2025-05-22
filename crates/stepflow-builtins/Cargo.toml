@@ -1,26 +1,27 @@
 [package]
-name = "stepflow-main"
+name = "stepflow-builtins"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Stepflow CLI."
+description = "Stepflow component plugin providing built-in components."
 
 [dependencies]
-clap.workspace = true
+dynosaur.workspace = true
 error-stack.workspace = true
+openai-api-rs.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yml.workspace = true
-stepflow-builtins.workspace = true
-stepflow-execution.workspace = true
 stepflow-plugin.workspace = true
-stepflow-plugin-protocol.workspace = true
+stepflow-protocol.workspace = true
+stepflow-schema.workspace = true
 stepflow-workflow.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
-url.workspace = true
-which.workspace = true
+trait-variant.workspace = true
+
+[dev-dependencies]
+test-with.workspace = true

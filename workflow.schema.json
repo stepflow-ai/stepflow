@@ -536,14 +536,7 @@
     "StepExecution": {
       "description": "Details related to execution of steps.",
       "type": "object",
-      "required": [
-        "always_execute"
-      ],
       "properties": {
-        "always_execute": {
-          "description": "Whether this step should execute if none of its outputs are used.",
-          "type": "boolean"
-        },
         "input_schema": {
           "description": "The input schema for this step.",
           "anyOf": [
