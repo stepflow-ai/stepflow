@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # StepFlow Introduction
 
-StepFlow is an open standard for creating and running for Agentic AI workflows.
+StepFlow is an open standard for creating and running GenAI and Agentic workflows.
 
 It consists of 3 main parts:
 
@@ -21,13 +21,15 @@ It consists of 3 main parts:
 
 ```mermaid
 flowchart LR
+    Workflows["Workflows"]@{ shape: docs }
+    Workflows <-->|"Workflow YAML"| Host
     subgraph "Local"
         Host["Stepflow Runtime"]
         S1["Component Server A"]
-        S2["Component Server B"]
+        S2["MCP Tool Server B"]
         S3["Component Server C"]
         Host <-->|"StepFlow Protocol"| S1
-        Host <-->|"StepFlow Protocol"| S2
+        Host <-->|"MCP Protocol"| S2
         Host <-->|"StepFlow Protocol"| S3
         S1 <--> D1[("Local<br>Data Source A")]
         S2 <--> D2[("Local<br>Data Source B")]
@@ -39,29 +41,12 @@ flowchart LR
 
 - **StepFlow Runtime**: Where the workflow is executed.
 - **Component Servers**: Lightweight programs that each expose specific workflow components through the standardized StepFlow Protocol.
+- **MCP Servers**: MCP servers can be used as component servers, with each tool treated as a component.
 - **Local Data Sources**: Files, databases and services that Component Servers can securely access.
 - **Remote Services**: External systems available over the internet (e.g., through APIs) that Copmonent Servers servers can connect to.
 
-## Get Started
+## Next Steps
 
-
-
-## Workflows
-
-### Steps
-
-A workflow is a sequence of *steps*.
-Each step has a unique identifier and executes a specific component.
-The input to a step can be created from inputs to the flow, the outputs of earlier steps, and literal values.
-
-### Components
-
-Components provide the logic executed by steps.
-Each step specifies a specific component to execute.
-
-Components are provided by plugins.
-The most common component plugins are described below.
-
-* Built-in components are provided by StepFlow and provide useful building blocks such as evaluation of sub-flows, looping, and conditional execution.
-* The component protocol is a JSON-RPC protocol for a component server to provide components.
-* Tools provided by MCP (Model Context Protocol) servers can also be used as components.
+* See [Getting Started](./getting_started.md) for installation and running your first workflows.
+* Read more about writing your own [Workflows](./workflows/index.md).
+* Learn how to create your own components using the [StepFlow Protocol](./protocol/index.md).
