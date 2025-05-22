@@ -1,8 +1,12 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
 ---
 
 # Workflows
+Workflows describe the sequence of steps to perform and the information that flows between those steps.
+StepFlow is specifically designed to express GenAI and agentic workflows.
+
+Several capabilities useful 
 
 ## Steps
 

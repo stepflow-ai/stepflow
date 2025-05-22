@@ -64,22 +64,7 @@ const config: Config = {
     ],
   ],
 
-  plugins: [
-    [
-      '@docusaurus/plugin-content-docs',
-      {
-        id: "specification",
-        path: 'specification',
-        sidebarPath: './sidebars.ts',
-        routeBasePath: 'specification',
-        // Please change this to your repo.
-        // Remove this to remove the "edit this page" links.
-        editUrl:
-          'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
-      }
-    ]
-  ],
-
+  plugins: [],
   themeConfig: {
     // Replace with your project's social card
     image: 'img/docusaurus-social-card.jpg',
@@ -95,13 +80,6 @@ const config: Config = {
           sidebarId: 'docSidebar',
           position: 'left',
           label: 'Docs',
-        },
-        {
-          type: 'docSidebar',
-          sidebarId: 'specSidebar',
-          docsPluginId: 'specification',
-          position: 'left',
-          label: 'Specification',
         },
         // { to: '/blog', label: 'Blog', position: 'left' },
         {
@@ -120,10 +98,6 @@ const config: Config = {
             {
               label: 'Docs',
               to: '/docs/introduction',
-            },
-            {
-              label: 'Specification',
-              to: '/specification/overview',
             },
           ],
         },
