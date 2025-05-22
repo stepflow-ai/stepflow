@@ -73,7 +73,7 @@ impl PluginConfig {
                 plugins
                     .register(name, plugin)
                     .change_context(MainError::InstantiatePlugin)?;
-            },
+            }
             Self::Builtin { name } => {
                 // Register the built-in plugin
                 let plugin = stepflow_builtins::Builtins::new();
