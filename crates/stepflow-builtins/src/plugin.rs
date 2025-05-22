@@ -11,7 +11,7 @@ pub struct Builtins;
 impl Builtins {
     /// Create a new instance with default components registered
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 
