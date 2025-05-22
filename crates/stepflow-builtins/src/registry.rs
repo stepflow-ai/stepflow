@@ -5,7 +5,10 @@ use std::{
 use stepflow_plugin::{PluginError, Result};
 use stepflow_workflow::{Component, ComponentKey};
 
-use crate::{BuiltinComponent, DynBuiltinComponent, openai::OpenAIComponent};
+use crate::{
+    BuiltinComponent, DynBuiltinComponent, messages::CreateMessagesComponent,
+    openai::OpenAIComponent,
+};
 
 #[derive(Default)]
 struct Registry {
@@ -29,6 +32,7 @@ impl Registry {
 static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     let mut registry = Registry::default();
     registry.register("openai", "", OpenAIComponent::new("gpt-3.5-turbo"));
+    registry.register("create_messages", "", CreateMessagesComponent);
     registry
 });
 

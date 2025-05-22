@@ -2,6 +2,7 @@ use stepflow_protocol::component_info::ComponentInfo;
 use stepflow_workflow::Value;
 
 mod error;
+mod messages;
 mod openai;
 mod plugin;
 mod registry;
