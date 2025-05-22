@@ -133,7 +133,8 @@ impl BuiltinComponent for OpenAIComponent {
             .change_context_lazy(|| BuiltinError::OpenAI("generating completion".to_owned()))?;
 
         let response = result
-            .choices.first()
+            .choices
+            .first()
             .ok_or_else(|| BuiltinError::OpenAI("missing completion".to_owned()))?;
         let response = response.message.content.clone().unwrap_or_default();
         let output = OpenAIOutput { response };
