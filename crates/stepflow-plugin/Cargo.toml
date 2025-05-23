@@ -16,7 +16,6 @@ thiserror.workspace = true
 trait-variant.workspace = true
 
 [dev-dependencies]
-stepflow-plugin-testing.workspace = true
 
 [lints]
 workspace = true

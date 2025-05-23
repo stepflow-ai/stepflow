@@ -58,3 +58,9 @@ mod_module_files = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
 undocumented-unsafe-blocks = "warn"
+
+[workspace.metadata.cargo-machete]
+ignored = []
+
+[workspace.metadata.cargo-machete.renamed]
+safer_owning_ref = "owning_ref"

@@ -80,5 +80,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Machete
-        uses: bnjbvr/cargo-machete@main
+      - name: Install cargo-machete
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: install
+          args: cargo-machete@0.8.0
+      - name: Run cargo-machete
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: machete
+          args: --with-metadata

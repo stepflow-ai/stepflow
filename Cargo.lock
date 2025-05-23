@@ -2124,7 +2124,6 @@ dependencies = [
  "error-stack",
  "futures",
  "stepflow-core",
- "stepflow-plugin-testing",
  "thiserror 2.0.12",
  "trait-variant",
 ]
