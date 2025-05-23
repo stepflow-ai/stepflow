@@ -1,6 +1,9 @@
 use error_stack::ResultExt;
+use stepflow_core::{
+    component::ComponentInfo,
+    workflow::{Component, Value},
+};
 use stepflow_plugin::{Plugin, PluginError, Result};
-use stepflow_core::{component::ComponentInfo, workflow::{Component, Value}};
 
 use super::ClientHandle;
 
@@ -17,14 +20,14 @@ impl StdioPlugin {
 impl Plugin for StdioPlugin {
     async fn init(&self) -> Result<()> {
         self.client
-            .request(&stepflow_protocol::initialization::Request {
+            .request(&crate::schema::initialization::Request {
                 runtime_protocol_version: 1,
             })
             .await
             .change_context(PluginError::Initializing)?;
 
         self.client
-            .notify(&stepflow_protocol::initialization::Complete {})
+            .notify(&crate::schema::initialization::Complete {})
             .await
             .change_context(PluginError::Initializing)?;
 
@@ -35,7 +38,7 @@ impl Plugin for StdioPlugin {
         // TODO: Enrich this? Component not found, etc. based on the protocol error code?
         let response = self
             .client
-            .request(&stepflow_protocol::component_info::Request {
+            .request(&crate::schema::component_info::Request {
                 component: component.clone(),
             })
             .await
@@ -47,7 +50,7 @@ impl Plugin for StdioPlugin {
     async fn execute(&self, component: &Component, input: Value) -> Result<Value> {
         let response = self
             .client
-            .request(&stepflow_protocol::component_execute::Request {
+            .request(&crate::schema::component_execute::Request {
                 component: component.clone(),
                 input,
             })

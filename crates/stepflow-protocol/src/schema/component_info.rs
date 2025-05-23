@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use stepflow_core::{component::ComponentInfo, workflow::Component};
 
-use crate::Method;
+use crate::schema::Method;
 
 /// Request from the runtime for information about a specific component.
 #[derive(Debug, Clone, Serialize, Deserialize)]

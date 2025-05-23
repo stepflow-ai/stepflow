@@ -2074,8 +2074,8 @@ dependencies = [
  "serde_yml",
  "stepflow-core",
  "stepflow-plugin",
- "stepflow-plugin-protocol",
  "stepflow-plugin-testing",
+ "stepflow-protocol",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -2097,7 +2097,7 @@ dependencies = [
  "stepflow-core",
  "stepflow-execution",
  "stepflow-plugin",
- "stepflow-plugin-protocol",
+ "stepflow-protocol",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -2120,28 +2120,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stepflow-plugin-protocol"
-version = "0.1.0"
-dependencies = [
- "erased-serde",
- "error-stack",
- "serde",
- "serde_json",
- "similar-asserts",
- "stepflow-core",
- "stepflow-plugin",
- "stepflow-protocol",
- "thiserror 2.0.12",
- "tokio",
- "tokio-stream",
- "tracing",
- "tracing-error",
- "tracing-subscriber",
- "uuid",
- "which",
-]
-
-[[package]]
 name = "stepflow-plugin-testing"
 version = "0.1.0"
 dependencies = [
@@ -2156,9 +2134,16 @@ dependencies = [
 name = "stepflow-protocol"
 version = "0.1.0"
 dependencies = [
+ "erased-serde",
+ "error-stack",
  "serde",
  "serde_json",
  "stepflow-core",
+ "stepflow-plugin",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-stream",
+ "tracing",
  "uuid",
 ]
 

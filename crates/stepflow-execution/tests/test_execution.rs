@@ -6,8 +6,8 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use stepflow_execution::execute;
 use stepflow_plugin::{Plugin, Plugins};
-use stepflow_plugin_protocol::stdio::{Client, StdioPlugin};
 use stepflow_plugin_testing::{MockComponentBehavior, MockPlugin};
+use stepflow_protocol::stdio::{Client, StdioPlugin};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();

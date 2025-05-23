@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{Component, Value};
 
-use crate::Method;
+use crate::schema::Method;
 
 /// Request from the runtime to initialize the component server.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
+use crate::schema::RemoteError;
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
-use stepflow_protocol::RemoteError;
 use uuid::Uuid;
 
 use crate::stdio::{Result, StdioError};

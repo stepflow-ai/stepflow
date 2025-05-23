@@ -3,7 +3,7 @@ use std::{ffi::OsString, path::PathBuf};
 use error_stack::ResultExt as _;
 use serde::de::DeserializeOwned;
 
-use stepflow_protocol::{Method, Notification, Request};
+use crate::schema::{Method, Notification, RequestMessage};
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
@@ -82,7 +82,7 @@ impl ClientHandle {
     where
         I: Notification + serde::Serialize + Send + Sync,
     {
-        self.send(&Request {
+        self.send(&RequestMessage {
             jsonrpc: "2.0",
             id: None,
             method: I::NOTIFICATION_NAME,
@@ -117,7 +117,7 @@ impl ClientHandle {
             .await
             .map_err(|_| StdioError::Send)?;
 
-        let request = Request {
+        let request = RequestMessage {
             jsonrpc: "2.0",
             id: Some(id),
             method,

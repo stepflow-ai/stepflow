@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Method, Notification};
+use crate::schema::{Method, Notification};
 
 /// Request from the runtime to initialize the component server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
