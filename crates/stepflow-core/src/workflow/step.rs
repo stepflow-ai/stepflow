@@ -1,7 +1,7 @@
 use super::{Component, Expr};
 use indexmap::IndexMap;
 use schemars::JsonSchema;
-use crate::schema::ObjectSchema;
+use crate::schema::SchemaRef;
 
 /// A step in a workflow that executes a component with specific arguments.
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema)]
@@ -20,8 +20,8 @@ pub struct Step {
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Default, JsonSchema)]
 pub struct StepExecution {
     /// The input schema for this step.
-    pub input_schema: Option<ObjectSchema>,
+    pub input_schema: Option<SchemaRef>,
 
     /// The output schema for this step.
-    pub output_schema: Option<ObjectSchema>,
+    pub output_schema: Option<SchemaRef>,
 }

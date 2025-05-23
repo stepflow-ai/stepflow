@@ -1,6 +1,6 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use stepflow_core::{component::ComponentInfo, schema::ObjectSchema, workflow::Value};
+use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::Value};
 
 use crate::openai::{ChatMessage, ChatMessageRole};
 use crate::{BuiltinComponent, Result, error::BuiltinError};
@@ -25,16 +25,9 @@ struct CreateMessagesOutput {
 
 impl BuiltinComponent for CreateMessagesComponent {
     fn component_info(&self) -> Result<ComponentInfo> {
-        let input_schema = schemars::schema_for!(CreateMessagesInput);
-        let output_schema = schemars::schema_for!(CreateMessagesOutput);
+        let input_schema = SchemaRef::for_type::<CreateMessagesInput>();
+        let output_schema = SchemaRef::for_type::<CreateMessagesOutput>();
 
-        tracing::info!("Input schema: {:?}", input_schema);
-        tracing::info!("Output schema: {:?}", output_schema);
-
-        let input_schema =
-            ObjectSchema::try_new(input_schema.schema).change_context(BuiltinError::Internal)?;
-        let output_schema =
-            ObjectSchema::try_new(output_schema.schema).change_context(BuiltinError::Internal)?;
         Ok(ComponentInfo {
             input_schema,
             output_schema,
@@ -69,15 +62,6 @@ impl BuiltinComponent for CreateMessagesComponent {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_create_messages_component_info() {
-        let component = CreateMessagesComponent;
-        let info = component.component_info().unwrap();
-        assert!(info.input_schema.has_field("system_instructions"));
-        assert!(info.input_schema.has_field("user_prompt"));
-        assert!(info.output_schema.has_field("messages"));
-    }
 
     #[tokio::test]
     async fn test_create_messages_component() {

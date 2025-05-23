@@ -1,7 +1,7 @@
 use super::{Expr, Step};
+use crate::schema::SchemaRef;
 use indexmap::IndexMap;
 use schemars::JsonSchema;
-use crate::schema::ObjectSchema;
 
 /// A workflow consisting of a sequence of steps and their outputs.
 ///
@@ -10,13 +10,13 @@ use crate::schema::ObjectSchema;
 /// - Named outputs that can reference step outputs
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema)]
 pub struct Flow {
-    /// The inputs of the flow, mapping input names to their JSON schemas.
+    /// The input schema of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub input_schema: Option<ObjectSchema>,
+    pub input_schema: Option<SchemaRef>,
 
     /// The output schema of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_schema: Option<ObjectSchema>,
+    pub output_schema: Option<SchemaRef>,
 
     /// The steps to execute for the flow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -115,14 +115,14 @@ mod tests {
           - component: langflow://echo
             id: s1
             args:
-              a: { literal: "hello world" }
+              a: "hello world"
           - component: mcp+http://foo/bar
             id: s2
             args:
-              a: { literal: "hello world 2" }
+              a: "hello world 2"
         outputs:
-            s1a: { step: "s1", field: "a" }
-            s2b: { step: "s2", field: "a" }
+            s1a: { $from: "s1", path: "a" }
+            s2b: { $from: s2, path: a }
         output_schema:
             type: object
             properties:
@@ -132,8 +132,8 @@ mod tests {
                     type: string
         "#;
         let flow: Flow = serde_yml::from_str(yaml).unwrap();
-        let input_schema = ObjectSchema::parse(r#"{"type":"object","properties":{"name":{"type":"string","description":"The name to echo"},"count":{"type":"integer"}}}"#).unwrap();
-        let output_schema = ObjectSchema::parse(
+        let input_schema = SchemaRef::parse_json(r#"{"type":"object","properties":{"name":{"type":"string","description":"The name to echo"},"count":{"type":"integer"}}}"#).unwrap();
+        let output_schema = SchemaRef::parse_json(
             r#"{"type":"object","properties":{"s1a":{"type":"string"},"s2b":{"type":"string"}}}"#,
         )
         .unwrap();
@@ -158,8 +158,8 @@ mod tests {
                     }
                 ],
                 outputs: indexmap! {
-                    "s1a".to_owned() => Expr::step_field("s1", "a"),
-                    "s2b".to_owned() => Expr::step_field("s2", "a"),
+                    "s1a".to_owned() => Expr::step_path("s1", "a"),
+                    "s2b".to_owned() => Expr::step_path("s2", "a"),
                 },
                 output_schema: Some(output_schema),
             }

@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 
+use stepflow_core::{
+    component::ComponentInfo,
+    schema::SchemaRef,
+    workflow::{Component, Value},
+};
 use stepflow_plugin::{Plugin, PluginError, Result};
-use stepflow_core::{component::ComponentInfo, schema::ObjectSchema, workflow::{Component, Value}};
 
 /// A mock plugin that can be used to test various things in the plugin protocol.
 #[derive(Debug, PartialEq)]
@@ -33,20 +37,30 @@ impl MockComponentBehavior {
     }
 }
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq)]
 pub struct MockComponent {
-    input_schema: ObjectSchema,
-    output_schema: ObjectSchema,
+    input_schema: SchemaRef,
+    output_schema: SchemaRef,
     behaviors: HashMap<Value, MockComponentBehavior>,
 }
 
+impl Default for MockComponent {
+    fn default() -> Self {
+        Self {
+            input_schema: SchemaRef::parse_json(r#"{"type": "object"}"#).unwrap(),
+            output_schema: SchemaRef::parse_json(r#"{"type": "object"}"#).unwrap(),
+            behaviors: HashMap::new(),
+        }
+    }
+}
+
 impl MockComponent {
-    pub fn input_schema(&mut self, input_schema: ObjectSchema) -> &mut Self {
+    pub fn input_schema(&mut self, input_schema: SchemaRef) -> &mut Self {
         self.input_schema = input_schema;
         self
     }
 
-    pub fn output_schema(&mut self, output_schema: ObjectSchema) -> &mut Self {
+    pub fn output_schema(&mut self, output_schema: SchemaRef) -> &mut Self {
         self.output_schema = output_schema;
         self
     }

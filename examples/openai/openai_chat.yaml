@@ -14,13 +14,13 @@ steps:
   - id: create_messages
     component: "builtins://create_messages"
     args:
-      system_instructions: { input: system_message }
-      user_prompt: { input: prompt }
+      system_instructions: { $from: $input, path: system_message }
+      user_prompt: { $from: $input, path: prompt }
 
   - id: send_message
     component: "builtins://openai"
     args:
-      messages: { step: create_messages, field: messages }
+      messages: { $from: create_messages, path: messages }
   
 outputs:
   response: { step: send_message, field: response }

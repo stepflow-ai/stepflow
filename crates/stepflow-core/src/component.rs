@@ -1,17 +1,17 @@
 //! Component information and metadata types.
 
 use serde::{Deserialize, Serialize};
-use crate::schema::ObjectSchema;
+use crate::schema::SchemaRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentInfo {
     /// The input schema for the component.
     ///
-    /// This should be a JSON object.
-    pub input_schema: ObjectSchema,
+    /// Can be any valid JSON schema (object, primitive, array, etc.).
+    pub input_schema: SchemaRef,
 
     /// The output schema for the component.
     ///
-    /// This should be a JSON object.
-    pub output_schema: ObjectSchema,
+    /// Can be any valid JSON schema (object, primitive, array, etc.).
+    pub output_schema: SchemaRef,
 }

@@ -85,7 +85,7 @@ impl State {
             let name = name.to_owned();
 
             match arg {
-                Expr::Literal { literal } => {
+                Expr::Literal(literal) => {
                     tracing::debug!("Resolved field {name:?} to literal {literal:?}");
                     fields.insert(name, literal.as_ref().clone());
                 }
