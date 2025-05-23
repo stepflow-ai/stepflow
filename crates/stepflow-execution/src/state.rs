@@ -46,7 +46,7 @@ impl State {
         let base_ref = expr.base_ref().unwrap();
         let base = self
             .values
-            .get(&base_ref)
+            .get(base_ref)
             .ok_or(ExecutionError::UndefinedValue(base_ref.clone()))?
             .to_owned();
 
