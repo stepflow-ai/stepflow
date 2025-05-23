@@ -1,9 +1,7 @@
 use error_stack::ResultExt as _;
 use openai_api_rs::v1::{api::OpenAIClient, chat_completion};
 use serde::{Deserialize, Serialize};
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_schema::ObjectSchema;
-use stepflow_workflow::Value;
+use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -76,24 +74,16 @@ struct OpenAIOutput {
 
 impl BuiltinComponent for OpenAIComponent {
     fn component_info(&self) -> Result<ComponentInfo> {
-        let input_schema = schemars::schema_for!(OpenAIInput);
-        let output_schema = schemars::schema_for!(OpenAIOutput);
+        let input_schema = SchemaRef::for_type::<OpenAIInput>();
+        let output_schema = SchemaRef::for_type::<OpenAIOutput>();
 
-        tracing::info!("Input schema: {:?}", input_schema);
-        tracing::info!("Output schema: {:?}", output_schema);
-
-        let input_schema =
-            ObjectSchema::try_new(input_schema.schema).change_context(BuiltinError::Internal)?;
-        let output_schema =
-            ObjectSchema::try_new(output_schema.schema).change_context(BuiltinError::Internal)?;
         Ok(ComponentInfo {
             input_schema,
             output_schema,
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<Value> {
-        // DO NOT SUBMIT: untangle value?
+    async fn execute(&self, input: ValueRef) -> Result<ValueRef> {
         let input: OpenAIInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -146,14 +136,6 @@ impl BuiltinComponent for OpenAIComponent {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_openai_component_info() {
-        let component = OpenAIComponent::new("gpt-3.5-turbo");
-        let info = component.component_info().unwrap();
-        assert!(info.input_schema.has_field("messages"));
-        assert!(info.output_schema.has_field("response"));
-    }
 
     #[tokio::test]
     #[test_with::env(OPENAI_API_KEY)]

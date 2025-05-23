@@ -4,7 +4,7 @@ use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_plugin::Plugins;
-use stepflow_plugin_protocol::stdio::{Client, StdioPlugin};
+use stepflow_protocol::stdio::{Client, StdioPlugin};
 
 #[derive(Serialize, Deserialize)]
 pub struct StepflowConfig {

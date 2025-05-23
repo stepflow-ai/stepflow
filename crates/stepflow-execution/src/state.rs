@@ -8,18 +8,18 @@ use futures::{
     stream::FuturesUnordered,
 };
 use indexmap::IndexMap;
-use stepflow_workflow::{BaseRef, Expr, Value};
+use stepflow_core::workflow::{BaseRef, Expr, ValueRef};
 use tokio::sync::oneshot;
 
 #[derive(Clone)]
-struct FutureValue(Shared<BoxFuture<'static, Result<Value, oneshot::error::RecvError>>>);
+struct FutureValue(Shared<BoxFuture<'static, Result<ValueRef, oneshot::error::RecvError>>>);
 
 impl FutureValue {
-    fn literal(value: Value) -> Self {
+    fn literal(value: ValueRef) -> Self {
         Self(futures::future::ready(Ok(value)).boxed().shared())
     }
 
-    fn computed() -> (Self, oneshot::Sender<Value>) {
+    fn computed() -> (Self, oneshot::Sender<ValueRef>) {
         let (sender, receiver) = oneshot::channel();
         let f = receiver.boxed().shared();
         (Self(f), sender)
@@ -46,7 +46,7 @@ impl State {
         let base_ref = expr.base_ref().unwrap();
         let base = self
             .values
-            .get(&base_ref)
+            .get(base_ref)
             .ok_or(ExecutionError::UndefinedValue(base_ref.clone()))?
             .to_owned();
 
@@ -77,7 +77,7 @@ impl State {
     pub fn resolve(
         &self,
         args: &IndexMap<String, Expr>,
-    ) -> Result<impl Future<Output = Result<Value>> + 'static> {
+    ) -> Result<impl Future<Output = Result<ValueRef>> + 'static> {
         tracing::info!("Resolving {args:?}");
         let mut fields = serde_json::Map::with_capacity(args.len());
         let mut field_futures = FuturesUnordered::new();
@@ -85,7 +85,7 @@ impl State {
             let name = name.to_owned();
 
             match arg {
-                Expr::Literal { literal } => {
+                Expr::Literal(literal) => {
                     tracing::debug!("Resolved field {name:?} to literal {literal:?}");
                     fields.insert(name, literal.as_ref().clone());
                 }
@@ -113,16 +113,16 @@ impl State {
                 fields.insert(name, value);
             }
             let input = serde_json::Value::Object(fields);
-            Ok(Value::new(input))
+            Ok(ValueRef::new(input))
         })
     }
 
-    pub fn record_literal(&mut self, base_ref: BaseRef, value: Value) -> Result<()> {
+    pub fn record_literal(&mut self, base_ref: BaseRef, value: ValueRef) -> Result<()> {
         self.values.insert(base_ref, FutureValue::literal(value));
         Ok(())
     }
 
-    pub fn record_future(&mut self, base_ref: BaseRef) -> Result<oneshot::Sender<Value>> {
+    pub fn record_future(&mut self, base_ref: BaseRef) -> Result<oneshot::Sender<ValueRef>> {
         let (future, sender) = FutureValue::computed();
         self.values.insert(base_ref.clone(), future);
         Ok(sender)

@@ -6,8 +6,8 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use stepflow_execution::execute;
 use stepflow_plugin::{Plugin, Plugins};
-use stepflow_plugin_protocol::stdio::{Client, StdioPlugin};
 use stepflow_plugin_testing::{MockComponentBehavior, MockPlugin};
+use stepflow_protocol::stdio::{Client, StdioPlugin};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
@@ -32,7 +32,7 @@ pub fn init_test_logging() {
 #[derive(Deserialize)]
 struct TestFlow {
     #[serde(flatten)]
-    flow: stepflow_workflow::Flow,
+    flow: stepflow_core::workflow::Flow,
     test_cases: Vec<TestCase>,
 }
 
@@ -134,7 +134,7 @@ fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
     });
 }
 
-fn normalize_value(value: stepflow_workflow::Value) -> stepflow_workflow::Value {
+fn normalize_value(value: stepflow_core::workflow::ValueRef) -> stepflow_core::workflow::ValueRef {
     let value = normalize_json(value.as_ref().to_owned());
     value.into()
 }

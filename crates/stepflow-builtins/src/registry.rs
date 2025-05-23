@@ -2,8 +2,8 @@ use std::{
     collections::HashMap,
     sync::{Arc, LazyLock},
 };
+use stepflow_core::workflow::{Component, ComponentKey};
 use stepflow_plugin::{PluginError, Result};
-use stepflow_workflow::{Component, ComponentKey};
 
 use crate::{
     BuiltinComponent, DynBuiltinComponent, messages::CreateMessagesComponent,
@@ -36,7 +36,7 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     registry
 });
 
-pub fn get_component(component: &Component) -> Result<Arc<DynBuiltinComponent>> {
+pub fn get_component(component: &Component) -> Result<Arc<DynBuiltinComponent<'_>>> {
     let key = (component.host(), component.path());
 
     let component = REGISTRY

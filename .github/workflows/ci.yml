@@ -74,3 +74,19 @@ jobs:
         components: 'rustfmt'
     - name: Format
       run: cargo fmt --check
+
+  detect-unused-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install cargo-machete
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: install
+          args: cargo-machete@0.8.0
+      - name: Run cargo-machete
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: machete
+          args: --with-metadata

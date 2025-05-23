@@ -1,4 +1,4 @@
-use stepflow_workflow::Component;
+use stepflow_core::workflow::Component;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

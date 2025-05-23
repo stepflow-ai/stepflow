@@ -16,15 +16,15 @@ steps:
   - id: step1
     component: mock://one_output
     args:
-      input: { input: name }
+      input: { $from: $input, path: name }
   - id: step2
     component: mock://two_outputs
     args:
-      input: { step: step1, field: output }
+      input: { $from: step1, path: output }
 outputs:
-    name: { step: step1, field: output }
-    x: { step: step2, field: x }
-    y: { step: step2, field: y }
+    name: { $from: step1, path: output }
+    x: { $from: step2, path: x }
+    y: { $from: step2, path: y }
 test_cases:
   - input:
       name: a

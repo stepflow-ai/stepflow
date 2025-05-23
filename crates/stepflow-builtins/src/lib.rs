@@ -1,5 +1,4 @@
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_workflow::Value;
+use stepflow_core::{component::ComponentInfo, workflow::ValueRef};
 
 mod error;
 mod messages;
@@ -15,5 +14,5 @@ pub use plugin::Builtins;
 pub(crate) trait BuiltinComponent: Send + Sync {
     fn component_info(&self) -> Result<ComponentInfo>;
 
-    async fn execute(&self, input: Value) -> Result<Value>;
+    async fn execute(&self, input: ValueRef) -> Result<ValueRef>;
 }

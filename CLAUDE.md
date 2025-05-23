@@ -77,13 +77,14 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
    - Handles parallel execution, error handling, and state management
    - Provides built-in control flow steps
 
-4. **Plugin System** (`stepflow-plugin`, `stepflow-plugin-protocol`):
+4. **Plugin System** (`stepflow-plugin`):
    - Manages extensible step services
    - Handles communication with external plugins
 
 5. **Protocol** (`stepflow-protocol`):
    - Defines the JSON-RPC protocol for component communication
    - Uses structs and serde for serialization/deserialization
+   - Implements a component plugin using stdio with a sub-process.
 
 6. **CLI & Service** (`stepflow-main`):
    - Provides the main binary for executing workflows
@@ -115,6 +116,14 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
 - Each crate has its own `error.rs` module with custom error types
 - Uses `error-stack` for rich error context and propagation
 - Uses `thiserror` for defining error enums
+
+## Code Style
+
+### Module Organization
+
+- Prefer `foo.rs` files over `foo/mod.rs` for module organization
+- When creating a module directory, create a corresponding `.rs` file in the parent directory with the same name
+- Example: Instead of `workflow/mod.rs`, create `workflow.rs` at the same level as the `workflow/` directory
 
 ## Configuration
 

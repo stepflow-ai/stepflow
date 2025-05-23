@@ -79,7 +79,7 @@ impl Component {
         Ok(Self::new(url))
     }
 
-    pub fn key(&self) -> ComponentKey {
+    pub fn key(&self) -> ComponentKey<'_> {
         (self.host(), self.path())
     }
 }

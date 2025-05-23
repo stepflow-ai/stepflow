@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
+use stepflow_core::{
+    component::ComponentInfo,
+    schema::SchemaRef,
+    workflow::{Component, ValueRef},
+};
 use stepflow_plugin::{Plugin, PluginError, Result};
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_schema::ObjectSchema;
-use stepflow_workflow::{Component, Value};
 
 /// A mock plugin that can be used to test various things in the plugin protocol.
 #[derive(Debug, PartialEq)]
@@ -18,11 +20,11 @@ pub enum MockComponentBehavior {
     /// Produce the given error.
     Error { message: String },
     /// Return the given result.
-    Valid { output: Value },
+    Valid { output: ValueRef },
 }
 
 impl MockComponentBehavior {
-    pub fn valid(output: impl Into<Value>) -> Self {
+    pub fn valid(output: impl Into<ValueRef>) -> Self {
         Self::Valid {
             output: output.into(),
         }
@@ -35,27 +37,37 @@ impl MockComponentBehavior {
     }
 }
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq)]
 pub struct MockComponent {
-    input_schema: ObjectSchema,
-    output_schema: ObjectSchema,
-    behaviors: HashMap<Value, MockComponentBehavior>,
+    input_schema: SchemaRef,
+    output_schema: SchemaRef,
+    behaviors: HashMap<ValueRef, MockComponentBehavior>,
+}
+
+impl Default for MockComponent {
+    fn default() -> Self {
+        Self {
+            input_schema: SchemaRef::parse_json(r#"{"type": "object"}"#).unwrap(),
+            output_schema: SchemaRef::parse_json(r#"{"type": "object"}"#).unwrap(),
+            behaviors: HashMap::new(),
+        }
+    }
 }
 
 impl MockComponent {
-    pub fn input_schema(&mut self, input_schema: ObjectSchema) -> &mut Self {
+    pub fn input_schema(&mut self, input_schema: SchemaRef) -> &mut Self {
         self.input_schema = input_schema;
         self
     }
 
-    pub fn output_schema(&mut self, output_schema: ObjectSchema) -> &mut Self {
+    pub fn output_schema(&mut self, output_schema: SchemaRef) -> &mut Self {
         self.output_schema = output_schema;
         self
     }
 
     pub fn behavior(
         &mut self,
-        input: impl Into<Value>,
+        input: impl Into<ValueRef>,
         behavior: MockComponentBehavior,
     ) -> &mut Self {
         self.behaviors.insert(input.into(), behavior);
@@ -93,7 +105,7 @@ impl Plugin for MockPlugin {
         })
     }
 
-    async fn execute(&self, component: &Component, input: Value) -> Result<Value> {
+    async fn execute(&self, component: &Component, input: ValueRef) -> Result<ValueRef> {
         let component = self
             .components
             .get(component)
