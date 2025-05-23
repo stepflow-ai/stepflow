@@ -32,7 +32,7 @@ pub fn init_test_logging() {
 #[derive(Deserialize)]
 struct TestFlow {
     #[serde(flatten)]
-    flow: stepflow_workflow::Flow,
+    flow: stepflow_core::workflow::Flow,
     test_cases: Vec<TestCase>,
 }
 
@@ -134,7 +134,7 @@ fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
     });
 }
 
-fn normalize_value(value: stepflow_workflow::Value) -> stepflow_workflow::Value {
+fn normalize_value(value: stepflow_core::workflow::Value) -> stepflow_core::workflow::Value {
     let value = normalize_json(value.as_ref().to_owned());
     value.into()
 }

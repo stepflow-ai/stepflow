@@ -8,7 +8,7 @@ use futures::{
     stream::FuturesUnordered,
 };
 use indexmap::IndexMap;
-use stepflow_workflow::{BaseRef, Expr, Value};
+use stepflow_core::workflow::{BaseRef, Expr, Value};
 use tokio::sync::oneshot;
 
 #[derive(Clone)]

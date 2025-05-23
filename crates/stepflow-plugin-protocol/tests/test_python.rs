@@ -1,7 +1,7 @@
 use serde_json::json;
 use stepflow_plugin::Plugin;
 use stepflow_plugin_protocol::stdio::{Client, StdioPlugin};
-use stepflow_workflow::Component;
+use stepflow_core::workflow::Component;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();

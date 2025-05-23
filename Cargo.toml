@@ -26,16 +26,13 @@ similar = "2.7.0"
 similar-asserts = { version = "1.7.0", features = ["serde" ] }
 static_assertions = "1.1.0"
 stepflow-builtins = { path = "./crates/stepflow-builtins" }
-
 stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }
-stepflow-components-stdio = { path = "./crates/stepflow-components-client" }
+stepflow-core = { path = "./crates/stepflow-core" }
 stepflow-execution = { path = "./crates/stepflow-execution" }
 stepflow-plugin = { path = "./crates/stepflow-plugin" }
 stepflow-plugin-protocol = { path = "./crates/stepflow-plugin-protocol" }
 stepflow-plugin-testing = { path = "./crates/stepflow-plugin-testing" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
-stepflow-schema = { path = "./crates/stepflow-schema" }
-stepflow-workflow = { path = "./crates/stepflow-workflow" }
 test-with = { version = "0.14.10", features = ["runtime"] }
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "process", "sync", "io-util", "time"]}
@@ -51,3 +48,14 @@ which = { version = "7.0.3", features = ["tracing"] }
 # Enable max optimizations for dependencies, but not for our code
 [profile.dev.package."*"]
 opt-level = 3
+
+[workspace.lints.rust]
+rust_2018_idioms = "warn"
+nonstandard_style = "warn"
+future_incompatible = "warn"
+
+[workspace.lints.clippy]
+mod_module_files = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+undocumented-unsafe-blocks = "warn"

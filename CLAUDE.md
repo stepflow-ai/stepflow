@@ -116,6 +116,14 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
 - Uses `error-stack` for rich error context and propagation
 - Uses `thiserror` for defining error enums
 
+## Code Style
+
+### Module Organization
+
+- Prefer `foo.rs` files over `foo/mod.rs` for module organization
+- When creating a module directory, create a corresponding `.rs` file in the parent directory with the same name
+- Example: Instead of `workflow/mod.rs`, create `workflow.rs` at the same level as the `workflow/` directory
+
 ## Configuration
 
 The `stepflow-config.yml` file defines plugins available to the workflow executor:

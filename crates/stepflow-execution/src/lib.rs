@@ -8,7 +8,7 @@ use error_stack::ResultExt;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use state::State;
 use stepflow_plugin::{DynPlugin, Plugin as _, Plugins};
-use stepflow_workflow::{BaseRef, Component, Flow, Value};
+use stepflow_core::workflow::{BaseRef, Component, Flow, Value};
 use tokio::sync::oneshot;
 use tracing::Instrument as _;
 

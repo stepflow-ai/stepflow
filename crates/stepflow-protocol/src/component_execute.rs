@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use stepflow_workflow::{Component, Value};
+use stepflow_core::workflow::{Component, Value};
 
 use crate::Method;
 

@@ -1,7 +1,6 @@
 use error_stack::ResultExt;
 use stepflow_plugin::{Plugin, PluginError, Result};
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_workflow::{Component, Value};
+use stepflow_core::{component::ComponentInfo, workflow::{Component, Value}};
 
 use super::ClientHandle;
 

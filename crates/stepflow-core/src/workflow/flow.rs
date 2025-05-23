@@ -1,8 +1,7 @@
+use super::{Expr, Step};
 use indexmap::IndexMap;
 use schemars::JsonSchema;
-use stepflow_schema::ObjectSchema;
-
-use crate::{Expr, step::Step};
+use crate::schema::ObjectSchema;
 
 /// A workflow consisting of a sequence of steps and their outputs.
 ///
@@ -96,7 +95,7 @@ impl Flow {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Component, Expr};
+    use crate::workflow::{Component, Expr};
     use indexmap::indexmap;
 
     use super::*;
@@ -149,7 +148,6 @@ mod tests {
                         args: indexmap! {
                             "a".to_owned() => Expr::literal("hello world"),
                         },
-                        execution: None,
                     },
                     Step {
                         id: "s2".to_owned(),
@@ -157,7 +155,6 @@ mod tests {
                         args: indexmap! {
                             "a".to_owned() => Expr::literal("hello world 2"),
                         },
-                        execution: None,
                     }
                 ],
                 outputs: indexmap! {

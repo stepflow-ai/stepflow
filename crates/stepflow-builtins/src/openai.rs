@@ -1,9 +1,7 @@
 use error_stack::ResultExt as _;
 use openai_api_rs::v1::{api::OpenAIClient, chat_completion};
 use serde::{Deserialize, Serialize};
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_schema::ObjectSchema;
-use stepflow_workflow::Value;
+use stepflow_core::{component::ComponentInfo, schema::ObjectSchema, workflow::Value};
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 

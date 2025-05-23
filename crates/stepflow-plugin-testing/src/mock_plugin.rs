@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
 use stepflow_plugin::{Plugin, PluginError, Result};
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_schema::ObjectSchema;
-use stepflow_workflow::{Component, Value};
+use stepflow_core::{component::ComponentInfo, schema::ObjectSchema, workflow::{Component, Value}};
 
 /// A mock plugin that can be used to test various things in the plugin protocol.
 #[derive(Debug, PartialEq)]

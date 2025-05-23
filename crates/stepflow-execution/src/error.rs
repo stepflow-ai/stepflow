@@ -1,4 +1,4 @@
-use stepflow_workflow::{BaseRef, Value};
+use stepflow_core::workflow::{BaseRef, Value};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq, Eq)]

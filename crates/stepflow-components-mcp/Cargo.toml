@@ -8,3 +8,6 @@ publish = false
 description = "Step execution plugins for executing MCP tools."
 
 [dependencies]
+
+[lints]
+workspace = true

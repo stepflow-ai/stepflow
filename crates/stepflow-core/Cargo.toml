@@ -1,11 +1,11 @@
 [package]
-name = "stepflow-workflow"
+name = "stepflow-core"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Workflow representation, optimization and validation."
+description = "Core types and functionality for stepflow workflows, schemas, and components."
 
 [dependencies]
 indexmap.workspace = true
@@ -13,9 +13,10 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yml.workspace = true
-stepflow-schema.workspace = true
-thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
 similar-asserts.workspace = true
+
+[lints]
+workspace = true

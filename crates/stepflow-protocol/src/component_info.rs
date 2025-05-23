@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
-use stepflow_schema::ObjectSchema;
-use stepflow_workflow::Component;
+use stepflow_core::{component::ComponentInfo, workflow::Component};
 
 use crate::Method;
 
@@ -8,19 +7,6 @@ use crate::Method;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub component: Component,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComponentInfo {
-    /// The input schema for the component.
-    ///
-    /// This should be a JSON object.
-    pub input_schema: ObjectSchema,
-
-    /// The output schema for the component.
-    ///
-    /// This should be a JSON object.
-    pub output_schema: ObjectSchema,
 }
 
 /// Response to the initializaiton request.

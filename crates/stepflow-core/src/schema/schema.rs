@@ -4,7 +4,7 @@ use schemars::{
     schema::{InstanceType, SchemaObject},
 };
 
-use crate::{Result, SchemaError};
+use super::{Result, SchemaError};
 
 /// Wrapper around a JSON Schema.
 #[repr(transparent)]

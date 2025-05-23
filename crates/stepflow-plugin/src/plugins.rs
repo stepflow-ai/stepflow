@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{DynPlugin, Plugin, PluginError, Result};
 use error_stack::ResultExt;
-use stepflow_workflow::Component;
+use stepflow_core::workflow::Component;
 
 pub struct Plugins {
     step_plugins: HashMap<String, Arc<DynPlugin<'static>>>,
@@ -59,8 +59,8 @@ impl Plugins {
 
 #[cfg(test)]
 mod tests {
-    use stepflow_protocol::component_info::ComponentInfo;
-    use stepflow_workflow::Value;
+    use stepflow_core::component::ComponentInfo;
+    use stepflow_core::workflow::Value;
 
     use crate::{Plugin, Result};
 

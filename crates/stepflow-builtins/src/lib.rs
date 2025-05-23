@@ -1,5 +1,4 @@
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_workflow::Value;
+use stepflow_core::{component::ComponentInfo, workflow::Value};
 
 mod error;
 mod messages;

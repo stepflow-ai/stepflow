@@ -1,8 +1,7 @@
 use crate::{BuiltinComponent, registry};
 use error_stack::ResultExt as _;
 use stepflow_plugin::{Plugin, PluginError, Result};
-use stepflow_protocol::component_info::ComponentInfo;
-use stepflow_workflow::{Component, Value};
+use stepflow_core::{component::ComponentInfo, workflow::{Component, Value}};
 
 /// The struct that implements the `Plugin` trait.
 #[derive(Default)]
