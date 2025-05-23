@@ -66,8 +66,11 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
    - Handles flow structure, steps, components, and value expressions
 
 2. **Workflow Compiler** (`stepflow-compiler`):
+   - Not implemented yet.
    - Validates and compiles workflows before execution
    - Ensures workflows are well-formed and components exist
+   - Annotates workflows with runtime information such as number of uses
+     to facilitate early cancellation / deletion, etc.
 
 3. **Execution Engine** (`stepflow-execution`):
    - Runs the core workflow execution logic
