@@ -2050,23 +2050,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stepflow-compiler"
-version = "0.1.0"
-dependencies = [
- "error-stack",
- "indexmap",
- "insta",
- "serde_yml",
- "stepflow-plugin",
- "stepflow-plugin-testing",
- "stepflow-workflow",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "stepflow-components-mcp"
 version = "0.1.0"
 
