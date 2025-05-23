@@ -1,6 +1,6 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::Value};
+use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 
 use crate::openai::{ChatMessage, ChatMessageRole};
 use crate::{BuiltinComponent, Result, error::BuiltinError};
@@ -34,7 +34,7 @@ impl BuiltinComponent for CreateMessagesComponent {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<Value> {
+    async fn execute(&self, input: ValueRef) -> Result<ValueRef> {
         let CreateMessagesInput {
             system_instructions,
             user_prompt,

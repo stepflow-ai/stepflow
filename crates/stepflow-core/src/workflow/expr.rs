@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::workflow::Value;
+use crate::workflow::ValueRef;
 
 /// An expression that can be either a literal value or a template expression.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize, JsonSchema)]
@@ -30,11 +30,11 @@ pub enum Expr {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
-    Literal(Value),
+    Literal(ValueRef),
 }
 
 impl Expr {
-    pub fn literal(literal: impl Into<Value>) -> Self {
+    pub fn literal(literal: impl Into<ValueRef>) -> Self {
         Self::Literal(literal.into())
     }
 

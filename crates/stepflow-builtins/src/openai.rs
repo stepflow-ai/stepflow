@@ -1,7 +1,7 @@
 use error_stack::ResultExt as _;
 use openai_api_rs::v1::{api::OpenAIClient, chat_completion};
 use serde::{Deserialize, Serialize};
-use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::Value};
+use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -83,8 +83,7 @@ impl BuiltinComponent for OpenAIComponent {
         })
     }
 
-    async fn execute(&self, input: Value) -> Result<Value> {
-        // DO NOT SUBMIT: untangle value?
+    async fn execute(&self, input: ValueRef) -> Result<ValueRef> {
         let input: OpenAIInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 

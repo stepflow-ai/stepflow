@@ -1,7 +1,10 @@
 use crate::{BuiltinComponent, registry};
 use error_stack::ResultExt as _;
+use stepflow_core::{
+    component::ComponentInfo,
+    workflow::{Component, ValueRef},
+};
 use stepflow_plugin::{Plugin, PluginError, Result};
-use stepflow_core::{component::ComponentInfo, workflow::{Component, Value}};
 
 /// The struct that implements the `Plugin` trait.
 #[derive(Default)]
@@ -26,7 +29,7 @@ impl Plugin for Builtins {
             .change_context(PluginError::ComponentInfo)
     }
 
-    async fn execute(&self, component: &Component, input: Value) -> Result<Value> {
+    async fn execute(&self, component: &Component, input: ValueRef) -> Result<ValueRef> {
         let component = registry::get_component(component)?;
         component
             .execute(input)

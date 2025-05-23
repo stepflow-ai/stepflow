@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use stepflow_core::workflow::{Component, Value};
+use stepflow_core::workflow::{Component, ValueRef};
 
 use crate::schema::Method;
 
@@ -7,13 +7,13 @@ use crate::schema::Method;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub component: Component,
-    pub input: Value,
+    pub input: ValueRef,
 }
 
 /// Response to the initializaiton request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
-    pub output: Value,
+    pub output: ValueRef,
 }
 
 impl Method for Request {

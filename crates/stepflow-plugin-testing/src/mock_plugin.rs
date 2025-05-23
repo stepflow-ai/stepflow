@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use stepflow_core::{
     component::ComponentInfo,
     schema::SchemaRef,
-    workflow::{Component, Value},
+    workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{Plugin, PluginError, Result};
 
@@ -20,11 +20,11 @@ pub enum MockComponentBehavior {
     /// Produce the given error.
     Error { message: String },
     /// Return the given result.
-    Valid { output: Value },
+    Valid { output: ValueRef },
 }
 
 impl MockComponentBehavior {
-    pub fn valid(output: impl Into<Value>) -> Self {
+    pub fn valid(output: impl Into<ValueRef>) -> Self {
         Self::Valid {
             output: output.into(),
         }
@@ -41,7 +41,7 @@ impl MockComponentBehavior {
 pub struct MockComponent {
     input_schema: SchemaRef,
     output_schema: SchemaRef,
-    behaviors: HashMap<Value, MockComponentBehavior>,
+    behaviors: HashMap<ValueRef, MockComponentBehavior>,
 }
 
 impl Default for MockComponent {
@@ -67,7 +67,7 @@ impl MockComponent {
 
     pub fn behavior(
         &mut self,
-        input: impl Into<Value>,
+        input: impl Into<ValueRef>,
         behavior: MockComponentBehavior,
     ) -> &mut Self {
         self.behaviors.insert(input.into(), behavior);
@@ -105,7 +105,7 @@ impl Plugin for MockPlugin {
         })
     }
 
-    async fn execute(&self, component: &Component, input: Value) -> Result<Value> {
+    async fn execute(&self, component: &Component, input: ValueRef) -> Result<ValueRef> {
         let component = self
             .components
             .get(component)

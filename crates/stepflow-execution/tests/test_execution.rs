@@ -134,7 +134,7 @@ fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
     });
 }
 
-fn normalize_value(value: stepflow_core::workflow::Value) -> stepflow_core::workflow::Value {
+fn normalize_value(value: stepflow_core::workflow::ValueRef) -> stepflow_core::workflow::ValueRef {
     let value = normalize_json(value.as_ref().to_owned());
     value.into()
 }

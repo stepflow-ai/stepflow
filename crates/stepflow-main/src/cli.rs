@@ -154,7 +154,7 @@ fn load_config(
     Ok(config)
 }
 
-fn load_input(path: Option<PathBuf>) -> Result<stepflow_core::workflow::Value> {
+fn load_input(path: Option<PathBuf>) -> Result<stepflow_core::workflow::ValueRef> {
     match path {
         Some(path) => load(&path),
         None => {
@@ -166,7 +166,7 @@ fn load_input(path: Option<PathBuf>) -> Result<stepflow_core::workflow::Value> {
     }
 }
 
-fn write_output(path: Option<PathBuf>, output: stepflow_core::workflow::Value) -> Result<()> {
+fn write_output(path: Option<PathBuf>, output: stepflow_core::workflow::ValueRef) -> Result<()> {
     match path {
         Some(path) => {
             let format = Format::from_path(&path)?;

@@ -1,7 +1,7 @@
 use error_stack::ResultExt;
 use stepflow_core::{
     component::ComponentInfo,
-    workflow::{Component, Value},
+    workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{Plugin, PluginError, Result};
 
@@ -47,7 +47,7 @@ impl Plugin for StdioPlugin {
         Ok(response.info)
     }
 
-    async fn execute(&self, component: &Component, input: Value) -> Result<Value> {
+    async fn execute(&self, component: &Component, input: ValueRef) -> Result<ValueRef> {
         let response = self
             .client
             .request(&crate::schema::component_execute::Request {

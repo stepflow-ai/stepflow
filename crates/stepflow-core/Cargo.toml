@@ -9,6 +9,7 @@ description = "Core types and functionality for stepflow workflows, schemas, and
 
 [dependencies]
 indexmap.workspace = true
+safer_owning_ref.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

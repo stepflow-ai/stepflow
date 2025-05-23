@@ -1,5 +1,5 @@
 use crate::Result;
-use stepflow_core::{component::ComponentInfo, workflow::{Component, Value}};
+use stepflow_core::{component::ComponentInfo, workflow::{Component, ValueRef}};
 
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]
@@ -12,5 +12,5 @@ pub trait Plugin: Send + Sync {
     /// Execute the step and return the resulting arguments.
     ///
     /// The arguments should be fully resolved.
-    async fn execute(&self, component: &Component, input: Value) -> Result<Value>;
+    async fn execute(&self, component: &Component, input: ValueRef) -> Result<ValueRef>;
 }

@@ -7,12 +7,12 @@ pub use error::{ExecutionError, Result};
 use error_stack::ResultExt;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use state::State;
-use stepflow_core::workflow::{BaseRef, Component, Flow, Value};
+use stepflow_core::workflow::{BaseRef, Component, Flow, ValueRef};
 use stepflow_plugin::{DynPlugin, Plugin as _, Plugins};
 use tokio::sync::oneshot;
 use tracing::Instrument as _;
 
-pub async fn execute(plugins: &Plugins, flow: &Flow, input: Value) -> Result<Value> {
+pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<ValueRef> {
     tracing::info!("Creating flow futures");
     let mut state = State::new();
 
@@ -83,8 +83,8 @@ pub async fn execute(plugins: &Plugins, flow: &Flow, input: Value) -> Result<Val
 async fn execute_step(
     plugin: Arc<DynPlugin<'static>>,
     component: Component,
-    input: impl Future<Output = Result<Value>>,
-    result_tx: oneshot::Sender<Value>,
+    input: impl Future<Output = Result<ValueRef>>,
+    result_tx: oneshot::Sender<ValueRef>,
 ) -> Result<()> {
     tracing::info!("Waiting for inputs.");
     let input = input.await?;

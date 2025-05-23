@@ -6,8 +6,8 @@ use stepflow_core::workflow::Flow;
 pub async fn run(
     plugins: &Plugins,
     flow: Flow,
-    input: stepflow_core::workflow::Value,
-) -> Result<stepflow_core::workflow::Value> {
+    input: stepflow_core::workflow::ValueRef,
+) -> Result<stepflow_core::workflow::ValueRef> {
     let result = stepflow_execution::execute(plugins, &flow, input)
         .await
         .change_context(MainError::FlowExecution)?;
