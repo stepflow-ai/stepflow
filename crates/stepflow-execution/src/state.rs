@@ -3,23 +3,30 @@ use std::collections::HashMap;
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt;
 use futures::{
-    FutureExt as _, StreamExt, TryFutureExt as _,
-    future::{BoxFuture, MaybeDone, Shared, maybe_done},
+    FutureExt as _, TryFutureExt as _, TryStreamExt as _,
+    future::{BoxFuture, Shared},
     stream::FuturesUnordered,
 };
 use indexmap::IndexMap;
-use stepflow_core::workflow::{BaseRef, Expr, ValueRef};
+use stepflow_core::{
+    FlowResult,
+    workflow::{BaseRef, Expr, ValueRef},
+};
 use tokio::sync::oneshot;
 
 #[derive(Clone)]
-struct FutureValue(Shared<BoxFuture<'static, Result<ValueRef, oneshot::error::RecvError>>>);
+struct FutureValue(Shared<BoxFuture<'static, Result<FlowResult, oneshot::error::RecvError>>>);
 
 impl FutureValue {
     fn literal(value: ValueRef) -> Self {
-        Self(futures::future::ready(Ok(value)).boxed().shared())
+        Self(
+            futures::future::ready(Ok(FlowResult::Success(value)))
+                .boxed()
+                .shared(),
+        )
     }
 
-    fn computed() -> (Self, oneshot::Sender<ValueRef>) {
+    fn computed() -> (Self, oneshot::Sender<FlowResult>) {
         let (sender, receiver) = oneshot::channel();
         let f = receiver.boxed().shared();
         (Self(f), sender)
@@ -37,47 +44,41 @@ impl State {
         }
     }
 
-    fn get_value(
-        &self,
-        expr: &Expr,
-    ) -> Result<impl Future<Output = Result<serde_json::Value>> + 'static> {
+    /// Get the value for an expression.
+    fn get_value(&self, expr: &Expr) -> Result<impl Future<Output = Result<FlowResult>> + 'static> {
         debug_assert!(!matches!(expr, Expr::Literal { .. }));
 
-        let base_ref = expr.base_ref().unwrap();
+        let base_ref = expr.base_ref().expect("inputs handled earlier");
         let base = self
             .values
             .get(base_ref)
             .ok_or(ExecutionError::UndefinedValue(base_ref.clone()))?
             .to_owned();
 
-        // Ideally, we'd use an `Arc` for the field so it is cheaper to clone.
-        let field = expr.field().map(|s| s.to_owned());
-        Ok(async move {
-            let base = base.0.await.change_context(ExecutionError::RecvInput)?;
+        // TODO: Can we avoid cloning the path?
+        let path = expr.path().map(|p| p.to_owned());
 
-            if let Some(field) = field {
-                let value = base
-                    .as_ref()
-                    .get(&field)
-                    .ok_or(ExecutionError::UndefinedField {
-                        value: base.clone(),
-                        field,
+        Ok(async move {
+            let value = base.0.await.change_context(ExecutionError::RecvInput)?;
+
+            match (value, path) {
+                (FlowResult::Success(value), Some(path)) => {
+                    let value = value.path(&path).ok_or(ExecutionError::UndefinedField {
+                        value: value.clone(),
+                        field: path.to_owned(),
                     })?;
-                tracing::info!("Returning {value:?}");
-                Ok(value.clone())
-            } else {
-                tracing::info!("Returning {base:?}");
-                Ok(base.as_ref().clone())
+                    Ok(FlowResult::Success(value))
+                }
+                (value, _) => Ok(value),
             }
-        }
-        .boxed())
+        })
     }
 
     /// Resolve any references in the given arguments.
     pub fn resolve(
         &self,
         args: &IndexMap<String, Expr>,
-    ) -> Result<impl Future<Output = Result<ValueRef>> + 'static> {
+    ) -> Result<impl Future<Output = Result<FlowResult>> + 'static> {
         tracing::info!("Resolving {args:?}");
         let mut fields = serde_json::Map::with_capacity(args.len());
         let mut field_futures = FuturesUnordered::new();
@@ -90,30 +91,24 @@ impl State {
                     fields.insert(name, literal.as_ref().clone());
                 }
                 _ => {
-                    let value = self.get_value(arg)?.map_ok(move |v| (name, v));
-                    match maybe_done(value) {
-                        MaybeDone::Future(value) => field_futures.push(value),
-                        MaybeDone::Done(result) => {
-                            let (name, value) = result?;
-                            tracing::debug!(
-                                "Resolved field {name:?} to already computed value {value:?}"
-                            );
-                            fields.insert(name, value);
-                        }
-                        MaybeDone::Gone => error_stack::bail!(ExecutionError::Internal),
-                    }
+                    field_futures.push(self.get_value(arg)?.map_ok(move |v| (name, v)));
                 }
             }
         }
 
         Ok(async move {
-            while let Some(next) = field_futures.next().await {
-                let (name, value) = next?;
+            while let Some((name, value)) = field_futures.try_next().await? {
                 tracing::debug!("Resolved field {name:?} to {value:?}");
-                fields.insert(name, value);
+                match value {
+                    FlowResult::Success(value) => {
+                        fields.insert(name, value.as_ref().clone());
+                    }
+                    other => return Ok(other),
+                }
             }
+
             let input = serde_json::Value::Object(fields);
-            Ok(ValueRef::new(input))
+            Ok(FlowResult::Success(ValueRef::new(input)))
         })
     }
 
@@ -122,7 +117,7 @@ impl State {
         Ok(())
     }
 
-    pub fn record_future(&mut self, base_ref: BaseRef) -> Result<oneshot::Sender<ValueRef>> {
+    pub fn record_future(&mut self, base_ref: BaseRef) -> Result<oneshot::Sender<FlowResult>> {
         let (future, sender) = FutureValue::computed();
         self.values.insert(base_ref.clone(), future);
         Ok(sender)

@@ -6,6 +6,6 @@ pub async fn submit(
     _service: Url,
     _flow: Flow,
     _input: stepflow_core::workflow::ValueRef,
-) -> Result<stepflow_core::workflow::ValueRef> {
+) -> Result<stepflow_core::FlowResult> {
     todo!()
 }

@@ -64,8 +64,8 @@ impl ValueRef {
     /// NOTE: This increments the references to the root value. If the resulting
     /// field reference is significantly smaller than the root value and likely
     /// to outlive it, consider instead creating a new (rooted) value.
-    pub fn field(&self, field: &str) -> Option<ValueRef> {
-        self.maybe_map(|o| o.as_object().and_then(|o| o.get(field)))
+    pub fn path(&self, path: &str) -> Option<ValueRef> {
+        self.maybe_map(|o| o.as_object().and_then(|o| o.get(path)))
     }
 }
 

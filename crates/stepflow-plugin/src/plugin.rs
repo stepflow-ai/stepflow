@@ -1,5 +1,6 @@
 use crate::Result;
 use stepflow_core::{
+    FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
@@ -15,5 +16,5 @@ pub trait Plugin: Send + Sync {
     /// Execute the step and return the resulting arguments.
     ///
     /// The arguments should be fully resolved.
-    async fn execute(&self, component: &Component, input: ValueRef) -> Result<ValueRef>;
+    async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult>;
 }

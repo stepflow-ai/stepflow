@@ -49,21 +49,21 @@ fn create_mock_plugin() -> MockPlugin {
         .mock_component("mock://one_output")
         .behavior(
             serde_json::json!({ "input": "a" }),
-            MockComponentBehavior::valid(serde_json::json!({ "output": "b" })),
+            MockComponentBehavior::result(serde_json::json!({ "output": "b" })),
         )
         .behavior(
             serde_json::json!({ "input": "hello" }),
-            MockComponentBehavior::valid(serde_json::json!({ "output": "world" })),
+            MockComponentBehavior::result(serde_json::json!({ "output": "world" })),
         );
     mock_plugin
         .mock_component("mock://two_outputs")
         .behavior(
             serde_json::json!({ "input": "b" }),
-            MockComponentBehavior::valid(serde_json::json!({ "x": 1, "y": 2 })),
+            MockComponentBehavior::result(serde_json::json!({ "x": 1, "y": 2 })),
         )
         .behavior(
             serde_json::json!({ "input": "world" }),
-            MockComponentBehavior::valid(serde_json::json!({ "x": 2, "y": 8 })),
+            MockComponentBehavior::result(serde_json::json!({ "x": 2, "y": 8 })),
         );
     mock_plugin
 }
@@ -134,9 +134,14 @@ fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
     });
 }
 
-fn normalize_value(value: stepflow_core::workflow::ValueRef) -> stepflow_core::workflow::ValueRef {
-    let value = normalize_json(value.as_ref().to_owned());
-    value.into()
+fn normalize_value(value: stepflow_core::FlowResult) -> stepflow_core::FlowResult {
+    match value {
+        stepflow_core::FlowResult::Success(value) => {
+            let value = normalize_json(value.as_ref().to_owned());
+            stepflow_core::FlowResult::Success(value.into())
+        }
+        other => other,
+    }
 }
 
 /// Recursively sorts all objects in a `serde_json::Value`.

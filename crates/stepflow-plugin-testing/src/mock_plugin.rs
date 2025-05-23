@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use stepflow_core::{
+    FlowResult,
     component::ComponentInfo,
     schema::SchemaRef,
     workflow::{Component, ValueRef},
@@ -17,23 +18,21 @@ pub struct MockPlugin {
 /// Enumeration of behaviors for the mock components.
 #[derive(Debug, PartialEq)]
 pub enum MockComponentBehavior {
-    /// Produce the given error.
+    /// Produce the given (non-flow error) error.
     Error { message: String },
-    /// Return the given result.
-    Valid { output: ValueRef },
+    /// Return the given result (success or flow-error).
+    Result { result: FlowResult },
 }
 
 impl MockComponentBehavior {
-    pub fn valid(output: impl Into<ValueRef>) -> Self {
-        Self::Valid {
-            output: output.into(),
-        }
+    pub fn result(result: impl Into<FlowResult>) -> Self {
+        let result = result.into();
+        Self::Result { result }
     }
 
     pub fn error(message: impl Into<String>) -> Self {
-        Self::Error {
-            message: message.into(),
-        }
+        let message = message.into();
+        Self::Error { message }
     }
 }
 
@@ -105,7 +104,7 @@ impl Plugin for MockPlugin {
         })
     }
 
-    async fn execute(&self, component: &Component, input: ValueRef) -> Result<ValueRef> {
+    async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult> {
         let component = self
             .components
             .get(component)
@@ -118,7 +117,7 @@ impl Plugin for MockPlugin {
 
         match output {
             MockComponentBehavior::Error { .. } => error_stack::bail!(PluginError::UdfExecution),
-            MockComponentBehavior::Valid { output } => Ok(output.clone()),
+            MockComponentBehavior::Result { result } => Ok(result.clone()),
         }
     }
 }

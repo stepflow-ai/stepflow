@@ -1,5 +1,6 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
+use stepflow_core::FlowResult;
 use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 
 use crate::openai::{ChatMessage, ChatMessageRole};
@@ -34,7 +35,7 @@ impl BuiltinComponent for CreateMessagesComponent {
         })
     }
 
-    async fn execute(&self, input: ValueRef) -> Result<ValueRef> {
+    async fn execute(&self, input: ValueRef) -> Result<FlowResult> {
         let CreateMessagesInput {
             system_instructions,
             user_prompt,
@@ -55,7 +56,7 @@ impl BuiltinComponent for CreateMessagesComponent {
 
         let result = CreateMessagesOutput { messages };
         let output = serde_json::to_value(result).change_context(BuiltinError::Internal)?;
-        Ok(output.into())
+        Ok(FlowResult::Success(output.into()))
     }
 }
 
@@ -73,7 +74,8 @@ mod tests {
         let input = serde_json::to_value(input).unwrap();
         let output = component.execute(input.into()).await.unwrap();
         let output =
-            serde_json::from_value::<CreateMessagesOutput>(output.as_ref().clone()).unwrap();
+            serde_json::from_value::<CreateMessagesOutput>(output.success().unwrap().clone())
+                .unwrap();
         assert_eq!(output.messages.len(), 2);
         assert_eq!(output.messages[0].role, ChatMessageRole::System);
         assert_eq!(output.messages[1].role, ChatMessageRole::User);
