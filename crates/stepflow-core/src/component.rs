@@ -1,7 +1,7 @@
 //! Component information and metadata types.
 
-use serde::{Deserialize, Serialize};
 use crate::schema::SchemaRef;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentInfo {

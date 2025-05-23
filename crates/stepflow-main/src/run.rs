@@ -1,7 +1,7 @@
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
-use stepflow_plugin::Plugins;
 use stepflow_core::workflow::Flow;
+use stepflow_plugin::Plugins;
 
 pub async fn run(
     plugins: &Plugins,

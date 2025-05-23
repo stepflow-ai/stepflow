@@ -2,8 +2,8 @@ use std::{
     collections::HashMap,
     sync::{Arc, LazyLock},
 };
-use stepflow_plugin::{PluginError, Result};
 use stepflow_core::workflow::{Component, ComponentKey};
+use stepflow_plugin::{PluginError, Result};
 
 use crate::{
     BuiltinComponent, DynBuiltinComponent, messages::CreateMessagesComponent,

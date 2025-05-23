@@ -1,5 +1,8 @@
 use crate::Result;
-use stepflow_core::{component::ComponentInfo, workflow::{Component, ValueRef}};
+use stepflow_core::{
+    component::ComponentInfo,
+    workflow::{Component, ValueRef},
+};
 
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]

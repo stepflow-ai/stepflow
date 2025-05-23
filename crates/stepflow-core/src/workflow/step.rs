@@ -1,7 +1,7 @@
 use super::{Component, Expr};
+use crate::schema::SchemaRef;
 use indexmap::IndexMap;
 use schemars::JsonSchema;
-use crate::schema::SchemaRef;
 
 /// A step in a workflow that executes a component with specific arguments.
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema)]
