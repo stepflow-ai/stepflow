@@ -166,7 +166,7 @@ fn load_input(path: Option<PathBuf>) -> Result<stepflow_core::workflow::ValueRef
     }
 }
 
-fn write_output(path: Option<PathBuf>, output: stepflow_core::workflow::ValueRef) -> Result<()> {
+fn write_output(path: Option<PathBuf>, output: stepflow_core::FlowResult) -> Result<()> {
     match path {
         Some(path) => {
             let format = Format::from_path(&path)?;

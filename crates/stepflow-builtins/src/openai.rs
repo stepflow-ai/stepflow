@@ -1,7 +1,7 @@
 use error_stack::ResultExt as _;
 use openai_api_rs::v1::{api::OpenAIClient, chat_completion};
 use serde::{Deserialize, Serialize};
-use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
+use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -83,7 +83,7 @@ impl BuiltinComponent for OpenAIComponent {
         })
     }
 
-    async fn execute(&self, input: ValueRef) -> Result<ValueRef> {
+    async fn execute(&self, input: ValueRef) -> Result<FlowResult> {
         let input: OpenAIInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -129,7 +129,7 @@ impl BuiltinComponent for OpenAIComponent {
         let response = response.message.content.clone().unwrap_or_default();
         let output = OpenAIOutput { response };
         let output = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
-        Ok(output.into())
+        Ok(FlowResult::Success(output.into()))
     }
 }
 
@@ -152,7 +152,14 @@ mod tests {
         let input = serde_json::to_value(input).unwrap();
         let output = component.execute(input.into()).await.unwrap();
 
-        let output = serde_json::from_value::<OpenAIOutput>(output.as_ref().clone()).unwrap();
-        assert!(output.response.contains("Hello"));
+        let output = output.success().unwrap();
+        let response = output
+            .as_object()
+            .unwrap()
+            .get("response")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        assert!(response.contains("Hello"));
     }
 }

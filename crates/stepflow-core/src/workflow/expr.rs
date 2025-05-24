@@ -58,10 +58,10 @@ impl Expr {
         }
     }
 
-    pub fn field(&self) -> Option<&str> {
+    pub fn path(&self) -> Option<&str> {
         match self {
             Self::Literal { .. } => None,
-            Self::Ref { path: field, .. } => field.as_deref(),
+            Self::Ref { path, .. } => path.as_deref(),
         }
     }
 }

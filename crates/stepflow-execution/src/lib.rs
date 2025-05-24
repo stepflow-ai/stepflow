@@ -7,12 +7,15 @@ pub use error::{ExecutionError, Result};
 use error_stack::ResultExt;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use state::State;
-use stepflow_core::workflow::{BaseRef, Component, Flow, ValueRef};
+use stepflow_core::{
+    FlowResult,
+    workflow::{BaseRef, Component, Flow, ValueRef},
+};
 use stepflow_plugin::{DynPlugin, Plugin as _, Plugins};
 use tokio::sync::oneshot;
 use tracing::Instrument as _;
 
-pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<ValueRef> {
+pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<FlowResult> {
     tracing::info!("Creating flow futures");
     let mut state = State::new();
 
@@ -83,17 +86,23 @@ pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<
 async fn execute_step(
     plugin: Arc<DynPlugin<'static>>,
     component: Component,
-    input: impl Future<Output = Result<ValueRef>>,
-    result_tx: oneshot::Sender<ValueRef>,
+    input: impl Future<Output = Result<FlowResult>>,
+    result_tx: oneshot::Sender<FlowResult>,
 ) -> Result<()> {
     tracing::info!("Waiting for inputs.");
     let input = input.await?;
 
-    tracing::info!("Executing step {component:?}");
-    let result = plugin
-        .execute(&component, input)
-        .await
-        .change_context(ExecutionError::PluginError)?;
+    tracing::info!("Executing step {component:?} on {input:?}");
+    let result = match input {
+        FlowResult::Success(input) => plugin
+            .execute(&component, input)
+            .await
+            .change_context(ExecutionError::PluginError)?,
+        // Skipped / failed inputs that were recoverable should have been
+        // recovered by the state resolver. Thus, if we reach here this
+        // step is not recoverable so we propagate the skip/fail.
+        other => other,
+    };
 
     tracing::info!("Sending result {result:?}");
     result_tx

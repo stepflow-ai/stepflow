@@ -59,8 +59,8 @@ impl Plugins {
 
 #[cfg(test)]
 mod tests {
-    use stepflow_core::component::ComponentInfo;
     use stepflow_core::workflow::ValueRef;
+    use stepflow_core::{FlowResult, component::ComponentInfo};
 
     use crate::{Plugin, Result};
 
@@ -78,7 +78,7 @@ mod tests {
             todo!()
         }
 
-        async fn execute(&self, _component: &Component, _input: ValueRef) -> Result<ValueRef> {
+        async fn execute(&self, _component: &Component, _input: ValueRef) -> Result<FlowResult> {
             todo!()
         }
     }

@@ -113,9 +113,24 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
 
 ### Error Handling
 
-- Each crate has its own `error.rs` module with custom error types
-- Uses `error-stack` for rich error context and propagation
-- Uses `thiserror` for defining error enums
+Step Flow distinguishes between two types of errors:
+
+1. **Flow Errors** (`FlowError`): Business logic failures that are part of normal workflow execution
+   - Represented by the `FlowError` type with error codes and messages
+   - Used for validation failures, missing data, or expected failure conditions
+   - Allow workflows to continue and handle errors gracefully
+
+2. **System Errors** (`Result::Err`): Implementation or infrastructure failures
+   - Used for plugin communication failures, serialization errors, etc.
+   - Represent unexpected conditions that should halt execution
+   - Each crate has its own `error.rs` module with custom error types
+   - Uses `error-stack` for rich error context and propagation
+   - Uses `thiserror` for defining error enums
+
+The `FlowResult` enum enables proper error propagation through workflow execution:
+- `Success(ValueRef)`: Step completed successfully with output
+- `Skipped`: Step was conditionally skipped
+- `Failed(FlowError)`: Step failed with a business logic error
 
 ## Code Style
 
