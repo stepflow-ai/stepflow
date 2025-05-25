@@ -10,5 +10,6 @@ input_file: crates/stepflow-execution/tests/flows/basic.yaml
   attachments: []
   sources:
     - context: error executing user-defined function
-      attachments: []
+      attachments:
+        - "Running mock://one_output on ValueRef(OwningRef { owner: Object {\"input\": String(\"world\")}, reference: Object {\"input\": String(\"world\")} })"
       sources: []

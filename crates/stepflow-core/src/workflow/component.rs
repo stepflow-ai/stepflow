@@ -17,7 +17,7 @@ pub struct Component {
 
 impl std::fmt::Display for Component {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.url)
+        write!(f, "{}", self.url.as_str())
     }
 }
 

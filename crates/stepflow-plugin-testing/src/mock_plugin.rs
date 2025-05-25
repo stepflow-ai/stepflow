@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use error_stack::ResultExt;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
@@ -105,15 +106,17 @@ impl Plugin for MockPlugin {
     }
 
     async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult> {
-        let component = self
+        let mock_component = self
             .components
             .get(component)
-            .ok_or(PluginError::UdfImport)?;
-        tracing::debug!("Executing component: {:?} on input: {:?}", component, input);
-        let output = component
+            .ok_or(PluginError::UdfImport)
+            .attach_printable_lazy(|| component.clone())?;
+        tracing::debug!("Executing component: {} on input: {:?}", component, input);
+        let output = mock_component
             .behaviors
             .get(&input)
-            .ok_or(PluginError::UdfExecution)?;
+            .ok_or(PluginError::UdfExecution)
+            .attach_printable_lazy(|| format!("Running {component} on {input:?}"))?;
 
         match output {
             MockComponentBehavior::Error { .. } => error_stack::bail!(PluginError::UdfExecution),

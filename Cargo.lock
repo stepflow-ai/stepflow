@@ -2079,6 +2079,7 @@ dependencies = [
  "futures",
  "indexmap",
  "insta",
+ "safer_owning_ref",
  "serde",
  "serde_json",
  "serde_yml",

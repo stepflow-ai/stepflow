@@ -95,7 +95,7 @@ impl Flow {
 
 #[cfg(test)]
 mod tests {
-    use crate::workflow::{Component, Expr};
+    use crate::workflow::{Component, ErrorAction, Expr, SkipAction};
     use indexmap::indexmap;
 
     use super::*;
@@ -148,6 +148,10 @@ mod tests {
                         args: indexmap! {
                             "a".to_owned() => Expr::literal("hello world"),
                         },
+                        input_schema: None,
+                        output_schema: None,
+                        skip_if: None,
+                        on_error: ErrorAction::default(),
                     },
                     Step {
                         id: "s2".to_owned(),
@@ -155,11 +159,15 @@ mod tests {
                         args: indexmap! {
                             "a".to_owned() => Expr::literal("hello world 2"),
                         },
+                        input_schema: None,
+                        output_schema: None,
+                        skip_if: None,
+                        on_error: ErrorAction::default(),
                     }
                 ],
                 outputs: indexmap! {
-                    "s1a".to_owned() => Expr::step_path("s1", "a"),
-                    "s2b".to_owned() => Expr::step_path("s2", "a"),
+                    "s1a".to_owned() => Expr::step_path("s1", "a", SkipAction::default()),
+                    "s2b".to_owned() => Expr::step_path("s2", "a", SkipAction::default()),
                 },
                 output_schema: Some(output_schema),
             }

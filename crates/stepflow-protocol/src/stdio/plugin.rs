@@ -58,6 +58,8 @@ impl Plugin for StdioPlugin {
             .await
             .change_context(PluginError::Execution)?;
 
-        Ok(FlowResult::Success(response.output))
+        Ok(FlowResult::Success {
+            result: response.output,
+        })
     }
 }
