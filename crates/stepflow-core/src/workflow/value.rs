@@ -67,6 +67,23 @@ impl ValueRef {
     pub fn path(&self, path: &str) -> Option<ValueRef> {
         self.maybe_map(|o| o.as_object().and_then(|o| o.get(path)))
     }
+
+    pub fn is_truthy(&self) -> bool {
+        match self.0.as_ref() {
+            serde_json::Value::Bool(b) => *b,
+            serde_json::Value::Number(n) => {
+                if let Some(n) = n.as_u64() {
+                    n != 0
+                } else if let Some(n) = n.as_i64() {
+                    n != 0
+                } else {
+                    n.as_f64().unwrap() != 0.0
+                }
+            }
+            serde_json::Value::String(s) => !s.is_empty(),
+            _ => true,
+        }
+    }
 }
 
 impl AsRef<serde_json::Value> for ValueRef {

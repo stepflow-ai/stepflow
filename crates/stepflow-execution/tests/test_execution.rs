@@ -1,5 +1,5 @@
-use std::fs::File;
 use std::io::BufReader;
+use std::{fs::File, sync::Arc};
 
 use error_stack::ResultExt as _;
 use serde::Deserialize;
@@ -17,7 +17,7 @@ static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
 /// This needs to be called on each test.
 pub fn init_test_logging() {
     INIT_TEST_LOGGING.call_once(|| {
-        // We don't use a test writer for end to end testts.
+        // We don't use a test writer for end to end tests.
         let fmt_layer = tracing_subscriber::fmt::layer();
 
         tracing_subscriber::registry()
@@ -45,6 +45,8 @@ struct TestCase {
 
 fn create_mock_plugin() -> MockPlugin {
     let mut mock_plugin = MockPlugin::new("mock");
+
+    // Existing behaviors for basic.yaml
     mock_plugin
         .mock_component("mock://one_output")
         .behavior(
@@ -65,6 +67,57 @@ fn create_mock_plugin() -> MockPlugin {
             serde_json::json!({ "input": "world" }),
             MockComponentBehavior::result(serde_json::json!({ "x": 2, "y": 8 })),
         );
+
+    // New behaviors for conditional_skip.yaml
+    mock_plugin
+        .mock_component("mock://handle_skip")
+        .behavior(
+            serde_json::json!({ "input": "it was skipped" }),
+            MockComponentBehavior::result(
+                serde_json::json!({ "output": "received it was skipped" }),
+            ),
+        )
+        .behavior(
+            serde_json::json!({ "input": "b" }),
+            MockComponentBehavior::result(serde_json::json!({ "output": "received b" })),
+        )
+        .behavior(
+            serde_json::json!({ "input": null }),
+            MockComponentBehavior::result(serde_json::json!({ "output": "received null" })),
+        )
+        .behavior(
+            serde_json::json!({ "input": "world" }),
+            MockComponentBehavior::result(serde_json::json!({ "output": "received world" })),
+        );
+    // New behaviors for flow_result_types.yaml
+    mock_plugin
+        .mock_component("mock://flow_result_types")
+        .behavior(
+            serde_json::json!({ "mode": "success" }),
+            MockComponentBehavior::result(serde_json::json!({ "output": "success" })),
+        )
+        .behavior(
+            serde_json::json!({ "mode": "skip" }),
+            MockComponentBehavior::result(stepflow_core::FlowResult::Skipped),
+        )
+        .behavior(
+            serde_json::json!({ "mode": "error" }),
+            MockComponentBehavior::result(stepflow_core::FlowResult::Failed {
+                error: stepflow_core::FlowError::new(2001, "Test flow error"),
+            }),
+        );
+
+    mock_plugin
+        .mock_component("mock://handle_any_result")
+        .behavior(
+            serde_json::json!({ "input": "success" }),
+            MockComponentBehavior::result(serde_json::json!({ "output": "downstream_success" })),
+        )
+        .behavior(
+            serde_json::json!({ "input": null }),
+            MockComponentBehavior::result(serde_json::json!({ "output": "downstream_null" })),
+        );
+
     mock_plugin
 }
 
@@ -106,9 +159,12 @@ fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
         rt.block_on(async {
             let file = File::open(path).unwrap();
             let reader = BufReader::new(file);
-            let TestFlow { flow, test_cases } =
-                serde_yml::from_reader::<_, TestFlow>(reader).unwrap();
+            let TestFlow { flow, test_cases } = serde_yml::from_reader::<_, TestFlow>(reader)
+                .unwrap_or_else(|e| {
+                    panic!("Failed to parse {path:?}: {e:?}");
+                });
 
+            let flow = Arc::new(flow);
             let mut settings = insta::Settings::clone_current();
             settings.set_input_file(path);
 
@@ -116,14 +172,18 @@ fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
                 settings.set_description(format!("case {index}"));
                 settings.set_info(&test_case.input);
 
-                let result = execute(&plugins, &flow, test_case.input.into()).await;
+                let result = execute(&plugins, flow.clone(), test_case.input.into()).await;
                 if test_case.expect_failure {
                     let result = result.unwrap_err();
                     settings.bind(|| {
                         insta::assert_yaml_snapshot!(result);
                     });
                 } else {
-                    let result = result.unwrap();
+                    let result = result.unwrap_or_else(|e| {
+                        panic!(
+                            "Running {path:?} test {index}: Expected success, but got error: {e:?}"
+                        );
+                    });
                     let result = normalize_value(result);
                     settings.bind(|| {
                         insta::assert_yaml_snapshot!(result);
@@ -136,9 +196,9 @@ fn run_tests(plugins: Plugins, rt: tokio::runtime::Handle) {
 
 fn normalize_value(value: stepflow_core::FlowResult) -> stepflow_core::FlowResult {
     match value {
-        stepflow_core::FlowResult::Success(value) => {
-            let value = normalize_json(value.as_ref().to_owned());
-            stepflow_core::FlowResult::Success(value.into())
+        stepflow_core::FlowResult::Success { result } => {
+            let result = normalize_json(result.as_ref().to_owned()).into();
+            stepflow_core::FlowResult::Success { result }
         }
         other => other,
     }

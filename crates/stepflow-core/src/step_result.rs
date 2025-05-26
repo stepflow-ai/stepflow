@@ -35,23 +35,24 @@ impl FlowError {
 #[serde(rename_all = "snake_case", tag = "status")]
 pub enum FlowResult {
     /// The step execution was successful.
-    Success(ValueRef),
+    Success { result: ValueRef },
     /// The step was skipped.
     Skipped,
     /// The step failed with the given error.
-    Failed(FlowError),
+    Failed { error: FlowError },
 }
 
 impl From<serde_json::Value> for FlowResult {
     fn from(value: serde_json::Value) -> Self {
-        Self::Success(ValueRef::new(value))
+        let result = ValueRef::new(value);
+        Self::Success { result }
     }
 }
 
 impl FlowResult {
     pub fn success(&self) -> Option<&serde_json::Value> {
         match self {
-            Self::Success(value) => Some(value.as_ref()),
+            Self::Success { result } => Some(result.as_ref()),
             _ => None,
         }
     }
@@ -62,7 +63,7 @@ impl FlowResult {
 
     pub fn failed(&self) -> Option<&FlowError> {
         match self {
-            Self::Failed(error) => Some(error),
+            Self::Failed { error } => Some(error),
             _ => None,
         }
     }

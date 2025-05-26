@@ -2,12 +2,9 @@
 source: crates/stepflow-execution/tests/test_execution.rs
 description: case 0
 expression: result
-info:
-  name: a
-input_file: crates/stepflow-execution/tests/flows/basic.yaml
+info: {}
+input_file: crates/stepflow-execution/tests/flows/error_use_default_value.yaml
 ---
 status: success
 result:
-  name: b
-  x: 1
-  y: 2
+  error_result: using default value

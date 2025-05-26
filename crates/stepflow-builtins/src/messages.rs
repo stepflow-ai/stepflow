@@ -56,7 +56,7 @@ impl BuiltinComponent for CreateMessagesComponent {
 
         let result = CreateMessagesOutput { messages };
         let output = serde_json::to_value(result).change_context(BuiltinError::Internal)?;
-        Ok(FlowResult::Success(output.into()))
+        Ok(output.into())
     }
 }
 

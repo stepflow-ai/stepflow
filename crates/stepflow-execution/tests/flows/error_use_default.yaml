@@ -1,0 +1,19 @@
+input_schema:
+  type: object
+  properties: {}
+output_schema:
+  type: object
+  properties:
+    result:
+      type: string
+steps:
+  - id: error
+    component: mock://flow_result_types
+    on_error:
+      action: use_default
+    args:
+      mode: "error"
+outputs:
+  error_result: { $from: error }
+test_cases:
+  - input: {}

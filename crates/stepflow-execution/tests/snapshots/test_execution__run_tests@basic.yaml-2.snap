@@ -6,6 +6,8 @@ info:
   name: hello
 input_file: crates/stepflow-execution/tests/flows/basic.yaml
 ---
-name: world
-x: 2
-y: 8
+status: success
+result:
+  name: world
+  x: 2
+  y: 8

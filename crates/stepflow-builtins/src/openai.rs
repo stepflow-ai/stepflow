@@ -129,7 +129,7 @@ impl BuiltinComponent for OpenAIComponent {
         let response = response.message.content.clone().unwrap_or_default();
         let output = OpenAIOutput { response };
         let output = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
-        Ok(FlowResult::Success(output.into()))
+        Ok(output.into())
     }
 }
 

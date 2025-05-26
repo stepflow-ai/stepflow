@@ -1,0 +1,10 @@
+---
+source: crates/stepflow-execution/tests/test_execution.rs
+description: case 0
+expression: result
+info: {}
+input_file: crates/stepflow-execution/tests/flows/error_fail.yaml
+---
+- context: "step \"error\" failed with error FlowError { code: 2001, message: \"Test flow error\", data: None }"
+  attachments: []
+  sources: []

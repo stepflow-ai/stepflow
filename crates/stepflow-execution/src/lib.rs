@@ -6,16 +6,17 @@ use std::sync::Arc;
 pub use error::{ExecutionError, Result};
 use error_stack::ResultExt;
 use futures::{StreamExt as _, stream::FuturesUnordered};
+use owning_ref::ArcRef;
 use state::State;
 use stepflow_core::{
     FlowResult,
-    workflow::{BaseRef, Component, Flow, ValueRef},
+    workflow::{BaseRef, ErrorAction, Flow, Step, ValueRef},
 };
 use stepflow_plugin::{DynPlugin, Plugin as _, Plugins};
 use tokio::sync::oneshot;
 use tracing::Instrument as _;
 
-pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<FlowResult> {
+pub async fn execute(plugins: &Plugins, flow: Arc<Flow>, input: ValueRef) -> Result<FlowResult> {
     tracing::info!("Creating flow futures");
     let mut state = State::new();
 
@@ -23,7 +24,9 @@ pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<
     state.record_literal(BaseRef::Input, input)?;
 
     let mut step_tasks = FuturesUnordered::new();
-    for step in flow.steps.iter() {
+
+    let steps = (0..flow.steps.len()).map(|i| ArcRef::new(flow.clone()).map(|flow| flow.step(i)));
+    for step in steps {
         tracing::debug!("Creating future for step {step:?}");
         // Record the future step result.
         let result_tx = state.record_future(BaseRef::Step(step.id.clone()))?;
@@ -32,11 +35,17 @@ pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<
             .get(&step.component)
             .change_context(ExecutionError::PluginNotFound)?;
 
-        let input = state.resolve(&step.args)?;
+        let skip_if = if let Some(skip_if) = &step.skip_if {
+            Some(state.resolve_expr(skip_if)?)
+        } else {
+            None
+        };
+
+        let input = state.resolve_object(&step.args)?;
         // TODO: Eliminate cloning? Arc the component?
         let step_span = tracing::info_span!("step", id = step.id);
-        let step =
-            execute_step(plugin, step.component.clone(), input, result_tx).instrument(step_span);
+
+        let step = execute_step(plugin, step, skip_if, input, result_tx).instrument(step_span);
         let step_task = tokio::spawn(step);
         step_tasks.push(step_task);
     }
@@ -44,7 +53,7 @@ pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<
     tracing::info!("Resolving output");
     loop {
         tokio::select! {
-            output_result = state.resolve(flow.outputs())? => {
+            output_result = state.resolve_object(flow.outputs())? => {
                 match output_result {
                     Ok(output) => return Ok(output),
                     Err(e) => {
@@ -83,24 +92,97 @@ pub async fn execute(plugins: &Plugins, flow: &Flow, input: ValueRef) -> Result<
     }
 }
 
+fn send_skip(result_tx: oneshot::Sender<FlowResult>) -> Result<()> {
+    result_tx
+        .send(FlowResult::Skipped)
+        .map_err(|_| ExecutionError::RecordResult)?;
+    Ok(())
+}
+
 async fn execute_step(
     plugin: Arc<DynPlugin<'static>>,
-    component: Component,
+    step: ArcRef<'static, Flow, Step>,
+    skip_if: Option<impl Future<Output = Result<FlowResult>>>,
     input: impl Future<Output = Result<FlowResult>>,
     result_tx: oneshot::Sender<FlowResult>,
 ) -> Result<()> {
-    tracing::info!("Waiting for inputs.");
-    let input = input.await?;
+    if let Some(skip) = skip_if {
+        // TODO: Should we wait on skip and input in parallel?
+        match skip.await? {
+            FlowResult::Success { result } if result.is_truthy() => {
+                tracing::info!("Skipping step {} due to condition", step.id);
+                return send_skip(result_tx);
+            }
+            FlowResult::Success { .. } => {
+                // Nothing to do here. We need to run the step.
+            }
+            FlowResult::Skipped => {
+                tracing::info!("Skipping step {} due to skipped condition", step.id);
+                return send_skip(result_tx);
+            }
+            FlowResult::Failed { .. } => {
+                // Failed steps should terminate the workflow.
+                // We don't return an error since that should already be happening.
+                return Ok(());
+            }
+        }
+    }
 
-    tracing::info!("Executing step {component:?} on {input:?}");
-    let result = match input {
-        FlowResult::Success(input) => plugin
-            .execute(&component, input)
-            .await
-            .change_context(ExecutionError::PluginError)?,
-        // Skipped / failed inputs that were recoverable should have been
-        // recovered by the state resolver. Thus, if we reach here this
-        // step is not recoverable so we propagate the skip/fail.
+    tracing::info!("Waiting for inputs.");
+    let input = match input.await? {
+        FlowResult::Success { result } => result,
+        FlowResult::Skipped => {
+            // This indicates a required input was skipped, so we
+            // we propagate the skipped state.
+            return send_skip(result_tx);
+        }
+        FlowResult::Failed { .. } => {
+            // Failed inputs should terminate the workflow.
+            // We don't return an error here since that should already be happening.
+            return Ok(());
+        }
+    };
+
+    let component = &step.component;
+    tracing::debug!("Executing step {component:?} on {input:?}");
+    let result = plugin
+        .execute(&step.component, input)
+        .await
+        .change_context(ExecutionError::PluginError)?;
+    tracing::debug!("Step {component:?} result: {result:?}");
+
+    // Apply failure handling logic, if appropraite.
+    let result = match result {
+        FlowResult::Failed { error } => {
+            let result = match &step.on_error {
+                ErrorAction::Skip => {
+                    tracing::debug!("Step {component:?} failed with error {error:?}, skipping");
+                    FlowResult::Skipped
+                }
+                ErrorAction::UseDefault { default_value } => {
+                    tracing::debug!("Step {component:?} failed, using default value");
+                    // We expect the value to be nullable or for the default_value to be set.
+                    let value = default_value
+                        .to_owned()
+                        .unwrap_or(serde_json::Value::Null.into());
+                    FlowResult::Success { result: value }
+                }
+                ErrorAction::Fail => {
+                    tracing::error!(?error, "Step {component:?} failed, failing");
+                    error_stack::bail!(ExecutionError::StepFailed {
+                        step: step.id.clone(),
+                        error,
+                    });
+                }
+                ErrorAction::Retry => {
+                    todo!("Implement step retry logic");
+                }
+            };
+            result_tx
+                .send(result)
+                .map_err(|_| ExecutionError::RecordResult)?;
+            return Ok(());
+        }
         other => other,
     };
 

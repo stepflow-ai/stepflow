@@ -7,7 +7,7 @@ mod step;
 mod value;
 
 pub use self::component::{Component, ComponentKey};
-pub use self::expr::{BaseRef, Expr};
+pub use self::expr::{BaseRef, Expr, SkipAction};
 pub use self::flow::Flow;
-pub use self::step::{Step, StepExecution};
+pub use self::step::{ErrorAction, Step};
 pub use self::value::ValueRef;

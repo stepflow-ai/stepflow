@@ -1,0 +1,33 @@
+input_schema:
+  type: object
+  properties:
+    mode:
+      type: string
+      enum: ["success", "skip", "error"]
+output_schema:
+  type: object
+  properties:
+    main_result:
+      type: string
+    downstream_result:
+      type: string
+steps:
+  - id: result_step
+    component: mock://flow_result_types
+    args:
+      mode: { $from: $input, path: mode }
+  - id: downstream_step
+    component: mock://handle_any_result
+    args:
+      input: { $from: result_step, path: output }
+outputs:
+  main_result: { $from: result_step, path: output }
+  downstream_result: { $from: downstream_step, path: output }
+test_cases:
+  - input:
+      mode: "success"
+  - input:
+      mode: "skip"
+  - input:
+      mode: "error"
+    expect_failure: true

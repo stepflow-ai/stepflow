@@ -1,7 +1,7 @@
 use stepflow_core::workflow::{BaseRef, ValueRef};
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq, Eq)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ExecutionError {
     #[error("undefined value {0:?}")]
     UndefinedValue(BaseRef),
@@ -21,6 +21,11 @@ pub enum ExecutionError {
     Internal,
     #[error("step panic")]
     StepPanic,
+    #[error("step {step:?} failed with error {error:?}")]
+    StepFailed {
+        step: String,
+        error: stepflow_core::FlowError,
+    },
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;
