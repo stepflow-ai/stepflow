@@ -37,8 +37,32 @@ steps:
       a: { $from: "calculate_total_revenue", path: "result" }
       b: { $from: "$input", path: "target_revenue" }
 
+  # Format metrics for AI analysis (waits for all calculations)
+  - id: format_metrics_summary
+    component: python://format_metrics
+    args:
+      total_revenue: { $from: "calculate_total_revenue", path: "result" }
+      sales_count: { $from: "count_sales", path: "result" }
+      average_sale: { $from: "calculate_average_sale", path: "result" }
+      performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
+      target_revenue: { $from: "$input", path: "target_revenue" }
+
+  # Format messages for OpenAI (depends on metrics summary)  
+  - id: create_openai_messages
+    component: "builtins://create_messages"
+    args:
+      system_instructions: "You are a sales analyst providing insights based on business metrics. Be specific and actionable."
+      user_prompt: { $from: "format_metrics_summary", path: "summary" }
+
+  # Generate AI insights from the metrics
+  - id: generate_ai_insights
+    component: "builtins://openai"
+    args:
+      messages: { $from: "create_openai_messages", path: "messages" }
+
 outputs:
   total_revenue: { $from: "calculate_total_revenue", path: "result" }
   sales_count: { $from: "count_sales", path: "result" }
   average_sale: { $from: "calculate_average_sale", path: "result" }
   performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
+  ai_insights: { $from: "generate_ai_insights", path: "response" }

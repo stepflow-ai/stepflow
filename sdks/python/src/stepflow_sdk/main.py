@@ -30,6 +30,15 @@ class CountResult(msgspec.Struct):
 class DivideInput(msgspec.Struct):
     a: float
     b: float
+class MetricsInput(msgspec.Struct):
+    total_revenue: float
+    sales_count: int
+    average_sale: float
+    performance_ratio: float
+    target_revenue: float
+
+class SummaryResult(msgspec.Struct):
+    summary: str
 
 # Register a simple addition component
 @server.component
@@ -64,6 +73,29 @@ def divide(input: DivideInput) -> NumberResult:
 @server.component
 def multiply(input: MathInput) -> MathOutput:
     return MathOutput(result=input.a * input.b)
+
+@server.component
+def format_metrics(input: MetricsInput) -> SummaryResult:
+    summary = f"""Sales Performance Analysis:
+
+📊 Key Metrics:
+• Total Revenue: ${input.total_revenue:,.2f}
+• Sales Count: {input.sales_count} transactions
+• Average Sale Value: ${input.average_sale:,.2f}
+• Target Revenue: ${input.target_revenue:,.2f}
+• Performance vs Target: {input.performance_ratio:.1f}%
+
+🎯 Performance Status: {"✅ EXCEEDED TARGET" if input.performance_ratio > 100 else "❌ BELOW TARGET"}
+
+Please analyze this sales data and provide:
+1. Key insights about our sales performance
+2. What the metrics reveal about our business
+3. Specific recommendations for improving sales
+4. Any concerning trends or positive highlights
+
+Focus on actionable business insights that would help a sales manager make strategic decisions."""
+
+    return SummaryResult(summary=summary)
 
 def main():
     # Start the server
