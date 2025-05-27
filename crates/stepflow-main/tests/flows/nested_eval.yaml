@@ -1,0 +1,27 @@
+config:
+  plugins:
+    - name: builtins
+      type: builtin
+
+name: nested_eval_test
+description: Test nested flow execution with eval component
+steps:
+  - id: nested_flow
+    component: builtins://eval
+    args:
+      workflow:
+        name: simple_nested
+        steps:
+          - id: inner_step
+            component: builtins://create_messages
+            args:
+              user_prompt: "Hello from nested flow"
+        outputs:
+          result: { $from: inner_step }
+      input: {}
+
+outputs:
+  nested_result: { $from: nested_flow }
+
+test_cases:
+  - input: {}

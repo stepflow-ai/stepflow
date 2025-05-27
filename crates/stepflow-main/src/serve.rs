@@ -1,6 +1,6 @@
 use crate::Result;
-use stepflow_plugin::Plugins;
+use stepflow_execution::StepFlowExecutor;
 
-pub async fn serve(_plugins: &Plugins, _port: u16) -> Result<()> {
+pub async fn serve(_executor: StepFlowExecutor, _port: u16) -> Result<()> {
     todo!()
 }

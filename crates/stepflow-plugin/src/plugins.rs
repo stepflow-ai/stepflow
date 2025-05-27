@@ -78,7 +78,12 @@ mod tests {
             todo!()
         }
 
-        async fn execute(&self, _component: &Component, _input: ValueRef) -> Result<FlowResult> {
+        async fn execute(
+            &self,
+            _component: &Component,
+            _context: std::sync::Arc<dyn crate::ExecutionContext>,
+            _input: ValueRef,
+        ) -> Result<FlowResult> {
             todo!()
         }
     }

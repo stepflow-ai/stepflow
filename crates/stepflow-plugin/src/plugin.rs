@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
-use crate::Result;
+use crate::{ExecutionContext, Result};
 use serde::{Serialize, de::DeserializeOwned};
 use stepflow_core::{
     FlowResult,
@@ -19,7 +19,12 @@ pub trait Plugin: Send + Sync {
     /// Execute the step and return the resulting arguments.
     ///
     /// The arguments should be fully resolved.
-    async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult>;
+    async fn execute(
+        &self,
+        component: &Component,
+        context: Arc<dyn ExecutionContext>,
+        input: ValueRef,
+    ) -> Result<FlowResult>;
 }
 
 /// Trait implemented by a deserializable plugin configuration.

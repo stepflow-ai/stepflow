@@ -3,6 +3,7 @@ use std::{fs::File, sync::Arc};
 
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use stepflow_execution::StepFlowExecutor;
 use stepflow_main::StepflowConfig;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
@@ -36,8 +37,6 @@ struct TestFlow {
 #[derive(Deserialize)]
 struct TestCase {
     input: serde_json::Value,
-    #[serde(default)]
-    expect_failure: bool,
 }
 
 fn run_tests(rt: tokio::runtime::Handle) {
@@ -54,7 +53,7 @@ fn run_tests(rt: tokio::runtime::Handle) {
             });
 
             config.working_directory = Some(path.parent().unwrap().to_path_buf());
-            let plugins = config.create_plugins().await.unwrap();
+            let executor = StepFlowExecutor::new(config.create_plugins().await.unwrap());
 
             let flow = Arc::new(flow);
             let mut settings = insta::Settings::clone_current();
@@ -65,25 +64,16 @@ fn run_tests(rt: tokio::runtime::Handle) {
                 settings.set_info(&test_case.input);
 
                 let result =
-                    stepflow_main::run(&plugins, flow.clone(), test_case.input.into()).await;
-                if test_case.expect_failure {
-                    let result = result.err().unwrap_or_else(|| {
-                        panic!("Running {path:?} test {index}: Expected failure, but got success");
-                    });
-                    settings.bind(|| {
-                        insta::assert_yaml_snapshot!(result);
-                    });
-                } else {
-                    let result = result.unwrap_or_else(|e| {
-                        panic!(
-                            "Running {path:?} test {index}: Expected success, but got error: {e:?}"
-                        );
-                    });
-                    let result = normalize_value(result);
-                    settings.bind(|| {
-                        insta::assert_yaml_snapshot!(result);
-                    });
-                }
+                    stepflow_main::run(executor.clone(), flow.clone(), test_case.input.into())
+                        .await;
+
+                let result = result.unwrap_or_else(|e| {
+                    panic!("Running {path:?} test {index}: Expected success, but got error: {e:?}");
+                });
+                let result = normalize_value(result);
+                settings.bind(|| {
+                    insta::assert_yaml_snapshot!(result);
+                });
             }
         })
     });
@@ -109,8 +99,16 @@ fn normalize_json(mut value: Value) -> Value {
             keys.sort();
 
             for key in keys {
-                let val = map.remove(&key).unwrap();
-                sorted.insert(key, normalize_json(val));
+                let mut val = map.remove(&key).unwrap();
+
+                // Normalize execution_id fields to a fixed value for snapshot testing
+                if key == "execution_id" && val.is_string() {
+                    val = Value::String("00000000-0000-0000-0000-000000000000".to_string());
+                } else {
+                    val = normalize_json(val);
+                }
+
+                sorted.insert(key, val);
             }
 
             Value::Object(sorted)

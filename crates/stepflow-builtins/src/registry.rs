@@ -6,7 +6,7 @@ use stepflow_core::workflow::{Component, ComponentKey};
 use stepflow_plugin::{PluginError, Result};
 
 use crate::{
-    BuiltinComponent, DynBuiltinComponent, messages::CreateMessagesComponent,
+    BuiltinComponent, DynBuiltinComponent, eval::EvalComponent, messages::CreateMessagesComponent,
     openai::OpenAIComponent,
 };
 
@@ -33,6 +33,7 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     let mut registry = Registry::default();
     registry.register("openai", "", OpenAIComponent::new("gpt-3.5-turbo"));
     registry.register("create_messages", "", CreateMessagesComponent);
+    registry.register("eval", "", EvalComponent::new());
     registry
 });
 

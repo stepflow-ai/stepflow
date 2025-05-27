@@ -21,11 +21,8 @@ pub enum ExecutionError {
     Internal,
     #[error("step panic")]
     StepPanic,
-    #[error("step {step:?} failed with error {error:?}")]
-    StepFailed {
-        step: String,
-        error: stepflow_core::FlowError,
-    },
+    #[error("step {step:?} failed")]
+    StepFailed { step: String },
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

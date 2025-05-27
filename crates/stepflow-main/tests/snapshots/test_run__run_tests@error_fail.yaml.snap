@@ -6,9 +6,7 @@ info:
   mode: error
 input_file: crates/stepflow-main/tests/flows/error_fail.yaml
 ---
-- context: Failed to execute flow
-  attachments: []
-  sources:
-    - context: "step \"error\" failed with error FlowError { code: 8, message: \"error\", data: None }"
-      attachments: []
-      sources: []
+outcome: failed
+error:
+  code: 8
+  message: error

@@ -20,8 +20,10 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 trait-variant.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
+indexmap.workspace = true
 test-with.workspace = true
 
 [lints]
