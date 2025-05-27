@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use error_stack::ResultExt;
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use stepflow_core::{
     schema::SchemaRef,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{Plugin, PluginConfig, PluginError, Result};
+use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig, PluginError, Result};
 
 impl PluginConfig for MockPlugin {
     type Plugin = MockPlugin;
@@ -32,7 +32,7 @@ pub struct MockPlugin {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(untagged, rename_all = "snake_case")]
 pub enum MockComponentBehavior {
-    /// Produce the given (non-flow error) error.
+    /// Produce the given internal (non-flow) error.
     Error { error: String },
     /// Return the given result (success or flow-error).
     Result {
@@ -114,7 +114,12 @@ impl Plugin for MockPlugin {
         })
     }
 
-    async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        component: &Component,
+        _context: Arc<dyn ExecutionContext>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let mock_component = self
             .components
             .get(component)

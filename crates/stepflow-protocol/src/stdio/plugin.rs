@@ -1,11 +1,12 @@
 use error_stack::ResultExt;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{Plugin, PluginConfig, PluginError, Result};
+use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig, PluginError, Result};
 
 use super::{
     StdioError,
@@ -82,7 +83,12 @@ impl Plugin for StdioPlugin {
         Ok(response.info)
     }
 
-    async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        component: &Component,
+        _context: Arc<dyn ExecutionContext>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let response = self
             .client
             .request(&crate::schema::component_execute::Request {

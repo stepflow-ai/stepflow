@@ -15,6 +15,7 @@ serde.workspace = true
 stepflow-core.workspace = true
 thiserror.workspace = true
 trait-variant.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 

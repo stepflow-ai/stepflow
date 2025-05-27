@@ -24,7 +24,6 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
-which.workspace = true
 
 [dev-dependencies]
 serde.workspace = true

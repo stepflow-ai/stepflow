@@ -6,13 +6,7 @@ info:
   name: world
 input_file: crates/stepflow-main/tests/flows/basic.yaml
 ---
-- context: Failed to execute flow
-  attachments: []
-  sources:
-    - context: error executing plugin
-      attachments: []
-      sources:
-        - context: error executing user-defined function
-          attachments:
-            - "Running mock://one_output on ValueRef(OwningRef { owner: Object {\"input\": String(\"world\")}, reference: Object {\"input\": String(\"world\")} })"
-          sources: []
+outcome: failed
+error:
+  code: 500
+  message: "Flow execution failed: error executing plugin"

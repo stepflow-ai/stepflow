@@ -1,12 +1,13 @@
 use crate::{BuiltinComponent, registry};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{Plugin, PluginConfig, PluginError, Result};
+use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig, PluginError, Result};
 
 /// The struct that implements the `Plugin` trait.
 #[derive(Default)]
@@ -46,10 +47,15 @@ impl Plugin for Builtins {
             .change_context(PluginError::ComponentInfo)
     }
 
-    async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        component: &Component,
+        context: Arc<dyn ExecutionContext>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let component = registry::get_component(component)?;
         component
-            .execute(input)
+            .execute(context, input)
             .await
             .change_context(PluginError::UdfExecution)
     }

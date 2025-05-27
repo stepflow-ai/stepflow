@@ -1,0 +1,16 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 0
+expression: result
+info: {}
+input_file: crates/stepflow-main/tests/flows/nested_eval.yaml
+---
+outcome: success
+result:
+  nested_result:
+    execution_id: 00000000-0000-0000-0000-000000000000
+    result:
+      result:
+        messages:
+          - content: Hello from nested flow
+            role: user

@@ -1,6 +1,7 @@
 use error_stack::ResultExt as _;
 use serde::de::DeserializeOwned;
 use stepflow_core::workflow::Flow;
+use stepflow_execution::StepFlowExecutor;
 use url::Url;
 
 use crate::{
@@ -201,17 +202,19 @@ impl Cli {
             } => {
                 let config = load_config(Some(&flow), config)?;
                 let plugins = config.create_plugins().await?;
+                let executor = StepFlowExecutor::new(plugins);
                 let flow: Arc<Flow> = load(&flow)?;
                 let input = load_input(input_path)?;
 
-                let output = run(&plugins, flow, input).await?;
+                let output = run(executor, flow, input).await?;
                 write_output(output_path, output)?;
             }
             Command::Serve { port, config } => {
                 let config = load_config(None, config)?;
                 let plugins = config.create_plugins().await?;
+                let executor = StepFlowExecutor::new(plugins);
 
-                serve(&plugins, port).await?;
+                serve(executor, port).await?;
             }
             Command::Submit {
                 url,

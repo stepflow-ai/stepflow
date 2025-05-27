@@ -11,6 +11,12 @@ pub struct FlowError {
     pub data: Option<ValueRef>,
 }
 
+impl std::fmt::Display for FlowError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "error({}): {}", self.code, self.message)
+    }
+}
+
 pub const FLOW_ERROR_UNDEFINED_FIELD: i64 = 1;
 
 impl FlowError {

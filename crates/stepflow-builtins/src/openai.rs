@@ -1,7 +1,9 @@
 use error_stack::ResultExt as _;
 use openai_api_rs::v1::{api::OpenAIClient, chat_completion};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
+use stepflow_plugin::ExecutionContext;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -83,7 +85,11 @@ impl BuiltinComponent for OpenAIComponent {
         })
     }
 
-    async fn execute(&self, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        _context: Arc<dyn ExecutionContext>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let input: OpenAIInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -140,6 +146,40 @@ mod tests {
     #[tokio::test]
     #[test_with::env(OPENAI_API_KEY)]
     async fn test_openai_component() {
+        // Mock context for testing
+        struct MockContext;
+        impl ExecutionContext for MockContext {
+            fn execution_id(&self) -> uuid::Uuid {
+                uuid::Uuid::new_v4()
+            }
+            fn submit_flow(
+                &self,
+                _flow: Arc<stepflow_core::workflow::Flow>,
+                _input: stepflow_core::workflow::ValueRef,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = stepflow_plugin::Result<uuid::Uuid>>
+                        + Send
+                        + '_,
+                >,
+            > {
+                Box::pin(async { Ok(uuid::Uuid::new_v4()) })
+            }
+            fn flow_result(
+                &self,
+                _execution_id: uuid::Uuid,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = stepflow_plugin::Result<stepflow_core::FlowResult>,
+                        > + Send
+                        + '_,
+                >,
+            > {
+                Box::pin(async { Ok(stepflow_core::FlowResult::Skipped) })
+            }
+        }
+
         let component = OpenAIComponent::new("gpt-3.5-turbo");
         let input = OpenAIInput {
             messages: vec![ChatMessage {
@@ -150,7 +190,8 @@ mod tests {
         };
 
         let input = serde_json::to_value(input).unwrap();
-        let output = component.execute(input.into()).await.unwrap();
+        let context = Arc::new(MockContext) as Arc<dyn ExecutionContext>;
+        let output = component.execute(context, input.into()).await.unwrap();
 
         let output = output.success().unwrap();
         let response = output
