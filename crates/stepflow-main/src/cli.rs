@@ -10,6 +10,7 @@ use crate::{
 use std::{
     fs::File,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 /// StepFlow command line application.
@@ -198,16 +199,16 @@ impl Cli {
                 input_path,
                 output_path,
             } => {
-                let mut config = load_config(Some(&flow), config)?;
+                let config = load_config(Some(&flow), config)?;
                 let plugins = config.create_plugins().await?;
-                let flow: Flow = load(&flow)?;
+                let flow: Arc<Flow> = load(&flow)?;
                 let input = load_input(input_path)?;
 
                 let output = run(&plugins, flow, input).await?;
                 write_output(output_path, output)?;
             }
             Command::Serve { port, config } => {
-                let mut config = load_config(None, config)?;
+                let config = load_config(None, config)?;
                 let plugins = config.create_plugins().await?;
 
                 serve(&plugins, port).await?;

@@ -1,0 +1,11 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 1
+expression: result
+info:
+  mode: succeed
+input_file: crates/stepflow-main/tests/flows/error_use_default.yaml
+---
+outcome: success
+result:
+  error_result: succeeded

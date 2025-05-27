@@ -1,0 +1,12 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 0
+expression: result
+info:
+  should_skip: false
+  value: a
+input_file: crates/stepflow-main/tests/flows/conditional_skip_use_default.yaml
+---
+outcome: success
+result:
+  dependent_result: received b

@@ -1,9 +1,0 @@
----
-source: crates/stepflow-execution/tests/test_execution.rs
-description: case 1
-expression: result
-info:
-  mode: skip
-input_file: crates/stepflow-execution/tests/flows/flow_result_types.yaml
----
-status: skipped

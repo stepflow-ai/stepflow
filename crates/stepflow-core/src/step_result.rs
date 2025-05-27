@@ -3,10 +3,11 @@ use std::borrow::Cow;
 use crate::workflow::ValueRef;
 
 /// An error reported from within a flow or step.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FlowError {
     pub code: i64,
     pub message: Cow<'static, str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<ValueRef>,
 }
 
@@ -31,8 +32,8 @@ impl FlowError {
 }
 
 /// The results of a step execution.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[serde(rename_all = "snake_case", tag = "status")]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "outcome")]
 pub enum FlowResult {
     /// The step execution was successful.
     Success { result: ValueRef },

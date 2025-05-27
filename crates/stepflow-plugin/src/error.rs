@@ -25,6 +25,8 @@ pub enum PluginError {
     AlreadyInitialized,
     #[error("invalid input")]
     InvalidInput,
+    #[error("error creating plugin")]
+    CreatePlugin,
 }
 
 pub type Result<T, E = error_stack::Report<PluginError>> = std::result::Result<T, E>;

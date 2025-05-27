@@ -29,8 +29,8 @@ stepflow-builtins = { path = "./crates/stepflow-builtins" }
 stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }
 stepflow-core = { path = "./crates/stepflow-core" }
 stepflow-execution = { path = "./crates/stepflow-execution" }
+stepflow-mock = { path = "./crates/stepflow-mock" }
 stepflow-plugin = { path = "./crates/stepflow-plugin" }
-stepflow-plugin-testing = { path = "./crates/stepflow-plugin-testing" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
 test-with = { version = "0.14.10", features = ["runtime"] }
 thiserror = "2.0.12"

@@ -1,0 +1,9 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 0
+expression: result
+info:
+  mode: error
+input_file: crates/stepflow-main/tests/flows/error_skip.yaml
+---
+outcome: skipped

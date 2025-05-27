@@ -7,10 +7,10 @@ use stepflow_plugin::Plugins;
 
 pub async fn run(
     plugins: &Plugins,
-    flow: Flow,
+    flow: Arc<Flow>,
     input: stepflow_core::workflow::ValueRef,
 ) -> Result<FlowResult> {
-    let result = stepflow_execution::execute(plugins, Arc::new(flow), input)
+    let result = stepflow_execution::execute(plugins, flow, input)
         .await
         .change_context(MainError::FlowExecution)?;
 

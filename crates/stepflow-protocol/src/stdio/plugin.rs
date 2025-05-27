@@ -1,12 +1,46 @@
 use error_stack::ResultExt;
+use serde::{Deserialize, Serialize};
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{Plugin, PluginError, Result};
+use stepflow_plugin::{Plugin, PluginConfig, PluginError, Result};
 
-use super::ClientHandle;
+use super::{
+    StdioError,
+    client::{Client, ClientHandle},
+};
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct StdioPluginConfig {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+impl PluginConfig for StdioPluginConfig {
+    type Plugin = StdioPlugin;
+    type Error = StdioError;
+
+    async fn create_plugin(
+        self,
+        working_directory: &std::path::Path,
+    ) -> error_stack::Result<Self::Plugin, Self::Error> {
+        // Look for the command in the system path and the working directory.
+        let Self { command, args } = self;
+
+        let command = which::WhichConfig::new()
+            .system_path_list()
+            .custom_cwd(working_directory.to_owned())
+            .binary_name(command.clone().into())
+            .first_result()
+            .change_context_lazy(|| StdioError::MissingCommand(command))?;
+
+        let client = Client::try_new(command, args.clone(), working_directory.to_owned()).await?;
+
+        Ok(StdioPlugin::new(client.handle()))
+    }
+}
 
 pub struct StdioPlugin {
     client: ClientHandle,

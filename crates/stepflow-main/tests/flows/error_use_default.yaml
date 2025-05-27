@@ -1,0 +1,40 @@
+config:
+  plugins:
+    - name: mock
+      type: mock
+      components:
+        mock://error:
+          input_schema:
+            type: object
+            properties:
+              mode:
+                type: string
+          output_schema:
+            type: string
+          behaviors:
+            { mode: "error" }:
+              outcome: failed
+              error: {code: 8, message: "error"}
+            { mode: "succeed" }:
+              outcome: success
+              result: "succeeded"
+input_schema:
+  type: object
+  properties: {}
+output_schema:
+  type: object
+  properties:
+    result:
+      type: string
+steps:
+  - id: error
+    component: mock://error
+    on_error:
+      action: use_default
+    args:
+      mode: { $from: $input, path: mode }
+outputs:
+  error_result: { $from: error }
+test_cases:
+  - input: { mode: "error" }
+  - input: { mode: "succeed" }

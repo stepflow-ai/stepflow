@@ -1,0 +1,78 @@
+config:
+  plugins:
+    - name: mock
+      type: mock
+      components:
+        mock://one_output:
+          input_schema:
+            type: object
+            properties:
+              input:
+                type: string
+          output_schema:
+            type: object
+            properties:
+              output:
+                type: string
+          behaviors:
+            { input: "a" }:
+              outcome: success
+              result: {output: b}
+            { input: "hello"}:
+              outcome: success
+              result: {output: world}
+        mock://two_outputs:
+          input_schema:
+            type: object
+            properties:
+              input:
+                type: string
+          output_schema:
+            type: object
+            properties:
+              x:
+                type: integer
+              y:
+                type: integer
+          behaviors:
+            { input: "b" }: 
+              outcome: success
+              result: {x: 1, y: 2}
+            { input: "world"}:
+              outcome: success
+              result: {x: 2, y: 8}
+input_schema:
+  type: object
+  properties:
+    name:
+      type: string
+output_schema:
+  type: object
+  properties:
+    name:
+      type: string
+    x:
+      type: integer
+    y:
+      type: integer
+steps:
+  - id: step1
+    component: mock://one_output
+    args:
+      input: { $from: $input, path: name }
+  - id: step2
+    component: mock://two_outputs
+    args:
+      input: { $from: step1, path: output }
+outputs:
+    name: { $from: step1, path: output }
+    x: { $from: step2, path: x }
+    y: { $from: step2, path: y }
+test_cases:
+  - input:
+      name: a
+  - input:
+      name: hello
+  - input:
+      name: world
+    expect_failure: true
