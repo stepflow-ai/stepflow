@@ -4,6 +4,18 @@
     "description": "A flow represents a complete workflow that can be executed.",
     "type": "object",
     "properties": {
+        "name": {
+            "type": "string",
+            "description": "The name of the flow."
+        },
+        "description": {
+            "type": "string",
+            "description": "The description of the flow."
+        },
+        "version": {
+            "type": "string",
+            "description": "The version of the flow."
+        },
         "input_schema": {
             "description": "The inputs of the flow, mapping input names to their JSON schemas.",
             "anyOf": [
