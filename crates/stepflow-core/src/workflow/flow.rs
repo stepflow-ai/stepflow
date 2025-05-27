@@ -10,6 +10,18 @@ use schemars::JsonSchema;
 /// - Named outputs that can reference step outputs
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema)]
 pub struct Flow {
+    /// The name of the flow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// The description of the flow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// The version of the flow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+
     /// The input schema of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_schema: Option<SchemaRef>,
@@ -103,6 +115,9 @@ mod tests {
     #[test]
     fn test_flow_from_yaml() {
         let yaml = r#"
+        name: test
+        description: test
+        version: 1.0.0
         input_schema:
             type: object
             properties:
@@ -140,6 +155,9 @@ mod tests {
         similar_asserts::assert_serde_eq!(
             flow,
             Flow {
+                name: Some("test".to_owned()),
+                description: Some("test".to_owned()),
+                version: Some("1.0.0".to_owned()),
                 input_schema: Some(input_schema),
                 steps: vec![
                     Step {
