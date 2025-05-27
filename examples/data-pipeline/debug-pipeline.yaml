@@ -1,0 +1,54 @@
+name: "Sales Analysis Pipeline (Metrics)"
+description: "Processes sales data and calculates business metrics"
+
+input_schema:
+  type: object
+  properties:
+    sales_data:
+      type: array
+      description: "Array of sales records"
+    target_revenue:
+      type: number
+      description: "Target revenue for analysis"
+
+steps:
+  # Parallel data processing steps
+  - id: calculate_total_revenue
+    component: python://sum_field
+    args:
+      data: { $from: "$input", path: "sales_data" }
+      field: "revenue"
+
+  - id: count_sales
+    component: python://count_items
+    args:
+      data: { $from: "$input", path: "sales_data" }
+
+  - id: calculate_average_sale
+    component: python://average_field
+    args:
+      data: { $from: "$input", path: "sales_data" }
+      field: "revenue"
+
+  - id: calculate_performance_ratio
+    component: python://divide
+    args:
+      a: { $from: "calculate_total_revenue", path: "result" }
+      b: { $from: "$input", path: "target_revenue" }
+
+  # Format metrics summary for display
+  - id: format_metrics_summary
+    component: python://format_metrics
+    args:
+      total_revenue: { $from: "calculate_total_revenue", path: "result" }
+      sales_count: { $from: "count_sales", path: "result" }
+      average_sale: { $from: "calculate_average_sale", path: "result" }
+      performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
+      target_revenue: { $from: "$input", path: "target_revenue" }
+
+outputs:
+  total_revenue: { $from: "calculate_total_revenue", path: "result" }
+  sales_count: { $from: "count_sales", path: "result" }
+  average_sale: { $from: "calculate_average_sale", path: "result" }
+  performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
+  business_summary: { $from: "format_metrics_summary", path: "summary" }
