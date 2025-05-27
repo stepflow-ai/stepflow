@@ -1,0 +1,44 @@
+name: "AI-Powered Sales Analysis Pipeline"
+description: "Processes sales data, calculates metrics, and generates insights"
+
+input_schema:
+  type: object
+  properties:
+    sales_data:
+      type: array
+      description: "Array of sales records"
+    target_revenue:
+      type: number
+      description: "Target revenue for analysis"
+
+steps:
+  # Parallel data processing steps
+  - id: calculate_total_revenue
+    component: python://sum_field
+    args:
+      data: { $from: "$input", path: "sales_data" }
+      field: "revenue"
+
+  - id: count_sales
+    component: python://count_items
+    args:
+      data: { $from: "$input", path: "sales_data" }
+
+  - id: calculate_average_sale
+    component: python://average_field
+    args:
+      data: { $from: "$input", path: "sales_data" }
+      field: "revenue"
+
+  # This step waits for total_revenue to complete
+  - id: calculate_performance_ratio
+    component: python://divide
+    args:
+      a: { $from: "calculate_total_revenue", path: "result" }
+      b: { $from: "$input", path: "target_revenue" }
+
+outputs:
+  total_revenue: { $from: "calculate_total_revenue", path: "result" }
+  sales_count: { $from: "count_sales", path: "result" }
+  average_sale: { $from: "calculate_average_sale", path: "result" }
+  performance_ratio: { $from: "calculate_performance_ratio", path: "result" }

@@ -1,0 +1,13 @@
+{
+  "sales_data": [
+    {"id": 1, "revenue": 1200, "region": "West", "product": "Widget A"},
+    {"id": 2, "revenue": 850, "region": "East", "product": "Widget B"},
+    {"id": 3, "revenue": 2100, "region": "West", "product": "Widget A"},
+    {"id": 4, "revenue": 750, "region": "South", "product": "Widget C"},
+    {"id": 5, "revenue": 1450, "region": "North", "product": "Widget B"},
+    {"id": 6, "revenue": 980, "region": "East", "product": "Widget A"},
+    {"id": 7, "revenue": 1750, "region": "North", "product": "Widget C"},
+    {"id": 8, "revenue": 1100, "region": "South", "product": "Widget B"}
+  ],
+  "target_revenue": 8000
+}
