@@ -1,0 +1,68 @@
+name: "AI-Powered Sales Analysis Pipeline"
+description: "Processes sales data, calculates metrics, and generates insights"
+
+input_schema:
+  type: object
+  properties:
+    sales_data:
+      type: array
+      description: "Array of sales records"
+    target_revenue:
+      type: number
+      description: "Target revenue for analysis"
+
+steps:
+  # Parallel data processing steps
+  - id: calculate_total_revenue
+    component: python://sum_field
+    args:
+      data: { $from: "$input", path: "sales_data" }
+      field: "revenue"
+
+  - id: count_sales
+    component: python://count_items
+    args:
+      data: { $from: "$input", path: "sales_data" }
+
+  - id: calculate_average_sale
+    component: python://average_field
+    args:
+      data: { $from: "$input", path: "sales_data" }
+      field: "revenue"
+
+  # This step waits for total_revenue to complete
+  - id: calculate_performance_ratio
+    component: python://divide
+    args:
+      a: { $from: "calculate_total_revenue", path: "result" }
+      b: { $from: "$input", path: "target_revenue" }
+
+  # Format metrics for AI analysis (waits for all calculations)
+  - id: format_metrics_summary
+    component: python://format_metrics
+    args:
+      total_revenue: { $from: "calculate_total_revenue", path: "result" }
+      sales_count: { $from: "count_sales", path: "result" }
+      average_sale: { $from: "calculate_average_sale", path: "result" }
+      performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
+      target_revenue: { $from: "$input", path: "target_revenue" }
+
+  # Format messages for OpenAI (depends on metrics summary)  
+  - id: create_openai_messages
+    component: "builtins://create_messages"
+    args:
+      system_instructions: "You are a sales analyst providing insights based on business metrics. Be specific and actionable."
+      user_prompt: { $from: "format_metrics_summary", path: "summary" }
+
+  # Generate AI insights from the metrics
+  - id: generate_ai_insights
+    component: "builtins://openai"
+    args:
+      messages: { $from: "create_openai_messages", path: "messages" }
+
+outputs:
+  total_revenue: { $from: "calculate_total_revenue", path: "result" }
+  sales_count: { $from: "count_sales", path: "result" }
+  average_sale: { $from: "calculate_average_sale", path: "result" }
+  performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
+  ai_insights: { $from: "generate_ai_insights", path: "response" }
