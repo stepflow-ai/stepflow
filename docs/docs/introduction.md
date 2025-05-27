@@ -4,20 +4,11 @@ sidebar_position: 1
 
 # StepFlow Introduction
 
-StepFlow is an open standard for creating and running GenAI and Agentic workflows.
+StepFlow is an open protocol and runtime for building, executing, and scaling GenAI workflows across local and cloud environments.
+Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production.
+With durability, fault-tolerance, and an open specification, StepFlow empowers anyone to create, share, and 
 
-It consists of 3 main parts:
-
-1. A format for writing workflows in JSON or YAML backed by a JSON schema.
-    This allows any framework or UI tool to create workflows.
-    It also allows other platforms to execute workflows.
-2. A protocol for workflows to discover and execute components.
-    The base protocol is uses JSON-RPC similarly to the Language Server Protocol (LSP) and Model Context Protocol (MCP).
-    Component servers may optionally support more efficient transport mechanisms, negotiated during initialization.
-3. An execution engine for workflows.
-    The engine is written in Rust and supports running a single workflow, operating as a workflow service or embedding in other applications.
-
-## Architecture
+## Local Architecture
 
 ```mermaid
 flowchart LR
@@ -44,6 +35,36 @@ flowchart LR
 - **MCP Servers**: MCP servers can be used as component servers, with each tool treated as a component.
 - **Local Data Sources**: Files, databases and services that Component Servers can securely access.
 - **Remote Services**: External systems available over the internet (e.g., through APIs) that Copmonent Servers servers can connect to.
+
+## Production Architecture
+
+This same architecture allows separating the component servers into separate containers or k8s nodes for production deployment.
+The same component server could be used by multiple runtimes, each with a different set of components available.
+This provides efficient resource and the ability to isolate different security concerns.
+
+```mermaid
+flowchart LR
+    Workflows["Workflows"]@{ shape: docs }
+    Workflows <-->|"Workflow YAML"| Host
+    subgraph "Runtime Node"
+        Host["Stepflow Runtime"]
+    end
+    subgraph "Components A+B node"
+        S1["Component Server A"]
+        S2["MCP Tool Server B"]
+        S1 <--> D1[("Local<br>Data Source A")]
+        S2 <--> D2[("Local<br>Data Source B")]
+    end
+    subgraph "Components C node"
+        S3["Component Server C"]
+        Host <-->|"StepFlow Protocol"| S1
+        Host <-->|"MCP Protocol"| S2
+        Host <-->|"StepFlow Protocol"| S3
+    end
+    subgraph "Internet"
+        S3 <-->|"Web APIs"| D3[("Remote<br>Service C")]
+    end
+```
 
 ## Next Steps
 

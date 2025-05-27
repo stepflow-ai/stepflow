@@ -6,49 +6,48 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  image: any;
+  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
   description: ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Workflow Description',
-    image: require("@site/static/img/workflow_description.png").default,
+    title: '⚙️ Reliable, Scalable Execution',
+    Svg: require("@site/static/img/ProductionWorkflows.svg").default,
     description: (
       <>
-        StepFlow provides a workflow specification supporting conditional execution,
-        looping, and dynamically generated workflows and components.
+        Run workflows locally with confidence they’ll scale.
+        StepFlow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
       </>
     ),
   },
   {
-    title: 'Workflow Runtime',
-    image: require("@site/static/img/workflow_execution.png").default,
+    title: '🔐 Secure, Isolated Components',
+    Svg: require("@site/static/img/SecureWorkflows.svg").default,
     description: (
       <>
-        StepFlow includes a performant workflow runtime supporting
-        asynchronous execution, caching, and a plugin system for adding
-        custom behavior.
+        Each workflow step runs in a sandboxed process or container with strict resource and environment controls.
+        StepFlow's design prioritizes security, reproducibility, and platform independence.
       </>
     ),
   },
   {
-    title: 'Workflow Protocol',
-    image: require("@site/static/img/workflow_protocol.png").default,
+    title: '🌐 Open, Portable Standard',
+    Svg: require("@site/static/img/OpenWorkflows.svg").default,
     description: (
       <>
-        StepFlow defines a JSON-RPC based protocol similar to MCP for
-        providing components to the workflow.
+        Build once, run anywhere.
+        The StepFlow protocol defines an open workflow format that any framework or editor can use—enabling true portability and ecosystem integration.
       </>
     ),
   },
 ];
 
-function Feature({ title, image, description }: FeatureItem) {
+function Feature({ title, Svg, description }: FeatureItem) {
   return (
     <div className={clsx('col col--4')}>
       <div className="text--center">
-        <img src={image} alt={title} className={styles.featureImage} />
+        <Svg className={styles.featureImage} role="img" />
       </div>
       <div className="text--center padding-horiz--md">
         <Heading as="h3">{title}</Heading>

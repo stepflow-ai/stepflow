@@ -1,6 +1,14 @@
 # Step Flow
 
-Step Flow is a powerful execution engine for AI workflows, built in Rust. It provides a flexible and scalable way to orchestrate complex AI workflows through a combination of built-in steps and extensible step services.
+StepFlow is an open protocol and runtime for building, executing, and scaling GenAI workflows across local and cloud environments. Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production. With durability, fault-tolerance, and an open specification, StepFlow empowers anyone to create, share, and run AI workflows across platforms and tools.
+
+- **⚙️ Reliable, Scalable Workflow Execution**
+   Run workflows locally with confidence they’ll scale. StepFlow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
+- **🔐 Secure, Isolated Components**
+   Each workflow step runs in a sandboxed process or container with strict resource and environment controls. StepFlow's design prioritizes security, reproducibility, and platform independence.
+- **🌐 Open, Portable Workflow Standard**
+   Build once, run anywhere. The StepFlow prot
+
 ## Overview
 
 Step Flow enables developers to:
