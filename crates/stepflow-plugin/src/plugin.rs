@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use crate::Result;
+use serde::{Serialize, de::DeserializeOwned};
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
@@ -17,4 +20,15 @@ pub trait Plugin: Send + Sync {
     ///
     /// The arguments should be fully resolved.
     async fn execute(&self, component: &Component, input: ValueRef) -> Result<FlowResult>;
+}
+
+/// Trait implemented by a deserializable plugin configuration.
+pub trait PluginConfig: Serialize + DeserializeOwned {
+    type Plugin: Plugin + 'static;
+    type Error: error_stack::Context;
+
+    fn create_plugin(
+        self,
+        working_directory: &Path,
+    ) -> impl Future<Output = error_stack::Result<Self::Plugin, Self::Error>>;
 }

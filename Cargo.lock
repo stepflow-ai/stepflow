@@ -2078,21 +2078,13 @@ dependencies = [
  "error-stack",
  "futures",
  "indexmap",
- "insta",
  "safer_owning_ref",
- "serde",
  "serde_json",
- "serde_yml",
  "stepflow-core",
  "stepflow-plugin",
- "stepflow-plugin-testing",
- "stepflow-protocol",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
- "tracing-error",
- "tracing-subscriber",
- "which",
 ]
 
 [[package]]
@@ -2101,20 +2093,35 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "error-stack",
+ "insta",
  "serde",
  "serde_json",
  "serde_yml",
  "stepflow-builtins",
  "stepflow-core",
  "stepflow-execution",
+ "stepflow-mock",
  "stepflow-plugin",
  "stepflow-protocol",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
+ "tracing-error",
  "tracing-subscriber",
  "url",
  "which",
+]
+
+[[package]]
+name = "stepflow-mock"
+version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "serde",
+ "static_assertions",
+ "stepflow-core",
+ "stepflow-plugin",
+ "tracing",
 ]
 
 [[package]]
@@ -2124,20 +2131,10 @@ dependencies = [
  "dynosaur",
  "error-stack",
  "futures",
+ "serde",
  "stepflow-core",
  "thiserror 2.0.12",
  "trait-variant",
-]
-
-[[package]]
-name = "stepflow-plugin-testing"
-version = "0.1.0"
-dependencies = [
- "error-stack",
- "static_assertions",
- "stepflow-core",
- "stepflow-plugin",
- "tracing",
 ]
 
 [[package]]
@@ -2155,6 +2152,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "uuid",
+ "which",
 ]
 
 [[package]]

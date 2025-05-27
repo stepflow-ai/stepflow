@@ -7,7 +7,7 @@ mod plugin;
 mod registry;
 
 use error::Result;
-pub use plugin::Builtins;
+pub use plugin::{BuiltinPluginConfig, Builtins};
 
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(DynBuiltinComponent = dyn BuiltinComponent)]

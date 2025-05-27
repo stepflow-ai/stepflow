@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use stepflow_plugin::Plugins;
-use stepflow_protocol::stdio::{Client, StdioPlugin};
+use stepflow_builtins::BuiltinPluginConfig;
+use stepflow_mock::MockPlugin;
+use stepflow_plugin::{PluginConfig, Plugins};
+use stepflow_protocol::stdio::StdioPluginConfig;
 
 #[derive(Serialize, Deserialize)]
 pub struct StepflowConfig {
@@ -12,32 +14,76 @@ pub struct StepflowConfig {
     ///
     /// If not set, this will be the directory containing the config.
     pub working_directory: Option<PathBuf>,
-    pub plugins: Vec<PluginConfig>,
+    pub plugins: Vec<SupportedPluginConfig>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum PluginConfig {
-    Stdio {
-        name: String,
-        command: String,
-        args: Vec<String>,
-    },
-    Builtin {
-        name: String,
-    },
+enum SupportedPlugin {
+    Stdio(StdioPluginConfig),
+    Builtin(BuiltinPluginConfig),
+    Mock(MockPlugin),
+}
+
+async fn create_and_register_plugin<P: PluginConfig>(
+    protocol: String,
+    plugin: P,
+    working_directory: &Path,
+    registry: &mut Plugins,
+) -> Result<()>
+where
+    P::Plugin: 'static,
+{
+    let plugin = plugin
+        .create_plugin(working_directory)
+        .await
+        .change_context(MainError::InstantiatePlugin)?;
+    registry
+        .register(protocol, plugin)
+        .change_context(MainError::InstantiatePlugin)?;
+    Ok(())
+}
+
+impl SupportedPlugin {
+    pub async fn register(
+        self,
+        protocol: String,
+        working_directory: &Path,
+        registry: &mut Plugins,
+    ) -> Result<()> {
+        match self {
+            Self::Stdio(plugin) => {
+                create_and_register_plugin(protocol, plugin, working_directory, registry).await
+            }
+            Self::Builtin(plugin) => {
+                create_and_register_plugin(protocol, plugin, working_directory, registry).await
+            }
+            Self::Mock(plugin) => {
+                create_and_register_plugin(protocol, plugin, working_directory, registry).await
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SupportedPluginConfig {
+    name: String,
+    #[serde(flatten)]
+    plugin: SupportedPlugin,
 }
 
 impl StepflowConfig {
     /// Create the plugins from the config.
     ///
     /// This consumes the entries in `plugins`.
-    pub async fn create_plugins(&mut self) -> Result<Plugins> {
+    pub async fn create_plugins(self) -> Result<Plugins> {
         let working_directory = self.working_directory.as_ref().expect("working_directory");
 
         let mut registry = Plugins::new();
-        for plugin in self.plugins.drain(..) {
-            plugin.register(working_directory, &mut registry).await?;
+        for SupportedPluginConfig { name, plugin } in self.plugins {
+            plugin
+                .register(name, working_directory, &mut registry)
+                .await?;
         }
 
         registry
@@ -46,43 +92,5 @@ impl StepflowConfig {
             .change_context(MainError::InitializePlugins)?;
 
         Ok(registry)
-    }
-}
-
-impl PluginConfig {
-    pub async fn register(self, working_directory: &Path, plugins: &mut Plugins) -> Result<()> {
-        match self {
-            Self::Stdio {
-                name,
-                command,
-                args,
-            } => {
-                // Look for the command in the system path and the working directory.
-                let command = which::WhichConfig::new()
-                    .system_path_list()
-                    .custom_cwd(working_directory.to_owned())
-                    .binary_name(command.clone().into())
-                    .first_result()
-                    .change_context(MainError::MissingCommand(command))?;
-
-                let client = Client::try_new(command, args, working_directory.to_owned())
-                    .await
-                    .change_context(MainError::InstantiatePlugin)?;
-
-                let plugin = StdioPlugin::new(client.handle());
-                plugins
-                    .register(name, plugin)
-                    .change_context(MainError::InstantiatePlugin)?;
-            }
-            Self::Builtin { name } => {
-                // Register the built-in plugin
-                let plugin = stepflow_builtins::Builtins::new();
-                plugins
-                    .register(name, plugin)
-                    .change_context(MainError::InstantiatePlugin)?;
-            }
-        };
-
-        Ok(())
     }
 }

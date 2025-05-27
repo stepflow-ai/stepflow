@@ -28,6 +28,8 @@ pub enum StdioError {
     InvalidCommand(PathBuf),
     #[error("error in receive loop")]
     RecvLoop,
+    #[error("command not found: {0}")]
+    MissingCommand(String),
 }
 
 pub type Result<T, E = error_stack::Report<StdioError>> = std::result::Result<T, E>;
