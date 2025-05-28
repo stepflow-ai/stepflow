@@ -3,7 +3,6 @@ use std::{ffi::OsString, path::PathBuf, process::Stdio};
 use crate::stdio::Result;
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
 use tokio::process::Child;
 
 use super::StdioError;
