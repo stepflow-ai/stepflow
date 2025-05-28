@@ -1,5 +1,6 @@
 mod client;
 mod error;
+mod launcher;
 mod plugin;
 mod recv_message_loop;
 

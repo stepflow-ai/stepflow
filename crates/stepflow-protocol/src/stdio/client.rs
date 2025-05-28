@@ -1,5 +1,3 @@
-use std::{ffi::OsString, path::PathBuf};
-
 use error_stack::ResultExt as _;
 use serde::de::DeserializeOwned;
 
@@ -11,7 +9,7 @@ use tokio::{
 use tracing::Instrument as _;
 use uuid::Uuid;
 
-use super::recv_message_loop::recv_message_loop;
+use super::{launcher::Launcher, recv_message_loop::recv_message_loop};
 use crate::incoming::OwnedIncoming;
 use crate::stdio::{Result, StdioError};
 
@@ -28,21 +26,13 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn try_new<S: Into<OsString>>(
-        command: PathBuf,
-        args: Vec<S>,
-        working_directory: PathBuf,
-    ) -> Result<Self> {
-        error_stack::ensure!(command.is_file(), StdioError::InvalidCommand(command));
-
+    pub async fn try_new(launcher: Launcher) -> Result<Self> {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
         let (pending_tx, pending_rx) = mpsc::channel(100);
 
-        let args: Vec<OsString> = args.into_iter().map(|s| s.into()).collect();
-        let recv_span = tracing::info_span!("recv_message_loop", command = ?command, args = ?args);
+        let recv_span = tracing::info_span!("recv_message_loop", command = ?launcher.command, args = ?launcher.args);
         let loop_handle = tokio::spawn(
-            recv_message_loop(command, args, working_directory, outgoing_rx, pending_rx)
-                .instrument(recv_span),
+            recv_message_loop(launcher, outgoing_rx, pending_rx).instrument(recv_span),
         );
 
         Ok(Self {
