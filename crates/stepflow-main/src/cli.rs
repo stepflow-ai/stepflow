@@ -122,6 +122,48 @@ fn load<T: DeserializeOwned>(path: &Path) -> Result<T> {
     Ok(value)
 }
 
+// Look for any of these file names.
+const FILE_NAMES: &[&str] = &[
+    "stepflow-config.yml",
+    "stepflow-config.yaml",
+    "stepflow_config.yml",
+    "stepflow_config.yaml",
+];
+
+fn locate_config(directory: Option<&PathBuf>) -> Result<Option<PathBuf>> {
+    // First look for any of the file names in the `directory`.
+    if let Some(directory) = directory {
+        let mut file_names = FILE_NAMES
+            .iter()
+            .map(|name| directory.join(name))
+            .filter(|path| path.is_file());
+        if let Some(path) = file_names.next() {
+            // If there are multiple, it is ambiguous so report an error.
+            error_stack::ensure!(
+                file_names.next().is_none(),
+                MainError::MultipleStepflowConfigs(directory.to_owned())
+            );
+            return Ok(Some(path.to_owned()));
+        }
+    }
+
+    // Then, look for any of the file names in the current directory.
+    let mut file_names = FILE_NAMES
+        .iter()
+        .map(|name| PathBuf::from(name))
+        .filter(|path| path.is_file());
+    if let Some(path) = file_names.next() {
+        // If there are multiple, it is ambiguous so report an error.
+        error_stack::ensure!(
+            file_names.next().is_none(),
+            MainError::MultipleStepflowConfigs(std::env::current_dir().unwrap()),
+        );
+        return Ok(Some(path.to_owned()));
+    }
+
+    Ok(None)
+}
+
 /// Attempt to load a config file from `config_path`.
 ///
 /// If that is not set, look either in the directory containing `flow_path` or the current directory.
@@ -129,22 +171,13 @@ fn load_config(
     flow_path: Option<&PathBuf>,
     mut config_path: Option<PathBuf>,
 ) -> Result<StepflowConfig> {
-    // If config_path is not set, look for `stepflow-config.yml`in the directory containing
-    // `flow_path`, then the current directory.
-    tracing::info!("Loading config from {:?}", config_path);
-
     if config_path.is_none() {
-        if let Some(flow_path) = flow_path {
-            let flow_path = flow_path
-                .canonicalize()
-                .change_context_lazy(|| MainError::MissingFile(flow_path.clone()))?;
-            if let Some(flow_dir) = flow_path.parent() {
-                config_path = Some(flow_dir.join("stepflow-config.yml"));
-            }
-        }
+        config_path = locate_config(flow_path)?;
     }
 
-    let config_path = config_path.unwrap_or_else(|| PathBuf::from("stepflow-config.yml"));
+    tracing::info!("Loading config from {:?}", config_path);
+
+    let config_path = config_path.ok_or(MainError::StepflowConfigNotFound)?;
     let mut config: StepflowConfig = load(&config_path)?;
 
     if config.working_directory.is_none() {
