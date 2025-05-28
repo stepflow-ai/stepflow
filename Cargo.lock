@@ -2048,6 +2048,7 @@ dependencies = [
  "serde_yml",
  "stepflow-core",
  "stepflow-plugin",
+ "tempfile",
  "test-with",
  "thiserror 2.0.12",
  "tokio",

@@ -34,6 +34,7 @@ stepflow-plugin = { path = "./crates/stepflow-plugin" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
 test-with = { version = "0.14.10", features = ["runtime"] }
 thiserror = "2.0.12"
+tempfile = "3.8"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "process", "sync", "io-util", "time"]}
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
 tracing = "0.1.41"
