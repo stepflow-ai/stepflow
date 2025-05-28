@@ -12,23 +12,14 @@ use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig, PluginError, Resul
 use super::{
     StdioError,
     client::{Client, ClientHandle},
-    launcher::{InheritEnv, Launcher},
+    launcher::Launcher,
 };
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct StdioPluginConfig {
     pub command: String,
     pub args: Vec<String>,
-    /// Which environment variables to inherit.
-    ///
-    /// May be a list of environment variables to inherit, or a boolean.
-    /// `true` indicates all environment variables should be inherited,
-    /// while `false` indicates no environment variables should be inherited.
-    #[serde(default, skip_serializing_if = "InheritEnv::is_default")]
-    pub inherit_env: InheritEnv,
     /// Environment variables to pass to the sub-process.
-    ///
-    /// These override any inherited environment variables.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub env: IndexMap<String, String>,
 }
@@ -42,20 +33,9 @@ impl PluginConfig for StdioPluginConfig {
         working_directory: &std::path::Path,
     ) -> error_stack::Result<Self::Plugin, Self::Error> {
         // Look for the command in the system path and the working directory.
-        let Self {
-            command,
-            args,
-            inherit_env,
-            env,
-        } = self;
+        let Self { command, args, env } = self;
 
-        let launcher = Launcher::try_new(
-            working_directory.to_owned(),
-            command,
-            args,
-            inherit_env,
-            env,
-        )?;
+        let launcher = Launcher::try_new(working_directory.to_owned(), command, args, env)?;
 
         let client = Client::try_new(launcher).await?;
 
