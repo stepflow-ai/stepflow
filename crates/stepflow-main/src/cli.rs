@@ -150,7 +150,7 @@ fn locate_config(directory: Option<&PathBuf>) -> Result<Option<PathBuf>> {
     // Then, look for any of the file names in the current directory.
     let mut file_names = FILE_NAMES
         .iter()
-        .map(|name| PathBuf::from(name))
+        .map(PathBuf::from)
         .filter(|path| path.is_file());
     if let Some(path) = file_names.next() {
         // If there are multiple, it is ambiguous so report an error.
