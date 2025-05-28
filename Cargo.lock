@@ -2148,6 +2148,7 @@ version = "0.1.0"
 dependencies = [
  "erased-serde",
  "error-stack",
+ "indexmap",
  "serde",
  "serde_json",
  "stepflow-core",
