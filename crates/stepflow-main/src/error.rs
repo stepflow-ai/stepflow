@@ -20,6 +20,10 @@ pub enum MainError {
     FlowExecution,
     #[error("Failed to initialize plugins")]
     InitializePlugins,
+    #[error("Multiple stepflow config files found in directory: {0:?}")]
+    MultipleStepflowConfigs(PathBuf),
+    #[error("Stepflow config not found")]
+    StepflowConfigNotFound,
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;
