@@ -8,9 +8,11 @@ mod messages;
 mod openai;
 mod plugin;
 mod registry;
+mod load_file;
 
 use error::Result;
 pub use plugin::{BuiltinPluginConfig, Builtins};
+pub use load_file::LoadFileComponent;
 
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(DynBuiltinComponent = dyn BuiltinComponent)]

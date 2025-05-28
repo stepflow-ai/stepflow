@@ -7,7 +7,7 @@ use stepflow_plugin::{PluginError, Result};
 
 use crate::{
     BuiltinComponent, DynBuiltinComponent, eval::EvalComponent, messages::CreateMessagesComponent,
-    openai::OpenAIComponent,
+    openai::OpenAIComponent, load_file::LoadFileComponent,
 };
 
 #[derive(Default)]
@@ -34,6 +34,7 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     registry.register("openai", "", OpenAIComponent::new("gpt-3.5-turbo"));
     registry.register("create_messages", "", CreateMessagesComponent);
     registry.register("eval", "", EvalComponent::new());
+    registry.register("load_file", "", LoadFileComponent);
     registry
 });
 

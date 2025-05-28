@@ -2045,6 +2045,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "serde_yml",
  "stepflow-core",
  "stepflow-plugin",
  "test-with",
