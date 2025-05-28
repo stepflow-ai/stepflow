@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::OsString, path::PathBuf, process::Stdio};
+use std::collections::HashMap;
 
 use error_stack::ResultExt as _;
 use tokio::{
@@ -15,6 +15,8 @@ use uuid::Uuid;
 use crate::incoming::OwnedIncoming;
 use crate::stdio::{Result, StdioError};
 
+use super::launcher::Launcher;
+
 struct ReceiveMessageLoop {
     child: Child,
     to_child: ChildStdin,
@@ -23,25 +25,8 @@ struct ReceiveMessageLoop {
 }
 
 impl ReceiveMessageLoop {
-    fn try_new(command: PathBuf, args: Vec<OsString>, working_directory: PathBuf) -> Result<Self> {
-        let child = tokio::process::Command::new(&command)
-            .current_dir(&working_directory)
-            .args(&args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn();
-
-        let mut child = match child {
-            Ok(child) => child,
-            Err(e) => {
-                tracing::error!(
-                    "Failed to spawn child process '{} {args:?}': {e}",
-                    command.display()
-                );
-                return Err(StdioError::Spawn.into());
-            }
-        };
+    fn try_new(launcher: Launcher) -> Result<Self> {
+        let mut child = launcher.spawn()?;
 
         let to_child = child.stdin.take().expect("stdin requested");
         let from_child = child.stdout.take().expect("stdout requested");
@@ -140,13 +125,11 @@ impl ReceiveMessageLoop {
 }
 
 pub async fn recv_message_loop(
-    command: PathBuf,
-    args: Vec<OsString>,
-    working_directory: PathBuf,
+    launcher: Launcher,
     mut outgoing_rx: mpsc::Receiver<String>,
     mut pending_rx: mpsc::Receiver<(Uuid, oneshot::Sender<OwnedIncoming>)>,
 ) -> Result<()> {
-    let mut recv_loop = ReceiveMessageLoop::try_new(command, args, working_directory)?;
+    let mut recv_loop = ReceiveMessageLoop::try_new(launcher)?;
 
     loop {
         match recv_loop.iteration(&mut outgoing_rx, &mut pending_rx).await {

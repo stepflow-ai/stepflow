@@ -1,4 +1,5 @@
 use error_stack::ResultExt;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::{
@@ -11,12 +12,16 @@ use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig, PluginError, Resul
 use super::{
     StdioError,
     client::{Client, ClientHandle},
+    launcher::Launcher,
 };
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct StdioPluginConfig {
     pub command: String,
     pub args: Vec<String>,
+    /// Environment variables to pass to the sub-process.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub env: IndexMap<String, String>,
 }
 
 impl PluginConfig for StdioPluginConfig {
@@ -28,16 +33,11 @@ impl PluginConfig for StdioPluginConfig {
         working_directory: &std::path::Path,
     ) -> error_stack::Result<Self::Plugin, Self::Error> {
         // Look for the command in the system path and the working directory.
-        let Self { command, args } = self;
+        let Self { command, args, env } = self;
 
-        let command = which::WhichConfig::new()
-            .system_path_list()
-            .custom_cwd(working_directory.to_owned())
-            .binary_name(command.clone().into())
-            .first_result()
-            .change_context_lazy(|| StdioError::MissingCommand(command))?;
+        let launcher = Launcher::try_new(working_directory.to_owned(), command, args, env)?;
 
-        let client = Client::try_new(command, args.clone(), working_directory.to_owned()).await?;
+        let client = Client::try_new(launcher).await?;
 
         Ok(StdioPlugin::new(client.handle()))
     }
