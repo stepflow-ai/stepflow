@@ -8,7 +8,6 @@ publish = false
 description = "Core types and functionality for stepflow workflows, schemas, and components."
 
 [dependencies]
-indexmap.workspace = true
 safer_owning_ref.workspace = true
 schemars.workspace = true
 serde.workspace = true

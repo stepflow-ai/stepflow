@@ -2065,7 +2065,6 @@ version = "0.1.0"
 name = "stepflow-core"
 version = "0.1.0"
 dependencies = [
- "indexmap",
  "insta",
  "safer_owning_ref",
  "schemars",
@@ -2082,7 +2081,6 @@ version = "0.1.0"
 dependencies = [
  "error-stack",
  "futures",
- "indexmap",
  "safer_owning_ref",
  "serde_json",
  "stepflow-core",
