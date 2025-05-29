@@ -6,6 +6,8 @@ mod error;
 mod eval;
 mod load_file;
 mod messages;
+#[cfg(test)]
+mod mock_context;
 mod openai;
 mod plugin;
 mod registry;

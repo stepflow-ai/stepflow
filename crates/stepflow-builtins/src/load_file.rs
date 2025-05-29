@@ -150,46 +150,12 @@ impl BuiltinComponent for LoadFileComponent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mock_context::MockContext;
     use std::fs;
-    use stepflow_plugin::ExecutionContext;
     use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn test_load_json_file() {
-        // Mock context for testing
-        struct MockContext;
-        impl ExecutionContext for MockContext {
-            fn execution_id(&self) -> uuid::Uuid {
-                uuid::Uuid::new_v4()
-            }
-            fn submit_flow(
-                &self,
-                _flow: std::sync::Arc<stepflow_core::workflow::Flow>,
-                _input: stepflow_core::workflow::ValueRef,
-            ) -> std::pin::Pin<
-                Box<
-                    dyn std::future::Future<Output = stepflow_plugin::Result<uuid::Uuid>>
-                        + Send
-                        + '_,
-                >,
-            > {
-                Box::pin(async { Ok(uuid::Uuid::new_v4()) })
-            }
-            fn flow_result(
-                &self,
-                _execution_id: uuid::Uuid,
-            ) -> std::pin::Pin<
-                Box<
-                    dyn std::future::Future<
-                            Output = stepflow_plugin::Result<stepflow_core::FlowResult>,
-                        > + Send
-                        + '_,
-                >,
-            > {
-                Box::pin(async { Ok(stepflow_core::FlowResult::Skipped) })
-            }
-        }
-
         let temp_file = NamedTempFile::new().unwrap();
         let test_data = r#"{"name": "test", "value": 42}"#;
         fs::write(temp_file.path(), test_data).unwrap();
@@ -202,7 +168,8 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = std::sync::Arc::new(MockContext) as std::sync::Arc<dyn ExecutionContext>;
+        let context =
+            std::sync::Arc::new(MockContext::new()) as std::sync::Arc<dyn ExecutionContext>;
         let result = component
             .execute(context, input_value.into())
             .await
