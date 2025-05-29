@@ -14,11 +14,11 @@ pub struct LoadFileComponent;
 struct LoadFileInput {
     /// Path to the file to load
     path: String,
-    
+
     /// Format of the file (json, yaml, text). If not specified, inferred from extension
     #[serde(default, skip_serializing_if = "Option::is_none")]
     format: Option<FileFormat>,
-    
+
     /// Working directory to resolve relative paths (defaults to current directory)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     working_directory: Option<String>,
@@ -36,7 +36,7 @@ enum FileFormat {
 struct LoadFileOutput {
     /// The loaded data (parsed JSON/YAML or raw text)
     data: serde_json::Value,
-    
+
     /// Metadata about the loaded file
     metadata: FileMetadata,
 }
@@ -45,10 +45,10 @@ struct LoadFileOutput {
 struct FileMetadata {
     /// The resolved absolute path
     resolved_path: String,
-    
+
     /// File size in bytes
     size_bytes: u64,
-    
+
     /// Detected or specified format
     format: FileFormat,
 }
@@ -61,24 +61,20 @@ impl LoadFileComponent {
             _ => FileFormat::Text,
         }
     }
-    
+
     async fn load_file_content(path: &Path, format: FileFormat) -> Result<serde_json::Value> {
         let content = fs::read_to_string(path)
             .await
             .change_context(BuiltinError::InvalidInput)?;
-            
+
         match format {
             FileFormat::Json => {
-                serde_json::from_str(&content)
-                    .change_context(BuiltinError::InvalidInput)
+                serde_json::from_str(&content).change_context(BuiltinError::InvalidInput)
             }
             FileFormat::Yaml => {
-                serde_yml::from_str(&content)
-                    .change_context(BuiltinError::InvalidInput)
+                serde_yml::from_str(&content).change_context(BuiltinError::InvalidInput)
             }
-            FileFormat::Text => {
-                Ok(serde_json::Value::String(content))
-            }
+            FileFormat::Text => Ok(serde_json::Value::String(content)),
         }
     }
 }
@@ -99,10 +95,10 @@ impl BuiltinComponent for LoadFileComponent {
         _context: Arc<dyn ExecutionContext>,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        let LoadFileInput { 
-            path, 
-            format, 
-            working_directory 
+        let LoadFileInput {
+            path,
+            format,
+            working_directory,
         } = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -111,7 +107,7 @@ impl BuiltinComponent for LoadFileComponent {
             .as_deref()
             .map(Path::new)
             .unwrap_or_else(|| Path::new("."));
-            
+
         let file_path = if Path::new(&path).is_absolute() {
             Path::new(&path).to_path_buf()
         } else {
@@ -143,11 +139,10 @@ impl BuiltinComponent for LoadFileComponent {
             },
         };
 
-        let output_value = serde_json::to_value(output)
-            .change_context(BuiltinError::Internal)?;
-            
+        let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
+
         Ok(FlowResult::Success {
-            result: ValueRef::new(output_value)
+            result: ValueRef::new(output_value),
         })
     }
 }
@@ -156,8 +151,8 @@ impl BuiltinComponent for LoadFileComponent {
 mod tests {
     use super::*;
     use std::fs;
-    use tempfile::NamedTempFile;
     use stepflow_plugin::ExecutionContext;
+    use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn test_load_json_file() {
@@ -208,9 +203,13 @@ mod tests {
 
         let input_value = serde_json::to_value(input).unwrap();
         let context = std::sync::Arc::new(MockContext) as std::sync::Arc<dyn ExecutionContext>;
-        let result = component.execute(context, input_value.into()).await.unwrap();
+        let result = component
+            .execute(context, input_value.into())
+            .await
+            .unwrap();
 
-        let output: LoadFileOutput = serde_json::from_value(result.success().unwrap().clone()).unwrap();
+        let output: LoadFileOutput =
+            serde_json::from_value(result.success().unwrap().clone()).unwrap();
         assert_eq!(output.data["name"], "test");
         assert_eq!(output.data["value"], 42);
         assert_eq!(output.metadata.format, FileFormat::Json);
@@ -218,8 +217,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_format_detection() {
-        assert!(matches!(LoadFileComponent::detect_format(Path::new("test.json")), FileFormat::Json));
-        assert!(matches!(LoadFileComponent::detect_format(Path::new("test.yaml")), FileFormat::Yaml));
-        assert!(matches!(LoadFileComponent::detect_format(Path::new("test.txt")), FileFormat::Text));
+        assert!(matches!(
+            LoadFileComponent::detect_format(Path::new("test.json")),
+            FileFormat::Json
+        ));
+        assert!(matches!(
+            LoadFileComponent::detect_format(Path::new("test.yaml")),
+            FileFormat::Yaml
+        ));
+        assert!(matches!(
+            LoadFileComponent::detect_format(Path::new("test.txt")),
+            FileFormat::Text
+        ));
     }
 }

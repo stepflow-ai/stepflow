@@ -6,8 +6,8 @@ use stepflow_core::workflow::{Component, ComponentKey};
 use stepflow_plugin::{PluginError, Result};
 
 use crate::{
-    BuiltinComponent, DynBuiltinComponent, eval::EvalComponent, messages::CreateMessagesComponent,
-    openai::OpenAIComponent, load_file::LoadFileComponent,
+    BuiltinComponent, DynBuiltinComponent, eval::EvalComponent, load_file::LoadFileComponent,
+    messages::CreateMessagesComponent, openai::OpenAIComponent,
 };
 
 #[derive(Default)]

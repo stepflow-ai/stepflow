@@ -4,11 +4,11 @@ use stepflow_plugin::ExecutionContext;
 
 mod error;
 mod eval;
+mod load_file;
 mod messages;
 mod openai;
 mod plugin;
 mod registry;
-mod load_file;
 
 use error::Result;
 pub use plugin::{BuiltinPluginConfig, Builtins};
