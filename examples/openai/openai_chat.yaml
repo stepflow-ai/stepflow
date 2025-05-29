@@ -13,14 +13,14 @@ inputs:
 steps:
   - id: create_messages
     component: "builtins://create_messages"
-    args:
+    input:
       system_instructions: { $from: { workflow: input }, path: system_message }
       user_prompt: { $from: { workflow: input }, path: prompt }
 
   - id: send_message
     component: "builtins://openai"
-    args:
+    input:
       messages: { $from: { step: create_messages }, path: messages }
   
-outputs:
+output:
   response: { $from: { step: send_message }, path: response }

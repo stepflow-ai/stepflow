@@ -14,7 +14,7 @@ const workflow = {
     {
       id: 'greet',
       component: 'http://example.com/greeter',
-      args: {
+      input: {
         name: { input: 'name' },
         age: { input: 'age' },
         message: { literal: 'Hello, ' }
@@ -23,13 +23,13 @@ const workflow = {
     {
       id: 'format',
       component: 'http://example.com/formatter',
-      args: {
+      input: {
         text: { step: 'greet', field: 'greeting' },
         style: { literal: 'uppercase' }
       }
     }
   ],
-  outputs: {
+  output: {
     greeting: { step: 'format', field: 'result' }
   }
 };

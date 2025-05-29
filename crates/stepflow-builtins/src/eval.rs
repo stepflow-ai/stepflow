@@ -102,9 +102,7 @@ impl BuiltinComponent for EvalComponent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexmap::indexmap;
     use std::pin::Pin;
-    use stepflow_core::workflow::Expr;
     use uuid::Uuid;
 
     // Mock context for testing
@@ -156,9 +154,9 @@ mod tests {
         let test_flow = Flow {
             name: Some("test-nested".to_string()),
             steps: vec![],
-            outputs: indexmap! {
-                "result".to_string() => Expr::literal("Hello from nested flow")
-            },
+            output: serde_json::json!({
+                "result": "Hello from nested flow"
+            }),
             ..Default::default()
         };
 

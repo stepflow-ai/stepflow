@@ -41,7 +41,7 @@ describe('Protocol Schema', () => {
       method: 'componentExecute',
       params: {
         component: 'http://example.com/component1',
-        args: {
+        input: {
           param1: 'value1',
           param2: 42
         }

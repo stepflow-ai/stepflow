@@ -1,6 +1,5 @@
 use super::{Component, Expr, ValueRef};
 use crate::schema::SchemaRef;
-use indexmap::IndexMap;
 use schemars::JsonSchema;
 
 /// A step in a workflow that executes a component with specific arguments.
@@ -26,7 +25,8 @@ pub struct Step {
     pub on_error: ErrorAction,
 
     /// Arguments to pass to the component for this step
-    pub args: IndexMap<String, Expr>,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub input: serde_json::Value,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -62,7 +62,6 @@ mod tests {
     use super::*;
     use crate::workflow::Component;
     use crate::workflow::ValueRef;
-    use indexmap::IndexMap;
 
     #[test]
     fn test_error_action_serialization() {
@@ -130,7 +129,7 @@ mod tests {
             on_error: ErrorAction::UseDefault {
                 default_value: Some(ValueRef::from("fallback")),
             },
-            args: IndexMap::new(),
+            input: serde_json::Value::Null,
         };
 
         let yaml = serde_yml::to_string(&step).unwrap();
@@ -148,7 +147,7 @@ mod tests {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
-            args: IndexMap::new(),
+            input: serde_json::Value::Null,
         };
 
         let yaml = serde_yml::to_string(&step).unwrap();

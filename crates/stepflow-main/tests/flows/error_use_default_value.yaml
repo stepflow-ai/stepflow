@@ -36,9 +36,9 @@ steps:
       action: use_default
       default_value:
         output: "using default value"
-    args:
+    input:
       mode: { $from: { workflow: input }, path: mode }
-outputs:
+output:
   error_result: { $from: { step: error }, path: output }
 test_cases:
   - input: { mode: "error" }

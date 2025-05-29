@@ -33,7 +33,7 @@ steps:
   - id: expensive_analysis
     component: ai/analyze
     skip: { $from: { workflow: input }, path: is_premium_user }
-    args:
+    input:
       data: { $from: { step: previous_step } }
 ```
 
@@ -52,7 +52,7 @@ This propagation can be interrupted by configuring how an input should be comput
 steps:
   - id: consumer_step
     component: data/process
-    args:
+    input:
       required_data: { $from: { step: step1 } }
       optional_enhancement:
         $from: { step: step2 }
@@ -79,7 +79,7 @@ steps:
       default_output:
         result: "fallback_value"
         status: "error_handled"
-    args:
+    input:
       endpoint: "https://api.example.com"
 ```
 
@@ -102,16 +102,16 @@ Sub-workflows can be executed using the built-in `eval` component:
 steps:
   - id: sub_process
     component: builtin://eval
-    args:
+    input:
       workflow:
         inputs:
           data: { type: string }
         steps:
           - id: process
             component: data/transform
-            args:
+            input:
               input: { $from: { workflow: input }, path: data }
-        outputs:
+        output:
           result: { $from: { step: process } }
       input:
         data: { $from: { step: previous_step }, path: processed_data }

@@ -1,10 +1,10 @@
 // Base types
-export type JsonValue = 
-  | string 
-  | number 
-  | boolean 
-  | null 
-  | JsonValue[] 
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
   | { [key: string]: JsonValue };
 
 export type Schema = JsonValue;
@@ -18,11 +18,11 @@ export interface StepExecution {
 export interface Step {
   id: string;
   component: string;
-  args: Record<string, Expr>;
+  input: Record<string, Expr>;
   execution?: StepExecution | null;
 }
 
-export type Expr = 
+export type Expr =
   | { literal: JsonValue }
   | { input: string }
   | { step: string; field?: string | null };

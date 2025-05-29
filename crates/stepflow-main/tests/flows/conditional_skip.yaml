@@ -63,17 +63,17 @@ steps:
   - id: conditional_step
     component: mock://one_output
     skip_if: { $from: { workflow: input }, path: should_skip }
-    args:
+    input:
       input: { $from: { workflow: input }, path: value }
   - id: dependent_step
     component: mock://handle_skip
-    args:
+    input:
       input: 
         $from: { step: conditional_step }
         path: output
         on_skip:
           action: use_default
-outputs:
+output:
   dependent_result: { $from: { step: dependent_step }, path: output }
 test_cases:
   - input:

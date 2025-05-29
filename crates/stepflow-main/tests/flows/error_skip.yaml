@@ -34,9 +34,9 @@ steps:
     component: mock://error
     on_error:
       action: skip
-    args:
+    input:
       mode: { $from: { workflow: input }, path: mode }
-outputs:
+output:
   error_result: { $from: { step: error }, path: output }
 test_cases:
   - input: { mode: "error" }

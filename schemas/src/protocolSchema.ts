@@ -44,14 +44,14 @@ export const componentInfoRequest = z.object({
 
 export const componentExecuteRequest = z.object({
   component: z.string(),
-  args: z.record(z.any())
+  input: z.record(z.any())
 });
 
 export const stepArgumentsRequest = z.object({
   step: z.object({
     id: z.string(),
     component: z.string(),
-    args: z.record(z.any())
+    input: z.record(z.any())
   })
 });
 
@@ -98,7 +98,7 @@ export const componentExecuteResponse = z.object({
 });
 
 export const stepArgumentsResponse = z.object({
-  args: z.record(z.any())
+  input: z.record(z.any())
 });
 
 // Response

@@ -15,38 +15,38 @@ steps:
   # Parallel data processing steps
   - id: calculate_total_revenue
     component: python://sum_field
-    args:
+    input:
       data: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   - id: count_sales
     component: python://count_items
-    args:
+    input:
       data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: calculate_average_sale
     component: python://average_field
-    args:
+    input:
       data: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   - id: calculate_performance_ratio
     component: python://divide
-    args:
+    input:
       a: { $from: { step: "calculate_total_revenue" }, path: "result" }
       b: { $from: { workflow: input }, path: "target_revenue" }
 
   # Format metrics summary for display
   - id: format_metrics_summary
     component: python://format_metrics
-    args:
+    input:
       total_revenue: { $from: { step: "calculate_total_revenue" }, path: "result" }
       sales_count: { $from: { step: "count_sales" }, path: "result" }
       average_sale: { $from: { step: "calculate_average_sale" }, path: "result" }
       performance_ratio: { $from: { step: "calculate_performance_ratio" }, path: "result" }
       target_revenue: { $from: { workflow: input }, path: "target_revenue" }
 
-outputs:
+output:
   total_revenue: { $from: { step: "calculate_total_revenue" }, path: "result" }
   sales_count: { $from: { step: "count_sales" }, path: "result" }
   average_sale: { $from: { step: "calculate_average_sale" }, path: "result" }

@@ -58,13 +58,13 @@ output_schema:
 steps:
   - id: step1
     component: mock://one_output
-    args:
+    input:
       input: { $from: { workflow: input }, path: name }
   - id: step2
     component: mock://two_outputs
-    args:
+    input:
       input: { $from: { step: step1 }, path: output }
-outputs:
+output:
     name: { $from: { step: step1 }, path: output }
     x: { $from: { step: step2 }, path: x }
     y: { $from: { step: step2 }, path: y }
