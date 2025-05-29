@@ -161,3 +161,17 @@ plugins:
     command: uv   # Command to execute
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]  # Arguments
 ```
+
+## Testing
+
+Tests in `crates/stepflow-main/tests/test_run.rs` use `insta` to perform snapshot testing.
+
+Each file in `crates/stepflow-main/tests/flows` contains a stepflow_config, a workflow, and a sequence of test cases.
+Adding new tests can be done by either adding a case using an existing test workflow, or creating a new file with new configuration, workflow and test cases.
+
+Useful commands:
+
+* `cargo insta test --unreferenced=delete` will run all the tests (including the insta tests) and delete unused snapshots.
+* `cargo insta pending-snapshots` produces a list of pending snapshots
+* `cargo insta show <path>` shows a specific snapshot
+* `cargo insta accept` will accept all of the snapshots.
