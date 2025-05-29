@@ -1,0 +1,28 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 0
+expression: result
+info:
+  data:
+    message: "Hello, blobs!"
+    number: 42
+    nested:
+      array:
+        - 1
+        - 2
+        - 3
+      boolean: true
+input_file: crates/stepflow-main/tests/flows/blob_test.yaml
+---
+outcome: success
+result:
+  blob_id: 868591347a854ba1d0f4875b2dd44e1e8335052af03725a9819f89e0142318b0
+  retrieved_data:
+    message: "Hello, blobs!"
+    nested:
+      array:
+        - 1
+        - 2
+        - 3
+      boolean: true
+    number: 42

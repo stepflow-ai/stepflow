@@ -1,9 +1,10 @@
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use crate::Result;
+use crate::{InMemoryStateStore, Result, StateStore};
 use futures::{FutureExt as _, TryFutureExt as _};
 use stepflow_core::{
     FlowError, FlowResult,
+    blob::BlobId,
     workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::{ExecutionContext, PluginError, Plugins};
@@ -15,15 +16,21 @@ type FutureFlowResult = futures::future::Shared<oneshot::Receiver<FlowResult>>;
 #[derive(Clone)]
 pub struct StepFlowExecutor {
     pub(crate) plugins: Arc<Plugins>,
+    pub(crate) state_store: Arc<dyn StateStore>,
     // TODO: Should treat this as a cache and evict old executions.
-    // TODO: Should write this to state.
+    // TODO: Should write execution state to the state store for persistence.
     pending: Arc<RwLock<HashMap<Uuid, FutureFlowResult>>>,
 }
 
 impl StepFlowExecutor {
     pub fn new(plugins: Plugins) -> Self {
+        Self::with_state_store(plugins, Arc::new(InMemoryStateStore::new()))
+    }
+
+    pub fn with_state_store(plugins: Plugins, state_store: Arc<dyn StateStore>) -> Self {
         Self {
             plugins: Arc::new(plugins),
+            state_store,
             pending: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -154,5 +161,93 @@ impl ExecutionContext for ExecutionHandle {
             .flow_result(execution_id)
             .map_err(|e| e.change_context(PluginError::UdfExecution))
             .boxed()
+    }
+
+    fn create_blob(
+        &self,
+        data: ValueRef,
+    ) -> Pin<Box<dyn Future<Output = stepflow_plugin::Result<BlobId>> + Send + '_>> {
+        self.executor
+            .state_store
+            .create_blob(data)
+            .map_err(|e| e.change_context(PluginError::UdfExecution))
+            .boxed()
+    }
+
+    fn get_blob(
+        &self,
+        blob_id: &BlobId,
+    ) -> Pin<Box<dyn Future<Output = stepflow_plugin::Result<ValueRef>> + Send + '_>> {
+        let state_store = self.executor.state_store.clone();
+        let blob_id = blob_id.clone();
+
+        Box::pin(async move {
+            state_store
+                .get_blob(&blob_id)
+                .await
+                .map_err(|e| e.change_context(PluginError::UdfExecution))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use stepflow_plugin::Plugins;
+
+    #[tokio::test]
+    async fn test_execution_handle_blob_operations() {
+        // Create executor with default state store
+        let plugins = Plugins::new();
+        let executor = StepFlowExecutor::new(plugins);
+
+        // Create execution handle
+        let handle = ExecutionHandle {
+            execution_id: Uuid::new_v4(),
+            executor,
+        };
+
+        // Test data
+        let test_data = json!({"message": "Hello from execution handle!", "count": 123});
+        let value_ref = ValueRef::new(test_data.clone());
+
+        // Create blob through execution context
+        let blob_id = handle.create_blob(value_ref).await.unwrap();
+
+        // Retrieve blob through execution context
+        let retrieved = handle.get_blob(&blob_id).await.unwrap();
+
+        // Verify data matches
+        assert_eq!(retrieved.as_ref(), &test_data);
+    }
+
+    #[tokio::test]
+    async fn test_executor_with_custom_state_store() {
+        // Create executor with custom state store
+        let plugins = Plugins::new();
+        let state_store = Arc::new(InMemoryStateStore::new());
+        let executor = StepFlowExecutor::with_state_store(plugins, state_store.clone());
+
+        // Create execution handle
+        let handle = ExecutionHandle {
+            execution_id: Uuid::new_v4(),
+            executor,
+        };
+
+        // Create blob through execution context
+        let test_data = json!({"custom": "state store test"});
+        let blob_id = handle
+            .create_blob(ValueRef::new(test_data.clone()))
+            .await
+            .unwrap();
+
+        // Verify we can retrieve through the direct state store
+        let retrieved_direct = state_store.get_blob(&blob_id).await.unwrap();
+        assert_eq!(retrieved_direct.as_ref(), &test_data);
+
+        // And through the execution handle
+        let retrieved_handle = handle.get_blob(&blob_id).await.unwrap();
+        assert_eq!(retrieved_handle.as_ref(), &test_data);
     }
 }

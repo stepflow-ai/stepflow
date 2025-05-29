@@ -1,6 +1,7 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 use stepflow_core::{
     FlowResult,
+    blob::BlobId,
     workflow::{Flow, ValueRef},
 };
 use uuid::Uuid;
@@ -67,4 +68,31 @@ pub trait ExecutionContext: Send + Sync {
             self.flow_result(execution_id).await
         })
     }
+
+    /// Store JSON data as a blob and return its content-based ID.
+    ///
+    /// The blob ID is generated as a SHA-256 hash of the JSON content,
+    /// providing deterministic IDs and automatic deduplication.
+    ///
+    /// # Arguments
+    /// * `data` - The JSON data to store as a blob
+    ///
+    /// # Returns
+    /// The blob ID for the stored data
+    fn create_blob(
+        &self,
+        data: ValueRef,
+    ) -> Pin<Box<dyn Future<Output = Result<BlobId>> + Send + '_>>;
+
+    /// Retrieve JSON data by blob ID.
+    ///
+    /// # Arguments
+    /// * `blob_id` - The blob ID to retrieve
+    ///
+    /// # Returns
+    /// The JSON data associated with the blob ID, or an error if not found
+    fn get_blob(
+        &self,
+        blob_id: &BlobId,
+    ) -> Pin<Box<dyn Future<Output = Result<ValueRef>> + Send + '_>>;
 }
