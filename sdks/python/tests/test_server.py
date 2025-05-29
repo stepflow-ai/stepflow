@@ -262,4 +262,183 @@ async def test_uninitialized_server(server):
     assert response.id == request.id
     assert response.error is not None
     assert response.error["code"] == -32002
-    assert "not initialized" in response.error["message"] 
+    assert "not initialized" in response.error["message"]
+
+
+def test_custom_component_simple_expression():
+    """Test custom component with simple expression code."""
+    from stepflow_sdk.main import CustomComponentInput, CustomComponentOutput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {
+                "x": {"type": "number"},
+                "y": {"type": "number"}
+            },
+            "required": ["x", "y"]
+        },
+        code="data['x'] + data['y']",
+        input={"x": 5, "y": 3}
+    )
+    
+    result = custom_component(input_data)
+    assert isinstance(result, CustomComponentOutput)
+    assert result.result == 8
+
+
+def test_custom_component_lambda_style():
+    """Test custom component with lambda-style code."""
+    from stepflow_sdk.main import CustomComponentInput, CustomComponentOutput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {
+                "numbers": {"type": "array", "items": {"type": "number"}}
+            },
+            "required": ["numbers"]
+        },
+        code="sum(data['numbers']) / len(data['numbers'])",
+        input={"numbers": [1, 2, 3, 4, 5]}
+    )
+    
+    result = custom_component(input_data)
+    assert isinstance(result, CustomComponentOutput)
+    assert result.result == 3.0
+
+
+def test_custom_component_function_body():
+    """Test custom component with multi-line function body."""
+    from stepflow_sdk.main import CustomComponentInput, CustomComponentOutput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"}
+            },
+            "required": ["text"]
+        },
+        code="""words = data['text'].split()
+result = {}
+for word in words:
+    result[word] = len(word)
+return result""",
+        input={"text": "hello world python"}
+    )
+    
+    result = custom_component(input_data)
+    assert isinstance(result, CustomComponentOutput)
+    expected = {"hello": 5, "world": 5, "python": 6}
+    assert result.result == expected
+
+
+def test_custom_component_named_function():
+    """Test custom component with named function definition."""
+    from stepflow_sdk.main import CustomComponentInput, CustomComponentOutput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {
+                "items": {"type": "array", "items": {"type": "number"}}
+            },
+            "required": ["items"]
+        },
+        code="""
+def process_data(data):
+    items = data['items']
+    return {
+        'sum': sum(items),
+        'count': len(items),
+        'average': sum(items) / len(items) if items else 0
+    }
+""",
+        input={"items": [10, 20, 30]},
+        function_name="process_data"
+    )
+    
+    result = custom_component(input_data)
+    assert isinstance(result, CustomComponentOutput)
+    expected = {"sum": 60, "count": 3, "average": 20.0}
+    assert result.result == expected
+
+
+def test_custom_component_validation_error():
+    """Test custom component with invalid input according to schema."""
+    from stepflow_sdk.main import CustomComponentInput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {
+                "x": {"type": "number"},
+                "y": {"type": "number"}
+            },
+            "required": ["x", "y"]
+        },
+        code="data['x'] + data['y']",
+        input={"x": "not_a_number", "y": 3}  # Invalid: x should be number
+    )
+    
+    with pytest.raises(ValueError, match="Input validation failed"):
+        custom_component(input_data)
+
+
+def test_custom_component_function_not_found():
+    """Test custom component when specified function name doesn't exist."""
+    from stepflow_sdk.main import CustomComponentInput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "number"}},
+            "required": ["value"]
+        },
+        code="""
+def some_function(data):
+    return data['value'] * 2
+""",
+        input={"value": 5},
+        function_name="missing_function"
+    )
+    
+    with pytest.raises(ValueError, match="Function 'missing_function' not found"):
+        custom_component(input_data)
+
+
+def test_custom_component_code_execution_error():
+    """Test custom component with code that raises an error."""
+    from stepflow_sdk.main import CustomComponentInput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "number"}},
+            "required": ["value"]
+        },
+        code="1 / 0",  # Division by zero
+        input={"value": 5}
+    )
+    
+    with pytest.raises(ValueError, match="Code execution failed"):
+        custom_component(input_data)
+
+
+def test_custom_component_non_serializable_result():
+    """Test custom component that returns non-JSON serializable result."""
+    from stepflow_sdk.main import CustomComponentInput, custom_component
+    
+    input_data = CustomComponentInput(
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "number"}},
+            "required": ["value"]
+        },
+        code="lambda x: x",  # Returns a function, not JSON serializable
+        input={"value": 5}
+    )
+    
+    with pytest.raises(ValueError, match="Result is not JSON serializable"):
+        custom_component(input_data) 

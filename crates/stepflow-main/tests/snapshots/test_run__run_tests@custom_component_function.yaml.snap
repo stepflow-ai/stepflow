@@ -1,0 +1,24 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 0
+expression: result
+info:
+  data:
+    - name: Alice
+      score: 85
+    - name: Bob
+      score: 92
+    - name: Charlie
+      score: 78
+    - name: Diana
+      score: 96
+input_file: crates/stepflow-main/tests/flows/custom_component_function.yaml
+---
+outcome: success
+result:
+  analytics:
+    average: 87.75
+    count: 4
+    max: 96
+    min: 78
+    top_performer: Diana

@@ -1,0 +1,14 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 1
+expression: result
+info:
+  x: 5
+  y: 12
+input_file: crates/stepflow-main/tests/flows/custom_component_simple.yaml
+---
+outcome: success
+result:
+  custom_calculation: 62.36184731067546
+  product: 60
+  sum: 17
