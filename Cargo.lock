@@ -2064,6 +2064,7 @@ name = "stepflow-core"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "insta",
  "safer_owning_ref",
  "schemars",
  "serde",

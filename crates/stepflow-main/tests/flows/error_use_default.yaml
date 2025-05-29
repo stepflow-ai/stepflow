@@ -32,9 +32,9 @@ steps:
     on_error:
       action: use_default
     args:
-      mode: { $from: $input, path: mode }
+      mode: { $ref: { workflow: input }, path: mode }
 outputs:
-  error_result: { $from: error }
+  error_result: { $ref: { step: error } }
 test_cases:
   - input: { mode: "error" }
   - input: { mode: "succeed" }

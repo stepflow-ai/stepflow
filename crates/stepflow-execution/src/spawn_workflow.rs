@@ -24,7 +24,7 @@ pub(crate) async fn spawn_workflow(
     let mut state = State::new();
 
     tracing::debug!("Recording input {input:?}");
-    state.record_literal(BaseRef::Input, input)?;
+    state.record_literal(BaseRef::WORKFLOW_INPUT, input)?;
 
     let mut step_tasks = FuturesUnordered::new();
 
@@ -37,7 +37,7 @@ pub(crate) async fn spawn_workflow(
     for step in steps {
         tracing::debug!("Creating future for step {step:?}");
         // Record the future step result.
-        let result_tx = state.record_future(BaseRef::Step(step.id.clone()))?;
+        let result_tx = state.record_future(BaseRef::step_output(step.id.clone()))?;
 
         let plugin = executor
             .plugins
