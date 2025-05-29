@@ -148,8 +148,7 @@ impl State {
             }
 
             // Second pass: replace references with resolved values, handling skip behavior
-            let resolved_value =
-                replace_references(&value, &resolved_base_refs, any_skipped_or_failed.as_ref())?;
+            let resolved_value = replace_references(&value, &resolved_base_refs)?;
             match resolved_value {
                 Some(value) => Ok(FlowResult::Success {
                     result: value.into(),
@@ -213,7 +212,6 @@ fn collect_references_and_expressions(value: &serde_json::Value, refs: &mut Hash
 fn replace_references(
     value: &serde_json::Value,
     resolved_base_refs: &HashMap<BaseRef, ValueRef>,
-    default_skip_result: Option<&FlowResult>,
 ) -> Result<Option<serde_json::Value>, error_stack::Report<crate::ExecutionError>> {
     match value {
         serde_json::Value::Object(map) => {
@@ -273,7 +271,7 @@ fn replace_references(
             // Not a reference or literal, recurse into all values
             let mut new_map = serde_json::Map::new();
             for (k, v) in map {
-                match replace_references(v, resolved_base_refs, default_skip_result)? {
+                match replace_references(v, resolved_base_refs)? {
                     Some(resolved) => new_map.insert(k.clone(), resolved),
                     None => return Ok(None), // Propagate skip
                 };
@@ -283,7 +281,7 @@ fn replace_references(
         serde_json::Value::Array(arr) => {
             let mut new_arr = Vec::new();
             for v in arr {
-                match replace_references(v, resolved_base_refs, default_skip_result)? {
+                match replace_references(v, resolved_base_refs)? {
                     Some(resolved) => new_arr.push(resolved),
                     None => return Ok(None), // Propagate skip
                 }
