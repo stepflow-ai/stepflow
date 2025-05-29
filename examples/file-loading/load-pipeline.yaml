@@ -12,28 +12,34 @@ input_schema:
       description: "Target revenue for analysis"
 
 steps:
-  # Load the sales data from file
+  # Load the sales data from file  
   - id: load_sales_data
     component: "builtins://load_file"
     args:
       path: { $from: "$input", path: "data_file_path" }
 
-  # Now process the loaded data (same as before)
+  # Extract the sales_data array using Python
+  - id: extract_sales_array
+    component: python://extract_sales_data
+    args:
+      data: { $from: "load_sales_data", path: "data" }
+
+  # Now process the sales data array
   - id: calculate_total_revenue
     component: python://sum_field
     args:
-      data: { $from: "load_sales_data", path: "data.sales_data" }
+      data: { $from: "extract_sales_array", path: "data" }
       field: "revenue"
 
   - id: count_sales
     component: python://count_items
     args:
-      data: { $from: "load_sales_data", path: "data.sales_data" }
+      data: { $from: "extract_sales_array", path: "data" }
 
   - id: calculate_average_sale
     component: python://average_field
     args:
-      data: { $from: "load_sales_data", path: "data.sales_data" }
+      data: { $from: "extract_sales_array", path: "data" }
       field: "revenue"
 
   - id: calculate_performance_ratio
