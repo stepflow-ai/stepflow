@@ -59,15 +59,15 @@ steps:
   - id: step1
     component: mock://one_output
     args:
-      input: { $ref: { workflow: input }, path: name }
+      input: { $from: { workflow: input }, path: name }
   - id: step2
     component: mock://two_outputs
     args:
-      input: { $ref: { step: step1 }, path: output }
+      input: { $from: { step: step1 }, path: output }
 outputs:
-    name: { $ref: { step: step1 }, path: output }
-    x: { $ref: { step: step2 }, path: x }
-    y: { $ref: { step: step2 }, path: y }
+    name: { $from: { step: step1 }, path: output }
+    x: { $from: { step: step2 }, path: x }
+    y: { $from: { step: step2 }, path: y }
 test_cases:
   - input:
       name: a

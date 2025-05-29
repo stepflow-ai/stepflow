@@ -136,8 +136,8 @@ mod tests {
             args:
               a: "hello world 2"
         outputs:
-            s1a: { $ref: { step: s1 }, path: "a" }
-            s2b: { $ref: { step: s2 }, path: a }
+            s1a: { $from: { step: s1 }, path: "a" }
+            s2b: { $from: { step: s2 }, path: a }
         output_schema:
             type: object
             properties:

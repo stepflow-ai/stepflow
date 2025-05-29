@@ -17,11 +17,11 @@ steps:
             args:
               user_prompt: "Hello from nested flow"
         outputs:
-          result: { $ref: { step: inner_step } }
+          result: { $from: { step: inner_step } }
       input: {}
 
 outputs:
-  nested_result: { $ref: { step: nested_flow } }
+  nested_result: { $from: { step: nested_flow } }
 
 test_cases:
   - input: {}

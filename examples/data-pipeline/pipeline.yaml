@@ -16,53 +16,53 @@ steps:
   - id: calculate_total_revenue
     component: python://sum_field
     args:
-      data: { $ref: { workflow: input }, path: "sales_data" }
+      data: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   - id: count_sales
     component: python://count_items
     args:
-      data: { $ref: { workflow: input }, path: "sales_data" }
+      data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: calculate_average_sale
     component: python://average_field
     args:
-      data: { $ref: { workflow: input }, path: "sales_data" }
+      data: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   # This step waits for total_revenue to complete
   - id: calculate_performance_ratio
     component: python://divide
     args:
-      a: { $ref: { step: "calculate_total_revenue" }, path: "result" }
-      b: { $ref: { workflow: input }, path: "target_revenue" }
+      a: { $from: { step: "calculate_total_revenue" }, path: "result" }
+      b: { $from: { workflow: input }, path: "target_revenue" }
 
   # Format metrics for AI analysis (waits for all calculations)
   - id: format_metrics_summary
     component: python://format_metrics
     args:
-      total_revenue: { $ref: { step: "calculate_total_revenue" }, path: "result" }
-      sales_count: { $ref: { step: "count_sales" }, path: "result" }
-      average_sale: { $ref: { step: "calculate_average_sale" }, path: "result" }
-      performance_ratio: { $ref: { step: "calculate_performance_ratio" }, path: "result" }
-      target_revenue: { $ref: { workflow: input }, path: "target_revenue" }
+      total_revenue: { $from: { step: "calculate_total_revenue" }, path: "result" }
+      sales_count: { $from: { step: "count_sales" }, path: "result" }
+      average_sale: { $from: { step: "calculate_average_sale" }, path: "result" }
+      performance_ratio: { $from: { step: "calculate_performance_ratio" }, path: "result" }
+      target_revenue: { $from: { workflow: input }, path: "target_revenue" }
 
   # Format messages for OpenAI (depends on metrics summary)  
   - id: create_openai_messages
     component: "builtins://create_messages"
     args:
       system_instructions: "You are a sales analyst providing insights based on business metrics. Be specific and actionable."
-      user_prompt: { $ref: { step: "format_metrics_summary" }, path: "summary" }
+      user_prompt: { $from: { step: "format_metrics_summary" }, path: "summary" }
 
   # Generate AI insights from the metrics
   - id: generate_ai_insights
     component: "builtins://openai"
     args:
-      messages: { $ref: { step: "create_openai_messages" }, path: "messages" }
+      messages: { $from: { step: "create_openai_messages" }, path: "messages" }
 
 outputs:
-  total_revenue: { $ref: { step: "calculate_total_revenue" }, path: "result" }
-  sales_count: { $ref: { step: "count_sales" }, path: "result" }
-  average_sale: { $ref: { step: "calculate_average_sale" }, path: "result" }
-  performance_ratio: { $ref: { step: "calculate_performance_ratio" }, path: "result" }
-  ai_insights: { $ref: { step: "generate_ai_insights" }, path: "response" }
+  total_revenue: { $from: { step: "calculate_total_revenue" }, path: "result" }
+  sales_count: { $from: { step: "count_sales" }, path: "result" }
+  average_sale: { $from: { step: "calculate_average_sale" }, path: "result" }
+  performance_ratio: { $from: { step: "calculate_performance_ratio" }, path: "result" }
+  ai_insights: { $from: { step: "generate_ai_insights" }, path: "response" }

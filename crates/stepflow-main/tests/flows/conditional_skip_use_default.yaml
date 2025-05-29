@@ -62,20 +62,20 @@ output_schema:
 steps:
   - id: conditional_step
     component: mock://one_output
-    skip_if: { $ref: { workflow: input }, path: should_skip }
+    skip_if: { $from: { workflow: input }, path: should_skip }
     args:
-      input: { $ref: { workflow: input }, path: value }
+      input: { $from: { workflow: input }, path: value }
   - id: dependent_step
     component: mock://handle_skip
     args:
       input:
-        $ref: { step: conditional_step }
+        $from: { step: conditional_step }
         path: output
         on_skip:
           action: use_default
           default_value: "it was skipped"
 outputs:
-  dependent_result: { $ref: { step: dependent_step }, path: output }
+  dependent_result: { $from: { step: dependent_step }, path: output }
 test_cases:
   - input:
       should_skip: false

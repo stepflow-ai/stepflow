@@ -34,7 +34,7 @@ pub enum WorkflowRef {
 pub enum Expr {
     Ref {
         /// The source of the reference.
-        #[serde(rename = "$ref")]
+        #[serde(rename = "$from")]
         from: BaseRef,
         /// JSON pointer expression to apply to the referenced value.
         ///
@@ -132,12 +132,12 @@ mod tests {
         // Input reference with and without path, with default skip action (skip).
         insta::assert_yaml_snapshot!(&Expr::input_path("", SkipAction::Skip),
             @r###"
-        $ref:
+        $from:
           workflow: input
         "###);
         insta::assert_yaml_snapshot!(&Expr::input_path("out", SkipAction::Skip),
             @r###"
-        $ref:
+        $from:
           workflow: input
         path: out
         "###);
@@ -148,12 +148,12 @@ mod tests {
         // Step reference with and without path, with default skip action (skip).
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "", SkipAction::Skip),
             @r###"
-        $ref:
+        $from:
           step: step1
         "###);
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "out", SkipAction::Skip),
             @r###"
-        $ref:
+        $from:
           step: step1
         path: out
         "###);
@@ -161,14 +161,14 @@ mod tests {
         // Step reference with and without path, with use_default skip action (use default).
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "", SkipAction::UseDefault { default_value: None }),
             @r###"
-        $ref:
+        $from:
           step: step1
         on_skip:
           action: use_default
         "###);
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "out", SkipAction::UseDefault { default_value: None }),
             @r###"
-        $ref:
+        $from:
           step: step1
         path: out
         on_skip:
@@ -179,7 +179,7 @@ mod tests {
         let value: ValueRef = serde_json::Value::String("test_default".to_owned()).into();
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "out", SkipAction::UseDefault { default_value: Some(value.clone()) }),
             @r###"
-        $ref:
+        $from:
           step: step1
         path: out
         on_skip:
@@ -188,7 +188,7 @@ mod tests {
         "###);
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "", SkipAction::UseDefault { default_value: Some(value) }),
             @r###"
-        $ref:
+        $from:
           step: step1
         on_skip:
           action: use_default
@@ -203,11 +203,11 @@ mod tests {
         assert_eq!(from_yaml("5"), Expr::literal(5));
 
         assert_eq!(
-            from_yaml("{ $ref: { step: \"step1\" } }"),
+            from_yaml("{ $from: { step: \"step1\" } }"),
             Expr::step_path("step1", "", SkipAction::Skip)
         );
         assert_eq!(
-            from_yaml("{ $ref: { step: \"step1\" }, path: \"out\" }"),
+            from_yaml("{ $from: { step: \"step1\" }, path: \"out\" }"),
             Expr::step_path("step1", "out", SkipAction::Skip)
         );
     }
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn test_expr_with_skip_action_from_yaml() {
         let expr_with_skip: Expr = serde_yml::from_str(
-            "$ref: { step: step1 }\npath: out\non_skip:\n  action: use_default\n  default_value: fallback",
+            "$from: { step: step1 }\npath: out\non_skip:\n  action: use_default\n  default_value: fallback",
         )
         .unwrap();
 
@@ -254,7 +254,7 @@ mod tests {
         );
 
         let expr_with_default_skip: Expr =
-            serde_yml::from_str("$ref: { step: step1 }\npath: out").unwrap();
+            serde_yml::from_str("$from: { step: step1 }\npath: out").unwrap();
 
         assert_eq!(
             expr_with_default_skip,

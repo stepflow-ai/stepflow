@@ -32,9 +32,9 @@ Steps can be conditionally skipped using the `skip` field:
 steps:
   - id: expensive_analysis
     component: ai/analyze
-    skip: { $ref: { workflow: input }, path: is_premium_user }
+    skip: { $from: { workflow: input }, path: is_premium_user }
     args:
-      data: { $ref: { step: previous_step } }
+      data: { $from: { step: previous_step } }
 ```
 
 ### Skip Conditions
@@ -53,9 +53,9 @@ steps:
   - id: consumer_step
     component: data/process
     args:
-      required_data: { $ref: { step: step1 } }
+      required_data: { $from: { step: step1 } }
       optional_enhancement:
-        $ref: { step: step2 }
+        $from: { step: step2 }
         $on_skip: "use_default"
         $default: "no_enhancement"
 ```
@@ -110,11 +110,11 @@ steps:
           - id: process
             component: data/transform
             args:
-              input: { $ref: { workflow: input }, path: data }
+              input: { $from: { workflow: input }, path: data }
         outputs:
-          result: { $ref: { step: process } }
+          result: { $from: { step: process } }
       input:
-        data: { $ref: { step: previous_step }, path: processed_data }
+        data: { $from: { step: previous_step }, path: processed_data }
 ```
 
 ### Sub-workflow Execution

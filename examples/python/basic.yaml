@@ -16,19 +16,19 @@ steps:
   - id: m_plus_n
     component: python://add
     args:
-      a: { $ref: { workflow: input }, path: m }
-      b: { $ref: { workflow: input }, path: n }
+      a: { $from: { workflow: input }, path: m }
+      b: { $from: { workflow: input }, path: n }
   - id: m_times_n
     component: python://multiply
     args:
-      a: { $ref: { workflow: input }, path: m }
-      b: { $ref: { workflow: input }, path: n }
+      a: { $from: { workflow: input }, path: m }
+      b: { $from: { workflow: input }, path: n }
   - id: m_plus_n_times_n
     component: python://multiply
     args:
-      a: { $ref: { step: m_plus_n }, path: result }
-      b: { $ref: { workflow: input }, path: n }
+      a: { $from: { step: m_plus_n }, path: result }
+      b: { $from: { workflow: input }, path: n }
 outputs:
-  m_plus_n_times_n: { $ref: { step: m_plus_n_times_n }, path: result }
-  m_times_n: { $ref: { step: m_times_n }, path: result }
-  m_plus_n: { $ref: { step: m_plus_n }, path: result }
+  m_plus_n_times_n: { $from: { step: m_plus_n_times_n }, path: result }
+  m_times_n: { $from: { step: m_times_n }, path: result }
+  m_plus_n: { $from: { step: m_plus_n }, path: result }
