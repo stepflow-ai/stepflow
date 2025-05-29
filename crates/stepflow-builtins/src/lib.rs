@@ -4,6 +4,7 @@ use stepflow_plugin::ExecutionContext;
 
 mod error;
 mod eval;
+mod load_file;
 mod messages;
 mod openai;
 mod plugin;

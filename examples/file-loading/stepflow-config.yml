@@ -1,0 +1,7 @@
+plugins:
+  - name: python
+    type: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
+  - name: builtins
+    type: builtin

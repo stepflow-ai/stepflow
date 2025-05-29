@@ -40,6 +40,16 @@ class MetricsInput(msgspec.Struct):
 class SummaryResult(msgspec.Struct):
     summary: str
 
+# Updated input type that can handle nested data
+class NestedDataInput(msgspec.Struct):
+    data: dict  # Can contain nested structure    
+
+@server.component
+def extract_sales_data(input: NestedDataInput) -> ArrayInput:
+    # Extract sales_data from the nested structure
+    sales_data = input.data.get("sales_data", [])
+    return ArrayInput(data=sales_data)
+
 # Register a simple addition component
 @server.component
 def add(input: MathInput) -> MathOutput:

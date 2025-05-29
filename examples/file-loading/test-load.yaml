@@ -1,0 +1,12 @@
+name: "Test File Loading"
+description: "Simple test of the load_file component"
+
+steps:
+  - id: load_sales_data
+    component: "builtins://load_file"
+    args:
+      path: "examples/data-pipeline/sales-data.json"
+
+outputs:
+  loaded_data: { $from: "load_sales_data", path: "data" }
+  file_metadata: { $from: "load_sales_data", path: "metadata" }
