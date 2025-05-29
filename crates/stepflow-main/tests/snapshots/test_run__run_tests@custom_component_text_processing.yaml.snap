@@ -1,0 +1,52 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 0
+expression: result
+info:
+  text: This is a great example of text processing. I love how flexible this system is!
+  pattern: "\\b\\w{4,}\\b"
+input_file: crates/stepflow-main/tests/flows/custom_component_text_processing.yaml
+---
+outcome: success
+result:
+  pattern_matches:
+    - index: 0
+      match: This
+    - index: 1
+      match: great
+    - index: 2
+      match: example
+    - index: 3
+      match: text
+    - index: 4
+      match: processing
+    - index: 5
+      match: love
+    - index: 6
+      match: flexible
+    - index: 7
+      match: this
+    - index: 8
+      match: system
+  sentiment_score: 1
+  word_analysis:
+    avg_word_length: 4.33
+    char_count: 65
+    most_common_words:
+      - count: 2
+        word: this
+      - count: 1
+        word: is
+      - count: 1
+        word: a
+    word_count: 15
+    word_length_distribution:
+      "1": 2
+      "11": 1
+      "2": 2
+      "3": 2
+      "4": 4
+      "5": 1
+      "6": 1
+      "7": 1
+      "8": 1

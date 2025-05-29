@@ -1,6 +1,5 @@
-use super::{Expr, Step};
+use super::Step;
 use crate::schema::SchemaRef;
-use indexmap::IndexMap;
 use schemars::JsonSchema;
 
 /// A workflow consisting of a sequence of steps and their outputs.
@@ -35,8 +34,8 @@ pub struct Flow {
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    pub outputs: IndexMap<String, Expr>,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub output: serde_json::Value,
 }
 
 impl Flow {
@@ -54,9 +53,9 @@ impl Flow {
         &self.steps[index]
     }
 
-    /// Returns a reference to the flow's outputs.
-    pub fn outputs(&self) -> &IndexMap<String, Expr> {
-        &self.outputs
+    /// Returns a reference to the flow's output value.
+    pub fn output(&self) -> &serde_json::Value {
+        &self.output
     }
 
     /// Parses a flow from a YAML string.
@@ -107,8 +106,7 @@ impl Flow {
 
 #[cfg(test)]
 mod tests {
-    use crate::workflow::{Component, ErrorAction, Expr, SkipAction};
-    use indexmap::indexmap;
+    use crate::workflow::{Component, ErrorAction};
 
     use super::*;
 
@@ -129,15 +127,15 @@ mod tests {
         steps:
           - component: langflow://echo
             id: s1
-            args:
+            input:
               a: "hello world"
           - component: mcp+http://foo/bar
             id: s2
-            args:
+            input:
               a: "hello world 2"
-        outputs:
-            s1a: { $ref: { step: s1 }, path: "a" }
-            s2b: { $ref: { step: s2 }, path: a }
+        output:
+            s1a: { $from: { step: s1 }, path: "a" }
+            s2b: { $from: { step: s2 }, path: a }
         output_schema:
             type: object
             properties:
@@ -163,9 +161,9 @@ mod tests {
                     Step {
                         id: "s1".to_owned(),
                         component: Component::parse("langflow://echo").unwrap(),
-                        args: indexmap! {
-                            "a".to_owned() => Expr::literal("hello world"),
-                        },
+                        input: serde_json::json!({
+                            "a": "hello world"
+                        }),
                         input_schema: None,
                         output_schema: None,
                         skip_if: None,
@@ -174,19 +172,19 @@ mod tests {
                     Step {
                         id: "s2".to_owned(),
                         component: Component::parse("mcp+http://foo/bar").unwrap(),
-                        args: indexmap! {
-                            "a".to_owned() => Expr::literal("hello world 2"),
-                        },
+                        input: serde_json::json!({
+                            "a": "hello world 2"
+                        }),
                         input_schema: None,
                         output_schema: None,
                         skip_if: None,
                         on_error: ErrorAction::default(),
                     }
                 ],
-                outputs: indexmap! {
-                    "s1a".to_owned() => Expr::step_path("s1", "a", SkipAction::default()),
-                    "s2b".to_owned() => Expr::step_path("s2", "a", SkipAction::default()),
-                },
+                output: serde_json::json!({
+                    "s1a": { "$from": { "step": "s1" }, "path": "a" },
+                    "s2b": { "$from": { "step": "s2" }, "path": "a" }
+                }),
                 output_schema: Some(output_schema),
             }
         );

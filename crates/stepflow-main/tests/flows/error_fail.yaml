@@ -34,10 +34,10 @@ steps:
     component: mock://error
     on_error:
       action: fail
-    args:
-      mode: { $ref: { workflow: input }, path: mode }
-outputs:
-  error_result: { $ref: { step: error }, path: output }
+    input:
+      mode: { $from: { workflow: input }, path: mode }
+output:
+  error_result: { $from: { step: error }, path: output }
 test_cases:
   - input: { mode: "error" }
     expect_failure: true

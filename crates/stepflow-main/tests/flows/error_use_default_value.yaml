@@ -36,10 +36,10 @@ steps:
       action: use_default
       default_value:
         output: "using default value"
-    args:
-      mode: { $ref: { workflow: input }, path: mode }
-outputs:
-  error_result: { $ref: { step: error }, path: output }
+    input:
+      mode: { $from: { workflow: input }, path: mode }
+output:
+  error_result: { $from: { step: error }, path: output }
 test_cases:
   - input: { mode: "error" }
   - input: { mode: "succeed" }

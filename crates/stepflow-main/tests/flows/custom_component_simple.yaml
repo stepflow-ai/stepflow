@@ -1,0 +1,73 @@
+config:
+  plugins:
+    - name: python
+      type: stdio
+      command: uv
+      args: [--project, "../../../../sdks/python", run, stepflow_sdk]
+input_schema:
+  type: object
+  properties:
+    x:
+      type: number
+    y:
+      type: number
+output_schema:
+  type: object
+  properties:
+    sum:
+      type: number
+    product:
+      type: number
+    custom_calculation:
+      type: number
+steps:
+  - id: simple_addition
+    component: python://custom_component
+    input:
+      input_schema:
+        type: object
+        properties:
+          x: { type: number }
+          y: { type: number }
+        required: [x, y]
+      code: "data['x'] + data['y']"
+      input:
+        x: { $from: { workflow: input }, path: x }
+        y: { $from: { workflow: input }, path: y }
+  - id: simple_multiplication
+    component: python://custom_component
+    input:
+      input_schema:
+        type: object
+        properties:
+          x: { type: number }
+          y: { type: number }
+        required: [x, y]
+      code: "data['x'] * data['y']"
+      input:
+        x: { $from: { workflow: input }, path: x }
+        y: { $from: { workflow: input }, path: y }
+  - id: complex_calculation
+    component: python://custom_component
+    input:
+      input_schema:
+        type: object
+        properties:
+          sum: { type: number }
+          product: { type: number }
+        required: [sum, product]
+      code: "math.sqrt(data['sum'] ** 2 + data['product'] ** 2)"
+      input:
+        sum: { $from: { step: simple_addition }, path: result }
+        product: { $from: { step: simple_multiplication }, path: result }
+output:
+  sum: { $from: { step: simple_addition }, path: result }
+  product: { $from: { step: simple_multiplication }, path: result }
+  custom_calculation: { $from: { step: complex_calculation }, path: result }
+test_cases:
+  - input:
+      x: 3
+      y: 4
+  - input:
+      x: 5
+      y: 12

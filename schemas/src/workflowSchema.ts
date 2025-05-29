@@ -42,7 +42,7 @@ const stepExecutionSchema = z.object({
 const stepSchema = z.object({
   id: z.string(),
   component: z.string(),
-  args: z.record(exprSchema),
+  input: z.record(exprSchema),
   execution: stepExecutionSchema.optional().nullable()
 }) as z.ZodType<Step>;
 
@@ -50,7 +50,7 @@ const stepSchema = z.object({
 export const workflowSchema = z.object({
   input_schema: jsonSchema.optional().nullable(),
   output_schema: jsonSchema.optional().nullable(),
-  outputs: z.record(exprSchema).optional(),
+  output: z.record(exprSchema).optional(),
   steps: z.array(stepSchema)
 }) as z.ZodType<{
   input_schema?: Schema | null;

@@ -1,0 +1,91 @@
+config:
+  plugins:
+    - name: python
+      type: stdio
+      command: uv
+      args: [--project, "../../../../sdks/python", run, stepflow_sdk]
+input_schema:
+  type: object
+  properties:
+    data:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          score:
+            type: number
+output_schema:
+  type: object
+  properties:
+    analytics:
+      type: object
+steps:
+  - id: analyze_scores
+    component: python://custom_component
+    input:
+      input_schema:
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              type: object
+              properties:
+                name: { type: string }
+                score: { type: number }
+        required: [data]
+      code: |
+        def analyze_scores(data):
+            scores = [item['score'] for item in data['data']]
+            
+            if not scores:
+                return {
+                    'count': 0,
+                    'average': 0,
+                    'min': 0,
+                    'max': 0,
+                    'top_performer': None
+                }
+            
+            average = sum(scores) / len(scores)
+            min_score = min(scores)
+            max_score = max(scores)
+            
+            # Find top performer
+            top_performer = None
+            for item in data['data']:
+                if item['score'] == max_score:
+                    top_performer = item['name']
+                    break
+            
+            return {
+                'count': len(scores),
+                'average': round(average, 2),
+                'min': min_score,
+                'max': max_score,
+                'top_performer': top_performer
+            }
+      function_name: analyze_scores
+      input:
+        data: { $from: { workflow: input }, path: data }
+output:
+  analytics: { $from: { step: analyze_scores }, path: result }
+test_cases:
+  - input:
+      data:
+        - name: "Alice"
+          score: 85
+        - name: "Bob"
+          score: 92
+        - name: "Charlie"
+          score: 78
+        - name: "Diana"
+          score: 96
+  - input:
+      data:
+        - name: "Eve"
+          score: 100
+        - name: "Frank"
+          score: 88

@@ -1,0 +1,43 @@
+---
+source: crates/stepflow-main/tests/test_run.rs
+description: case 1
+expression: result
+info:
+  text: The weather today is terrible and I hate it. This is awful!
+  pattern: "\\b(weather|today|terrible|hate|awful)\\b"
+input_file: crates/stepflow-main/tests/flows/custom_component_text_processing.yaml
+---
+outcome: success
+result:
+  pattern_matches:
+    - index: 0
+      match: weather
+    - index: 1
+      match: today
+    - index: 2
+      match: terrible
+    - index: 3
+      match: hate
+    - index: 4
+      match: awful
+  sentiment_score: -1
+  word_analysis:
+    avg_word_length: 4
+    char_count: 48
+    most_common_words:
+      - count: 2
+        word: is
+      - count: 1
+        word: the
+      - count: 1
+        word: weather
+    word_count: 12
+    word_length_distribution:
+      "1": 1
+      "2": 2
+      "3": 3
+      "4": 2
+      "5": 1
+      "6": 1
+      "7": 1
+      "8": 1

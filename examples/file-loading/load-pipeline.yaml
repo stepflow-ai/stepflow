@@ -15,40 +15,40 @@ steps:
   # Load the sales data from file  
   - id: load_sales_data
     component: "builtins://load_file"
-    args:
+    input:
       path: { $from: "$input", path: "data_file_path" }
 
   # Extract the sales_data array using Python
   - id: extract_sales_array
     component: python://extract_sales_data
-    args:
+    input:
       data: { $from: "load_sales_data", path: "data" }
 
   # Now process the sales data array
   - id: calculate_total_revenue
     component: python://sum_field
-    args:
+    input:
       data: { $from: "extract_sales_array", path: "data" }
       field: "revenue"
 
   - id: count_sales
     component: python://count_items
-    args:
+    input:
       data: { $from: "extract_sales_array", path: "data" }
 
   - id: calculate_average_sale
     component: python://average_field
-    args:
+    input:
       data: { $from: "extract_sales_array", path: "data" }
       field: "revenue"
 
   - id: calculate_performance_ratio
     component: python://divide
-    args:
+    input:
       a: { $from: "calculate_total_revenue", path: "result" }
       b: { $from: "$input", path: "target_revenue" }
 
-outputs:
+output:
   file_metadata: { $from: "load_sales_data", path: "metadata" }
   total_revenue: { $from: "calculate_total_revenue", path: "result" }
   sales_count: { $from: "count_sales", path: "result" }

@@ -35,7 +35,7 @@ pub(crate) async fn spawn_workflow(
     let steps = (0..flow.steps.len()).map(|i| ArcRef::new(flow.clone()).map(|flow| flow.step(i)));
     let context = Arc::new(handle);
     for step in steps {
-        tracing::debug!("Creating future for step {step:?}");
+        tracing::debug!("Creating future for step {:?}", step.id);
         // Record the future step result.
         let result_tx = state.record_future(BaseRef::step_output(step.id.clone()))?;
 
@@ -50,7 +50,7 @@ pub(crate) async fn spawn_workflow(
             None
         };
 
-        let input = state.resolve_object(&step.args)?;
+        let input = state.resolve_object(&step.input)?;
         // TODO: Eliminate cloning? Arc the component?
         let step_span = tracing::info_span!("step", id = step.id);
 
@@ -63,7 +63,7 @@ pub(crate) async fn spawn_workflow(
     tracing::info!("Resolving output");
     loop {
         tokio::select! {
-            output_result = state.resolve_object(flow.outputs())? => {
+            output_result = state.resolve_object(flow.output())? => {
                 match output_result {
                     Ok(output) => return Ok(output),
                     Err(e) => {

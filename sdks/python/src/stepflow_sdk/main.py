@@ -40,6 +40,15 @@ class MetricsInput(msgspec.Struct):
 class SummaryResult(msgspec.Struct):
     summary: str
 
+class CustomComponentInput(msgspec.Struct):
+    input_schema: dict
+    code: str
+    input: dict
+    function_name: str = "custom_function"
+
+class CustomComponentOutput(msgspec.Struct):
+    result: dict
+
 # Updated input type that can handle nested data
 class NestedDataInput(msgspec.Struct):
     data: dict  # Can contain nested structure    
@@ -106,6 +115,120 @@ Please analyze this sales data and provide:
 Focus on actionable business insights that would help a sales manager make strategic decisions."""
 
     return SummaryResult(summary=summary)
+
+@server.component
+def custom_component(input: CustomComponentInput) -> CustomComponentOutput:
+    """
+    Execute custom code with input validation against a JSON schema.
+    
+    Args:
+        input: Contains input_schema (JSON schema), code (Python code), 
+               input (data), and optional function_name
+    
+    Returns:
+        CustomComponentOutput with the result
+    """
+    import jsonschema
+    import json
+    
+    try:
+        # Validate input against the schema
+        jsonschema.validate(input.input, input.input_schema)
+    except jsonschema.ValidationError as e:
+        raise ValueError(f"Input validation failed: {e.message}")
+    except jsonschema.SchemaError as e:
+        raise ValueError(f"Invalid schema: {e.message}")
+    
+    # Create a safe execution environment
+    safe_globals = {
+        '__builtins__': {
+            'len': len,
+            'str': str,
+            'int': int,
+            'float': float,
+            'bool': bool,
+            'list': list,
+            'dict': dict,
+            'tuple': tuple,
+            'set': set,
+            'range': range,
+            'sum': sum,
+            'min': min,
+            'max': max,
+            'abs': abs,
+            'round': round,
+            'sorted': sorted,
+            'reversed': reversed,
+            'enumerate': enumerate,
+            'zip': zip,
+            'map': map,
+            'filter': filter,
+            'any': any,
+            'all': all,
+            'print': print,
+        },
+        'json': json,
+        'math': __import__('math'),
+        're': __import__('re'),
+    }
+    
+    # Check if code defines a function or is a function body
+    code_lines = input.code.strip().split('\n')
+    has_function_def = any(line.strip().startswith('def ') for line in code_lines)
+    
+    if has_function_def:
+        # Code contains function definition(s)
+        local_scope = {}
+        try:
+            exec(input.code, safe_globals, local_scope)
+        except Exception as e:
+            raise ValueError(f"Code execution failed: {e}")
+        
+        # Look for the specified function
+        if input.function_name not in local_scope:
+            raise ValueError(f"Function '{input.function_name}' not found in code")
+        
+        func = local_scope[input.function_name]
+        if not callable(func):
+            raise ValueError(f"'{input.function_name}' is not a function")
+        
+        try:
+            result = func(input.input)
+        except Exception as e:
+            raise ValueError(f"Function execution failed: {e}")
+    else:
+        # Code is a function body - wrap it in a lambda or function
+        try:
+            # Try as expression first (for simple cases)
+            wrapped_code = f"lambda data: {input.code}"
+            func = eval(wrapped_code, safe_globals)
+            result = func(input.input)
+        except:
+            # If that fails, try as statements in a function body
+            try:
+                # Properly indent each line of the code
+                indented_lines = []
+                for line in input.code.split('\n'):
+                    if line.strip():  # Only indent non-empty lines
+                        indented_lines.append('    ' + line)
+                    else:
+                        indented_lines.append('')  # Keep empty lines as-is
+                
+                func_code = f"""def _temp_func(data):
+{chr(10).join(indented_lines)}"""
+                local_scope = {}
+                exec(func_code, safe_globals, local_scope)
+                result = local_scope['_temp_func'](input.input)
+            except Exception as e:
+                raise ValueError(f"Code execution failed: {e}")
+    
+    # Ensure result is JSON serializable
+    try:
+        json.dumps(result)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Result is not JSON serializable: {e}")
+    
+    return CustomComponentOutput(result=result)
 
 def main():
     # Start the server

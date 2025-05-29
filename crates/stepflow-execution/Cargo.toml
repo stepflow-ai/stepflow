@@ -10,7 +10,6 @@ description = "Execution logic for workflows."
 [dependencies]
 error-stack.workspace = true
 futures.workspace = true
-indexmap.workspace = true
 safer_owning_ref.workspace = true
 serde_json.workspace = true
 stepflow-plugin.workspace = true

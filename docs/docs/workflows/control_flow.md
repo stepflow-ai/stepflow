@@ -32,9 +32,9 @@ Steps can be conditionally skipped using the `skip` field:
 steps:
   - id: expensive_analysis
     component: ai/analyze
-    skip: { $ref: { workflow: input }, path: is_premium_user }
-    args:
-      data: { $ref: { step: previous_step } }
+    skip: { $from: { workflow: input }, path: is_premium_user }
+    input:
+      data: { $from: { step: previous_step } }
 ```
 
 ### Skip Conditions
@@ -52,10 +52,10 @@ This propagation can be interrupted by configuring how an input should be comput
 steps:
   - id: consumer_step
     component: data/process
-    args:
-      required_data: { $ref: { step: step1 } }
+    input:
+      required_data: { $from: { step: step1 } }
       optional_enhancement:
-        $ref: { step: step2 }
+        $from: { step: step2 }
         $on_skip: "use_default"
         $default: "no_enhancement"
 ```
@@ -79,7 +79,7 @@ steps:
       default_output:
         result: "fallback_value"
         status: "error_handled"
-    args:
+    input:
       endpoint: "https://api.example.com"
 ```
 
@@ -102,19 +102,19 @@ Sub-workflows can be executed using the built-in `eval` component:
 steps:
   - id: sub_process
     component: builtin://eval
-    args:
+    input:
       workflow:
         inputs:
           data: { type: string }
         steps:
           - id: process
             component: data/transform
-            args:
-              input: { $ref: { workflow: input }, path: data }
-        outputs:
-          result: { $ref: { step: process } }
+            input:
+              input: { $from: { workflow: input }, path: data }
+        output:
+          result: { $from: { step: process } }
       input:
-        data: { $ref: { step: previous_step }, path: processed_data }
+        data: { $from: { step: previous_step }, path: processed_data }
 ```
 
 ### Sub-workflow Execution

@@ -15,7 +15,7 @@ describe('Workflow Schema', () => {
         {
           id: 'step1',
           component: 'http://example.com/component1',
-          args: {
+          input: {
             input1: { literal: 'value' },
             input2: { input: 'name' }
           }
@@ -33,14 +33,14 @@ describe('Workflow Schema', () => {
         {
           id: 'step1',
           component: 'http://example.com/component1',
-          args: {
+          input: {
             input1: { literal: 'value' }
           }
         },
         {
           id: 'step2',
           component: 'http://example.com/component2',
-          args: {
+          input: {
             input1: { step: 'step1', field: 'output' }
           }
         }
@@ -57,7 +57,7 @@ describe('Workflow Schema', () => {
         {
           // Missing id
           component: 'http://example.com/component1',
-          args: {}
+          input: {}
         }
       ]
     };
