@@ -7,7 +7,7 @@ StepFlow is an open protocol and runtime for building, executing, and scaling Ge
 - **🔐 Secure, Isolated Components**
    Each workflow step runs in a sandboxed process or container with strict resource and environment controls. StepFlow's design prioritizes security, reproducibility, and platform independence.
 - **🌐 Open, Portable Workflow Standard**
-   Build once, run anywhere. The StepFlow prot
+   Build once, run anywhere. The StepFlow protocol is open and extensible, enabling workflow portability across different environments and platforms.
 
 ## Overview
 
@@ -45,15 +45,13 @@ Most steps are defined in a step-service, which the executor invokes using a JSO
 ### Organization
 
 - `crates/stepflow-protocol` defines the JSON-RPC protocol using Rust structs and `serde`.
-- `crates/stepflow-workflow` defines the Rust structs representing a workflow.
-- `crates/stepflow-compile` defines the logic for validating and compiling workflows.
-- `crates/stepflow-components` provides the trait for step execution plugins.
-- `crates/stepflow-components-client` provides a step execution plugin using the stepflow protocol.
-  It supports JSON-RPC over stdio (similar to LSP and MCP) and JSON-RPC over HTTP.
-- `crates/stepflow-components-mcp` provides a step execution plugin for executing MCP tools.
-- `crates/stepflow-execution` provides the core execution logic for a workflow. It also provides
-  the built-in control flow steps.
-- `crates/stepflow-main` provides the main binary for executing a workflow or running a stepflow service.
+- `crates/stepflow-core` defines the Rust structs representing workflows, components, and value expressions.
+- `crates/stepflow-plugin` provides the trait for component execution plugins and plugin management.
+- `crates/stepflow-builtins` provides built-in component implementations including OpenAI integration.
+- `crates/stepflow-components-mcp` provides a component plugin for executing MCP (Model Context Protocol) tools.
+- `crates/stepflow-execution` provides the core execution logic for workflows with parallel execution support.
+- `crates/stepflow-main` provides the main binary for executing workflows or running a stepflow service.
+- `crates/stepflow-mock` provides mock implementations for testing purposes.
 
 ## Getting Started
 

@@ -61,46 +61,56 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
 
 ### Core Components
 
-1. **Workflow Definition** (`stepflow-workflow`): 
-   - Defines the Rust structs representing a workflow
-   - Handles flow structure, steps, components, and value expressions
+1. **Core Types** (`stepflow-core`): 
+   - Defines the Rust structs representing workflows, components, and value expressions
+   - Handles flow structure, steps, components, and schema definitions
+   - Contains the `FlowResult` type for workflow execution results
 
-2. **Workflow Compiler** (`stepflow-compiler`):
-   - Not implemented yet.
-   - Validates and compiles workflows before execution
-   - Ensures workflows are well-formed and components exist
-   - Annotates workflows with runtime information such as number of uses
-     to facilitate early cancellation / deletion, etc.
-
-3. **Execution Engine** (`stepflow-execution`):
+2. **Execution Engine** (`stepflow-execution`):
    - Runs the core workflow execution logic
    - Handles parallel execution, error handling, and state management
-   - Provides built-in control flow steps
+   - Provides workflow state management and execution coordination
 
-4. **Plugin System** (`stepflow-plugin`):
-   - Manages extensible step services
+3. **Plugin System** (`stepflow-plugin`):
+   - Manages extensible component services
    - Handles communication with external plugins
+   - Provides the core plugin trait and plugin management
+
+4. **Built-in Components** (`stepflow-builtins`):
+   - Provides built-in component implementations
+   - Includes OpenAI API integration and other core components
+   - Implements the plugin trait for built-in functionality
 
 5. **Protocol** (`stepflow-protocol`):
    - Defines the JSON-RPC protocol for component communication
    - Uses structs and serde for serialization/deserialization
-   - Implements a component plugin using stdio with a sub-process.
+   - Implements stdio-based communication with sub-processes
 
-6. **CLI & Service** (`stepflow-main`):
+6. **MCP Integration** (`stepflow-components-mcp`):
+   - Provides integration with Model Context Protocol (MCP) tools
+   - Allows workflows to use MCP-compatible components
+
+7. **CLI & Service** (`stepflow-main`):
    - Provides the main binary for executing workflows
    - Supports running workflows locally or as a service
+   - Includes CLI commands for run, serve, and submit operations
+
+8. **Testing Support** (`stepflow-mock`):
+   - Provides mock implementations for testing
+   - Facilitates unit testing of workflow components
 
 ### Data Flow
 
 1. Workflows are defined in YAML/JSON files
-2. The compiler validates the workflow structure
+2. The workflow structure is parsed and validated using `stepflow-core` types
 3. The execution engine processes the workflow:
    - Instantiates the required plugins
    - Executes steps in parallel when possible
    - Manages state and data flow between steps
-4. Steps are executed by plugins, which can be:
-   - Built-in Rust plugins
-   - External services using JSON-RPC protocol
+4. Steps are executed by components, which can be:
+   - Built-in components from `stepflow-builtins`
+   - External services using JSON-RPC protocol via `stepflow-protocol`
+   - MCP tools via `stepflow-components-mcp`
    - Python, TypeScript, or other language SDKs
 
 ### Key Concepts
