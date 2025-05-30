@@ -10,20 +10,21 @@ input_schema:
 steps:
   - id: nested_math
     component: "builtins://eval"
-    args:
+    input:
       workflow:
-        name: "Nested Math Workflow"
-        steps:
-          - id: compute_sum
-            component: python://add
-            args:
-              a: { $from: "$input", path: "x" }
-              b: { $from: "$input", path: "y" }
-        outputs:
-          sum_result: { $from: "compute_sum", path: "result" }
+        $literal:
+          name: "Nested Math Workflow"
+          steps:
+            - id: compute_sum
+              component: python://add
+              input:
+                a: { $from: { workflow: input }, path: "x" }
+                b: { $from: { workflow: input }, path: "y" }
+          output:
+            sum_result: { $from: { step: compute_sum }, path: "result" }
       input:
         x: 5
         y: 3
 
-outputs:
-  math_result: { $from: "nested_math", path: "result" }
+output:
+  math_result: { $from: { step: nested_math }, path: "result" }

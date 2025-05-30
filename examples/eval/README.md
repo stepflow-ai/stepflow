@@ -19,7 +19,7 @@ The `builtin://eval` component executes a nested workflow with its own steps, in
 
 **What it demonstrates**:
 - Simplest possible nested workflow (no steps, just outputs)
-- How to structure the eval component arguments
+- How to structure the eval component input
 - Basic nested workflow execution
 
 **Files**:
@@ -28,7 +28,7 @@ The `builtin://eval` component executes a nested workflow with its own steps, in
 
 **Run it**:
 ```bash
-./target/debug/stepflow-main run \
+cargo run -- run \
   --flow=examples/eval/simple-eval.yaml \
   --config=examples/eval/stepflow-config.yml \
   --input=examples/eval/input.json
@@ -37,14 +37,51 @@ The `builtin://eval` component executes a nested workflow with its own steps, in
 **Expected Output**:
 ```json
 {
+  "outcome": "success",
   "result": {
-    "result": "Hello from nested workflow!",
-    "execution_id": "uuid-string"
+    "result": {
+      "test_result": "Hello from nested workflow!"
+    }
   }
 }
 ```
 
-### 2. Math Eval Test (`math-eval.yaml`)
+### 2. Test Builtins (`test-builtins.yaml`)
+
+**Purpose**: Tests the built-in component registry, specifically the `create_messages` component.
+
+**What it demonstrates**:
+- Using the `builtins://create_messages` component
+- Proper input/output structure for builtin components
+
+**Run it**:
+```bash
+cargo run -- run \
+  --flow=examples/eval/test-builtins.yaml \
+  --config=examples/eval/stepflow-config.yml \
+  --input=examples/eval/input.json
+```
+
+**Expected Output**:
+```json
+{
+  "outcome": "success",
+  "result": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a test assistant"
+      },
+      {
+        "role": "user", 
+        "content": "Say hello"
+      }
+    ]
+  }
+}
+```
+
+### 3. Math Eval Test (`math-eval.yaml`)
 
 **Purpose**: Demonstrates nested workflow with actual computation steps.
 
@@ -54,13 +91,17 @@ The `builtin://eval` component executes a nested workflow with its own steps, in
 - Multi-step nested execution
 - Integration between eval and other component types
 
+**Prerequisites**:
+- Requires Python SDK to be installed
+- Requires `uv` package manager in PATH
+
 **Files**:
 - `math-eval.yaml` - Workflow with nested math computation
 - `math-input.json` - Input data for the workflow
 
 **Run it**:
 ```bash
-./target/debug/stepflow-main run \
+cargo run -- run \
   --flow=examples/eval/math-eval.yaml \
   --config=examples/eval/stepflow-config.yml \
   --input=examples/eval/math-input.json
@@ -69,11 +110,14 @@ The `builtin://eval` component executes a nested workflow with its own steps, in
 **Expected Output**:
 ```json
 {
-  "math_result": {
-    "result": {
-      "sum_result": 8
-    },
-    "execution_id": "uuid-string"
+  "outcome": "success",
+  "result": {
+    "math_result": {
+      "result": {
+        "sum_result": 8
+      },
+      "execution_id": "uuid-string"
+    }
   }
 }
 ```
@@ -92,6 +136,33 @@ plugins:
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
 ```
 
+## Important Notes
+
+### Syntax Changes
+The examples have been updated to use the correct workflow syntax:
+- Use `input` instead of `args` for step inputs
+- Use `output` (singular) instead of `outputs` (plural)
+- Use proper reference format: `{ $from: { step: step_id }, path: "field" }`
+- Nested workflows must be wrapped in `$literal` when defined inline
+
+### Example of Correct Syntax:
+```yaml
+steps:
+  - id: my_eval_step
+    component: "builtins://eval"
+    input:  # Not 'args'
+      workflow:
+        $literal:  # Required for inline workflow definitions
+          name: "My Nested Workflow"
+          steps: []
+          output:  # Not 'outputs'
+            result: "Hello"
+      input: {}
+
+output:  # Not 'outputs'
+  result: { $from: { step: my_eval_step }, path: "result" }
+```
+
 ## Troubleshooting
 
 ### Common Issues
@@ -100,13 +171,13 @@ plugins:
    - Make sure the builtin plugin is registered in your config
    - Verify the component URLs (e.g., `builtins://eval`)
 
-2. **"Expected object, got null" errors**
-   - Check that your nested workflow input data is properly structured
-   - Verify that referenced steps exist and produce the expected outputs
+2. **"Nested flow execution was cancelled" errors**
+   - Check that output references use the correct format
+   - Ensure the workflow waits for step completion before resolving output
 
-3. **Execution hangs**
-   - Check for circular dependencies in your nested workflows
-   - Ensure all required inputs are provided
+3. **Steps stuck "Waiting for inputs"**
+   - Verify you're using `input:` not `args:` for step inputs
+   - Check that all required input fields are provided
 
 ### Debug Tips
 
@@ -122,24 +193,25 @@ Once you've verified the basic examples work, you can use eval components for:
 ```yaml
 - id: analyze_region
   component: "builtins://eval"
-  args:
+  input:
     workflow:
-      steps:
-        - id: filter_data
-          component: python://filter_by_field
-          args:
-            data: { $from: "$input", path: "sales_data" }
-            field: "region"
-            value: { $from: "$input", path: "region_name" }
-        - id: calculate_metrics
-          component: python://sum_field
-          args:
-            data: { $from: "filter_data", path: "filtered_data" }
-            field: "revenue"
-      outputs:
-        region_revenue: { $from: "calculate_metrics", path: "result" }
+      $literal:
+        steps:
+          - id: filter_data
+            component: python://filter_by_field
+            input:
+              data: { $from: { workflow: input }, path: "sales_data" }
+              field: "region"
+              value: { $from: { workflow: input }, path: "region_name" }
+          - id: calculate_metrics
+            component: python://sum_field
+            input:
+              data: { $from: { step: filter_data }, path: "filtered_data" }
+              field: "revenue"
+        output:
+          region_revenue: { $from: { step: calculate_metrics }, path: "result" }
     input:
-      sales_data: { $from: "load_data", path: "data" }
+      sales_data: { $from: { step: load_data }, path: "data" }
       region_name: "West"
 ```
 
@@ -147,9 +219,9 @@ Once you've verified the basic examples work, you can use eval components for:
 ```yaml
 - id: process_all_regions
   component: "builtins://eval"
-  args:
-    workflow: { $from: "generate_region_workflow", path: "workflow_def" }
-    input: { $from: "prepare_region_data", path: "data" }
+  input:
+    workflow: { $from: { step: generate_region_workflow }, path: "workflow_def" }
+    input: { $from: { step: prepare_region_data }, path: "data" }
 ```
 
 ## Real-World Applications
@@ -165,6 +237,7 @@ The eval component is particularly useful for:
 ## Next Steps
 
 1. Start with `simple-eval.yaml` to verify basic functionality
-2. Try `math-eval.yaml` to see nested computation
-3. Explore the data pipeline example (`examples/data-pipeline/`) for a real-world use case
-4. Build your own nested workflows for your specific use cases
+2. Try `test-builtins.yaml` to test other builtin components
+3. Try `math-eval.yaml` if you have the Python SDK set up
+4. Explore the data pipeline example (`examples/data-pipeline/`) for a real-world use case
+5. Build your own nested workflows for your specific use cases
