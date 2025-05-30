@@ -34,7 +34,8 @@ cargo build
 # Run the metrics pipeline (no OpenAI API key needed)
 ./target/debug/stepflow-main run \
   --flow=examples/data-pipeline/debug-pipeline.yaml \
-  --input=examples/data-pipeline/sales-data.json
+  --input=examples/data-pipeline/sales-data.json \
+  --config=examples/data-pipeline/stepflow-config.yml
 ```
 
 ### Option 2: Full AI-Powered Pipeline
@@ -45,12 +46,14 @@ export OPENAI_API_KEY="your-api-key-here"
 # Run the complete pipeline with AI insights
 ./target/debug/stepflow-main run \
   --flow=examples/data-pipeline/pipeline.yaml \
-  --input=examples/data-pipeline/sales-data.json
+  --input=examples/data-pipeline/sales-data.json \
+  --config=examples/data-pipeline/stepflow-config.yml
 
 # Or pipe the input
 cat examples/data-pipeline/sales-data.json | \
   ./target/debug/stepflow-main run \
-  --flow=examples/data-pipeline/pipeline.yaml
+  --flow=examples/data-pipeline/pipeline.yaml \
+  --config=examples/data-pipeline/stepflow-config.yml
 ```
 
 ## Expected Output
