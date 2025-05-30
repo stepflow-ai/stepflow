@@ -1,0 +1,29 @@
+name: "Math Eval Test"
+description: "Test eval with actual computation"
+
+input_schema:
+  type: object
+  properties:
+    numbers:
+      type: array
+
+steps:
+  - id: nested_math
+    component: "builtins://eval"
+    args:
+      workflow:
+        name: "Nested Math Workflow"
+        steps:
+          - id: compute_sum
+            component: python://add
+            args:
+              a: { $from: "$input", path: "x" }
+              b: { $from: "$input", path: "y" }
+        outputs:
+          sum_result: { $from: "compute_sum", path: "result" }
+      input:
+        x: 5
+        y: 3
+
+outputs:
+  math_result: { $from: "nested_math", path: "result" }
