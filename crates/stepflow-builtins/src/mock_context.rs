@@ -20,11 +20,6 @@ impl MockContext {
     pub fn new() -> Self {
         Self { id: Uuid::new_v4() }
     }
-
-    /// Create a new mock context with a specific execution ID.
-    pub fn with_id(id: Uuid) -> Self {
-        Self { id }
-    }
 }
 
 impl Default for MockContext {
