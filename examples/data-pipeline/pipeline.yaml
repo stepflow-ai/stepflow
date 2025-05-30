@@ -15,128 +15,130 @@ steps:
   # Parallel data processing steps
   - id: calculate_total_revenue
     component: python://sum_field
-    args:
-      data: { $from: "$input", path: "sales_data" }
+    input:
+      data: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   - id: count_sales
     component: python://count_items
-    args:
-      data: { $from: "$input", path: "sales_data" }
+    input:
+      data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: calculate_average_sale
     component: python://average_field
-    args:
-      data: { $from: "$input", path: "sales_data" }
+    input:
+      data: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   # This step waits for total_revenue to complete
   - id: calculate_performance_ratio
     component: python://divide
-    args:
-      a: { $from: "calculate_total_revenue", path: "result" }
-      b: { $from: "$input", path: "target_revenue" }
+    input:
+      a: { $from: { step: calculate_total_revenue }, path: "result" }
+      b: { $from: { workflow: input }, path: "target_revenue" }
 
   # Regional analysis using eval components (run in parallel)
   - id: analyze_west_region
     component: "builtins://eval"
-    args:
+    input:
       workflow:
-        name: "West Region Analysis"
-        steps:
-          - id: filter_region
-            component: python://filter_by_field
-            args:
-              data: { $from: "$input", path: "sales_data" }
-              field: "region"
-              value: "West"
+        $literal:
+          name: "West Region Analysis"
+          steps:
+            - id: filter_region
+              component: python://filter_by_field
+              input:
+                data: { $from: { workflow: input }, path: "sales_data" }
+                field: "region"
+                value: "West"
+            
+            - id: region_revenue
+              component: python://sum_field
+              input:
+                data: { $from: { step: filter_region }, path: "filtered_data" }
+                field: "revenue"
+            
+            - id: region_count
+              component: python://count_items
+              input:
+                data: { $from: { step: filter_region }, path: "filtered_data" }
           
-          - id: region_revenue
-            component: python://sum_field
-            args:
-              data: { $from: "filter_region", path: "filtered_data" }
-              field: "revenue"
-          
-          - id: region_count
-            component: python://count_items
-            args:
-              data: { $from: "filter_region", path: "filtered_data" }
-        
-        outputs:
-          revenue: { $from: "region_revenue", path: "result" }
-          count: { $from: "region_count", path: "result" }
+          output:
+            revenue: { $from: { step: region_revenue }, path: "result" }
+            count: { $from: { step: region_count }, path: "result" }
       
       input:
-        sales_data: { $from: "$input", path: "sales_data" }
+        sales_data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: analyze_east_region
     component: "builtins://eval"
-    args:
+    input:
       workflow:
-        name: "East Region Analysis"
-        steps:
-          - id: filter_region
-            component: python://filter_by_field
-            args:
-              data: { $from: "$input", path: "sales_data" }
-              field: "region"
-              value: "East"
+        $literal:
+          name: "East Region Analysis"
+          steps:
+            - id: filter_region
+              component: python://filter_by_field
+              input:
+                data: { $from: { workflow: input }, path: "sales_data" }
+                field: "region"
+                value: "East"
+            
+            - id: region_revenue
+              component: python://sum_field
+              input:
+                data: { $from: { step: filter_region }, path: "filtered_data" }
+                field: "revenue"
+            
+            - id: region_count
+              component: python://count_items
+              input:
+                data: { $from: { step: filter_region }, path: "filtered_data" }
           
-          - id: region_revenue
-            component: python://sum_field
-            args:
-              data: { $from: "filter_region", path: "filtered_data" }
-              field: "revenue"
-          
-          - id: region_count
-            component: python://count_items
-            args:
-              data: { $from: "filter_region", path: "filtered_data" }
-        
-        outputs:
-          revenue: { $from: "region_revenue", path: "result" }
-          count: { $from: "region_count", path: "result" }
+          output:
+            revenue: { $from: { step: region_revenue }, path: "result" }
+            count: { $from: { step: region_count }, path: "result" }
       
       input:
-        sales_data: { $from: "$input", path: "sales_data" }
+        sales_data: { $from: { workflow: input }, path: "sales_data" }
 
   # Compare regional performance  
   - id: compare_regions
     component: python://compare_regions
-    args:
-      west_metrics: { $from: "analyze_west_region", path: "result" }
-      east_metrics: { $from: "analyze_east_region", path: "result" }
+    input:
+      west_metrics: { $from: { step: analyze_west_region }, path: "result" }
+      east_metrics: { $from: { step: analyze_east_region }, path: "result" }
 
   # Format metrics for AI analysis (waits for all calculations)
   - id: format_metrics_summary
     component: python://format_enhanced_metrics
-    args:
-      total_revenue: { $from: "calculate_total_revenue", path: "result" }
-      sales_count: { $from: "count_sales", path: "result" }
-      average_sale: { $from: "calculate_average_sale", path: "result" }
-      performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
-      target_revenue: { $from: "$input", path: "target_revenue" }
-      regional_comparison: { $from: "compare_regions", path: "comparison" }
+    input:
+      total_revenue: { $from: { step: calculate_total_revenue }, path: "result" }
+      sales_count: { $from: { step: count_sales }, path: "result" }
+      average_sale: { $from: { step: calculate_average_sale }, path: "result" }
+      performance_ratio: { $from: { step: calculate_performance_ratio }, path: "result" }
+      target_revenue: { $from: { workflow: input }, path: "target_revenue" }
+      regional_comparison: { $from: { step: compare_regions }, path: "comparison" }
 
   # Format messages for OpenAI (depends on metrics summary)  
   - id: create_openai_messages
     component: "builtins://create_messages"
-    args:
+    input:
       system_instructions: "You are a senior sales analyst providing insights based on business metrics and regional performance. Be specific and actionable in your recommendations."
-      user_prompt: { $from: "format_metrics_summary", path: "summary" }
+      user_prompt: { $from: { step: format_metrics_summary }, path: "summary" }
 
   # Generate AI insights from the comprehensive metrics
   - id: generate_ai_insights
     component: "builtins://openai"
-    args:
-      messages: { $from: "create_openai_messages", path: "messages" }
+    input:
+      messages: { $from: { step: create_openai_messages }, path: "messages" }
 
-outputs:
-  total_revenue: { $from: "calculate_total_revenue", path: "result" }
-  sales_count: { $from: "count_sales", path: "result" }
-  average_sale: { $from: "calculate_average_sale", path: "result" }
-  performance_ratio: { $from: "calculate_performance_ratio", path: "result" }
-  west_analysis: { $from: "analyze_west_region", path: "result" }
-  east_analysis: { $from: "analyze_east_region", path: "result" }
-  regional_comparison: { $from: "compare_regions", path: "comparison" }
-  ai_insights: { $from: "generate_ai_insights", path: "response" }
+output:
+  total_revenue: { $from: { step: calculate_total_revenue }, path: "result" }
+  sales_count: { $from: { step: count_sales }, path: "result" }
+  average_sale: { $from: { step: calculate_average_sale }, path: "result" }
+  performance_ratio: { $from: { step: calculate_performance_ratio }, path: "result" }
+  west_analysis: { $from: { step: analyze_west_region }, path: "result" }
+  east_analysis: { $from: { step: analyze_east_region }, path: "result" }
+  regional_comparison: { $from: { step: compare_regions }, path: "comparison" }
+  ai_insights: { $from: { step: generate_ai_insights }, path: "response" }

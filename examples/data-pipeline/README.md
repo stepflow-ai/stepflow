@@ -7,6 +7,16 @@ This example demonstrates a complete data processing pipeline that:
 3. **Shows data flow dependencies** between steps
 4. **Demonstrates concurrent execution**
 
+## Prerequisites
+
+**IMPORTANT**: These examples require the Python SDK to be installed. The examples use Python components for data processing calculations.
+
+To run these examples, you need:
+- The `uv` package manager installed
+- The StepFlow Python SDK set up in `../../sdks/python`
+
+If you don't have these prerequisites, the examples will fail with "No such file or directory" errors.
+
 ## What This Shows
 
 - **Parallel Processing**: Revenue sum, count, and average calculations run simultaneously
@@ -103,7 +113,15 @@ This demonstrates how StepFlow automatically handles dependencies and runs indep
 
 ## Files in this Example
 
-- `pipeline.yaml` - Full AI-powered pipeline with OpenAI integration
-- `debug-pipeline.yaml` - Metrics-only version (no OpenAI required)
-- `sales-data.json` - Sample sales data input
-- `stepflow-config.yml` - Plugin configuration for Python components
+- `pipeline.yaml` - Full AI-powered pipeline with OpenAI integration and regional analysis using eval components
+- `debug-pipeline.yaml` - Metrics-only version (no OpenAI required, already uses correct syntax)
+- `sales-data.json` - Sample sales data input  
+- `stepflow-config.yml` - Plugin configuration for Python and builtin components
+
+## Syntax Notes
+
+The examples have been updated to use the correct StepFlow syntax:
+- Use `input` instead of `args` for step inputs
+- Use `output` (singular) instead of `outputs` (plural)
+- Use proper reference format: `{ $from: { step: step_id }, path: "field" }` or `{ $from: { workflow: input }, path: "field" }`
+- Nested workflows in eval components must be wrapped in `$literal`
