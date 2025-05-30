@@ -18,11 +18,11 @@ struct Registry {
 impl Registry {
     pub fn register<C: BuiltinComponent + 'static>(
         &mut self,
-        host: Option<&'static str>,
+        host: &'static str,
         path: &'static str,
         component: C,
     ) {
-        let key = (host, path);
+        let key = (Some(host), path);
         let component = DynBuiltinComponent::boxed(component);
         let component = Arc::from(component);
         self.components.insert(key, component);
@@ -32,10 +32,10 @@ impl Registry {
 static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     let mut registry = Registry::default();
     // For URLs like "builtins://component_name", the host is "component_name" and path is ""
-    registry.register(Some("openai"), "", OpenAIComponent::new("gpt-3.5-turbo"));
-    registry.register(Some("create_messages"), "", CreateMessagesComponent);
-    registry.register(Some("eval"), "", EvalComponent::new());
-    registry.register(Some("load_file"), "", LoadFileComponent);
+    registry.register("openai", "", OpenAIComponent::new("gpt-3.5-turbo"));
+    registry.register("create_messages", "", CreateMessagesComponent);
+    registry.register("eval", "", EvalComponent::new());
+    registry.register("load_file", "", LoadFileComponent);
     registry
 });
 
