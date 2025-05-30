@@ -2040,7 +2040,6 @@ version = "0.1.0"
 dependencies = [
  "dynosaur",
  "error-stack",
- "indexmap",
  "openai-api-rs",
  "schemars",
  "serde",

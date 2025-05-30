@@ -102,49 +102,7 @@ impl BuiltinComponent for EvalComponent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::pin::Pin;
-    use uuid::Uuid;
-
-    // Mock context for testing
-    struct MockContext {
-        id: Uuid,
-    }
-
-    impl MockContext {
-        fn new() -> Self {
-            Self { id: Uuid::new_v4() }
-        }
-    }
-
-    impl ExecutionContext for MockContext {
-        fn execution_id(&self) -> Uuid {
-            self.id
-        }
-
-        fn submit_flow(
-            &self,
-            _flow: Arc<Flow>,
-            _input: ValueRef,
-        ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>>
-        {
-            Box::pin(async { Ok(Uuid::new_v4()) })
-        }
-
-        fn flow_result(
-            &self,
-            _execution_id: Uuid,
-        ) -> Pin<
-            Box<dyn std::future::Future<Output = stepflow_plugin::Result<FlowResult>> + Send + '_>,
-        > {
-            Box::pin(async {
-                // Return a simple success result for testing
-                let result = serde_json::json!({"message": "Hello from nested flow"});
-                Ok(FlowResult::Success {
-                    result: ValueRef::new(result),
-                })
-            })
-        }
-    }
+    use crate::mock_context::MockContext;
 
     #[tokio::test]
     async fn test_eval_component() {
