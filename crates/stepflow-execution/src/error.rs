@@ -23,6 +23,8 @@ pub enum ExecutionError {
     StepPanic,
     #[error("step {step:?} failed")]
     StepFailed { step: String },
+    #[error("blob not found: {blob_id}")]
+    BlobNotFound { blob_id: String },
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

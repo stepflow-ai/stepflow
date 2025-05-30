@@ -2,6 +2,7 @@ use std::sync::Arc;
 use stepflow_core::{FlowResult, component::ComponentInfo, workflow::ValueRef};
 use stepflow_plugin::ExecutionContext;
 
+mod blob;
 mod error;
 mod eval;
 mod load_file;

@@ -1,4 +1,0 @@
-{
-  "text": "This is a great example of text processing. I love how flexible this system is!",
-  "pattern": "\\b\\w{4,}\\b"
-}

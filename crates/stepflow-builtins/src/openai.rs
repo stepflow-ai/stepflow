@@ -142,44 +142,11 @@ impl BuiltinComponent for OpenAIComponent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mock_context::MockContext;
 
     #[tokio::test]
     #[test_with::env(OPENAI_API_KEY)]
     async fn test_openai_component() {
-        // Mock context for testing
-        struct MockContext;
-        impl ExecutionContext for MockContext {
-            fn execution_id(&self) -> uuid::Uuid {
-                uuid::Uuid::new_v4()
-            }
-            fn submit_flow(
-                &self,
-                _flow: Arc<stepflow_core::workflow::Flow>,
-                _input: stepflow_core::workflow::ValueRef,
-            ) -> std::pin::Pin<
-                Box<
-                    dyn std::future::Future<Output = stepflow_plugin::Result<uuid::Uuid>>
-                        + Send
-                        + '_,
-                >,
-            > {
-                Box::pin(async { Ok(uuid::Uuid::new_v4()) })
-            }
-            fn flow_result(
-                &self,
-                _execution_id: uuid::Uuid,
-            ) -> std::pin::Pin<
-                Box<
-                    dyn std::future::Future<
-                            Output = stepflow_plugin::Result<stepflow_core::FlowResult>,
-                        > + Send
-                        + '_,
-                >,
-            > {
-                Box::pin(async { Ok(stepflow_core::FlowResult::Skipped) })
-            }
-        }
-
         let component = OpenAIComponent::new("gpt-3.5-turbo");
         let input = OpenAIInput {
             messages: vec![ChatMessage {
@@ -190,7 +157,7 @@ mod tests {
         };
 
         let input = serde_json::to_value(input).unwrap();
-        let context = Arc::new(MockContext) as Arc<dyn ExecutionContext>;
+        let context = Arc::new(MockContext::new()) as Arc<dyn ExecutionContext>;
         let output = component.execute(context, input.into()).await.unwrap();
 
         let output = output.success().unwrap();

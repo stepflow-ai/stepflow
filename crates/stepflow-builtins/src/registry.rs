@@ -6,8 +6,12 @@ use stepflow_core::workflow::{Component, ComponentKey};
 use stepflow_plugin::{PluginError, Result};
 
 use crate::{
-    BuiltinComponent, DynBuiltinComponent, eval::EvalComponent, load_file::LoadFileComponent,
-    messages::CreateMessagesComponent, openai::OpenAIComponent,
+    BuiltinComponent, DynBuiltinComponent,
+    blob::{CreateBlobComponent, GetBlobComponent},
+    eval::EvalComponent,
+    load_file::LoadFileComponent,
+    messages::CreateMessagesComponent,
+    openai::OpenAIComponent,
 };
 
 #[derive(Default)]
@@ -36,6 +40,8 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     registry.register("create_messages", "", CreateMessagesComponent);
     registry.register("eval", "", EvalComponent::new());
     registry.register("load_file", "", LoadFileComponent);
+    registry.register("create_blob", "", CreateBlobComponent::new());
+    registry.register("get_blob", "", GetBlobComponent::new());
     registry
 });
 
