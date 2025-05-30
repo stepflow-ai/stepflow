@@ -31,6 +31,7 @@ impl Registry {
 
 static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     let mut registry = Registry::default();
+    // For URLs like "builtins://component_name", the host is "component_name" and path is ""
     registry.register("openai", "", OpenAIComponent::new("gpt-3.5-turbo"));
     registry.register("create_messages", "", CreateMessagesComponent);
     registry.register("eval", "", EvalComponent::new());
@@ -39,6 +40,8 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
 });
 
 pub fn get_component(component: &Component) -> Result<Arc<DynBuiltinComponent<'_>>> {
+    // For URLs like "builtins://eval", the host is "eval" and path is ""
+    // The components are registered with (host, path) keys
     let key = (component.host(), component.path());
 
     let component = REGISTRY

@@ -1,0 +1,17 @@
+name: "Simple Eval Component Test"
+description: "Basic test of the eval builtin component"
+
+steps:
+  - id: test_eval
+    component: "builtins://eval"
+    input:
+      workflow:
+        $literal:
+          name: "Simple Nested Workflow"
+          steps: []
+          output:
+            test_result: "Hello from nested workflow!"
+      input: {}
+
+output:
+  result: { $from: { step: test_eval }, path: "result" }
