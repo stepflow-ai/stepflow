@@ -1,0 +1,42 @@
+input_schema:
+  type: object
+output_schema:
+  type: object
+  properties:
+    result:
+      type: string
+steps:
+- id: error
+  component: mock://error
+  input_schema: null
+  output_schema: null
+  on_error:
+    action: use_default
+    default_value:
+      output: using default value
+  input:
+    mode:
+      $from:
+        workflow: input
+      path: mode
+output:
+  error_result:
+    $from:
+      step: error
+    path: output
+test:
+  cases:
+  - name: test error case that uses default value
+    input:
+      mode: error
+    output:
+      outcome: success
+      result:
+        error_result: using default value
+  - name: test success case
+    input:
+      mode: succeed
+    output:
+      outcome: success
+      result:
+        error_result: succeeded

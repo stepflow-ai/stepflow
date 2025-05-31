@@ -1,9 +1,11 @@
 use std::borrow::Cow;
 
+use schemars::JsonSchema;
+
 use crate::workflow::ValueRef;
 
 /// An error reported from within a flow or step.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct FlowError {
     pub code: i64,
     pub message: Cow<'static, str>,
@@ -38,7 +40,7 @@ impl FlowError {
 }
 
 /// The results of a step execution.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "outcome")]
 pub enum FlowResult {
     /// The step execution was successful.

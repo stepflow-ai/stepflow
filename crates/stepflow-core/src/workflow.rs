@@ -8,6 +8,6 @@ mod value;
 
 pub use self::component::{Component, ComponentKey};
 pub use self::expr::{BaseRef, Expr, SkipAction};
-pub use self::flow::Flow;
+pub use self::flow::{Flow, TestCase, TestConfig};
 pub use self::step::{ErrorAction, Step};
 pub use self::value::ValueRef;

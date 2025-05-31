@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::{
     MainError, error::Result, run::run, serve::serve, stepflow_config::StepflowConfig,
-    submit::submit,
+    submit::submit, test::TestOptions,
 };
 use std::{
     fs::File,
@@ -29,15 +29,15 @@ pub enum Command {
     /// Run a workflow directly.
     Run {
         /// Path to the workflow file to execute.
-        #[arg(long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        flow: PathBuf,
+        #[arg(long="flow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        flow_path: PathBuf,
 
         /// The path to the stepflow config file.
         ///
         /// If not specified, will look for `stepflow-config.yml` in the directory containing `flow`.
         /// If that isn't found, will also look in the current directory.
-        #[arg(long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        config: Option<PathBuf>,
+        #[arg(long="config", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        config_path: Option<PathBuf>,
 
         /// The path to the input file to execute the workflow with.
         ///
@@ -62,8 +62,8 @@ pub enum Command {
         /// The path to the stepflow config file.
         ///
         /// If not specified, will look for `stepflow-config.yml` in the current directory.
-        #[arg(long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        config: Option<PathBuf>,
+        #[arg(long="config", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        config_path: Option<PathBuf>,
     },
     /// Submit a workflow to a StepFlow service.
     Submit {
@@ -72,8 +72,8 @@ pub enum Command {
         url: Url,
 
         /// Path to the workflow file to submit.
-        #[arg(long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        flow: PathBuf,
+        #[arg(long="flow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        flow_path: PathBuf,
 
         /// The path to the input file to execute the workflow with.
         ///
@@ -88,6 +88,26 @@ pub enum Command {
         /// If not set, will write to stdout.
         #[arg(long = "output", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
         output_path: Option<PathBuf>,
+    },
+    /// Run tests defined in a workflow file or directory.
+    Test {
+        /// Path to the workflow file or directory containing tests.
+        #[arg(value_name = "PATH", value_hint = clap::ValueHint::AnyPath)]
+        path: PathBuf,
+
+        /// The path to the stepflow config file for tests.
+        ///
+        /// If not specified, will use hierarchical resolution:
+        /// 1. stepflow_config in test section of this workflow
+        /// 2. stepflow_config in test section of enclosing workflow (if any)
+        /// 3. stepflow-config.test.yml in workflow directory
+        /// 4. stepflow-config.yml in workflow directory
+        /// 5. stepflow-config.yml in current directory
+        #[arg(long="config", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        config_path: Option<PathBuf>,
+
+        #[command(flatten)]
+        test_options: TestOptions,
     },
 }
 
@@ -111,7 +131,7 @@ impl Format {
     }
 }
 
-fn load<T: DeserializeOwned>(path: &Path) -> Result<T> {
+pub fn load<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let rdr = File::open(path).change_context_lazy(|| MainError::MissingFile(path.to_owned()))?;
     let value = match Format::from_path(path)? {
         Format::Json => serde_json::from_reader(rdr)
@@ -130,7 +150,7 @@ const FILE_NAMES: &[&str] = &[
     "stepflow_config.yaml",
 ];
 
-fn locate_config(directory: Option<&PathBuf>) -> Result<Option<PathBuf>> {
+fn locate_config(directory: Option<&Path>) -> Result<Option<PathBuf>> {
     // First look for any of the file names in the `directory`.
     if let Some(directory) = directory {
         let mut file_names = FILE_NAMES
@@ -167,12 +187,13 @@ fn locate_config(directory: Option<&PathBuf>) -> Result<Option<PathBuf>> {
 /// Attempt to load a config file from `config_path`.
 ///
 /// If that is not set, look either in the directory containing `flow_path` or the current directory.
-fn load_config(
-    flow_path: Option<&PathBuf>,
+pub fn load_config(
+    flow_path: Option<&Path>,
     mut config_path: Option<PathBuf>,
 ) -> Result<StepflowConfig> {
     if config_path.is_none() {
-        config_path = locate_config(flow_path)?;
+        let flow_dir = flow_path.and_then(|p| p.parent());
+        config_path = locate_config(flow_dir)?;
     }
 
     tracing::info!("Loading config from {:?}", config_path);
@@ -201,7 +222,7 @@ fn load_input(path: Option<PathBuf>) -> Result<stepflow_core::workflow::ValueRef
     }
 }
 
-fn write_output(path: Option<PathBuf>, output: stepflow_core::FlowResult) -> Result<()> {
+pub fn write_output(path: Option<PathBuf>, output: impl serde::Serialize) -> Result<()> {
     match path {
         Some(path) => {
             let format = Format::from_path(&path)?;
@@ -228,22 +249,22 @@ impl Cli {
         tracing::debug!("Executing command: {:?}", self);
         match self.command {
             Command::Run {
-                flow,
-                config,
+                flow_path,
+                config_path,
                 input_path,
                 output_path,
             } => {
-                let config = load_config(Some(&flow), config)?;
+                let flow: Arc<Flow> = load(&flow_path)?;
+                let config = load_config(Some(&flow_path), config_path)?;
                 let plugins = config.create_plugins().await?;
                 let executor = StepFlowExecutor::new(plugins);
-                let flow: Arc<Flow> = load(&flow)?;
                 let input = load_input(input_path)?;
 
                 let output = run(executor, flow, input).await?;
                 write_output(output_path, output)?;
             }
-            Command::Serve { port, config } => {
-                let config = load_config(None, config)?;
+            Command::Serve { port, config_path } => {
+                let config = load_config(None, config_path)?;
                 let plugins = config.create_plugins().await?;
                 let executor = StepFlowExecutor::new(plugins);
 
@@ -251,15 +272,22 @@ impl Cli {
             }
             Command::Submit {
                 url,
-                flow,
+                flow_path,
                 input_path,
                 output_path,
             } => {
-                let flow: Flow = load(&flow)?;
+                let flow: Flow = load(&flow_path)?;
                 let input = load_input(input_path)?;
 
                 let output = submit(url, flow, input).await?;
                 write_output(output_path, output)?;
+            }
+            Command::Test {
+                path,
+                config_path,
+                test_options,
+            } => {
+                crate::test::run_tests(&path, config_path, test_options).await?;
             }
         };
 

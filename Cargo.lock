@@ -2117,7 +2117,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "error-stack",
- "insta",
+ "regex",
  "serde",
  "serde_json",
  "serde_yml",
@@ -2133,6 +2133,7 @@ dependencies = [
  "tracing-error",
  "tracing-subscriber",
  "url",
+ "walkdir",
 ]
 
 [[package]]

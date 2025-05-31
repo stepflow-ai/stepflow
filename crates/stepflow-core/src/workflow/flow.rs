@@ -1,5 +1,5 @@
-use super::Step;
-use crate::schema::SchemaRef;
+use super::{Step, ValueRef};
+use crate::{FlowResult, schema::SchemaRef};
 use schemars::JsonSchema;
 
 /// A workflow consisting of a sequence of steps and their outputs.
@@ -36,6 +36,10 @@ pub struct Flow {
     /// The outputs of the flow, mapping output names to their values.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub output: serde_json::Value,
+
+    /// Test configuration for the flow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test: Option<TestConfig>,
 }
 
 impl Flow {
@@ -186,7 +190,38 @@ mod tests {
                     "s2b": { "$from": { "step": "s2" }, "path": "a" }
                 }),
                 output_schema: Some(output_schema),
+                test: None,
             }
         );
     }
+}
+
+/// Configuration for testing a workflow.
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema)]
+pub struct TestConfig {
+    /// Stepflow configuration specific to tests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stepflow_config: Option<serde_json::Value>,
+
+    /// Test cases for the workflow.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cases: Vec<TestCase>,
+}
+
+/// A single test case for a workflow.
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema)]
+pub struct TestCase {
+    /// Unique identifier for the test case.
+    pub name: String,
+
+    /// Optional description of what this test case verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// Input data for the workflow in this test case.
+    pub input: ValueRef,
+
+    /// Expected output from the workflow for this test case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<FlowResult>,
 }
