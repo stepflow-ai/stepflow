@@ -13,32 +13,77 @@ output_schema:
     y:
       type: integer
 steps:
-  - id: m_plus_n
-    component: python://add
-    input:
-      a: { $from: { workflow: input }, path: m }
-      b: { $from: { workflow: input }, path: n }
-  - id: m_times_n
-    component: python://multiply
-    input:
-      a: { $from: { workflow: input }, path: m }
-      b: { $from: { workflow: input }, path: n }
-  - id: m_plus_n_times_n
-    component: python://multiply
-    input:
-      a: { $from: { step: m_plus_n }, path: result }
-      b: { $from: { workflow: input }, path: n }
+- id: m_plus_n
+  component: python://add
+  input_schema: null
+  output_schema: null
+  input:
+    a:
+      $from:
+        workflow: input
+      path: m
+    b:
+      $from:
+        workflow: input
+      path: n
+- id: m_times_n
+  component: python://multiply
+  input_schema: null
+  output_schema: null
+  input:
+    a:
+      $from:
+        workflow: input
+      path: m
+    b:
+      $from:
+        workflow: input
+      path: n
+- id: m_plus_n_times_n
+  component: python://multiply
+  input_schema: null
+  output_schema: null
+  input:
+    a:
+      $from:
+        step: m_plus_n
+      path: result
+    b:
+      $from:
+        workflow: input
+      path: n
 output:
-  m_plus_n_times_n: { $from: { step: m_plus_n_times_n }, path: result }
-  m_times_n: { $from: { step: m_times_n }, path: result }
-  m_plus_n: { $from: { step: m_plus_n }, path: result }
+  m_plus_n_times_n:
+    $from:
+      step: m_plus_n_times_n
+    path: result
+  m_times_n:
+    $from:
+      step: m_times_n
+    path: result
+  m_plus_n:
+    $from:
+      step: m_plus_n
+    path: result
 test:
   cases:
-    - name: "calculate with m=8, n=5"
-      input:
-        m: 8
-        n: 5
-    - name: "calculate with m=8, n=10"
-      input:
-        m: 8
-        n: 10
+  - name: calculate with m=8, n=5
+    input:
+      m: 8
+      n: 5
+    output:
+      outcome: success
+      result:
+        m_plus_n: 13
+        m_plus_n_times_n: 65
+        m_times_n: 40
+  - name: calculate with m=8, n=10
+    input:
+      m: 8
+      n: 10
+    output:
+      outcome: success
+      result:
+        m_plus_n: 18
+        m_plus_n_times_n: 180
+        m_times_n: 80

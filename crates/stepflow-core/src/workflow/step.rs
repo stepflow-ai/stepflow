@@ -66,36 +66,36 @@ mod tests {
     #[test]
     fn test_error_action_serialization() {
         let fail = ErrorAction::Fail;
-        assert_eq!(serde_yml::to_string(&fail).unwrap(), "action: fail\n");
+        assert_eq!(serde_yaml_ng::to_string(&fail).unwrap(), "action: fail\n");
 
         let skip = ErrorAction::Skip;
-        assert_eq!(serde_yml::to_string(&skip).unwrap(), "action: skip\n");
+        assert_eq!(serde_yaml_ng::to_string(&skip).unwrap(), "action: skip\n");
 
         let retry = ErrorAction::Retry;
-        assert_eq!(serde_yml::to_string(&retry).unwrap(), "action: retry\n");
+        assert_eq!(serde_yaml_ng::to_string(&retry).unwrap(), "action: retry\n");
 
         let use_default = ErrorAction::UseDefault {
             default_value: Some(ValueRef::from("test_default")),
         };
         assert_eq!(
-            serde_yml::to_string(&use_default).unwrap(),
+            serde_yaml_ng::to_string(&use_default).unwrap(),
             "action: use_default\ndefault_value: test_default\n"
         );
     }
 
     #[test]
     fn test_error_action_deserialization() {
-        let fail: ErrorAction = serde_yml::from_str("action: fail").unwrap();
+        let fail: ErrorAction = serde_yaml_ng::from_str("action: fail").unwrap();
         assert_eq!(fail, ErrorAction::Fail);
 
-        let skip: ErrorAction = serde_yml::from_str("action: skip").unwrap();
+        let skip: ErrorAction = serde_yaml_ng::from_str("action: skip").unwrap();
         assert_eq!(skip, ErrorAction::Skip);
 
-        let retry: ErrorAction = serde_yml::from_str("action: retry").unwrap();
+        let retry: ErrorAction = serde_yaml_ng::from_str("action: retry").unwrap();
         assert_eq!(retry, ErrorAction::Retry);
 
         let use_default: ErrorAction =
-            serde_yml::from_str("action: use_default\ndefault_value: test_default").unwrap();
+            serde_yaml_ng::from_str("action: use_default\ndefault_value: test_default").unwrap();
         assert_eq!(
             use_default,
             ErrorAction::UseDefault {
@@ -132,7 +132,7 @@ mod tests {
             input: serde_json::Value::Null,
         };
 
-        let yaml = serde_yml::to_string(&step).unwrap();
+        let yaml = serde_yaml_ng::to_string(&step).unwrap();
         assert!(yaml.contains("on_error:"));
         assert!(yaml.contains("action: use_default"));
         assert!(yaml.contains("default_value: fallback"));
@@ -150,7 +150,7 @@ mod tests {
             input: serde_json::Value::Null,
         };
 
-        let yaml = serde_yml::to_string(&step).unwrap();
+        let yaml = serde_yaml_ng::to_string(&step).unwrap();
         assert!(!yaml.contains("on_error:"));
     }
 }

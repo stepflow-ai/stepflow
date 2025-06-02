@@ -67,8 +67,8 @@ impl Flow {
     /// # Errors
     ///
     /// Returns an error if the YAML is invalid or cannot be deserialized into a Flow.
-    pub fn from_yaml_string(yaml: &str) -> serde_yml::Result<Self> {
-        serde_yml::from_str(yaml)
+    pub fn from_yaml_string(yaml: &str) -> serde_yaml_ng::Result<Self> {
+        serde_yaml_ng::from_str(yaml)
     }
 
     /// Parses a flow from a YAML reader.
@@ -76,8 +76,8 @@ impl Flow {
     /// # Errors
     ///
     /// Returns an error if the YAML is invalid or cannot be deserialized into a Flow.
-    pub fn from_yaml_reader(rdr: impl std::io::Read) -> serde_yml::Result<Self> {
-        serde_yml::from_reader(rdr)
+    pub fn from_yaml_reader(rdr: impl std::io::Read) -> serde_yaml_ng::Result<Self> {
+        serde_yaml_ng::from_reader(rdr)
     }
 
     /// Parses a flow from a JSON string.
@@ -94,8 +94,8 @@ impl Flow {
     /// # Errors
     ///
     /// Returns an error if the flow cannot be serialized to YAML.
-    pub fn to_yaml_string(&self) -> serde_yml::Result<String> {
-        serde_yml::to_string(self)
+    pub fn to_yaml_string(&self) -> serde_yaml_ng::Result<String> {
+        serde_yaml_ng::to_string(self)
     }
 
     /// Serializes the flow to a JSON string.
@@ -148,7 +148,7 @@ mod tests {
                 s2b:
                     type: string
         "#;
-        let flow: Flow = serde_yml::from_str(yaml).unwrap();
+        let flow: Flow = serde_yaml_ng::from_str(yaml).unwrap();
         let input_schema = SchemaRef::parse_json(r#"{"type":"object","properties":{"name":{"type":"string","description":"The name to echo"},"count":{"type":"integer"}}}"#).unwrap();
         let output_schema = SchemaRef::parse_json(
             r#"{"type":"object","properties":{"s1a":{"type":"string"},"s2b":{"type":"string"}}}"#,

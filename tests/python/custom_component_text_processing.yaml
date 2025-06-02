@@ -1,117 +1,231 @@
 input_schema:
   type: object
   properties:
-    text:
-      type: string
     pattern:
+      type: string
+    text:
       type: string
 output_schema:
   type: object
   properties:
-    word_analysis:
-      type: object
     pattern_matches:
       type: array
     sentiment_score:
       type: number
+    word_analysis:
+      type: object
 steps:
-  - id: word_analysis
-    component: python://custom_component
+- id: word_analysis
+  component: python://custom_component
+  input_schema: null
+  output_schema: null
+  input:
+    input_schema:
+      type: object
+      properties:
+        text:
+          type: string
+      required:
+      - text
+    code: |
+      text = data['text'].lower()
+      words = text.split()
+
+      word_count = len(words)
+      char_count = len(text.replace(' ', ''))
+
+      # Count word lengths
+      word_lengths = {}
+      for word in words:
+          length = len(word)
+          word_lengths[length] = word_lengths.get(length, 0) + 1
+
+      # Find most common words
+      word_freq = {}
+      for word in words:
+          word_freq[word] = word_freq.get(word, 0) + 1
+
+      most_common = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:3]
+
+      return {
+          'word_count': word_count,
+          'char_count': char_count,
+          'avg_word_length': round(char_count / word_count, 2) if word_count > 0 else 0,
+          'word_length_distribution': word_lengths,
+          'most_common_words': [{'word': word, 'count': count} for word, count in most_common]
+      }
     input:
-      input_schema:
-        type: object
-        properties:
-          text: { type: string }
-        required: [text]
-      code: |
-        text = data['text'].lower()
-        words = text.split()
-        
-        word_count = len(words)
-        char_count = len(text.replace(' ', ''))
-        
-        # Count word lengths
-        word_lengths = {}
-        for word in words:
-            length = len(word)
-            word_lengths[length] = word_lengths.get(length, 0) + 1
-        
-        # Find most common words
-        word_freq = {}
-        for word in words:
-            word_freq[word] = word_freq.get(word, 0) + 1
-        
-        most_common = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:3]
-        
-        return {
-            'word_count': word_count,
-            'char_count': char_count,
-            'avg_word_length': round(char_count / word_count, 2) if word_count > 0 else 0,
-            'word_length_distribution': word_lengths,
-            'most_common_words': [{'word': word, 'count': count} for word, count in most_common]
-        }
-      input:
-        text: { $from: { workflow: input }, path: text }
-  - id: pattern_search
-    component: python://custom_component
+      text:
+        $from:
+          workflow: input
+        path: text
+- id: pattern_search
+  component: python://custom_component
+  input_schema: null
+  output_schema: null
+  input:
+    input_schema:
+      type: object
+      properties:
+        text:
+          type: string
+        pattern:
+          type: string
+      required:
+      - text
+      - pattern
+    code: |
+      text = data['text']
+      pattern = data['pattern']
+
+      try:
+          matches = re.findall(pattern, text)
+          return [{'match': match, 'index': i} for i, match in enumerate(matches)]
+      except:
+          return []
     input:
-      input_schema:
-        type: object
-        properties:
-          text: { type: string }
-          pattern: { type: string }
-        required: [text, pattern]
-      code: |
-        text = data['text']
-        pattern = data['pattern']
-        
-        try:
-            matches = re.findall(pattern, text)
-            return [{'match': match, 'index': i} for i, match in enumerate(matches)]
-        except:
-            return []
-      input:
-        text: { $from: { workflow: input }, path: text }
-        pattern: { $from: { workflow: input }, path: pattern }
-  - id: sentiment_analysis
-    component: python://custom_component
+      text:
+        $from:
+          workflow: input
+        path: text
+      pattern:
+        $from:
+          workflow: input
+        path: pattern
+- id: sentiment_analysis
+  component: python://custom_component
+  input_schema: null
+  output_schema: null
+  input:
+    input_schema:
+      type: object
+      properties:
+        text:
+          type: string
+      required:
+      - text
+    code: |
+      # Simple sentiment analysis based on positive/negative words
+      positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'joy']
+      negative_words = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'sad', 'angry', 'upset', 'disappointed']
+
+      text = data['text'].lower()
+      words = text.split()
+
+      positive_count = sum(1 for word in words if word in positive_words)
+      negative_count = sum(1 for word in words if word in negative_words)
+
+      total_sentiment_words = positive_count + negative_count
+      if total_sentiment_words == 0:
+          return 0.0  # Neutral
+
+      # Return score between -1 (very negative) and 1 (very positive)
+      sentiment_score = (positive_count - negative_count) / total_sentiment_words
+      return round(sentiment_score, 2)
     input:
-      input_schema:
-        type: object
-        properties:
-          text: { type: string }
-        required: [text]
-      code: |
-        # Simple sentiment analysis based on positive/negative words
-        positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'joy']
-        negative_words = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'sad', 'angry', 'upset', 'disappointed']
-        
-        text = data['text'].lower()
-        words = text.split()
-        
-        positive_count = sum(1 for word in words if word in positive_words)
-        negative_count = sum(1 for word in words if word in negative_words)
-        
-        total_sentiment_words = positive_count + negative_count
-        if total_sentiment_words == 0:
-            return 0.0  # Neutral
-        
-        # Return score between -1 (very negative) and 1 (very positive)
-        sentiment_score = (positive_count - negative_count) / total_sentiment_words
-        return round(sentiment_score, 2)
-      input:
-        text: { $from: { workflow: input }, path: text }
+      text:
+        $from:
+          workflow: input
+        path: text
 output:
-  word_analysis: { $from: { step: word_analysis }, path: result }
-  pattern_matches: { $from: { step: pattern_search }, path: result }
-  sentiment_score: { $from: { step: sentiment_analysis }, path: result }
+  word_analysis:
+    $from:
+      step: word_analysis
+    path: result
+  pattern_matches:
+    $from:
+      step: pattern_search
+    path: result
+  sentiment_score:
+    $from:
+      step: sentiment_analysis
+    path: result
 test:
   cases:
-    - name: "process positive text with word pattern"
-      input:
-        text: "This is a great example of text processing. I love how flexible this system is!"
-        pattern: "\\b\\w{4,}\\b"  # Words with 4 or more characters
-    - name: "process negative text with specific word pattern"
-      input:
-        text: "The weather today is terrible and I hate it. This is awful!"
-        pattern: "\\b(weather|today|terrible|hate|awful)\\b"
+  - name: process positive text with word pattern
+    input:
+      text: This is a great example of text processing. I love how flexible this system is!
+      pattern: \b\w{4,}\b
+    output:
+      outcome: success
+      result:
+        pattern_matches:
+        - index: 0
+          match: This
+        - index: 1
+          match: great
+        - index: 2
+          match: example
+        - index: 3
+          match: text
+        - index: 4
+          match: processing
+        - index: 5
+          match: love
+        - index: 6
+          match: flexible
+        - index: 7
+          match: this
+        - index: 8
+          match: system
+        sentiment_score: 1.0
+        word_analysis:
+          avg_word_length: 4.33
+          char_count: 65
+          most_common_words:
+          - count: 2
+            word: this
+          - count: 1
+            word: is
+          - count: 1
+            word: a
+          word_count: 15
+          word_length_distribution:
+            '1': 2
+            '11': 1
+            '2': 2
+            '3': 2
+            '4': 4
+            '5': 1
+            '6': 1
+            '7': 1
+            '8': 1
+  - name: process negative text with specific word pattern
+    input:
+      text: The weather today is terrible and I hate it. This is awful!
+      pattern: \b(weather|today|terrible|hate|awful)\b
+    output:
+      outcome: success
+      result:
+        pattern_matches:
+        - index: 0
+          match: weather
+        - index: 1
+          match: today
+        - index: 2
+          match: terrible
+        - index: 3
+          match: hate
+        - index: 4
+          match: awful
+        sentiment_score: -1.0
+        word_analysis:
+          avg_word_length: 4.0
+          char_count: 48
+          most_common_words:
+          - count: 2
+            word: is
+          - count: 1
+            word: the
+          - count: 1
+            word: weather
+          word_count: 12
+          word_length_distribution:
+            '1': 1
+            '2': 2
+            '3': 3
+            '4': 2
+            '5': 1
+            '6': 1
+            '7': 1
+            '8': 1

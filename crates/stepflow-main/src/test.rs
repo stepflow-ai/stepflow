@@ -170,9 +170,17 @@ fn discover_workflow_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(workflows)
 }
 
+#[derive(Debug)]
+pub enum FileStatus {
+    NoTests,
+    Errored(String),
+    Run,
+}
+
 /// Result of running tests on a single workflow.
 #[derive(Debug)]
 struct WorkflowTestResult {
+    file_status: FileStatus,
     workflow_path: PathBuf,
     total_cases: usize,
     passed_cases: usize,
@@ -182,11 +190,13 @@ struct WorkflowTestResult {
 }
 
 /// Main entry point for running tests on a file or directory.
+///
+/// Return true if there were any failures.
 pub async fn run_tests(
     path: &Path,
     config_path: Option<PathBuf>,
     options: TestOptions,
-) -> Result<()> {
+) -> Result<bool> {
     let workflow_files = if path.is_file() {
         vec![path.to_owned()]
     } else if path.is_dir() {
@@ -197,41 +207,35 @@ pub async fn run_tests(
 
     if workflow_files.is_empty() {
         println!("No workflow files found");
-        return Ok(());
+        return Ok(false);
     }
 
     // Run tests on all workflows and collect results
     let mut results = Vec::new();
-    let mut total_files_skipped = 0;
 
     for workflow_path in workflow_files {
         match run_single_workflow_test(&workflow_path, config_path.clone(), &options).await {
-            Ok(Some(result)) => {
+            Ok(result) => {
                 // Print immediate feedback
-                if path.is_dir() {
-                    println!(
-                        "{}: {}/{} passed",
-                        workflow_path.display(),
-                        result.passed_cases,
-                        result.total_cases
-                    );
-                }
+                println!(
+                    "{}: {}/{} passed",
+                    workflow_path.display(),
+                    result.passed_cases,
+                    result.total_cases
+                );
                 results.push(result);
             }
-            Ok(None) => {
-                // Skipped workflow
-                if path.is_dir() {
-                    println!("{}: Skipped (no test cases)", workflow_path.display());
-                }
-                total_files_skipped += 1;
-            }
             Err(e) => {
-                if path.is_dir() {
-                    println!("{}: Skipped (error: {})", workflow_path.display(), e);
-                } else {
-                    return Err(e);
-                }
-                total_files_skipped += 1;
+                println!("{}: Error {}", workflow_path.display(), e);
+                results.push(WorkflowTestResult {
+                    file_status: FileStatus::Errored(e.to_string()),
+                    workflow_path: workflow_path.to_owned(),
+                    total_cases: 0,
+                    passed_cases: 0,
+                    failed_cases: 0,
+                    execution_errors: 0,
+                    updates: HashMap::new(),
+                });
             }
         }
     }
@@ -241,10 +245,8 @@ pub async fn run_tests(
         apply_all_updates(&results).await?;
     }
 
-    // Print summary and exit with appropriate code
-    print_summary_and_exit(&results, total_files_skipped, path.is_dir())?;
-
-    Ok(())
+    // Print summary return true if there were failures.
+    print_summary(&results)
 }
 
 /// Run tests on a single workflow file.
@@ -252,7 +254,7 @@ async fn run_single_workflow_test(
     workflow_path: &Path,
     config_path: Option<PathBuf>,
     options: &TestOptions,
-) -> Result<Option<WorkflowTestResult>> {
+) -> Result<WorkflowTestResult> {
     // Try to load workflow
     let flow: Arc<Flow> = load(workflow_path)?;
 
@@ -260,7 +262,16 @@ async fn run_single_workflow_test(
     let test_cases = if let Some(config) = flow.test.as_ref() {
         config.cases.as_slice()
     } else {
-        return Ok(None); // No test cases, skip.
+        // No test cases, skip.
+        return Ok(WorkflowTestResult {
+            file_status: FileStatus::NoTests,
+            workflow_path: workflow_path.to_owned(),
+            total_cases: 0,
+            passed_cases: 0,
+            failed_cases: 0,
+            execution_errors: 0,
+            updates: HashMap::new(),
+        });
     };
 
     // Set up executor
@@ -279,7 +290,16 @@ async fn run_single_workflow_test(
     };
 
     if cases_to_run.is_empty() {
-        return Ok(None); // No matching cases
+        // No matching cases
+        return Ok(WorkflowTestResult {
+            file_status: FileStatus::NoTests,
+            workflow_path: workflow_path.to_owned(),
+            total_cases: 0,
+            passed_cases: 0,
+            failed_cases: 0,
+            execution_errors: 0,
+            updates: HashMap::new(),
+        });
     }
 
     // Run the tests
@@ -314,14 +334,15 @@ async fn run_single_workflow_test(
     let failed_cases = updates.len() + execution_errors;
     let passed_cases = total_cases - failed_cases;
 
-    Ok(Some(WorkflowTestResult {
+    Ok(WorkflowTestResult {
+        file_status: FileStatus::Run,
         workflow_path: workflow_path.to_owned(),
         total_cases,
         passed_cases,
         failed_cases,
         execution_errors,
         updates,
-    }))
+    })
 }
 
 /// Apply updates to all workflow files that have them.
@@ -347,47 +368,74 @@ async fn apply_all_updates(results: &[WorkflowTestResult]) -> Result<()> {
 }
 
 /// Print summary and exit with appropriate code.
-fn print_summary_and_exit(
-    results: &[WorkflowTestResult],
-    files_skipped: usize,
-    is_directory_mode: bool,
-) -> Result<()> {
-    if is_directory_mode && results.len() > 1 {
-        // Print summary for directory mode
-        let total_cases: usize = results.iter().map(|r| r.total_cases).sum();
-        let total_passed: usize = results.iter().map(|r| r.passed_cases).sum();
-        let total_failed: usize = results.iter().map(|r| r.failed_cases).sum();
-        let total_exec_errors: usize = results.iter().map(|r| r.execution_errors).sum();
+///
+/// Return true if there were any errors.
+fn print_summary(results: &[WorkflowTestResult]) -> Result<bool> {
+    let mut files_error = 0;
+    let mut files_skip = 0;
 
-        println!("\n=== Test Summary ===");
-        println!("Files tested: {}", results.len());
-        if files_skipped > 0 {
-            println!("Files skipped: {}", files_skipped);
+    let mut cases_total = 0;
+    let mut cases_pass = 0;
+    let mut cases_fail = 0;
+    let mut cases_error = 0;
+
+    for result in results {
+        match &result.file_status {
+            FileStatus::Errored(e) => {
+                println!("{}: Error {}", result.workflow_path.display(), e);
+                files_error += 1;
+            }
+            FileStatus::NoTests => {
+                println!(
+                    "{}: Skipped (no test cases)",
+                    result.workflow_path.display()
+                );
+                files_skip += 1;
+            }
+            FileStatus::Run => {
+                if result.execution_errors > 0 {
+                    println!(
+                        "{}: {}/{} passed ({} errors)",
+                        result.workflow_path.display(),
+                        result.passed_cases,
+                        result.total_cases,
+                        result.execution_errors
+                    );
+                } else {
+                    println!(
+                        "{}: {}/{} passed",
+                        result.workflow_path.display(),
+                        result.passed_cases,
+                        result.total_cases
+                    );
+                }
+                cases_total += result.total_cases;
+                cases_pass += result.passed_cases;
+                cases_fail += result.failed_cases;
+                cases_error += result.execution_errors;
+            }
         }
-        println!("Total test cases: {}", total_cases);
-        println!("Passed: {}", total_passed);
-        println!("Failed: {}", total_failed);
-        if total_exec_errors > 0 {
-            println!("Execution errors: {}", total_exec_errors);
-        }
-    } else if let Some(result) = results.first() {
-        // Single file mode - print detailed results
-        println!("\nTest Results:");
-        println!("  Passed: {}", result.passed_cases);
-        println!("  Failed: {}", result.failed_cases);
-        if result.execution_errors > 0 {
-            println!("  Execution errors: {}", result.execution_errors);
-        }
-        println!("  Total: {}", result.total_cases);
     }
 
-    // Exit with error code if any tests failed
-    let any_failures = results
-        .iter()
-        .any(|r| r.failed_cases > 0 || r.execution_errors > 0);
-    if any_failures {
-        std::process::exit(1);
+    println!("\n=== Test Summary ===");
+    println!("Files tested: {}", results.len());
+    if files_skip > 0 {
+        println!("Files skipped: {}", files_skip);
+    }
+    if files_error > 0 {
+        println!("Files errored: {}", files_error);
+    }
+    println!("Total test cases: {}", cases_total);
+    println!("Passed: {}", cases_pass);
+    println!("Failed: {}", cases_fail);
+    if cases_error > 0 {
+        println!("Execution errors: {}", cases_error);
     }
 
-    Ok(())
+    let any_failures = results.iter().any(|r| {
+        matches!(r.file_status, FileStatus::Errored(_))
+            || r.failed_cases > 0
+            || r.execution_errors > 0
+    });
+    Ok(any_failures)
 }

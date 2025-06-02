@@ -1059,16 +1059,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
-name = "libyml"
-version = "0.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3302702afa434ffa30847a83305f0a69d6abd74293b6554c18ec85c7ef30c980"
-dependencies = [
- "anyhow",
- "version_check",
-]
-
-[[package]]
 name = "linux-raw-sys"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1917,18 +1907,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_yml"
-version = "0.0.12"
+name = "serde_yaml_ng"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59e2dd588bf1597a252c3b920e0143eb99b0f76e4e082f4c92ce34fbc9e71ddd"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap",
  "itoa",
- "libyml",
- "memchr",
  "ryu",
  "serde",
- "version_check",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -2061,7 +2049,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "serde_yml",
+ "serde_yaml_ng",
  "stepflow-core",
  "stepflow-plugin",
  "tempfile",
@@ -2088,7 +2076,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "serde_yml",
+ "serde_yaml_ng",
  "sha2",
  "similar-asserts",
  "thiserror 2.0.12",
@@ -2120,7 +2108,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "serde_yml",
+ "serde_yaml_ng",
  "stepflow-builtins",
  "stepflow-core",
  "stepflow-execution",
@@ -2711,6 +2699,12 @@ name = "unicode-segmentation"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"

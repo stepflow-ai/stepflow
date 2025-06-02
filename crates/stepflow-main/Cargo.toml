@@ -12,7 +12,7 @@ clap.workspace = true
 error-stack.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yml.workspace = true
+serde_yaml_ng.workspace = true
 stepflow-builtins.workspace = true
 stepflow-core.workspace = true
 stepflow-execution.workspace = true
@@ -24,15 +24,11 @@ walkdir.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+tracing-error.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-serde.workspace = true
-serde_yml.workspace = true
-stepflow-protocol.workspace = true
-tracing-error.workspace = true
-tracing-subscriber.workspace = true
 
 [[bin]]
 name = "stepflow"

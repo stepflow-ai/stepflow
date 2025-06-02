@@ -72,7 +72,7 @@ impl LoadFileComponent {
                 serde_json::from_str(&content).change_context(BuiltinError::InvalidInput)
             }
             FileFormat::Yaml => {
-                serde_yml::from_str(&content).change_context(BuiltinError::InvalidInput)
+                serde_yaml_ng::from_str(&content).change_context(BuiltinError::InvalidInput)
             }
             FileFormat::Text => Ok(serde_json::Value::String(content)),
         }
