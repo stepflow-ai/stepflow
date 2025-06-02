@@ -1,0 +1,40 @@
+name: Basic Test Workflow
+description: Simple workflow to test the new test command
+steps:
+- id: message_step
+  component: builtins://create_messages
+  input_schema: null
+  output_schema: null
+  input:
+    user_prompt:
+      $from:
+        workflow: input
+      path: message
+output:
+  result:
+    $from:
+      step: message_step
+test:
+  cases:
+  - name: simple_echo
+    description: Test basic echo functionality
+    input:
+      message: Hello
+    output:
+      outcome: success
+      result:
+        result:
+          messages:
+          - role: user
+            content: Hello
+  - name: different_message
+    description: Test with different input
+    input:
+      message: Hi
+    output:
+      outcome: success
+      result:
+        result:
+          messages:
+          - role: user
+            content: Hi

@@ -1,0 +1,38 @@
+input_schema:
+  type: object
+output_schema:
+  type: object
+  properties:
+    result:
+      type: string
+steps:
+- id: error
+  component: mock://error
+  input_schema: null
+  output_schema: null
+  on_error:
+    action: skip
+  input:
+    mode:
+      $from:
+        workflow: input
+      path: mode
+output:
+  error_result:
+    $from:
+      step: error
+    path: output
+test:
+  cases:
+  - name: test error case that should skip
+    input:
+      mode: error
+    output:
+      outcome: skipped
+  - name: test success case
+    input:
+      mode: succeed
+    output:
+      outcome: success
+      result:
+        error_result: succeeded

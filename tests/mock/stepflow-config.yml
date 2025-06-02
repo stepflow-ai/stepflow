@@ -1,0 +1,81 @@
+plugins:
+  - name: mock
+    type: mock
+    components:
+      mock://one_output:
+        input_schema:
+          type: object
+          properties:
+            input:
+              type: string
+        output_schema:
+          type: object
+          properties:
+            output:
+              type: string
+        behaviors:
+          { input: "a" }:
+            outcome: success
+            result: {output: b}
+          { input: "hello"}:
+            outcome: success
+            result: {output: world}
+      mock://two_outputs:
+        input_schema:
+          type: object
+          properties:
+            input:
+              type: string
+        output_schema:
+          type: object
+          properties:
+            x:
+              type: integer
+            y:
+              type: integer
+        behaviors:
+          { input: "b" }: 
+            outcome: success
+            result: {x: 1, y: 2}
+          { input: "world"}:
+            outcome: success
+            result: {x: 2, y: 8}
+      mock://error:
+        input_schema:
+          type: object
+          properties:
+            mode:
+              type: string
+        output_schema:
+          type: object
+          properties:
+            output:
+              type: string
+        behaviors:
+          { mode: "error" }:
+            outcome: failed
+            error: {code: 8, message: "error"}
+          { mode: "succeed" }:
+            outcome: success
+            result: {output: "succeeded"}
+      mock://handle_skip:
+        input_schema:
+          type: object
+          properties:
+            input:
+              type: string
+        output_schema:
+          type: object
+          properties:
+            output:
+              type: string
+        behaviors:
+          { input: "it was skipped" }:
+            outcome: success
+            result: {output: received it was skipped}
+          { input: "b" }:
+            outcome: success
+            result: {output: received b}
+          { input: null }:
+            outcome: success
+            result: {output: received null}

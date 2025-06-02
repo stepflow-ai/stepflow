@@ -1,0 +1,72 @@
+input_schema:
+  type: object
+  properties:
+    should_skip:
+      type: boolean
+    value:
+      type: string
+output_schema:
+  type: object
+  properties:
+    result:
+      type: string
+    skipped_result:
+      type: string
+steps:
+- id: conditional_step
+  component: mock://one_output
+  input_schema: null
+  output_schema: null
+  skip_if:
+    $from:
+      workflow: input
+    path: should_skip
+  input:
+    input:
+      $from:
+        workflow: input
+      path: value
+- id: dependent_step
+  component: mock://handle_skip
+  input_schema: null
+  output_schema: null
+  input:
+    input:
+      $from:
+        step: conditional_step
+      path: output
+      on_skip:
+        action: use_default
+        default_value: it was skipped
+output:
+  dependent_result:
+    $from:
+      step: dependent_step
+    path: output
+test:
+  cases:
+  - name: do not skip with input 'a'
+    input:
+      should_skip: false
+      value: a
+    output:
+      outcome: success
+      result:
+        dependent_result: received b
+  - name: skip with input 'a'
+    input:
+      should_skip: true
+      value: a
+    output:
+      outcome: success
+      result:
+        dependent_result: received it was skipped
+  - name: do not skip with input 'hello'
+    input:
+      should_skip: false
+      value: hello
+    output:
+      outcome: failed
+      error:
+        code: 500
+        message: 'Flow execution failed: error executing plugin'

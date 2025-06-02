@@ -1,0 +1,39 @@
+name: nested_eval_test
+description: Test nested flow execution with eval component
+steps:
+- id: nested_flow
+  component: builtins://eval
+  input_schema: null
+  output_schema: null
+  input:
+    workflow:
+      $literal:
+        name: simple_nested
+        steps:
+        - id: inner_step
+          component: builtins://create_messages
+          input:
+            user_prompt: Hello from nested flow
+        output:
+          result:
+            $from:
+              step: inner_step
+    input: {}
+output:
+  nested_result:
+    $from:
+      step: nested_flow
+test:
+  cases:
+  - name: test nested flow execution
+    input: {}
+    output:
+      outcome: success
+      result:
+        nested_result:
+          result:
+            result:
+              messages:
+              - role: user
+                content: Hello from nested flow
+          execution_id: '09adb2f6-c390-4e3c-a06b-32ecf1e95ba5'

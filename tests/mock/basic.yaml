@@ -1,0 +1,74 @@
+input_schema:
+  type: object
+  properties:
+    name:
+      type: string
+output_schema:
+  type: object
+  properties:
+    name:
+      type: string
+    x:
+      type: integer
+    'y':
+      type: integer
+steps:
+- id: step1
+  component: mock://one_output
+  input_schema: null
+  output_schema: null
+  input:
+    input:
+      $from:
+        workflow: input
+      path: name
+- id: step2
+  component: mock://two_outputs
+  input_schema: null
+  output_schema: null
+  input:
+    input:
+      $from:
+        step: step1
+      path: output
+output:
+  name:
+    $from:
+      step: step1
+    path: output
+  x:
+    $from:
+      step: step2
+    path: x
+  'y':
+    $from:
+      step: step2
+    path: 'y'
+test:
+  cases:
+  - name: test with input 'a'
+    input:
+      name: a
+    output:
+      outcome: success
+      result:
+        name: b
+        x: 1
+        'y': 2
+  - name: test with input 'hello'
+    input:
+      name: hello
+    output:
+      outcome: success
+      result:
+        name: world
+        x: 2
+        'y': 8
+  - name: test with input 'world'
+    input:
+      name: world
+    output:
+      outcome: failed
+      error:
+        code: 500
+        message: 'Flow execution failed: error executing plugin'
