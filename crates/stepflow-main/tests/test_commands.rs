@@ -35,5 +35,6 @@ async fn test_command() {
     let result = stepflow_main::test::run_tests(test_path, None, test_options).await;
 
     // The test should succeed (basic.yaml should pass, no_tests.yaml should be skipped)
-    assert!(result.is_ok(), "Test command should succeed: {:?}", result);
+    let result = result.expect("Test command should succeed");
+    assert!(!result, "Tests should succeed");
 }

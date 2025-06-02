@@ -136,7 +136,7 @@ pub fn load<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let value = match Format::from_path(path)? {
         Format::Json => serde_json::from_reader(rdr)
             .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?,
-        Format::Yaml => serde_yml::from_reader(rdr)
+        Format::Yaml => serde_yaml_ng::from_reader(rdr)
             .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?,
     };
     Ok(value)
@@ -231,7 +231,7 @@ pub fn write_output(path: Option<PathBuf>, output: impl serde::Serialize) -> Res
             match format {
                 Format::Json => serde_json::to_writer(wtr, &output)
                     .change_context_lazy(|| MainError::WriteOutput(path.clone()))?,
-                Format::Yaml => serde_yml::to_writer(wtr, &output)
+                Format::Yaml => serde_yaml_ng::to_writer(wtr, &output)
                     .change_context_lazy(|| MainError::WriteOutput(path.clone()))?,
             };
             Ok(())
@@ -287,7 +287,10 @@ impl Cli {
                 config_path,
                 test_options,
             } => {
-                crate::test::run_tests(&path, config_path, test_options).await?;
+                let failures = crate::test::run_tests(&path, config_path, test_options).await?;
+                if failures {
+                    std::process::exit(1);
+                }
             }
         };
 

@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_expr_from_yaml() {
-        let from_yaml = |s| serde_yml::from_str::<Expr>(s).unwrap();
+        let from_yaml = |s| serde_yaml_ng::from_str::<Expr>(s).unwrap();
         assert_eq!(from_yaml("foo"), Expr::literal("foo"));
         assert_eq!(from_yaml("5"), Expr::literal(5));
 
@@ -214,10 +214,11 @@ mod tests {
 
     #[test]
     fn test_skip_action_deserialization() {
-        let skip: SkipAction = serde_yml::from_str("action: skip").unwrap();
+        let skip: SkipAction = serde_yaml_ng::from_str("action: skip").unwrap();
         assert_eq!(skip, SkipAction::Skip);
 
-        let use_default_no_value: SkipAction = serde_yml::from_str("action: use_default").unwrap();
+        let use_default_no_value: SkipAction =
+            serde_yaml_ng::from_str("action: use_default").unwrap();
         assert_eq!(
             use_default_no_value,
             SkipAction::UseDefault {
@@ -226,7 +227,7 @@ mod tests {
         );
 
         let use_default_with_value: SkipAction =
-            serde_yml::from_str("action: use_default\ndefault_value: test_default").unwrap();
+            serde_yaml_ng::from_str("action: use_default\ndefault_value: test_default").unwrap();
         assert_eq!(
             use_default_with_value,
             SkipAction::UseDefault {
@@ -237,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_expr_with_skip_action_from_yaml() {
-        let expr_with_skip: Expr = serde_yml::from_str(
+        let expr_with_skip: Expr = serde_yaml_ng::from_str(
             "$from: { step: step1 }\npath: out\non_skip:\n  action: use_default\n  default_value: fallback",
         )
         .unwrap();
@@ -254,7 +255,7 @@ mod tests {
         );
 
         let expr_with_default_skip: Expr =
-            serde_yml::from_str("$from: { step: step1 }\npath: out").unwrap();
+            serde_yaml_ng::from_str("$from: { step: step1 }\npath: out").unwrap();
 
         assert_eq!(
             expr_with_default_skip,
