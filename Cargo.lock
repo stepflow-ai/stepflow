@@ -2164,6 +2164,7 @@ dependencies = [
  "serde_json",
  "stepflow-core",
  "stepflow-plugin",
+ "stepflow-state",
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",

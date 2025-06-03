@@ -1,0 +1,108 @@
+input_schema:
+  type: object
+  properties:
+    message:
+      type: string
+    number:
+      type: number
+output_schema:
+  type: object
+  properties:
+    blob_id:
+      type: string
+    python_blob_id:
+      type: string
+    retrieved_data:
+      type: object
+steps:
+- id: store_with_builtin
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      message:
+        $from:
+          workflow: input
+        path: message
+      number:
+        $from:
+          workflow: input
+        path: number
+      timestamp: 2024-01-01T00:00:00Z
+- id: store_with_python
+  component: python://custom_component
+  input_schema: null
+  output_schema: null
+  input:
+    input_schema:
+      type: object
+      properties:
+        message:
+          type: string
+        number:
+          type: number
+      required:
+      - message
+      - number
+    code: "async def store_data(data, context):\n    # Create enhanced data\n    enhanced_data = {\n        'original_message': data['message'],\n        'number_squared': data['number'] ** 2,\n        'processed_by': 'python_udf'\n    }\n    \n    # Store as blob using context\n    blob_id = await context.store_blob(enhanced_data)\n    \n    return {'blob_id': blob_id, 'status': 'success'}\n"
+    function_name: store_data
+    input:
+      message:
+        $from:
+          workflow: input
+        path: message
+      number:
+        $from:
+          workflow: input
+        path: number
+- id: retrieve_with_builtin
+  component: builtins://get_blob
+  input_schema: null
+  output_schema: null
+  input:
+    blob_id:
+      $from:
+        step: store_with_builtin
+      path: blob_id
+output:
+  blob_id:
+    $from:
+      step: store_with_builtin
+    path: blob_id
+  retrieved_data:
+    $from:
+      step: retrieve_with_builtin
+    path: data
+  python_blob_id:
+    $from:
+      step: store_with_python
+    path: blob_id
+test:
+  cases:
+  - name: blobs_42
+    input:
+      message: Hello, blobs!
+      number: 42
+    output:
+      outcome: success
+      result:
+        blob_id: 2b566ff16f11d28c29521759abde29e5762fb10b7a1c4dec05c09d9057b41d7c
+        python_blob_id: 5e7b9e2bb1fb695b22192e82e25b4b6b142f46548509b4c62cd051f0f21b082e
+        retrieved_data:
+          message: Hello, blobs!
+          number: 42
+          timestamp: 2024-01-01T00:00:00Z
+  - name: blobs_100
+    input:
+      message: Testing integration
+      number: 100
+    output:
+      outcome: success
+      result:
+        blob_id: c3d8fcefa4911e27c19d7e1b0b821a65102f50f7114a4f160cba23ac151d0e3c
+        python_blob_id: c428d74033a44874f7b51b3404c793102712ac54b1cbbbcd25235491bcf49f93
+        retrieved_data:
+          message: Testing integration
+          number: 100
+          timestamp: 2024-01-01T00:00:00Z

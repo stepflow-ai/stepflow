@@ -1,6 +1,5 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use stepflow_core::{
     FlowResult, blob::BlobId, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef,
 };
@@ -48,11 +47,7 @@ impl BuiltinComponent for CreateBlobComponent {
         })
     }
 
-    async fn execute(
-        &self,
-        context: Arc<dyn ExecutionContext>,
-        input: ValueRef,
-    ) -> Result<FlowResult> {
+    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
         let input: CreateBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -117,11 +112,7 @@ impl BuiltinComponent for GetBlobComponent {
         })
     }
 
-    async fn execute(
-        &self,
-        context: Arc<dyn ExecutionContext>,
-        input: ValueRef,
-    ) -> Result<FlowResult> {
+    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
         let input: GetBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -166,10 +157,10 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
 
         let result = component
-            .execute(context, input_value.into())
+            .execute(mock.execution_context(), input_value.into())
             .await
             .unwrap();
 
@@ -192,10 +183,11 @@ mod tests {
 
         // Create a valid blob ID from test data
         let test_data = json!({"retrieved": "data", "value": 123});
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
 
         // First, store the blob
-        let blob_id = context
+        let blob_id = mock
+            .execution_context()
             .state_store()
             .put_blob(ValueRef::new(test_data.clone()))
             .await
@@ -208,7 +200,7 @@ mod tests {
         let input_value = serde_json::to_value(input).unwrap();
 
         let result = component
-            .execute(context, input_value.into())
+            .execute(mock.execution_context(), input_value.into())
             .await
             .unwrap();
 
@@ -231,8 +223,8 @@ mod tests {
 
         let test_data = json!({"roundtrip": "test", "complex": {"nested": [1, 2, 3]}});
 
-        // Use the same context for both operations
-        let context = MockContext::new_execution_context();
+        // Use the same mock context for both operations to share state
+        let mock = MockContext::new();
 
         // Create blob
         let create_input = CreateBlobInput {
@@ -241,7 +233,7 @@ mod tests {
         let create_input_value = serde_json::to_value(create_input).unwrap();
 
         let create_result = create_component
-            .execute(context.clone(), create_input_value.into())
+            .execute(mock.execution_context(), create_input_value.into())
             .await
             .unwrap();
 
@@ -254,12 +246,12 @@ mod tests {
             _ => panic!("Expected success result from create"),
         };
 
-        // Get blob (Note: MockContext returns mock data, so this tests the component structure)
+        // Get blob using the same mock context (shares the same state store)
         let get_input = GetBlobInput { blob_id };
         let get_input_value = serde_json::to_value(get_input).unwrap();
 
         let get_result = get_component
-            .execute(context, get_input_value.into())
+            .execute(mock.execution_context(), get_input_value.into())
             .await
             .unwrap();
 
@@ -283,9 +275,11 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
 
-        let result = component.execute(context, input_value.into()).await;
+        let result = component
+            .execute(mock.execution_context(), input_value.into())
+            .await;
 
         // Should return an error for invalid blob ID
         assert!(result.is_err());

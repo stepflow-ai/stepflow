@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::state::State;
-use crate::{ExecutionError, ExecutionHandle, Result, StepFlowExecutor};
+use crate::{ExecutionError, Result};
 use error_stack::ResultExt as _;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use owning_ref::ArcRef;
@@ -15,7 +15,7 @@ use tracing::Instrument as _;
 use uuid::Uuid;
 
 pub(crate) async fn spawn_workflow(
-    executor: StepFlowExecutor,
+    executor: Arc<crate::executor::StepFlowExecutor>,
     execution_id: Uuid,
     flow: Arc<Flow>,
     input: ValueRef,
@@ -28,21 +28,15 @@ pub(crate) async fn spawn_workflow(
 
     let mut step_tasks = FuturesUnordered::new();
 
-    let handle = ExecutionHandle {
-        execution_id,
-        executor: executor.clone(),
-    };
+    let context = executor.execution_context(execution_id);
+
     let steps = (0..flow.steps.len()).map(|i| ArcRef::new(flow.clone()).map(|flow| flow.step(i)));
-    let context = Arc::new(handle);
     for step in steps {
         tracing::debug!("Creating future for step {:?}", step.id);
         // Record the future step result.
         let result_tx = state.record_future(BaseRef::step_output(step.id.clone()))?;
 
-        let plugin = executor
-            .plugins
-            .get(&step.component)
-            .change_context(ExecutionError::PluginNotFound)?;
+        let plugin = executor.get_plugin(&step.component).await?;
 
         let skip_if = if let Some(skip_if) = &step.skip_if {
             Some(state.resolve_expr(skip_if)?)
@@ -115,7 +109,7 @@ async fn execute_step(
     skip_if: Option<impl Future<Output = Result<FlowResult>>>,
     input: impl Future<Output = Result<FlowResult>>,
     result_tx: oneshot::Sender<FlowResult>,
-    context: Arc<dyn ExecutionContext>,
+    context: ExecutionContext,
 ) -> Result<()> {
     if let Some(skip) = skip_if {
         // TODO: Should we wait on skip and input in parallel?

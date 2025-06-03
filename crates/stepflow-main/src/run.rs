@@ -4,9 +4,10 @@ use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use stepflow_core::{FlowResult, workflow::Flow};
 use stepflow_execution::StepFlowExecutor;
+use stepflow_plugin::Context as _;
 
 pub async fn run(
-    executor: StepFlowExecutor,
+    executor: Arc<StepFlowExecutor>,
     flow: Arc<Flow>,
     input: stepflow_core::workflow::ValueRef,
 ) -> Result<FlowResult> {

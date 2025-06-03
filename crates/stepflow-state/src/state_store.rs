@@ -1,6 +1,8 @@
-use crate::Result;
 use std::{future::Future, pin::Pin};
+
 use stepflow_core::{blob::BlobId, workflow::ValueRef};
+
+use crate::StateError;
 
 /// Trait for storing and retrieving state data including blobs.
 ///
@@ -17,8 +19,10 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// The blob ID for the stored data
-    fn put_blob(&self, data: ValueRef)
-    -> Pin<Box<dyn Future<Output = Result<BlobId>> + Send + '_>>;
+    fn put_blob(
+        &self,
+        data: ValueRef,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<BlobId, StateError>> + Send + '_>>;
 
     /// Retrieve JSON data by blob ID.
     ///
@@ -30,5 +34,5 @@ pub trait StateStore: Send + Sync {
     fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> Pin<Box<dyn Future<Output = Result<ValueRef>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ValueRef, StateError>> + Send + '_>>;
 }

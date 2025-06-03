@@ -1,4 +1,6 @@
 plugins:
+  - name: builtins
+    type: builtin
   - name: python
     type: stdio
     command: uv

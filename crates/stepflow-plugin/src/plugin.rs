@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use crate::{ExecutionContext, Result};
+use crate::{Context, ExecutionContext, Result};
 use serde::{Serialize, de::DeserializeOwned};
 use stepflow_core::{
     FlowResult,
@@ -11,7 +11,7 @@ use stepflow_core::{
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]
 pub trait Plugin: Send + Sync {
-    async fn init(&self) -> Result<()>;
+    async fn init(&self, context: &Arc<dyn Context>) -> Result<()>;
 
     /// Return the outputs for the given component.
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo>;
@@ -22,18 +22,17 @@ pub trait Plugin: Send + Sync {
     async fn execute(
         &self,
         component: &Component,
-        context: Arc<dyn ExecutionContext>,
+        context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult>;
 }
 
 /// Trait implemented by a deserializable plugin configuration.
 pub trait PluginConfig: Serialize + DeserializeOwned {
-    type Plugin: Plugin + 'static;
     type Error: error_stack::Context;
 
     fn create_plugin(
         self,
         working_directory: &Path,
-    ) -> impl Future<Output = error_stack::Result<Self::Plugin, Self::Error>>;
+    ) -> impl Future<Output = error_stack::Result<Box<DynPlugin<'static>>, Self::Error>>;
 }

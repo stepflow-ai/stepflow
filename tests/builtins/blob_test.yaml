@@ -11,8 +11,8 @@ output_schema:
     retrieved_data:
       type: object
 steps:
-- id: create_blob
-  component: builtins://create_blob
+- id: put_blob
+  component: builtins://put_blob
   input_schema: null
   output_schema: null
   input:
@@ -27,12 +27,12 @@ steps:
   input:
     blob_id:
       $from:
-        step: create_blob
+        step: put_blob
       path: blob_id
 output:
   blob_id:
     $from:
-      step: create_blob
+      step: put_blob
     path: blob_id
   retrieved_data:
     $from:
