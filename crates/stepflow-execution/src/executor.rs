@@ -1,13 +1,13 @@
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use crate::{InMemoryStateStore, Result, StateStore};
+use crate::Result;
 use futures::{FutureExt as _, TryFutureExt as _};
 use stepflow_core::{
     FlowError, FlowResult,
-    blob::BlobId,
     workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::{ExecutionContext, PluginError, Plugins};
+use stepflow_state::{InMemoryStateStore, StateStore};
 use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 
@@ -163,30 +163,8 @@ impl ExecutionContext for ExecutionHandle {
             .boxed()
     }
 
-    fn create_blob(
-        &self,
-        data: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = stepflow_plugin::Result<BlobId>> + Send + '_>> {
-        self.executor
-            .state_store
-            .create_blob(data)
-            .map_err(|e| e.change_context(PluginError::UdfExecution))
-            .boxed()
-    }
-
-    fn get_blob(
-        &self,
-        blob_id: &BlobId,
-    ) -> Pin<Box<dyn Future<Output = stepflow_plugin::Result<ValueRef>> + Send + '_>> {
-        let state_store = self.executor.state_store.clone();
-        let blob_id = blob_id.clone();
-
-        Box::pin(async move {
-            state_store
-                .get_blob(&blob_id)
-                .await
-                .map_err(|e| e.change_context(PluginError::UdfExecution))
-        })
+    fn state_store(&self) -> &Arc<dyn StateStore> {
+        &self.executor.state_store
     }
 }
 
@@ -213,10 +191,10 @@ mod tests {
         let value_ref = ValueRef::new(test_data.clone());
 
         // Create blob through execution context
-        let blob_id = handle.create_blob(value_ref).await.unwrap();
+        let blob_id = handle.state_store().put_blob(value_ref).await.unwrap();
 
         // Retrieve blob through execution context
-        let retrieved = handle.get_blob(&blob_id).await.unwrap();
+        let retrieved = handle.state_store().get_blob(&blob_id).await.unwrap();
 
         // Verify data matches
         assert_eq!(retrieved.as_ref(), &test_data);
@@ -238,7 +216,8 @@ mod tests {
         // Create blob through execution context
         let test_data = json!({"custom": "state store test"});
         let blob_id = handle
-            .create_blob(ValueRef::new(test_data.clone()))
+            .state_store()
+            .put_blob(ValueRef::new(test_data.clone()))
             .await
             .unwrap();
 
@@ -247,7 +226,7 @@ mod tests {
         assert_eq!(retrieved_direct.as_ref(), &test_data);
 
         // And through the execution handle
-        let retrieved_handle = handle.get_blob(&blob_id).await.unwrap();
+        let retrieved_handle = handle.state_store().get_blob(&blob_id).await.unwrap();
         assert_eq!(retrieved_handle.as_ref(), &test_data);
     }
 }

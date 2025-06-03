@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{DynPlugin, Plugin, PluginError, Result};
-use error_stack::ResultExt;
+use error_stack::ResultExt as _;
 use stepflow_core::workflow::Component;
 
 pub struct Plugins {

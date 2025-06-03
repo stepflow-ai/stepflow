@@ -124,7 +124,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = Arc::new(MockContext::new()) as Arc<dyn ExecutionContext>;
+        let context = MockContext::new_execution_context();
 
         let result = component
             .execute(context, input_value.into())

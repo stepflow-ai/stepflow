@@ -1,4 +1,4 @@
-use crate::{BuiltinComponent, registry};
+use crate::{BuiltinComponent as _, registry};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

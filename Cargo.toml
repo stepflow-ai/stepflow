@@ -36,6 +36,7 @@ stepflow-execution = { path = "./crates/stepflow-execution" }
 stepflow-mock = { path = "./crates/stepflow-mock" }
 stepflow-plugin = { path = "./crates/stepflow-plugin" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
+stepflow-state = { path = "./crates/stepflow-state" }
 tempfile = "3.8"
 test-with = { version = "0.14.10", features = ["runtime"] }
 thiserror = "2.0.12"
@@ -60,9 +61,10 @@ future_incompatible = "warn"
 
 [workspace.lints.clippy]
 mod_module_files = "warn"
-print_stdout = "warn"
 print_stderr = "warn"
-undocumented-unsafe-blocks = "warn"
+print_stdout = "warn"
+undocumented_unsafe_blocks = "warn"
+unused_trait_names = "warn"
 
 [workspace.metadata.cargo-machete]
 ignored = []

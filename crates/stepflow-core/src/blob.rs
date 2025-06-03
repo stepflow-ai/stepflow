@@ -1,8 +1,8 @@
 use std::fmt;
 
-use error_stack::ResultExt;
+use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use thiserror::Error;
 
 use crate::workflow::ValueRef;

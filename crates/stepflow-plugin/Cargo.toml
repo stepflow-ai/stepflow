@@ -13,11 +13,13 @@ error-stack.workspace = true
 futures.workspace = true
 serde.workspace = true
 stepflow-core.workspace = true
+stepflow-state.workspace = true
 thiserror.workspace = true
 trait-variant.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+
 
 [lints]
 workspace = true
