@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{ExecutionError, Result};
-use error_stack::ResultExt;
+use error_stack::ResultExt as _;
 use futures::{
     FutureExt as _, TryStreamExt as _,
     future::{BoxFuture, Shared},

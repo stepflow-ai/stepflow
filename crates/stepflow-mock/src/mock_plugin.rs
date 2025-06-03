@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use error_stack::ResultExt;
+use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_core::{
     FlowResult,

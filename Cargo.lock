@@ -2052,6 +2052,7 @@ dependencies = [
  "serde_yaml_ng",
  "stepflow-core",
  "stepflow-plugin",
+ "stepflow-state",
  "tempfile",
  "test-with",
  "thiserror 2.0.12",
@@ -2093,6 +2094,7 @@ dependencies = [
  "serde_json",
  "stepflow-core",
  "stepflow-plugin",
+ "stepflow-state",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -2145,6 +2147,7 @@ dependencies = [
  "futures",
  "serde",
  "stepflow-core",
+ "stepflow-state",
  "thiserror 2.0.12",
  "trait-variant",
  "uuid",
@@ -2167,6 +2170,17 @@ dependencies = [
  "tracing",
  "uuid",
  "which",
+]
+
+[[package]]
+name = "stepflow-state"
+version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "serde_json",
+ "stepflow-core",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]

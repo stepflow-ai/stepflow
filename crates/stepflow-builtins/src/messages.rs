@@ -79,7 +79,7 @@ mod tests {
             user_prompt: "What is the capital of the moon?".to_string(),
         };
         let input = serde_json::to_value(input).unwrap();
-        let context = Arc::new(MockContext::new()) as Arc<dyn ExecutionContext>;
+        let context = MockContext::new_execution_context();
         let output = component.execute(context, input.into()).await.unwrap();
         let output =
             serde_json::from_value::<CreateMessagesOutput>(output.success().unwrap().clone())

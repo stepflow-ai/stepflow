@@ -1,10 +1,10 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
-use crate::{ExecutionError, Result};
+use crate::{Result, StateError};
 use stepflow_core::{blob::BlobId, workflow::ValueRef};
 use tokio::sync::RwLock;
 
-use super::StateStore;
+use crate::StateStore;
 
 /// In-memory implementation of StateStore.
 ///
@@ -32,7 +32,7 @@ impl Default for InMemoryStateStore {
 }
 
 impl StateStore for InMemoryStateStore {
-    fn create_blob(
+    fn put_blob(
         &self,
         data: ValueRef,
     ) -> Pin<Box<dyn Future<Output = Result<BlobId>> + Send + '_>> {
@@ -40,7 +40,7 @@ impl StateStore for InMemoryStateStore {
 
         Box::pin(async move {
             let blob_id = BlobId::from_content(&data).map_err(|e| {
-                error_stack::report!(ExecutionError::Internal)
+                error_stack::report!(StateError::Internal)
                     .attach_printable(format!("Failed to create blob ID: {}", e))
             })?;
 
@@ -64,7 +64,7 @@ impl StateStore for InMemoryStateStore {
         Box::pin(async move {
             let blobs = blobs.read().await;
             blobs.get(&blob_id_str).cloned().ok_or_else(|| {
-                error_stack::report!(ExecutionError::BlobNotFound {
+                error_stack::report!(StateError::BlobNotFound {
                     blob_id: blob_id_str.clone()
                 })
             })
@@ -86,7 +86,7 @@ mod tests {
         let value_ref = ValueRef::new(test_data.clone());
 
         // Create blob
-        let blob_id = store.create_blob(value_ref.clone()).await.unwrap();
+        let blob_id = store.put_blob(value_ref.clone()).await.unwrap();
 
         // Blob ID should be deterministic (SHA-256 hash)
         assert_eq!(blob_id.as_str().len(), 64); // SHA-256 produces 64 hex characters
@@ -97,7 +97,7 @@ mod tests {
 
         // Same content should produce same blob ID
         let value_ref2 = ValueRef::new(test_data.clone());
-        let blob_id2 = store.create_blob(value_ref2).await.unwrap();
+        let blob_id2 = store.put_blob(value_ref2).await.unwrap();
         assert_eq!(blob_id, blob_id2);
 
         // Non-existent blob should return error

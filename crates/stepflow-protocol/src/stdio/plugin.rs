@@ -1,4 +1,4 @@
-use error_stack::ResultExt;
+use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

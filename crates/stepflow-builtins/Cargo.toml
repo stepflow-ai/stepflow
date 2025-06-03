@@ -17,6 +17,7 @@ serde_json.workspace = true
 serde_yaml_ng.workspace = true
 stepflow-plugin.workspace = true
 stepflow-core.workspace = true
+stepflow-state.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

@@ -60,7 +60,8 @@ impl BuiltinComponent for CreateBlobComponent {
 
         // Create the blob through the execution context
         let blob_id = context
-            .create_blob(data_ref)
+            .state_store()
+            .put_blob(data_ref)
             .await
             .change_context(BuiltinError::Internal)?;
 
@@ -132,6 +133,7 @@ impl BuiltinComponent for GetBlobComponent {
 
         // Retrieve the blob through the execution context
         let data_ref = context
+            .state_store()
             .get_blob(&blob_id)
             .await
             .change_context(BuiltinError::Internal)?;
@@ -164,7 +166,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = Arc::new(MockContext::new()) as Arc<dyn ExecutionContext>;
+        let context = MockContext::new_execution_context();
 
         let result = component
             .execute(context, input_value.into())
@@ -190,14 +192,20 @@ mod tests {
 
         // Create a valid blob ID from test data
         let test_data = json!({"retrieved": "data", "value": 123});
-        let blob_id = BlobId::from_content(&ValueRef::new(test_data.clone())).unwrap();
+        let context = MockContext::new_execution_context();
+
+        // First, store the blob
+        let blob_id = context
+            .state_store()
+            .put_blob(ValueRef::new(test_data.clone()))
+            .await
+            .unwrap();
 
         let input = GetBlobInput {
             blob_id: blob_id.as_str().to_string(),
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = Arc::new(MockContext::new()) as Arc<dyn ExecutionContext>;
 
         let result = component
             .execute(context, input_value.into())
@@ -209,8 +217,8 @@ mod tests {
                 let output: GetBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
 
-                // MockContext returns mock data, so check for that
-                assert_eq!(output.data, json!({"mock": "blob data"}));
+                // Should return the actual stored data
+                assert_eq!(output.data, test_data);
             }
             _ => panic!("Expected success result"),
         }
@@ -224,7 +232,7 @@ mod tests {
         let test_data = json!({"roundtrip": "test", "complex": {"nested": [1, 2, 3]}});
 
         // Use the same context for both operations
-        let context = Arc::new(MockContext::new()) as Arc<dyn ExecutionContext>;
+        let context = MockContext::new_execution_context();
 
         // Create blob
         let create_input = CreateBlobInput {
@@ -259,8 +267,8 @@ mod tests {
             FlowResult::Success { result } => {
                 let output: GetBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
-                // MockContext returns mock data
-                assert_eq!(output.data, json!({"mock": "blob data"}));
+                // Should return the actual stored data
+                assert_eq!(output.data, test_data);
             }
             _ => panic!("Expected success result from get"),
         }
@@ -275,7 +283,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = Arc::new(MockContext::new()) as Arc<dyn ExecutionContext>;
+        let context = MockContext::new_execution_context();
 
         let result = component.execute(context, input_value.into()).await;
 

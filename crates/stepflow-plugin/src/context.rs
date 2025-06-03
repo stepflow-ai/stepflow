@@ -1,9 +1,9 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 use stepflow_core::{
     FlowResult,
-    blob::BlobId,
     workflow::{Flow, ValueRef},
 };
+use stepflow_state::StateStore;
 use uuid::Uuid;
 
 use crate::Result;
@@ -69,30 +69,12 @@ pub trait ExecutionContext: Send + Sync {
         })
     }
 
-    /// Store JSON data as a blob and return its content-based ID.
+    /// Returns a reference to the state store for this execution context.
     ///
-    /// The blob ID is generated as a SHA-256 hash of the JSON content,
-    /// providing deterministic IDs and automatic deduplication.
-    ///
-    /// # Arguments
-    /// * `data` - The JSON data to store as a blob
+    /// This allows plugins to interact with blob storage and other state
+    /// management functionality through the state store interface.
     ///
     /// # Returns
-    /// The blob ID for the stored data
-    fn create_blob(
-        &self,
-        data: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = Result<BlobId>> + Send + '_>>;
-
-    /// Retrieve JSON data by blob ID.
-    ///
-    /// # Arguments
-    /// * `blob_id` - The blob ID to retrieve
-    ///
-    /// # Returns
-    /// The JSON data associated with the blob ID, or an error if not found
-    fn get_blob(
-        &self,
-        blob_id: &BlobId,
-    ) -> Pin<Box<dyn Future<Output = Result<ValueRef>> + Send + '_>>;
+    /// A reference to the Arc-wrapped StateStore implementation
+    fn state_store(&self) -> &Arc<dyn StateStore>;
 }

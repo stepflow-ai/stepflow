@@ -1,12 +1,6 @@
-mod in_memory;
-
-pub use in_memory::InMemoryStateStore;
-pub use stepflow_core::blob::BlobId;
-
-use std::{future::Future, pin::Pin};
-
 use crate::Result;
-use stepflow_core::workflow::ValueRef;
+use std::{future::Future, pin::Pin};
+use stepflow_core::{blob::BlobId, workflow::ValueRef};
 
 /// Trait for storing and retrieving state data including blobs.
 ///
@@ -23,10 +17,8 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// The blob ID for the stored data
-    fn create_blob(
-        &self,
-        data: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = Result<BlobId>> + Send + '_>>;
+    fn put_blob(&self, data: ValueRef)
+    -> Pin<Box<dyn Future<Output = Result<BlobId>> + Send + '_>>;
 
     /// Retrieve JSON data by blob ID.
     ///

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::state::State;
 use crate::{ExecutionError, ExecutionHandle, Result, StepFlowExecutor};
-use error_stack::ResultExt;
+use error_stack::ResultExt as _;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use owning_ref::ArcRef;
 use stepflow_core::{
