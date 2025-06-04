@@ -27,21 +27,7 @@ brew install kubectl
 brew install kustomize
 ```
 
-### 2. Install Rust (if not already installed)
-
-```bash
-# Install rustup
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Add to path and reload shell
-source ~/.cargo/env
-
-# Verify installation
-rustc --version
-cargo --version
-```
-
-### 3. Optional: Install Additional Container Tools
+### 2. Optional: Install Additional Container Tools
 
 ```bash
 # Install Docker Desktop (alternative to Lima, but heavier)
@@ -54,7 +40,7 @@ brew install helm
 brew install k9s
 ```
 
-### 4. Verify Installation
+### 3. Verify Installation
 
 ```bash
 # Check versions
@@ -73,7 +59,7 @@ limactl --help
 rustup target list --installed
 ```
 
-### 5. Post-Installation Setup
+### 4. Post-Installation Setup
 
 ```bash
 # Add Rust target for Linux (needed for containers)
