@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-core
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: core
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stepflow
+      component: core
+  template:
+    metadata:
+      labels:
+        app: stepflow
+        component: core
+    spec:
+      serviceAccountName: stepflow-core
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: stepflow
+        image: localhost:5000/stepflow/core:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          value: "info,stepflow=debug"
+        - name: STEPFLOW_CONFIG_PATH
+          value: "/config/stepflow-config.yml"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1001
+          capabilities:
+            drop:
+            - ALL
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: config
+        configMap:
+          name: stepflow-config
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - stepflow
+                - key: component
+                  operator: In
+                  values:
+                  - core
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stepflow-core
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: core
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: stepflow
+    component: core
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stepflow-core
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: core

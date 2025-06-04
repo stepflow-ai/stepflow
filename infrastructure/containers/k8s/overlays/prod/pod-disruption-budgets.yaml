@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stepflow-core-pdb
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: stepflow
+      component: core
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stepflow-python-sdk-pdb
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: stepflow
+      component: python-sdk
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stepflow-inference-pdb
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: stepflow
+      component: inference

@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1.5
+
+# Build stage for Rust binary
+FROM rust:1.75-alpine3.19 AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    musl-dev \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconfig
+
+# Create app directory
+WORKDIR /build
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ ./crates/
+
+# Build the stepflow binary with static linking
+ENV RUSTFLAGS='-C target-feature=-crt-static'
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --bin stepflow && \
+    cp target/release/stepflow /stepflow
+
+# Runtime stage - minimal Alpine image
+FROM alpine:3.19
+
+# Install minimal runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    libgcc \
+    libstdc++ && \
+    adduser -D -u 1001 stepflow
+
+# Copy binary from builder
+COPY --from=builder /stepflow /usr/local/bin/stepflow
+
+# Create working directory
+WORKDIR /app
+
+# Switch to non-root user
+USER stepflow
+
+# Health check for the serve command
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/stepflow", "--version"]
+
+# Default to serve mode on port 8080
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/stepflow"]
+CMD ["serve", "--port", "8080"]

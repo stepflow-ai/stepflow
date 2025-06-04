@@ -1,0 +1,26 @@
+# StepFlow configuration for development environment
+plugins:
+  - name: python
+    type: http
+    url: http://dev-stepflow-python-sdk:8081
+    timeout: 60s
+    
+  - name: builtins
+    type: builtin
+
+# Development execution settings
+execution:
+  max_parallel_steps: 5
+  default_timeout: 120s
+  retry_policy:
+    max_attempts: 1
+    
+# Storage settings
+storage:
+  type: in_memory
+  max_size: 256MB
+
+# Logging
+logging:
+  level: debug
+  format: json

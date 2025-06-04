@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-core
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: stepflow
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "2000m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-python-sdk
+spec:
+  replicas: 5
+  template:
+    spec:
+      containers:
+      - name: python-sdk
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-inference
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+      - name: inference
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "4000m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "32Gi"
+            cpu: "16000m"
+            nvidia.com/gpu: 1

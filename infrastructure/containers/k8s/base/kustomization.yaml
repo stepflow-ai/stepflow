@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: stepflow
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - core-deployment.yaml
+  - python-sdk-deployment.yaml
+  - inference-deployment.yaml
+  - network-policies.yaml
+
+commonLabels:
+  app.kubernetes.io/name: stepflow
+  app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: localhost:5000/stepflow/core
+    newTag: latest
+  - name: localhost:5000/stepflow/python-sdk
+    newTag: latest
+  - name: localhost:5000/stepflow/inference
+    newTag: latest

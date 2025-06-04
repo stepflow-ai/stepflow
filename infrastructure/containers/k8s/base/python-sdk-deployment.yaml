@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-python-sdk
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: python-sdk
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: stepflow
+      component: python-sdk
+  template:
+    metadata:
+      labels:
+        app: stepflow
+        component: python-sdk
+    spec:
+      serviceAccountName: stepflow-python-sdk
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: python-sdk
+        image: localhost:5000/stepflow/python-sdk:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: STEPFLOW_MODE
+          value: "server"
+        - name: STEPFLOW_PORT
+          value: "8081"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities:
+            drop:
+            - ALL
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /.cache
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - stepflow
+                - key: component
+                  operator: In
+                  values:
+                  - python-sdk
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stepflow-python-sdk
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: python-sdk
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: stepflow
+    component: python-sdk
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stepflow-python-sdk
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: python-sdk

@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-inference
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stepflow
+      component: inference
+  template:
+    metadata:
+      labels:
+        app: stepflow
+        component: inference
+    spec:
+      serviceAccountName: stepflow-inference
+      runtimeClassName: nvidia  # GPU runtime class
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: inference
+        image: localhost:5000/stepflow/inference:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8082
+          protocol: TCP
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "max_split_size_mb:512"
+        - name: MODEL_CACHE_DIR
+          value: "/models"
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "16Gi"
+            cpu: "8000m"
+            nvidia.com/gpu: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1001
+          capabilities:
+            drop:
+            - ALL
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 45
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 5
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /.cache
+        - name: models
+          mountPath: /models
+        - name: shm
+          mountPath: /dev/shm
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      - name: models
+        persistentVolumeClaim:
+          claimName: inference-models
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+      nodeSelector:
+        accelerator: nvidia-gpu
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stepflow-inference
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: inference
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8082
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: stepflow
+    component: inference
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stepflow-inference
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: inference
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: inference-models
+  namespace: stepflow
+  labels:
+    app: stepflow
+    component: inference
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: fast-ssd

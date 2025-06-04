@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: stepflow
+
+bases:
+  - ../../base
+
+commonLabels:
+  environment: prod
+
+patchesStrategicMerge:
+  - deployment-patches.yaml
+  - hpa.yaml
+
+resources:
+  - ingress.yaml
+  - pod-disruption-budgets.yaml
+
+configMapGenerator:
+  - name: stepflow-config
+    behavior: replace
+    files:
+      - stepflow-config.yml
+
+images:
+  - name: localhost:5000/stepflow/core
+    newName: your-registry.io/stepflow/core
+    newTag: v1.0.0
+  - name: localhost:5000/stepflow/python-sdk
+    newName: your-registry.io/stepflow/python-sdk
+    newTag: v1.0.0
+  - name: localhost:5000/stepflow/inference
+    newName: your-registry.io/stepflow/inference
+    newTag: v1.0.0

@@ -1,0 +1,52 @@
+# StepFlow configuration for production environment
+plugins:
+  - name: python
+    type: http
+    url: http://stepflow-python-sdk:8081
+    timeout: 30s
+    retries: 3
+    
+  - name: inference
+    type: http
+    url: http://stepflow-inference:8082
+    timeout: 300s
+    retries: 1
+    
+  - name: builtins
+    type: builtin
+
+# Production execution settings
+execution:
+  max_parallel_steps: 20
+  default_timeout: 60s
+  retry_policy:
+    max_attempts: 3
+    backoff_multiplier: 2
+    initial_interval: 1s
+    max_interval: 30s
+
+# Storage settings
+storage:
+  type: redis  # Use Redis in production
+  redis:
+    url: redis://redis-cluster:6379
+    key_prefix: stepflow:
+    ttl: 86400  # 24 hours
+
+# Observability
+telemetry:
+  enabled: true
+  endpoint: http://otel-collector:4317
+  service_name: stepflow-core
+  sampling_rate: 0.1
+
+# Security
+security:
+  enable_auth: true
+  jwt_secret_ref: stepflow-jwt-secret
+  
+# Rate limiting
+rate_limiting:
+  enabled: true
+  requests_per_minute: 1000
+  burst: 100

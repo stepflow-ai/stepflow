@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1.5
+
+# Build stage
+FROM python:3.11-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast Python package management
+RUN pip install --no-cache-dir uv
+
+# Create app directory
+WORKDIR /build
+
+# Copy Python SDK files
+COPY sdks/python/pyproject.toml sdks/python/uv.lock ./
+COPY sdks/python/src/ ./src/
+
+# Install dependencies with uv
+RUN uv pip install --system -r pyproject.toml
+
+# Runtime stage - distroless Python
+FROM gcr.io/distroless/python3-debian12:nonroot
+
+# Copy Python installation from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /build/src/stepflow_sdk /app/stepflow_sdk
+
+# Set Python path
+ENV PYTHONPATH=/app:/usr/local/lib/python3.11/site-packages
+ENV PYTHONUNBUFFERED=1
+
+# Create working directory (distroless has limited filesystem)
+WORKDIR /app
+
+# Expose port for API (when serve mode is implemented)
+EXPOSE 8081
+
+# Run the stepflow SDK
+ENTRYPOINT ["python", "-m", "stepflow_sdk"]

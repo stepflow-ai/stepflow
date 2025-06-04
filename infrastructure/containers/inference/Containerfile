@@ -1,0 +1,86 @@
+# syntax=docker/dockerfile:1.5
+
+# Base image with CUDA 12.1 and Python 3.11
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 AS base
+
+# Install Python and essential packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create Python symlinks
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3 /usr/bin/python
+
+# Build stage for dependencies
+FROM base AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3.11-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pip and setuptools
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install PyTorch with CUDA support
+RUN pip install --no-cache-dir \
+    torch==2.1.2+cu121 \
+    torchvision==0.16.2+cu121 \
+    -f https://download.pytorch.org/whl/torch_stable.html
+
+# Install inference dependencies
+RUN pip install --no-cache-dir \
+    transformers==4.36.2 \
+    accelerate==0.25.0 \
+    safetensors==0.4.1 \
+    sentencepiece==0.1.99 \
+    protobuf==4.25.1 \
+    pydantic==2.5.3 \
+    fastapi==0.108.0 \
+    uvicorn==0.25.0 \
+    httpx==0.26.0
+
+# Runtime stage
+FROM base
+
+# Create non-root user
+RUN useradd -m -u 1001 -s /bin/bash inference
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Set environment variables
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_VISIBLE_DEVICES=0
+ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+# Create app directory
+WORKDIR /app
+
+# Copy inference service code (placeholder - adjust based on actual implementation)
+COPY sdks/python/src/stepflow_sdk /app/stepflow_sdk
+
+# Create model cache directory
+RUN mkdir -p /app/models && chown -R inference:inference /app
+
+# Switch to non-root user
+USER inference
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8082/health')"
+
+# Expose inference API port
+EXPOSE 8082
+
+# Default command (adjust based on actual implementation)
+CMD ["python", "-m", "uvicorn", "stepflow_sdk.inference:app", "--host", "0.0.0.0", "--port", "8082"]

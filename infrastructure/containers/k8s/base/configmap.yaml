@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stepflow-config
+  namespace: stepflow
+  labels:
+    app: stepflow
+data:
+  stepflow-config.yml: |
+    # StepFlow configuration for Kubernetes deployment
+    plugins:
+      - name: python
+        type: http
+        url: http://stepflow-python-sdk:8081
+        timeout: 30s
+        
+      - name: inference
+        type: http
+        url: http://stepflow-inference:8082
+        timeout: 300s
+        
+      - name: builtins
+        type: builtin
+    
+    # Execution settings
+    execution:
+      max_parallel_steps: 10
+      default_timeout: 60s
+      retry_policy:
+        max_attempts: 3
+        backoff_multiplier: 2
+        initial_interval: 1s
+    
+    # Storage settings
+    storage:
+      type: in_memory
+      max_size: 1GB
+    
+    # Observability
+    telemetry:
+      enabled: true
+      endpoint: http://otel-collector:4317
+      service_name: stepflow-core
