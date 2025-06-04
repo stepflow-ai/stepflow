@@ -102,20 +102,20 @@ provision:
       # Install BuildKit
       curl -sSL https://github.com/moby/buildkit/releases/download/v0.12.4/buildkit-v0.12.4.linux-$(uname -m | sed 's/x86_64/amd64/g' | sed 's/aarch64/arm64/g').tar.gz | tar -xz -C /usr/local
       
-      # Start BuildKit daemon
-      cat > /etc/systemd/system/buildkit.service << 'SYSTEMD'
-[Unit]
-Description=BuildKit
-After=containerd.service
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/buildkitd
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-SYSTEMD
+      # Create BuildKit systemd service
+      cat > /etc/systemd/system/buildkit.service << 'BUILDKIT_SERVICE'
+      [Unit]
+      Description=BuildKit
+      After=containerd.service
+      
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/buildkitd
+      Restart=always
+      
+      [Install]
+      WantedBy=multi-user.target
+      BUILDKIT_SERVICE
       
       systemctl daemon-reload
       systemctl enable --now buildkit
@@ -123,14 +123,26 @@ SYSTEMD
       # Install K3s for local Kubernetes testing
       curl -sfL https://get.k3s.io | sh -
       
-      # Configure nerdctl
+      # Configure nerdctl for system containerd
       mkdir -p /etc/nerdctl
-      cat > /etc/nerdctl/nerdctl.toml << 'CONFIG'
-namespace = "k8s.io"
-debug = false
-debug_full = false
-insecure_registry = true
-CONFIG
+      cat > /etc/nerdctl/nerdctl.toml << 'NERDCTL_CONFIG'
+      namespace = "k8s.io"
+      debug = false
+      debug_full = false
+      insecure_registry = true
+      address = "/run/containerd/containerd.sock"
+      NERDCTL_CONFIG
+      
+      # Create nerdctl wrapper script to ensure proper socket
+      cat > /usr/local/bin/nerdctl-system << 'NERDCTL_WRAPPER'
+      #!/bin/bash
+      exec /usr/local/bin/nerdctl --address /run/containerd/containerd.sock "$@"
+      NERDCTL_WRAPPER
+      chmod +x /usr/local/bin/nerdctl-system
+      
+      # Set up environment for system containerd
+      echo 'export CONTAINERD_ADDRESS=/run/containerd/containerd.sock' >> /etc/environment
+      echo 'export CONTAINERD_NAMESPACE=k8s.io' >> /etc/environment
 
 portForwards:
   - guestPort: 5000
@@ -223,21 +235,21 @@ run_component() {
     case $component in
         core)
             log "Running StepFlow core..."
-            limactl shell "$LIMA_INSTANCE" nerdctl run --rm -it \
+            limactl shell "$LIMA_INSTANCE" sudo nerdctl --address /run/containerd/containerd.sock run --rm -it \
                 -p 8080:8080 \
                 -v "$PROJECT_ROOT/examples:/app/examples:ro" \
                 "$REGISTRY/stepflow/core:latest" "$@"
             ;;
         python-sdk)
             log "Running Python SDK..."
-            limactl shell "$LIMA_INSTANCE" nerdctl run --rm -it \
+            limactl shell "$LIMA_INSTANCE" sudo nerdctl --address /run/containerd/containerd.sock run --rm -it \
                 -p 8081:8081 \
                 -e STEPFLOW_MODE=stdio \
                 "$REGISTRY/stepflow/python-sdk:latest" "$@"
             ;;
         inference)
             log "Running inference service..."
-            limactl shell "$LIMA_INSTANCE" nerdctl run --rm -it \
+            limactl shell "$LIMA_INSTANCE" sudo nerdctl --address /run/containerd/containerd.sock run --rm -it \
                 -p 8082:8082 \
                 --gpus all \
                 "$REGISTRY/stepflow/inference:latest" "$@"
@@ -253,8 +265,10 @@ setup_registry() {
     log "Setting up local registry..."
     
     limactl shell "$LIMA_INSTANCE" bash -c '
-        if ! nerdctl ps | grep -q registry; then
-            nerdctl run -d --name registry --restart always -p 5000:5000 registry:2
+        export CONTAINERD_ADDRESS=/run/containerd/containerd.sock
+        export CONTAINERD_NAMESPACE=k8s.io
+        if ! sudo nerdctl --address /run/containerd/containerd.sock ps | grep -q registry; then
+            sudo nerdctl --address /run/containerd/containerd.sock run -d --name registry --restart always -p 5000:5000 registry:2
         fi
     '
     
