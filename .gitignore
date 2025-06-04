@@ -45,5 +45,49 @@ Thumbs.db
 .npm
 .eslintcache
 
+# Rust specific
+target/
+Cargo.lock
+*.pdb
+
+# Container and virtualization
+.lima/
+*.img
+*.qcow2
+
+# Kubernetes and container development
+.kube/config.bak
+*.kubeconfig
+helm-charts/*/charts/
+helm-charts/*/Chart.lock
+
+# Container build artifacts
+.buildkit/
+.docker/
+*.tar
+*.tar.gz
+registry-data/
+
+# Lima VM files
+lima-*/
+
+# BuildKit cache
+.buildx-cache/
+
+# Local development
+.dev/
+.local/
+.cache/
+
+# Container runtime logs
+containerd.log
+buildkit.log
+
+# Model files (for inference component)
+models/
+*.bin
+*.safetensors
+*.onnx
+
 # Project specific
-target
+target/
