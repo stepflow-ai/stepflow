@@ -85,24 +85,19 @@ steps:
       sum:
         $from:
           step: simple_addition
-        path: result
       product:
         $from:
           step: simple_multiplication
-        path: result
 output:
   sum:
     $from:
       step: simple_addition
-    path: result
   product:
     $from:
       step: simple_multiplication
-    path: result
   custom_calculation:
     $from:
       step: complex_calculation
-    path: result
 test:
   cases:
   - name: calculate with x=3, y=4

@@ -7,7 +7,7 @@ use stepflow_core::{
     schema::SchemaRef,
     workflow::{Flow, ValueRef},
 };
-use stepflow_plugin::ExecutionContext;
+use stepflow_plugin::{Context as _, ExecutionContext};
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -59,11 +59,7 @@ impl BuiltinComponent for EvalComponent {
         })
     }
 
-    async fn execute(
-        &self,
-        context: Arc<dyn ExecutionContext>,
-        input: ValueRef,
-    ) -> Result<FlowResult> {
+    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
         let input: EvalInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -124,10 +120,10 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
 
         let result = component
-            .execute(context, input_value.into())
+            .execute(mock.execution_context(), input_value.into())
             .await
             .unwrap();
 

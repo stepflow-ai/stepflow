@@ -1,6 +1,6 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 use stepflow_plugin::ExecutionContext;
 use tokio::fs;
@@ -90,11 +90,7 @@ impl BuiltinComponent for LoadFileComponent {
         })
     }
 
-    async fn execute(
-        &self,
-        _context: Arc<dyn ExecutionContext>,
-        input: ValueRef,
-    ) -> Result<FlowResult> {
+    async fn execute(&self, _context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
         let LoadFileInput {
             path,
             format,
@@ -168,9 +164,9 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
         let result = component
-            .execute(context, input_value.into())
+            .execute(mock.execution_context(), input_value.into())
             .await
             .unwrap();
 

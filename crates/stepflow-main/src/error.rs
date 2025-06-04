@@ -14,8 +14,8 @@ pub enum MainError {
     WriteOutput(PathBuf),
     #[error("Unable to locate command: {0:?}")]
     MissingCommand(String),
-    #[error("Failed to instantiate plugin")]
-    InstantiatePlugin,
+    #[error("Failed to register plugin")]
+    RegisterPlugin,
     #[error("Failed to execute flow")]
     FlowExecution,
     #[error("Failed to initialize plugins")]

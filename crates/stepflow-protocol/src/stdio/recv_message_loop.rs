@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use error_stack::ResultExt as _;
+use stepflow_plugin::Context;
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
     process::{Child, ChildStdin, ChildStdout},
@@ -12,8 +13,8 @@ use tokio::{
 use tokio_stream::{StreamExt as _, wrappers::LinesStream};
 use uuid::Uuid;
 
-use crate::incoming::OwnedIncoming;
 use crate::stdio::{Result, StdioError};
+use crate::{IncomingHandlerRegistry, incoming::OwnedIncoming};
 
 use super::launcher::Launcher;
 
@@ -22,10 +23,11 @@ struct ReceiveMessageLoop {
     to_child: ChildStdin,
     from_child: LinesStream<BufReader<ChildStdout>>,
     pending_requests: HashMap<Uuid, oneshot::Sender<OwnedIncoming>>,
+    outgoing_tx: mpsc::Sender<String>,
 }
 
 impl ReceiveMessageLoop {
-    fn try_new(launcher: Launcher) -> Result<Self> {
+    fn try_new(launcher: Launcher, outgoing_tx: mpsc::Sender<String>) -> Result<Self> {
         let mut child = launcher.spawn()?;
 
         let to_child = child.stdin.take().expect("stdin requested");
@@ -37,6 +39,7 @@ impl ReceiveMessageLoop {
             to_child,
             from_child,
             pending_requests: HashMap::new(),
+            outgoing_tx,
         })
     }
 
@@ -54,6 +57,7 @@ impl ReceiveMessageLoop {
         &mut self,
         outgoing_rx: &mut mpsc::Receiver<String>,
         pending_rx: &mut mpsc::Receiver<(Uuid, oneshot::Sender<OwnedIncoming>)>,
+        context: &Arc<dyn Context>,
     ) -> Result<bool> {
         tokio::select! {
             child = self.child.wait() => {
@@ -80,40 +84,55 @@ impl ReceiveMessageLoop {
                 let line = line.change_context(StdioError::Recv)?;
                 tracing::info!("Received line from child: {line:?}");
                 let msg = OwnedIncoming::try_new(line).change_context(StdioError::Recv)?;
-                if let Some(id) = msg.id.as_ref() {
-                    // This has an ID, so it's a method response.
-                    if let Some(pending) = self.pending_requests.remove(id) {
-                        // We've already seen the pending request, so send the result.
-                        pending.send(msg).map_err(|_| StdioError::Send)?;
+                match (msg.method, msg.params, msg.id) {
+                    (Some(method), Some(params), _) => {
+                        // Incoming method call or notification.
+                        // Convert to owned values for spawning
+                        let method_owned = method.to_string();
+                        let params_owned: Box<serde_json::value::RawValue> = params.to_owned();
+
+                        // Handle the incoming method call
+                        tracing::info!("Received incoming method call: {} with params: {:?}", method_owned, params_owned);
+                        IncomingHandlerRegistry::instance().spawn_handle_incoming(method_owned, params_owned, msg.id, self.outgoing_tx.clone(), context.clone());
                         Ok(true)
-                    } else {
-                        // We haven't seen the pending request, so we'll receive from
-                        // the pending_rx channel until we find it.
-                        loop {
-                            match pending_rx.try_recv() {
-                                Ok((pending_id, pending_request)) => {
-                                    if pending_id == *id {
-                                        pending_request.send(msg).map_err(|_| StdioError::Send)?;
+                    }
+                    (None, None, Some(id)) => {
+                        // This is a method response.
+                        // This has an ID, so it's a method response
+                        if let Some(pending) = self.pending_requests.remove(&id) {
+                            // We've already seen the pending request, so send the result.
+                            pending.send(msg).map_err(|_| StdioError::Send)?;
+                            Ok(true)
+                        } else {
+                            // We haven't seen the pending request, so we'll receive from
+                            // the pending_rx channel until we find it.
+                            loop {
+                                match pending_rx.try_recv() {
+                                    Ok((pending_id, pending_request)) => {
+                                        if pending_id == id {
+                                            pending_request.send(msg).map_err(|_| StdioError::Send)?;
+                                            return Ok(true);
+                                        }
+                                        self.pending_requests.insert(pending_id, pending_request);
+                                    }
+                                    Err(TryRecvError::Empty) => {
+                                        // No more pending requests. This means the response we got
+                                        // is unexpected. We'll log it and move on.
+                                        tracing::warn!("Unexpected response: {msg:?}");
                                         return Ok(true);
                                     }
-                                    self.pending_requests.insert(pending_id, pending_request);
-                                }
-                                Err(TryRecvError::Empty) => {
-                                    // No more pending requests. This means the response we got
-                                    // is unexpected. We'll log it and move on.
-                                    tracing::warn!("Unexpected response: {msg:?}");
-                                    return Ok(true);
-                                }
-                                Err(TryRecvError::Disconnected) => {
-                                    // The pending_rx channel is closed, so we'll exit.
-                                    tracing::warn!("Pending channel is closed.")
+                                    Err(TryRecvError::Disconnected) => {
+                                        // The pending_rx channel is closed, so we'll exit.
+                                        tracing::warn!("Pending channel is closed.")
+                                    }
                                 }
                             }
                         }
                     }
-                } else {
-                    // This is a notification.
-                    todo!("handle notification {msg:?}");
+                    _ => {
+                        tracing::warn!("Received message invalid message: {:?}", msg);
+                        Ok(true)
+                    }
                 }
             }
             else => {
@@ -126,13 +145,18 @@ impl ReceiveMessageLoop {
 
 pub async fn recv_message_loop(
     launcher: Launcher,
+    outgoing_tx: mpsc::Sender<String>,
     mut outgoing_rx: mpsc::Receiver<String>,
     mut pending_rx: mpsc::Receiver<(Uuid, oneshot::Sender<OwnedIncoming>)>,
+    context: Arc<dyn Context>,
 ) -> Result<()> {
-    let mut recv_loop = ReceiveMessageLoop::try_new(launcher)?;
+    let mut recv_loop = ReceiveMessageLoop::try_new(launcher, outgoing_tx)?;
 
     loop {
-        match recv_loop.iteration(&mut outgoing_rx, &mut pending_rx).await {
+        match recv_loop
+            .iteration(&mut outgoing_rx, &mut pending_rx, &context)
+            .await
+        {
             Ok(true) => {
                 // Continue the loop.
             }

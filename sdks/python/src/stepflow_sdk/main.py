@@ -1,6 +1,9 @@
+import sys
 import msgspec
-from typing import List
+import inspect
+from typing import Any, List
 from stepflow_sdk.server import StepflowStdioServer
+from stepflow_sdk.context import StepflowContext
 
 # Create server instance
 server = StepflowStdioServer()
@@ -45,10 +48,7 @@ class CustomComponentInput(msgspec.Struct):
     input_schema: dict
     code: str
     input: dict
-    function_name: str = "custom_function"
-
-class CustomComponentOutput(msgspec.Struct):
-    result: dict
+    function_name: str | None = None
 
 # Updated input type that can handle nested data
 class NestedDataInput(msgspec.Struct):
@@ -325,7 +325,7 @@ Focus on actionable business insights that would help a sales manager make strat
     return SummaryResult(summary=summary)
 
 @server.component
-def custom_component(input: CustomComponentInput) -> CustomComponentOutput:
+async def custom_component(input: CustomComponentInput, context: StepflowContext) -> Any:
     """
     Execute custom code with input validation against a JSON schema.
     
@@ -334,7 +334,7 @@ def custom_component(input: CustomComponentInput) -> CustomComponentOutput:
                input (data), and optional function_name
     
     Returns:
-        CustomComponentOutput with the result
+        The result of the custom code.
     """
     import jsonschema
     import json
@@ -374,17 +374,16 @@ def custom_component(input: CustomComponentInput) -> CustomComponentOutput:
             'any': any,
             'all': all,
             'print': print,
+            'isinstance': isinstance,
         },
         'json': json,
         'math': __import__('math'),
         're': __import__('re'),
+        'context': context,  # Inject StepflowContext for blob operations
     }
-    
-    # Check if code defines a function or is a function body
-    code_lines = input.code.strip().split('\n')
-    has_function_def = any(line.strip().startswith('def ') for line in code_lines)
-    
-    if has_function_def:
+        
+    result = None
+    if (name := input.function_name) is not None:
         # Code contains function definition(s)
         local_scope = {}
         try:
@@ -393,15 +392,27 @@ def custom_component(input: CustomComponentInput) -> CustomComponentOutput:
             raise ValueError(f"Code execution failed: {e}")
         
         # Look for the specified function
-        if input.function_name not in local_scope:
-            raise ValueError(f"Function '{input.function_name}' not found in code")
+        if name not in local_scope:
+            raise ValueError(f"Function '{name}' not found in code")
         
-        func = local_scope[input.function_name]
+        func = local_scope[name]
         if not callable(func):
-            raise ValueError(f"'{input.function_name}' is not a function")
+            print(f"'{name}' is not a function", file=sys.stderr)
+            raise ValueError(f"'{name}' is not a function")
         
+        sig = inspect.signature(func)
+        params = list(sig.parameters)
+        if len(params) == 2 and params[1] == "context":
+            args = [input.input, context]
+        else:
+            args = [input.input]
+
         try:
-            result = func(input.input)
+            # Check if function is async
+            if inspect.iscoroutinefunction(func):
+                result = await func(*args)
+            else:
+                result = func(*args)
         except Exception as e:
             raise ValueError(f"Function execution failed: {e}")
     else:
@@ -410,7 +421,12 @@ def custom_component(input: CustomComponentInput) -> CustomComponentOutput:
             # Try as expression first (for simple cases)
             wrapped_code = f"lambda data: {input.code}"
             func = eval(wrapped_code, safe_globals)
-            result = func(input.input)
+            # Check if the result is a coroutine (for async expressions)
+            temp_result = func(input.input)
+            if inspect.iscoroutine(temp_result):
+                result = await temp_result
+            else:
+                result = temp_result
         except:
             # If that fails, try as statements in a function body
             try:
@@ -422,21 +438,21 @@ def custom_component(input: CustomComponentInput) -> CustomComponentOutput:
                     else:
                         indented_lines.append('')  # Keep empty lines as-is
                 
-                func_code = f"""def _temp_func(data):
+                func_code = f"""def _temp_func(data, context):
 {chr(10).join(indented_lines)}"""
                 local_scope = {}
                 exec(func_code, safe_globals, local_scope)
-                result = local_scope['_temp_func'](input.input)
+                temp_func = local_scope['_temp_func']
+                # Check if function is async
+                if inspect.iscoroutinefunction(temp_func):
+                    result = await temp_func(input.input, context)
+                else:
+                    result = temp_func(input.input, context)
             except Exception as e:
                 raise ValueError(f"Code execution failed: {e}")
     
-    # Ensure result is JSON serializable
-    try:
-        json.dumps(result)
-    except (TypeError, ValueError) as e:
-        raise ValueError(f"Result is not JSON serializable: {e}")
-    
-    return CustomComponentOutput(result=result)
+    print(f"Result: {result}", file=sys.stderr)
+    return result
 
 def main():
     # Start the server

@@ -46,7 +46,6 @@ output:
   analytics:
     $from:
       step: analyze_scores
-    path: result
 test:
   cases:
   - name: analyze scores for Alice, Bob, Charlie, Diana

@@ -30,4 +30,4 @@ class ComponentExecuteRequest(Struct, kw_only=True):
     input: msgspec.Raw
 
 class ComponentExecuteResponse(Struct, kw_only=True):
-    output: msgspec.Raw
+    output: Any

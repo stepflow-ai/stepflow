@@ -131,15 +131,12 @@ output:
   word_analysis:
     $from:
       step: word_analysis
-    path: result
   pattern_matches:
     $from:
       step: pattern_search
-    path: result
   sentiment_score:
     $from:
       step: sentiment_analysis
-    path: result
 test:
   cases:
   - name: process positive text with word pattern

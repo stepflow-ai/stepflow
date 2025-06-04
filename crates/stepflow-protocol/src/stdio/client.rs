@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use error_stack::ResultExt as _;
 use serde::de::DeserializeOwned;
+use stepflow_plugin::Context;
 
 use crate::schema::{Method, Notification, RequestMessage};
 use tokio::{
@@ -26,13 +29,20 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn try_new(launcher: Launcher) -> Result<Self> {
+    pub async fn try_new(launcher: Launcher, context: Arc<dyn Context>) -> Result<Self> {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
         let (pending_tx, pending_rx) = mpsc::channel(100);
 
         let recv_span = tracing::info_span!("recv_message_loop", command = ?launcher.command, args = ?launcher.args);
         let loop_handle = tokio::spawn(
-            recv_message_loop(launcher, outgoing_rx, pending_rx).instrument(recv_span),
+            recv_message_loop(
+                launcher,
+                outgoing_tx.clone(),
+                outgoing_rx,
+                pending_rx,
+                context,
+            )
+            .instrument(recv_span),
         );
 
         Ok(Self {
@@ -50,6 +60,7 @@ impl Client {
     }
 }
 
+#[derive(Clone)]
 pub struct ClientHandle {
     outgoing_tx: mpsc::Sender<String>,
     pending_tx: mpsc::Sender<(Uuid, oneshot::Sender<OwnedIncoming>)>,

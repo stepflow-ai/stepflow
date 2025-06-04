@@ -244,6 +244,25 @@ pub fn write_output(path: Option<PathBuf>, output: impl serde::Serialize) -> Res
     }
 }
 
+pub async fn create_executor(config: StepflowConfig) -> Result<Arc<StepFlowExecutor>> {
+    // TODO: Allow other state backends.
+    let executor = StepFlowExecutor::new_in_memory();
+
+    let working_directory = config
+        .working_directory
+        .as_ref()
+        .expect("working_directory");
+
+    for plugin_config in config.plugins {
+        let (protocol, plugin) = plugin_config.instantiate(working_directory).await?;
+        executor
+            .register_plugin(protocol, plugin)
+            .await
+            .change_context(MainError::RegisterPlugin)?;
+    }
+    Ok(executor)
+}
+
 impl Cli {
     pub async fn execute(self) -> Result<()> {
         tracing::debug!("Executing command: {:?}", self);
@@ -256,8 +275,8 @@ impl Cli {
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
                 let config = load_config(Some(&flow_path), config_path)?;
-                let plugins = config.create_plugins().await?;
-                let executor = StepFlowExecutor::new(plugins);
+                let executor = create_executor(config).await?;
+
                 let input = load_input(input_path)?;
 
                 let output = run(executor, flow, input).await?;
@@ -265,8 +284,7 @@ impl Cli {
             }
             Command::Serve { port, config_path } => {
                 let config = load_config(None, config_path)?;
-                let plugins = config.create_plugins().await?;
-                let executor = StepFlowExecutor::new(plugins);
+                let executor = create_executor(config).await?;
 
                 serve(executor, port).await?;
             }

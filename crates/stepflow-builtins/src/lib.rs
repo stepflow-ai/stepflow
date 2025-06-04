@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use stepflow_core::{FlowResult, component::ComponentInfo, workflow::ValueRef};
 use stepflow_plugin::ExecutionContext;
 
@@ -21,9 +20,5 @@ pub use plugin::{BuiltinPluginConfig, Builtins};
 pub(crate) trait BuiltinComponent: Send + Sync {
     fn component_info(&self) -> Result<ComponentInfo>;
 
-    async fn execute(
-        &self,
-        context: Arc<dyn ExecutionContext>,
-        input: ValueRef,
-    ) -> Result<FlowResult>;
+    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult>;
 }

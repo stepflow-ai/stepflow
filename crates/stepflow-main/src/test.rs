@@ -1,5 +1,5 @@
 #![allow(clippy::print_stdout)]
-use crate::cli::{load, load_config, write_output};
+use crate::cli::{create_executor, load, load_config, write_output};
 use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use clap::Args;
 use error_stack::ResultExt as _;
@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::Flow;
-use stepflow_execution::StepFlowExecutor;
 use walkdir::WalkDir;
 
 /// Normalize execution_id fields in FlowResult for consistent testing
@@ -276,8 +275,7 @@ async fn run_single_workflow_test(
 
     // Set up executor
     let config = load_test_config(workflow_path, config_path, &flow)?;
-    let plugins = config.create_plugins().await?;
-    let executor = StepFlowExecutor::new(plugins);
+    let executor = create_executor(config).await?;
 
     // Filter test cases if specific cases requested
     let cases_to_run: Vec<_> = if options.cases.is_empty() {
@@ -307,6 +305,7 @@ async fn run_single_workflow_test(
     let mut execution_errors = 0;
 
     for test_case in &cases_to_run {
+        println!("----------\nRunning Test Case {}", test_case.name);
         let result = crate::run::run(executor.clone(), flow.clone(), test_case.input.clone()).await;
 
         match result {
@@ -316,10 +315,21 @@ async fn run_single_workflow_test(
                     Some(expected_output) => {
                         let normalized_expected = normalize_flow_result(expected_output.clone());
                         if normalized_output != normalized_expected {
+                            // TODO: Diff?
+                            println!(
+                                "Test Case {} failed. New Output:\n{}\n",
+                                test_case.name,
+                                serde_yaml_ng::to_string(&normalized_output).unwrap()
+                            );
                             updates.insert(test_case.name.clone(), normalized_output);
                         }
                     }
                     None => {
+                        println!(
+                            "Test Case {} output:\n{}\n",
+                            test_case.name,
+                            serde_yaml_ng::to_string(&normalized_output).unwrap()
+                        );
                         updates.insert(test_case.name.clone(), normalized_output);
                     }
                 }

@@ -8,17 +8,18 @@ use stepflow_core::{
     schema::SchemaRef,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig, PluginError, Result};
+use stepflow_plugin::{
+    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
+};
 
 impl PluginConfig for MockPlugin {
-    type Plugin = MockPlugin;
     type Error = PluginError;
 
     async fn create_plugin(
         self,
         _working_directory: &std::path::Path,
-    ) -> error_stack::Result<Self::Plugin, Self::Error> {
-        Ok(self)
+    ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
+        Ok(DynPlugin::boxed(self))
     }
 }
 
@@ -99,7 +100,7 @@ impl MockPlugin {
 }
 
 impl Plugin for MockPlugin {
-    async fn init(&self) -> Result<()> {
+    async fn init(&self, _context: &Arc<dyn Context>) -> Result<()> {
         Ok(())
     }
 
@@ -117,7 +118,7 @@ impl Plugin for MockPlugin {
     async fn execute(
         &self,
         component: &Component,
-        _context: Arc<dyn ExecutionContext>,
+        _context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
         let mock_component = self

@@ -40,7 +40,7 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     registry.register("create_messages", "", CreateMessagesComponent);
     registry.register("eval", "", EvalComponent::new());
     registry.register("load_file", "", LoadFileComponent);
-    registry.register("create_blob", "", CreateBlobComponent::new());
+    registry.register("put_blob", "", CreateBlobComponent::new());
     registry.register("get_blob", "", GetBlobComponent::new());
     registry
 });
