@@ -225,7 +225,7 @@ server = StepflowStdioServer()
 @server.component
 def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
     # Store data as a blob
-    blob_id = await context.store_blob(input.data)
+    blob_id = await context.put_blob(input.data)
     return MyOutput(blob_id=blob_id)
 
 server.run()

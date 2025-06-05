@@ -45,7 +45,17 @@ steps:
       required:
       - message
       - number
-    code: "async def store_data(data, context):\n    # Create enhanced data\n    enhanced_data = {\n        'original_message': data['message'],\n        'number_squared': data['number'] ** 2,\n        'processed_by': 'python_udf'\n    }\n    \n    # Store as blob using context\n    blob_id = await context.store_blob(enhanced_data)\n    \n    return {'blob_id': blob_id, 'status': 'success'}\n"
+    code: |
+      async def store_data(data, context):
+        # Create enhanced data
+        enhanced_data = {
+          'original_message': data['message'],
+          'number_squared': data['number'] ** 2,
+          'processed_by': 'python_udf'
+        }
+        # Store as blob using context
+        blob_id = await context.put_blob(enhanced_data)
+        return {'blob_id': blob_id, 'status': 'success'}
     function_name: store_data
     input:
       message:
