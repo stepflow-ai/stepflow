@@ -67,6 +67,12 @@ impl StepFlowExecutor {
         Ok(plugin)
     }
 
+    /// List all registered plugins and their protocols
+    pub async fn list_plugins(&self) -> Vec<(String, Arc<DynPlugin<'static>>)> {
+        let guard = self.plugins.read().await;
+        guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
+
     /// Register a plugin for the given protocol.
     ///
     /// The plugin should be wrapped in `DynPlugin` first, which can be done using

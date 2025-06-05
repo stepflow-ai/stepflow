@@ -99,6 +99,16 @@ impl Plugin for StdioPlugin {
         Ok(())
     }
 
+    async fn list_components(&self) -> Result<Vec<Component>> {
+        let client_handle = self.client_handle().await?;
+        let response = client_handle
+            .request(&crate::schema::list_components::Request {})
+            .await
+            .change_context(PluginError::ComponentInfo)?;
+
+        Ok(response.components)
+    }
+
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
         // TODO: Enrich this? Component not found, etc. based on the protocol error code?
         let client_handle = self.client_handle().await?;
