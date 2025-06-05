@@ -21,6 +21,7 @@ stepflow-plugin.workspace = true
 stepflow-protocol.workspace = true
 regex.workspace = true
 walkdir.workspace = true
+similar.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

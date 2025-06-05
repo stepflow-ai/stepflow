@@ -4,6 +4,7 @@ use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use clap::Args;
 use error_stack::ResultExt as _;
 use regex::Regex;
+use similar::{ChangeTag, TextDiff};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -55,6 +56,28 @@ fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
         }
         _ => value,
     }
+}
+
+/// Show a diff between expected and actual outputs using the similar crate
+fn show_diff(expected: &FlowResult, actual: &FlowResult, test_name: &str) {
+    let expected_yaml = serde_yaml_ng::to_string(expected).unwrap_or_else(|_| "Error serializing expected".to_string());
+    let actual_yaml = serde_yaml_ng::to_string(actual).unwrap_or_else(|_| "Error serializing actual".to_string());
+    
+    let diff = TextDiff::from_lines(&expected_yaml, &actual_yaml);
+    
+    println!("Test Case {} failed:", test_name);
+    println!("--- Expected");
+    println!("+++ Actual");
+    
+    for change in diff.iter_all_changes() {
+        let sign = match change.tag() {
+            ChangeTag::Delete => "-",
+            ChangeTag::Insert => "+",
+            ChangeTag::Equal => " ",
+        };
+        print!("{}{}", sign, change);
+    }
+    println!();
 }
 
 /// Test-specific options for running workflow tests.
@@ -315,12 +338,15 @@ async fn run_single_workflow_test(
                     Some(expected_output) => {
                         let normalized_expected = normalize_flow_result(expected_output.clone());
                         if normalized_output != normalized_expected {
-                            // TODO: Diff?
-                            println!(
-                                "Test Case {} failed. New Output:\n{}\n",
-                                test_case.name,
-                                serde_yaml_ng::to_string(&normalized_output).unwrap()
-                            );
+                            if options.diff {
+                                show_diff(&normalized_expected, &normalized_output, &test_case.name);
+                            } else {
+                                println!(
+                                    "Test Case {} failed. New Output:\n{}\n",
+                                    test_case.name,
+                                    serde_yaml_ng::to_string(&normalized_output).unwrap()
+                                );
+                            }
                             updates.insert(test_case.name.clone(), normalized_output);
                         }
                     }
