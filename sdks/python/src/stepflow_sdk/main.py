@@ -47,7 +47,7 @@ class MetricsInput(msgspec.Struct):
 class SummaryResult(msgspec.Struct):
     summary: str
 
-class CustomComponentInput(msgspec.Struct):
+class UdfInput(msgspec.Struct):
     blob_id: str
     input: dict
 
@@ -326,15 +326,15 @@ Focus on actionable business insights that would help a sales manager make strat
     return SummaryResult(summary=summary)
 
 @server.component
-async def custom_component(input: CustomComponentInput, context: StepflowContext) -> Any:
+async def udf(input: UdfInput, context: StepflowContext) -> Any:
     """
-    Execute custom code using cached compiled functions from blobs.
+    Execute user-defined function (UDF) using cached compiled functions from blobs.
     
     Args:
         input: Contains blob_id (referencing stored code/schema) and input (data)
     
     Returns:
-        The result of the custom code.
+        The result of the UDF execution.
     """
     # Check if we have a cached function for this blob_id
     if input.blob_id in _function_cache:

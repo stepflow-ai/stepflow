@@ -114,7 +114,7 @@ steps:
         return round(sentiment_score, 2)
 # Execute functions using blob_ids
 - id: word_analysis
-  component: python://custom_component
+  component: python://udf
   input_schema: null
   output_schema: null
   input:
@@ -128,7 +128,7 @@ steps:
           workflow: input
         path: text
 - id: pattern_search
-  component: python://custom_component
+  component: python://udf
   input_schema: null
   output_schema: null
   input:
@@ -146,7 +146,7 @@ steps:
           workflow: input
         path: pattern
 - id: sentiment_analysis
-  component: python://custom_component
+  component: python://udf
   input_schema: null
   output_schema: null
   input:
