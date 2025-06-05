@@ -61,7 +61,7 @@ steps:
 
   # Step 3: Python UDF retrieves blob and processes it
   - id: process_blob_data
-    component: python://custom_component
+    component: python://udf
     input:
       blob_id: { $from: { step: create_process_data_blob }, path: blob_id }
       input:

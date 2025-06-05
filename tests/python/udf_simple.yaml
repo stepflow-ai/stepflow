@@ -69,7 +69,7 @@ steps:
       code: math.sqrt(data['sum'] ** 2 + data['product'] ** 2)
 # Execute functions using blob_ids
 - id: simple_addition
-  component: python://custom_component
+  component: python://udf
   input_schema: null
   output_schema: null
   input:
@@ -87,7 +87,7 @@ steps:
           workflow: input
         path: y
 - id: simple_multiplication
-  component: python://custom_component
+  component: python://udf
   input_schema: null
   output_schema: null
   input:
@@ -105,7 +105,7 @@ steps:
           workflow: input
         path: y
 - id: complex_calculation
-  component: python://custom_component
+  component: python://udf
   input_schema: null
   output_schema: null
   input:

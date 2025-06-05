@@ -60,7 +60,7 @@ steps:
           return {'blob_id': blob_id, 'status': 'success'}
       function_name: store_data
 - id: store_with_python
-  component: python://custom_component
+  component: python://udf
   input_schema: null
   output_schema: null
   input:
