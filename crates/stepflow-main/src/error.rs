@@ -24,6 +24,10 @@ pub enum MainError {
     MultipleStepflowConfigs(PathBuf),
     #[error("Stepflow config not found")]
     StepflowConfigNotFound,
+    #[error("Plugin communication failed")]
+    PluginCommunication,
+    #[error("Serialization failed")]
+    SerializationError,
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;

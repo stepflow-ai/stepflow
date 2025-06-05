@@ -141,10 +141,29 @@ pub enum Command {
         #[command(flatten)]
         test_options: TestOptions,
     },
+    /// List all available components from a stepflow config.
+    ListComponents {
+        /// The path to the stepflow config file.
+        ///
+        /// If not specified, will look for stepflow-config.yml in the current directory.
+        #[arg(long="config", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        config_path: Option<PathBuf>,
+
+        /// Output format for the component list.
+        #[arg(long = "format", value_name = "FORMAT", default_value = "pretty")]
+        format: OutputFormat,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum InputFormat {
+    Json,
+    Yaml,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum OutputFormat {
+    Pretty,
     Json,
     Yaml,
 }
@@ -380,6 +399,12 @@ impl Cli {
                 if failures {
                     std::process::exit(1);
                 }
+            }
+            Command::ListComponents {
+                config_path,
+                format,
+            } => {
+                crate::list_components::list_components(config_path, format).await?;
             }
         };
 

@@ -42,6 +42,10 @@ impl Plugin for Builtins {
         Ok(())
     }
 
+    async fn list_components(&self) -> Result<Vec<Component>> {
+        Ok(registry::list_components())
+    }
+
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
         let component = registry::get_component(component)?;
         component
