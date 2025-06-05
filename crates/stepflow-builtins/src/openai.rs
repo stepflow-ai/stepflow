@@ -88,7 +88,8 @@ impl BuiltinComponent for OpenAIComponent {
     }
 
     async fn execute(&self, _context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
-        let input: OpenAIInput = serde_json::from_value(input.as_ref().clone())
+        let input: OpenAIInput = input
+            .deserialize()
             .change_context(BuiltinError::InvalidInput)?;
 
         let api_key = if let Some(api_key) = &input.api_key {
@@ -162,13 +163,9 @@ mod tests {
             .unwrap();
 
         let output = output.success().unwrap();
-        let response = output
-            .as_object()
-            .unwrap()
-            .get("response")
-            .unwrap()
-            .as_str()
-            .unwrap();
+        let object = output.as_object().unwrap();
+        let response = object.get("response").unwrap();
+        let response = response.as_str().unwrap();
         assert!(response.contains("Hello"));
     }
 }

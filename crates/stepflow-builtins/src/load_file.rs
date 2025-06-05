@@ -173,8 +173,7 @@ mod tests {
             .await
             .unwrap();
 
-        let output: LoadFileOutput =
-            serde_json::from_value(result.success().unwrap().clone()).unwrap();
+        let output: LoadFileOutput = result.success().unwrap().deserialize().unwrap();
         assert_eq!(output.data["name"], "test");
         assert_eq!(output.data["value"], 42);
         assert_eq!(output.metadata.format, FileFormat::Json);

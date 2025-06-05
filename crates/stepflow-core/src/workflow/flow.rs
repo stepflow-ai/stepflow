@@ -167,7 +167,8 @@ mod tests {
                         component: Component::parse("langflow://echo").unwrap(),
                         input: serde_json::json!({
                             "a": "hello world"
-                        }),
+                        })
+                        .into(),
                         input_schema: None,
                         output_schema: None,
                         skip_if: None,
@@ -178,7 +179,8 @@ mod tests {
                         component: Component::parse("mcp+http://foo/bar").unwrap(),
                         input: serde_json::json!({
                             "a": "hello world 2"
-                        }),
+                        })
+                        .into(),
                         input_schema: None,
                         output_schema: None,
                         skip_if: None,

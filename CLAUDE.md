@@ -166,13 +166,66 @@ The `FlowResult` enum enables proper error propagation through workflow executio
 - `Skipped`: Step was conditionally skipped
 - `Failed(FlowError)`: Step failed with a business logic error
 
-## Code Style
+## Code Style & Best Practices
 
 ### Module Organization
 
 - Prefer `foo.rs` files over `foo/mod.rs` for module organization
 - When creating a module directory, create a corresponding `.rs` file in the parent directory with the same name
 - Example: Instead of `workflow/mod.rs`, create `workflow.rs` at the same level as the `workflow/` directory
+
+### Performance Guidelines
+
+#### Avoid Unnecessary Cloning
+- Use `Arc<T>` for shared expensive-to-clone data structures (e.g., `Arc<Flow>`, `Arc<dyn StateStore>`)
+- Prefer references over clones when passing data to async tasks
+- Use `Cow<'static, str>` for string data that may be borrowed or owned
+- Example: Instead of `step.clone()` in async tasks, pass `Arc<Flow>` and use step indices
+
+#### Async Patterns
+- Use `async fn` consistently for I/O operations
+- Prefer `tokio::spawn` for concurrent execution
+- Use `Pin<Box<dyn Future>>` for trait objects returning futures
+- Example:
+```rust
+let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
+    let step = &flow.steps[step_index]; // Reference instead of clone
+    execute_step_async(plugin, step, input, context).await
+});
+```
+
+### Error Handling Patterns
+
+#### Dual Error System
+StepFlow uses a dual error approach to distinguish between business logic and system failures:
+
+1. **FlowError**: Business logic failures that are part of normal workflow execution
+   - Used for validation failures, missing data, expected conditions
+   - Allow workflows to continue and handle errors gracefully
+   - Example: `FlowResult::Failed { error: FlowError::new(400, "Invalid input") }`
+
+2. **System Errors**: Implementation or infrastructure failures  
+   - Used for plugin communication failures, serialization errors, etc.
+   - Represent unexpected conditions that should halt execution
+   - Each crate has its own `error.rs` module with custom error types
+   - Uses `error-stack` for rich error context and `thiserror` for error enums
+
+#### Error Handling Best Practices
+- Use `FlowError` for expected business failures
+- Use `Result<T, error_stack::Report<YourError>>` for system failures
+- Add context with `error_stack::ResultExt::attach_printable`
+- Define custom error types with `thiserror::Error`
+
+### Derive Patterns
+
+Use consistent derive patterns based on type purpose:
+
+- **Core workflow types**: `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]`
+- **Error types**: `#[derive(Error, Debug)]` (with `thiserror`)
+- **Configuration types**: `#[derive(Serialize, Deserialize)]` with serde attributes
+- **CLI types**: `#[derive(clap::Parser)]`
+
+**Note**: Avoid `Clone` on large structs like `Step` unless absolutely necessary. Use `Arc` references instead.
 
 ## Configuration
 
@@ -188,13 +241,23 @@ plugins:
 
 ## Testing
 
+### Test Organization
+
+#### Unit Tests
+- Located inline with source files using `#[cfg(test)]` modules
+- Use descriptive test names: `test_<feature>_<scenario>`
+
+#### Integration Tests  
+- **Crate-level integration tests**: Located in `<crate>/tests/` directories (e.g., `crates/stepflow-main/tests/`)
+- **Workflow-level integration tests**: Located in `/tests/` at the project root, using actual workflow YAML files
+
+#### Snapshot Testing
 Tests in `crates/stepflow-main/tests/test_run.rs` use `insta` to perform snapshot testing.
 
 Each file in `crates/stepflow-main/tests/flows` contains a stepflow_config, a workflow, and a sequence of test cases.
 Adding new tests can be done by either adding a case using an existing test workflow, or creating a new file with new configuration, workflow and test cases.
 
-Useful commands:
-
+**Snapshot Testing Commands:**
 * `cargo insta test --unreferenced=delete` will run all the tests (including the insta tests) and delete unused snapshots.
 * `cargo insta pending-snapshots` produces a list of pending snapshots
 * `cargo insta show <path>` shows a specific snapshot

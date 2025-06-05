@@ -25,8 +25,8 @@ pub struct Step {
     pub on_error: ErrorAction,
 
     /// Arguments to pass to the component for this step
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub input: serde_json::Value,
+    #[serde(default, skip_serializing_if = "ValueRef::is_null")]
+    pub input: ValueRef,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -129,7 +129,7 @@ mod tests {
             on_error: ErrorAction::UseDefault {
                 default_value: Some(ValueRef::from("fallback")),
             },
-            input: serde_json::Value::Null,
+            input: serde_json::Value::Null.into(),
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
@@ -147,7 +147,7 @@ mod tests {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
-            input: serde_json::Value::Null,
+            input: serde_json::Value::Null.into(),
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
