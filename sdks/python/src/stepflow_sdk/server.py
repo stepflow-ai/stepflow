@@ -19,6 +19,7 @@ class ComponentEntry:
     function: Callable
     input_type: Type
     output_type: Type
+    description: Optional[str] = None
 
     def input_schema(self):
         return msgspec.json.schema(self.input_type)
@@ -36,13 +37,14 @@ class StepflowStdioServer:
         self._pending_requests: Dict[UUID, asyncio.Future] = {}
         self._context: StepflowContext = StepflowContext(self._outgoing_queue, self._pending_requests)
 
-    def component(self, func: Optional[Callable] = None, *, name: Optional[str] = None):
+    def component(self, func: Optional[Callable] = None, *, name: Optional[str] = None, description: Optional[str] = None):
         """
         Decorator to register a component function.
         
         Args:
             func: The function to register (provided by the decorator)
             name: Optional name for the component. If not provided, uses the function name
+            description: Optional description. If not provided, uses the function's docstring
         """
         def decorator(f: Callable) -> Callable:
             component_name = name or f.__name__
@@ -62,11 +64,15 @@ class StepflowStdioServer:
                 
             return_type = sig.return_annotation
             
+            # Extract description from parameter or docstring
+            component_description = description or (f.__doc__.strip() if f.__doc__ else None)
+            
             self._components[component_name] = ComponentEntry(
                 name=component_name,
                 function=f,
                 input_type=input_type,
-                output_type=return_type
+                output_type=return_type,
+                description=component_description
             )
             
             # Store whether function expects context
@@ -119,6 +125,7 @@ class StepflowStdioServer:
                     result=ComponentInfoResponse(
                         input_schema=component.input_schema(),
                         output_schema=component.output_schema(),
+                        description=component.description,
                     )
                 )
             case "component_execute":

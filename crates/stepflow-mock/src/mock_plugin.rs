@@ -121,6 +121,7 @@ impl Plugin for MockPlugin {
         Ok(ComponentInfo {
             input_schema: component.input_schema.clone(),
             output_schema: component.output_schema.clone(),
+            description: None,
         })
     }
 

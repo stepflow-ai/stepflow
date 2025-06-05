@@ -87,6 +87,7 @@ impl BuiltinComponent for LoadFileComponent {
         Ok(ComponentInfo {
             input_schema,
             output_schema,
+            description: Some("Load and parse a file (JSON, YAML, or text) from the filesystem".to_string()),
         })
     }
 

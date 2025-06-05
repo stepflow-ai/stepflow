@@ -25,6 +25,7 @@ class ComponentInfoRequest(Struct, kw_only=True):
 class ComponentInfoResponse(Struct, kw_only=True):
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
+    description: str | None = None
 
 class ComponentExecuteRequest(Struct, kw_only=True):
     component: str

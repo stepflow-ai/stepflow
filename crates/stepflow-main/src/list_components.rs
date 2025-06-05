@@ -18,6 +18,9 @@ struct ComponentDetails {
     /// Output schema (optional)  
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<SchemaRef>,
+    /// Component description (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +63,7 @@ pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat,
                 component,
                 input_schema: if include_schemas { Some(info.input_schema) } else { None },
                 output_schema: if include_schemas { Some(info.output_schema) } else { None },
+                description: info.description,
             };
 
             all_components.push(details);
@@ -103,6 +107,11 @@ fn print_pretty(components: &[ComponentDetails]) {
     for component in components {
         println!();
         println!("Component: {}", component.component.url());
+
+        // Print description if present
+        if let Some(ref description) = component.description {
+            println!("  Description: {}", description);
+        }
 
         // Print input schema if present
         if let Some(ref input_schema) = component.input_schema {
