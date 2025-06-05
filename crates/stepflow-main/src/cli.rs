@@ -70,25 +70,25 @@ pub enum Command {
         ///
         /// Should be JSON or YAML. Format is inferred from file extension.
         #[arg(long = "input", value_name = "FILE", value_hint = clap::ValueHint::FilePath, 
-              conflicts_with_all = ["input_json", "input_yaml", "format"])]
+              conflicts_with_all = ["input_json", "input_yaml", "stdin_format"])]
         input: Option<PathBuf>,
 
         /// The input value as a JSON string.
         #[arg(long = "input-json", value_name = "JSON", 
-              conflicts_with_all = ["input", "input_yaml", "format"])]
+              conflicts_with_all = ["input", "input_yaml", "stdin_format"])]
         input_json: Option<String>,
 
         /// The input value as a YAML string.
         #[arg(long = "input-yaml", value_name = "YAML", 
-              conflicts_with_all = ["input", "input_json", "format"])]
+              conflicts_with_all = ["input", "input_json", "stdin_format"])]
         input_yaml: Option<String>,
 
         /// The format for stdin input (json or yaml).
         ///
         /// Only used when reading from stdin (no other input options specified).
-        #[arg(long = "format", value_name = "FORMAT", default_value = "json",
+        #[arg(long = "stdin-format", value_name = "FORMAT", default_value = "json",
               conflicts_with_all = ["input", "input_json", "input_yaml"])]
-        format: InputFormat,
+        stdin_format: InputFormat,
 
         /// Path to write the output workflow to.
         ///
@@ -122,25 +122,25 @@ pub enum Command {
         ///
         /// Should be JSON or YAML. Format is inferred from file extension.
         #[arg(long = "input", value_name = "FILE", value_hint = clap::ValueHint::FilePath, 
-              conflicts_with_all = ["input_json", "input_yaml", "format"])]
+              conflicts_with_all = ["input_json", "input_yaml", "stdin_format"])]
         input: Option<PathBuf>,
 
         /// The input value as a JSON string.
         #[arg(long = "input-json", value_name = "JSON", 
-              conflicts_with_all = ["input", "input_yaml", "format"])]
+              conflicts_with_all = ["input", "input_yaml", "stdin_format"])]
         input_json: Option<String>,
 
         /// The input value as a YAML string.
         #[arg(long = "input-yaml", value_name = "YAML", 
-              conflicts_with_all = ["input", "input_json", "format"])]
+              conflicts_with_all = ["input", "input_json", "stdin_format"])]
         input_yaml: Option<String>,
 
         /// The format for stdin input (json or yaml).
         ///
         /// Only used when reading from stdin (no other input options specified).
-        #[arg(long = "format", value_name = "FORMAT", default_value = "json",
+        #[arg(long = "stdin-format", value_name = "FORMAT", default_value = "json",
               conflicts_with_all = ["input", "input_json", "input_yaml"])]
-        format: InputFormat,
+        stdin_format: InputFormat,
 
         /// Path to write the output workflow to.
         ///
@@ -449,14 +449,14 @@ impl Cli {
                 input,
                 input_json,
                 input_yaml,
-                format,
+                stdin_format,
                 output_path,
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
                 let config = load_config(Some(&flow_path), config_path)?;
                 let executor = create_executor(config).await?;
 
-                let input = load_input(input, input_json, input_yaml, format)?;
+                let input = load_input(input, input_json, input_yaml, stdin_format)?;
 
                 let output = run(executor, flow, input).await?;
                 write_output(output_path, output)?;
@@ -473,11 +473,11 @@ impl Cli {
                 input,
                 input_json,
                 input_yaml,
-                format,
+                stdin_format,
                 output_path,
             } => {
                 let flow: Flow = load(&flow_path)?;
-                let input = load_input(input, input_json, input_yaml, format)?;
+                let input = load_input(input, input_json, input_yaml, stdin_format)?;
 
                 let output = submit(url, flow, input).await?;
                 write_output(output_path, output)?;
