@@ -15,7 +15,6 @@ serde_json.workspace = true
 serde.workspace = true
 stepflow-core.workspace = true
 stepflow-plugin.workspace = true
-stepflow-state.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
