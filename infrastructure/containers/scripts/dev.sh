@@ -188,6 +188,14 @@ start_dev() {
     log "Waiting for services to be ready..."
     sleep 5
     
+    # Check containerd
+    if limactl shell "$LIMA_INSTANCE" sudo nerdctl --address /run/containerd/containerd.sock version &>/dev/null; then
+        info "Containerd is running"
+    else
+        warn "Containerd not running, starting..."
+        limactl shell "$LIMA_INSTANCE" sudo systemctl start containerd
+    fi
+    
     # Check BuildKit
     if limactl shell "$LIMA_INSTANCE" buildctl debug workers &>/dev/null; then
         info "BuildKit is running"
@@ -292,11 +300,11 @@ cleanup() {
     log "Cleaning up resources..."
     
     # Remove containers
-    limactl shell "$LIMA_INSTANCE" nerdctl rm -f $(limactl shell "$LIMA_INSTANCE" nerdctl ps -aq) 2>/dev/null || true
+    limactl shell "$LIMA_INSTANCE" bash -c 'sudo nerdctl --address /run/containerd/containerd.sock rm -f $(sudo nerdctl --address /run/containerd/containerd.sock ps -aq) 2>/dev/null || true'
     
     # Remove images
-    if [[ "$1" == "--all" ]]; then
-        limactl shell "$LIMA_INSTANCE" nerdctl rmi -f $(limactl shell "$LIMA_INSTANCE" nerdctl images -q) 2>/dev/null || true
+    if [[ "${1:-}" == "--all" ]]; then
+        limactl shell "$LIMA_INSTANCE" bash -c 'sudo nerdctl --address /run/containerd/containerd.sock rmi -f $(sudo nerdctl --address /run/containerd/containerd.sock images -q) 2>/dev/null || true'
     fi
     
     log "Cleanup complete"
