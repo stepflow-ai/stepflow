@@ -31,7 +31,7 @@ struct ComponentList {
 /// List all available components from a stepflow config.
 pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat, schemas: Option<bool>) -> Result<()> {
     // Determine whether to include schemas based on format and explicit flag
-    let include_schemas = schemas.unwrap_or_else(|| match format {
+    let include_schemas = schemas.unwrap_or(match format {
         OutputFormat::Pretty => false,
         OutputFormat::Json | OutputFormat::Yaml => true,
     });
