@@ -1,4 +1,4 @@
-mod cli;
+pub mod cli;
 mod error;
 mod list_components;
 mod run;

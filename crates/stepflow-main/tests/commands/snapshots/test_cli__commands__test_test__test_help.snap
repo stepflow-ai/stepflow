@@ -1,0 +1,59 @@
+---
+source: crates/stepflow-main/tests/commands/test_test.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - test
+    - "--help"
+  env:
+    RUST_BACKTRACE: "0"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Run tests defined in a workflow file or directory
+
+Usage: stepflow test [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>
+          Path to the workflow file or directory containing tests
+
+Options:
+      --config <FILE>
+          The path to the stepflow config file for tests.
+          
+          If not specified, will use hierarchical resolution: 1. stepflow_config in test section of this workflow 2. stepflow_config in test section of enclosing workflow (if any) 3. stepflow-config.test.yml in workflow directory 4. stepflow-config.yml in workflow directory 5. stepflow-config.yml in current directory
+
+      --log-level <LEVEL>
+          Set the log level for StepFlow
+          
+          [default: info]
+          [possible values: trace, debug, info, warn, error]
+
+      --case <NAME>
+          Run only specific test case(s) by name. Can be repeated
+
+      --other-log-level <LEVEL>
+          Set the log level for other parts of StepFlow
+          
+          [default: warn]
+          [possible values: trace, debug, info, warn, error]
+
+      --log-file <FILE>
+          Write logs to a file instead of stderr
+
+      --update
+          Update expected outputs with actual outputs from test runs
+
+      --diff
+          Show diff when tests fail
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+----- stderr -----

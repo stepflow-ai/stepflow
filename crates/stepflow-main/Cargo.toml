@@ -30,6 +30,8 @@ tracing-subscriber.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+insta-cmd.workspace = true
+tempfile.workspace = true
 
 [[bin]]
 name = "stepflow"

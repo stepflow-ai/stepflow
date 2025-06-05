@@ -2,6 +2,7 @@ use error_stack::ResultExt as _;
 use serde::de::DeserializeOwned;
 use stepflow_core::workflow::Flow;
 use stepflow_execution::StepFlowExecutor;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 use url::Url;
 
 use crate::{
@@ -20,6 +21,32 @@ use std::{
 #[derive(clap::Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
+    /// Set the log level for StepFlow.
+    #[arg(
+        long = "log-level",
+        value_name = "LEVEL",
+        default_value = "info",
+        global = true
+    )]
+    pub log_level: LogLevel,
+
+    /// Set the log level for other parts of StepFlow.
+    #[arg(
+        long = "other-log-level",
+        value_name = "LEVEL",
+        default_value = "warn",
+        global = true
+    )]
+    pub other_log_level: LogLevel,
+
+    /// Write logs to a file instead of stderr.
+    #[arg(long = "log-file", value_name = "FILE", value_hint = clap::ValueHint::FilePath, global = true)]
+    pub log_file: Option<PathBuf>,
+
+    /// Omit stack traces (line numbers of errors).
+    #[arg(long = "omit-stack-trace", global = true)]
+    pub omit_stack_trace: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -172,6 +199,28 @@ pub enum OutputFormat {
     Pretty,
     Json,
     Yaml,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            LogLevel::Trace => "trace",
+            LogLevel::Debug => "debug",
+            LogLevel::Info => "info",
+            LogLevel::Warn => "warn",
+            LogLevel::Error => "error",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 enum Format {
@@ -351,6 +400,43 @@ pub async fn create_executor(config: StepflowConfig) -> Result<Arc<StepFlowExecu
             .change_context(MainError::RegisterPlugin)?;
     }
     Ok(executor)
+}
+
+/// Initialize tracing with the specified configuration.
+pub fn init_tracing(
+    log_level: &LogLevel,
+    other_log_level: &LogLevel,
+    log_file: Option<&Path>,
+) -> Result<()> {
+    let filter_str = format!("stepflow_={},{}", log_level, other_log_level);
+    let filter = EnvFilter::new(filter_str);
+
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339());
+
+    let registry = tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_error::ErrorLayer::default());
+
+    match log_file {
+        Some(file_path) => {
+            let file = File::create(file_path)
+                .change_context_lazy(|| MainError::CreateOutput(file_path.to_owned()))?;
+            let fmt_layer = fmt_layer.with_writer(file);
+            registry
+                .with(fmt_layer)
+                .try_init()
+                .map_err(|_| MainError::TracingInit)?;
+        }
+        None => {
+            registry
+                .with(fmt_layer)
+                .try_init()
+                .map_err(|_| MainError::TracingInit)?;
+        }
+    }
+
+    Ok(())
 }
 
 impl Cli {

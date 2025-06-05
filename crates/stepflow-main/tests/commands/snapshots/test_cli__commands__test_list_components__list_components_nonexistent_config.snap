@@ -1,0 +1,17 @@
+---
+source: crates/stepflow-main/tests/commands/test_list_components.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - "--log-level=error"
+    - list-components
+    - "--config=/tmp/nonexistent-stepflow-config.yml"
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Missing file: /tmp/nonexistent-stepflow-config.yml

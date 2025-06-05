@@ -1,0 +1,60 @@
+---
+source: crates/stepflow-main/tests/commands/test_list_components.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--log-level=error"
+    - list-components
+    - "--help"
+  env:
+    RUST_BACKTRACE: "0"
+---
+success: true
+exit_code: 0
+----- stdout -----
+List all available components from a stepflow config
+
+Usage: stepflow list-components [OPTIONS]
+
+Options:
+      --config <FILE>
+          The path to the stepflow config file.
+          
+          If not specified, will look for stepflow-config.yml in the current directory.
+
+      --log-level <LEVEL>
+          Set the log level for StepFlow
+          
+          [default: info]
+          [possible values: trace, debug, info, warn, error]
+
+      --format <FORMAT>
+          Output format for the component list
+          
+          [default: pretty]
+          [possible values: pretty, json, yaml]
+
+      --other-log-level <LEVEL>
+          Set the log level for other parts of StepFlow
+          
+          [default: warn]
+          [possible values: trace, debug, info, warn, error]
+
+      --log-file <FILE>
+          Write logs to a file instead of stderr
+
+      --schemas <SCHEMAS>
+          Include component schemas in output.
+          
+          Defaults to false for pretty format, true for json/yaml formats.
+          
+          [possible values: true, false]
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+----- stderr -----

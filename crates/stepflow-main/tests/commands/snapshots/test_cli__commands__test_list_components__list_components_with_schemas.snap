@@ -1,0 +1,267 @@
+---
+source: crates/stepflow-main/tests/commands/test_list_components.rs
+info:
+  program: stepflow
+  args:
+    - "--log-level=error"
+    - list-components
+    - "--config=../../tests/stepflow-config.yml"
+    - "--schemas=true"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Available Components:
+====================
+
+Component: builtins://create_messages
+  Description: Create a chat message list from system instructions and user prompt
+  Input Schema:
+    {
+      "type": "object",
+      "required": [
+        "user_prompt"
+      ],
+      "properties": {
+        "system_instructions": {
+          "description": "The system instructions to include in the message list.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user_prompt": {
+          "description": "The user prompt to include in the message list.",
+          "type": "string"
+        }
+      }
+    }
+  Output Schema:
+    {
+      "type": "object",
+      "required": [
+        "messages"
+      ],
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ChatMessage"
+          }
+        }
+      }
+    }
+
+Component: builtins://eval
+  Description: Execute a nested workflow with given input and return the result
+  Input Schema:
+    {
+      "description": "Input for the eval component",
+      "type": "object",
+      "required": [
+        "input",
+        "workflow"
+      ],
+      "properties": {
+        "input": {
+          "description": "The input to pass to the workflow",
+          "$ref": "#/definitions/ValueRef"
+        },
+        "workflow": {
+          "description": "The workflow to execute",
+          "$ref": "#/definitions/Flow"
+        }
+      }
+    }
+  Output Schema:
+    {
+      "description": "Output from the eval component\n\nThe output is simply the result of the nested workflow execution",
+      "type": "object",
+      "required": [
+        "execution_id",
+        "result"
+      ],
+      "properties": {
+        "execution_id": {
+          "description": "The execution ID of the nested workflow",
+          "type": "string"
+        },
+        "result": {
+          "description": "The result from executing the nested workflow",
+          "$ref": "#/definitions/ValueRef"
+        }
+      }
+    }
+
+Component: builtins://get_blob
+  Description: Retrieve JSON data from a blob using its ID
+  Input Schema:
+    {
+      "description": "Input for the get_blob component",
+      "type": "object",
+      "required": [
+        "blob_id"
+      ],
+      "properties": {
+        "blob_id": {
+          "description": "The blob ID to retrieve",
+          "type": "string"
+        }
+      }
+    }
+  Output Schema:
+    {
+      "description": "Output from the get_blob component",
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "properties": {
+        "data": {
+          "description": "The JSON data stored in the blob"
+        }
+      }
+    }
+
+Component: builtins://load_file
+  Description: Load and parse a file (JSON, YAML, or text) from the filesystem
+  Input Schema:
+    {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "format": {
+          "description": "Format of the file (json, yaml, text). If not specified, inferred from extension",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FileFormat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "description": "Path to the file to load",
+          "type": "string"
+        },
+        "working_directory": {
+          "description": "Working directory to resolve relative paths (defaults to current directory)",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  Output Schema:
+    {
+      "type": "object",
+      "required": [
+        "data",
+        "metadata"
+      ],
+      "properties": {
+        "data": {
+          "description": "The loaded data (parsed JSON/YAML or raw text)"
+        },
+        "metadata": {
+          "description": "Metadata about the loaded file",
+          "$ref": "#/definitions/FileMetadata"
+        }
+      }
+    }
+
+Component: builtins://openai
+  Description: Send messages to OpenAI's chat completion API and get a response
+  Input Schema:
+    {
+      "description": "Input for the OpenAI component",
+      "type": "object",
+      "required": [
+        "messages"
+      ],
+      "properties": {
+        "api_key": {
+          "description": "API key override (optional - uses environment variable if not provided)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_tokens": {
+          "description": "Max tokens to generate (optional)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "messages": {
+          "description": "The messages to send to the API",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ChatMessage"
+          }
+        },
+        "temperature": {
+          "description": "Temperature setting (optional)",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float"
+        }
+      }
+    }
+  Output Schema:
+    {
+      "description": "Output from the OpenAI component",
+      "type": "object",
+      "required": [
+        "response"
+      ],
+      "properties": {
+        "response": {
+          "description": "The generated response text",
+          "type": "string"
+        }
+      }
+    }
+
+Component: builtins://put_blob
+  Description: Store JSON data as a blob and return its content-addressable ID
+  Input Schema:
+    {
+      "description": "Input for the put_blob component",
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "properties": {
+        "data": {
+          "description": "The JSON data to store as a blob"
+        }
+      }
+    }
+  Output Schema:
+    {
+      "description": "Output from the put_blob component",
+      "type": "object",
+      "required": [
+        "blob_id"
+      ],
+      "properties": {
+        "blob_id": {
+          "description": "The blob ID for the stored data",
+          "type": "string"
+        }
+      }
+    }
+
+Total components: 6
+
+----- stderr -----
