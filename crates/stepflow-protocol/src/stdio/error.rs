@@ -30,6 +30,8 @@ pub enum StdioError {
     RecvLoop,
     #[error("command not found: {0}")]
     MissingCommand(String),
+    #[error("unknown method: {method}")]
+    UnknownMethod { method: String },
 }
 
 pub type Result<T, E = error_stack::Report<StdioError>> = std::result::Result<T, E>;

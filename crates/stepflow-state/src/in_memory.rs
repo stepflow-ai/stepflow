@@ -1,11 +1,11 @@
+use error_stack::ResultExt as _;
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
-use crate::{Result, StateError};
-use stepflow_core::{blob::BlobId, workflow::ValueRef};
-use tokio::sync::RwLock;
-
 use crate::StateStore;
+use stepflow_core::{blob::BlobId, workflow::ValueRef};
 
+use crate::StateError;
+use tokio::sync::RwLock;
 /// In-memory implementation of StateStore.
 ///
 /// This provides a simple, fast storage implementation suitable for
@@ -35,14 +35,11 @@ impl StateStore for InMemoryStateStore {
     fn put_blob(
         &self,
         data: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = Result<BlobId>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<BlobId, StateError>> + Send + '_>> {
         let blobs = self.blobs.clone();
 
         Box::pin(async move {
-            let blob_id = BlobId::from_content(&data).map_err(|e| {
-                error_stack::report!(StateError::Internal)
-                    .attach_printable(format!("Failed to create blob ID: {}", e))
-            })?;
+            let blob_id = BlobId::from_content(&data).change_context(StateError::Internal)?;
 
             // Store the data (overwrites are fine since content is identical)
             {
@@ -57,7 +54,7 @@ impl StateStore for InMemoryStateStore {
     fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> Pin<Box<dyn Future<Output = Result<ValueRef>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ValueRef, StateError>> + Send + '_>> {
         let blobs = self.blobs.clone();
         let blob_id_str = blob_id.as_str().to_string();
 

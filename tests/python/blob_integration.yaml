@@ -1,0 +1,130 @@
+input_schema:
+  type: object
+  properties:
+    user_data:
+      type: object
+    processing_config:
+      type: object
+output_schema:
+  type: object
+  properties:
+    original_blob_id:
+      type: string
+    processed_blob_id:
+      type: string
+    final_result:
+      type: object
+steps:
+  # Step 1: Store initial data as blob using builtin component
+  - id: store_original_data
+    component: builtins://put_blob
+    input:
+      data: { $from: { workflow: input }, path: user_data }
+
+  # Step 2: Create blob for Python function definition
+  - id: create_process_data_blob
+    component: builtins://put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            blob_id: { type: string }
+            config: { type: object }
+          required: [blob_id, config]
+        code: |
+          async def process_data(data, context):
+              # Retrieve the original data from blob
+              original_data = await context.get_blob(data['blob_id'])
+              
+              # Process the data (example: add multiply numbers)
+              processed_data = {
+                  'original': original_data,
+                  'config': data['config']
+              }
+              
+              # If original data has numeric values, transform them
+              if isinstance(original_data, dict):
+                  for key, value in original_data.items():
+                      if isinstance(value, (int, float)):
+                          processed_data[f'{key}_doubled'] = value * 2
+              
+              # Store processed data as new blob
+              new_blob_id = await context.put_blob(processed_data)
+              
+              return {
+                  'original_blob_id': data['blob_id'],
+                  'processed_blob_id': new_blob_id,
+                  'summary': f'Processed {len(original_data)} fields'
+              }
+        function_name: process_data
+
+  # Step 3: Python UDF retrieves blob and processes it
+  - id: process_blob_data
+    component: python://udf
+    input:
+      blob_id: { $from: { step: create_process_data_blob }, path: blob_id }
+      input:
+        blob_id: { $from: { step: store_original_data }, path: blob_id }
+        config: { $from: { workflow: input }, path: processing_config }
+
+  # Step 4: Retrieve final processed data using builtin component
+  - id: get_final_result
+    component: builtins://get_blob
+    input:
+      blob_id: { $from: { step: process_blob_data }, path: processed_blob_id }
+
+output:
+  original_blob_id: { $from: { step: process_blob_data }, path: original_blob_id }
+  processed_blob_id: { $from: { step: process_blob_data }, path: processed_blob_id }
+  final_result: { $from: { step: get_final_result }, path: data }
+test:
+  cases:
+  - name: alice
+    input:
+      user_data:
+        name: Alice
+        age: 30
+        score: 85.5
+      processing_config:
+        mode: standard
+        multiplier: 2
+    output:
+      outcome: success
+      result:
+        final_result:
+          age_doubled: 60
+          config:
+            mode: standard
+            multiplier: 2
+          original:
+            age: 30
+            name: Alice
+            score: 85.5
+          score_doubled: 171.0
+        original_blob_id: 63594fd7447aa6b7dd3940b06e90bd31452273588ee992cd2fed5de4df13d248
+        processed_blob_id: f3ab84807a096605614b040dcf8d498ced3fb582a8dfa5fc1cc952710fcb31f5
+  - name: widget
+    input:
+      user_data:
+        product: Widget
+        price: 19.99
+        quantity: 100
+      processing_config:
+        mode: bulk
+        discount: 0.1
+    output:
+      outcome: success
+      result:
+        final_result:
+          config:
+            discount: 0.1
+            mode: bulk
+          original:
+            price: 19.99
+            product: Widget
+            quantity: 100
+          price_doubled: 39.98
+          quantity_doubled: 200
+        original_blob_id: df428f6922868a5c400d451cf5f5a6a47b5f4103c808eb25046692b8d4acd5d1
+        processed_blob_id: ce9afef55eb9107330530a3283006e10f136fd795b346c16b151ecf7ed795358

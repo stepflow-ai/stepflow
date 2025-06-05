@@ -8,16 +8,27 @@ use crate::stdio::{Result, StdioError};
 
 /// Message received from the child process.
 ///
-/// Exactly one of `result` or `error` should be present.
+/// Can be either a method call/notification OR a response.
+/// For responses: exactly one of `result` or `error` should be present.
+/// For method calls: `id`, `method` and `params` should be present.
+/// For notifications: `method` and `params` should be present (no `id`).
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Incoming<'a> {
     /// The JSON-RPC version (must be "2.0")
     pub jsonrpc: &'a str,
     /// The request id. If not set, this is a notification.
     pub id: Option<Uuid>,
-    /// The result of the method execution.
+    /// The method name (for method calls/notifications)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<&'a str>,
+    /// The parameters (for method calls/notifications)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<&'a RawValue>,
+    /// The result of the method execution (for responses)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<&'a RawValue>,
-    /// The error that occurred during the method execution.
+    /// The error that occurred during the method execution (for responses)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<RemoteError<'a>>,
 }
 

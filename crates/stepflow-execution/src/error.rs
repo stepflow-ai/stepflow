@@ -9,8 +9,6 @@ pub enum ExecutionError {
     UndefinedField { field: String, value: ValueRef },
     #[error("error executing plugin")]
     PluginError,
-    #[error("plugin not found")]
-    PluginNotFound,
     #[error("flow not compiled")]
     FlowNotCompiled,
     #[error("error receiving input")]
@@ -25,6 +23,8 @@ pub enum ExecutionError {
     StepFailed { step: String },
     #[error("blob not found: {blob_id}")]
     BlobNotFound { blob_id: String },
+    #[error("no plugin registered for protocol: {0}")]
+    UnregisteredProtocol(String),
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

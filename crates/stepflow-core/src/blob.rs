@@ -3,9 +3,23 @@ use std::fmt;
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use thiserror::Error;
 
 use crate::workflow::ValueRef;
+
+#[derive(Debug, thiserror::Error)]
+pub enum BlobIdError {
+    #[error("Invalid blob ID length: expected {expected}, got {actual}")]
+    InvalidLength { expected: usize, actual: usize },
+
+    #[error("Invalid characters in blob ID")]
+    InvalidCharacters,
+
+    #[error("Failed to serialize data")]
+    SerializeFailed,
+
+    #[error("Blob not found: {blob_id}")]
+    BlobNotFound { blob_id: String },
+}
 
 /// A type-safe wrapper for blob identifiers.
 ///
@@ -64,15 +78,4 @@ impl AsRef<str> for BlobId {
     fn as_ref(&self) -> &str {
         &self.0
     }
-}
-
-/// Errors that can occur when creating a BlobId.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum BlobIdError {
-    #[error("Invalid blob ID length: expected {expected}, got {actual}")]
-    InvalidLength { expected: usize, actual: usize },
-    #[error("Invalid blob ID: contains non-hex characters")]
-    InvalidCharacters,
-    #[error("Failed to serialize content for blob ID")]
-    SerializeFailed,
 }

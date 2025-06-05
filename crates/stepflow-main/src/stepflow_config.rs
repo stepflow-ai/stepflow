@@ -5,7 +5,7 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_builtins::BuiltinPluginConfig;
 use stepflow_mock::MockPlugin;
-use stepflow_plugin::{PluginConfig, Plugins};
+use stepflow_plugin::{DynPlugin, PluginConfig};
 use stepflow_protocol::stdio::StdioPluginConfig;
 
 #[derive(Serialize, Deserialize)]
@@ -25,46 +25,6 @@ enum SupportedPlugin {
     Mock(MockPlugin),
 }
 
-async fn create_and_register_plugin<P: PluginConfig>(
-    protocol: String,
-    plugin: P,
-    working_directory: &Path,
-    registry: &mut Plugins,
-) -> Result<()>
-where
-    P::Plugin: 'static,
-{
-    let plugin = plugin
-        .create_plugin(working_directory)
-        .await
-        .change_context(MainError::InstantiatePlugin)?;
-    registry
-        .register(protocol, plugin)
-        .change_context(MainError::InstantiatePlugin)?;
-    Ok(())
-}
-
-impl SupportedPlugin {
-    pub async fn register(
-        self,
-        protocol: String,
-        working_directory: &Path,
-        registry: &mut Plugins,
-    ) -> Result<()> {
-        match self {
-            Self::Stdio(plugin) => {
-                create_and_register_plugin(protocol, plugin, working_directory, registry).await
-            }
-            Self::Builtin(plugin) => {
-                create_and_register_plugin(protocol, plugin, working_directory, registry).await
-            }
-            Self::Mock(plugin) => {
-                create_and_register_plugin(protocol, plugin, working_directory, registry).await
-            }
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SupportedPluginConfig {
     name: String,
@@ -72,25 +32,27 @@ pub struct SupportedPluginConfig {
     plugin: SupportedPlugin,
 }
 
-impl StepflowConfig {
-    /// Create the plugins from the config.
-    ///
-    /// This consumes the entries in `plugins`.
-    pub async fn create_plugins(self) -> Result<Plugins> {
-        let working_directory = self.working_directory.as_ref().expect("working_directory");
+async fn create_plugin<P: PluginConfig>(
+    plugin: P,
+    working_directory: &Path,
+) -> Result<Box<DynPlugin<'static>>> {
+    plugin
+        .create_plugin(working_directory)
+        .await
+        .change_context(MainError::RegisterPlugin)
+}
 
-        let mut registry = Plugins::new();
-        for SupportedPluginConfig { name, plugin } in self.plugins {
-            plugin
-                .register(name, working_directory, &mut registry)
-                .await?;
-        }
-
-        registry
-            .initialize()
-            .await
-            .change_context(MainError::InitializePlugins)?;
-
-        Ok(registry)
+impl SupportedPluginConfig {
+    pub async fn instantiate(
+        self,
+        working_directory: &Path,
+    ) -> Result<(String, Box<DynPlugin<'static>>)> {
+        let plugin = match self.plugin {
+            SupportedPlugin::Stdio(plugin) => create_plugin(plugin, working_directory).await,
+            SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await,
+            SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await,
+        };
+        let plugin = plugin.attach_printable_lazy(|| format!("plugin: {}", self.name))?;
+        Ok((self.name, plugin))
     }
 }

@@ -4,31 +4,30 @@ use stepflow_core::{
     workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::ExecutionContext;
-use stepflow_state::{InMemoryStateStore, StateStore};
+use stepflow_state::InMemoryStateStore;
 use uuid::Uuid;
 
 /// A mock execution context for testing built-in components.
 ///
-/// This provides default implementations of the ExecutionContext trait
-/// that are suitable for testing most built-in components that don't
-/// require complex workflow execution.
+/// This provides a way to create ExecutionContext instances for testing
+/// built-in components without requiring complex workflow execution.
 pub struct MockContext {
-    id: Uuid,
-    state_store: Arc<dyn StateStore>,
+    executor: Arc<MockExecutor>,
 }
 
 impl MockContext {
     /// Create a new mock context with a random execution ID.
     pub fn new() -> Self {
         Self {
-            id: Uuid::new_v4(),
-            state_store: Arc::new(InMemoryStateStore::new()),
+            executor: Arc::new(MockExecutor {
+                state_store: Arc::new(InMemoryStateStore::new()),
+            }),
         }
     }
 
-    /// Create a new mock context wrapped as an ExecutionContext trait object.
-    pub fn new_execution_context() -> Arc<dyn ExecutionContext> {
-        Arc::new(Self::new())
+    /// Get an execution context for testing from this mock context.
+    pub fn execution_context(&self) -> ExecutionContext {
+        ExecutionContext::new(self.executor.clone(), Uuid::new_v4())
     }
 }
 
@@ -38,11 +37,12 @@ impl Default for MockContext {
     }
 }
 
-impl ExecutionContext for MockContext {
-    fn execution_id(&self) -> Uuid {
-        self.id
-    }
+/// Mock executor implementation for testing.
+struct MockExecutor {
+    state_store: Arc<dyn stepflow_state::StateStore>,
+}
 
+impl stepflow_plugin::Context for MockExecutor {
     fn submit_flow(
         &self,
         _flow: Arc<Flow>,
@@ -65,7 +65,7 @@ impl ExecutionContext for MockContext {
         })
     }
 
-    fn state_store(&self) -> &Arc<dyn StateStore> {
+    fn state_store(&self) -> &Arc<dyn stepflow_state::StateStore> {
         &self.state_store
     }
 }

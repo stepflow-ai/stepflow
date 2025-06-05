@@ -10,7 +10,7 @@ pub struct Request {
     pub input: ValueRef,
 }
 
-/// Response to the initializaiton request.
+/// Response to the initialization request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
     pub output: ValueRef,

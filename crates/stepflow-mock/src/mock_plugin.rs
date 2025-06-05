@@ -8,22 +8,23 @@ use stepflow_core::{
     schema::SchemaRef,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig, PluginError, Result};
+use stepflow_plugin::{
+    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
+};
 
 impl PluginConfig for MockPlugin {
-    type Plugin = MockPlugin;
     type Error = PluginError;
 
     async fn create_plugin(
         self,
         _working_directory: &std::path::Path,
-    ) -> error_stack::Result<Self::Plugin, Self::Error> {
-        Ok(self)
+    ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
+        Ok(DynPlugin::boxed(self))
     }
 }
 
 /// A mock plugin that can be used to test various things in the plugin protocol.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
 pub struct MockPlugin {
     components: HashMap<Component, MockComponent>,
 }
@@ -92,6 +93,10 @@ impl MockComponent {
 }
 
 impl MockPlugin {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn mock_component(&mut self, path: &str) -> &mut MockComponent {
         let component = Component::parse(path).unwrap();
         self.components.entry(component).or_default()
@@ -99,8 +104,12 @@ impl MockPlugin {
 }
 
 impl Plugin for MockPlugin {
-    async fn init(&self) -> Result<()> {
+    async fn init(&self, _context: &Arc<dyn Context>) -> Result<()> {
         Ok(())
+    }
+
+    async fn list_components(&self) -> Result<Vec<Component>> {
+        Ok(self.components.keys().cloned().collect())
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
@@ -117,7 +126,7 @@ impl Plugin for MockPlugin {
     async fn execute(
         &self,
         component: &Component,
-        _context: Arc<dyn ExecutionContext>,
+        _context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
         let mock_component = self

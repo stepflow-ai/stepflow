@@ -41,11 +41,27 @@ pub enum Command {
 
         /// The path to the input file to execute the workflow with.
         ///
-        /// Should be JSON or YAML.
+        /// Should be JSON or YAML. Format is inferred from file extension.
+        #[arg(long = "input", value_name = "FILE", value_hint = clap::ValueHint::FilePath, 
+              conflicts_with_all = ["input_json", "input_yaml", "format"])]
+        input: Option<PathBuf>,
+
+        /// The input value as a JSON string.
+        #[arg(long = "input-json", value_name = "JSON", 
+              conflicts_with_all = ["input", "input_yaml", "format"])]
+        input_json: Option<String>,
+
+        /// The input value as a YAML string.
+        #[arg(long = "input-yaml", value_name = "YAML", 
+              conflicts_with_all = ["input", "input_json", "format"])]
+        input_yaml: Option<String>,
+
+        /// The format for stdin input (json or yaml).
         ///
-        /// If not set, will read from stdin.
-        #[arg(long = "input", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        input_path: Option<PathBuf>,
+        /// Only used when reading from stdin (no other input options specified).
+        #[arg(long = "format", value_name = "FORMAT", default_value = "json",
+              conflicts_with_all = ["input", "input_json", "input_yaml"])]
+        format: InputFormat,
 
         /// Path to write the output workflow to.
         ///
@@ -77,11 +93,27 @@ pub enum Command {
 
         /// The path to the input file to execute the workflow with.
         ///
-        /// Should be JSON or YAML.
+        /// Should be JSON or YAML. Format is inferred from file extension.
+        #[arg(long = "input", value_name = "FILE", value_hint = clap::ValueHint::FilePath, 
+              conflicts_with_all = ["input_json", "input_yaml", "format"])]
+        input: Option<PathBuf>,
+
+        /// The input value as a JSON string.
+        #[arg(long = "input-json", value_name = "JSON", 
+              conflicts_with_all = ["input", "input_yaml", "format"])]
+        input_json: Option<String>,
+
+        /// The input value as a YAML string.
+        #[arg(long = "input-yaml", value_name = "YAML", 
+              conflicts_with_all = ["input", "input_json", "format"])]
+        input_yaml: Option<String>,
+
+        /// The format for stdin input (json or yaml).
         ///
-        /// If not set, will read from stdin.
-        #[arg(long = "input", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        input_path: Option<PathBuf>,
+        /// Only used when reading from stdin (no other input options specified).
+        #[arg(long = "format", value_name = "FORMAT", default_value = "json",
+              conflicts_with_all = ["input", "input_json", "input_yaml"])]
+        format: InputFormat,
 
         /// Path to write the output workflow to.
         ///
@@ -109,6 +141,31 @@ pub enum Command {
         #[command(flatten)]
         test_options: TestOptions,
     },
+    /// List all available components from a stepflow config.
+    ListComponents {
+        /// The path to the stepflow config file.
+        ///
+        /// If not specified, will look for stepflow-config.yml in the current directory.
+        #[arg(long="config", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        config_path: Option<PathBuf>,
+
+        /// Output format for the component list.
+        #[arg(long = "format", value_name = "FORMAT", default_value = "pretty")]
+        format: OutputFormat,
+    },
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum InputFormat {
+    Json,
+    Yaml,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum OutputFormat {
+    Pretty,
+    Json,
+    Yaml,
 }
 
 enum Format {
@@ -210,14 +267,41 @@ pub fn load_config(
     Ok(config)
 }
 
-fn load_input(path: Option<PathBuf>) -> Result<stepflow_core::workflow::ValueRef> {
-    match path {
-        Some(path) => load(&path),
-        None => {
-            let input = serde_json::from_reader(std::io::stdin())
-                .change_context_lazy(|| MainError::InvalidFile(PathBuf::from("stdin")))?;
-
+fn load_input(
+    input: Option<PathBuf>,
+    input_json: Option<String>,
+    input_yaml: Option<String>,
+    format: InputFormat,
+) -> Result<stepflow_core::workflow::ValueRef> {
+    match (input, input_json, input_yaml) {
+        (Some(path), None, None) => {
+            // Load from file - format is inferred from extension
+            load(&path)
+        }
+        (None, Some(value), None) => {
+            // Parse JSON string
+            serde_json::from_str(&value)
+                .change_context_lazy(|| MainError::InvalidFile(PathBuf::from("input-json")))
+        }
+        (None, None, Some(value)) => {
+            // Parse YAML string
+            serde_yaml_ng::from_str(&value)
+                .change_context_lazy(|| MainError::InvalidFile(PathBuf::from("input-yaml")))
+        }
+        (None, None, None) => {
+            // Read from stdin using specified format
+            let stdin = std::io::stdin();
+            let input = match format {
+                InputFormat::Json => serde_json::from_reader(stdin)
+                    .change_context_lazy(|| MainError::InvalidFile(PathBuf::from("stdin")))?,
+                InputFormat::Yaml => serde_yaml_ng::from_reader(stdin)
+                    .change_context_lazy(|| MainError::InvalidFile(PathBuf::from("stdin")))?,
+            };
             Ok(input)
+        }
+        _ => {
+            // This should be prevented by clap conflicts_with_all, but just in case
+            unreachable!("input options are mutually exclusive")
         }
     }
 }
@@ -244,6 +328,25 @@ pub fn write_output(path: Option<PathBuf>, output: impl serde::Serialize) -> Res
     }
 }
 
+pub async fn create_executor(config: StepflowConfig) -> Result<Arc<StepFlowExecutor>> {
+    // TODO: Allow other state backends.
+    let executor = StepFlowExecutor::new_in_memory();
+
+    let working_directory = config
+        .working_directory
+        .as_ref()
+        .expect("working_directory");
+
+    for plugin_config in config.plugins {
+        let (protocol, plugin) = plugin_config.instantiate(working_directory).await?;
+        executor
+            .register_plugin(protocol, plugin)
+            .await
+            .change_context(MainError::RegisterPlugin)?;
+    }
+    Ok(executor)
+}
+
 impl Cli {
     pub async fn execute(self) -> Result<()> {
         tracing::debug!("Executing command: {:?}", self);
@@ -251,33 +354,38 @@ impl Cli {
             Command::Run {
                 flow_path,
                 config_path,
-                input_path,
+                input,
+                input_json,
+                input_yaml,
+                format,
                 output_path,
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
                 let config = load_config(Some(&flow_path), config_path)?;
-                let plugins = config.create_plugins().await?;
-                let executor = StepFlowExecutor::new(plugins);
-                let input = load_input(input_path)?;
+                let executor = create_executor(config).await?;
+
+                let input = load_input(input, input_json, input_yaml, format)?;
 
                 let output = run(executor, flow, input).await?;
                 write_output(output_path, output)?;
             }
             Command::Serve { port, config_path } => {
                 let config = load_config(None, config_path)?;
-                let plugins = config.create_plugins().await?;
-                let executor = StepFlowExecutor::new(plugins);
+                let executor = create_executor(config).await?;
 
                 serve(executor, port).await?;
             }
             Command::Submit {
                 url,
                 flow_path,
-                input_path,
+                input,
+                input_json,
+                input_yaml,
+                format,
                 output_path,
             } => {
                 let flow: Flow = load(&flow_path)?;
-                let input = load_input(input_path)?;
+                let input = load_input(input, input_json, input_yaml, format)?;
 
                 let output = submit(url, flow, input).await?;
                 write_output(output_path, output)?;
@@ -291,6 +399,12 @@ impl Cli {
                 if failures {
                     std::process::exit(1);
                 }
+            }
+            Command::ListComponents {
+                config_path,
+                format,
+            } => {
+                crate::list_components::list_components(config_path, format).await?;
             }
         };
 

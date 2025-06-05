@@ -1,5 +1,6 @@
 mod cli;
 mod error;
+mod list_components;
 mod run;
 mod serve;
 mod stepflow_config;

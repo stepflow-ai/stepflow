@@ -14,8 +14,8 @@ pub enum MainError {
     WriteOutput(PathBuf),
     #[error("Unable to locate command: {0:?}")]
     MissingCommand(String),
-    #[error("Failed to instantiate plugin")]
-    InstantiatePlugin,
+    #[error("Failed to register plugin")]
+    RegisterPlugin,
     #[error("Failed to execute flow")]
     FlowExecution,
     #[error("Failed to initialize plugins")]
@@ -24,6 +24,10 @@ pub enum MainError {
     MultipleStepflowConfigs(PathBuf),
     #[error("Stepflow config not found")]
     StepflowConfigNotFound,
+    #[error("Plugin communication failed")]
+    PluginCommunication,
+    #[error("Serialization failed")]
+    SerializationError,
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;

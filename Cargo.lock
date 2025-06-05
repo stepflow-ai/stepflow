@@ -2111,6 +2111,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "similar",
  "stepflow-builtins",
  "stepflow-core",
  "stepflow-execution",
@@ -2144,7 +2145,6 @@ version = "0.1.0"
 dependencies = [
  "dynosaur",
  "error-stack",
- "futures",
  "serde",
  "stepflow-core",
  "stepflow-state",

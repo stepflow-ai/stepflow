@@ -7,7 +7,7 @@ use stepflow_plugin::{PluginError, Result};
 
 use crate::{
     BuiltinComponent, DynBuiltinComponent,
-    blob::{CreateBlobComponent, GetBlobComponent},
+    blob::{GetBlobComponent, PutBlobComponent},
     eval::EvalComponent,
     load_file::LoadFileComponent,
     messages::CreateMessagesComponent,
@@ -40,7 +40,7 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     registry.register("create_messages", "", CreateMessagesComponent);
     registry.register("eval", "", EvalComponent::new());
     registry.register("load_file", "", LoadFileComponent);
-    registry.register("create_blob", "", CreateBlobComponent::new());
+    registry.register("put_blob", "", PutBlobComponent::new());
     registry.register("get_blob", "", GetBlobComponent::new());
     registry
 });
@@ -56,4 +56,19 @@ pub fn get_component(component: &Component) -> Result<Arc<DynBuiltinComponent<'_
         .ok_or_else(|| PluginError::UnknownComponent(component.clone()))?;
 
     Ok(component.clone())
+}
+
+pub fn list_components() -> Vec<Component> {
+    REGISTRY
+        .components
+        .keys()
+        .map(|(host, path)| {
+            let url = if path.is_empty() {
+                format!("builtins://{}", host.unwrap_or(""))
+            } else {
+                format!("builtins://{}/{}", host.unwrap_or(""), path)
+            };
+            Component::new(url.parse().expect("Invalid URL"))
+        })
+        .collect()
 }

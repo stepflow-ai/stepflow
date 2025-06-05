@@ -1,6 +1,5 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use stepflow_core::{
     FlowResult, blob::BlobId, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef,
 };
@@ -9,38 +8,38 @@ use stepflow_plugin::ExecutionContext;
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
 /// Component for creating blobs from JSON data.
-pub struct CreateBlobComponent;
+pub struct PutBlobComponent;
 
-impl CreateBlobComponent {
+impl PutBlobComponent {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for CreateBlobComponent {
+impl Default for PutBlobComponent {
     fn default() -> Self {
         Self::new()
     }
 }
 
-/// Input for the create_blob component
+/// Input for the put_blob component
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
-struct CreateBlobInput {
+struct PutBlobInput {
     /// The JSON data to store as a blob
     data: serde_json::Value,
 }
 
-/// Output from the create_blob component
+/// Output from the put_blob component
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
-struct CreateBlobOutput {
+struct PutBlobOutput {
     /// The blob ID for the stored data
     blob_id: String,
 }
 
-impl BuiltinComponent for CreateBlobComponent {
+impl BuiltinComponent for PutBlobComponent {
     fn component_info(&self) -> Result<ComponentInfo> {
-        let input_schema = SchemaRef::for_type::<CreateBlobInput>();
-        let output_schema = SchemaRef::for_type::<CreateBlobOutput>();
+        let input_schema = SchemaRef::for_type::<PutBlobInput>();
+        let output_schema = SchemaRef::for_type::<PutBlobOutput>();
 
         Ok(ComponentInfo {
             input_schema,
@@ -48,12 +47,8 @@ impl BuiltinComponent for CreateBlobComponent {
         })
     }
 
-    async fn execute(
-        &self,
-        context: Arc<dyn ExecutionContext>,
-        input: ValueRef,
-    ) -> Result<FlowResult> {
-        let input: CreateBlobInput = serde_json::from_value(input.as_ref().clone())
+    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+        let input: PutBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
         let data_ref = ValueRef::new(input.data);
@@ -65,7 +60,7 @@ impl BuiltinComponent for CreateBlobComponent {
             .await
             .change_context(BuiltinError::Internal)?;
 
-        let output = CreateBlobOutput {
+        let output = PutBlobOutput {
             blob_id: blob_id.as_str().to_string(),
         };
 
@@ -117,11 +112,7 @@ impl BuiltinComponent for GetBlobComponent {
         })
     }
 
-    async fn execute(
-        &self,
-        context: Arc<dyn ExecutionContext>,
-        input: ValueRef,
-    ) -> Result<FlowResult> {
+    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
         let input: GetBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -158,24 +149,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_blob_component() {
-        let component = CreateBlobComponent::new();
+        let component = PutBlobComponent::new();
         let test_data = json!({"message": "Hello, blobs!", "number": 42});
 
-        let input = CreateBlobInput {
+        let input = PutBlobInput {
             data: test_data.clone(),
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
 
         let result = component
-            .execute(context, input_value.into())
+            .execute(mock.execution_context(), input_value.into())
             .await
             .unwrap();
 
         match result {
             FlowResult::Success { result } => {
-                let output: CreateBlobOutput =
+                let output: PutBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
 
                 // Blob ID should be a valid SHA-256 hash (64 hex characters)
@@ -192,10 +183,11 @@ mod tests {
 
         // Create a valid blob ID from test data
         let test_data = json!({"retrieved": "data", "value": 123});
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
 
         // First, store the blob
-        let blob_id = context
+        let blob_id = mock
+            .execution_context()
             .state_store()
             .put_blob(ValueRef::new(test_data.clone()))
             .await
@@ -208,7 +200,7 @@ mod tests {
         let input_value = serde_json::to_value(input).unwrap();
 
         let result = component
-            .execute(context, input_value.into())
+            .execute(mock.execution_context(), input_value.into())
             .await
             .unwrap();
 
@@ -226,40 +218,40 @@ mod tests {
 
     #[tokio::test]
     async fn test_blob_roundtrip() {
-        let create_component = CreateBlobComponent::new();
+        let create_component = PutBlobComponent::new();
         let get_component = GetBlobComponent::new();
 
         let test_data = json!({"roundtrip": "test", "complex": {"nested": [1, 2, 3]}});
 
-        // Use the same context for both operations
-        let context = MockContext::new_execution_context();
+        // Use the same mock context for both operations to share state
+        let mock = MockContext::new();
 
         // Create blob
-        let create_input = CreateBlobInput {
+        let create_input = PutBlobInput {
             data: test_data.clone(),
         };
         let create_input_value = serde_json::to_value(create_input).unwrap();
 
         let create_result = create_component
-            .execute(context.clone(), create_input_value.into())
+            .execute(mock.execution_context(), create_input_value.into())
             .await
             .unwrap();
 
         let blob_id = match create_result {
             FlowResult::Success { result } => {
-                let output: CreateBlobOutput =
+                let output: PutBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
                 output.blob_id
             }
             _ => panic!("Expected success result from create"),
         };
 
-        // Get blob (Note: MockContext returns mock data, so this tests the component structure)
+        // Get blob using the same mock context (shares the same state store)
         let get_input = GetBlobInput { blob_id };
         let get_input_value = serde_json::to_value(get_input).unwrap();
 
         let get_result = get_component
-            .execute(context, get_input_value.into())
+            .execute(mock.execution_context(), get_input_value.into())
             .await
             .unwrap();
 
@@ -283,9 +275,11 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let context = MockContext::new_execution_context();
+        let mock = MockContext::new();
 
-        let result = component.execute(context, input_value.into()).await;
+        let result = component
+            .execute(mock.execution_context(), input_value.into())
+            .await;
 
         // Should return an error for invalid blob ID
         assert!(result.is_err());

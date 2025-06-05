@@ -30,8 +30,17 @@ cargo test -p stepflow-execution -- execute_flows
 
 ### Running the App
 ```bash
-# Run a workflow with input
+# Run a workflow with input file
 cargo run -- run --flow=examples/python/basic.yaml --input=examples/python/input1.json
+
+# Run a workflow with inline JSON input
+cargo run -- run --flow=examples/python/basic.yaml --input-json='{"m": 3, "n": 4}'
+
+# Run a workflow with inline YAML input
+cargo run -- run --flow=examples/python/basic.yaml --input-yaml='m: 2\nn: 7'
+
+# Run a workflow reading from stdin (JSON format)
+echo '{"m": 1, "n": 2}' | cargo run -- run --flow=examples/python/basic.yaml --format=json
 
 # Run with a custom config file
 cargo run -- run --flow=<flow.yaml> --input=<input.json> --config=<stepflow-config.yml>
@@ -53,6 +62,18 @@ cargo clippy --fix
 
 # Format code
 cargo fmt
+
+# Check compilation without building
+cargo check
+
+# Check compilation for a specific crate
+cargo check -p stepflow-protocol
+```
+
+### Python SDK Development
+```bash
+# Test Python SDK
+uv run --project sdks/python pytest
 ```
 
 ## Project Architecture
@@ -85,6 +106,7 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
    - Defines the JSON-RPC protocol for component communication
    - Uses structs and serde for serialization/deserialization
    - Implements stdio-based communication with sub-processes
+   - Supports bidirectional communication allowing components to send requests to the runtime
 
 6. **MCP Integration** (`stepflow-components-mcp`):
    - Provides integration with Model Context Protocol (MCP) tools
@@ -120,6 +142,8 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
 3. **Component**: A specific implementation that a step invokes
 4. **Plugin**: A service that provides one or more components
 5. **Value**: Data that flows between steps, with references to input or other steps
+6. **Blob**: Persistent JSON data storage with content-based IDs (SHA-256 hashes)
+7. **Context**: Runtime environment provided to components for system calls
 
 ### Error Handling
 
@@ -175,3 +199,43 @@ Useful commands:
 * `cargo insta pending-snapshots` produces a list of pending snapshots
 * `cargo insta show <path>` shows a specific snapshot
 * `cargo insta accept` will accept all of the snapshots.
+
+## Bidirectional Communication & Blob Support
+
+The protocol supports bidirectional communication allowing component servers to make calls back to the stepflow runtime.
+
+### Protocol Methods
+
+**From stepflow to components:**
+- `initialize`: Initialize the component server
+- `component_info`: Get component schema information
+- `component_execute`: Execute a component with input data
+
+**From components to stepflow:**
+- `blob_store`: Store JSON data as a blob, returns content-based ID
+- `blob_get`: Retrieve JSON data by blob ID
+
+### Python SDK Usage
+
+Components can receive a `StepflowContext` parameter to access runtime operations:
+
+```python
+from stepflow_sdk import StepflowStdioServer, StepflowContext
+import msgspec
+
+class MyInput(msgspec.Struct):
+    data: dict
+
+class MyOutput(msgspec.Struct):
+    blob_id: str
+
+server = StepflowStdioServer()
+
+@server.component
+def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
+    # Store data as a blob
+    blob_id = await context.put_blob(input.data)
+    return MyOutput(blob_id=blob_id)
+
+server.run()
+```
