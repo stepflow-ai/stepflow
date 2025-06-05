@@ -4,10 +4,9 @@ info:
   program: stepflow
   args:
     - "--log-file=/dev/null"
+    - "--omit-stack-trace"
     - submit
     - "--help"
-  env:
-    RUST_BACKTRACE: "0"
 ---
 success: true
 exit_code: 0
@@ -54,7 +53,7 @@ Options:
       --input-yaml <YAML>
           The input value as a YAML string
 
-      --format <FORMAT>
+      --stdin-format <FORMAT>
           The format for stdin input (json or yaml).
           
           Only used when reading from stdin (no other input options specified).
