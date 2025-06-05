@@ -12,13 +12,13 @@ beforeEach(() => {
   // Clear outputs
   stdoutOutput = [];
   stderrOutput = [];
-  
+
   // Mock stdout and stderr
   process.stdout.write = jest.fn((data: string | Uint8Array) => {
     stdoutOutput.push(data.toString());
     return true;
   });
-  
+
   process.stderr.write = jest.fn((data: string | Uint8Array) => {
     stderrOutput.push(data.toString());
     return true;
@@ -57,10 +57,10 @@ describe('StepflowStdioServer', () => {
         age_next_year: input.age + 1
       };
     };
-    
+
     // Manually register the component
     server.registerComponent(testFunc, 'testComponent');
-    
+
     // Set schemas
     server.setComponentSchema(
       'testComponent',
@@ -96,7 +96,7 @@ describe('StepflowStdioServer', () => {
         age_next_year: input.age + 1
       };
     };
-    
+
     // Manually register the component
     server.registerComponent(testFunc, 'custom_name');
 
@@ -114,13 +114,13 @@ describe('StepflowStdioServer', () => {
         age_next_year: input.age + 1
       };
     };
-    
+
     // Manually register the component
     server.registerComponent(testFunc, 'testComponent');
 
     const component = server.getComponent('testComponent');
     expect(component).toBeDefined();
-    
+
     if (component) {
       const result = component.function({ name: 'Alice', age: 25 }) as ValidOutput;
       expect(result).toBeDefined();
@@ -134,22 +134,22 @@ describe('StepflowStdioServer', () => {
     const testFunc1 = (input: ValidInput): ValidOutput => {
       return { greeting: '', age_next_year: 0 };
     };
-    
+
     const testFunc2 = (input: ValidInput): ValidOutput => {
       return { greeting: '', age_next_year: 0 };
     };
-    
+
     // Manually register components
     server.registerComponent(testFunc1, 'component1');
     server.registerComponent(testFunc2, 'component2');
-    
+
     // Mark server as initialized for testing
     (server as any).initialized = true;
 
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'component_list',
+      method: 'list_components',
       params: {}
     };
 
@@ -185,15 +185,15 @@ describe('StepflowStdioServer', () => {
           expect(response.result.server_protocol_version).toBe(1);
         }
       }
-      
+
       expect(server['initialized']).toBe(false);
-      
+
       const notification: Incoming = {
         jsonrpc: '2.0',
         method: 'initialized',
         params: {}
       };
-      
+
       return server['handleMessage'](notification).then(notificationResponse => {
         expect(notificationResponse).toBeNull();
         expect(server['initialized']).toBe(true);
@@ -206,17 +206,17 @@ describe('StepflowStdioServer', () => {
     const testFunc = (input: ValidInput): ValidOutput => {
       return { greeting: '', age_next_year: 0 };
     };
-    
+
     // Manually register the component
     server.registerComponent(testFunc, 'test_component');
-    
+
     // Set schemas
     server.setComponentSchema(
       'test_component',
       { type: 'object', properties: { name: { type: 'string' }, age: { type: 'number' } } },
       { type: 'object', properties: { greeting: { type: 'string' }, age_next_year: { type: 'number' } } }
     );
-    
+
     // Mark server as initialized for testing
     (server as any).initialized = true;
 
@@ -275,7 +275,7 @@ describe('StepflowStdioServer', () => {
         age_next_year: input.age + 1
       };
     };
-    
+
     // Manually register the component
     server.registerComponent(testFunc, 'test_component');
 
@@ -309,7 +309,7 @@ describe('StepflowStdioServer', () => {
   test('handle component_execute invalid input', () => {
     // Mark server as initialized for testing
     (server as any).initialized = true;
-    
+
     // Manual registration instead of using decorator for test
     const testFunc = (input: ValidInput): ValidOutput => {
       // This will throw if input is invalid
@@ -321,7 +321,7 @@ describe('StepflowStdioServer', () => {
         age_next_year: input.age + 1
       };
     };
-    
+
     // Manually register the component
     server.registerComponent(testFunc, 'test_component');
 
@@ -352,7 +352,7 @@ describe('StepflowStdioServer', () => {
   test('handle unknown method', () => {
     // Mark server as initialized for testing
     (server as any).initialized = true;
-    
+
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
@@ -377,7 +377,7 @@ describe('StepflowStdioServer', () => {
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'component_list',
+      method: 'list_components',
       params: {}
     };
 

@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import msgspec
 from stepflow_sdk.transport import Message
-from stepflow_sdk.protocol import ComponentInfoRequest, ComponentInfoResponse, ComponentExecuteRequest, ComponentExecuteResponse
+from stepflow_sdk.protocol import InitializeRequest, ComponentInfoRequest, ComponentInfoResponse, ComponentExecuteRequest, ComponentExecuteResponse
 from stepflow_sdk.context import StepflowContext
 
 @dataclass
@@ -30,6 +30,7 @@ class StepflowStdioServer:
     def __init__(self):
         self._components: Dict[str, ComponentEntry] = {}
         self._initialized = False
+        self._protocol_prefix: str = ""
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
         self._pending_requests: Dict[UUID, asyncio.Future] = {}
@@ -95,6 +96,8 @@ class StepflowStdioServer:
         id = request.id
         match request.method:
             case "initialize":
+                init_request = msgspec.json.decode(request.params, type=InitializeRequest)
+                self._protocol_prefix = init_request.protocol_prefix
                 return Message(
                     id=id,
                     result={"server_protocol_version": 1}
@@ -162,10 +165,12 @@ class StepflowStdioServer:
                             "data": None
                         }
                     )
-            case "component_list":
+            case "list_components":
+                # Return component URLs that match the expected Component format
+                component_urls = [f"{self._protocol_prefix}://{name}" for name in self._components.keys()]
                 return Message(
                     id=id,
-                    result={"components": list(self._components.keys())}
+                    result={"components": component_urls}
                 )
             case _:
                 print(f"Received unknown method request {request.method}", file=sys.stderr)

@@ -4,6 +4,7 @@ import msgspec
 
 class InitializeRequest(Struct, kw_only=True):
     runtime_protocol_version: int
+    protocol_prefix: str
 
 class InitializeResponse(Struct, kw_only=True):
     server_protocol_version: int

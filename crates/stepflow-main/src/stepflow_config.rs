@@ -35,9 +35,10 @@ pub struct SupportedPluginConfig {
 async fn create_plugin<P: PluginConfig>(
     plugin: P,
     working_directory: &Path,
+    protocol_prefix: &str,
 ) -> Result<Box<DynPlugin<'static>>> {
     plugin
-        .create_plugin(working_directory)
+        .create_plugin(working_directory, protocol_prefix)
         .await
         .change_context(MainError::RegisterPlugin)
 }
@@ -48,9 +49,9 @@ impl SupportedPluginConfig {
         working_directory: &Path,
     ) -> Result<(String, Box<DynPlugin<'static>>)> {
         let plugin = match self.plugin {
-            SupportedPlugin::Stdio(plugin) => create_plugin(plugin, working_directory).await,
-            SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await,
-            SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await,
+            SupportedPlugin::Stdio(plugin) => create_plugin(plugin, working_directory, &self.name).await,
+            SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory, &self.name).await,
+            SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory, &self.name).await,
         };
         let plugin = plugin.attach_printable_lazy(|| format!("plugin: {}", self.name))?;
         Ok((self.name, plugin))

@@ -203,7 +203,7 @@ async def test_handle_component_execute_invalid_input(server):
     assert response.error["code"] == -32000
 
 @pytest.mark.asyncio
-async def test_handle_component_list(server):
+async def test_handle_list_components(server):
     server._initialized = True
     
     @server.component(name="component1")
@@ -216,7 +216,7 @@ async def test_handle_component_list(server):
 
     request = Message(
         id=UUID(int=1),
-        method="component_list",
+        method="list_components",
         params={}
     )
     response = await server._handle_message(request)
@@ -245,7 +245,7 @@ async def test_handle_unknown_method(server):
 async def test_uninitialized_server(server):
     request = Message(
         id=UUID(int=1),
-        method="component_list",
+        method="list_components",
         params={}
     )
     response = await server._handle_message(request)

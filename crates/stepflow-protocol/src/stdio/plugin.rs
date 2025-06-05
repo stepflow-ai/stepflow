@@ -34,19 +34,30 @@ impl PluginConfig for StdioPluginConfig {
     async fn create_plugin(
         self,
         working_directory: &std::path::Path,
+        protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         // Look for the command in the system path and the working directory.
         let Self { command, args, env } = self;
 
         let launcher = Launcher::try_new(working_directory.to_owned(), command, args, env)?;
 
-        Ok(DynPlugin::boxed(StdioPlugin(RwLock::new(
-            StdioPluginState::Uninitialized(launcher),
-        ))))
+        Ok(DynPlugin::boxed(StdioPlugin::new(launcher, protocol_prefix.to_string())))
     }
 }
 
-pub struct StdioPlugin(RwLock<StdioPluginState>);
+pub struct StdioPlugin {
+    state: RwLock<StdioPluginState>,
+    protocol_prefix: String,
+}
+
+impl StdioPlugin {
+    pub fn new(launcher: Launcher, protocol_prefix: String) -> Self {
+        Self {
+            state: RwLock::new(StdioPluginState::Uninitialized(launcher)),
+            protocol_prefix,
+        }
+    }
+}
 
 enum StdioPluginState {
     Empty,
@@ -56,7 +67,7 @@ enum StdioPluginState {
 
 impl StdioPlugin {
     async fn client_handle(&self) -> Result<ClientHandle> {
-        let guard = self.0.read().await;
+        let guard = self.state.read().await;
         match &*guard {
             StdioPluginState::Initialized(handle) => Ok(handle.clone()),
             _ => Err(PluginError::Execution).attach_printable("stdio client not initialized"),
@@ -64,7 +75,7 @@ impl StdioPlugin {
     }
 
     async fn create_client(&self, context: Arc<dyn Context>) -> Result<ClientHandle> {
-        let mut guard = self.0.write().await;
+        let mut guard = self.state.write().await;
         match std::mem::replace(&mut *guard, StdioPluginState::Empty) {
             StdioPluginState::Uninitialized(launcher) => {
                 let client = Client::try_new(launcher, context)
@@ -87,6 +98,7 @@ impl Plugin for StdioPlugin {
         client
             .request(&crate::schema::initialization::Request {
                 runtime_protocol_version: 1,
+                protocol_prefix: self.protocol_prefix.clone(),
             })
             .await
             .change_context(PluginError::Initializing)?;
