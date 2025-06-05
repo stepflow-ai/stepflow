@@ -28,10 +28,10 @@ class ComponentEntry:
         return msgspec.json.schema(self.output_type)
 
 class StepflowStdioServer:
-    def __init__(self):
+    def __init__(self, default_protocol_prefix: str = "python"):
         self._components: Dict[str, ComponentEntry] = {}
         self._initialized = False
-        self._protocol_prefix: str = ""
+        self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
         self._pending_requests: Dict[UUID, asyncio.Future] = {}
@@ -109,14 +109,14 @@ class StepflowStdioServer:
                     result={"server_protocol_version": 1}
                 )
             case "component_info":
-                request = msgspec.json.decode(request.params, type=ComponentInfoRequest)            
-                component = self.get_component(request.component)
+                component_request = msgspec.json.decode(request.params, type=ComponentInfoRequest)            
+                component = self.get_component(component_request.component)
                 if not component:
                     return Message(
                         id=id,
                         error={
                             "code": -32601,
-                            "message": f"Component {request.component} not found",
+                            "message": f"Component {component_request.component} not found",
                             "data": None
                         }
                     )
@@ -129,20 +129,20 @@ class StepflowStdioServer:
                     )
                 )
             case "component_execute":
-                request = msgspec.json.decode(request.params, type=ComponentExecuteRequest)
-                component = self.get_component(request.component)
+                execute_request = msgspec.json.decode(request.params, type=ComponentExecuteRequest)
+                component = self.get_component(execute_request.component)
                 if not component:
                     return Message(
                         id=id,
                         error={
                             "code": -32601,
-                            "message": f"Component {request.component} not found",
+                            "message": f"Component {execute_request.component} not found",
                             "data": None
                         }
                     )
                 try:
                     # Parse input parameters into the expected type
-                    input = msgspec.json.decode(request.input, type=component.input_type)
+                    input = msgspec.json.decode(execute_request.input, type=component.input_type)
                     
                     # Execute component with or without context
                     import asyncio
