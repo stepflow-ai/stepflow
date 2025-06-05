@@ -10,7 +10,6 @@ description = "Types and trait for the step execution plugins."
 [dependencies]
 dynosaur.workspace = true
 error-stack.workspace = true
-futures.workspace = true
 serde.workspace = true
 stepflow-core.workspace = true
 stepflow-state.workspace = true

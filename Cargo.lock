@@ -2144,7 +2144,6 @@ version = "0.1.0"
 dependencies = [
  "dynosaur",
  "error-stack",
- "futures",
  "serde",
  "stepflow-core",
  "stepflow-state",
@@ -2164,7 +2163,6 @@ dependencies = [
  "serde_json",
  "stepflow-core",
  "stepflow-plugin",
- "stepflow-state",
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
