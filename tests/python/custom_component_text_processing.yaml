@@ -15,45 +15,113 @@ output_schema:
     word_analysis:
       type: object
 steps:
+# Create blobs for function definitions
+- id: create_word_analysis_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          text:
+            type: string
+        required:
+        - text
+      code: |
+        text = data['text'].lower()
+        words = text.split()
+
+        word_count = len(words)
+        char_count = len(text.replace(' ', ''))
+
+        # Count word lengths
+        word_lengths = {}
+        for word in words:
+            length = len(word)
+            word_lengths[length] = word_lengths.get(length, 0) + 1
+
+        # Find most common words
+        word_freq = {}
+        for word in words:
+            word_freq[word] = word_freq.get(word, 0) + 1
+
+        most_common = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:3]
+
+        return {
+            'word_count': word_count,
+            'char_count': char_count,
+            'avg_word_length': round(char_count / word_count, 2) if word_count > 0 else 0,
+            'word_length_distribution': word_lengths,
+            'most_common_words': [{'word': word, 'count': count} for word, count in most_common]
+        }
+- id: create_pattern_search_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          text:
+            type: string
+          pattern:
+            type: string
+        required:
+        - text
+        - pattern
+      code: |
+        text = data['text']
+        pattern = data['pattern']
+
+        try:
+            matches = re.findall(pattern, text)
+            return [{'match': match, 'index': i} for i, match in enumerate(matches)]
+        except:
+            return []
+- id: create_sentiment_analysis_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          text:
+            type: string
+        required:
+        - text
+      code: |
+        # Simple sentiment analysis based on positive/negative words
+        positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'joy']
+        negative_words = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'sad', 'angry', 'upset', 'disappointed']
+
+        text = data['text'].lower()
+        words = text.split()
+
+        positive_count = sum(1 for word in words if word in positive_words)
+        negative_count = sum(1 for word in words if word in negative_words)
+
+        total_sentiment_words = positive_count + negative_count
+        if total_sentiment_words == 0:
+            return 0.0  # Neutral
+
+        # Return score between -1 (very negative) and 1 (very positive)
+        sentiment_score = (positive_count - negative_count) / total_sentiment_words
+        return round(sentiment_score, 2)
+# Execute functions using blob_ids
 - id: word_analysis
   component: python://custom_component
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        text:
-          type: string
-      required:
-      - text
-    code: |
-      text = data['text'].lower()
-      words = text.split()
-
-      word_count = len(words)
-      char_count = len(text.replace(' ', ''))
-
-      # Count word lengths
-      word_lengths = {}
-      for word in words:
-          length = len(word)
-          word_lengths[length] = word_lengths.get(length, 0) + 1
-
-      # Find most common words
-      word_freq = {}
-      for word in words:
-          word_freq[word] = word_freq.get(word, 0) + 1
-
-      most_common = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:3]
-
-      return {
-          'word_count': word_count,
-          'char_count': char_count,
-          'avg_word_length': round(char_count / word_count, 2) if word_count > 0 else 0,
-          'word_length_distribution': word_lengths,
-          'most_common_words': [{'word': word, 'count': count} for word, count in most_common]
-      }
+    blob_id:
+      $from:
+        step: create_word_analysis_blob
+      path: blob_id
     input:
       text:
         $from:
@@ -64,25 +132,10 @@ steps:
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        text:
-          type: string
-        pattern:
-          type: string
-      required:
-      - text
-      - pattern
-    code: |
-      text = data['text']
-      pattern = data['pattern']
-
-      try:
-          matches = re.findall(pattern, text)
-          return [{'match': match, 'index': i} for i, match in enumerate(matches)]
-      except:
-          return []
+    blob_id:
+      $from:
+        step: create_pattern_search_blob
+      path: blob_id
     input:
       text:
         $from:
@@ -97,31 +150,10 @@ steps:
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        text:
-          type: string
-      required:
-      - text
-    code: |
-      # Simple sentiment analysis based on positive/negative words
-      positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'joy']
-      negative_words = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'sad', 'angry', 'upset', 'disappointed']
-
-      text = data['text'].lower()
-      words = text.split()
-
-      positive_count = sum(1 for word in words if word in positive_words)
-      negative_count = sum(1 for word in words if word in negative_words)
-
-      total_sentiment_words = positive_count + negative_count
-      if total_sentiment_words == 0:
-          return 0.0  # Neutral
-
-      # Return score between -1 (very negative) and 1 (very positive)
-      sentiment_score = (positive_count - negative_count) / total_sentiment_words
-      return round(sentiment_score, 2)
+    blob_id:
+      $from:
+        step: create_sentiment_analysis_blob
+      path: blob_id
     input:
       text:
         $from:

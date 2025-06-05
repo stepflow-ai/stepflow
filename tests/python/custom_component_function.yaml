@@ -16,27 +16,37 @@ output_schema:
     analytics:
       type: object
 steps:
+- id: create_analyze_scores_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              type: object
+              properties:
+                name:
+                  type: string
+                score:
+                  type: number
+        required:
+        - data
+      code: "def analyze_scores(data):\n    scores = [item['score'] for item in data['data']]\n    \n    if not scores:\n        return {\n            'count': 0,\n            'average': 0,\n            'min': 0,\n            'max': 0,\n            'top_performer': None\n        }\n    \n    average = sum(scores) / len(scores)\n    min_score = min(scores)\n    max_score = max(scores)\n    \n    # Find top performer\n    top_performer = None\n    for item in data['data']:\n        if item['score'] == max_score:\n            top_performer = item['name']\n            break\n    \n    return {\n        'count': len(scores),\n        'average': round(average, 2),\n        'min': min_score,\n        'max': max_score,\n        'top_performer': top_performer\n    }\n"
+      function_name: analyze_scores
 - id: analyze_scores
   component: python://custom_component
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            type: object
-            properties:
-              name:
-                type: string
-              score:
-                type: number
-      required:
-      - data
-    code: "def analyze_scores(data):\n    scores = [item['score'] for item in data['data']]\n    \n    if not scores:\n        return {\n            'count': 0,\n            'average': 0,\n            'min': 0,\n            'max': 0,\n            'top_performer': None\n        }\n    \n    average = sum(scores) / len(scores)\n    min_score = min(scores)\n    max_score = max(scores)\n    \n    # Find top performer\n    top_performer = None\n    for item in data['data']:\n        if item['score'] == max_score:\n            top_performer = item['name']\n            break\n    \n    return {\n        'count': len(scores),\n        'average': round(average, 2),\n        'min': min_score,\n        'max': max_score,\n        'top_performer': top_performer\n    }\n"
-    function_name: analyze_scores
+    blob_id:
+      $from:
+        step: create_analyze_scores_blob
+      path: blob_id
     input:
       data:
         $from:

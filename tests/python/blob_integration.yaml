@@ -21,47 +21,54 @@ steps:
     input:
       data: { $from: { workflow: input }, path: user_data }
 
-  # Step 2: Python UDF retrieves blob and processes it
+  # Step 2: Create blob for Python function definition
+  - id: create_process_data_blob
+    component: builtins://put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            blob_id: { type: string }
+            config: { type: object }
+          required: [blob_id, config]
+        code: |
+          async def process_data(data, context):
+              # Retrieve the original data from blob
+              original_data = await context.get_blob(data['blob_id'])
+              
+              # Process the data (example: add multiply numbers)
+              processed_data = {
+                  'original': original_data,
+                  'config': data['config']
+              }
+              
+              # If original data has numeric values, transform them
+              if isinstance(original_data, dict):
+                  for key, value in original_data.items():
+                      if isinstance(value, (int, float)):
+                          processed_data[f'{key}_doubled'] = value * 2
+              
+              # Store processed data as new blob
+              new_blob_id = await context.put_blob(processed_data)
+              
+              return {
+                  'original_blob_id': data['blob_id'],
+                  'processed_blob_id': new_blob_id,
+                  'summary': f'Processed {len(original_data)} fields'
+              }
+        function_name: process_data
+
+  # Step 3: Python UDF retrieves blob and processes it
   - id: process_blob_data
     component: python://custom_component
     input:
-      input_schema:
-        type: object
-        properties:
-          blob_id: { type: string }
-          config: { type: object }
-        required: [blob_id, config]
-      code: |
-        async def process_data(data, context):
-            # Retrieve the original data from blob
-            original_data = await context.get_blob(data['blob_id'])
-            
-            # Process the data (example: add multiply numbers)
-            processed_data = {
-                'original': original_data,
-                'config': data['config']
-            }
-            
-            # If original data has numeric values, transform them
-            if isinstance(original_data, dict):
-                for key, value in original_data.items():
-                    if isinstance(value, (int, float)):
-                        processed_data[f'{key}_doubled'] = value * 2
-            
-            # Store processed data as new blob
-            new_blob_id = await context.put_blob(processed_data)
-            
-            return {
-                'original_blob_id': data['blob_id'],
-                'processed_blob_id': new_blob_id,
-                'summary': f'Processed {len(original_data)} fields'
-            }
-      function_name: process_data
+      blob_id: { $from: { step: create_process_data_blob }, path: blob_id }
       input:
         blob_id: { $from: { step: store_original_data }, path: blob_id }
         config: { $from: { workflow: input }, path: processing_config }
 
-  # Step 3: Retrieve final processed data using builtin component
+  # Step 4: Retrieve final processed data using builtin component
   - id: get_final_result
     component: builtins://get_blob
     input:

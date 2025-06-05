@@ -30,33 +30,44 @@ steps:
           workflow: input
         path: number
       timestamp: 2024-01-01T00:00:00Z
+# Create blob for Python function definition
+- id: create_store_data_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          message:
+            type: string
+          number:
+            type: number
+        required:
+        - message
+        - number
+      code: |
+        async def store_data(data, context):
+          # Create enhanced data
+          enhanced_data = {
+            'original_message': data['message'],
+            'number_squared': data['number'] ** 2,
+            'processed_by': 'python_udf'
+          }
+          # Store as blob using context
+          blob_id = await context.put_blob(enhanced_data)
+          return {'blob_id': blob_id, 'status': 'success'}
+      function_name: store_data
 - id: store_with_python
   component: python://custom_component
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        message:
-          type: string
-        number:
-          type: number
-      required:
-      - message
-      - number
-    code: |
-      async def store_data(data, context):
-        # Create enhanced data
-        enhanced_data = {
-          'original_message': data['message'],
-          'number_squared': data['number'] ** 2,
-          'processed_by': 'python_udf'
-        }
-        # Store as blob using context
-        blob_id = await context.put_blob(enhanced_data)
-        return {'blob_id': blob_id, 'status': 'success'}
-    function_name: store_data
+    blob_id:
+      $from:
+        step: create_store_data_blob
+      path: blob_id
     input:
       message:
         $from:
