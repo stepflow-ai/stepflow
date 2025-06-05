@@ -154,7 +154,7 @@ pub enum Command {
         format: OutputFormat,
 
         /// Include component schemas in output.
-        /// 
+        ///
         /// Defaults to false for pretty format, true for json/yaml formats.
         #[arg(long = "schemas")]
         schemas: Option<bool>,

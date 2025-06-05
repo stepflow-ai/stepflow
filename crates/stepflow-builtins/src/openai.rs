@@ -81,7 +81,9 @@ impl BuiltinComponent for OpenAIComponent {
         Ok(ComponentInfo {
             input_schema,
             output_schema,
-            description: Some("Send messages to OpenAI's chat completion API and get a response".to_string()),
+            description: Some(
+                "Send messages to OpenAI's chat completion API and get a response".to_string(),
+            ),
         })
     }
 

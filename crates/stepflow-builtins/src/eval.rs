@@ -56,7 +56,9 @@ impl BuiltinComponent for EvalComponent {
         Ok(ComponentInfo {
             input_schema,
             output_schema,
-            description: Some("Execute a nested workflow with given input and return the result".to_string()),
+            description: Some(
+                "Execute a nested workflow with given input and return the result".to_string(),
+            ),
         })
     }
 

@@ -41,7 +41,10 @@ impl PluginConfig for StdioPluginConfig {
 
         let launcher = Launcher::try_new(working_directory.to_owned(), command, args, env)?;
 
-        Ok(DynPlugin::boxed(StdioPlugin::new(launcher, protocol_prefix.to_string())))
+        Ok(DynPlugin::boxed(StdioPlugin::new(
+            launcher,
+            protocol_prefix.to_string(),
+        )))
     }
 }
 

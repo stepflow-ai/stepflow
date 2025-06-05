@@ -1,10 +1,10 @@
 #![allow(clippy::print_stdout)]
 use crate::cli::{OutputFormat, create_executor, load_config};
-use stepflow_core::schema::SchemaRef;
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use stepflow_core::schema::SchemaRef;
 use stepflow_core::workflow::Component;
 use stepflow_plugin::Plugin as _;
 
@@ -29,7 +29,11 @@ struct ComponentList {
 }
 
 /// List all available components from a stepflow config.
-pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat, schemas: Option<bool>) -> Result<()> {
+pub async fn list_components(
+    config_path: Option<PathBuf>,
+    format: OutputFormat,
+    schemas: Option<bool>,
+) -> Result<()> {
     // Determine whether to include schemas based on format and explicit flag
     let include_schemas = schemas.unwrap_or(match format {
         OutputFormat::Pretty => false,
@@ -61,8 +65,16 @@ pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat,
 
             let details = ComponentDetails {
                 component,
-                input_schema: if include_schemas { Some(info.input_schema) } else { None },
-                output_schema: if include_schemas { Some(info.output_schema) } else { None },
+                input_schema: if include_schemas {
+                    Some(info.input_schema)
+                } else {
+                    None
+                },
+                output_schema: if include_schemas {
+                    Some(info.output_schema)
+                } else {
+                    None
+                },
                 description: info.description,
             };
 

@@ -33,7 +33,9 @@ impl BuiltinComponent for CreateMessagesComponent {
         Ok(ComponentInfo {
             input_schema,
             output_schema,
-            description: Some("Create a chat message list from system instructions and user prompt".to_string()),
+            description: Some(
+                "Create a chat message list from system instructions and user prompt".to_string(),
+            ),
         })
     }
 
