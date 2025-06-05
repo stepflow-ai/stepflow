@@ -152,6 +152,12 @@ pub enum Command {
         /// Output format for the component list.
         #[arg(long = "format", value_name = "FORMAT", default_value = "pretty")]
         format: OutputFormat,
+
+        /// Include component schemas in output.
+        ///
+        /// Defaults to false for pretty format, true for json/yaml formats.
+        #[arg(long = "schemas")]
+        schemas: Option<bool>,
     },
 }
 
@@ -403,8 +409,9 @@ impl Cli {
             Command::ListComponents {
                 config_path,
                 format,
+                schemas,
             } => {
-                crate::list_components::list_components(config_path, format).await?;
+                crate::list_components::list_components(config_path, format, schemas).await?;
             }
         };
 

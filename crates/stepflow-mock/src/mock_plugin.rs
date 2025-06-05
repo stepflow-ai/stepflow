@@ -18,6 +18,7 @@ impl PluginConfig for MockPlugin {
     async fn create_plugin(
         self,
         _working_directory: &std::path::Path,
+        _protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         Ok(DynPlugin::boxed(self))
     }
@@ -120,6 +121,7 @@ impl Plugin for MockPlugin {
         Ok(ComponentInfo {
             input_schema: component.input_schema.clone(),
             output_schema: component.output_schema.clone(),
+            description: None,
         })
     }
 

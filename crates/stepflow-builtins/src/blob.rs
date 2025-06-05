@@ -44,6 +44,9 @@ impl BuiltinComponent for PutBlobComponent {
         Ok(ComponentInfo {
             input_schema,
             output_schema,
+            description: Some(
+                "Store JSON data as a blob and return its content-addressable ID".to_string(),
+            ),
         })
     }
 
@@ -109,6 +112,7 @@ impl BuiltinComponent for GetBlobComponent {
         Ok(ComponentInfo {
             input_schema,
             output_schema,
+            description: Some("Retrieve JSON data from a blob using its ID".to_string()),
         })
     }
 

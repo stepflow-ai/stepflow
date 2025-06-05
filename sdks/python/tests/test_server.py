@@ -100,7 +100,10 @@ async def test_handle_initialize(server):
     request = Message(
         id=UUID(int=1),
         method="initialize",
-        params={}
+        params=msgspec.json.encode({
+            "runtime_protocol_version": 1,
+            "protocol_prefix": "python"
+        })
     )
     # Runtime <- Server. Initialize method response.
     response = await server._handle_message(request)
@@ -112,7 +115,7 @@ async def test_handle_initialize(server):
     # Runtime -> Server: Initialized notification.
     notification = Message(
         method="initialized",
-        params={}
+        params=msgspec.json.encode({})
     )
     response = await server._handle_message(notification)
     assert response is None
@@ -203,7 +206,7 @@ async def test_handle_component_execute_invalid_input(server):
     assert response.error["code"] == -32000
 
 @pytest.mark.asyncio
-async def test_handle_component_list(server):
+async def test_handle_list_components(server):
     server._initialized = True
     
     @server.component(name="component1")
@@ -216,15 +219,15 @@ async def test_handle_component_list(server):
 
     request = Message(
         id=UUID(int=1),
-        method="component_list",
-        params={}
+        method="list_components",
+        params=msgspec.json.encode({})
     )
     response = await server._handle_message(request)
     assert response.id == request.id
     assert "components" in response.result
     assert len(response.result["components"]) == 2
-    assert "component1" in response.result["components"]
-    assert "component2" in response.result["components"]
+    assert "python://component1" in response.result["components"]
+    assert "python://component2" in response.result["components"]
 
 @pytest.mark.asyncio
 async def test_handle_unknown_method(server):
@@ -233,7 +236,7 @@ async def test_handle_unknown_method(server):
     request = Message(
         id=UUID(int=1),
         method="unknown_method",
-        params={}
+        params=msgspec.json.encode({})
     )
     response = await server._handle_message(request)
     assert response.id == request.id
@@ -245,8 +248,8 @@ async def test_handle_unknown_method(server):
 async def test_uninitialized_server(server):
     request = Message(
         id=UUID(int=1),
-        method="component_list",
-        params={}
+        method="list_components",
+        params=msgspec.json.encode({})
     )
     response = await server._handle_message(request)
     assert response.id == request.id
