@@ -8,6 +8,9 @@ from stepflow_sdk.context import StepflowContext
 # Create server instance
 server = StepflowStdioServer()
 
+# Global cache for compiled functions by blob_id
+_function_cache = {}
+
 # Example input/output types
 class MathInput(msgspec.Struct):
     a: int
@@ -45,10 +48,8 @@ class SummaryResult(msgspec.Struct):
     summary: str
 
 class CustomComponentInput(msgspec.Struct):
-    input_schema: dict
-    code: str
+    blob_id: str
     input: dict
-    function_name: str | None = None
 
 # Updated input type that can handle nested data
 class NestedDataInput(msgspec.Struct):
@@ -327,25 +328,69 @@ Focus on actionable business insights that would help a sales manager make strat
 @server.component
 async def custom_component(input: CustomComponentInput, context: StepflowContext) -> Any:
     """
-    Execute custom code with input validation against a JSON schema.
+    Execute custom code using cached compiled functions from blobs.
     
     Args:
-        input: Contains input_schema (JSON schema), code (Python code), 
-               input (data), and optional function_name
+        input: Contains blob_id (referencing stored code/schema) and input (data)
     
     Returns:
         The result of the custom code.
     """
-    import jsonschema
-    import json
+    # Check if we have a cached function for this blob_id
+    if input.blob_id in _function_cache:
+        print(f"Using cached function for blob_id: {input.blob_id}", file=sys.stderr)
+        compiled_func = _function_cache[input.blob_id]['function']
+    else:
+        print(f"Loading and compiling function for blob_id: {input.blob_id}", file=sys.stderr)
+        
+        # Get the blob containing the function definition
+        try:
+            blob_data = await context.get_blob(input.blob_id)
+        except Exception as e:
+            raise ValueError(f"Failed to retrieve blob {input.blob_id}: {e}")
+        
+        # Extract code and schema from blob
+        if not isinstance(blob_data, dict):
+            raise ValueError(f"Blob {input.blob_id} must contain a dictionary")
+        
+        code = blob_data.get('code')
+        input_schema = blob_data.get('input_schema')
+        function_name = blob_data.get('function_name')
+        
+        if not code:
+            raise ValueError(f"Blob {input.blob_id} must contain 'code' field")
+        if not input_schema:
+            raise ValueError(f"Blob {input.blob_id} must contain 'input_schema' field")
+        
+        # Compile the function with validation built-in
+        compiled_func = _compile_function(code, function_name, input_schema, context)
+        
+        # Cache the compiled function
+        _function_cache[input.blob_id] = {
+            'function': compiled_func,
+            'input_schema': input_schema,
+            'function_name': function_name
+        }
     
+    # Execute the cached function (validation happens inside)
     try:
-        # Validate input against the schema
-        jsonschema.validate(input.input, input.input_schema)
-    except jsonschema.ValidationError as e:
-        raise ValueError(f"Input validation failed: {e.message}")
-    except jsonschema.SchemaError as e:
-        raise ValueError(f"Invalid schema: {e.message}")
+        if inspect.iscoroutinefunction(compiled_func):
+            result = await compiled_func(input.input)
+        else:
+            result = compiled_func(input.input)
+    except Exception as e:
+        raise ValueError(f"Function execution failed: {e}")
+    
+    print(f"Result: {result}", file=sys.stderr)
+    return result
+
+
+def _compile_function(code: str, function_name: str | None, input_schema: dict, context: StepflowContext):
+    """
+    Compile a function from code string and return the callable with validation.
+    """
+    import json
+    import jsonschema
     
     # Create a safe execution environment
     safe_globals = {
@@ -379,60 +424,68 @@ async def custom_component(input: CustomComponentInput, context: StepflowContext
         'json': json,
         'math': __import__('math'),
         're': __import__('re'),
-        'context': context,  # Inject StepflowContext for blob operations
+        'context': context,
     }
-        
-    result = None
-    if (name := input.function_name) is not None:
+    
+    def validate_input(data):
+        """Validate input data against the schema."""
+        try:
+            jsonschema.validate(data, input_schema)
+        except jsonschema.ValidationError as e:
+            raise ValueError(f"Input validation failed: {e.message}")
+        except jsonschema.SchemaError as e:
+            raise ValueError(f"Invalid schema: {e.message}")
+    
+    if function_name is not None:
         # Code contains function definition(s)
         local_scope = {}
         try:
-            exec(input.code, safe_globals, local_scope)
+            exec(code, safe_globals, local_scope)
         except Exception as e:
             raise ValueError(f"Code execution failed: {e}")
         
         # Look for the specified function
-        if name not in local_scope:
-            raise ValueError(f"Function '{name}' not found in code")
+        if function_name not in local_scope:
+            raise ValueError(f"Function '{function_name}' not found in code")
         
-        func = local_scope[name]
+        func = local_scope[function_name]
         if not callable(func):
-            print(f"'{name}' is not a function", file=sys.stderr)
-            raise ValueError(f"'{name}' is not a function")
+            raise ValueError(f"'{function_name}' is not a function")
         
         sig = inspect.signature(func)
         params = list(sig.parameters)
         if len(params) == 2 and params[1] == "context":
-            args = [input.input, context]
+            # Function expects context as second parameter
+            async def wrapper(data):
+                validate_input(data)
+                if inspect.iscoroutinefunction(func):
+                    return await func(data, context)
+                else:
+                    return func(data, context)
+            return wrapper
         else:
-            args = [input.input]
-
-        try:
-            # Check if function is async
-            if inspect.iscoroutinefunction(func):
-                result = await func(*args)
-            else:
-                result = func(*args)
-        except Exception as e:
-            raise ValueError(f"Function execution failed: {e}")
+            # Function only expects data
+            def wrapper(data):
+                validate_input(data)
+                return func(data)
+            return wrapper
     else:
-        # Code is a function body - wrap it in a lambda or function
+        # Code is a function body - wrap it appropriately
         try:
             # Try as expression first (for simple cases)
-            wrapped_code = f"lambda data: {input.code}"
+            wrapped_code = f"lambda data: {code}"
             func = eval(wrapped_code, safe_globals)
-            # Check if the result is a coroutine (for async expressions)
-            temp_result = func(input.input)
-            if inspect.iscoroutine(temp_result):
-                result = await temp_result
-            else:
-                result = temp_result
+            
+            def wrapper(data):
+                validate_input(data)
+                return func(data)
+            return wrapper
         except:
             # If that fails, try as statements in a function body
             try:
                 # Properly indent each line of the code
                 indented_lines = []
-                for line in input.code.split('\n'):
+                for line in code.split('\n'):
                     if line.strip():  # Only indent non-empty lines
                         indented_lines.append('    ' + line)
                     else:
@@ -443,16 +496,17 @@ async def custom_component(input: CustomComponentInput, context: StepflowContext
                 local_scope = {}
                 exec(func_code, safe_globals, local_scope)
                 temp_func = local_scope['_temp_func']
-                # Check if function is async
-                if inspect.iscoroutinefunction(temp_func):
-                    result = await temp_func(input.input, context)
-                else:
-                    result = temp_func(input.input, context)
+                
+                # Wrap to always pass context and validate
+                async def wrapper(data):
+                    validate_input(data)
+                    if inspect.iscoroutinefunction(temp_func):
+                        return await temp_func(data, context)
+                    else:
+                        return temp_func(data, context)
+                return wrapper
             except Exception as e:
-                raise ValueError(f"Code execution failed: {e}")
-    
-    print(f"Result: {result}", file=sys.stderr)
-    return result
+                raise ValueError(f"Code compilation failed: {e}")
 
 def main():
     # Start the server

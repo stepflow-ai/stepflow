@@ -15,22 +15,68 @@ output_schema:
     sum:
       type: number
 steps:
+# Create blobs for function definitions
+- id: create_addition_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          x:
+            type: number
+          y:
+            type: number
+        required:
+        - x
+        - y
+      code: data['x'] + data['y']
+- id: create_multiplication_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          x:
+            type: number
+          y:
+            type: number
+        required:
+        - x
+        - y
+      code: data['x'] * data['y']
+- id: create_complex_calculation_blob
+  component: builtins://put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          sum:
+            type: number
+          product:
+            type: number
+        required:
+        - sum
+        - product
+      code: math.sqrt(data['sum'] ** 2 + data['product'] ** 2)
+# Execute functions using blob_ids
 - id: simple_addition
   component: python://custom_component
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        x:
-          type: number
-        y:
-          type: number
-      required:
-      - x
-      - y
-    code: data['x'] + data['y']
+    blob_id:
+      $from:
+        step: create_addition_blob
+      path: blob_id
     input:
       x:
         $from:
@@ -45,17 +91,10 @@ steps:
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        x:
-          type: number
-        y:
-          type: number
-      required:
-      - x
-      - y
-    code: data['x'] * data['y']
+    blob_id:
+      $from:
+        step: create_multiplication_blob
+      path: blob_id
     input:
       x:
         $from:
@@ -70,17 +109,10 @@ steps:
   input_schema: null
   output_schema: null
   input:
-    input_schema:
-      type: object
-      properties:
-        sum:
-          type: number
-        product:
-          type: number
-      required:
-      - sum
-      - product
-    code: math.sqrt(data['sum'] ** 2 + data['product'] ** 2)
+    blob_id:
+      $from:
+        step: create_complex_calculation_blob
+      path: blob_id
     input:
       sum:
         $from:

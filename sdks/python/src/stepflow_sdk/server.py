@@ -328,7 +328,7 @@ class StepflowStdioServer:
         """Handle a response message from the runtime."""
         if message.id and message.id in self._pending_requests:
             print(f"Handling response to {message.id}: {message}", file=sys.stderr)
-            future = self._pending_requests[message.id]
+            future = self._pending_requests.pop(message.id)
             
             if message.error:
                 # Create exception from error
