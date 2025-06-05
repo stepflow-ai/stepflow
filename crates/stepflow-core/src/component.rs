@@ -14,4 +14,8 @@ pub struct ComponentInfo {
     ///
     /// Can be any valid JSON schema (object, primitive, array, etc.).
     pub output_schema: SchemaRef,
+
+    /// Optional description of what the component does.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }

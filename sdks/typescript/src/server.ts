@@ -46,7 +46,7 @@ export class StepflowStdioServer {
         return this.registerComponent(target, options.name || context.name?.toString() || 'unknown');
       };
     }
-    
+
     // If used as a simple decorator
     if (targetOrOptions && context) {
       return this.registerComponent(
@@ -54,7 +54,7 @@ export class StepflowStdioServer {
         context.name?.toString() || 'unknown'
       );
     }
-    
+
     // If used as a factory
     return (target: any, context: ClassMethodDecoratorContext) => {
       return this.registerComponent(target, context.name?.toString() || 'unknown');
@@ -93,7 +93,7 @@ export class StepflowStdioServer {
     if (parsedUrl.pathname && parsedUrl.pathname !== '/') {
       componentName += parsedUrl.pathname;
     }
-    
+
     return this.components.get(componentName);
   }
 
@@ -120,16 +120,16 @@ export class StepflowStdioServer {
     switch (request.method) {
       case 'initialize':
         return createSuccessResponse(id, { server_protocol_version: 1 });
-      
+
       case 'component_info': {
         const infoRequest = request.params as protocol.ComponentInfoRequest;
         const component = this.getComponent(infoRequest.component);
-        
+
         if (!component) {
           return createErrorResponse(
-            id, 
-            -32601, 
-            `Component ${infoRequest.component} not found`, 
+            id,
+            -32601,
+            `Component ${infoRequest.component} not found`,
             null
           );
         }
@@ -139,16 +139,16 @@ export class StepflowStdioServer {
           output_schema: component.outputSchema,
         });
       }
-      
+
       case 'component_execute': {
         const executeRequest = request.params as protocol.ComponentExecuteRequest;
         const component = this.getComponent(executeRequest.component);
-        
+
         if (!component) {
           return createErrorResponse(
-            id, 
-            -32601, 
-            `Component ${executeRequest.component} not found`, 
+            id,
+            -32601,
+            `Component ${executeRequest.component} not found`,
             null
           );
         }
@@ -156,7 +156,7 @@ export class StepflowStdioServer {
         try {
           // Execute the component function with the input
           const output = component.function(executeRequest.input);
-          
+
           return createSuccessResponse(id, {
             output
           });
@@ -169,12 +169,12 @@ export class StepflowStdioServer {
           );
         }
       }
-      
-      case 'component_list':
+
+      case 'list_components':
         return createSuccessResponse(id, {
           components: Array.from(this.components.keys())
         });
-      
+
       default:
         return createErrorResponse(
           id,
@@ -205,7 +205,7 @@ export class StepflowStdioServer {
         console.error(`Received request: ${JSON.stringify(request)}`);
 
         const response = await this.handleMessage(request);
-        
+
         if (response) {
           console.error(`Sending response: ${JSON.stringify(response)}`);
           const responseStr = serializeResponse(response) + '\n';
@@ -213,20 +213,20 @@ export class StepflowStdioServer {
         }
       } catch (e) {
         console.error(`Error: ${e}`);
-        
+
         // Send error response
         if (typeof line === 'string') {
           try {
             const request = JSON.parse(line);
             const id = request.id || '';
-            
+
             const errorResponse = createErrorResponse(
               id,
               -32000,
               e instanceof Error ? e.message : String(e),
               null
             );
-            
+
             process.stdout.write(serializeResponse(errorResponse) + '\n');
           } catch (parseError) {
             // If we can't parse the request, we can't send a proper response
@@ -251,7 +251,7 @@ export class StepflowStdioServer {
    * Set input and output schema for a component
    */
   public setComponentSchema(
-    name: string, 
+    name: string,
     inputSchema: Record<string, any>,
     outputSchema: Record<string, any>
   ): void {

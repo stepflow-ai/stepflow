@@ -4,16 +4,23 @@ use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use stepflow_core::{component::ComponentInfo, workflow::Component};
+use stepflow_core::schema::SchemaRef;
+use stepflow_core::workflow::Component;
 use stepflow_plugin::Plugin as _;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComponentDetails {
     /// The component identifier (URL)
     pub component: Component,
-    /// Information about the component including schemas
-    #[serde(flatten)]
-    pub info: ComponentInfo,
+    /// Input schema (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<SchemaRef>,
+    /// Output schema (optional)  
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<SchemaRef>,
+    /// Component description (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +29,16 @@ struct ComponentList {
 }
 
 /// List all available components from a stepflow config.
-pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat) -> Result<()> {
+pub async fn list_components(
+    config_path: Option<PathBuf>,
+    format: OutputFormat,
+    schemas: Option<bool>,
+) -> Result<()> {
+    // Determine whether to include schemas based on format and explicit flag
+    let include_schemas = schemas.unwrap_or(match format {
+        OutputFormat::Pretty => false,
+        OutputFormat::Json | OutputFormat::Yaml => true,
+    });
     // Load config using the standard resolution logic
     let config = load_config(None, config_path)?;
 
@@ -47,7 +63,22 @@ pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat)
                 .await
                 .change_context(MainError::PluginCommunication)?;
 
-            all_components.push(ComponentDetails { component, info });
+            let details = ComponentDetails {
+                component,
+                input_schema: if include_schemas {
+                    Some(info.input_schema)
+                } else {
+                    None
+                },
+                output_schema: if include_schemas {
+                    Some(info.output_schema)
+                } else {
+                    None
+                },
+                description: info.description,
+            };
+
+            all_components.push(details);
         }
     }
 
@@ -60,7 +91,7 @@ pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat)
 
     // Output in the requested format
     match format {
-        OutputFormat::Pretty => print_pretty(&component_list),
+        OutputFormat::Pretty => print_pretty(&component_list.components),
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&component_list)
                 .change_context(MainError::SerializationError)?;
@@ -76,8 +107,8 @@ pub async fn list_components(config_path: Option<PathBuf>, format: OutputFormat)
     Ok(())
 }
 
-fn print_pretty(component_list: &ComponentList) {
-    if component_list.components.is_empty() {
+fn print_pretty(components: &[ComponentDetails]) {
+    if components.is_empty() {
         println!("No components found.");
         return;
     }
@@ -85,27 +116,36 @@ fn print_pretty(component_list: &ComponentList) {
     println!("Available Components:");
     println!("====================");
 
-    for component in &component_list.components {
+    for component in components {
         println!();
         println!("Component: {}", component.component.url());
 
-        // Print input schema
-        println!("  Input Schema:");
-        let input_schema_str = serde_json::to_string_pretty(&component.info.input_schema)
-            .unwrap_or_else(|_| "Error serializing schema".to_string());
-        for line in input_schema_str.lines() {
-            println!("    {}", line);
+        // Print description if present
+        if let Some(ref description) = component.description {
+            println!("  Description: {}", description);
         }
 
-        // Print output schema
-        println!("  Output Schema:");
-        let output_schema_str = serde_json::to_string_pretty(&component.info.output_schema)
-            .unwrap_or_else(|_| "Error serializing schema".to_string());
-        for line in output_schema_str.lines() {
-            println!("    {}", line);
+        // Print input schema if present
+        if let Some(ref input_schema) = component.input_schema {
+            println!("  Input Schema:");
+            let input_schema_str = serde_json::to_string_pretty(input_schema)
+                .unwrap_or_else(|_| "Error serializing schema".to_string());
+            for line in input_schema_str.lines() {
+                println!("    {}", line);
+            }
+        }
+
+        // Print output schema if present
+        if let Some(ref output_schema) = component.output_schema {
+            println!("  Output Schema:");
+            let output_schema_str = serde_json::to_string_pretty(output_schema)
+                .unwrap_or_else(|_| "Error serializing schema".to_string());
+            for line in output_schema_str.lines() {
+                println!("    {}", line);
+            }
         }
     }
 
     println!();
-    println!("Total components: {}", component_list.components.len());
+    println!("Total components: {}", components.len());
 }

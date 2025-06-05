@@ -6,6 +6,8 @@ use crate::schema::{Method, Notification};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub runtime_protocol_version: u32,
+    /// The protocol prefix for components served by this plugin (e.g., "python", "typescript")
+    pub protocol_prefix: String,
 }
 
 /// Response to tho initializaiton request.

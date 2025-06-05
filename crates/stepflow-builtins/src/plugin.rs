@@ -25,6 +25,7 @@ impl PluginConfig for BuiltinPluginConfig {
     async fn create_plugin(
         self,
         _working_directory: &std::path::Path,
+        _protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         Ok(DynPlugin::boxed(Builtins::new()))
     }

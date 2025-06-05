@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import msgspec
 from stepflow_sdk.transport import Message
-from stepflow_sdk.protocol import ComponentInfoRequest, ComponentInfoResponse, ComponentExecuteRequest, ComponentExecuteResponse
+from stepflow_sdk.protocol import InitializeRequest, ComponentInfoRequest, ComponentInfoResponse, ComponentExecuteRequest, ComponentExecuteResponse
 from stepflow_sdk.context import StepflowContext
 
 @dataclass
@@ -19,6 +19,7 @@ class ComponentEntry:
     function: Callable
     input_type: Type
     output_type: Type
+    description: Optional[str] = None
 
     def input_schema(self):
         return msgspec.json.schema(self.input_type)
@@ -27,21 +28,23 @@ class ComponentEntry:
         return msgspec.json.schema(self.output_type)
 
 class StepflowStdioServer:
-    def __init__(self):
+    def __init__(self, default_protocol_prefix: str = "python"):
         self._components: Dict[str, ComponentEntry] = {}
         self._initialized = False
+        self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
         self._pending_requests: Dict[UUID, asyncio.Future] = {}
         self._context: StepflowContext = StepflowContext(self._outgoing_queue, self._pending_requests)
 
-    def component(self, func: Optional[Callable] = None, *, name: Optional[str] = None):
+    def component(self, func: Optional[Callable] = None, *, name: Optional[str] = None, description: Optional[str] = None):
         """
         Decorator to register a component function.
         
         Args:
             func: The function to register (provided by the decorator)
             name: Optional name for the component. If not provided, uses the function name
+            description: Optional description. If not provided, uses the function's docstring
         """
         def decorator(f: Callable) -> Callable:
             component_name = name or f.__name__
@@ -61,11 +64,15 @@ class StepflowStdioServer:
                 
             return_type = sig.return_annotation
             
+            # Extract description from parameter or docstring
+            component_description = description or (f.__doc__.strip() if f.__doc__ else None)
+            
             self._components[component_name] = ComponentEntry(
                 name=component_name,
                 function=f,
                 input_type=input_type,
-                output_type=return_type
+                output_type=return_type,
+                description=component_description
             )
             
             # Store whether function expects context
@@ -95,19 +102,21 @@ class StepflowStdioServer:
         id = request.id
         match request.method:
             case "initialize":
+                init_request = msgspec.json.decode(request.params, type=InitializeRequest)
+                self._protocol_prefix = init_request.protocol_prefix
                 return Message(
                     id=id,
                     result={"server_protocol_version": 1}
                 )
             case "component_info":
-                request = msgspec.json.decode(request.params, type=ComponentInfoRequest)            
-                component = self.get_component(request.component)
+                component_request = msgspec.json.decode(request.params, type=ComponentInfoRequest)            
+                component = self.get_component(component_request.component)
                 if not component:
                     return Message(
                         id=id,
                         error={
                             "code": -32601,
-                            "message": f"Component {request.component} not found",
+                            "message": f"Component {component_request.component} not found",
                             "data": None
                         }
                     )
@@ -116,23 +125,24 @@ class StepflowStdioServer:
                     result=ComponentInfoResponse(
                         input_schema=component.input_schema(),
                         output_schema=component.output_schema(),
+                        description=component.description,
                     )
                 )
             case "component_execute":
-                request = msgspec.json.decode(request.params, type=ComponentExecuteRequest)
-                component = self.get_component(request.component)
+                execute_request = msgspec.json.decode(request.params, type=ComponentExecuteRequest)
+                component = self.get_component(execute_request.component)
                 if not component:
                     return Message(
                         id=id,
                         error={
                             "code": -32601,
-                            "message": f"Component {request.component} not found",
+                            "message": f"Component {execute_request.component} not found",
                             "data": None
                         }
                     )
                 try:
                     # Parse input parameters into the expected type
-                    input = msgspec.json.decode(request.input, type=component.input_type)
+                    input = msgspec.json.decode(execute_request.input, type=component.input_type)
                     
                     # Execute component with or without context
                     import asyncio
@@ -162,10 +172,12 @@ class StepflowStdioServer:
                             "data": None
                         }
                     )
-            case "component_list":
+            case "list_components":
+                # Return component URLs that match the expected Component format
+                component_urls = [f"{self._protocol_prefix}://{name}" for name in self._components.keys()]
                 return Message(
                     id=id,
-                    result={"components": list(self._components.keys())}
+                    result={"components": component_urls}
                 )
             case _:
                 print(f"Received unknown method request {request.method}", file=sys.stderr)
