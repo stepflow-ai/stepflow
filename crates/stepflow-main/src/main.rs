@@ -1,19 +1,29 @@
 use clap::Parser as _;
-use stepflow_main::{Cli, Result};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
+use stepflow_main::{Cli, Result, cli::init_tracing};
+
+async fn run(cli: Cli) -> Result<()> {
+    // Initialize tracing with the specified configuration
+    init_tracing(
+        &cli.log_level,
+        &cli.other_log_level,
+        cli.log_file.as_deref(),
+    )?;
+
+    cli.execute().await
+}
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    // Install stdio tracing logger.
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339());
-    tracing_subscriber::registry()
-        .with(EnvFilter::new("stepflow_=trace,info"))
-        .with(fmt_layer)
-        .with(tracing_error::ErrorLayer::default())
-        .try_init()
-        .unwrap();
+async fn main() {
+    let cli = Cli::parse();
+    let omit_stack_trace = cli.omit_stack_trace;
 
-    Cli::parse().execute().await?;
-    Ok(())
+    if let Err(e) = run(cli).await {
+        #[allow(clippy::print_stderr)]
+        if !omit_stack_trace {
+            eprintln!("{:?}", e);
+        } else {
+            eprintln!("{}", e);
+        }
+        std::process::exit(1);
+    }
 }

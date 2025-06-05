@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone)]
 pub enum MainError {
     #[error("Missing file: {}", .0.display())]
     MissingFile(PathBuf),
@@ -28,6 +28,8 @@ pub enum MainError {
     PluginCommunication,
     #[error("Serialization failed")]
     SerializationError,
+    #[error("Failed to initialize tracing")]
+    TracingInit,
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;

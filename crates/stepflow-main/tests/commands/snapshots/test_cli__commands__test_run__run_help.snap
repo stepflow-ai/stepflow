@@ -1,0 +1,73 @@
+---
+source: crates/stepflow-main/tests/commands/test_run.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - run
+    - "--help"
+  env:
+    RUST_BACKTRACE: "0"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Run a workflow directly
+
+Usage: stepflow run [OPTIONS] --flow <FILE>
+
+Options:
+      --flow <FILE>
+          Path to the workflow file to execute
+
+      --log-level <LEVEL>
+          Set the log level for StepFlow
+          
+          [default: info]
+          [possible values: trace, debug, info, warn, error]
+
+      --config <FILE>
+          The path to the stepflow config file.
+          
+          If not specified, will look for `stepflow-config.yml` in the directory containing `flow`. If that isn't found, will also look in the current directory.
+
+      --other-log-level <LEVEL>
+          Set the log level for other parts of StepFlow
+          
+          [default: warn]
+          [possible values: trace, debug, info, warn, error]
+
+      --input <FILE>
+          The path to the input file to execute the workflow with.
+          
+          Should be JSON or YAML. Format is inferred from file extension.
+
+      --log-file <FILE>
+          Write logs to a file instead of stderr
+
+      --input-json <JSON>
+          The input value as a JSON string
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
+      --input-yaml <YAML>
+          The input value as a YAML string
+
+      --format <FORMAT>
+          The format for stdin input (json or yaml).
+          
+          Only used when reading from stdin (no other input options specified).
+          
+          [default: json]
+          [possible values: json, yaml]
+
+      --output <FILE>
+          Path to write the output workflow to.
+          
+          If not set, will write to stdout.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+----- stderr -----

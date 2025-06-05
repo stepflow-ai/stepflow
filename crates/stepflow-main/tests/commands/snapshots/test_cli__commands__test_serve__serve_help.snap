@@ -1,0 +1,51 @@
+---
+source: crates/stepflow-main/tests/commands/test_serve.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - serve
+    - "--help"
+  env:
+    RUST_BACKTRACE: "0"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Start a StepFlow service
+
+Usage: stepflow serve [OPTIONS]
+
+Options:
+      --log-level <LEVEL>
+          Set the log level for StepFlow
+          
+          [default: info]
+          [possible values: trace, debug, info, warn, error]
+
+      --port <PORT>
+          Port to run the service on
+          
+          [default: 8080]
+
+      --config <FILE>
+          The path to the stepflow config file.
+          
+          If not specified, will look for `stepflow-config.yml` in the current directory.
+
+      --other-log-level <LEVEL>
+          Set the log level for other parts of StepFlow
+          
+          [default: warn]
+          [possible values: trace, debug, info, warn, error]
+
+      --log-file <FILE>
+          Write logs to a file instead of stderr
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+----- stderr -----
