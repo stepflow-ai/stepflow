@@ -1,5 +1,5 @@
 #![allow(clippy::print_stdout)]
-use crate::cli::{OutputFormat, create_executor, load_config};
+use crate::args::{OutputFormat, WorkflowLoader, ConfigArgs};
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
@@ -40,10 +40,11 @@ pub async fn list_components(
         OutputFormat::Json | OutputFormat::Yaml => true,
     });
     // Load config using the standard resolution logic
-    let config = load_config(None, config_path)?;
+    let config_args = ConfigArgs::with_path(config_path);
+    let config = config_args.load_config(None)?;
 
     // Create executor to instantiate plugins
-    let executor = create_executor(config).await?;
+    let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
     // Get all registered plugins and query their components
     let mut all_components = Vec::new();

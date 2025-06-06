@@ -62,7 +62,7 @@ Options:
           [possible values: json, yaml]
 
       --output <FILE>
-          Path to write the output workflow to.
+          Path to write the output to.
           
           If not set, will write to stdout.
 

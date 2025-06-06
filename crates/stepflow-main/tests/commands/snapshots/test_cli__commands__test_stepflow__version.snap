@@ -1,0 +1,15 @@
+---
+source: crates/stepflow-main/tests/commands/test_stepflow.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - "--version"
+---
+success: true
+exit_code: 0
+----- stdout -----
+stepflow-main 0.1.0
+
+----- stderr -----

@@ -346,136 +346,29 @@ async fn execute_step_async(
 mod tests {
     use super::*;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Step};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
-    /// Test builder for creating workflow execution test scenarios
-    pub struct WorkflowTestBuilder {
-        steps: Vec<Step>,
-        output: serde_json::Value,
-        mock_plugin: MockPlugin,
-        input: ValueRef,
-    }
-
-    impl WorkflowTestBuilder {
-        pub fn new() -> Self {
-            Self {
-                steps: Vec::new(),
-                output: json!(null),
-                mock_plugin: MockPlugin::new(),
-                input: ValueRef::new(json!({})),
-            }
-        }
-
-        /// Set the workflow input
-        pub fn with_input(mut self, input: serde_json::Value) -> Self {
-            self.input = ValueRef::new(input);
-            self
-        }
-
-        /// Set the workflow output expression
-        pub fn with_output(mut self, output: serde_json::Value) -> Self {
-            self.output = output;
-            self
-        }
-
-        /// Add a step with mock behavior, specifying what the resolved input will be
-        pub fn add_step_with_resolved_input(
-            mut self,
-            id: &str,
-            component: &str,
-            input: serde_json::Value,
-            resolved_input: Option<serde_json::Value>,
-            behavior: MockComponentBehavior,
-        ) -> Self {
-            let step = Step {
-                id: id.to_string(),
-                component: Component::parse(component).unwrap(),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                input: ValueRef::new(input.clone()),
-            };
-            self.steps.push(step);
-
-            // Configure mock behavior - use resolved input if provided, otherwise use the step input
-            let behavior_input = resolved_input.unwrap_or(input);
-            self.mock_plugin
-                .mock_component(component)
-                .behavior(ValueRef::new(behavior_input), behavior);
-
-            self
-        }
-
-        /// Build the workflow and create an executor for testing
-        pub async fn build(self) -> (Arc<crate::executor::StepFlowExecutor>, Arc<Flow>, ValueRef) {
-            let flow = Arc::new(Flow {
-                name: None,
-                description: None,
-                version: None,
-                input_schema: None,
-                output_schema: None,
-                steps: self.steps,
-                output: self.output,
-                test: None,
-            });
-
-            let executor = crate::executor::StepFlowExecutor::new_in_memory();
-            let dyn_plugin = stepflow_plugin::DynPlugin::boxed(self.mock_plugin);
-            executor
-                .register_plugin("mock".to_string(), dyn_plugin)
-                .await
-                .unwrap();
-
-            (executor, flow, self.input)
-        }
-
-        /// Execute the workflow and return the result
-        pub async fn execute(self) -> Result<FlowResult> {
-            let (executor, flow, input) = self.build().await;
-            let execution_id = Uuid::new_v4();
-            let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-
-            execute_workflow(executor, flow, execution_id, input, state_store).await
-        }
-    }
-
-    fn create_test_step(id: &str, input: serde_json::Value) -> Step {
-        Step {
-            id: id.to_string(),
-            component: Component::parse("mock://test").unwrap(),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::Fail,
-            input: ValueRef::new(input),
-        }
-    }
-
-    fn create_test_flow(steps: Vec<Step>, output: serde_json::Value) -> Flow {
-        Flow {
-            name: None,
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps,
-            output,
-            test: None,
-        }
-    }
 
     #[tokio::test]
     async fn test_dependency_tracking_basic() {
-        // Test that we can create dependencies and tracker correctly
-        let steps = vec![
-            create_test_step("step1", json!({"value": 42})),
-            create_test_step("step2", json!({"$from": {"step": "step1"}})),
-        ];
+        let workflow_yaml = r#"
+            steps:
+              - id: step1
+                component: mock://test
+                input:
+                  value: 42
+              - id: step2
+                component: mock://test
+                input:
+                  $from:
+                    step: step1
+            output:
+              $from:
+                step: step2
+        "#;
 
-        let flow = create_test_flow(steps, json!({"$from": {"step": "step2"}}));
+        let flow: Flow = serde_yaml_ng::from_str(workflow_yaml).unwrap();
 
         // Build dependencies
         let dependencies = build_dependencies_from_flow(&flow).unwrap();
@@ -491,22 +384,48 @@ mod tests {
 
     #[tokio::test]
     async fn test_simple_workflow_execution() {
-        let input_value = json!({"message": "hello"});
-        let result = WorkflowTestBuilder::new()
-            .with_input(input_value.clone())
-            .add_step_with_resolved_input(
-                "step1",
-                "mock://simple",
-                json!({"$from": {"workflow": "input"}}),
-                Some(input_value), // The resolved input will be the workflow input
+        let workflow_yaml = r#"
+            steps:
+              - id: step1
+                component: mock://simple
+                input:
+                  $from:
+                    workflow: input
+            output:
+              $from:
+                step: step1
+        "#;
+
+        let workflow: Flow = serde_yaml_ng::from_str(workflow_yaml).unwrap();
+        let input = ValueRef::new(json!({"message": "hello"}));
+        
+        // Set up mock plugin
+        let mut mock_plugin = MockPlugin::new();
+        mock_plugin
+            .mock_component("mock://simple")
+            .behavior(
+                ValueRef::new(json!({"message": "hello"})),
                 MockComponentBehavior::result(FlowResult::Success {
                     result: ValueRef::new(json!({"output": "processed"})),
                 }),
-            )
-            .with_output(json!({"$from": {"step": "step1"}}))
-            .execute()
+            );
+
+        let executor = crate::executor::StepFlowExecutor::new_in_memory();
+        let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
+        executor
+            .register_plugin("mock".to_string(), dyn_plugin)
             .await
             .unwrap();
+
+        let result = execute_workflow(
+            executor,
+            Arc::new(workflow),
+            Uuid::new_v4(),
+            input,
+            Arc::new(InMemoryStateStore::new()),
+        )
+        .await
+        .unwrap();
 
         match result {
             FlowResult::Success { result } => {
@@ -518,33 +437,61 @@ mod tests {
 
     #[tokio::test]
     async fn test_step_dependencies() {
-        let workflow_input = json!({"value": 10});
-        let step1_output = json!({"result": 20});
+        let workflow_yaml = r#"
+            steps:
+              - id: step1
+                component: mock://first
+                input:
+                  $from:
+                    workflow: input
+              - id: step2
+                component: mock://second
+                input:
+                  $from:
+                    step: step1
+            output:
+              $from:
+                step: step2
+        "#;
 
-        let result = WorkflowTestBuilder::new()
-            .with_input(workflow_input.clone())
-            .add_step_with_resolved_input(
-                "step1",
-                "mock://first",
-                json!({"$from": {"workflow": "input"}}),
-                Some(workflow_input),
+        let workflow: Flow = serde_yaml_ng::from_str(workflow_yaml).unwrap();
+        let input = ValueRef::new(json!({"value": 10}));
+        
+        // Set up mock plugin
+        let mut mock_plugin = MockPlugin::new();
+        mock_plugin
+            .mock_component("mock://first")
+            .behavior(
+                ValueRef::new(json!({"value": 10})),
                 MockComponentBehavior::result(FlowResult::Success {
-                    result: ValueRef::new(step1_output.clone()),
+                    result: ValueRef::new(json!({"result": 20})),
                 }),
-            )
-            .add_step_with_resolved_input(
-                "step2",
-                "mock://second",
-                json!({"$from": {"step": "step1"}}),
-                Some(step1_output), // step2 receives step1's output
+            );
+        mock_plugin
+            .mock_component("mock://second")
+            .behavior(
+                ValueRef::new(json!({"result": 20})),
                 MockComponentBehavior::result(FlowResult::Success {
                     result: ValueRef::new(json!({"final": 30})),
                 }),
-            )
-            .with_output(json!({"$from": {"step": "step2"}}))
-            .execute()
+            );
+
+        let executor = crate::executor::StepFlowExecutor::new_in_memory();
+        let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
+        executor
+            .register_plugin("mock".to_string(), dyn_plugin)
             .await
             .unwrap();
+
+        let result = execute_workflow(
+            executor,
+            Arc::new(workflow),
+            Uuid::new_v4(),
+            input,
+            Arc::new(InMemoryStateStore::new()),
+        )
+        .await
+        .unwrap();
 
         match result {
             FlowResult::Success { result } => {

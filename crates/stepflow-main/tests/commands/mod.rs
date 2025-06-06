@@ -1,7 +1,9 @@
 #![allow(clippy::mod_module_files)]
 mod test_list_components;
+mod test_repl;
 mod test_run;
 mod test_serve;
+mod test_stepflow;
 mod test_submit;
 mod test_test;
 

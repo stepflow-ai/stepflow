@@ -1,5 +1,5 @@
 #![allow(clippy::print_stdout)]
-use crate::cli::{create_executor, load, load_config, write_output};
+use crate::args::{WorkflowLoader, load, ConfigArgs, OutputArgs};
 use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use clap::Args;
 use error_stack::ResultExt as _;
@@ -106,7 +106,8 @@ pub fn load_test_config(
 ) -> Result<StepflowConfig> {
     // If explicit config provided, use that
     if let Some(config_path) = config_path {
-        return load_config(None, Some(config_path));
+        let config_args = ConfigArgs::with_path(Some(config_path));
+        return config_args.load_config(None);
     }
 
     // 1. Check stepflow_config in test section of this workflow
@@ -131,14 +132,16 @@ pub fn load_test_config(
     for candidate in &test_config_candidates {
         let test_config_path = flow_dir.join(candidate);
         if test_config_path.is_file() {
-            return load_config(None, Some(test_config_path));
+            let config_args = ConfigArgs::with_path(Some(test_config_path));
+            return config_args.load_config(None);
         }
     }
 
     // 4. Look for stepflow-config.yml in workflow directory
     // 5. Look for stepflow-config.yml in current directory
     // Reuse existing config resolution logic
-    crate::cli::load_config(Some(flow_path), None)
+    let config_args = ConfigArgs::with_path(None);
+    config_args.load_config(Some(flow_path))
 }
 
 fn parse_stepflow_config_from_value(
@@ -168,7 +171,8 @@ async fn apply_updates(flow_path: &Path, mut updates: HashMap<String, FlowResult
             test_case.output = Some(new_output);
         }
     }
-    write_output(Some(flow_path.to_owned()), flow)
+    let output_args = OutputArgs::with_path(Some(flow_path.to_owned()));
+    output_args.write_output(flow)
 }
 
 /// Discover workflow files recursively in a directory.
@@ -300,7 +304,7 @@ async fn run_single_workflow_test(
 
     // Set up executor
     let config = load_test_config(workflow_path, config_path, &flow)?;
-    let executor = create_executor(config).await?;
+    let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
     // Filter test cases if specific cases requested
     let cases_to_run: Vec<_> = if options.cases.is_empty() {

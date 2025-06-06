@@ -1,20 +1,19 @@
 ---
-source: crates/stepflow-main/tests/commands/test_list_components.rs
+source: crates/stepflow-main/tests/commands/test_repl.rs
 info:
   program: stepflow
   args:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
-    - "--log-level=error"
-    - list-components
+    - repl
     - "--help"
 ---
 success: true
 exit_code: 0
 ----- stdout -----
-List all available components from a stepflow config
+Start an interactive REPL for workflow development and debugging
 
-Usage: stepflow list-components [OPTIONS]
+Usage: stepflow repl [OPTIONS]
 
 Options:
       --config <FILE>
@@ -28,12 +27,6 @@ Options:
           [default: info]
           [possible values: trace, debug, info, warn, error]
 
-      --format <FORMAT>
-          Output format for the component list
-          
-          [default: pretty]
-          [possible values: pretty, json, yaml]
-
       --other-log-level <LEVEL>
           Set the log level for other parts of StepFlow
           
@@ -42,13 +35,6 @@ Options:
 
       --log-file <FILE>
           Write logs to a file instead of stderr
-
-      --schemas <SCHEMAS>
-          Include component schemas in output.
-          
-          Defaults to false for pretty format, true for json/yaml formats.
-          
-          [possible values: true, false]
 
       --omit-stack-trace
           Omit stack traces (line numbers of errors)
