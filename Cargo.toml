@@ -9,6 +9,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.dependencies]
+bit-set = "0.8.0"
 clap = { version = "4.5.35", features = ["derive", "env"] }
 dynosaur = "0.2.0"
 erased-serde = "0.4.6"

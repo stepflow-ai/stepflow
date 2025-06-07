@@ -136,7 +136,10 @@ impl Plugin for MockPlugin {
             .get(component)
             .ok_or(PluginError::UdfImport)
             .attach_printable_lazy(|| component.clone())?;
-        tracing::debug!("Executing component: {} on input: {:?}", component, input);
+        // Debug logging for tests only - not included in production builds
+        #[cfg(test)]
+        tracing::debug!("Mock plugin executing component: {}", component);
+
         let output = mock_component
             .behaviors
             .get(&input)

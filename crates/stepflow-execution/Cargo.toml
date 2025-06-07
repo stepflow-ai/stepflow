@@ -8,9 +8,9 @@ publish = false
 description = "Execution logic for workflows."
 
 [dependencies]
+bit-set.workspace = true
 error-stack.workspace = true
 futures.workspace = true
-safer_owning_ref.workspace = true
 serde_json.workspace = true
 stepflow-plugin.workspace = true
 stepflow-core.workspace = true
@@ -19,6 +19,10 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+stepflow-mock.workspace = true
+serde_yaml_ng.workspace = true
 
 [lints]
 workspace = true

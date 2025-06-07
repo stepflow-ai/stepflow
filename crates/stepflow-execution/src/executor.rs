@@ -1,5 +1,6 @@
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
+use crate::workflow_executor::execute_workflow;
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt as _;
 use futures::FutureExt as _;
@@ -129,9 +130,12 @@ impl Context for StepFlowExecutor {
 
             // Spawn the execution
             tokio::spawn(async move {
+                tracing::info!("Executing workflow using tracker-based execution");
+                let state_store = executor.state_store.clone();
+
                 let result =
-                    crate::spawn_workflow::spawn_workflow(executor, execution_id, flow, input)
-                        .await;
+                    execute_workflow(executor, flow, execution_id, input, state_store).await;
+
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,
                     Err(e) => {

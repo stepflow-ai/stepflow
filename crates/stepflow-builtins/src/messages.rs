@@ -82,9 +82,7 @@ mod tests {
             .execute(mock.execution_context(), input.into())
             .await
             .unwrap();
-        let output =
-            serde_json::from_value::<CreateMessagesOutput>(output.success().unwrap().clone())
-                .unwrap();
+        let output: CreateMessagesOutput = output.success().unwrap().deserialize().unwrap();
         assert_eq!(output.messages.len(), 2);
         assert_eq!(output.messages[0].role, ChatMessageRole::System);
         assert_eq!(output.messages[1].role, ChatMessageRole::User);

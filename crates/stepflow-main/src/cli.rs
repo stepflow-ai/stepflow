@@ -441,7 +441,16 @@ pub fn init_tracing(
 
 impl Cli {
     pub async fn execute(self) -> Result<()> {
-        tracing::debug!("Executing command: {:?}", self);
+        tracing::debug!(
+            "Executing CLI command: {}",
+            match &self.command {
+                Command::Run { .. } => "run",
+                Command::Test { .. } => "test",
+                Command::Serve { .. } => "serve",
+                Command::Submit { .. } => "submit",
+                Command::ListComponents { .. } => "list-components",
+            }
+        );
         match self.command {
             Command::Run {
                 flow_path,

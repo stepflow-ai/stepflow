@@ -25,6 +25,10 @@ pub enum ExecutionError {
     BlobNotFound { blob_id: String },
     #[error("no plugin registered for protocol: {0}")]
     UnregisteredProtocol(String),
+    #[error("workflow deadlock: no runnable steps and output cannot be resolved")]
+    Deadlock,
+    #[error("malformed reference: {message}")]
+    MalformedReference { message: String },
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

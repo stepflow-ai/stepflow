@@ -59,9 +59,9 @@ impl From<serde_json::Value> for FlowResult {
 }
 
 impl FlowResult {
-    pub fn success(&self) -> Option<&serde_json::Value> {
+    pub fn success(&self) -> Option<ValueRef> {
         match self {
-            Self::Success { result } => Some(result.as_ref()),
+            Self::Success { result } => Some(result.clone()),
             _ => None,
         }
     }

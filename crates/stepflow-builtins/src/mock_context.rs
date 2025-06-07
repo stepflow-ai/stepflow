@@ -16,7 +16,7 @@ pub struct MockContext {
 }
 
 impl MockContext {
-    /// Create a new mock context with a random execution ID.
+    /// Create a new mock context.
     pub fn new() -> Self {
         Self {
             executor: Arc::new(MockExecutor {
@@ -57,7 +57,6 @@ impl stepflow_plugin::Context for MockExecutor {
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<FlowResult>> + Send + '_>>
     {
         Box::pin(async {
-            // Return a simple success result for testing
             let result = serde_json::json!({"message": "Hello from nested flow"});
             Ok(FlowResult::Success {
                 result: ValueRef::new(result),
