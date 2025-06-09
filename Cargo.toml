@@ -63,7 +63,6 @@ nonstandard_style = "warn"
 future_incompatible = "warn"
 
 [workspace.lints.clippy]
-mod_module_files = "warn"
 print_stderr = "warn"
 print_stdout = "warn"
 undocumented_unsafe_blocks = "warn"

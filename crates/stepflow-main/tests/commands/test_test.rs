@@ -8,29 +8,25 @@ fn test_test_help() {
 
 #[test]
 fn test_test_basic_workflow() {
-    assert_cmd_snapshot!(stepflow()
-        .arg("test")
-        .arg("tests/basic.yaml"));
+    assert_cmd_snapshot!(stepflow().arg("test").arg("tests/basic.yaml"));
 }
 
 #[test]
 fn test_test_mock_directory() {
-    assert_cmd_snapshot!(stepflow()
-        .arg("test")
-        .arg("tests/mock"));
+    assert_cmd_snapshot!(stepflow().arg("test").arg("tests/mock"));
 }
 
 #[test]
 fn test_test_with_custom_config() {
-    assert_cmd_snapshot!(stepflow()
-        .arg("test")
-        .arg("--config=tests/builtins/stepflow-config.yml")
-        .arg("tests/builtins"));
+    assert_cmd_snapshot!(
+        stepflow()
+            .arg("test")
+            .arg("--config=tests/builtins/stepflow-config.yml")
+            .arg("tests/builtins")
+    );
 }
 
 #[test]
 fn test_test_nonexistent_path() {
-    assert_cmd_snapshot!(stepflow()
-        .arg("test")
-        .arg("nonexistent_path"));
+    assert_cmd_snapshot!(stepflow().arg("test").arg("nonexistent_path"));
 }

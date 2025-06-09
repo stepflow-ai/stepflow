@@ -1,16 +1,16 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 use clap::Parser as _;
 use error_stack::ResultExt as _;
-use rustyline::{error::ReadlineError, DefaultEditor};
+use rustyline::{DefaultEditor, error::ReadlineError};
 use std::{path::PathBuf, sync::Arc};
 use stepflow_core::workflow::{Flow, ValueRef};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_plugin::Context as _;
 
 use crate::{
-    args::{ConfigArgs, WorkflowLoader, load},
-    args::InputArgs,
     MainError, Result,
+    args::InputArgs,
+    args::{ConfigArgs, WorkflowLoader, load},
 };
 
 /// State maintained by the REPL
@@ -56,7 +56,6 @@ impl ReplInputArgs {
     pub fn has_input(&self) -> bool {
         self.input_args.has_input()
     }
-
 }
 
 /// Commands available in the REPL
@@ -69,7 +68,7 @@ pub enum ReplCommand {
         /// Path to the workflow file to execute
         #[arg(long = "workflow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
         workflow: PathBuf,
-        
+
         #[command(flatten)]
         input_args: ReplInputArgs,
     },
@@ -123,7 +122,7 @@ pub enum ReplCommand {
 /// Parse a command line into a ReplCommand using clap
 fn parse_command(input: &str) -> Result<ReplCommand> {
     let args: Vec<&str> = input.split_whitespace().collect();
-    
+
     if args.is_empty() {
         return Err(MainError::ReplCommand("Empty command".to_string()).into());
     }
@@ -140,7 +139,7 @@ fn parse_command(input: &str) -> Result<ReplCommand> {
 /// Execute a workflow with the given input, handling both debug and normal modes
 async fn execute_workflow(
     executor: &StepFlowExecutor,
-    workflow: Arc<Flow>, 
+    workflow: Arc<Flow>,
     input_value: ValueRef,
     debug: bool,
 ) -> Result<()> {
@@ -150,66 +149,47 @@ async fn execute_workflow(
         println!("Use 'run-step <step_id>' to execute a specific step, or 'continue' to run all.");
         return Ok(());
     }
-    
+
     // Execute workflow normally
     let execution_id = executor
         .submit_flow(workflow, input_value)
         .await
         .change_context(MainError::FlowExecution)?;
-    
+
     let result = executor
         .flow_result(execution_id)
         .await
         .change_context(MainError::FlowExecution)?;
-    
+
     // Display result
-    let result_json = serde_json::to_string_pretty(&result)
-        .change_context(MainError::FlowExecution)?;
+    let result_json =
+        serde_json::to_string_pretty(&result).change_context(MainError::FlowExecution)?;
     println!("Result:\n{}", result_json);
-    
+
     Ok(())
 }
 
 /// Handle a parsed command
 async fn handle_command(command: ReplCommand, state: &mut ReplState) -> Result<()> {
     match command {
-        ReplCommand::Run { workflow, input_args } => {
-            handle_run_command(workflow, input_args, state).await
-        }
-        ReplCommand::Rerun { input_args } => {
-            handle_rerun_command(input_args, state).await
-        }
-        ReplCommand::Status => {
-            handle_status_command(state).await
-        }
-        ReplCommand::Workflow => {
-            handle_workflow_command(state).await
-        }
-        ReplCommand::Input => {
-            handle_input_command(state).await
-        }
+        ReplCommand::Run {
+            workflow,
+            input_args,
+        } => handle_run_command(workflow, input_args, state).await,
+        ReplCommand::Rerun { input_args } => handle_rerun_command(input_args, state).await,
+        ReplCommand::Status => handle_status_command(state).await,
+        ReplCommand::Workflow => handle_workflow_command(state).await,
+        ReplCommand::Input => handle_input_command(state).await,
         ReplCommand::Quit | ReplCommand::Exit => {
             println!("Goodbye!");
             Ok(())
         }
-        ReplCommand::Steps => {
-            handle_steps_command(state).await
-        }
-        ReplCommand::Runnable => {
-            handle_runnable_command(state).await
-        }
-        ReplCommand::RunStep { step_id } => {
-            handle_run_step_command(step_id, state).await
-        }
-        ReplCommand::Continue => {
-            handle_continue_command(state).await
-        }
-        ReplCommand::Pause => {
-            handle_pause_command(state).await
-        }
-        ReplCommand::Inspect { step_id } => {
-            handle_inspect_command(step_id, state).await
-        }
+        ReplCommand::Steps => handle_steps_command(state).await,
+        ReplCommand::Runnable => handle_runnable_command(state).await,
+        ReplCommand::RunStep { step_id } => handle_run_step_command(step_id, state).await,
+        ReplCommand::Continue => handle_continue_command(state).await,
+        ReplCommand::Pause => handle_pause_command(state).await,
+        ReplCommand::Inspect { step_id } => handle_inspect_command(step_id, state).await,
     }
 }
 
@@ -222,49 +202,57 @@ async fn handle_run_command(
     // Load workflow
     let workflow: Arc<Flow> = load(&workflow_path)?;
     println!("Loaded workflow: {}", workflow_path.display());
-    
+
     // Load config and create executor
     let config_args = ConfigArgs::with_path(state.config_path.clone());
     let config = config_args.load_config(Some(&workflow_path))?;
     let executor = WorkflowLoader::create_executor_from_config(config).await?;
-    println!("Created executor with {} plugins", executor.list_plugins().await.len());
-    
+    println!(
+        "Created executor with {} plugins",
+        executor.list_plugins().await.len()
+    );
+
     // Parse input
     let input_value = input_args.parse_input()?;
-    
+
     // Store state for potential rerun
     state.executor = Some(executor.clone());
     state.workflow = Some(workflow.clone());
     state.input = Some(input_value.clone());
     state.debug_mode = input_args.debug;
-    
+
     // Execute workflow
     execute_workflow(&executor, workflow, input_value, input_args.debug).await
 }
 
 /// Handle the rerun command
-async fn handle_rerun_command(
-    input_args: ReplInputArgs,
-    state: &mut ReplState,
-) -> Result<()> {
-    let executor = state.executor.as_ref()
-        .ok_or_else(|| MainError::ReplCommand("No workflow loaded. Use 'run' first.".to_string()))?;
-    let workflow = state.workflow.as_ref()
-        .ok_or_else(|| MainError::ReplCommand("No workflow loaded. Use 'run' first.".to_string()))?;
-    
+async fn handle_rerun_command(input_args: ReplInputArgs, state: &mut ReplState) -> Result<()> {
+    let executor = state.executor.as_ref().ok_or_else(|| {
+        MainError::ReplCommand("No workflow loaded. Use 'run' first.".to_string())
+    })?;
+    let workflow = state.workflow.as_ref().ok_or_else(|| {
+        MainError::ReplCommand("No workflow loaded. Use 'run' first.".to_string())
+    })?;
+
     // Use new input if provided, otherwise use stored input
     let input_value = if input_args.has_input() {
         input_args.parse_input()?
     } else {
-        state.input.as_ref()
-            .ok_or_else(|| MainError::ReplCommand("No input available. Provide input or run workflow first.".to_string()))?
+        state
+            .input
+            .as_ref()
+            .ok_or_else(|| {
+                MainError::ReplCommand(
+                    "No input available. Provide input or run workflow first.".to_string(),
+                )
+            })?
             .clone()
     };
-    
+
     // Update state
     state.input = Some(input_value.clone());
     state.debug_mode = input_args.debug;
-    
+
     // Execute workflow
     execute_workflow(executor, workflow.clone(), input_value, input_args.debug).await
 }
@@ -274,14 +262,14 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     println!("REPL Status:");
     println!("  Config: {:?}", state.config_path);
     println!("  Debug mode: {}", state.debug_mode);
-    
+
     if let Some(executor) = &state.executor {
         let plugins = executor.list_plugins().await;
         println!("  Executor: {} plugins loaded", plugins.len());
     } else {
         println!("  Executor: Not loaded");
     }
-    
+
     if let Some(workflow) = &state.workflow {
         println!("  Workflow: {} steps", workflow.steps.len());
         if let Some(name) = &workflow.name {
@@ -290,13 +278,13 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     } else {
         println!("  Workflow: Not loaded");
     }
-    
+
     if state.input.is_some() {
         println!("  Input: Loaded");
     } else {
         println!("  Input: Not loaded");
     }
-    
+
     Ok(())
 }
 
@@ -327,17 +315,21 @@ async fn handle_input_command(state: &ReplState) -> Result<()> {
 /// Handle the steps command - show all steps in the workflow
 async fn handle_steps_command(state: &ReplState) -> Result<()> {
     if !state.debug_mode {
-        println!("Steps command is only available in debug mode. Use 'run --debug' to enable debug mode.");
+        println!(
+            "Steps command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
         return Ok(());
     }
-    
+
     if let Some(workflow) = &state.workflow {
         println!("Workflow steps ({} total):", workflow.steps.len());
         for (i, step) in workflow.steps.iter().enumerate() {
             println!("  [{}] {}: {}", i, step.id, step.component);
         }
     } else {
-        println!("No workflow loaded. Use 'run --workflow=<file> --debug' to load a workflow in debug mode.");
+        println!(
+            "No workflow loaded. Use 'run --workflow=<file> --debug' to load a workflow in debug mode."
+        );
     }
     Ok(())
 }
@@ -345,20 +337,27 @@ async fn handle_steps_command(state: &ReplState) -> Result<()> {
 /// Handle the runnable command - show currently runnable steps
 async fn handle_runnable_command(state: &ReplState) -> Result<()> {
     if !state.debug_mode {
-        println!("Runnable command is only available in debug mode. Use 'run --debug' to enable debug mode.");
+        println!(
+            "Runnable command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
         return Ok(());
     }
-    
+
     // TODO: Implement actual dependency analysis to show runnable steps
     if let Some(workflow) = &state.workflow {
         println!("Currently runnable steps:");
         // For now, just show the first step as runnable
         if !workflow.steps.is_empty() {
-            println!("  [0] {}: {}", workflow.steps[0].id, workflow.steps[0].component);
+            println!(
+                "  [0] {}: {}",
+                workflow.steps[0].id, workflow.steps[0].component
+            );
         }
         println!("(Note: Full dependency analysis not yet implemented)");
     } else {
-        println!("No workflow loaded. Use 'run --workflow=<file> --debug' to load a workflow in debug mode.");
+        println!(
+            "No workflow loaded. Use 'run --workflow=<file> --debug' to load a workflow in debug mode."
+        );
     }
     Ok(())
 }
@@ -366,10 +365,12 @@ async fn handle_runnable_command(state: &ReplState) -> Result<()> {
 /// Handle the run-step command - execute a specific step
 async fn handle_run_step_command(step_id: String, state: &ReplState) -> Result<()> {
     if !state.debug_mode {
-        println!("Run-step command is only available in debug mode. Use 'run --debug' to enable debug mode.");
+        println!(
+            "Run-step command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
         return Ok(());
     }
-    
+
     // TODO: Implement step-by-step execution
     println!("Executing step '{}' (not yet implemented)", step_id);
     Ok(())
@@ -378,10 +379,12 @@ async fn handle_run_step_command(step_id: String, state: &ReplState) -> Result<(
 /// Handle the continue command - continue workflow execution
 async fn handle_continue_command(state: &ReplState) -> Result<()> {
     if !state.debug_mode {
-        println!("Continue command is only available in debug mode. Use 'run --debug' to enable debug mode.");
+        println!(
+            "Continue command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
         return Ok(());
     }
-    
+
     // TODO: Implement continue execution from current state
     println!("Continuing workflow execution (not yet implemented)");
     Ok(())
@@ -390,10 +393,12 @@ async fn handle_continue_command(state: &ReplState) -> Result<()> {
 /// Handle the pause command - pause workflow execution
 async fn handle_pause_command(state: &ReplState) -> Result<()> {
     if !state.debug_mode {
-        println!("Pause command is only available in debug mode. Use 'run --debug' to enable debug mode.");
+        println!(
+            "Pause command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
         return Ok(());
     }
-    
+
     // TODO: Implement pause functionality
     println!("Pausing workflow execution (not yet implemented)");
     Ok(())
@@ -402,31 +407,36 @@ async fn handle_pause_command(state: &ReplState) -> Result<()> {
 /// Handle the inspect command - inspect a specific step
 async fn handle_inspect_command(step_id: String, state: &ReplState) -> Result<()> {
     if !state.debug_mode {
-        println!("Inspect command is only available in debug mode. Use 'run --debug' to enable debug mode.");
+        println!(
+            "Inspect command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
         return Ok(());
     }
-    
+
     if let Some(workflow) = &state.workflow {
         if let Some(step) = workflow.steps.iter().find(|s| s.id == step_id) {
-            let step_json = serde_json::to_string_pretty(step)
-                .change_context(MainError::FlowExecution)?;
+            let step_json =
+                serde_json::to_string_pretty(step).change_context(MainError::FlowExecution)?;
             println!("Step '{}' details:\n{}", step_id, step_json);
         } else {
             println!("Step '{}' not found in workflow", step_id);
         }
     } else {
-        println!("No workflow loaded. Use 'run --workflow=<file> --debug' to load a workflow in debug mode.");
+        println!(
+            "No workflow loaded. Use 'run --workflow=<file> --debug' to load a workflow in debug mode."
+        );
     }
     Ok(())
 }
-
 
 /// Print help information
 fn print_help() {
     println!("StepFlow REPL Commands:");
     println!();
     println!("Basic Commands:");
-    println!("  run --workflow=<file> [--input=<file>] [--input-json=<json>] [--input-yaml=<yaml>] [--debug]");
+    println!(
+        "  run --workflow=<file> [--input=<file>] [--input-json=<json>] [--input-yaml=<yaml>] [--debug]"
+    );
     println!("    Load and execute a workflow with input. Use --debug for step-by-step execution");
     println!();
     println!("  rerun [--input=<file>] [--input-json=<json>] [--input-yaml=<yaml>] [--debug]");
@@ -470,14 +480,13 @@ fn print_help() {
 
 /// Main REPL function
 pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
-    let mut rl = DefaultEditor::new()
-        .change_context(MainError::ReplInit)?;
-    
+    let mut rl = DefaultEditor::new().change_context(MainError::ReplInit)?;
+
     let mut state = ReplState::new(config_path);
-    
+
     println!("StepFlow REPL v{}", env!("CARGO_PKG_VERSION"));
     println!("Type 'help' for available commands, 'quit' to exit");
-    
+
     loop {
         let readline = rl.readline("stepflow> ");
         match readline {
@@ -486,9 +495,9 @@ pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
                 if line.is_empty() {
                     continue;
                 }
-                
+
                 let _ = rl.add_history_entry(line);
-                
+
                 match parse_command(line) {
                     Ok(ReplCommand::Quit) | Ok(ReplCommand::Exit) => {
                         println!("Goodbye!");
@@ -524,7 +533,7 @@ pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -537,10 +546,12 @@ mod tests {
         // Test empty args
         let args = ReplInputArgs::default();
         assert!(!args.has_input());
-        
+
         // Test debug flag
-        let mut args = ReplInputArgs::default();
-        args.debug = true;
+        let args = ReplInputArgs {
+            debug: true,
+            ..Default::default()
+        };
         assert!(args.debug);
     }
 
@@ -560,9 +571,13 @@ mod tests {
             match result {
                 Ok(command) => {
                     let debug_str = format!("{:?}", command);
-                    assert!(debug_str.starts_with(expected_variant), 
-                            "Expected {} to parse as {} variant, got: {:?}", 
-                            input, expected_variant, command);
+                    assert!(
+                        debug_str.starts_with(expected_variant),
+                        "Expected {} to parse as {} variant, got: {:?}",
+                        input,
+                        expected_variant,
+                        command
+                    );
                 }
                 Err(e) => panic!("Failed to parse '{}': {}", input, e),
             }
@@ -575,7 +590,10 @@ mod tests {
         let result = parse_command("rerun --input-json '{\"test\":123}'");
         match result {
             Ok(ReplCommand::Rerun { input_args }) => {
-                assert_eq!(input_args.input_args.input_json, Some("'{\"test\":123}'".to_string()));
+                assert_eq!(
+                    input_args.input_args.input_json,
+                    Some("'{\"test\":123}'".to_string())
+                );
                 assert!(!input_args.debug);
             }
             _ => panic!("Expected rerun command, got: {:?}", result),
@@ -586,7 +604,10 @@ mod tests {
     fn test_run_command_parsing() {
         let result = parse_command("run --workflow test.yaml --debug");
         match result {
-            Ok(ReplCommand::Run { workflow, input_args }) => {
+            Ok(ReplCommand::Run {
+                workflow,
+                input_args,
+            }) => {
                 assert_eq!(workflow.to_string_lossy(), "test.yaml");
                 assert!(input_args.debug);
                 assert!(!input_args.has_input());

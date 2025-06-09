@@ -3,9 +3,13 @@ use stepflow_core::workflow::Flow;
 use url::Url;
 
 use crate::{
-    error::Result, run::run, serve::serve,
-    submit::submit, test::TestOptions, repl::run_repl, 
-    args::{ConfigArgs, InputArgs, OutputArgs, WorkflowLoader, load, LogLevel, OutputFormat},
+    args::{ConfigArgs, InputArgs, LogLevel, OutputArgs, OutputFormat, WorkflowLoader, load},
+    error::Result,
+    repl::run_repl,
+    run::run,
+    serve::serve,
+    submit::submit,
+    test::TestOptions,
 };
 
 /// StepFlow command line application.
@@ -120,8 +124,6 @@ pub enum Command {
     },
 }
 
-
-
 impl Cli {
     pub async fn execute(self) -> Result<()> {
         tracing::debug!(
@@ -174,7 +176,8 @@ impl Cli {
                 config_args,
                 test_options,
             } => {
-                let failures = crate::test::run_tests(&path, config_args.config_path, test_options).await?;
+                let failures =
+                    crate::test::run_tests(&path, config_args.config_path, test_options).await?;
                 if failures {
                     std::process::exit(1);
                 }
@@ -184,7 +187,8 @@ impl Cli {
                 format,
                 schemas,
             } => {
-                crate::list_components::list_components(config_args.config_path, format, schemas).await?;
+                crate::list_components::list_components(config_args.config_path, format, schemas)
+                    .await?;
             }
             Command::Repl { config_args } => {
                 run_repl(config_args.config_path).await?;

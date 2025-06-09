@@ -2,10 +2,7 @@ use error_stack::ResultExt as _;
 use std::path::PathBuf;
 use stepflow_core::workflow::ValueRef;
 
-use crate::{
-    args::file_loader::load,
-    MainError, Result,
-};
+use crate::{MainError, Result, args::file_loader::load};
 
 /// Input format for stdin
 #[derive(clap::ValueEnum, Clone, Debug, Default)]
@@ -71,18 +68,18 @@ impl InputArgs {
                     // Read from stdin using specified format (CLI only)
                     let stdin = std::io::stdin();
                     match self.stdin_format {
-                        InputFormat::Json => serde_json::from_reader(stdin)
-                            .change_context(MainError::ReplCommand("Invalid JSON from stdin".to_string())),
-                        InputFormat::Yaml => serde_yaml_ng::from_reader(stdin)
-                            .change_context(MainError::ReplCommand("Invalid YAML from stdin".to_string())),
+                        InputFormat::Json => serde_json::from_reader(stdin).change_context(
+                            MainError::ReplCommand("Invalid JSON from stdin".to_string()),
+                        ),
+                        InputFormat::Yaml => serde_yaml_ng::from_reader(stdin).change_context(
+                            MainError::ReplCommand("Invalid YAML from stdin".to_string()),
+                        ),
                     }
                 } else {
                     Err(MainError::ReplCommand("No input provided".to_string()).into())
                 }
             }
-            _ => {
-                Err(MainError::ReplCommand("Only one input type allowed".to_string()).into())
-            }
+            _ => Err(MainError::ReplCommand("Only one input type allowed".to_string()).into()),
         }
     }
 

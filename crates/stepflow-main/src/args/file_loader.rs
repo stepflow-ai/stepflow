@@ -1,9 +1,6 @@
 use error_stack::ResultExt as _;
 use serde::de::DeserializeOwned;
-use std::{
-    fs::File,
-    path::Path,
-};
+use std::{fs::File, path::Path};
 
 use crate::{MainError, Result};
 
