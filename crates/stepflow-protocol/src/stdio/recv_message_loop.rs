@@ -4,7 +4,7 @@ use error_stack::ResultExt as _;
 use stepflow_plugin::Context;
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
-    process::{Child, ChildStdin, ChildStdout},
+    process::{Child, ChildStderr, ChildStdin, ChildStdout},
     sync::{
         mpsc::{self, error::TryRecvError},
         oneshot,
@@ -21,7 +21,8 @@ use super::launcher::Launcher;
 struct ReceiveMessageLoop {
     child: Child,
     to_child: ChildStdin,
-    from_child: LinesStream<BufReader<ChildStdout>>,
+    from_child_stdout: LinesStream<BufReader<ChildStdout>>,
+    from_child_stderr: LinesStream<BufReader<ChildStderr>>,
     pending_requests: HashMap<Uuid, oneshot::Sender<OwnedIncoming>>,
     outgoing_tx: mpsc::Sender<String>,
 }
@@ -31,13 +32,17 @@ impl ReceiveMessageLoop {
         let mut child = launcher.spawn()?;
 
         let to_child = child.stdin.take().expect("stdin requested");
-        let from_child = child.stdout.take().expect("stdout requested");
-        let from_child = LinesStream::new(BufReader::new(from_child).lines());
+        let from_child_stdout = child.stdout.take().expect("stdout requested");
+        let from_child_stdout = LinesStream::new(BufReader::new(from_child_stdout).lines());
+
+        let from_child_stderr = child.stderr.take().expect("stderr requested");
+        let from_child_stderr = LinesStream::new(BufReader::new(from_child_stderr).lines());
 
         Ok(Self {
             child,
             to_child,
-            from_child,
+            from_child_stdout,
+            from_child_stderr,
             pending_requests: HashMap::new(),
             outgoing_tx,
         })
@@ -80,7 +85,12 @@ impl ReceiveMessageLoop {
                 self.to_child.write_all(b"\n").await.change_context(StdioError::Send)?;
                 Ok(true)
             }
-            Some(line) = self.from_child.next() => {
+            Some(stderr_line) = self.from_child_stderr.next() => {
+                let stderr_line = stderr_line.change_context(StdioError::Recv)?;
+                tracing::info!("Component stderr: {stderr_line}");
+                Ok(true)
+            }
+            Some(line) = self.from_child_stdout.next() => {
                 let line = line.change_context(StdioError::Recv)?;
                 tracing::info!("Received line from child: {line:?}");
                 let msg = OwnedIncoming::try_new(line).change_context(StdioError::Recv)?;

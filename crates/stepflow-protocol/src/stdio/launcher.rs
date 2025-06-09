@@ -44,6 +44,7 @@ impl Launcher {
             .args(&self.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .kill_on_drop(true);
 
         command.current_dir(
