@@ -4,10 +4,9 @@ info:
   program: stepflow
   args:
     - "--log-file=/dev/null"
+    - "--omit-stack-trace"
     - test
     - "--help"
-  env:
-    RUST_BACKTRACE: "0"
 ---
 success: true
 exit_code: 0
@@ -22,9 +21,9 @@ Arguments:
 
 Options:
       --config <FILE>
-          The path to the stepflow config file for tests.
+          The path to the stepflow config file.
           
-          If not specified, will use hierarchical resolution: 1. stepflow_config in test section of this workflow 2. stepflow_config in test section of enclosing workflow (if any) 3. stepflow-config.test.yml in workflow directory 4. stepflow-config.yml in workflow directory 5. stepflow-config.yml in current directory
+          If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
 
       --log-level <LEVEL>
           Set the log level for StepFlow

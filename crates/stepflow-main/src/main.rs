@@ -1,5 +1,5 @@
 use clap::Parser as _;
-use stepflow_main::{Cli, Result, cli::init_tracing};
+use stepflow_main::{Cli, Result, args::init_tracing};
 
 async fn run(cli: Cli) -> Result<()> {
     // Initialize tracing with the specified configuration

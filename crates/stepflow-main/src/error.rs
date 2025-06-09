@@ -30,6 +30,10 @@ pub enum MainError {
     SerializationError,
     #[error("Failed to initialize tracing")]
     TracingInit,
+    #[error("Failed to initialize REPL")]
+    ReplInit,
+    #[error("REPL command error: {0}")]
+    ReplCommand(String),
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;

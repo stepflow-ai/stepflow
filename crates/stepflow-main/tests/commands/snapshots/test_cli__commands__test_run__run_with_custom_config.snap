@@ -1,0 +1,18 @@
+---
+source: crates/stepflow-main/tests/commands/test_run.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - run
+    - "--flow=tests/builtins/nested_eval.yaml"
+    - "--config=tests/builtins/stepflow-config.yml"
+    - "--input-json={\"input\": 42}"
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Missing file: tests/builtins/nested_eval.yaml

@@ -1,0 +1,16 @@
+---
+source: crates/stepflow-main/tests/commands/test_test.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - test
+    - tests/basic.yaml
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Missing file: tests/basic.yaml

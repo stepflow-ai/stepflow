@@ -1,6 +1,8 @@
+pub mod args;
 pub mod cli;
 mod error;
 mod list_components;
+mod repl;
 mod run;
 mod serve;
 mod stepflow_config;

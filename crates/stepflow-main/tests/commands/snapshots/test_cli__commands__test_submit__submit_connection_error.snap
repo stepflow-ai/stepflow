@@ -1,0 +1,18 @@
+---
+source: crates/stepflow-main/tests/commands/test_submit.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - submit
+    - "--url=http://localhost:9999"
+    - "--flow=tests/mock/basic.yaml"
+    - "--input-json={\"m\": 1, \"n\": 2}"
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Missing file: tests/mock/basic.yaml

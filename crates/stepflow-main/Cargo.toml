@@ -10,6 +10,7 @@ description = "Stepflow CLI."
 [dependencies]
 clap.workspace = true
 error-stack.workspace = true
+rustyline.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true

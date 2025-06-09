@@ -1,0 +1,17 @@
+---
+source: crates/stepflow-main/tests/commands/test_run.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - run
+    - "--flow=tests/mock/basic.yaml"
+    - "--input-json={\"m\": 3, \"n\": 4}"
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Missing file: tests/mock/basic.yaml
