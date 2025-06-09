@@ -141,7 +141,8 @@ pub fn load_test_config(
     // 5. Look for stepflow-config.yml in current directory
     // Reuse existing config resolution logic
     let config_args = ConfigArgs::with_path(None);
-    config_args.load_config(Some(flow_path))
+    let flow_dir = flow_path.parent();
+    config_args.load_config(flow_dir)
 }
 
 fn parse_stepflow_config_from_value(

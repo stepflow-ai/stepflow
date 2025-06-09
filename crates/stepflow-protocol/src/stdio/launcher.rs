@@ -41,11 +41,16 @@ impl Launcher {
     pub fn spawn(&self) -> Result<Child> {
         let mut command = tokio::process::Command::new(&self.command);
         command
-            .current_dir(&self.working_directory)
             .args(&self.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .kill_on_drop(true);
+
+        command.current_dir(
+            std::env::current_dir()
+                .unwrap()
+                .join(&self.working_directory),
+        );
 
         // Only pass explicit environment variables through.
         command.env_clear();
@@ -54,6 +59,7 @@ impl Launcher {
             command.env(key, value);
         }
 
+        tracing::info!("Spawning child process: {:?}", command);
         // Finally, spawn the child process.
         match command.spawn() {
             Ok(child) => Ok(child),

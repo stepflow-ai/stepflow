@@ -59,14 +59,13 @@ fn locate_config(directory: Option<&Path>) -> Result<Option<PathBuf>> {
 
 /// Attempt to load a config file from `config_path`.
 ///
-/// If that is not set, look either in the directory containing `flow_path` or the current directory.
+/// If that is not set, look either in the `flow_directory` or the current directory.
 fn load_config_impl(
-    flow_path: Option<&Path>,
+    flow_directory: Option<&Path>,
     mut config_path: Option<PathBuf>,
 ) -> Result<StepflowConfig> {
     if config_path.is_none() {
-        let flow_dir = flow_path.and_then(|p| p.parent());
-        config_path = locate_config(flow_dir)?;
+        config_path = locate_config(flow_directory)?;
     }
 
     tracing::info!("Loading config from {:?}", config_path);
@@ -85,8 +84,12 @@ fn load_config_impl(
 
 impl ConfigArgs {
     /// Load config using the provided path or auto-detection
-    pub fn load_config(&self, flow_path: Option<&Path>) -> Result<StepflowConfig> {
-        load_config_impl(flow_path, self.config_path.clone())
+    ///
+    /// # Arguments
+    ///
+    /// * `flow_directory` - Optional directory containing the workflow file for config auto-detection
+    pub fn load_config(&self, flow_directory: Option<&Path>) -> Result<StepflowConfig> {
+        load_config_impl(flow_directory, self.config_path.clone())
     }
 
     /// Create ConfigArgs with a specific path
