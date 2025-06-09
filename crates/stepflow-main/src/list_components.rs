@@ -1,5 +1,5 @@
 #![allow(clippy::print_stdout)]
-use crate::args::{OutputFormat, WorkflowLoader, ConfigArgs};
+use crate::args::{ConfigArgs, OutputFormat, WorkflowLoader};
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};

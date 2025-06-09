@@ -23,15 +23,15 @@ fn test_invalid_command() {
 
 #[test]
 fn test_with_log_level() {
-    assert_cmd_snapshot!(stepflow()
-        .arg("--log-level=debug")
-        .arg("--help"));
+    assert_cmd_snapshot!(stepflow().arg("--log-level=debug").arg("--help"));
 }
 
 #[test]
 fn test_with_different_log_levels() {
-    assert_cmd_snapshot!(stepflow()
-        .arg("--log-level=trace")
-        .arg("--other-log-level=debug")
-        .arg("--help"));
+    assert_cmd_snapshot!(
+        stepflow()
+            .arg("--log-level=trace")
+            .arg("--other-log-level=debug")
+            .arg("--help")
+    );
 }

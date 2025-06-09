@@ -1,10 +1,7 @@
 use error_stack::ResultExt as _;
 use std::{fs::File, path::PathBuf};
 
-use crate::{
-    args::file_loader::Format,
-    MainError, Result,
-};
+use crate::{MainError, Result, args::file_loader::Format};
 
 /// Shared output arguments used by multiple commands
 #[derive(clap::Args, Debug, Clone)]

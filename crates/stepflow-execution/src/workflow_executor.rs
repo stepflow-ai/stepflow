@@ -349,7 +349,6 @@ mod tests {
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
-
     #[tokio::test]
     async fn test_dependency_tracking_basic() {
         let workflow_yaml = r#"
@@ -398,17 +397,15 @@ mod tests {
 
         let workflow: Flow = serde_yaml_ng::from_str(workflow_yaml).unwrap();
         let input = ValueRef::new(json!({"message": "hello"}));
-        
+
         // Set up mock plugin
         let mut mock_plugin = MockPlugin::new();
-        mock_plugin
-            .mock_component("mock://simple")
-            .behavior(
-                ValueRef::new(json!({"message": "hello"})),
-                MockComponentBehavior::result(FlowResult::Success {
-                    result: ValueRef::new(json!({"output": "processed"})),
-                }),
-            );
+        mock_plugin.mock_component("mock://simple").behavior(
+            ValueRef::new(json!({"message": "hello"})),
+            MockComponentBehavior::result(FlowResult::Success {
+                result: ValueRef::new(json!({"output": "processed"})),
+            }),
+        );
 
         let executor = crate::executor::StepFlowExecutor::new_in_memory();
         let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
@@ -456,25 +453,21 @@ mod tests {
 
         let workflow: Flow = serde_yaml_ng::from_str(workflow_yaml).unwrap();
         let input = ValueRef::new(json!({"value": 10}));
-        
+
         // Set up mock plugin
         let mut mock_plugin = MockPlugin::new();
-        mock_plugin
-            .mock_component("mock://first")
-            .behavior(
-                ValueRef::new(json!({"value": 10})),
-                MockComponentBehavior::result(FlowResult::Success {
-                    result: ValueRef::new(json!({"result": 20})),
-                }),
-            );
-        mock_plugin
-            .mock_component("mock://second")
-            .behavior(
-                ValueRef::new(json!({"result": 20})),
-                MockComponentBehavior::result(FlowResult::Success {
-                    result: ValueRef::new(json!({"final": 30})),
-                }),
-            );
+        mock_plugin.mock_component("mock://first").behavior(
+            ValueRef::new(json!({"value": 10})),
+            MockComponentBehavior::result(FlowResult::Success {
+                result: ValueRef::new(json!({"result": 20})),
+            }),
+        );
+        mock_plugin.mock_component("mock://second").behavior(
+            ValueRef::new(json!({"result": 20})),
+            MockComponentBehavior::result(FlowResult::Success {
+                result: ValueRef::new(json!({"final": 30})),
+            }),
+        );
 
         let executor = crate::executor::StepFlowExecutor::new_in_memory();
         let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);

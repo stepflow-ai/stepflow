@@ -1,5 +1,5 @@
 #![allow(clippy::print_stdout)]
-use crate::args::{WorkflowLoader, load, ConfigArgs, OutputArgs};
+use crate::args::{ConfigArgs, OutputArgs, WorkflowLoader, load};
 use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use clap::Args;
 use error_stack::ResultExt as _;
