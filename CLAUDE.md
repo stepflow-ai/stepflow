@@ -229,7 +229,9 @@ Use consistent derive patterns based on type purpose:
 
 ## Configuration
 
-The `stepflow-config.yml` file defines plugins available to the workflow executor:
+The `stepflow-config.yml` file defines plugins and state storage available to the workflow executor:
+
+### Plugin Configuration
 
 ```yaml
 plugins:
@@ -238,6 +240,48 @@ plugins:
     command: uv   # Command to execute
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]  # Arguments
 ```
+
+### State Store Configuration
+
+StepFlow supports multiple state storage backends for persisting workflow execution state and blobs:
+
+#### In-Memory State Store (Default)
+```yaml
+# No configuration needed - this is the default
+state_store:
+  type: in_memory
+```
+
+#### SQLite State Store
+```yaml
+state_store:
+  type: sqlite
+  database_url: "sqlite:workflow_state.db"  # File path or ":memory:"
+  auto_migrate: true                        # Automatically create/update schema
+  max_connections: 10                       # Connection pool size
+```
+
+#### Example Complete Configuration
+```yaml
+plugins:
+  - name: python
+    type: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
+
+state_store:
+  type: sqlite
+  database_url: "sqlite:./data/stepflow.db"
+  auto_migrate: true
+  max_connections: 5
+```
+
+### State Store Features
+
+- **Blob Storage**: Content-addressable storage with automatic deduplication
+- **Execution State**: Persistent workflow step results for recovery and debugging
+- **Migration Support**: Automatic schema creation and versioning
+- **Multi-backend**: Extensible design for future database support (PostgreSQL, etc.)
 
 ## Testing
 

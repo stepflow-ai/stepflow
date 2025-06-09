@@ -144,7 +144,9 @@ impl Plugin for MockPlugin {
             .behaviors
             .get(&input)
             .ok_or(PluginError::UdfExecution)
-            .attach_printable_lazy(|| format!("Running {component} on {input:?}"))?;
+            .attach_printable_lazy(|| {
+                format!("No behavior defined for {component} on {input:?}")
+            })?;
 
         match output {
             MockComponentBehavior::Error { .. } => error_stack::bail!(PluginError::UdfExecution),

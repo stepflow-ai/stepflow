@@ -1,0 +1,30 @@
+name: Simple SQL State Test
+description: Basic test to verify SQL state store is working with workflow execution
+
+input:
+  type: object
+  properties:
+    message:
+      type: string
+      default: "Testing execution state persistence"
+
+steps:
+  - id: process_message
+    component: mock://identity
+    input:
+      value: {$from: { workflow: input }, path: message }
+
+output: 
+  input_message: {$from: { workflow: input }, path: message }
+  processed_result: { $from: { step: process_message }, path: result }
+
+test:
+  cases:
+    - name: test sql state persistence
+      input:
+        message: "Testing execution state persistence"
+      output:
+        outcome: success
+        result:
+          input_message: "Testing execution state persistence"
+          processed_result: "Testing execution state persistence"

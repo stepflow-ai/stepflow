@@ -7,6 +7,9 @@ license.workspace = true
 publish = false
 description = "Types defining the stepflow JSON-RPC protocol."
 
+[lib]
+doctest = false
+
 [dependencies]
 erased-serde.workspace = true
 error-stack.workspace = true

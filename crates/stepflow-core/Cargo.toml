@@ -7,6 +7,9 @@ license.workspace = true
 publish = false
 description = "Core types and functionality for stepflow workflows, schemas, and components."
 
+[lib]
+doctest = false
+
 [dependencies]
 error-stack.workspace = true
 hex.workspace = true

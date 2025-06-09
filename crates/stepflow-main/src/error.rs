@@ -34,6 +34,8 @@ pub enum MainError {
     ReplInit,
     #[error("REPL command error: {0}")]
     ReplCommand(String),
+    #[error("Configuration error")]
+    Configuration,
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;
