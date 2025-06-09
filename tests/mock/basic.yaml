@@ -10,7 +10,7 @@ output_schema:
       type: string
     x:
       type: integer
-    'y':
+    y:
       type: integer
 steps:
 - id: step1
@@ -40,10 +40,10 @@ output:
     $from:
       step: step2
     path: x
-  'y':
+  y:
     $from:
       step: step2
-    path: 'y'
+    path: y
 test:
   cases:
   - name: test with input 'a'
@@ -54,7 +54,7 @@ test:
       result:
         name: b
         x: 1
-        'y': 2
+        y: 2
   - name: test with input 'hello'
     input:
       name: hello
@@ -63,7 +63,7 @@ test:
       result:
         name: world
         x: 2
-        'y': 8
+        y: 8
   - name: test with input 'world'
     input:
       name: world
@@ -71,4 +71,4 @@ test:
       outcome: failed
       error:
         code: 500
-        message: 'Flow execution failed: error executing plugin'
+        message: 'Flow execution failed: step "step2" failed'

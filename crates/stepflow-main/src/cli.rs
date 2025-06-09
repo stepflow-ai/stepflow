@@ -145,10 +145,11 @@ impl Cli {
                 output_args,
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
-                let config = config_args.load_config(Some(&flow_path))?;
+                let flow_dir = flow_path.parent();
+                let config = config_args.load_config(flow_dir)?;
                 let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
-                let input = input_args.parse_input()?;
+                let input = input_args.parse_input(flow_dir, true)?;
 
                 let output = run(executor, flow, input).await?;
                 output_args.write_output(output)?;
@@ -166,7 +167,8 @@ impl Cli {
                 output_args,
             } => {
                 let flow: Flow = load(&flow_path)?;
-                let input = input_args.parse_input()?;
+                let flow_dir = flow_path.parent();
+                let input = input_args.parse_input(flow_dir, true)?;
 
                 let output = submit(url, flow, input).await?;
                 output_args.write_output(output)?;

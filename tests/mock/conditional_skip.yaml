@@ -67,5 +67,5 @@ test:
     output:
       outcome: failed
       error:
-        code: 500
-        message: 'Flow execution failed: error executing plugin'
+        code: 0
+        message: error executing user-defined function

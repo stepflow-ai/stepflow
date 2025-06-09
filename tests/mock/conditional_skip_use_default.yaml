@@ -18,7 +18,7 @@ steps:
   input_schema: null
   output_schema: null
   skip_if:
-    $from:
+    $from: 
       workflow: input
     path: should_skip
   input:
@@ -68,5 +68,5 @@ test:
     output:
       outcome: failed
       error:
-        code: 500
-        message: 'Flow execution failed: error executing plugin'
+        code: 0
+        message: error executing user-defined function
