@@ -180,14 +180,13 @@ impl StateStore for InMemoryStateStore {
     ) -> Pin<Box<dyn Future<Output = error_stack::Result<FlowResult, StateError>> + Send + '_>>
     {
         let executions = self.executions.clone();
-        let execution_id_str = execution_id.to_string();
         let step_id_owned = step_id.to_string();
 
         Box::pin(async move {
             let executions = executions.read().await;
             let execution_state = executions.get(&execution_id).ok_or_else(|| {
                 error_stack::report!(StateError::StepResultNotFoundById {
-                    execution_id: execution_id_str.clone(),
+                    execution_id,
                     step_id: step_id_owned.clone(),
                 })
             })?;
@@ -201,12 +200,12 @@ impl StateStore for InMemoryStateStore {
                     .map(|step_result| step_result.result().clone())
                     .ok_or_else(|| {
                         error_stack::report!(StateError::StepResultNotFoundById {
-                            execution_id: execution_id_str,
+                            execution_id,
                             step_id: step_id_owned,
                         })
                     }),
                 None => Err(error_stack::report!(StateError::StepResultNotFoundById {
-                    execution_id: execution_id_str,
+                    execution_id,
                     step_id: step_id_owned,
                 })),
             }

@@ -7,6 +7,9 @@ license.workspace = true
 publish = false
 description = "Stepflow CLI."
 
+[lib]
+doctest = false
+
 [dependencies]
 clap.workspace = true
 error-stack.workspace = true
@@ -20,6 +23,8 @@ stepflow-execution.workspace = true
 stepflow-mock.workspace = true
 stepflow-plugin.workspace = true
 stepflow-protocol.workspace = true
+stepflow-state.workspace = true
+stepflow-state-sql.workspace = true
 regex.workspace = true
 walkdir.workspace = true
 similar.workspace = true

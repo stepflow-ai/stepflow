@@ -7,6 +7,9 @@ license.workspace = true
 publish = false
 description = "Types and trait for the step execution plugins."
 
+[lib]
+doctest = false
+
 [dependencies]
 dynosaur.workspace = true
 error-stack.workspace = true

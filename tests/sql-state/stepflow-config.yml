@@ -1,0 +1,26 @@
+plugins:
+  - name: mock
+    type: mock
+    components:
+      mock://identity:
+        input_schema:
+          type: object
+          properties:
+            value:
+              type: string
+        output_schema:
+          type: object
+          properties:
+            result:
+              type: string
+        behaviors:
+          { value: "Testing execution state persistence" }:
+            outcome: success
+            result: { result: "Testing execution state persistence" }
+
+# Use SQLite with in-memory database for testing
+state_store:
+  type: sqlite
+  database_url: "sqlite::memory:"
+  auto_migrate: true
+  max_connections: 5

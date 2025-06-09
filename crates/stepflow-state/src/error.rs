@@ -1,5 +1,13 @@
+use uuid::Uuid;
+
 #[derive(Debug, thiserror::Error)]
 pub enum StateError {
+    #[error("State store initialization error")]
+    Initialization,
+
+    #[error("State store connection error")]
+    Connection,
+
     #[error("Internal state store error")]
     Internal,
 
@@ -13,10 +21,10 @@ pub enum StateError {
     },
 
     #[error("Step result not found for execution {execution_id}, step id '{step_id}'")]
-    StepResultNotFoundById {
-        execution_id: String,
-        step_id: String,
-    },
+    StepResultNotFoundById { execution_id: Uuid, step_id: String },
+
+    #[error("Serialization error")]
+    Serialization,
 }
 
 pub type Result<T, E = error_stack::Report<StateError>> = std::result::Result<T, E>;

@@ -7,6 +7,9 @@ license.workspace = true
 publish = false
 description = "Stepflow component plugin providing built-in components."
 
+[lib]
+doctest = false
+
 [dependencies]
 dynosaur.workspace = true
 error-stack.workspace = true

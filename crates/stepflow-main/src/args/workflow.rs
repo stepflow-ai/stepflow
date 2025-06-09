@@ -11,8 +11,9 @@ use crate::{
 
 /// Create executor from StepflowConfig
 async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepFlowExecutor>> {
-    // TODO: Allow other state backends.
-    let executor = StepFlowExecutor::new_in_memory();
+    // Create state store from configuration
+    let state_store = config.state_store.create_state_store().await?;
+    let executor = StepFlowExecutor::new(state_store);
 
     let working_directory = config
         .working_directory
