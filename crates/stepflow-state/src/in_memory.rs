@@ -1,12 +1,23 @@
 use error_stack::ResultExt as _;
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
-use crate::{StateStore, state_store::StepResult};
-use stepflow_core::{FlowResult, blob::BlobId, workflow::ValueRef};
+use crate::{
+    StateStore,
+    state_store::{
+        Endpoint, ExecutionDetails, ExecutionFilters, ExecutionStatus, ExecutionSummary, StepResult,
+    },
+};
+use stepflow_core::{
+    FlowResult,
+    blob::BlobId,
+    workflow::{Flow, ValueRef},
+};
 use uuid::Uuid;
 
 use crate::StateError;
 use tokio::sync::RwLock;
+
+type EndpointMap = Arc<RwLock<HashMap<(String, Option<String>), Endpoint>>>;
 /// Execution-specific state storage for a single workflow execution.
 #[derive(Debug)]
 struct ExecutionState {
@@ -15,6 +26,21 @@ struct ExecutionState {
     step_results: Vec<Option<StepResult<'static>>>,
     /// Map from step_id to step_index for O(1) lookup by ID
     step_id_to_index: HashMap<String, usize>,
+}
+
+/// Enhanced execution metadata for workflow management.
+#[derive(Debug, Clone)]
+struct ExecutionMetadata {
+    execution_id: Uuid,
+    endpoint_name: Option<String>,
+    endpoint_label: Option<String>,
+    workflow_hash: Option<String>,
+    status: ExecutionStatus,
+    debug_mode: bool,
+    input_blob_id: Option<String>,
+    result_blob_id: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl ExecutionState {
@@ -48,6 +74,13 @@ pub struct InMemoryStateStore {
     blobs: Arc<RwLock<HashMap<String, ValueRef>>>,
     /// Map from execution_id to execution-specific state
     executions: Arc<RwLock<HashMap<Uuid, ExecutionState>>>,
+    /// Map from workflow hash to serialized workflow content
+    workflows: Arc<RwLock<HashMap<String, String>>>,
+    /// Map from (endpoint_name, label) to endpoint metadata
+    /// where label = None represents the default version
+    endpoints: EndpointMap,
+    /// Map from execution_id to execution metadata
+    execution_metadata: Arc<RwLock<HashMap<Uuid, ExecutionMetadata>>>,
 }
 
 impl InMemoryStateStore {
@@ -56,6 +89,9 @@ impl InMemoryStateStore {
         Self {
             blobs: Arc::new(RwLock::new(HashMap::new())),
             executions: Arc::new(RwLock::new(HashMap::new())),
+            workflows: Arc::new(RwLock::new(HashMap::new())),
+            endpoints: Arc::new(RwLock::new(HashMap::new())),
+            execution_metadata: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -67,6 +103,9 @@ impl InMemoryStateStore {
     pub async fn evict_execution(&self, execution_id: Uuid) {
         let mut executions = self.executions.write().await;
         executions.remove(&execution_id);
+
+        let mut metadata = self.execution_metadata.write().await;
+        metadata.remove(&execution_id);
     }
 }
 
@@ -237,6 +276,320 @@ impl StateStore for InMemoryStateStore {
                 .iter()
                 .filter_map(|opt| opt.as_ref().map(|step_result| step_result.to_owned()))
                 .collect();
+
+            Ok(results)
+        })
+    }
+
+    // Workflow Management Methods
+
+    fn store_workflow(
+        &self,
+        workflow: &Flow,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<String, StateError>> + Send + '_>> {
+        let workflows = self.workflows.clone();
+        let workflow_json = serde_json::to_string(workflow);
+
+        Box::pin(async move {
+            let workflow_json = workflow_json.change_context(StateError::Serialization)?;
+
+            // Generate SHA-256 hash of the workflow content
+            use sha2::{Digest as _, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(workflow_json.as_bytes());
+            let hash = format!("{:x}", hasher.finalize());
+
+            // Store the serialized workflow (overwrites are fine since content is identical)
+            {
+                let mut workflows = workflows.write().await;
+                workflows.insert(hash.clone(), workflow_json);
+            }
+
+            Ok(hash)
+        })
+    }
+
+    fn get_workflow(
+        &self,
+        workflow_hash: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Flow, StateError>> + Send + '_>> {
+        let workflows = self.workflows.clone();
+        let hash = workflow_hash.to_string();
+
+        Box::pin(async move {
+            let workflows = workflows.read().await;
+            let workflow_json = workflows.get(&hash).ok_or_else(|| {
+                error_stack::report!(StateError::WorkflowNotFound {
+                    workflow_hash: hash.clone()
+                })
+            })?;
+
+            // Deserialize the workflow from JSON
+            let workflow: Flow =
+                serde_json::from_str(workflow_json).change_context(StateError::Serialization)?;
+
+            Ok(workflow)
+        })
+    }
+
+    fn create_endpoint(
+        &self,
+        name: &str,
+        label: Option<&str>,
+        workflow_hash: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
+        let endpoints = self.endpoints.clone();
+        let name = name.to_string();
+        let label = label.map(|s| s.to_string());
+        let workflow_hash = workflow_hash.to_string();
+
+        Box::pin(async move {
+            let now = chrono::Utc::now();
+            let endpoint = Endpoint {
+                name: name.clone(),
+                label: label.clone(),
+                workflow_hash,
+                created_at: now,
+                updated_at: now,
+            };
+
+            let mut endpoints = endpoints.write().await;
+            endpoints.insert((name, label), endpoint);
+
+            Ok(())
+        })
+    }
+
+    fn get_endpoint(
+        &self,
+        name: &str,
+        label: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Endpoint, StateError>> + Send + '_>> {
+        let endpoints = self.endpoints.clone();
+        let name = name.to_string();
+        let label = label.map(|s| s.to_string());
+
+        Box::pin(async move {
+            let endpoints = endpoints.read().await;
+            let key = (name.clone(), label.clone());
+
+            let identifier = if let Some(ref l) = label {
+                format!("{}:{}", name, l)
+            } else {
+                name
+            };
+
+            endpoints.get(&key).cloned().ok_or_else(|| {
+                error_stack::report!(StateError::EndpointNotFound { name: identifier })
+            })
+        })
+    }
+
+    fn list_endpoints(
+        &self,
+        name_filter: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<Endpoint>, StateError>> + Send + '_>>
+    {
+        let endpoints = self.endpoints.clone();
+        let name_filter = name_filter.map(|s| s.to_string());
+
+        Box::pin(async move {
+            let endpoints = endpoints.read().await;
+            let results: Vec<Endpoint> = endpoints
+                .iter()
+                .filter(|((name, _label), _endpoint)| {
+                    if let Some(ref filter) = name_filter {
+                        name == filter
+                    } else {
+                        true
+                    }
+                })
+                .map(|((_name, _label), endpoint)| endpoint.clone())
+                .collect();
+            Ok(results)
+        })
+    }
+
+    fn delete_endpoint(
+        &self,
+        name: &str,
+        label: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
+        let endpoints = self.endpoints.clone();
+        let name = name.to_string();
+        let label = label.map(|s| s.to_string());
+
+        Box::pin(async move {
+            let mut endpoints = endpoints.write().await;
+
+            if label.as_deref() == Some("*") {
+                // Delete all versions of this endpoint
+                let keys_to_remove: Vec<_> = endpoints
+                    .keys()
+                    .filter(|(n, _l)| n == &name)
+                    .cloned()
+                    .collect();
+                for key in keys_to_remove {
+                    endpoints.remove(&key);
+                }
+            } else {
+                // Delete specific version (including default when label is None)
+                let key = (name, label);
+                endpoints.remove(&key);
+            }
+
+            Ok(())
+        })
+    }
+
+    fn create_execution(
+        &self,
+        execution_id: Uuid,
+        endpoint_name: Option<&str>,
+        endpoint_label: Option<&str>,
+        workflow_hash: Option<&str>,
+        debug_mode: bool,
+        input_blob_id: Option<&BlobId>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
+        let metadata = self.execution_metadata.clone();
+        let execution_metadata = ExecutionMetadata {
+            execution_id,
+            endpoint_name: endpoint_name.map(|s| s.to_string()),
+            endpoint_label: endpoint_label.map(|s| s.to_string()),
+            workflow_hash: workflow_hash.map(|s| s.to_string()),
+            status: ExecutionStatus::Running,
+            debug_mode,
+            input_blob_id: input_blob_id.map(|id| id.as_str().to_string()),
+            result_blob_id: None,
+            created_at: chrono::Utc::now(),
+            completed_at: None,
+        };
+
+        Box::pin(async move {
+            let mut metadata = metadata.write().await;
+            metadata.insert(execution_id, execution_metadata);
+            Ok(())
+        })
+    }
+
+    fn update_execution_status(
+        &self,
+        execution_id: Uuid,
+        status: ExecutionStatus,
+        result_blob_id: Option<&BlobId>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
+        let metadata = self.execution_metadata.clone();
+        let result_blob_id = result_blob_id.map(|id| id.as_str().to_string());
+
+        Box::pin(async move {
+            let mut metadata = metadata.write().await;
+            if let Some(exec_metadata) = metadata.get_mut(&execution_id) {
+                exec_metadata.status = status.clone();
+                exec_metadata.result_blob_id = result_blob_id;
+
+                if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed) {
+                    exec_metadata.completed_at = Some(chrono::Utc::now());
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn get_execution(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + '_>>
+    {
+        let metadata = self.execution_metadata.clone();
+
+        Box::pin(async move {
+            let metadata = metadata.read().await;
+            let exec_metadata = metadata.get(&execution_id).ok_or_else(|| {
+                error_stack::report!(StateError::ExecutionNotFound { execution_id })
+            })?;
+
+            let details = ExecutionDetails {
+                execution_id: exec_metadata.execution_id,
+                endpoint_name: exec_metadata.endpoint_name.clone(),
+                endpoint_label: exec_metadata.endpoint_label.clone(),
+                workflow_hash: exec_metadata.workflow_hash.clone(),
+                status: exec_metadata.status.clone(),
+                debug_mode: exec_metadata.debug_mode,
+                input_blob_id: exec_metadata
+                    .input_blob_id
+                    .as_ref()
+                    .and_then(|s| BlobId::new(s.clone()).ok()),
+                result_blob_id: exec_metadata
+                    .result_blob_id
+                    .as_ref()
+                    .and_then(|s| BlobId::new(s.clone()).ok()),
+                created_at: exec_metadata.created_at,
+                completed_at: exec_metadata.completed_at,
+            };
+
+            Ok(details)
+        })
+    }
+
+    fn list_executions(
+        &self,
+        filters: &ExecutionFilters,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = error_stack::Result<Vec<ExecutionSummary>, StateError>> + Send + '_,
+        >,
+    > {
+        let metadata = self.execution_metadata.clone();
+        let filters = filters.clone();
+
+        Box::pin(async move {
+            let metadata = metadata.read().await;
+            let mut results: Vec<ExecutionSummary> = metadata
+                .values()
+                .filter(|exec| {
+                    // Apply status filter
+                    if let Some(ref status) = filters.status {
+                        if &exec.status != status {
+                            return false;
+                        }
+                    }
+
+                    // Apply endpoint name filter
+                    if let Some(ref endpoint_name) = filters.endpoint_name {
+                        if exec.endpoint_name.as_ref() != Some(endpoint_name) {
+                            return false;
+                        }
+                    }
+
+                    true
+                })
+                .map(|exec| ExecutionSummary {
+                    execution_id: exec.execution_id,
+                    endpoint_name: exec.endpoint_name.clone(),
+                    endpoint_label: exec.endpoint_label.clone(),
+                    workflow_hash: exec.workflow_hash.clone(),
+                    status: exec.status.clone(),
+                    debug_mode: exec.debug_mode,
+                    created_at: exec.created_at,
+                    completed_at: exec.completed_at,
+                })
+                .collect();
+
+            // Sort by creation time (newest first)
+            results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+            // Apply pagination
+            if let Some(offset) = filters.offset {
+                if offset < results.len() {
+                    results = results[offset..].to_vec();
+                } else {
+                    results.clear();
+                }
+            }
+
+            if let Some(limit) = filters.limit {
+                results.truncate(limit);
+            }
 
             Ok(results)
         })

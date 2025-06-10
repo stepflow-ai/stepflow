@@ -25,7 +25,7 @@ Options:
       --url <URL>
           The URL of the StepFlow service to submit the workflow to
           
-          [default: http://localhost:8080]
+          [default: http://localhost:7837]
 
       --flow <FILE>
           Path to the workflow file to submit

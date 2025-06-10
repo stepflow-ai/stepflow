@@ -11,9 +11,13 @@ description = "Stepflow CLI."
 doctest = false
 
 [dependencies]
+chrono.workspace = true
 clap.workspace = true
 error-stack.workspace = true
+poem.workspace = true
+poem-openapi.workspace = true
 rustyline.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
@@ -26,6 +30,7 @@ stepflow-protocol.workspace = true
 stepflow-state.workspace = true
 stepflow-state-sql.workspace = true
 regex.workspace = true
+reqwest.workspace = true
 walkdir.workspace = true
 similar.workspace = true
 thiserror.workspace = true
@@ -34,6 +39,7 @@ tracing.workspace = true
 tracing-error.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 insta-cmd.workspace = true

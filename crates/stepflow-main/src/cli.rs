@@ -68,7 +68,7 @@ pub enum Command {
     /// Start a StepFlow service.
     Serve {
         /// Port to run the service on.
-        #[arg(long, value_name = "PORT", default_value = "8080")]
+        #[arg(long, value_name = "PORT", default_value = "7837")]
         port: u16,
 
         #[command(flatten)]
@@ -77,7 +77,7 @@ pub enum Command {
     /// Submit a workflow to a StepFlow service.
     Submit {
         /// The URL of the StepFlow service to submit the workflow to.
-        #[arg(long, value_name = "URL", default_value = "http://localhost:8080", value_hint = clap::ValueHint::Url)]
+        #[arg(long, value_name = "URL", default_value = "http://localhost:7837", value_hint = clap::ValueHint::Url)]
         url: Url,
 
         /// Path to the workflow file to submit.

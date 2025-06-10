@@ -23,6 +23,15 @@ pub enum StateError {
     #[error("Step result not found for execution {execution_id}, step id '{step_id}'")]
     StepResultNotFoundById { execution_id: Uuid, step_id: String },
 
+    #[error("Workflow not found: {workflow_hash}")]
+    WorkflowNotFound { workflow_hash: String },
+
+    #[error("Endpoint not found: {name}")]
+    EndpointNotFound { name: String },
+
+    #[error("Execution not found: {execution_id}")]
+    ExecutionNotFound { execution_id: Uuid },
+
     #[error("Serialization error")]
     Serialization,
 }
