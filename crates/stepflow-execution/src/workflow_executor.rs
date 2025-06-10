@@ -223,23 +223,39 @@ impl WorkflowExecutor {
     }
 
     /// Check if a step should be skipped based on its skip condition.
+    ///
+    /// Evaluates the skip_if expression and returns true if the step should be skipped.
+    /// - If the expression resolves to a truthy value, the step is skipped
+    /// - If the expression references skipped steps or fails, the step is NOT skipped
+    ///   (allowing the step to potentially handle the skip/error via on_skip logic)
     async fn should_skip_step(&self, skip_if: &Expr) -> Result<bool> {
         let resolved_value = self.resolver.resolve_expr(skip_if).await?;
 
         match resolved_value {
             FlowResult::Success { result } => Ok(result.is_truthy()),
-            FlowResult::Skipped => Ok(false),
-            FlowResult::Failed { .. } => Ok(false),
+            FlowResult::Skipped => Ok(false), // Don't skip if condition references skipped values
+            FlowResult::Failed { .. } => Ok(false), // Don't skip if condition evaluation failed
         }
     }
 
     /// Start all newly unblocked steps, handling skips and starting executions.
+    ///
+    /// This method implements a "fast skip" optimization where skip conditions and input-based
+    /// skips are evaluated synchronously before spawning async tasks. This avoids the overhead
+    /// of creating async tasks for steps that will immediately skip, and handles skip chains
+    /// (A skips → B skips → C skips) efficiently in a single loop.
+    ///
+    /// The loop continues until no more steps can be fast-skipped, ensuring that cascading
+    /// skips are processed without waiting for async execution cycles.
     async fn start_unblocked_steps(
         &mut self,
         unblocked: &BitSet,
         running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
     ) -> Result<()> {
         let mut steps_to_process = unblocked.clone();
+
+        // Fast skip loop: process chains of skippable steps synchronously
+        // This avoids spawning async tasks for steps that will immediately skip
         while !steps_to_process.is_empty() {
             let mut additional_unblocked = BitSet::new();
 
@@ -250,20 +266,22 @@ impl WorkflowExecutor {
                     (step.id.clone(), step.skip_if.clone(), step.input.clone())
                 };
 
-                // Check skip condition if present
+                // Check explicit skip condition (skip_if expression)
                 if let Some(skip_if) = &skip_if {
                     if self.should_skip_step(skip_if).await? {
+                        // Skip this step and collect any newly unblocked dependent steps
                         additional_unblocked
                             .union_with(&self.skip_step(&step_id, step_index).await?);
                         continue;
                     }
                 }
 
-                // Try to resolve step inputs - if any input is skipped, the step should be skipped
+                // Check for input-based skips: if any input references a skipped step,
+                // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = match self.resolver.resolve(&step_input).await {
                     Ok(FlowResult::Success { result }) => result,
                     Ok(FlowResult::Skipped) => {
-                        // Step inputs contain skipped values - skip this step
+                        // Step inputs contain skipped values - propagate the skip
                         additional_unblocked
                             .union_with(&self.skip_step(&step_id, step_index).await?);
                         continue;
@@ -282,11 +300,13 @@ impl WorkflowExecutor {
                     }
                 };
 
-                // Start step execution
+                // Step passed all skip checks - start async execution
                 self.start_step_execution(step_index, step_input, running_tasks)
                     .await?;
             }
 
+            // Process any steps that were unblocked by skips in this iteration
+            // This enables skip chains: A skips → B skips → C skips
             steps_to_process = additional_unblocked;
         }
 
