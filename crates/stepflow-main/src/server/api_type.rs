@@ -113,17 +113,31 @@ where
         T::schema_name().into()
     }
 
+    fn register(registry: &mut poem_openapi::registry::Registry) {
+        if T::is_referenceable() {
+            // Register the schema and return a reference
+            // TODO: We may want to clean up how schemars is converted.
+            registry.create_schema::<T, _>(T::schema_name(), |_r| {
+                // Try to get the schema from JsonSchema implementation
+                let mut generator = schemars::SchemaGenerator::default();
+                let schema = T::json_schema(&mut generator);
+
+                // Convert the schemars::Schema to poem_openapi::registry::MetaSchema
+                convert_schemars_to_meta_schema(schema, &T::schema_name())
+            });
+        }
+    }
+
     fn schema_ref() -> MetaSchemaRef {
-        // Try to get the schema from JsonSchema implementation
-        let mut generator = schemars::SchemaGenerator::default();
-        let schema = T::json_schema(&mut generator);
-
-        // Convert schemars::Schema to poem_openapi::registry::MetaSchema
-        let meta_schema = convert_schemars_to_meta_schema(schema, &T::schema_name());
-
         if T::is_referenceable() {
             MetaSchemaRef::Reference(T::schema_name())
         } else {
+            // Try to get the schema from JsonSchema implementation
+            let mut generator = schemars::SchemaGenerator::default();
+            let schema = T::json_schema(&mut generator);
+
+            // Convert the schemars::Schema to poem_openapi::registry::MetaSchema
+            let meta_schema = convert_schemars_to_meta_schema(schema, &T::schema_name());
             MetaSchemaRef::Inline(Box::new(meta_schema))
         }
     }

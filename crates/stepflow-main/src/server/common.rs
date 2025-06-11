@@ -1,6 +1,8 @@
 use poem_openapi::ApiResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use stepflow_core::{FlowResult, workflow::FlowRef};
+use stepflow_state::ExecutionStatus;
 
 use super::api_type::ApiType;
 
@@ -18,6 +20,36 @@ pub struct ErrorResponse {
 
 /// API wrapper for ErrorResponse
 pub type ApiErrorResponse = ApiType<ErrorResponse>;
+
+/// Response containing a workflow definition and its hash
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WorkflowResponse {
+    /// The workflow definition
+    pub workflow: FlowRef,
+    /// The workflow hash
+    pub workflow_hash: String,
+}
+
+/// API wrapper for WorkflowResponse
+pub type ApiWorkflowResponse = ApiType<WorkflowResponse>;
+
+/// Response for workflow execution operations
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ExecuteResponse {
+    /// The execution ID (UUID string)
+    pub execution_id: String,
+    /// The result of the execution (if completed synchronously)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<FlowResult>,
+    /// Current status of the execution
+    pub status: ExecutionStatus,
+    /// Whether this execution is in debug mode
+    #[serde(default)]
+    pub debug: bool,
+}
+
+/// API wrapper for ExecuteResponse
+pub type ApiExecuteResponse = ApiType<ExecuteResponse>;
 
 /// API response types
 #[derive(ApiResponse)]
