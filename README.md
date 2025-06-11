@@ -87,6 +87,17 @@ Run tests with `cargo test` or `cargo insta test --unreferenced=delete --review`
 The latter runs uses `insta` to delete outdated snapshots and review any changes after the tests run.
 Both commands will fail if any test fails, including if the snapshot output doesn't match the actual output.
 
+### Cargo Deny
+
+This project uses [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) to check dependencies for security vulnerabilities and license compliance.
+To run cargo-deny, use the following command:
+
+```sh
+cargo install --locked cargo-deny
+cargo deny check
+```
+
 ## License
 
-*[License information to be added]*
+StepFlow and it's components are licensed under the Apache License 2.0.
+See the [LICENSE](LICENSE) file for details.
