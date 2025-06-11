@@ -29,7 +29,6 @@ pub struct ExecuteRequest {
 /// API wrapper for ExecuteRequest
 pub type ApiExecuteRequest = ApiType<ExecuteRequest>;
 
-
 /// Request to execute specific steps in debug mode
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DebugStepRequest {

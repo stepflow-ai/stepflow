@@ -2,10 +2,7 @@ use poem_openapi::{OpenApi, payload::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::{
-    FlowResult,
-    workflow::ValueRef,
-};
+use stepflow_core::{FlowResult, workflow::ValueRef};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::{ExecutionDetails, ExecutionStatus, ExecutionSummary};
 use uuid::Uuid;
@@ -104,7 +101,6 @@ pub struct ListStepExecutionsResponse {
 
 /// API wrapper for ListStepExecutionsResponse
 pub type ApiListStepExecutionsResponse = ApiType<ListStepExecutionsResponse>;
-
 
 pub struct ExecutionsApi {
     executor: Arc<StepFlowExecutor>,

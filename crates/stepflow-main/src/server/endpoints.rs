@@ -64,8 +64,6 @@ pub struct ListEndpointsResponse {
 /// API wrapper for ListEndpointsResponse
 pub type ApiListEndpointsResponse = ApiType<ListEndpointsResponse>;
 
-
-
 pub struct EndpointsApi {
     executor: Arc<StepFlowExecutor>,
 }
