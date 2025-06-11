@@ -1,11 +1,16 @@
 [package]
 name = "stepflow-mock"
+description = "Mock component plugin for testing purposes."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 publish = false
-description = "Mock component plugin for testing purposes."
+
+[lints]
+workspace = true
 
 [lib]
 doctest = false
@@ -19,6 +24,3 @@ tracing.workspace = true
 
 [dev-dependencies]
 static_assertions.workspace = true
-
-[lints]
-workspace = true

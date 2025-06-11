@@ -1,16 +1,18 @@
 [package]
 name = "stepflow-components-mcp"
+description = "Step execution plugins for executing MCP tools."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 publish = false
-description = "Step execution plugins for executing MCP tools."
+
+[lints]
+workspace = true
 
 [lib]
 doctest = false
 
 [dependencies]
-
-[lints]
-workspace = true

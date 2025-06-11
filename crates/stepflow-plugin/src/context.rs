@@ -1,4 +1,6 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use futures::future::{BoxFuture, FutureExt as _};
+use std::sync::Arc;
+use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     workflow::{Flow, ValueRef},
@@ -15,25 +17,25 @@ pub trait Context: Send + Sync {
     fn submit_flow(
         &self,
         flow: Arc<Flow>,
+        workflow_hash: FlowHash,
         input: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = crate::Result<Uuid>> + Send + '_>>;
+    ) -> BoxFuture<'_, crate::Result<Uuid>>;
 
     /// Retrieves the result of a previously submitted workflow.
-    fn flow_result(
-        &self,
-        execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = crate::Result<FlowResult>> + Send + '_>>;
+    fn flow_result(&self, execution_id: Uuid) -> BoxFuture<'_, crate::Result<FlowResult>>;
 
     /// Executes a nested workflow and waits for its completion.
     fn execute_flow(
         &self,
         flow: Arc<Flow>,
+        workflow_hash: FlowHash,
         input: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = crate::Result<FlowResult>> + Send + '_>> {
-        Box::pin(async move {
-            let execution_id = self.submit_flow(flow, input).await?;
+    ) -> BoxFuture<'_, crate::Result<FlowResult>> {
+        async move {
+            let execution_id = self.submit_flow(flow, workflow_hash, input).await?;
             self.flow_result(execution_id).await
-        })
+        }
+        .boxed()
     }
 
     /// Get the state store for this executor.
@@ -76,16 +78,14 @@ impl Context for ExecutionContext {
     fn submit_flow(
         &self,
         flow: Arc<Flow>,
+        workflow_hash: FlowHash,
         input: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = crate::Result<Uuid>> + Send + '_>> {
-        self.context.submit_flow(flow, input)
+    ) -> BoxFuture<'_, crate::Result<Uuid>> {
+        self.context.submit_flow(flow, workflow_hash, input)
     }
 
     /// Get the result of a workflow execution.
-    fn flow_result(
-        &self,
-        execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = crate::Result<FlowResult>> + Send + '_>> {
+    fn flow_result(&self, execution_id: Uuid) -> BoxFuture<'_, crate::Result<FlowResult>> {
         self.context.flow_result(execution_id)
     }
 
@@ -93,8 +93,9 @@ impl Context for ExecutionContext {
     fn execute_flow(
         &self,
         flow: Arc<Flow>,
+        workflow_hash: FlowHash,
         input: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = crate::Result<FlowResult>> + Send + '_>> {
-        self.context.execute_flow(flow, input)
+    ) -> BoxFuture<'_, crate::Result<FlowResult>> {
+        self.context.execute_flow(flow, workflow_hash, input)
     }
 }

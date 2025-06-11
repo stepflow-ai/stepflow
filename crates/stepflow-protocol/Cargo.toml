@@ -13,6 +13,7 @@ doctest = false
 [dependencies]
 erased-serde.workspace = true
 error-stack.workspace = true
+futures.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 serde.workspace = true

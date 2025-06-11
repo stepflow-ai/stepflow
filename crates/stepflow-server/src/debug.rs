@@ -1,0 +1,194 @@
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::Json,
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use stepflow_core::FlowResult;
+use stepflow_core::status::ExecutionStatus;
+use stepflow_execution::StepFlowExecutor;
+use utoipa::{OpenApi, ToSchema};
+use uuid::Uuid;
+
+/// Request to execute specific steps in debug mode
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DebugStepRequest {
+    /// Step IDs to execute
+    pub step_ids: Vec<String>,
+}
+
+/// Response from debug step executions
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DebugStepResponse {
+    /// Results of executed steps
+    pub results: std::collections::HashMap<String, FlowResult>,
+}
+
+/// Response for runnable steps in debug mode
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DebugRunnableResponse {
+    /// Steps that can be executed
+    pub runnable_steps: Vec<String>,
+}
+
+/// Debug API for step-by-step execution control
+#[derive(OpenApi)]
+#[openapi(
+    paths(debug_execute_step, debug_continue, debug_get_runnable),
+    components(schemas(DebugStepRequest, DebugStepResponse, DebugRunnableResponse))
+)]
+pub struct DebugApi;
+
+/// Execute specific steps in debug mode
+#[utoipa::path(
+    post,
+    path = "/executions/{execution_id}/debug/step",
+    params(
+        ("execution_id" = String, Path, description = "Execution ID (UUID)")
+    ),
+    request_body = DebugStepRequest,
+    responses(
+        (status = 200, description = "Steps executed successfully", body = DebugStepResponse),
+        (status = 400, description = "Invalid execution ID or request"),
+        (status = 404, description = "Execution not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn debug_execute_step(
+    State(executor): State<Arc<StepFlowExecutor>>,
+    Path(execution_id): Path<String>,
+    Json(req): Json<DebugStepRequest>,
+) -> Result<Json<DebugStepResponse>, StatusCode> {
+    // Parse UUID from string
+    let uuid = Uuid::parse_str(&execution_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Get the debug session for this execution
+    let mut debug_session = executor
+        .debug_session(uuid)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Execute the requested steps
+    let step_results = debug_session
+        .execute_steps(&req.step_ids)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Convert results to the expected format
+    let mut results = std::collections::HashMap::new();
+    for step_result in step_results {
+        results.insert(step_result.metadata.step_id, step_result.result);
+    }
+
+    Ok(Json(DebugStepResponse { results }))
+}
+
+/// Continue debug execution to completion
+#[utoipa::path(
+    post,
+    path = "/executions/{execution_id}/debug/continue",
+    params(
+        ("execution_id" = String, Path, description = "Execution ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Execution continued successfully", body = crate::executions::CreateExecutionResponse),
+        (status = 400, description = "Invalid execution ID"),
+        (status = 404, description = "Execution not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn debug_continue(
+    State(executor): State<Arc<StepFlowExecutor>>,
+    Path(execution_id): Path<String>,
+) -> Result<Json<crate::executions::CreateExecutionResponse>, StatusCode> {
+    // Parse UUID from string
+    let uuid = Uuid::parse_str(&execution_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Get the debug session for this execution
+    let mut debug_session = executor
+        .debug_session(uuid)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Continue execution to completion
+    let _step_results = debug_session
+        .execute_all_runnable()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Keep executing until no more steps are runnable
+    loop {
+        let runnable_steps = debug_session.get_runnable_steps().await;
+        if runnable_steps.is_empty() {
+            break;
+        }
+
+        let _results = debug_session
+            .execute_all_runnable()
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    // Get the final result
+    let final_result = debug_session
+        .resolve_workflow_output()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Update execution status based on the result
+    let state_store = executor.state_store();
+    let status = match &final_result {
+        FlowResult::Success { .. } => ExecutionStatus::Completed,
+        FlowResult::Failed { .. } | FlowResult::Skipped => ExecutionStatus::Failed,
+    };
+
+    let _ = state_store
+        .update_execution_status(uuid, status, None)
+        .await;
+
+    Ok(Json(crate::executions::CreateExecutionResponse {
+        execution_id,
+        result: Some(final_result),
+        status,
+        debug: true,
+    }))
+}
+
+/// Get runnable steps in debug mode
+#[utoipa::path(
+    get,
+    path = "/executions/{execution_id}/debug/runnable",
+    params(
+        ("execution_id" = String, Path, description = "Execution ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Runnable steps retrieved successfully", body = DebugRunnableResponse),
+        (status = 400, description = "Invalid execution ID"),
+        (status = 404, description = "Execution not found"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn debug_get_runnable(
+    State(executor): State<Arc<StepFlowExecutor>>,
+    Path(execution_id): Path<String>,
+) -> Result<Json<DebugRunnableResponse>, StatusCode> {
+    // Parse UUID from string
+    let uuid = Uuid::parse_str(&execution_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Get the debug session for this execution
+    let debug_session = executor
+        .debug_session(uuid)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Get runnable steps
+    let runnable_steps = debug_session
+        .get_runnable_steps()
+        .await
+        .into_iter()
+        .map(|step| step.step_id)
+        .collect();
+
+    Ok(Json(DebugRunnableResponse { runnable_steps }))
+}

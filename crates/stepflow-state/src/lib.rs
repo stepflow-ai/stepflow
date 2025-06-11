@@ -5,6 +5,6 @@ mod state_store;
 pub use error::{Result, StateError};
 pub use in_memory::InMemoryStateStore;
 pub use state_store::{
-    Endpoint, ExecutionDetails, ExecutionFilters, ExecutionStatus, ExecutionSummary, StateStore,
-    StepResult,
+    CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters,
+    ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateStore, StepInfo, StepResult,
 };

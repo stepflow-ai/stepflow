@@ -1,11 +1,16 @@
 [package]
 name = "stepflow-builtins"
+description = "Stepflow component plugin providing built-in components."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 publish = false
-description = "Stepflow component plugin providing built-in components."
+
+[lints]
+workspace = true
 
 [lib]
 doctest = false
@@ -30,6 +35,3 @@ uuid.workspace = true
 [dev-dependencies]
 test-with.workspace = true
 tempfile.workspace = true
-
-[lints]
-workspace = true

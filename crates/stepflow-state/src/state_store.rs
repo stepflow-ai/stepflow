@@ -1,14 +1,30 @@
 use std::borrow::Cow;
-use std::{future::Future, pin::Pin};
+use std::sync::Arc;
 
+use futures::future::BoxFuture;
+use stepflow_core::status::ExecutionStatus;
+use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     blob::BlobId,
-    workflow::{Flow, ValueRef},
+    workflow::{Component, Flow, ValueRef},
 };
+
 use uuid::Uuid;
 
 use crate::StateError;
+
+// Type aliases using BoxFuture for cleaner types
+type EndpointWithWorkflowFuture<'a> =
+    BoxFuture<'a, error_stack::Result<(Endpoint, Arc<Flow>), StateError>>;
+
+type ExecutionWithWorkflowFuture<'a> =
+    BoxFuture<'a, error_stack::Result<(ExecutionDetails, Option<Arc<Flow>>), StateError>>;
+
+type EndpointDeleteFuture<'a> = BoxFuture<'a, error_stack::Result<(String, Endpoint), StateError>>;
+
+type StepResultsFuture<'a> =
+    BoxFuture<'a, error_stack::Result<Vec<Option<FlowResult>>, StateError>>;
 
 /// Trait for storing and retrieving state data including blobs.
 ///
@@ -25,10 +41,7 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// The blob ID for the stored data
-    fn put_blob(
-        &self,
-        data: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<BlobId, StateError>> + Send + '_>>;
+    fn put_blob(&self, data: ValueRef) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
 
     /// Retrieve JSON data by blob ID.
     ///
@@ -40,7 +53,7 @@ pub trait StateStore: Send + Sync {
     fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ValueRef, StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<ValueRef, StateError>>;
 
     /// Record the result of a step execution.
     ///
@@ -59,7 +72,7 @@ pub trait StateStore: Send + Sync {
         &self,
         execution_id: Uuid,
         step_result: StepResult<'_>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Retrieve the result of a step execution by step index.
     ///
@@ -73,7 +86,7 @@ pub trait StateStore: Send + Sync {
         &self,
         execution_id: Uuid,
         step_idx: usize,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<FlowResult, StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>>;
 
     /// Retrieve the result of a step execution by step ID.
     ///
@@ -87,7 +100,7 @@ pub trait StateStore: Send + Sync {
         &self,
         execution_id: Uuid,
         step_id: &str,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<FlowResult, StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>>;
 
     /// List all step results for a workflow execution, ordered by step index.
     ///
@@ -102,13 +115,7 @@ pub trait StateStore: Send + Sync {
     fn list_step_results(
         &self,
         execution_id: Uuid,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = error_stack::Result<Vec<StepResult<'static>>, StateError>>
-                + Send
-                + '_,
-        >,
-    >;
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult<'static>>, StateError>>;
 
     // Workflow Management Methods
 
@@ -121,8 +128,8 @@ pub trait StateStore: Send + Sync {
     /// The content hash of the stored workflow
     fn store_workflow(
         &self,
-        workflow: &Flow,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<String, StateError>> + Send + '_>>;
+        workflow: Arc<Flow>,
+    ) -> BoxFuture<'_, error_stack::Result<FlowHash, StateError>>;
 
     /// Retrieve a workflow by its content hash.
     ///
@@ -134,7 +141,7 @@ pub trait StateStore: Send + Sync {
     fn get_workflow(
         &self,
         workflow_hash: &str,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Flow, StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<Arc<Flow>, StateError>>;
 
     /// Create or update a named endpoint with optional label.
     ///
@@ -150,7 +157,7 @@ pub trait StateStore: Send + Sync {
         name: &str,
         label: Option<&str>,
         workflow_hash: &str,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Get an endpoint by name and optional label.
     ///
@@ -164,7 +171,7 @@ pub trait StateStore: Send + Sync {
         &self,
         name: &str,
         label: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Endpoint, StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<Endpoint, StateError>>;
 
     /// List all endpoints, optionally filtered by name.
     ///
@@ -176,7 +183,7 @@ pub trait StateStore: Send + Sync {
     fn list_endpoints(
         &self,
         name_filter: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<Endpoint>, StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<Vec<Endpoint>, StateError>>;
 
     /// Delete an endpoint by name and optional label.
     ///
@@ -190,7 +197,7 @@ pub trait StateStore: Send + Sync {
         &self,
         name: &str,
         label: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Create a new execution record.
     ///
@@ -212,7 +219,7 @@ pub trait StateStore: Send + Sync {
         workflow_hash: Option<&str>,
         debug_mode: bool,
         input_blob_id: Option<&BlobId>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Update execution status.
     ///
@@ -228,7 +235,7 @@ pub trait StateStore: Send + Sync {
         execution_id: Uuid,
         status: ExecutionStatus,
         result_blob_id: Option<&BlobId>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Get execution details.
     ///
@@ -240,7 +247,7 @@ pub trait StateStore: Send + Sync {
     fn get_execution(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + '_>>;
+    ) -> BoxFuture<'_, error_stack::Result<ExecutionDetails, StateError>>;
 
     /// List executions with optional filtering.
     ///
@@ -252,15 +259,185 @@ pub trait StateStore: Send + Sync {
     fn list_executions(
         &self,
         filters: &ExecutionFilters,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = error_stack::Result<Vec<ExecutionSummary>, StateError>> + Send + '_,
-        >,
-    >;
+    ) -> BoxFuture<'_, error_stack::Result<Vec<ExecutionSummary>, StateError>>;
+
+    // Compound Query Methods (for server optimization)
+
+    /// Get an endpoint with its associated workflow in a single operation.
+    ///
+    /// This is optimized for server endpoints that need both pieces of data.
+    ///
+    /// # Arguments
+    /// * `name` - The endpoint name
+    /// * `label` - The label name (None for default version)
+    ///
+    /// # Returns
+    /// A tuple of (endpoint, workflow) if found
+    fn get_endpoint_with_workflow(
+        &self,
+        name: &str,
+        label: Option<&str>,
+    ) -> EndpointWithWorkflowFuture<'_>;
+
+    /// Get an execution with its associated workflow in a single operation.
+    ///
+    /// This is optimized for server endpoints that need both pieces of data.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The execution identifier
+    ///
+    /// # Returns
+    /// A tuple of (execution_details, optional_workflow) if found
+    fn get_execution_with_workflow(&self, execution_id: Uuid) -> ExecutionWithWorkflowFuture<'_>;
+
+    /// Get execution details with input and result blobs resolved.
+    ///
+    /// This is optimized for server endpoints that need complete execution information.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The execution identifier
+    ///
+    /// # Returns
+    /// Execution details with resolved blobs
+    fn get_execution_with_blobs(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<ExecutionWithBlobs, StateError>>;
+
+    /// Get comprehensive execution step details for debugging and inspection.
+    ///
+    /// This is optimized for server endpoints that need workflow, execution, step results, and input.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The execution identifier
+    ///
+    /// # Returns
+    /// Complete execution step details
+    fn get_execution_step_details(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<ExecutionStepDetails, StateError>>;
+
+    /// Get all data needed for debug session creation in a single operation.
+    ///
+    /// This is optimized for debug endpoints that need to reconstruct execution state.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The execution identifier
+    ///
+    /// # Returns
+    /// Complete debug session data
+    fn get_debug_session_data(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<DebugSessionData, StateError>>;
+
+    // Step Status Management
+
+    /// Initialize step info for an execution.
+    fn initialize_step_info(
+        &self,
+        execution_id: Uuid,
+        steps: &[StepInfo],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Update the status of a step.
+    fn update_step_status(
+        &self,
+        execution_id: Uuid,
+        step_index: usize,
+        status: stepflow_core::status::StepStatus,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Get all step info for an execution.
+    fn get_step_info_for_execution(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
+
+    /// Get runnable steps for an execution based on current status.
+    /// Note: This method returns steps based on persistent status only.
+    /// Dependency checking should be done by the caller using workflow analysis.
+    fn get_runnable_steps(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
+
+    // Atomic Operations (for consistency)
+
+    /// Create an endpoint with its workflow in an atomic operation.
+    ///
+    /// This stores the workflow and creates the endpoint atomically.
+    ///
+    /// # Arguments
+    /// * `name` - The endpoint name
+    /// * `label` - The label name (None for default version)
+    /// * `workflow` - The workflow to store
+    ///
+    /// # Returns
+    /// A tuple of (workflow_hash, endpoint) if successful
+    fn create_endpoint_with_workflow(
+        &self,
+        name: &str,
+        label: Option<&str>,
+        workflow: Arc<Flow>,
+    ) -> EndpointDeleteFuture<'_>;
+
+    /// Create an execution with input storage in an atomic operation.
+    ///
+    /// This stores the input as a blob and creates the execution atomically.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The unique identifier for the execution
+    /// * `params` - Parameters for execution creation
+    /// * `input` - Optional input data to store as blob
+    ///
+    /// # Returns
+    /// The created execution details
+    fn create_execution_with_input<'a>(
+        &'a self,
+        execution_id: Uuid,
+        params: CreateExecutionParams<'a>,
+        input: Option<ValueRef>,
+    ) -> BoxFuture<'a, error_stack::Result<ExecutionDetails, StateError>>;
+
+    // Optimized Query Methods (for value resolution)
+
+    /// Try to get a step result by step ID, returning None if not found.
+    ///
+    /// This is optimized for value resolution during execution where missing results are expected.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `step_id` - The identifier of the step within the workflow
+    ///
+    /// # Returns
+    /// The execution result if found, None if not found, or error for other failures
+    fn try_get_step_result_by_id(
+        &self,
+        execution_id: Uuid,
+        step_id: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<FlowResult>, StateError>>;
+
+    /// Get multiple step results by their indices in a single operation.
+    ///
+    /// This is optimized for batch step result retrieval.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `indices` - The step indices to retrieve (0-based)
+    ///
+    /// # Returns
+    /// A vector of optional results, indexed by the input indices
+    fn get_step_results_by_indices(
+        &self,
+        execution_id: Uuid,
+        indices: &[usize],
+    ) -> StepResultsFuture<'_>;
 }
 
 /// The step result.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct StepResult<'a> {
     step_idx: usize,
     step_id: Cow<'a, str>,
@@ -323,15 +500,6 @@ pub struct Endpoint {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Execution status for tracking workflow progress.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum ExecutionStatus {
-    Running,
-    Completed,
-    Failed,
-    Paused,
-}
-
 /// Summary information about a workflow execution.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutionSummary {
@@ -367,4 +535,58 @@ pub struct ExecutionFilters {
     pub endpoint_name: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+}
+
+/// Execution details with resolved input and result blobs.
+#[derive(Debug)]
+pub struct ExecutionWithBlobs {
+    pub execution: ExecutionDetails,
+    pub input: Option<ValueRef>,
+    pub result: Option<ValueRef>,
+}
+
+/// Comprehensive execution step details for server inspection.
+#[derive(Debug)]
+pub struct ExecutionStepDetails {
+    pub execution: ExecutionDetails,
+    pub workflow: Option<Arc<stepflow_core::workflow::Flow>>,
+    pub step_results: Vec<StepResult<'static>>,
+    pub input: Option<ValueRef>,
+}
+
+/// Complete data needed for debug session creation.
+#[derive(Debug)]
+pub struct DebugSessionData {
+    pub execution: ExecutionDetails,
+    pub workflow: Arc<stepflow_core::workflow::Flow>,
+    pub input: ValueRef,
+    pub step_results: Vec<StepResult<'static>>,
+}
+
+/// Step information for a workflow execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StepInfo {
+    /// Execution ID this step belongs to
+    pub execution_id: Uuid,
+    /// Index of the step in the workflow
+    pub step_index: usize,
+    /// Step ID
+    pub step_id: String,
+    /// Component name/URL
+    pub component: Component,
+    /// Current status of the step
+    pub status: stepflow_core::status::StepStatus,
+    /// When the step was created
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the step was last updated
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Parameters for creating an execution.
+#[derive(Debug, Clone)]
+pub struct CreateExecutionParams<'a> {
+    pub endpoint_name: Option<&'a str>,
+    pub endpoint_label: Option<&'a str>,
+    pub workflow_hash: Option<&'a str>,
+    pub debug_mode: bool,
 }

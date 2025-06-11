@@ -1,11 +1,16 @@
 [package]
 name = "stepflow-plugin"
+description = "Types and trait for the step execution plugins."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 publish = false
-description = "Types and trait for the step execution plugins."
+
+[lints]
+workspace = true
 
 [lib]
 doctest = false
@@ -13,6 +18,7 @@ doctest = false
 [dependencies]
 dynosaur.workspace = true
 error-stack.workspace = true
+futures.workspace = true
 serde.workspace = true
 stepflow-core.workspace = true
 stepflow-state.workspace = true
@@ -21,7 +27,3 @@ trait-variant.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-
-
-[lints]
-workspace = true

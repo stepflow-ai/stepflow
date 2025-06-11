@@ -67,5 +67,5 @@ test:
     output:
       outcome: failed
       error:
-        code: 0
-        message: error executing user-defined function
+        code: 500
+        message: 'Flow execution failed: step "dependent_step" failed'

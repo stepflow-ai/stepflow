@@ -220,12 +220,12 @@ struct WorkflowTestResult {
 
 /// Main entry point for running tests on a file or directory.
 ///
-/// Return true if there were any failures.
+/// Return number of failures.
 pub async fn run_tests(
     path: &Path,
     config_path: Option<PathBuf>,
     options: TestOptions,
-) -> Result<bool> {
+) -> Result<usize> {
     let workflow_files = if path.is_file() {
         vec![path.to_owned()]
     } else if path.is_dir() {
@@ -236,37 +236,24 @@ pub async fn run_tests(
 
     if workflow_files.is_empty() {
         println!("No workflow files found");
-        return Ok(false);
+        return Ok(0);
     }
 
     // Run tests on all workflows and collect results
     let mut results = Vec::new();
 
     for workflow_path in workflow_files {
-        match run_single_workflow_test(&workflow_path, config_path.clone(), &options).await {
-            Ok(result) => {
-                // Print immediate feedback
-                println!(
-                    "{}: {}/{} passed",
-                    workflow_path.display(),
-                    result.passed_cases,
-                    result.total_cases
-                );
-                results.push(result);
-            }
-            Err(e) => {
-                println!("{}: Error {}", workflow_path.display(), e);
-                results.push(WorkflowTestResult {
-                    file_status: FileStatus::Errored(e.to_string()),
-                    workflow_path: workflow_path.to_owned(),
-                    total_cases: 0,
-                    passed_cases: 0,
-                    failed_cases: 0,
-                    execution_errors: 0,
-                    updates: HashMap::new(),
-                });
-            }
-        }
+        let result = run_single_workflow_test(&workflow_path, config_path.clone(), &options)
+            .await
+            .unwrap_or_else(|_| panic!("Failed to execute tests in {}", workflow_path.display()));
+        // Print immediate feedback
+        println!(
+            "{}: {}/{} passed",
+            workflow_path.display(),
+            result.passed_cases,
+            result.total_cases
+        );
+        results.push(result);
     }
 
     // Apply all updates at the end if requested
@@ -334,9 +321,16 @@ async fn run_single_workflow_test(
     let mut updates = HashMap::new();
     let mut execution_errors = 0;
 
+    let workflow_hash = Flow::hash(&flow);
     for test_case in &cases_to_run {
         println!("----------\nRunning Test Case {}", test_case.name);
-        let result = crate::run::run(executor.clone(), flow.clone(), test_case.input.clone()).await;
+        let result = crate::run::run(
+            executor.clone(),
+            flow.clone(),
+            workflow_hash.clone(),
+            test_case.input.clone(),
+        )
+        .await;
 
         match result {
             Ok(actual_output) => {
@@ -417,7 +411,7 @@ async fn apply_all_updates(results: &[WorkflowTestResult]) -> Result<()> {
 /// Print summary and exit with appropriate code.
 ///
 /// Return true if there were any errors.
-fn print_summary(results: &[WorkflowTestResult]) -> Result<bool> {
+fn print_summary(results: &[WorkflowTestResult]) -> Result<usize> {
     let mut files_error = 0;
     let mut files_skip = 0;
 
@@ -479,10 +473,5 @@ fn print_summary(results: &[WorkflowTestResult]) -> Result<bool> {
         println!("Execution errors: {}", cases_error);
     }
 
-    let any_failures = results.iter().any(|r| {
-        matches!(r.file_status, FileStatus::Errored(_))
-            || r.failed_cases > 0
-            || r.execution_errors > 0
-    });
-    Ok(any_failures)
+    Ok(cases_fail + cases_error)
 }

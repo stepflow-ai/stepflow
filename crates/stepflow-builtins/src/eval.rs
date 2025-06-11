@@ -1,6 +1,7 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
@@ -31,6 +32,9 @@ impl Default for EvalComponent {
 struct EvalInput {
     /// The workflow to execute
     workflow: Flow,
+
+    /// Precomputed hash of the workflow.
+    workflow_hash: Option<FlowHash>,
 
     /// The input to pass to the workflow
     input: ValueRef,
@@ -67,11 +71,12 @@ impl BuiltinComponent for EvalComponent {
             .change_context(BuiltinError::InvalidInput)?;
 
         let flow = Arc::new(input.workflow);
+        let workflow_hash = input.workflow_hash.unwrap_or_else(|| Flow::hash(&flow));
         let workflow_input = input.input;
 
         // Execute the nested workflow
         let nested_result = context
-            .execute_flow(flow, workflow_input)
+            .execute_flow(flow, workflow_hash, workflow_input)
             .await
             .change_context(BuiltinError::Internal)?;
 
@@ -119,6 +124,7 @@ mod tests {
 
         let input = EvalInput {
             workflow: test_flow,
+            workflow_hash: None,
             input: serde_json::json!({}).into(),
         };
 

@@ -1,0 +1,30 @@
+[package]
+name = "stepflow-analysis"
+description = "Workflow dependency analysis for StepFlow"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+bit-set.workspace = true
+error-stack.workspace = true
+schemars.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+stepflow-core.workspace = true
+utoipa.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[features]
+default = []

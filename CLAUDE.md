@@ -185,13 +185,22 @@ The `FlowResult` enum enables proper error propagation through workflow executio
 #### Async Patterns
 - Use `async fn` consistently for I/O operations
 - Prefer `tokio::spawn` for concurrent execution
-- Use `Pin<Box<dyn Future>>` for trait objects returning futures
+- Use `futures::future::BoxFuture` for trait objects returning futures instead of `Pin<Box<dyn Future>>`
+- Always import `futures::future::FutureExt as _` when using `.boxed()`
 - Example:
 ```rust
-let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
-    let step = &flow.steps[step_index]; // Reference instead of clone
-    execute_step_async(plugin, step, input, context).await
-});
+use futures::future::{BoxFuture, FutureExt as _};
+
+// Trait method signature
+fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>>;
+
+// Implementation  
+fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>> {
+    async move {
+        // async logic here
+        Ok("result".to_string())
+    }.boxed()
+}
 ```
 
 ### Error Handling Patterns

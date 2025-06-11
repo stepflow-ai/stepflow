@@ -1,11 +1,16 @@
 [package]
 name = "stepflow-execution"
+description = "Execution logic for workflows."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 publish = false
-description = "Execution logic for workflows."
+
+[lints]
+workspace = true
 
 [lib]
 doctest = false
@@ -14,9 +19,9 @@ doctest = false
 bit-set.workspace = true
 error-stack.workspace = true
 futures.workspace = true
-schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+stepflow-analysis.workspace = true
 stepflow-plugin.workspace = true
 stepflow-core.workspace = true
 stepflow-state.workspace = true
@@ -28,6 +33,3 @@ uuid.workspace = true
 [dev-dependencies]
 stepflow-mock.workspace = true
 serde_yaml_ng.workspace = true
-
-[lints]
-workspace = true
