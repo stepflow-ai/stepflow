@@ -2,11 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 
 use error_stack::{Result, ResultExt};
-use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};
+use sqlx::{Row, SqlitePool, sqlite::SqlitePoolOptions};
 use stepflow_core::{
+    FlowResult,
     blob::BlobId,
     workflow::{Flow, ValueRef},
-    FlowResult,
 };
 use stepflow_state::{
     Endpoint, ExecutionDetails, ExecutionFilters, ExecutionStatus, ExecutionSummary, StateError,
@@ -424,9 +424,15 @@ impl StateStore for SqliteStateStore {
 
         Box::pin(async move {
             let (sql, bind_name) = if let Some(ref name) = name_filter {
-                ("SELECT name, label, workflow_hash, created_at, updated_at FROM endpoints WHERE name = ? ORDER BY created_at DESC", Some(name))
+                (
+                    "SELECT name, label, workflow_hash, created_at, updated_at FROM endpoints WHERE name = ? ORDER BY created_at DESC",
+                    Some(name),
+                )
             } else {
-                ("SELECT name, label, workflow_hash, created_at, updated_at FROM endpoints ORDER BY created_at DESC", None)
+                (
+                    "SELECT name, label, workflow_hash, created_at, updated_at FROM endpoints ORDER BY created_at DESC",
+                    None,
+                )
             };
 
             let mut query = sqlx::query(sql);
@@ -558,9 +564,7 @@ impl StateStore for SqliteStateStore {
                 ExecutionStatus::Completed | ExecutionStatus::Failed => {
                     "UPDATE executions SET status = ?, result_blob_id = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
                 }
-                _ => {
-                    "UPDATE executions SET status = ?, result_blob_id = ? WHERE id = ?"
-                }
+                _ => "UPDATE executions SET status = ?, result_blob_id = ? WHERE id = ?",
             };
 
             sqlx::query(sql)
