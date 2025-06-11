@@ -1,4 +1,5 @@
-use poem::{Route, Server};
+use poem::EndpointExt as _;
+use poem::{Route, Server, middleware::Cors};
 use poem_openapi::OpenApiService;
 use std::sync::Arc;
 use stepflow_execution::StepFlowExecutor;
@@ -38,7 +39,13 @@ pub async fn start_server(
 
     let app = Route::new()
         .nest("/api/v1", api_service)
-        .at("/openapi.json", spec);
+        .at("/openapi.json", spec)
+        .with(
+            Cors::new()
+                .allow_origin("http://localhost:5173")
+                .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allow_headers(vec!["content-type"]),
+        );
 
     tracing::info!("🚀 StepFlow server starting on http://localhost:{}", port);
     tracing::info!(
