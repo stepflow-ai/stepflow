@@ -7,10 +7,10 @@ use stepflow_core::{
     workflow::{FlowRef, ValueRef},
 };
 use stepflow_execution::{StepFlowExecutor, StepStatus};
-use stepflow_state::ExecutionStatus;
 use uuid::Uuid;
 
 use super::api_type::ApiType;
+use super::common::{ApiExecuteResponse, ExecuteResponse};
 use super::error::{IntoPoemError as _, ServerError, ServerResult, not_implemented};
 use error_stack::ResultExt as _;
 
@@ -28,23 +28,6 @@ pub struct ExecuteRequest {
 
 /// API wrapper for ExecuteRequest
 pub type ApiExecuteRequest = ApiType<ExecuteRequest>;
-
-/// Response from executing a workflow
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExecuteResponse {
-    /// The execution ID (UUID string)
-    pub execution_id: String,
-    /// The result of the execution (if completed synchronously)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<FlowResult>,
-    /// Current status of the execution
-    pub status: ExecutionStatus,
-    /// Whether this execution is in debug mode
-    pub debug: bool,
-}
-
-/// API wrapper for ExecuteResponse
-pub type ApiExecuteResponse = ApiType<ExecuteResponse>;
 
 /// Request to execute specific steps in debug mode
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

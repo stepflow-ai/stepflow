@@ -13,10 +13,10 @@ use url::Url;
 
 use super::{
     api_type::ApiType,
-    common::{ApiResult, ErrorResponse},
+    common::{ApiResult, ErrorResponse, ExecuteResponse},
     components::{ComponentInfoResponse, ListComponentsResponse},
     endpoints::{CreateEndpointRequest, EndpointResponse},
-    execution::{ExecuteRequest, ExecuteResponse},
+    execution::ExecuteRequest,
 };
 
 /// Helper to create a test executor for testing

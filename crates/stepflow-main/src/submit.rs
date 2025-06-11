@@ -43,7 +43,7 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
     }
 
     // Parse the response
-    let execute_response: crate::server::execution::ExecuteResponse =
+    let execute_response: crate::server::common::ExecuteResponse =
         response.json().await.map_err(|e| {
             tracing::error!("Failed to parse response: {}", e);
             MainError::Configuration

@@ -2,15 +2,13 @@ use poem_openapi::{OpenApi, payload::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::{
-    FlowResult,
-    workflow::{FlowRef, ValueRef},
-};
+use stepflow_core::workflow::{FlowRef, ValueRef};
 use stepflow_execution::StepFlowExecutor;
-use stepflow_state::{Endpoint, ExecutionStatus};
+use stepflow_state::Endpoint;
 use uuid::Uuid;
 
 use super::api_type::ApiType;
+use super::common::{ApiExecuteResponse, ApiWorkflowResponse, ExecuteResponse, WorkflowResponse};
 use super::error::{IntoPoemError as _, ServerError, ServerResult, not_found};
 use error_stack::ResultExt as _;
 
@@ -65,33 +63,6 @@ pub struct ListEndpointsResponse {
 
 /// API wrapper for ListEndpointsResponse
 pub type ApiListEndpointsResponse = ApiType<ListEndpointsResponse>;
-
-/// Response from executing a workflow
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExecuteResponse {
-    /// The execution ID (UUID string)
-    pub execution_id: String,
-    /// The result of the execution (if completed synchronously)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<FlowResult>,
-    /// Current status of the execution
-    pub status: ExecutionStatus,
-}
-
-/// API wrapper for ExecuteResponse
-pub type ApiExecuteResponse = ApiType<ExecuteResponse>;
-
-/// Response containing workflow definition
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WorkflowResponse {
-    /// The workflow definition
-    pub workflow: FlowRef,
-    /// The workflow hash
-    pub workflow_hash: String,
-}
-
-/// API wrapper for WorkflowResponse
-pub type ApiWorkflowResponse = ApiType<WorkflowResponse>;
 
 pub struct EndpointsApi {
     executor: Arc<StepFlowExecutor>,
@@ -291,7 +262,10 @@ impl EndpointsApi {
             .change_context(ServerError::ExecutionRecordFailed)
             .into_poem()?;
 
-        if req.0.0.debug {
+        let debug_mode = req.0.0.debug;
+        let input = req.0.0.input;
+
+        if debug_mode {
             // In debug mode, return immediately without executing
             // The execution will be controlled via debug endpoints
             let _ = state_store
@@ -306,6 +280,7 @@ impl EndpointsApi {
                 execution_id: execution_id.to_string(),
                 result: None,
                 status: stepflow_state::ExecutionStatus::Running,
+                debug: debug_mode,
             })));
         }
 
@@ -317,7 +292,7 @@ impl EndpointsApi {
         // Submit the workflow for execution
         let submitted_execution_id = self
             .executor
-            .submit_flow(flow_arc, req.0.0.input)
+            .submit_flow(flow_arc, input)
             .await
             .change_context(ServerError::WorkflowSubmissionFailed)
             .into_poem()?;
@@ -355,6 +330,7 @@ impl EndpointsApi {
                     execution_id: execution_id.to_string(),
                     result: Some(flow_result),
                     status: stepflow_state::ExecutionStatus::Completed,
+                    debug: debug_mode,
                 })))
             }
             stepflow_core::FlowResult::Failed { .. } | stepflow_core::FlowResult::Skipped => {
@@ -371,6 +347,7 @@ impl EndpointsApi {
                     execution_id: execution_id.to_string(),
                     result: Some(flow_result),
                     status: stepflow_state::ExecutionStatus::Failed,
+                    debug: debug_mode,
                 })))
             }
         }

@@ -2,15 +2,13 @@ use poem_openapi::{OpenApi, payload::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::{
-    FlowResult,
-    workflow::{FlowRef, ValueRef},
-};
+use stepflow_core::{FlowResult, workflow::ValueRef};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::{ExecutionDetails, ExecutionStatus, ExecutionSummary};
 use uuid::Uuid;
 
 use super::api_type::ApiType;
+use super::common::{ApiWorkflowResponse, WorkflowResponse};
 use super::error::{IntoPoemError as _, ServerResult, invalid_uuid};
 
 /// Execution summary for API responses
@@ -103,18 +101,6 @@ pub struct ListStepExecutionsResponse {
 
 /// API wrapper for ListStepExecutionsResponse
 pub type ApiListStepExecutionsResponse = ApiType<ListStepExecutionsResponse>;
-
-/// Response containing workflow definition
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WorkflowResponse {
-    /// The workflow definition
-    pub workflow: FlowRef,
-    /// The workflow hash
-    pub workflow_hash: String,
-}
-
-/// API wrapper for WorkflowResponse
-pub type ApiWorkflowResponse = ApiType<WorkflowResponse>;
 
 pub struct ExecutionsApi {
     executor: Arc<StepFlowExecutor>,
