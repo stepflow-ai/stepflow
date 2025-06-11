@@ -12,7 +12,7 @@ pub use sqlite_state_store::{SqliteStateStore, SqliteStateStoreConfig};
 mod tests {
     use super::*;
     use serde_json::json;
-    use stepflow_core::{workflow::ValueRef, FlowResult};
+    use stepflow_core::{FlowResult, workflow::ValueRef};
     use stepflow_state::{StateStore, StepResult};
     use uuid::Uuid;
 
