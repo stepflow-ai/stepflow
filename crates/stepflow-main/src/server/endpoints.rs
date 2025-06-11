@@ -2,7 +2,7 @@ use poem_openapi::{OpenApi, payload::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::workflow::{FlowRef, ValueRef};
+use stepflow_core::workflow::{FlowRef, ValueRef, WorkflowGraph};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::Endpoint;
 use uuid::Uuid;
@@ -45,10 +45,10 @@ pub struct EndpointResponse {
     pub label: Option<String>,
     /// The workflow hash associated with this endpoint
     pub workflow_hash: String,
-    /// When the endpoint was created (ISO 8601 string)
-    pub created_at: String,
-    /// When the endpoint was last updated (ISO 8601 string)
-    pub updated_at: String,
+    /// When the endpoint was created
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the endpoint was last updated
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// API wrapper for EndpointResponse
@@ -63,6 +63,18 @@ pub struct ListEndpointsResponse {
 
 /// API wrapper for ListEndpointsResponse
 pub type ApiListEndpointsResponse = ApiType<ListEndpointsResponse>;
+
+/// Response for workflow graph operations
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WorkflowGraphResponse {
+    /// The workflow hash this graph corresponds to
+    pub workflow_hash: String,
+    /// The analyzed workflow graph with ports and edges
+    pub graph: WorkflowGraph,
+}
+
+/// API wrapper for WorkflowGraphResponse
+pub type ApiWorkflowGraphResponse = ApiType<WorkflowGraphResponse>;
 
 pub struct EndpointsApi {
     executor: Arc<StepFlowExecutor>,
@@ -171,6 +183,59 @@ impl EndpointsApi {
         Ok(Json(ApiType(WorkflowResponse {
             workflow: flow_ref,
             workflow_hash: endpoint.workflow_hash,
+        })))
+    }
+
+    /// Get the workflow graph (ports and edges) for an endpoint
+    #[oai(path = "/endpoints/:name/graph", method = "get")]
+    pub async fn get_endpoint_workflow_graph(
+        &self,
+        name: poem::web::Path<String>,
+        label: poem::web::Query<Option<String>>,
+    ) -> ServerResult<Json<ApiWorkflowGraphResponse>> {
+        let state_store = self.executor.state_store();
+
+        // Get the endpoint to retrieve the workflow hash
+        let endpoint = state_store
+            .get_endpoint(&name.0, label.0.as_deref())
+            .await
+            .into_poem()?;
+
+        // Get the workflow from the state store
+        let workflow = state_store
+            .get_workflow(&endpoint.workflow_hash)
+            .await
+            .into_poem()?;
+
+        // Analyze the workflow to extract ports and edges
+        let graph = workflow.analyze_ports_and_edges();
+
+        Ok(Json(ApiType(WorkflowGraphResponse {
+            workflow_hash: endpoint.workflow_hash,
+            graph,
+        })))
+    }
+
+    /// Get the workflow graph (ports and edges) by workflow hash
+    #[oai(path = "/workflows/:workflow_hash/graph", method = "get")]
+    pub async fn get_workflow_graph(
+        &self,
+        workflow_hash: poem::web::Path<String>,
+    ) -> ServerResult<Json<ApiWorkflowGraphResponse>> {
+        let state_store = self.executor.state_store();
+
+        // Get the workflow from the state store
+        let workflow = state_store
+            .get_workflow(&workflow_hash.0)
+            .await
+            .into_poem()?;
+
+        // Analyze the workflow to extract ports and edges
+        let graph = workflow.analyze_ports_and_edges();
+
+        Ok(Json(ApiType(WorkflowGraphResponse {
+            workflow_hash: workflow_hash.0,
+            graph,
         })))
     }
 
@@ -361,8 +426,227 @@ impl From<Endpoint> for EndpointResponse {
             name: endpoint.name,
             label: endpoint.label,
             workflow_hash: endpoint.workflow_hash,
-            created_at: endpoint.created_at.to_rfc3339(),
-            updated_at: endpoint.updated_at.to_rfc3339(),
+            created_at: endpoint.created_at,
+            updated_at: endpoint.updated_at,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::Arc;
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowRef, Step, ValueRef};
+    use stepflow_execution::StepFlowExecutor;
+    use stepflow_state::InMemoryStateStore;
+    use url::Url;
+
+    /// Helper to create a test executor for testing
+    async fn create_test_executor() -> Arc<StepFlowExecutor> {
+        let state_store = Arc::new(InMemoryStateStore::new());
+        StepFlowExecutor::new(state_store)
+    }
+
+    /// Helper to create a simple test workflow
+    fn create_test_workflow() -> Flow {
+        Flow {
+            name: Some("test_workflow".to_string()),
+            description: Some("Test workflow for API testing".to_string()),
+            version: None,
+            input_schema: None,
+            output_schema: None,
+            steps: vec![Step {
+                id: "test_step".to_string(),
+                component: Component::new(Url::parse("builtin://messages").unwrap()),
+                input: ValueRef::new(json!("Hello from test")),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: ErrorAction::Fail,
+            }],
+            output: serde_json::Value::Null,
+            test: None,
+        }
+    }
+
+    /// Helper to create test input data
+    fn create_test_input() -> ValueRef {
+        ValueRef::new(json!({
+            "message": "test input"
+        }))
+    }
+
+    #[test]
+    fn test_create_endpoint_request_serialization() {
+        let workflow = create_test_workflow();
+        let request = CreateEndpointRequest {
+            workflow: FlowRef::new(workflow),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        let deserialized: CreateEndpointRequest = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            deserialized.workflow.name,
+            Some("test_workflow".to_string())
+        );
+    }
+
+    #[test]
+    fn test_execute_endpoint_request_structure() {
+        let input = create_test_input();
+        let request = ExecuteEndpointRequest {
+            input: input.clone(),
+            debug: true,
+        };
+
+        assert!(request.debug);
+        assert_eq!(request.input.as_ref()["message"], "test input");
+
+        // Test serialization
+        let json = serde_json::to_string(&request).unwrap();
+        let deserialized: ExecuteEndpointRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.debug, true);
+        assert_eq!(deserialized.input.as_ref()["message"], "test input");
+    }
+
+    #[test]
+    fn test_execute_endpoint_request_defaults() {
+        let input = create_test_input();
+        
+        // Test with explicit false
+        let request1 = ExecuteEndpointRequest {
+            input: input.clone(),
+            debug: false,
+        };
+        assert!(!request1.debug);
+
+        // Test deserialization with missing debug field (should default to false)
+        let json_no_debug = serde_json::json!({
+            "input": {"message": "test"}
+        });
+        let deserialized: ExecuteEndpointRequest = 
+            serde_json::from_value(json_no_debug).unwrap();
+        assert!(!deserialized.debug);
+    }
+
+    #[test]
+    fn test_endpoint_response_structure() {
+        use chrono::Utc;
+
+        let now = Utc::now();
+        let endpoint = Endpoint {
+            name: "test_endpoint".to_string(),
+            label: Some("v1.0".to_string()),
+            workflow_hash: "abc123".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let response = EndpointResponse::from(endpoint);
+
+        assert_eq!(response.name, "test_endpoint");
+        assert_eq!(response.label, Some("v1.0".to_string()));
+        assert_eq!(response.workflow_hash, "abc123");
+        
+        // Verify timestamps are DateTime types
+        assert_eq!(response.created_at, now);
+        assert_eq!(response.updated_at, now);
+    }
+
+    #[test]
+    fn test_endpoint_response_no_label() {
+        use chrono::Utc;
+
+        let now = Utc::now();
+        let endpoint = Endpoint {
+            name: "test_endpoint".to_string(),
+            label: None, // No label for default version
+            workflow_hash: "abc123".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let response = EndpointResponse::from(endpoint);
+
+        assert_eq!(response.name, "test_endpoint");
+        assert_eq!(response.label, None);
+        assert_eq!(response.workflow_hash, "abc123");
+    }
+
+    #[test]
+    fn test_list_endpoints_response_structure() {
+        let response = ListEndpointsResponse {
+            endpoints: vec![
+                EndpointResponse {
+                    name: "endpoint1".to_string(),
+                    label: None,
+                    workflow_hash: "hash1".to_string(),
+                    created_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
+                    updated_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
+                },
+                EndpointResponse {
+                    name: "endpoint2".to_string(),
+                    label: Some("v1.0".to_string()),
+                    workflow_hash: "hash2".to_string(),
+                    created_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
+                    updated_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
+                },
+            ],
+        };
+
+        assert_eq!(response.endpoints.len(), 2);
+        assert_eq!(response.endpoints[0].name, "endpoint1");
+        assert_eq!(response.endpoints[0].label, None);
+        assert_eq!(response.endpoints[1].name, "endpoint2");
+        assert_eq!(response.endpoints[1].label, Some("v1.0".to_string()));
+
+        // Test serialization
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: ListEndpointsResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.endpoints.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_endpoints_api_creation() {
+        let executor = create_test_executor().await;
+        let api = EndpointsApi::new(executor.clone());
+
+        // Verify the API was created correctly
+        assert!(Arc::ptr_eq(&api.executor, &executor));
+    }
+
+    #[test]
+    fn test_workflow_graph_response_structure() {
+        use stepflow_core::workflow::{WorkflowGraph, StepPorts, Port};
+
+        let graph = WorkflowGraph::new()
+            .with_workflow_ports(
+                StepPorts::new()
+                    .add_input(Port::new("input"))
+                    .add_output(Port::new("output"))
+            );
+
+        let response = WorkflowGraphResponse {
+            workflow_hash: "abc123".to_string(),
+            graph: graph.clone(),
+        };
+
+        assert_eq!(response.workflow_hash, "abc123");
+        assert_eq!(response.graph.workflow_ports.inputs.len(), 1);
+        assert_eq!(response.graph.workflow_ports.outputs.len(), 1);
+        assert_eq!(response.graph.workflow_ports.inputs[0].name, "input");
+        assert_eq!(response.graph.workflow_ports.outputs[0].name, "output");
+
+        // Test serialization
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: WorkflowGraphResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.workflow_hash, "abc123");
+        assert_eq!(deserialized.graph.workflow_ports.inputs.len(), 1);
+        assert_eq!(deserialized.graph.workflow_ports.outputs.len(), 1);
+    }
+
+    // Note: Integration tests for actual endpoint operations would require more complex setup
+    // with state store operations. These tests focus on data structure validation.
 }

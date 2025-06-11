@@ -3,6 +3,7 @@ use std::sync::Arc;
 use error_stack::ResultExt as _;
 use stepflow_core::{
     FlowResult,
+    status::StepStatus as CoreStepStatus,
     workflow::{Flow, ValueRef},
 };
 use stepflow_state::StateStore;
@@ -59,7 +60,7 @@ impl DebugSession {
         let mut step_statuses = Vec::new();
         for (idx, step) in self.executor.flow().steps.iter().enumerate() {
             let state = if runnable.contains(idx) {
-                StepState::Runnable
+                CoreStepStatus::Runnable
             } else {
                 // Check if step is completed by querying state store
                 match self
@@ -69,11 +70,11 @@ impl DebugSession {
                     .await
                 {
                     Ok(result) => match result {
-                        FlowResult::Success { .. } => StepState::Completed,
-                        FlowResult::Skipped => StepState::Skipped,
-                        FlowResult::Failed { .. } => StepState::Failed,
+                        FlowResult::Success { .. } => CoreStepStatus::Completed,
+                        FlowResult::Skipped => CoreStepStatus::Skipped,
+                        FlowResult::Failed { .. } => CoreStepStatus::Failed,
                     },
-                    Err(_) => StepState::Blocked,
+                    Err(_) => CoreStepStatus::Blocked,
                 }
             };
 
@@ -100,7 +101,7 @@ impl DebugSession {
                     index: idx,
                     id: step.id.clone(),
                     component: step.component.to_string(),
-                    state: StepState::Runnable,
+                    state: CoreStepStatus::Runnable,
                 }
             })
             .collect()
@@ -248,7 +249,7 @@ impl DebugSession {
         let runnable = self.executor.get_runnable_step_indices();
 
         let state = if runnable.contains(step_index) {
-            StepState::Runnable
+            CoreStepStatus::Runnable
         } else {
             // Check if step is completed by querying state store
             match self
@@ -258,11 +259,11 @@ impl DebugSession {
                 .await
             {
                 Ok(result) => match result {
-                    FlowResult::Success { .. } => StepState::Completed,
-                    FlowResult::Skipped => StepState::Skipped,
-                    FlowResult::Failed { .. } => StepState::Failed,
+                    FlowResult::Success { .. } => CoreStepStatus::Completed,
+                    FlowResult::Skipped => CoreStepStatus::Skipped,
+                    FlowResult::Failed { .. } => CoreStepStatus::Failed,
                 },
-                Err(_) => StepState::Blocked,
+                Err(_) => CoreStepStatus::Blocked,
             }
         };
 
@@ -278,20 +279,6 @@ impl DebugSession {
     }
 }
 
-/// The current state of a step in the workflow.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum StepState {
-    /// Step is waiting for dependencies to complete
-    Blocked,
-    /// Step is ready to be executed
-    Runnable,
-    /// Step has been executed successfully
-    Completed,
-    /// Step was skipped
-    Skipped,
-    /// Step failed with an error
-    Failed,
-}
 
 /// Status information for a step.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -299,7 +286,7 @@ pub struct StepStatus {
     pub index: usize,
     pub id: String,
     pub component: String,
-    pub state: StepState,
+    pub state: CoreStepStatus,
 }
 
 /// Detailed inspection information for a step.
@@ -311,7 +298,7 @@ pub struct StepInspection {
     pub input: ValueRef,
     pub skip_if: Option<stepflow_core::workflow::Expr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
-    pub state: StepState,
+    pub state: CoreStepStatus,
 }
 
 /// Information about a completed step.

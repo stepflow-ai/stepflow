@@ -2,32 +2,14 @@ use error_stack::{Result, ResultExt};
 use sqlx::{Row, SqlitePool};
 use stepflow_state::StateError;
 
-/// Run all migrations to set up the database schema
+/// Run migrations to set up the database schema
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     // Create migration tracking table first
     create_migrations_table(pool).await?;
 
-    // Apply migrations in order
-    apply_migration(pool, "001_create_blobs_table", || create_blobs_table(pool)).await?;
-    apply_migration(pool, "002_create_executions_table", || {
-        create_executions_table(pool)
-    })
-    .await?;
-    apply_migration(pool, "003_create_step_results_table", || {
-        create_step_results_table(pool)
-    })
-    .await?;
-    apply_migration(pool, "004_create_indexes", || create_indexes(pool)).await?;
-    apply_migration(pool, "005_create_workflows_table", || {
-        create_workflows_table(pool)
-    })
-    .await?;
-    apply_migration(pool, "006_create_unified_endpoints_table", || {
-        create_unified_endpoints_table(pool)
-    })
-    .await?;
-    apply_migration(pool, "007_enhance_executions_table", || {
-        enhance_executions_table(pool)
+    // Apply the collapsed schema migration
+    apply_migration(pool, "001_create_complete_schema", || {
+        create_complete_schema(pool)
     })
     .await?;
 
@@ -90,159 +72,99 @@ where
     Ok(())
 }
 
-/// Create blobs table for content-addressable storage
-async fn create_blobs_table(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = r#"
-        CREATE TABLE blobs (
-            id TEXT PRIMARY KEY,
-            data TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    "#;
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    Ok(())
-}
-
-/// Create executions table for workflow execution tracking
-async fn create_executions_table(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = r#"
-        CREATE TABLE executions (
-            id TEXT PRIMARY KEY,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    "#;
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    Ok(())
-}
-
-/// Create step_results table for workflow step execution results
-async fn create_step_results_table(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = r#"
-        CREATE TABLE step_results (
-            execution_id TEXT NOT NULL,
-            step_index INTEGER NOT NULL,
-            step_id TEXT,
-            result TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (execution_id, step_index)
-        )
-    "#;
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    Ok(())
-}
-
-/// Create indexes for performance
-async fn create_indexes(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = r#"
-        CREATE INDEX idx_step_results_step_id 
-        ON step_results(execution_id, step_id)
-    "#;
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    Ok(())
-}
-
-/// Create workflows table for content-addressable workflow storage
-async fn create_workflows_table(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = r#"
-        CREATE TABLE workflows (
-            hash TEXT PRIMARY KEY,
-            content TEXT NOT NULL,
-            first_seen DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    "#;
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    Ok(())
-}
-
-/// Create unified endpoints table with composite primary key
-async fn create_unified_endpoints_table(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = r#"
-        CREATE TABLE endpoints (
-            name TEXT NOT NULL,
-            label TEXT, -- NULL represents the default version
-            workflow_hash TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (name, label),
-            FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
-        )
-    "#;
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    // Create indexes for efficient querying
-    let index_commands = vec![
-        "CREATE INDEX idx_endpoints_name ON endpoints(name)",
-        "CREATE INDEX idx_endpoints_workflow_hash ON endpoints(workflow_hash)",
-        "CREATE INDEX idx_endpoints_created_at ON endpoints(created_at)",
+/// Create the complete database schema in one migration
+async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
+    // Create all tables with their final schema
+    let table_commands = vec![
+        // Blobs table for content-addressable storage
+        r#"
+            CREATE TABLE IF NOT EXISTS blobs (
+                id TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#,
+        
+        // Workflows table for content-addressable workflow storage
+        r#"
+            CREATE TABLE IF NOT EXISTS workflows (
+                hash TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                first_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#,
+        
+        // Executions table with all metadata columns
+        r#"
+            CREATE TABLE IF NOT EXISTS executions (
+                id TEXT PRIMARY KEY,
+                endpoint_name TEXT,
+                workflow_hash TEXT,
+                status TEXT DEFAULT 'running',
+                debug_mode BOOLEAN DEFAULT FALSE,
+                input_blob_id TEXT,
+                result_blob_id TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                completed_at DATETIME,
+                FOREIGN KEY (workflow_hash) REFERENCES workflows(hash),
+                FOREIGN KEY (input_blob_id) REFERENCES blobs(id),
+                FOREIGN KEY (result_blob_id) REFERENCES blobs(id)
+            )
+        "#,
+        
+        // Step results table for workflow step execution results
+        r#"
+            CREATE TABLE IF NOT EXISTS step_results (
+                execution_id TEXT NOT NULL,
+                step_index INTEGER NOT NULL,
+                step_id TEXT,
+                result TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (execution_id, step_index),
+                FOREIGN KEY (execution_id) REFERENCES executions(id)
+            )
+        "#,
+        
+        // Unified endpoints table with composite primary key
+        r#"
+            CREATE TABLE IF NOT EXISTS endpoints (
+                name TEXT NOT NULL,
+                label TEXT, -- NULL represents the default version
+                workflow_hash TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (name, label),
+                FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
+            )
+        "#,
     ];
 
-    for sql in index_commands {
+    // Execute table creation commands
+    for sql in table_commands {
         sqlx::query(sql)
             .execute(pool)
             .await
             .change_context(StateError::Initialization)?;
     }
 
-    Ok(())
-}
-
-/// Enhance executions table with additional metadata columns
-async fn enhance_executions_table(pool: &SqlitePool) -> Result<(), StateError> {
-    // Add new columns to the executions table
-    let sql_commands = vec![
-        "ALTER TABLE executions ADD COLUMN endpoint_name TEXT",
-        "ALTER TABLE executions ADD COLUMN workflow_hash TEXT",
-        "ALTER TABLE executions ADD COLUMN status TEXT DEFAULT 'running'",
-        "ALTER TABLE executions ADD COLUMN debug_mode BOOLEAN DEFAULT FALSE",
-        "ALTER TABLE executions ADD COLUMN input_blob_id TEXT",
-        "ALTER TABLE executions ADD COLUMN result_blob_id TEXT",
-        "ALTER TABLE executions ADD COLUMN completed_at DATETIME",
-    ];
-
-    for sql in sql_commands {
-        sqlx::query(sql)
-            .execute(pool)
-            .await
-            .change_context(StateError::Initialization)?;
-    }
-
-    // Create indexes for the new columns
+    // Create all indexes for optimal performance
     let index_commands = vec![
-        "CREATE INDEX idx_executions_endpoint_name ON executions(endpoint_name)",
-        "CREATE INDEX idx_executions_workflow_hash ON executions(workflow_hash)",
-        "CREATE INDEX idx_executions_status ON executions(status)",
-        "CREATE INDEX idx_executions_created_at ON executions(created_at)",
+        // Step results indexes
+        "CREATE INDEX IF NOT EXISTS idx_step_results_step_id ON step_results(execution_id, step_id)",
+        
+        // Executions indexes
+        "CREATE INDEX IF NOT EXISTS idx_executions_endpoint_name ON executions(endpoint_name)",
+        "CREATE INDEX IF NOT EXISTS idx_executions_workflow_hash ON executions(workflow_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status)",
+        "CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions(created_at)",
+        
+        // Endpoints indexes
+        "CREATE INDEX IF NOT EXISTS idx_endpoints_name ON endpoints(name)",
+        "CREATE INDEX IF NOT EXISTS idx_endpoints_workflow_hash ON endpoints(workflow_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_endpoints_created_at ON endpoints(created_at)",
     ];
 
+    // Execute index creation commands
     for sql in index_commands {
         sqlx::query(sql)
             .execute(pool)

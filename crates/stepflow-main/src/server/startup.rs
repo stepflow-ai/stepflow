@@ -42,7 +42,7 @@ pub async fn start_server(
         .at("/openapi.json", spec)
         .with(
             Cors::new()
-                .allow_origin("http://localhost:5173")
+                .allow_origin("http://localhost:3000")
                 .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                 .allow_headers(vec!["content-type"]),
         );

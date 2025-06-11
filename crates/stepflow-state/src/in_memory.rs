@@ -5,6 +5,7 @@ use crate::{
     StateStore,
     state_store::{
         Endpoint, ExecutionDetails, ExecutionFilters, ExecutionStatus, ExecutionSummary, StepResult,
+        ExecutionWithBlobs, ExecutionStepDetails, DebugSessionData, CreateExecutionParams,
     },
 };
 use stepflow_core::{
@@ -591,6 +592,201 @@ impl StateStore for InMemoryStateStore {
                 results.truncate(limit);
             }
 
+            Ok(results)
+        })
+    }
+
+    // Compound Query Methods (simple delegating implementations for now)
+    
+    fn get_endpoint_with_workflow(
+        &self,
+        name: &str,
+        label: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(Endpoint, Flow), StateError>> + Send + '_>> {
+        let self_ref = self as &dyn StateStore;
+        let name = name.to_string();
+        let label = label.map(|s| s.to_string());
+
+        Box::pin(async move {
+            // Simple implementation that delegates to existing methods
+            let endpoint = self_ref.get_endpoint(&name, label.as_deref()).await?;
+            let workflow = self_ref.get_workflow(&endpoint.workflow_hash).await?;
+            Ok((endpoint, workflow))
+        })
+    }
+
+    fn get_execution_with_workflow(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(ExecutionDetails, Option<Flow>), StateError>> + Send + '_>> {
+        let self_ref = self as &dyn StateStore;
+
+        Box::pin(async move {
+            // Simple implementation that delegates to existing methods
+            let execution = self_ref.get_execution(execution_id).await?;
+            let workflow = if let Some(ref hash) = execution.workflow_hash {
+                Some(self_ref.get_workflow(hash).await?)
+            } else {
+                None
+            };
+            Ok((execution, workflow))
+        })
+    }
+
+    fn get_execution_with_blobs(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionWithBlobs, StateError>> + Send + '_>> {
+        let self_ref = self as &dyn StateStore;
+
+        Box::pin(async move {
+            // Simple implementation that delegates to existing methods
+            let execution = self_ref.get_execution(execution_id).await?;
+            
+            let input = if let Some(ref blob_id) = execution.input_blob_id {
+                Some(self_ref.get_blob(blob_id).await?)
+            } else {
+                None
+            };
+            
+            let result = if let Some(ref blob_id) = execution.result_blob_id {
+                Some(self_ref.get_blob(blob_id).await?)
+            } else {
+                None
+            };
+            
+            Ok(ExecutionWithBlobs {
+                execution,
+                input,
+                result,
+            })
+        })
+    }
+
+    fn get_execution_step_details(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionStepDetails, StateError>> + Send + '_>> {
+        let self_ref = self as &dyn StateStore;
+
+        Box::pin(async move {
+            // Simple implementation that delegates to existing methods
+            let execution = self_ref.get_execution(execution_id).await?;
+            
+            let workflow = if let Some(ref hash) = execution.workflow_hash {
+                Some(self_ref.get_workflow(hash).await?)
+            } else {
+                None
+            };
+            
+            let input = if let Some(ref blob_id) = execution.input_blob_id {
+                Some(self_ref.get_blob(blob_id).await?)
+            } else {
+                None
+            };
+            
+            let step_results = self_ref.list_step_results(execution_id).await?;
+            
+            Ok(ExecutionStepDetails {
+                execution,
+                workflow,
+                step_results,
+                input,
+            })
+        })
+    }
+
+    fn get_debug_session_data(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<DebugSessionData, StateError>> + Send + '_>> {
+        let self_ref = self as &dyn StateStore;
+
+        Box::pin(async move {
+            // Simple implementation that delegates to existing methods
+            let execution = self_ref.get_execution(execution_id).await?;
+            
+            let workflow_hash = execution.workflow_hash.clone()
+                .ok_or(StateError::WorkflowNotFound { workflow_hash: "missing".to_string() })?;
+            let workflow = self_ref.get_workflow(&workflow_hash).await?;
+            
+            let input = if let Some(ref blob_id) = execution.input_blob_id {
+                self_ref.get_blob(blob_id).await?
+            } else {
+                ValueRef::new(serde_json::Value::Null)
+            };
+            
+            let step_results = self_ref.list_step_results(execution_id).await?;
+            
+            Ok(DebugSessionData {
+                execution,
+                workflow,
+                input,
+                step_results,
+            })
+        })
+    }
+
+    // Atomic Operations (stubbed due to async trait lifetime complexities)
+    
+    fn create_endpoint_with_workflow(
+        &self,
+        _name: &str,
+        _label: Option<&str>,
+        _workflow: &Flow,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(String, Endpoint), StateError>> + Send + '_>> {
+        Box::pin(async move {
+            Err(error_stack::Report::new(StateError::NotImplemented))
+        })
+    }
+
+    fn create_execution_with_input(
+        &self,
+        _execution_id: Uuid,
+        _params: CreateExecutionParams<'_>,
+        _input: Option<ValueRef>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + '_>> {
+        Box::pin(async move {
+            Err(error_stack::Report::new(StateError::NotImplemented))
+        })
+    }
+
+    // Optimized Query Methods (simple implementations for now)
+
+    fn try_get_step_result_by_id(
+        &self,
+        execution_id: Uuid,
+        step_id: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Option<FlowResult>, StateError>> + Send + '_>> {
+        let self_ref = self as &dyn StateStore;
+        let step_id = step_id.to_string();
+
+        Box::pin(async move {
+            // Simple implementation that delegates to existing method
+            match self_ref.get_step_result_by_id(execution_id, &step_id).await {
+                Ok(result) => Ok(Some(result)),
+                Err(_) => Ok(None), // Convert error to None for this optimized version
+            }
+        })
+    }
+
+    fn get_step_results_by_indices(
+        &self,
+        execution_id: Uuid,
+        indices: &[usize],
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<Option<FlowResult>>, StateError>> + Send + '_>> {
+        let self_ref = self as &dyn StateStore;
+        let indices = indices.to_vec();
+
+        Box::pin(async move {
+            // Simple implementation that delegates to existing method
+            let mut results = Vec::with_capacity(indices.len());
+            for &index in &indices {
+                match self_ref.get_step_result_by_index(execution_id, index).await {
+                    Ok(result) => results.push(Some(result)),
+                    Err(_) => results.push(None), // Convert error to None
+                }
+            }
             Ok(results)
         })
     }

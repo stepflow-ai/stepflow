@@ -1,11 +1,10 @@
-//! Tests for the StepFlow HTTP server modules
+//! Tests for the StepFlow HTTP server shared modules
 //!
-//! These tests focus on the data structures and serialization/deserialization
-//! rather than full integration tests.
+//! These tests focus on shared data structures and common functionality.
+//! Individual endpoint tests are located in their respective modules.
 
 use serde_json::json;
 use std::sync::Arc;
-use stepflow_core::schema::SchemaRef;
 use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowRef, Step, ValueRef};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::InMemoryStateStore;
@@ -14,9 +13,6 @@ use url::Url;
 use super::{
     api_type::ApiType,
     common::{ApiResult, ErrorResponse, ExecuteResponse},
-    components::{ComponentInfoResponse, ListComponentsResponse},
-    endpoints::{CreateEndpointRequest, EndpointResponse},
-    execution::ExecuteRequest,
 };
 
 /// Helper to create a test executor for testing
@@ -55,39 +51,6 @@ fn create_test_input() -> ValueRef {
 }
 
 #[test]
-fn test_execute_request_serialization() {
-    let workflow = create_test_workflow();
-    let input = create_test_input();
-
-    let request = ExecuteRequest {
-        workflow: FlowRef::new(workflow),
-        input,
-        debug: false,
-    };
-
-    // Should be able to serialize/deserialize
-    let json = serde_json::to_string(&request).unwrap();
-    let deserialized: ExecuteRequest = serde_json::from_str(&json).unwrap();
-
-    assert!(!deserialized.debug);
-    // Just check that workflow was deserialized correctly
-}
-
-#[test]
-fn test_execute_request_with_debug() {
-    let workflow = create_test_workflow();
-    let input = create_test_input();
-
-    let request = ExecuteRequest {
-        workflow: FlowRef::new(workflow),
-        input,
-        debug: true,
-    };
-
-    assert!(request.debug);
-}
-
-#[test]
 fn test_execute_response_structure() {
     let response = ExecuteResponse {
         execution_id: "test-uuid".to_string(),
@@ -102,89 +65,6 @@ fn test_execute_response_structure() {
         response.status,
         stepflow_state::ExecutionStatus::Running
     ));
-}
-
-#[test]
-fn test_endpoint_response_structure() {
-    let response = EndpointResponse {
-        name: "test_endpoint".to_string(),
-        label: None,
-        workflow_hash: "abc123".to_string(),
-        created_at: "2024-01-01T00:00:00Z".to_string(),
-        updated_at: "2024-01-01T00:00:00Z".to_string(),
-    };
-
-    assert_eq!(response.name, "test_endpoint");
-    assert_eq!(response.workflow_hash, "abc123");
-}
-
-#[test]
-fn test_create_endpoint_request_serialization() {
-    let workflow = create_test_workflow();
-    let request = CreateEndpointRequest {
-        workflow: FlowRef::new(workflow),
-    };
-
-    let json = serde_json::to_string(&request).unwrap();
-    let _deserialized: CreateEndpointRequest = serde_json::from_str(&json).unwrap();
-
-    // Just check that workflow was deserialized correctly
-}
-
-#[test]
-fn test_component_info_response_serialization() {
-    let component = ComponentInfoResponse {
-        name: "test_component".to_string(),
-        plugin_name: "test_plugin".to_string(),
-        description: Some("Test description".to_string()),
-        input_schema: Some(SchemaRef::parse_json(r#"{"type": "string"}"#).unwrap()),
-        output_schema: None,
-    };
-
-    let json = serde_json::to_string(&component).unwrap();
-    let deserialized: ComponentInfoResponse = serde_json::from_str(&json).unwrap();
-
-    assert_eq!(deserialized.name, "test_component");
-    assert_eq!(deserialized.plugin_name, "test_plugin");
-    assert_eq!(
-        deserialized.description,
-        Some("Test description".to_string())
-    );
-    assert!(deserialized.input_schema.is_some());
-    assert!(deserialized.output_schema.is_none());
-}
-
-#[test]
-fn test_list_components_response_serialization() {
-    let response = ListComponentsResponse {
-        components: vec![
-            ComponentInfoResponse {
-                name: "comp1".to_string(),
-                plugin_name: "plugin1".to_string(),
-                description: None,
-                input_schema: None,
-                output_schema: None,
-            },
-            ComponentInfoResponse {
-                name: "comp2".to_string(),
-                plugin_name: "plugin2".to_string(),
-                description: Some("Description".to_string()),
-                input_schema: None,
-                output_schema: None,
-            },
-        ],
-    };
-
-    let json = serde_json::to_string(&response).unwrap();
-    let deserialized: ListComponentsResponse = serde_json::from_str(&json).unwrap();
-
-    assert_eq!(deserialized.components.len(), 2);
-    assert_eq!(deserialized.components[0].name, "comp1");
-    assert_eq!(deserialized.components[1].name, "comp2");
-    assert_eq!(
-        deserialized.components[1].description,
-        Some("Description".to_string())
-    );
 }
 
 #[test]

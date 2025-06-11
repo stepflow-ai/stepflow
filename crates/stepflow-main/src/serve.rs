@@ -77,22 +77,22 @@ use stepflow_execution::StepFlowExecutor;
 /// ### Create and Execute Endpoint
 /// ```bash
 /// # Create default endpoint version
-/// curl -X PUT http://localhost:8080/api/v1/endpoints/my-workflow \
+/// curl -X PUT http://localhost:7837/api/v1/endpoints/my-workflow \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"workflow": {...}}'
 ///
 /// # Create labeled version
-/// curl -X PUT "http://localhost:8080/api/v1/endpoints/my-workflow?label=v1.0" \
+/// curl -X PUT "http://localhost:7837/api/v1/endpoints/my-workflow?label=v1.0" \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"workflow": {...}}'
 ///
 /// # Execute default version
-/// curl -X POST http://localhost:8080/api/v1/endpoints/my-workflow/execute \
+/// curl -X POST http://localhost:7837/api/v1/endpoints/my-workflow/execute \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"input": {"key": "value"}}'
 ///
 /// # Execute specific version
-/// curl -X POST "http://localhost:8080/api/v1/endpoints/my-workflow/execute?label=v1.0" \
+/// curl -X POST "http://localhost:7837/api/v1/endpoints/my-workflow/execute?label=v1.0" \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"input": {"key": "value"}}'
 /// ```
@@ -100,20 +100,20 @@ use stepflow_execution::StepFlowExecutor;
 /// ### Debug Execution
 /// ```bash
 /// # Create debug execution
-/// curl -X POST http://localhost:8080/api/v1/execute \
+/// curl -X POST http://localhost:7837/api/v1/execute \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"workflow": {...}, "input": {"key": "value"}, "debug": true}'
 ///
 /// # List runnable steps
-/// curl http://localhost:8080/api/v1/executions/{execution_id}/debug/runnable
+/// curl http://localhost:7837/api/v1/executions/{execution_id}/debug/runnable
 ///
 /// # Execute specific steps
-/// curl -X POST http://localhost:8080/api/v1/executions/{execution_id}/debug/step \
+/// curl -X POST http://localhost:7837/api/v1/executions/{execution_id}/debug/step \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"step_ids": ["step1", "step2"]}'
 ///
 /// # Continue to completion
-/// curl -X POST http://localhost:8080/api/v1/executions/{execution_id}/debug/continue
+/// curl -X POST http://localhost:7837/api/v1/executions/{execution_id}/debug/continue
 /// ```
 ///
 /// ## Additional Features

@@ -34,6 +34,9 @@ pub enum StateError {
 
     #[error("Serialization error")]
     Serialization,
+
+    #[error("Feature not implemented")]
+    NotImplemented,
 }
 
 pub type Result<T, E = error_stack::Report<StateError>> = std::result::Result<T, E>;

@@ -48,6 +48,9 @@ pub enum ServerError {
     #[error("Debug step execution failed")]
     DebugStepExecutionFailed,
 
+    #[error("Debug continue failed")]
+    DebugContinueFailed,
+
     #[error("Component listing failed from plugin: {plugin_name}")]
     ComponentListingFailed { plugin_name: String },
 
@@ -109,6 +112,7 @@ impl From<ServerErrorReport> for poem::Error {
             | ServerError::EndpointDeletionFailed
             | ServerError::DebugSessionCreationFailed
             | ServerError::DebugStepExecutionFailed
+            | ServerError::DebugContinueFailed
             | ServerError::ComponentListingFailed { .. }
             | ServerError::ComponentInfoFailed { .. }
             | ServerError::StateStore
@@ -151,6 +155,7 @@ impl ServerErrorReport {
             | ServerError::EndpointDeletionFailed
             | ServerError::DebugSessionCreationFailed
             | ServerError::DebugStepExecutionFailed
+            | ServerError::DebugContinueFailed
             | ServerError::ComponentListingFailed { .. }
             | ServerError::ComponentInfoFailed { .. }
             | ServerError::StateStore
@@ -259,6 +264,14 @@ pub fn invalid_uuid(uuid_string: impl Into<String>) -> poem::Error {
 pub fn not_implemented(feature: impl Into<String>) -> poem::Error {
     ServerErrorReport(Report::new(ServerError::NotImplemented {
         feature: feature.into(),
+    }))
+    .into()
+}
+
+/// Helper function to create a "bad request" error
+pub fn bad_request(message: impl Into<String>) -> poem::Error {
+    ServerErrorReport(Report::new(ServerError::InvalidParameter {
+        message: message.into(),
     }))
     .into()
 }
