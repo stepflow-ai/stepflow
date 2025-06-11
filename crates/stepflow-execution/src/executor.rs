@@ -58,6 +58,11 @@ impl StepFlowExecutor {
         ExecutionContext::new(self.executor(), execution_id)
     }
 
+    /// Get a reference to the state store.
+    pub fn state_store(&self) -> Arc<dyn StateStore> {
+        self.state_store.clone()
+    }
+
     pub async fn get_plugin(&self, component: &Component) -> Result<Arc<DynPlugin<'static>>> {
         let protocol = component.protocol();
         let guard = self.plugins.read().await;

@@ -18,6 +18,18 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
     apply_migration(pool, "004_create_indexes", || create_indexes(pool)).await?;
+    apply_migration(pool, "005_create_workflows_table", || {
+        create_workflows_table(pool)
+    })
+    .await?;
+    apply_migration(pool, "006_create_unified_endpoints_table", || {
+        create_unified_endpoints_table(pool)
+    })
+    .await?;
+    apply_migration(pool, "007_enhance_executions_table", || {
+        enhance_executions_table(pool)
+    })
+    .await?;
 
     Ok(())
 }
@@ -145,6 +157,98 @@ async fn create_indexes(pool: &SqlitePool) -> Result<(), StateError> {
         .execute(pool)
         .await
         .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Create workflows table for content-addressable workflow storage
+async fn create_workflows_table(pool: &SqlitePool) -> Result<(), StateError> {
+    let sql = r#"
+        CREATE TABLE workflows (
+            hash TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            first_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    "#;
+
+    sqlx::query(sql)
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Create unified endpoints table with composite primary key
+async fn create_unified_endpoints_table(pool: &SqlitePool) -> Result<(), StateError> {
+    let sql = r#"
+        CREATE TABLE endpoints (
+            name TEXT NOT NULL,
+            label TEXT, -- NULL represents the default version
+            workflow_hash TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (name, label),
+            FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
+        )
+    "#;
+
+    sqlx::query(sql)
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    // Create indexes for efficient querying
+    let index_commands = vec![
+        "CREATE INDEX idx_endpoints_name ON endpoints(name)",
+        "CREATE INDEX idx_endpoints_workflow_hash ON endpoints(workflow_hash)",
+        "CREATE INDEX idx_endpoints_created_at ON endpoints(created_at)",
+    ];
+
+    for sql in index_commands {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .change_context(StateError::Initialization)?;
+    }
+
+    Ok(())
+}
+
+/// Enhance executions table with additional metadata columns
+async fn enhance_executions_table(pool: &SqlitePool) -> Result<(), StateError> {
+    // Add new columns to the executions table
+    let sql_commands = vec![
+        "ALTER TABLE executions ADD COLUMN endpoint_name TEXT",
+        "ALTER TABLE executions ADD COLUMN workflow_hash TEXT",
+        "ALTER TABLE executions ADD COLUMN status TEXT DEFAULT 'running'",
+        "ALTER TABLE executions ADD COLUMN debug_mode BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE executions ADD COLUMN input_blob_id TEXT",
+        "ALTER TABLE executions ADD COLUMN result_blob_id TEXT",
+        "ALTER TABLE executions ADD COLUMN completed_at DATETIME",
+    ];
+
+    for sql in sql_commands {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .change_context(StateError::Initialization)?;
+    }
+
+    // Create indexes for the new columns
+    let index_commands = vec![
+        "CREATE INDEX idx_executions_endpoint_name ON executions(endpoint_name)",
+        "CREATE INDEX idx_executions_workflow_hash ON executions(workflow_hash)",
+        "CREATE INDEX idx_executions_status ON executions(status)",
+        "CREATE INDEX idx_executions_created_at ON executions(created_at)",
+    ];
+
+    for sql in index_commands {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .change_context(StateError::Initialization)?;
+    }
 
     Ok(())
 }

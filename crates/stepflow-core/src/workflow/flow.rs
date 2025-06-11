@@ -7,6 +7,9 @@ use schemars::JsonSchema;
 /// A flow represents a complete workflow that can be executed. It contains:
 /// - A sequence of steps to execute
 /// - Named outputs that can reference step outputs
+///
+/// Flows should not be cloned. They should generally be stored and passed as a
+/// reference or inside an `Arc`.
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema)]
 pub struct Flow {
     /// The name of the flow.
@@ -105,6 +108,93 @@ impl Flow {
     /// Returns an error if the flow cannot be serialized to JSON.
     pub fn to_json_string(&self) -> serde_json::Result<String> {
         serde_json::to_string(self)
+    }
+}
+
+/// A wrapper around Arc<Flow> to support poem-openapi traits.
+///
+/// This wrapper exists to work around Rust's orphan rules which prevent
+/// implementing external traits on external types like Arc<Flow>.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowRef(std::sync::Arc<Flow>);
+
+impl FlowRef {
+    /// Create a new FlowRef from a Flow.
+    pub fn new(flow: Flow) -> Self {
+        Self(std::sync::Arc::new(flow))
+    }
+
+    /// Create a new FlowRef from an Arc<Flow>.
+    pub fn from_arc(arc: std::sync::Arc<Flow>) -> Self {
+        Self(arc)
+    }
+
+    /// Get a reference to the underlying Flow.
+    pub fn as_flow(&self) -> &Flow {
+        &self.0
+    }
+
+    /// Get the underlying Arc<Flow>.
+    pub fn into_arc(self) -> std::sync::Arc<Flow> {
+        self.0
+    }
+
+    /// Get a reference to the underlying Arc<Flow>.
+    pub fn as_arc(&self) -> &std::sync::Arc<Flow> {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for FlowRef {
+    type Target = Flow;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Flow> for FlowRef {
+    fn from(flow: Flow) -> Self {
+        Self::new(flow)
+    }
+}
+
+impl From<std::sync::Arc<Flow>> for FlowRef {
+    fn from(arc: std::sync::Arc<Flow>) -> Self {
+        Self::from_arc(arc)
+    }
+}
+
+impl serde::Serialize for FlowRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FlowRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let flow = Flow::deserialize(deserializer)?;
+        Ok(Self::new(flow))
+    }
+}
+
+impl JsonSchema for FlowRef {
+    fn schema_name() -> String {
+        Flow::schema_name()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        Flow::json_schema(generator)
+    }
+
+    fn is_referenceable() -> bool {
+        Flow::is_referenceable()
     }
 }
 

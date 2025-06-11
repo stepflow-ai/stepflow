@@ -82,7 +82,7 @@ Step Flow is an execution engine for AI workflows, built in Rust. The project is
 
 ### Core Components
 
-1. **Core Types** (`stepflow-core`): 
+1. **Core Types** (`stepflow-core`):
    - Defines the Rust structs representing workflows, components, and value expressions
    - Handles flow structure, steps, components, and schema definitions
    - Contains the `FlowResult` type for workflow execution results
@@ -204,7 +204,7 @@ StepFlow uses a dual error approach to distinguish between business logic and sy
    - Allow workflows to continue and handle errors gracefully
    - Example: `FlowResult::Failed { error: FlowError::new(400, "Invalid input") }`
 
-2. **System Errors**: Implementation or infrastructure failures  
+2. **System Errors**: Implementation or infrastructure failures
    - Used for plugin communication failures, serialization errors, etc.
    - Represent unexpected conditions that should halt execution
    - Each crate has its own `error.rs` module with custom error types
@@ -282,6 +282,96 @@ state_store:
 - **Execution State**: Persistent workflow step results for recovery and debugging
 - **Migration Support**: Automatic schema creation and versioning
 - **Multi-backend**: Extensible design for future database support (PostgreSQL, etc.)
+- **Unified Endpoints**: Named workflow endpoints with optional labels for versioning
+
+### Workflow Endpoints
+
+StepFlow provides a REST API for managing named workflow endpoints. Each endpoint can have multiple versions identified by optional labels.
+
+#### Endpoint Structure
+- **Name**: Human-readable identifier (e.g., "data-processing")
+- **Label**: Optional version identifier (e.g., "stable", "beta", "v1.2")
+- **Workflow Hash**: Content-based ID linking to the workflow definition
+
+#### API Endpoints
+
+**Create/Update Endpoint:**
+```bash
+# Create default version
+curl -X PUT http://localhost:8080/api/v1/endpoints/my-workflow \
+  -H "Content-Type: application/json" \
+  -d '{"workflow": {...}}'
+
+# Create labeled version
+curl -X PUT "http://localhost:8080/api/v1/endpoints/my-workflow?label=v1.0" \
+  -H "Content-Type: application/json" \
+  -d '{"workflow": {...}}'
+```
+
+**Execute Endpoint:**
+```bash
+# Execute default version
+curl -X POST http://localhost:8080/api/v1/endpoints/my-workflow/execute \
+  -H "Content-Type: application/json" \
+  -d '{"input": {...}}'
+
+# Execute labeled version
+curl -X POST "http://localhost:8080/api/v1/endpoints/my-workflow/execute?label=v1.0" \
+  -H "Content-Type: application/json" \
+  -d '{"input": {...}}'
+```
+
+**List Endpoints:**
+```bash
+# List all endpoints
+curl http://localhost:8080/api/v1/endpoints
+
+# List all versions of specific endpoint
+curl "http://localhost:8080/api/v1/endpoints?name=my-workflow"
+```
+
+**Get Endpoint:**
+```bash
+# Get default version
+curl http://localhost:8080/api/v1/endpoints/my-workflow
+
+# Get labeled version
+curl "http://localhost:8080/api/v1/endpoints/my-workflow?label=v1.0"
+```
+
+**Delete Endpoint:**
+```bash
+# Delete default version
+curl -X DELETE http://localhost:8080/api/v1/endpoints/my-workflow
+
+# Delete labeled version
+curl -X DELETE "http://localhost:8080/api/v1/endpoints/my-workflow?label=v1.0"
+
+# Delete all versions
+curl -X DELETE "http://localhost:8080/api/v1/endpoints/my-workflow?label=*"
+```
+
+#### Database Schema
+
+The unified endpoint design uses a single table with composite primary key:
+
+```sql
+CREATE TABLE endpoints (
+    name TEXT NOT NULL,
+    label TEXT, -- NULL represents the default version
+    workflow_hash TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (name, label),
+    FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
+);
+```
+
+This design provides:
+- **Unified Model**: Single concept instead of separate endpoints and labels
+- **Flexible Versioning**: Optional labels with null representing default
+- **Content Deduplication**: Multiple endpoints can reference same workflow
+- **Atomic Operations**: Composite key ensures data consistency
 
 ## Testing
 
@@ -291,7 +381,7 @@ state_store:
 - Located inline with source files using `#[cfg(test)]` modules
 - Use descriptive test names: `test_<feature>_<scenario>`
 
-#### Integration Tests  
+#### Integration Tests
 - **Crate-level integration tests**: Located in `<crate>/tests/` directories (e.g., `crates/stepflow-main/tests/`)
 - **Workflow-level integration tests**: Located in `/tests/` at the project root, using actual workflow YAML files
 

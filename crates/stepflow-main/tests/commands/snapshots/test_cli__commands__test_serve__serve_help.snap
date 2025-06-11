@@ -25,7 +25,7 @@ Options:
       --port <PORT>
           Port to run the service on
           
-          [default: 8080]
+          [default: 7837]
 
       --config <FILE>
           The path to the stepflow config file.

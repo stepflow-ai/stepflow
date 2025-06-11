@@ -279,7 +279,7 @@ impl DebugSession {
 }
 
 /// The current state of a step in the workflow.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum StepState {
     /// Step is waiting for dependencies to complete
     Blocked,
@@ -294,7 +294,7 @@ pub enum StepState {
 }
 
 /// Status information for a step.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct StepStatus {
     pub index: usize,
     pub id: String,
