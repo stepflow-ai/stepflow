@@ -1,6 +1,9 @@
-use stepflow_core::workflow::{BaseRef, Expr, ValueRef};
+use stepflow_core::workflow::{Expr, ValueRef};
 
-use crate::{types::{ExpressionReference, ReferenceLocation}, Result};
+use crate::{
+    types::{ExpressionReference, ReferenceLocation},
+    Result,
+};
 
 /// Extract all references from a ValueRef with their locations
 pub fn extract_references_from_value_ref(
@@ -101,8 +104,8 @@ fn extract_references_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stepflow_core::workflow::WorkflowRef;
     use serde_json::json;
+    use stepflow_core::workflow::{BaseRef, WorkflowRef};
 
     #[test]
     fn test_extract_simple_reference() {

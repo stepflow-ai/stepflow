@@ -4,8 +4,6 @@ use stepflow_core::workflow::{BaseRef, Flow};
 /// Represents a dependency between two steps in a workflow
 #[derive(Debug, Clone, PartialEq)]
 pub struct StepDependency {
-    /// Hash of the workflow this dependency belongs to
-    pub workflow_hash: String,
     /// Index of the step that depends on another step
     pub step_index: usize,
     /// Index of the step that this step depends on
@@ -13,7 +11,23 @@ pub struct StepDependency {
     /// Optional source path within the dependency step's output
     pub src_path: Option<String>,
     /// Optional destination field where the dependency is used
-    pub dst_field: Option<String>,
+    pub dst_field: DestinationField,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DestinationField {
+    SkipIf,
+    Input,
+    InputField(String),
+}
+
+impl DestinationField {
+    pub fn from_input_field(field: Option<String>) -> Self {
+        match field {
+            Some(path) => DestinationField::InputField(path),
+            None => DestinationField::Input,
+        }
+    }
 }
 
 /// Results of analyzing a workflow for dependencies

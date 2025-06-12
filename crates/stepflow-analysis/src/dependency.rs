@@ -1,10 +1,18 @@
 use std::collections::HashMap;
 use stepflow_core::workflow::{BaseRef, Expr, Flow, ValueRef};
 
-use crate::{error::AnalysisError, types::{StepDependency, WorkflowAnalysis}, Result};
+use crate::DestinationField;
+use crate::{
+    error::AnalysisError,
+    types::{StepDependency, WorkflowAnalysis},
+    Result,
+};
 
 /// Analyze a workflow for step dependencies
-pub fn analyze_workflow_dependencies(flow: &Flow, workflow_hash: String) -> Result<WorkflowAnalysis> {
+pub fn analyze_workflow_dependencies(
+    flow: &Flow,
+    workflow_hash: String,
+) -> Result<WorkflowAnalysis> {
     let mut dependencies = Vec::new();
 
     // Create step ID to index mapping
@@ -32,15 +40,10 @@ pub fn analyze_workflow_dependencies(flow: &Flow, workflow_hash: String) -> Resu
                 skip_if,
                 &step_id_to_index,
                 step_index,
-                Some("skip_if".to_string()),
+                DestinationField::SkipIf,
             )?;
             dependencies.extend(skip_dependencies);
         }
-    }
-
-    // Add workflow hash to all dependencies
-    for dep in &mut dependencies {
-        dep.workflow_hash = workflow_hash.clone();
     }
 
     Ok(WorkflowAnalysis::new(workflow_hash, dependencies, flow))
@@ -53,7 +56,7 @@ fn extract_dependencies_from_value_ref(
     step_index: usize,
     dst_field: Option<String>,
 ) -> Result<Vec<StepDependency>> {
-    extract_dependencies_from_value(value_ref.as_ref(), step_id_to_index, step_index, dst_field, "")
+    extract_dependencies_from_value(value_ref.as_ref(), step_id_to_index, step_index, dst_field)
 }
 
 /// Extract dependencies from an expression
@@ -61,18 +64,17 @@ fn extract_dependencies_from_expr(
     expr: &Expr,
     step_id_to_index: &HashMap<String, usize>,
     step_index: usize,
-    dst_field: Option<String>,
+    dst_field: DestinationField,
 ) -> Result<Vec<StepDependency>> {
     if let Expr::Ref { from, path, .. } = expr {
         if let BaseRef::Step { step } = from {
-            let depends_on_step_index = *step_id_to_index
-                .get(step)
-                .ok_or_else(|| error_stack::report!(AnalysisError::StepNotFound {
+            let depends_on_step_index = *step_id_to_index.get(step).ok_or_else(|| {
+                error_stack::report!(AnalysisError::StepNotFound {
                     step_id: step.clone(),
-                }))?;
+                })
+            })?;
 
             return Ok(vec![StepDependency {
-                workflow_hash: String::new(), // Will be filled in later
                 step_index,
                 depends_on_step_index,
                 src_path: path.clone(),
@@ -89,42 +91,32 @@ fn extract_dependencies_from_value(
     step_id_to_index: &HashMap<String, usize>,
     step_index: usize,
     dst_field: Option<String>,
-    current_path: &str,
 ) -> Result<Vec<StepDependency>> {
     let mut dependencies = Vec::new();
 
     match value {
         serde_json::Value::Object(map) => {
-            // Check if this object is a literal wrapper
             if map.contains_key("$literal") {
                 // Skip processing inside literal wrappers
                 return Ok(dependencies);
-            }
-
-            // Check if this object is a reference
-            if map.contains_key("$from") {
+            } else if map.contains_key("$from") {
+                // This is a reference object
                 match serde_json::from_value::<Expr>(value.clone()) {
                     Ok(Expr::Ref { from, path, .. }) => {
                         // Successfully parsed as a reference expression
                         if let BaseRef::Step { step } = from {
-                            let depends_on_step_index = *step_id_to_index
-                                .get(&step)
-                                .ok_or_else(|| error_stack::report!(AnalysisError::StepNotFound {
-                                    step_id: step.clone(),
-                                }))?;
-
-                            let field_path = if current_path.is_empty() {
-                                dst_field.clone()
-                            } else {
-                                Some(current_path.to_string())
-                            };
+                            let depends_on_step_index =
+                                *step_id_to_index.get(&step).ok_or_else(|| {
+                                    error_stack::report!(AnalysisError::StepNotFound {
+                                        step_id: step.clone(),
+                                    })
+                                })?;
 
                             dependencies.push(StepDependency {
-                                workflow_hash: String::new(), // Will be filled in later
                                 step_index,
                                 depends_on_step_index,
                                 src_path: path,
-                                dst_field: field_path,
+                                dst_field: DestinationField::from_input_field(dst_field),
                             });
                         }
                         // Don't recurse into reference objects
@@ -148,38 +140,27 @@ fn extract_dependencies_from_value(
                         }));
                     }
                 }
-            }
-
-            // Not a reference or literal, recurse into all values
-            for (key, v) in map {
-                let field_path = if current_path.is_empty() {
-                    key.clone()
-                } else {
-                    format!("{}.{}", current_path, key)
-                };
-                let nested_deps = extract_dependencies_from_value(
-                    v,
-                    step_id_to_index,
-                    step_index,
-                    dst_field.clone(),
-                    &field_path,
-                )?;
-                dependencies.extend(nested_deps);
+            } else {
+                // Not a reference or literal, recurse into all values
+                for (key, v) in map {
+                    let dst_field = dst_field.clone().or_else(|| Some(key.to_owned()));
+                    let nested_deps = extract_dependencies_from_value(
+                        v,
+                        step_id_to_index,
+                        step_index,
+                        dst_field.clone(),
+                    )?;
+                    dependencies.extend(nested_deps);
+                }
             }
         }
         serde_json::Value::Array(arr) => {
-            for (index, v) in arr.iter().enumerate() {
-                let array_path = if current_path.is_empty() {
-                    format!("[{}]", index)
-                } else {
-                    format!("{}[{}]", current_path, index)
-                };
+            for v in arr.iter() {
                 let nested_deps = extract_dependencies_from_value(
                     v,
                     step_id_to_index,
                     step_index,
                     dst_field.clone(),
-                    &array_path,
                 )?;
                 dependencies.extend(nested_deps);
             }
@@ -195,8 +176,8 @@ fn extract_dependencies_from_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stepflow_core::workflow::{Component, ErrorAction, Step, Flow};
     use serde_json::json;
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, Step};
     use url::Url;
 
     fn create_test_flow() -> Flow {
@@ -240,7 +221,6 @@ mod tests {
         let dep = &analysis.dependencies[0];
         assert_eq!(dep.step_index, 1); // step2
         assert_eq!(dep.depends_on_step_index, 0); // step1
-        assert_eq!(dep.workflow_hash, "test_hash");
     }
 
     #[test]
@@ -252,14 +232,16 @@ mod tests {
                 step: "step1".to_string(),
             },
             path: Some("should_skip".to_string()),
-            on_skip: stepflow_core::workflow::SkipAction::UseDefault { default_value: None },
+            on_skip: stepflow_core::workflow::SkipAction::UseDefault {
+                default_value: None,
+            },
         });
 
         let analysis = analyze_workflow_dependencies(&flow, "test_hash".to_string()).unwrap();
 
         // Should find 2 dependencies: input dependency + skip condition dependency
         assert_eq!(analysis.dependencies.len(), 2);
-        
+
         // Both should be from step2 to step1
         for dep in &analysis.dependencies {
             assert_eq!(dep.step_index, 1); // step2
@@ -275,6 +257,9 @@ mod tests {
 
         let result = analyze_workflow_dependencies(&flow, "test_hash".to_string());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Step not found: nonexistent"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Step not found: nonexistent"));
     }
 }
