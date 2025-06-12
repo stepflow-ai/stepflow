@@ -5,7 +5,7 @@ use error_stack::ResultExt as _;
 use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
 use stepflow_core::{
     FlowError, FlowResult,
-    status::StepStatus as CoreStepStatus,
+    status::{StepExecution, StepStatus as CoreStepStatus},
     workflow::{Expr, Flow, ValueRef},
 };
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -151,7 +151,7 @@ impl WorkflowExecutor {
     }
 
     /// List all steps in the workflow with their current status.
-    pub async fn list_all_steps(&self) -> Vec<StepStatus> {
+    pub async fn list_all_steps(&self) -> Vec<StepExecution> {
         let runnable = self.tracker.unblocked_steps();
 
         let mut step_statuses = Vec::new();
@@ -174,31 +174,31 @@ impl WorkflowExecutor {
                 }
             };
 
-            step_statuses.push(StepStatus {
-                index: idx,
-                id: step.id.clone(),
-                component: step.component.to_string(),
+            step_statuses.push(StepExecution::new(
+                idx,
+                step.id.clone(),
+                step.component.to_string(),
                 state,
-            });
+            ));
         }
 
         step_statuses
     }
 
     /// Get currently runnable steps.
-    pub fn get_runnable_steps(&self) -> Vec<StepStatus> {
+    pub fn get_runnable_steps(&self) -> Vec<StepExecution> {
         let runnable = self.tracker.unblocked_steps();
 
         runnable
             .iter()
             .map(|idx| {
                 let step = &self.flow.steps[idx];
-                StepStatus {
-                    index: idx,
-                    id: step.id.clone(),
-                    component: step.component.to_string(),
-                    state: CoreStepStatus::Runnable,
-                }
+                StepExecution::new(
+                    idx,
+                    step.id.clone(),
+                    step.component.to_string(),
+                    CoreStepStatus::Runnable,
+                )
             })
             .collect()
     }
@@ -230,7 +230,7 @@ impl WorkflowExecutor {
     /// Returns execution results for each step.
     pub async fn execute_all_runnable(&mut self) -> Result<Vec<StepExecutionResult>> {
         let runnable_steps = self.get_runnable_steps();
-        let step_ids: Vec<String> = runnable_steps.iter().map(|s| s.id.clone()).collect();
+        let step_ids: Vec<String> = runnable_steps.iter().map(|s| s.step_id.clone()).collect();
         self.execute_steps(&step_ids).await
     }
 
@@ -679,14 +679,6 @@ pub(crate) async fn execute_step_async(
     }
 }
 
-/// Status information for a step.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub struct StepStatus {
-    pub index: usize,
-    pub id: String,
-    pub component: String,
-    pub state: CoreStepStatus,
-}
 
 /// Detailed inspection information for a step.
 #[derive(Debug, Clone)]

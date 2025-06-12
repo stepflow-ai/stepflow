@@ -386,7 +386,7 @@ impl ExecutionApi {
         // Get runnable steps
         let runnable_steps = workflow_executor.get_runnable_steps();
         let runnable_step_ids: Vec<String> =
-            runnable_steps.into_iter().map(|step| step.id).collect();
+            runnable_steps.into_iter().map(|step| step.step_id).collect();
 
         Ok(Json(ApiType(DebugRunnableResponse {
             runnable_steps: runnable_step_ids,

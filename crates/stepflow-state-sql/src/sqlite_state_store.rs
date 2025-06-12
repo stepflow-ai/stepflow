@@ -11,7 +11,8 @@ use stepflow_core::{
 };
 use stepflow_state::{
     CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters,
-    ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateError, StateStore, StepResult,
+    ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateError, StateStore, 
+    StepDependency, StepInfo, StepResult,
 };
 use uuid::Uuid;
 
@@ -1174,6 +1175,320 @@ impl StateStore for SqliteStateStore {
             }
 
             Ok(results)
+        })
+    }
+
+    // Step Dependencies
+
+    fn store_step_dependencies(
+        &self,
+        dependencies: &[StepDependency],
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
+        let dependencies = dependencies.to_vec();
+        let pool = self.pool.clone();
+        
+        Box::pin(async move {
+            // Delete existing dependencies for these workflows
+            let workflow_hashes: std::collections::HashSet<_> = dependencies
+                .iter()
+                .map(|dep| &dep.workflow_hash)
+                .collect();
+            
+            for workflow_hash in workflow_hashes {
+                let delete_sql = "DELETE FROM step_dependencies WHERE workflow_hash = ?";
+                sqlx::query(delete_sql)
+                    .bind(workflow_hash)
+                    .execute(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
+            }
+            
+            // Insert new dependencies
+            if !dependencies.is_empty() {
+                let insert_sql = "INSERT INTO step_dependencies (workflow_hash, step_index, depends_on_step_index, src_path, dst_field) VALUES (?, ?, ?, ?, ?)";
+                
+                for dep in dependencies {
+                    sqlx::query(insert_sql)
+                        .bind(&dep.workflow_hash)
+                        .bind(dep.step_index as i64)
+                        .bind(dep.depends_on_step_index as i64)
+                        .bind(&dep.src_path)
+                        .bind(&dep.dst_field)
+                        .execute(&pool)
+                        .await
+                        .change_context(StateError::Internal)?;
+                }
+            }
+            
+            Ok(())
+        })
+    }
+
+    fn get_step_dependencies(
+        &self,
+        workflow_hash: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, StateError>> + Send + '_>> {
+        let workflow_hash = workflow_hash.to_string();
+        let pool = self.pool.clone();
+        
+        Box::pin(async move {
+            let sql = "SELECT workflow_hash, step_index, depends_on_step_index, src_path, dst_field FROM step_dependencies WHERE workflow_hash = ?";
+            
+            let rows = sqlx::query(sql)
+                .bind(&workflow_hash)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            
+            let mut dependencies = Vec::new();
+            for row in rows {
+                let dependency = StepDependency {
+                    workflow_hash: row.get("workflow_hash"),
+                    step_index: row.get::<i64, _>("step_index") as usize,
+                    depends_on_step_index: row.get::<i64, _>("depends_on_step_index") as usize,
+                    src_path: row.get("src_path"),
+                    dst_field: row.get("dst_field"),
+                };
+                dependencies.push(dependency);
+            }
+            
+            Ok(dependencies)
+        })
+    }
+
+    fn get_step_dependencies_for_step(
+        &self,
+        workflow_hash: &str,
+        step_index: usize,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, StateError>> + Send + '_>> {
+        let workflow_hash = workflow_hash.to_string();
+        let pool = self.pool.clone();
+        
+        Box::pin(async move {
+            let sql = "SELECT workflow_hash, step_index, depends_on_step_index, src_path, dst_field FROM step_dependencies WHERE workflow_hash = ? AND step_index = ?";
+            
+            let rows = sqlx::query(sql)
+                .bind(&workflow_hash)
+                .bind(step_index as i64)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            
+            let mut dependencies = Vec::new();
+            for row in rows {
+                let dependency = StepDependency {
+                    workflow_hash: row.get("workflow_hash"),
+                    step_index: row.get::<i64, _>("step_index") as usize,
+                    depends_on_step_index: row.get::<i64, _>("depends_on_step_index") as usize,
+                    src_path: row.get("src_path"),
+                    dst_field: row.get("dst_field"),
+                };
+                dependencies.push(dependency);
+            }
+            
+            Ok(dependencies)
+        })
+    }
+
+    // Step Status Management
+
+    fn initialize_step_info(
+        &self,
+        execution_id: Uuid,
+        steps: &[StepInfo],
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
+        let steps = steps.to_vec();
+        let pool = self.pool.clone();
+        
+        Box::pin(async move {
+            // Delete existing step info for this execution
+            let delete_sql = "DELETE FROM step_info WHERE execution_id = ?";
+            sqlx::query(delete_sql)
+                .bind(execution_id.to_string())
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            
+            // Insert new step info
+            if !steps.is_empty() {
+                let insert_sql = "INSERT INTO step_info (execution_id, step_index, step_id, component, status) VALUES (?, ?, ?, ?, ?)";
+                
+                for step in steps {
+                    let status_str = match step.status {
+                        stepflow_core::status::StepStatus::Blocked => "blocked",
+                        stepflow_core::status::StepStatus::Runnable => "runnable",
+                        stepflow_core::status::StepStatus::Running => "running",
+                        stepflow_core::status::StepStatus::Completed => "completed",
+                        stepflow_core::status::StepStatus::Failed => "failed",
+                        stepflow_core::status::StepStatus::Skipped => "skipped",
+                    };
+                    
+                    sqlx::query(insert_sql)
+                        .bind(execution_id.to_string())
+                        .bind(step.step_index as i64)
+                        .bind(&step.step_id)
+                        .bind(&step.component)
+                        .bind(status_str)
+                        .execute(&pool)
+                        .await
+                        .change_context(StateError::Internal)?;
+                }
+            }
+            
+            Ok(())
+        })
+    }
+
+    fn update_step_status(
+        &self,
+        execution_id: Uuid,
+        step_index: usize,
+        status: stepflow_core::status::StepStatus,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
+        let pool = self.pool.clone();
+        
+        Box::pin(async move {
+            let status_str = match status {
+                stepflow_core::status::StepStatus::Blocked => "blocked",
+                stepflow_core::status::StepStatus::Runnable => "runnable",
+                stepflow_core::status::StepStatus::Running => "running",
+                stepflow_core::status::StepStatus::Completed => "completed",
+                stepflow_core::status::StepStatus::Failed => "failed",
+                stepflow_core::status::StepStatus::Skipped => "skipped",
+            };
+            
+            let sql = "UPDATE step_info SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE execution_id = ? AND step_index = ?";
+            
+            sqlx::query(sql)
+                .bind(status_str)
+                .bind(execution_id.to_string())
+                .bind(step_index as i64)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            
+            Ok(())
+        })
+    }
+
+    fn get_step_info_for_execution(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepInfo>, StateError>> + Send + '_>> {
+        let pool = self.pool.clone();
+        
+        Box::pin(async move {
+            let sql = "SELECT step_index, step_id, component, status, created_at, updated_at FROM step_info WHERE execution_id = ? ORDER BY step_index";
+            
+            let rows = sqlx::query(sql)
+                .bind(execution_id.to_string())
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            
+            let mut step_infos = Vec::new();
+            for row in rows {
+                let status_str: String = row.get("status");
+                let status = match status_str.as_str() {
+                    "blocked" => stepflow_core::status::StepStatus::Blocked,
+                    "runnable" => stepflow_core::status::StepStatus::Runnable,
+                    "running" => stepflow_core::status::StepStatus::Running,
+                    "completed" => stepflow_core::status::StepStatus::Completed,
+                    "failed" => stepflow_core::status::StepStatus::Failed,
+                    "skipped" => stepflow_core::status::StepStatus::Skipped,
+                    _ => stepflow_core::status::StepStatus::Blocked, // Default fallback
+                };
+                
+                let step_info = StepInfo {
+                    execution_id,
+                    step_index: row.get::<i64, _>("step_index") as usize,
+                    step_id: row.get("step_id"),
+                    component: row.get("component"),
+                    status,
+                    created_at: chrono::DateTime::parse_from_rfc3339(
+                        &row.get::<String, _>("created_at"),
+                    )
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc),
+                    updated_at: chrono::DateTime::parse_from_rfc3339(
+                        &row.get::<String, _>("updated_at"),
+                    )
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc),
+                };
+                
+                step_infos.push(step_info);
+            }
+            
+            Ok(step_infos)
+        })
+    }
+
+    fn get_runnable_steps(
+        &self,
+        execution_id: Uuid,
+        workflow_hash: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepInfo>, StateError>> + Send + '_>> {
+        let workflow_hash = workflow_hash.to_string();
+        let pool = self.pool.clone();
+        
+        Box::pin(async move {
+            // This is a complex query that finds steps that are blocked but have all dependencies satisfied
+            let sql = r#"
+                SELECT si.step_index, si.step_id, si.component, si.status, si.created_at, si.updated_at
+                FROM step_info si
+                WHERE si.execution_id = ? 
+                  AND si.status = 'blocked'
+                  AND NOT EXISTS (
+                    -- Check if there are any unsatisfied dependencies
+                    SELECT 1 
+                    FROM step_dependencies sd
+                    WHERE sd.workflow_hash = ?
+                      AND sd.step_index = si.step_index
+                      AND NOT EXISTS (
+                        -- Check if the dependency step is completed or skipped
+                        SELECT 1
+                        FROM step_info dep_si
+                        WHERE dep_si.execution_id = ?
+                          AND dep_si.step_index = sd.depends_on_step_index
+                          AND dep_si.status IN ('completed', 'skipped')
+                      )
+                  )
+                ORDER BY si.step_index
+            "#;
+            
+            let rows = sqlx::query(sql)
+                .bind(execution_id.to_string())
+                .bind(&workflow_hash)
+                .bind(execution_id.to_string())  // Second reference to execution_id in subquery
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            
+            let mut runnable_steps = Vec::new();
+            for row in rows {
+                let step_info = StepInfo {
+                    execution_id,
+                    step_index: row.get::<i64, _>("step_index") as usize,
+                    step_id: row.get("step_id"),
+                    component: row.get("component"),
+                    status: stepflow_core::status::StepStatus::Runnable, // These are now runnable
+                    created_at: chrono::DateTime::parse_from_rfc3339(
+                        &row.get::<String, _>("created_at"),
+                    )
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc),
+                    updated_at: chrono::DateTime::parse_from_rfc3339(
+                        &row.get::<String, _>("updated_at"),
+                    )
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc),
+                };
+                
+                runnable_steps.push(step_info);
+            }
+            
+            Ok(runnable_steps)
         })
     }
 }

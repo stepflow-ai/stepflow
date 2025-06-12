@@ -13,6 +13,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
+    // Apply the step dependencies and step info migration
+    apply_migration(pool, "002_add_step_dependencies", || {
+        add_step_dependencies_tables(pool)
+    })
+    .await?;
+
     Ok(())
 }
 
@@ -167,6 +173,64 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
     ];
 
     // Execute index creation commands
+    for sql in index_commands {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .change_context(StateError::Initialization)?;
+    }
+
+    Ok(())
+}
+
+/// Create step dependencies and step info tables
+async fn add_step_dependencies_tables(pool: &SqlitePool) -> Result<(), StateError> {
+    // Create step dependencies table
+    let step_dependencies_sql = r#"
+        CREATE TABLE IF NOT EXISTS step_dependencies (
+            workflow_hash TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            depends_on_step_index INTEGER NOT NULL,
+            src_path TEXT,
+            dst_field TEXT,
+            PRIMARY KEY (workflow_hash, step_index, depends_on_step_index),
+            FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
+        )
+    "#;
+
+    sqlx::query(step_dependencies_sql)
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    // Create step info table  
+    let step_info_sql = r#"
+        CREATE TABLE IF NOT EXISTS step_info (
+            execution_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            step_id TEXT NOT NULL,
+            component TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (execution_id, step_index),
+            FOREIGN KEY (execution_id) REFERENCES executions(id)
+        )
+    "#;
+
+    sqlx::query(step_info_sql)
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    // Create indexes for performance
+    let index_commands = vec![
+        "CREATE INDEX IF NOT EXISTS idx_step_dependencies_workflow_hash ON step_dependencies(workflow_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_step_dependencies_step_index ON step_dependencies(workflow_hash, step_index)",
+        "CREATE INDEX IF NOT EXISTS idx_step_info_execution_id ON step_info(execution_id)",
+        "CREATE INDEX IF NOT EXISTS idx_step_info_status ON step_info(execution_id, status)",
+    ];
+
     for sql in index_commands {
         sqlx::query(sql)
             .execute(pool)

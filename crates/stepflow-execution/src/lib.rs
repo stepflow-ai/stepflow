@@ -7,7 +7,7 @@ mod value_resolver;
 mod workflow_executor;
 
 pub use workflow_executor::{
-    CompletedStep, StepExecutionResult, StepInspection, StepStatus, WorkflowExecutor,
+    CompletedStep, StepExecutionResult, StepInspection, WorkflowExecutor,
 };
 pub use dependency_analysis::build_dependencies_from_flow;
 pub use enhanced_value_resolver::EnhancedValueResolver;

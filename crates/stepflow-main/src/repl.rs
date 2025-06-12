@@ -393,7 +393,7 @@ async fn handle_steps_command(state: &ReplState) -> Result<()> {
         for step_status in &all_steps {
             println!(
                 "  [{}] {} ({}): {}",
-                step_status.index, step_status.id, step_status.state, step_status.component
+                step_status.step_index, step_status.step_id, step_status.status, step_status.component
             );
         }
     } else {
@@ -424,7 +424,7 @@ async fn handle_runnable_command(state: &ReplState) -> Result<()> {
             for step_status in &runnable_steps {
                 println!(
                     "  [{}] {}: {}",
-                    step_status.index, step_status.id, step_status.component
+                    step_status.step_index, step_status.step_id, step_status.component
                 );
             }
         }

@@ -252,7 +252,7 @@ impl ExecutionsApi {
             let statuses = workflow_executor.list_all_steps().await;
             let mut status_map = HashMap::new();
             for status in statuses {
-                status_map.insert(status.index, status.state);
+                status_map.insert(status.step_index, status.status);
             }
             status_map
         } else {

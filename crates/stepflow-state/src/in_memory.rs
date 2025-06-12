@@ -6,7 +6,8 @@ use crate::{
     StateStore,
     state_store::{
         CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters,
-        ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StepResult,
+        ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StepDependency, 
+        StepInfo, StepResult,
     },
 };
 use stepflow_core::{
@@ -83,6 +84,10 @@ pub struct InMemoryStateStore {
     endpoints: EndpointMap,
     /// Map from execution_id to execution metadata
     execution_metadata: Arc<RwLock<HashMap<Uuid, ExecutionMetadata>>>,
+    /// Map from workflow hash to list of dependencies for that workflow
+    dependencies: Arc<RwLock<HashMap<String, Vec<StepDependency>>>>,
+    /// Map from execution_id to step info
+    step_info: Arc<RwLock<HashMap<Uuid, HashMap<usize, StepInfo>>>>,
 }
 
 impl InMemoryStateStore {
@@ -94,6 +99,8 @@ impl InMemoryStateStore {
             workflows: Arc::new(RwLock::new(HashMap::new())),
             endpoints: Arc::new(RwLock::new(HashMap::new())),
             execution_metadata: Arc::new(RwLock::new(HashMap::new())),
+            dependencies: Arc::new(RwLock::new(HashMap::new())),
+            step_info: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -108,6 +115,9 @@ impl InMemoryStateStore {
 
         let mut metadata = self.execution_metadata.write().await;
         metadata.remove(&execution_id);
+
+        let mut step_info = self.step_info.write().await;
+        step_info.remove(&execution_id);
     }
 }
 
@@ -813,6 +823,208 @@ impl StateStore for InMemoryStateStore {
                 }
             }
             Ok(results)
+        })
+    }
+
+    // Step Dependencies
+
+    fn store_step_dependencies(
+        &self,
+        dependencies: &[StepDependency],
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), crate::StateError>> + Send + '_>> {
+        let dependencies = dependencies.to_vec();
+        let dependencies_map = self.dependencies.clone();
+        
+        Box::pin(async move {
+            let mut deps_guard = dependencies_map.write().await;
+            
+            // Group dependencies by workflow hash
+            let mut grouped: HashMap<String, Vec<StepDependency>> = HashMap::new();
+            for dep in dependencies {
+                grouped.entry(dep.workflow_hash.clone()).or_default().push(dep);
+            }
+            
+            // Store each workflow's dependencies
+            for (workflow_hash, deps) in grouped {
+                deps_guard.insert(workflow_hash, deps);
+            }
+            
+            Ok(())
+        })
+    }
+
+    fn get_step_dependencies(
+        &self,
+        workflow_hash: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, crate::StateError>> + Send + '_>> {
+        let workflow_hash = workflow_hash.to_string();
+        let dependencies_map = self.dependencies.clone();
+        
+        Box::pin(async move {
+            let deps_guard = dependencies_map.read().await;
+            let dependencies = deps_guard.get(&workflow_hash).cloned().unwrap_or_default();
+            Ok(dependencies)
+        })
+    }
+
+    fn get_step_dependencies_for_step(
+        &self,
+        workflow_hash: &str,
+        step_index: usize,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, crate::StateError>> + Send + '_>> {
+        let workflow_hash = workflow_hash.to_string();
+        let dependencies_map = self.dependencies.clone();
+        
+        Box::pin(async move {
+            let deps_guard = dependencies_map.read().await;
+            let all_dependencies = deps_guard.get(&workflow_hash).cloned().unwrap_or_default();
+            
+            // Filter dependencies where this step is the dependent one
+            let step_dependencies: Vec<StepDependency> = all_dependencies
+                .into_iter()
+                .filter(|dep| dep.step_index == step_index)
+                .collect();
+            
+            Ok(step_dependencies)
+        })
+    }
+
+    // Step Status Management
+
+    fn initialize_step_info(
+        &self,
+        execution_id: uuid::Uuid,
+        steps: &[StepInfo],
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), crate::StateError>> + Send + '_>> {
+        let steps = steps.to_vec();
+        let step_info_map = self.step_info.clone();
+        
+        Box::pin(async move {
+            let mut step_info_guard = step_info_map.write().await;
+            
+            // Create a map from step_index to StepInfo for this execution
+            let mut execution_steps = HashMap::new();
+            for step in steps {
+                execution_steps.insert(step.step_index, step);
+            }
+            
+            step_info_guard.insert(execution_id, execution_steps);
+            Ok(())
+        })
+    }
+
+    fn update_step_status(
+        &self,
+        execution_id: uuid::Uuid,
+        step_index: usize,
+        status: stepflow_core::status::StepStatus,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), crate::StateError>> + Send + '_>> {
+        let step_info_map = self.step_info.clone();
+        
+        Box::pin(async move {
+            let mut step_info_guard = step_info_map.write().await;
+            
+            if let Some(execution_steps) = step_info_guard.get_mut(&execution_id) {
+                if let Some(step_info) = execution_steps.get_mut(&step_index) {
+                    step_info.status = status;
+                    step_info.updated_at = chrono::Utc::now();
+                }
+            }
+            
+            Ok(())
+        })
+    }
+
+    fn get_step_info_for_execution(
+        &self,
+        execution_id: uuid::Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepInfo>, crate::StateError>> + Send + '_>> {
+        let step_info_map = self.step_info.clone();
+        
+        Box::pin(async move {
+            let step_info_guard = step_info_map.read().await;
+            
+            let step_infos = step_info_guard
+                .get(&execution_id)
+                .map(|execution_steps| {
+                    let mut steps: Vec<StepInfo> = execution_steps.values().cloned().collect();
+                    // Sort by step_index for consistent ordering
+                    steps.sort_by_key(|step| step.step_index);
+                    steps
+                })
+                .unwrap_or_default();
+            
+            Ok(step_infos)
+        })
+    }
+
+    fn get_runnable_steps(
+        &self,
+        execution_id: uuid::Uuid,
+        workflow_hash: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepInfo>, crate::StateError>> + Send + '_>> {
+        let workflow_hash = workflow_hash.to_string();
+        let dependencies_map = self.dependencies.clone();
+        let step_info_map = self.step_info.clone();
+        
+        Box::pin(async move {
+            let deps_guard = dependencies_map.read().await;
+            let step_info_guard = step_info_map.read().await;
+            
+            // Get all dependencies for this workflow
+            let all_dependencies = deps_guard.get(&workflow_hash).cloned().unwrap_or_default();
+            
+            // Get all step info for this execution
+            let execution_steps = step_info_guard.get(&execution_id).cloned().unwrap_or_default();
+            
+            // Find steps that are blocked and runnable
+            let mut runnable_steps = Vec::new();
+            
+            for (step_index, step_info) in &execution_steps {
+                // Skip steps that are not blocked (already running, completed, failed, skipped)
+                if step_info.status != stepflow_core::status::StepStatus::Blocked {
+                    continue;
+                }
+                
+                // Check if all dependencies are satisfied
+                let step_dependencies: Vec<&StepDependency> = all_dependencies
+                    .iter()
+                    .filter(|dep| dep.step_index == *step_index)
+                    .collect();
+                
+                let mut all_dependencies_satisfied = true;
+                for dependency in step_dependencies {
+                    // Check if the dependency step is completed
+                    if let Some(dep_step_info) = execution_steps.get(&dependency.depends_on_step_index) {
+                        match dep_step_info.status {
+                            stepflow_core::status::StepStatus::Completed => {
+                                // Dependency is satisfied
+                            }
+                            stepflow_core::status::StepStatus::Skipped => {
+                                // Dependency is satisfied (step was skipped)
+                            }
+                            _ => {
+                                // Dependency is not yet completed
+                                all_dependencies_satisfied = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        // Dependency step not found - treat as not satisfied
+                        all_dependencies_satisfied = false;
+                        break;
+                    }
+                }
+                
+                if all_dependencies_satisfied {
+                    runnable_steps.push(step_info.clone());
+                }
+            }
+            
+            // Sort by step_index for consistent ordering
+            runnable_steps.sort_by_key(|step| step.step_index);
+            
+            Ok(runnable_steps)
         })
     }
 }
