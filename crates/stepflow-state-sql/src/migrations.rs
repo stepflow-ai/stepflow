@@ -99,6 +99,7 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
             CREATE TABLE IF NOT EXISTS executions (
                 id TEXT PRIMARY KEY,
                 endpoint_name TEXT,
+                endpoint_label TEXT,
                 workflow_hash TEXT,
                 status TEXT DEFAULT 'running',
                 debug_mode BOOLEAN DEFAULT FALSE,
@@ -154,6 +155,7 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
         
         // Executions indexes
         "CREATE INDEX IF NOT EXISTS idx_executions_endpoint_name ON executions(endpoint_name)",
+        "CREATE INDEX IF NOT EXISTS idx_executions_endpoint_label ON executions(endpoint_label)",
         "CREATE INDEX IF NOT EXISTS idx_executions_workflow_hash ON executions(workflow_hash)",
         "CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status)",
         "CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions(created_at)",

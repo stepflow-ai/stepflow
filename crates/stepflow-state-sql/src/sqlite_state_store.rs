@@ -9,7 +9,8 @@ use stepflow_core::{
     workflow::{Flow, ValueRef},
 };
 use stepflow_state::{
-    Endpoint, ExecutionDetails, ExecutionFilters, ExecutionStatus, ExecutionSummary, StateError,
+    CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters, 
+    ExecutionStatus, ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateError,
     StateStore, StepResult,
 };
 use uuid::Uuid;
@@ -518,20 +519,12 @@ impl StateStore for SqliteStateStore {
         let input_blob_id = input_blob_id.map(|id| id.as_str().to_string());
 
         Box::pin(async move {
-            // First, we need to add the endpoint_label column to the table through a migration
-            // For now, let's store the label as part of the endpoint_name field temporarily
-            let combined_endpoint_name =
-                if let (Some(name), Some(label)) = (&endpoint_name, &endpoint_label) {
-                    Some(format!("{}:{}", name, label))
-                } else {
-                    endpoint_name
-                };
-
-            let sql = "INSERT INTO executions (id, endpoint_name, workflow_hash, status, debug_mode, input_blob_id) VALUES (?, ?, ?, 'running', ?, ?)";
+            let sql = "INSERT INTO executions (id, endpoint_name, endpoint_label, workflow_hash, status, debug_mode, input_blob_id) VALUES (?, ?, ?, ?, 'running', ?, ?)";
 
             sqlx::query(sql)
                 .bind(execution_id.to_string())
-                .bind(combined_endpoint_name)
+                .bind(endpoint_name)
+                .bind(endpoint_label)
                 .bind(workflow_hash)
                 .bind(debug_mode)
                 .bind(input_blob_id)
@@ -587,7 +580,7 @@ impl StateStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         Box::pin(async move {
-            let sql = "SELECT id, endpoint_name, workflow_hash, status, debug_mode, input_blob_id, result_blob_id, created_at, completed_at FROM executions WHERE id = ?";
+            let sql = "SELECT id, endpoint_name, endpoint_label, workflow_hash, status, debug_mode, input_blob_id, result_blob_id, created_at, completed_at FROM executions WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(execution_id.to_string())
@@ -608,19 +601,8 @@ impl StateStore for SqliteStateStore {
                 _ => ExecutionStatus::Running,
             };
 
-            // Parse combined endpoint name (temporary solution)
-            let combined_endpoint = row.get::<Option<String>, _>("endpoint_name");
-            let (endpoint_name, endpoint_label) = if let Some(ref combined) = combined_endpoint {
-                if let Some(colon_pos) = combined.find(':') {
-                    let name = combined[..colon_pos].to_string();
-                    let label = combined[colon_pos + 1..].to_string();
-                    (Some(name), Some(label))
-                } else {
-                    (Some(combined.clone()), None)
-                }
-            } else {
-                (None, None)
-            };
+            let endpoint_name = row.get::<Option<String>, _>("endpoint_name");
+            let endpoint_label = row.get::<Option<String>, _>("endpoint_label");
 
             let details = ExecutionDetails {
                 execution_id,
@@ -666,7 +648,7 @@ impl StateStore for SqliteStateStore {
         let filters = filters.clone();
 
         Box::pin(async move {
-            let mut sql = "SELECT id, endpoint_name, workflow_hash, status, debug_mode, created_at, completed_at FROM executions".to_string();
+            let mut sql = "SELECT id, endpoint_name, endpoint_label, workflow_hash, status, debug_mode, created_at, completed_at FROM executions".to_string();
             let mut conditions = Vec::new();
             let mut bind_values: Vec<String> = Vec::new();
 
@@ -728,20 +710,8 @@ impl StateStore for SqliteStateStore {
                     _ => ExecutionStatus::Running,
                 };
 
-                // Parse combined endpoint name (temporary solution)
-                let combined_endpoint = row.get::<Option<String>, _>("endpoint_name");
-                let (endpoint_name, endpoint_label) = if let Some(ref combined) = combined_endpoint
-                {
-                    if let Some(colon_pos) = combined.find(':') {
-                        let name = combined[..colon_pos].to_string();
-                        let label = combined[colon_pos + 1..].to_string();
-                        (Some(name), Some(label))
-                    } else {
-                        (Some(combined.clone()), None)
-                    }
-                } else {
-                    (None, None)
-                };
+                let endpoint_name = row.get::<Option<String>, _>("endpoint_name");
+                let endpoint_label = row.get::<Option<String>, _>("endpoint_label");
 
                 let summary = ExecutionSummary {
                     execution_id,
@@ -769,6 +739,421 @@ impl StateStore for SqliteStateStore {
             }
 
             Ok(summaries)
+        })
+    }
+
+    // Compound Query Methods (for server optimization)
+
+    fn get_endpoint_with_workflow(
+        &self,
+        name: &str,
+        label: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(Endpoint, Flow), StateError>> + Send + '_>> {
+        let pool = self.pool.clone();
+        let name = name.to_string();
+        let label = label.map(|s| s.to_string());
+
+        Box::pin(async move {
+            let sql = r#"
+                SELECT e.name, e.label, e.workflow_hash, e.created_at, e.updated_at, w.content
+                FROM endpoints e
+                JOIN workflows w ON e.workflow_hash = w.hash
+                WHERE e.name = ? AND e.label IS ?
+            "#;
+
+            let row = sqlx::query(sql)
+                .bind(&name)
+                .bind(&label)
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let identifier = if let Some(ref l) = label {
+                format!("{}:{}", name, l)
+            } else {
+                name.clone()
+            };
+
+            let row = row.ok_or_else(|| {
+                error_stack::report!(StateError::EndpointNotFound { name: identifier })
+            })?;
+
+            let endpoint = Endpoint {
+                name: row.get("name"),
+                label: row.get("label"),
+                workflow_hash: row.get("workflow_hash"),
+                created_at: chrono::DateTime::parse_from_rfc3339(
+                    &row.get::<String, _>("created_at"),
+                )
+                .change_context(StateError::Internal)?
+                .with_timezone(&chrono::Utc),
+                updated_at: chrono::DateTime::parse_from_rfc3339(
+                    &row.get::<String, _>("updated_at"),
+                )
+                .change_context(StateError::Internal)?
+                .with_timezone(&chrono::Utc),
+            };
+
+            let content: String = row.get("content");
+            let workflow: Flow =
+                serde_json::from_str(&content).change_context(StateError::Serialization)?;
+
+            Ok((endpoint, workflow))
+        })
+    }
+
+    fn get_execution_with_workflow(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(ExecutionDetails, Option<Flow>), StateError>> + Send + '_>> {
+        let pool = self.pool.clone();
+
+        Box::pin(async move {
+            let sql = r#"
+                SELECT e.id, e.endpoint_name, e.endpoint_label, e.workflow_hash, e.status, e.debug_mode, 
+                       e.input_blob_id, e.result_blob_id, e.created_at, e.completed_at, w.content
+                FROM executions e
+                LEFT JOIN workflows w ON e.workflow_hash = w.hash
+                WHERE e.id = ?
+            "#;
+
+            let row = sqlx::query(sql)
+                .bind(execution_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let row = row.ok_or_else(|| {
+                error_stack::report!(StateError::ExecutionNotFound { execution_id })
+            })?;
+
+            let status_str: String = row.get("status");
+            let status = match status_str.as_str() {
+                "running" => ExecutionStatus::Running,
+                "completed" => ExecutionStatus::Completed,
+                "failed" => ExecutionStatus::Failed,
+                "paused" => ExecutionStatus::Paused,
+                _ => ExecutionStatus::Running,
+            };
+
+            let endpoint_name = row.get::<Option<String>, _>("endpoint_name");
+            let endpoint_label = row.get::<Option<String>, _>("endpoint_label");
+
+            let details = ExecutionDetails {
+                execution_id,
+                endpoint_name,
+                endpoint_label,
+                workflow_hash: row.get("workflow_hash"),
+                status,
+                debug_mode: row.get("debug_mode"),
+                input_blob_id: row
+                    .get::<Option<String>, _>("input_blob_id")
+                    .and_then(|s| BlobId::new(s).ok()),
+                result_blob_id: row
+                    .get::<Option<String>, _>("result_blob_id")
+                    .and_then(|s| BlobId::new(s).ok()),
+                created_at: chrono::DateTime::parse_from_rfc3339(
+                    &row.get::<String, _>("created_at"),
+                )
+                .change_context(StateError::Internal)?
+                .with_timezone(&chrono::Utc),
+                completed_at: row
+                    .get::<Option<String>, _>("completed_at")
+                    .map(|s| {
+                        chrono::DateTime::parse_from_rfc3339(&s)
+                            .change_context(StateError::Internal)
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                    })
+                    .transpose()?,
+            };
+
+            let workflow = if let Some(content) = row.get::<Option<String>, _>("content") {
+                Some(serde_json::from_str(&content).change_context(StateError::Serialization)?)
+            } else {
+                None
+            };
+
+            Ok((details, workflow))
+        })
+    }
+
+    fn get_execution_with_blobs(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionWithBlobs, StateError>> + Send + '_>> {
+        let _pool = self.pool.clone();
+
+        Box::pin(async move {
+            // First get the execution details
+            let execution = self.get_execution(execution_id).await?;
+
+            // Then fetch the input and result blobs if they exist
+            let input = if let Some(ref input_blob_id) = execution.input_blob_id {
+                Some(self.get_blob(input_blob_id).await?)
+            } else {
+                None
+            };
+
+            let result = if let Some(ref result_blob_id) = execution.result_blob_id {
+                Some(self.get_blob(result_blob_id).await?)
+            } else {
+                None
+            };
+
+            Ok(ExecutionWithBlobs {
+                execution,
+                input,
+                result,
+            })
+        })
+    }
+
+    fn get_execution_step_details(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionStepDetails, StateError>> + Send + '_>> {
+        let _pool = self.pool.clone();
+
+        Box::pin(async move {
+            // Get execution with workflow
+            let (execution, workflow) = self.get_execution_with_workflow(execution_id).await?;
+
+            // Get step results
+            let step_results = self.list_step_results(execution_id).await?;
+
+            // Get input blob if it exists
+            let input = if let Some(ref input_blob_id) = execution.input_blob_id {
+                Some(self.get_blob(input_blob_id).await?)
+            } else {
+                None
+            };
+
+            Ok(ExecutionStepDetails {
+                execution,
+                workflow,
+                step_results,
+                input,
+            })
+        })
+    }
+
+    fn get_debug_session_data(
+        &self,
+        execution_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<DebugSessionData, StateError>> + Send + '_>> {
+        Box::pin(async move {
+            // Get execution with workflow
+            let (execution, workflow) = self.get_execution_with_workflow(execution_id).await?;
+
+            let workflow = workflow.ok_or_else(|| {
+                error_stack::report!(StateError::WorkflowNotFound {
+                    workflow_hash: execution.workflow_hash.clone().unwrap_or_default()
+                })
+            })?;
+
+            // Get step results
+            let step_results = self.list_step_results(execution_id).await?;
+
+            // Get input blob (required for debug session)
+            let input = if let Some(ref input_blob_id) = execution.input_blob_id {
+                self.get_blob(input_blob_id).await?
+            } else {
+                return Err(error_stack::report!(StateError::BlobNotFound {
+                    blob_id: "input_blob_id is None".to_string()
+                }));
+            };
+
+            Ok(DebugSessionData {
+                execution,
+                workflow,
+                input,
+                step_results,
+            })
+        })
+    }
+
+    // Atomic Operations (for consistency)
+
+    fn create_endpoint_with_workflow(
+        &self,
+        name: &str,
+        label: Option<&str>,
+        workflow: &Flow,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(String, Endpoint), StateError>> + Send + '_>> {
+        let pool = self.pool.clone();
+        let name = name.to_string();
+        let label = label.map(|s| s.to_string());
+        let workflow_json = serde_json::to_string(workflow);
+
+        Box::pin(async move {
+            let workflow_json = workflow_json.change_context(StateError::Serialization)?;
+
+            // Start a transaction for atomicity
+            let mut tx = pool.begin().await.change_context(StateError::Internal)?;
+
+            // Generate SHA-256 hash of the workflow content
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(workflow_json.as_bytes());
+            let workflow_hash = format!("{:x}", hasher.finalize());
+
+            // Store the workflow (INSERT OR IGNORE for deduplication)
+            let workflow_sql = "INSERT OR IGNORE INTO workflows (hash, content) VALUES (?, ?)";
+            sqlx::query(workflow_sql)
+                .bind(&workflow_hash)
+                .bind(&workflow_json)
+                .execute(&mut *tx)
+                .await
+                .change_context(StateError::Internal)?;
+
+            // Create the endpoint
+            let endpoint_sql = "INSERT OR REPLACE INTO endpoints (name, label, workflow_hash, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
+            sqlx::query(endpoint_sql)
+                .bind(&name)
+                .bind(&label)
+                .bind(&workflow_hash)
+                .execute(&mut *tx)
+                .await
+                .change_context(StateError::Internal)?;
+
+            // Commit the transaction
+            tx.commit().await.change_context(StateError::Internal)?;
+
+            // Get the created endpoint
+            let endpoint = self.get_endpoint(&name, label.as_deref()).await?;
+
+            Ok((workflow_hash, endpoint))
+        })
+    }
+
+    fn create_execution_with_input<'a>(
+        &'a self,
+        execution_id: Uuid,
+        params: CreateExecutionParams<'a>,
+        input: Option<ValueRef>,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + 'a>> {
+        let pool = self.pool.clone();
+
+        Box::pin(async move {
+            // Start a transaction for atomicity
+            let mut tx = pool.begin().await.change_context(StateError::Internal)?;
+
+            // Store input as blob if provided
+            let input_blob_id = if let Some(input_data) = input {
+                let blob_id = BlobId::from_content(&input_data).change_context(StateError::Internal)?;
+                let json_str = serde_json::to_string(input_data.as_ref())
+                    .change_context(StateError::Serialization)?;
+
+                let blob_sql = "INSERT OR IGNORE INTO blobs (id, data) VALUES (?, ?)";
+                sqlx::query(blob_sql)
+                    .bind(blob_id.as_str())
+                    .bind(&json_str)
+                    .execute(&mut *tx)
+                    .await
+                    .change_context(StateError::Internal)?;
+
+                Some(blob_id)
+            } else {
+                None
+            };
+
+            // Create the execution
+            let execution_sql = "INSERT INTO executions (id, endpoint_name, endpoint_label, workflow_hash, status, debug_mode, input_blob_id) VALUES (?, ?, ?, ?, 'running', ?, ?)";
+            sqlx::query(execution_sql)
+                .bind(execution_id.to_string())
+                .bind(params.endpoint_name)
+                .bind(params.endpoint_label)
+                .bind(params.workflow_hash)
+                .bind(params.debug_mode)
+                .bind(input_blob_id.as_ref().map(|id| id.as_str()))
+                .execute(&mut *tx)
+                .await
+                .change_context(StateError::Internal)?;
+
+            // Commit the transaction
+            tx.commit().await.change_context(StateError::Internal)?;
+
+            // Get the created execution
+            let execution = self.get_execution(execution_id).await?;
+
+            Ok(execution)
+        })
+    }
+
+    // Optimized Query Methods (for value resolution)
+
+    fn try_get_step_result_by_id(
+        &self,
+        execution_id: Uuid,
+        step_id: &str,
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Option<FlowResult>, StateError>> + Send + '_>> {
+        let step_id = step_id.to_string();
+        Box::pin(async move {
+            let sql = "SELECT result FROM step_results WHERE execution_id = ? AND step_id = ?";
+
+            let row = sqlx::query(sql)
+                .bind(execution_id.to_string())
+                .bind(&step_id)
+                .fetch_optional(&self.pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            if let Some(row) = row {
+                let result_json: String = row.get("result");
+                let flow_result: FlowResult =
+                    serde_json::from_str(&result_json).change_context(StateError::Serialization)?;
+                Ok(Some(flow_result))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    fn get_step_results_by_indices(
+        &self,
+        execution_id: Uuid,
+        indices: &[usize],
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<Option<FlowResult>>, StateError>> + Send + '_>> {
+        let indices = indices.to_vec();
+        Box::pin(async move {
+            if indices.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            // Create SQL query with IN clause for batch retrieval
+            let placeholders = indices.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT step_index, result FROM step_results WHERE execution_id = ? AND step_index IN ({})",
+                placeholders
+            );
+
+            let mut query = sqlx::query(&sql).bind(execution_id.to_string());
+            for index in &indices {
+                query = query.bind(*index as i64);
+            }
+
+            let rows = query
+                .fetch_all(&self.pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            // Create a map from step_index to result
+            let mut results_map = std::collections::HashMap::new();
+            for row in rows {
+                let step_index: i64 = row.get("step_index");
+                let result_json: String = row.get("result");
+                let flow_result: FlowResult =
+                    serde_json::from_str(&result_json).change_context(StateError::Serialization)?;
+                results_map.insert(step_index as usize, flow_result);
+            }
+
+            // Build result vector in the order of requested indices
+            let mut results = Vec::with_capacity(indices.len());
+            for index in indices {
+                results.push(results_map.remove(&index));
+            }
+
+            Ok(results)
         })
     }
 }

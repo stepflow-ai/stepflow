@@ -366,12 +366,12 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// The created execution details
-    fn create_execution_with_input(
-        &self,
+    fn create_execution_with_input<'a>(
+        &'a self,
         execution_id: Uuid,
-        params: CreateExecutionParams<'_>,
+        params: CreateExecutionParams<'a>,
         input: Option<ValueRef>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + 'a>>;
 
     // Optimized Query Methods (for value resolution)
 
