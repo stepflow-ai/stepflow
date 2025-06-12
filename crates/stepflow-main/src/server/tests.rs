@@ -5,6 +5,7 @@
 
 use serde_json::json;
 use std::sync::Arc;
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowRef, Step, ValueRef};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::InMemoryStateStore;
@@ -55,16 +56,13 @@ fn test_execute_response_structure() {
     let response = ExecuteResponse {
         execution_id: "test-uuid".to_string(),
         result: None,
-        status: stepflow_state::ExecutionStatus::Running,
+        status: ExecutionStatus::Running,
         debug: false,
     };
 
     assert_eq!(response.execution_id, "test-uuid");
     assert!(response.result.is_none());
-    assert!(matches!(
-        response.status,
-        stepflow_state::ExecutionStatus::Running
-    ));
+    assert!(matches!(response.status, ExecutionStatus::Running));
 }
 
 #[test]

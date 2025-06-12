@@ -2,7 +2,11 @@ use poem_openapi::{OpenApi, payload::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::{FlowResult, workflow::{FlowRef, ValueRef}};
+use stepflow_core::status::ExecutionStatus;
+use stepflow_core::{
+    FlowResult,
+    workflow::{FlowRef, ValueRef},
+};
 use stepflow_execution::StepFlowExecutor;
 use uuid::Uuid;
 
@@ -117,17 +121,13 @@ impl ExecutionApi {
             // In debug mode, return immediately without executing
             // The execution will be controlled via debug endpoints
             let _ = state_store
-                .update_execution_status(
-                    execution_id,
-                    stepflow_state::ExecutionStatus::Running,
-                    None,
-                )
+                .update_execution_status(execution_id, ExecutionStatus::Running, None)
                 .await;
 
             return Ok(Json(ApiExecuteResponse::new(ExecuteResponse {
                 execution_id: execution_id.to_string(),
                 result: None,
-                status: stepflow_state::ExecutionStatus::Running,
+                status: ExecutionStatus::Running,
                 debug: true,
             })));
         }
@@ -146,11 +146,7 @@ impl ExecutionApi {
             Err(err) => {
                 // Update execution status to failed
                 let _ = state_store
-                    .update_execution_status(
-                        execution_id,
-                        stepflow_state::ExecutionStatus::Failed,
-                        None,
-                    )
+                    .update_execution_status(execution_id, ExecutionStatus::Failed, None)
                     .await;
 
                 return Err(err.into_poem());
@@ -164,7 +160,7 @@ impl ExecutionApi {
                 let _ = state_store
                     .update_execution_status(
                         execution_id,
-                        stepflow_state::ExecutionStatus::Completed,
+                        ExecutionStatus::Completed,
                         None, // TODO: Store result as blob
                     )
                     .await;
@@ -172,24 +168,20 @@ impl ExecutionApi {
                 Ok(Json(ApiExecuteResponse::new(ExecuteResponse {
                     execution_id: execution_id.to_string(),
                     result: Some(flow_result),
-                    status: stepflow_state::ExecutionStatus::Completed,
+                    status: ExecutionStatus::Completed,
                     debug: false,
                 })))
             }
             stepflow_core::FlowResult::Failed { .. } | stepflow_core::FlowResult::Skipped => {
                 // Update execution status to failed
                 let _ = state_store
-                    .update_execution_status(
-                        execution_id,
-                        stepflow_state::ExecutionStatus::Failed,
-                        None,
-                    )
+                    .update_execution_status(execution_id, ExecutionStatus::Failed, None)
                     .await;
 
                 Ok(Json(ApiExecuteResponse::new(ExecuteResponse {
                     execution_id: execution_id.to_string(),
                     result: Some(flow_result),
-                    status: stepflow_state::ExecutionStatus::Failed,
+                    status: ExecutionStatus::Failed,
                     debug: false,
                 })))
             }
@@ -203,11 +195,11 @@ impl ExecutionApi {
         execution_id: poem::web::Path<String>,
         req: Json<ApiDebugStepRequest>,
     ) -> ServerResult<Json<ApiDebugStepResponse>> {
-        use std::collections::HashMap;
         use error_stack::ResultExt as _;
-        
+        use std::collections::HashMap;
+
         let state_store = self.executor.state_store();
-        
+
         // Parse UUID from string
         let uuid = Uuid::parse_str(&execution_id.0).map_err(|_| {
             use super::error::invalid_uuid;
@@ -272,9 +264,9 @@ impl ExecutionApi {
         execution_id: poem::web::Path<String>,
     ) -> ServerResult<Json<ApiExecuteResponse>> {
         use error_stack::ResultExt as _;
-        
+
         let state_store = self.executor.state_store();
-        
+
         // Parse UUID from string
         let uuid = Uuid::parse_str(&execution_id.0).map_err(|_| {
             use super::error::invalid_uuid;
@@ -325,9 +317,9 @@ impl ExecutionApi {
 
         // Update execution status
         let final_status = match &final_result {
-            stepflow_core::FlowResult::Success { .. } => stepflow_state::ExecutionStatus::Completed,
+            stepflow_core::FlowResult::Success { .. } => ExecutionStatus::Completed,
             stepflow_core::FlowResult::Failed { .. } | stepflow_core::FlowResult::Skipped => {
-                stepflow_state::ExecutionStatus::Failed
+                ExecutionStatus::Failed
             }
         };
 
@@ -350,9 +342,9 @@ impl ExecutionApi {
         execution_id: poem::web::Path<String>,
     ) -> ServerResult<Json<ApiDebugRunnableResponse>> {
         use error_stack::ResultExt as _;
-        
+
         let state_store = self.executor.state_store();
-        
+
         // Parse UUID from string
         let uuid = Uuid::parse_str(&execution_id.0).map_err(|_| {
             use super::error::invalid_uuid;
@@ -396,10 +388,8 @@ impl ExecutionApi {
 
         // Get runnable steps
         let runnable_steps = debug_session.get_runnable_steps();
-        let runnable_step_ids: Vec<String> = runnable_steps
-            .into_iter()
-            .map(|step| step.id)
-            .collect();
+        let runnable_step_ids: Vec<String> =
+            runnable_steps.into_iter().map(|step| step.id).collect();
 
         Ok(Json(ApiType(DebugRunnableResponse {
             runnable_steps: runnable_step_ids,
@@ -468,7 +458,10 @@ mod tests {
         let deserialized: ExecuteRequest = serde_json::from_str(&json).unwrap();
 
         assert!(!deserialized.debug);
-        assert_eq!(deserialized.workflow.name, Some("test_workflow".to_string()));
+        assert_eq!(
+            deserialized.workflow.name,
+            Some("test_workflow".to_string())
+        );
     }
 
     #[test]

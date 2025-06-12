@@ -2,6 +2,7 @@ use poem_openapi::{OpenApi, payload::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::{FlowRef, ValueRef, WorkflowGraph};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::Endpoint;
@@ -334,17 +335,13 @@ impl EndpointsApi {
             // In debug mode, return immediately without executing
             // The execution will be controlled via debug endpoints
             let _ = state_store
-                .update_execution_status(
-                    execution_id,
-                    stepflow_state::ExecutionStatus::Running,
-                    None,
-                )
+                .update_execution_status(execution_id, ExecutionStatus::Running, None)
                 .await;
 
             return Ok(Json(ApiType(ExecuteResponse {
                 execution_id: execution_id.to_string(),
                 result: None,
-                status: stepflow_state::ExecutionStatus::Running,
+                status: ExecutionStatus::Running,
                 debug: debug_mode,
             })));
         }
@@ -368,11 +365,7 @@ impl EndpointsApi {
             Err(err) => {
                 // Update execution status to failed
                 let _ = state_store
-                    .update_execution_status(
-                        execution_id,
-                        stepflow_state::ExecutionStatus::Failed,
-                        None,
-                    )
+                    .update_execution_status(execution_id, ExecutionStatus::Failed, None)
                     .await;
 
                 return Err(err.into_poem());
@@ -386,7 +379,7 @@ impl EndpointsApi {
                 let _ = state_store
                     .update_execution_status(
                         execution_id,
-                        stepflow_state::ExecutionStatus::Completed,
+                        ExecutionStatus::Completed,
                         None, // TODO: Store result as blob
                     )
                     .await;
@@ -394,24 +387,20 @@ impl EndpointsApi {
                 Ok(Json(ApiType(ExecuteResponse {
                     execution_id: execution_id.to_string(),
                     result: Some(flow_result),
-                    status: stepflow_state::ExecutionStatus::Completed,
+                    status: ExecutionStatus::Completed,
                     debug: debug_mode,
                 })))
             }
             stepflow_core::FlowResult::Failed { .. } | stepflow_core::FlowResult::Skipped => {
                 // Update execution status to failed
                 let _ = state_store
-                    .update_execution_status(
-                        execution_id,
-                        stepflow_state::ExecutionStatus::Failed,
-                        None,
-                    )
+                    .update_execution_status(execution_id, ExecutionStatus::Failed, None)
                     .await;
 
                 Ok(Json(ApiType(ExecuteResponse {
                     execution_id: execution_id.to_string(),
                     result: Some(flow_result),
-                    status: stepflow_state::ExecutionStatus::Failed,
+                    status: ExecutionStatus::Failed,
                     debug: debug_mode,
                 })))
             }
@@ -514,7 +503,7 @@ mod tests {
     #[test]
     fn test_execute_endpoint_request_defaults() {
         let input = create_test_input();
-        
+
         // Test with explicit false
         let request1 = ExecuteEndpointRequest {
             input: input.clone(),
@@ -526,8 +515,7 @@ mod tests {
         let json_no_debug = serde_json::json!({
             "input": {"message": "test"}
         });
-        let deserialized: ExecuteEndpointRequest = 
-            serde_json::from_value(json_no_debug).unwrap();
+        let deserialized: ExecuteEndpointRequest = serde_json::from_value(json_no_debug).unwrap();
         assert!(!deserialized.debug);
     }
 
@@ -549,7 +537,7 @@ mod tests {
         assert_eq!(response.name, "test_endpoint");
         assert_eq!(response.label, Some("v1.0".to_string()));
         assert_eq!(response.workflow_hash, "abc123");
-        
+
         // Verify timestamps are DateTime types
         assert_eq!(response.created_at, now);
         assert_eq!(response.updated_at, now);
@@ -583,15 +571,23 @@ mod tests {
                     name: "endpoint1".to_string(),
                     label: None,
                     workflow_hash: "hash1".to_string(),
-                    created_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
-                    updated_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
+                    created_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                        .unwrap()
+                        .with_timezone(&chrono::Utc),
+                    updated_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                        .unwrap()
+                        .with_timezone(&chrono::Utc),
                 },
                 EndpointResponse {
                     name: "endpoint2".to_string(),
                     label: Some("v1.0".to_string()),
                     workflow_hash: "hash2".to_string(),
-                    created_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
-                    updated_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap().with_timezone(&chrono::Utc),
+                    created_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                        .unwrap()
+                        .with_timezone(&chrono::Utc),
+                    updated_at: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+                        .unwrap()
+                        .with_timezone(&chrono::Utc),
                 },
             ],
         };
@@ -619,14 +615,13 @@ mod tests {
 
     #[test]
     fn test_workflow_graph_response_structure() {
-        use stepflow_core::workflow::{WorkflowGraph, StepPorts, Port};
+        use stepflow_core::workflow::{Port, StepPorts, WorkflowGraph};
 
-        let graph = WorkflowGraph::new()
-            .with_workflow_ports(
-                StepPorts::new()
-                    .add_input(Port::new("input"))
-                    .add_output(Port::new("output"))
-            );
+        let graph = WorkflowGraph::new().with_workflow_ports(
+            StepPorts::new()
+                .add_input(Port::new("input"))
+                .add_output(Port::new("output")),
+        );
 
         let response = WorkflowGraphResponse {
             workflow_hash: "abc123".to_string(),

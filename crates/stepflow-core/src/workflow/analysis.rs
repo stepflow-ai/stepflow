@@ -1,14 +1,13 @@
 /// Shared analysis functionality for workflows
-/// 
+///
 /// This module provides common functionality for extracting dependencies and edges
 /// from workflow expressions. It unifies the logic currently spread across:
 /// - Edge extraction in Flow::analyze_ports_and_edges
 /// - Dependency analysis in stepflow-execution::dependency_analysis
 /// - Value resolution patterns in stepflow-execution::value_resolver
-
 use std::collections::HashSet;
 
-use super::{BaseRef, Expr, ValueRef, Edge, EdgeEndpoint, WorkflowRef};
+use super::{BaseRef, Edge, EdgeEndpoint, Expr, ValueRef};
 
 /// A reference found in a workflow expression
 #[derive(Debug, Clone, PartialEq)]
@@ -103,7 +102,7 @@ fn extract_references_recursive(
                                 ..location
                             }
                         };
-                        
+
                         references.push(ExpressionReference {
                             base_ref: from,
                             path,
@@ -196,6 +195,8 @@ pub fn references_to_edges(
 
 #[cfg(test)]
 mod tests {
+    use crate::workflow::WorkflowRef;
+
     use super::*;
     use serde_json::json;
 
@@ -205,14 +206,18 @@ mod tests {
             "$from": {"step": "step1"},
             "path": "output"
         }));
-        
-        let location = ReferenceLocation::new("test_input")
-            .with_step_id("step2");
-        
+
+        let location = ReferenceLocation::new("test_input").with_step_id("step2");
+
         let references = extract_references_from_value_ref(&value_ref, location);
-        
+
         assert_eq!(references.len(), 1);
-        assert_eq!(references[0].base_ref, BaseRef::Step { step: "step1".to_string() });
+        assert_eq!(
+            references[0].base_ref,
+            BaseRef::Step {
+                step: "step1".to_string()
+            }
+        );
         assert_eq!(references[0].path, Some("output".to_string()));
         assert_eq!(references[0].location.context, "test_input");
         assert_eq!(references[0].location.step_id, Some("step2".to_string()));
@@ -228,31 +233,51 @@ mod tests {
                 "dynamic": {"$from": {"step": "step2"}}
             }
         }));
-        
-        let location = ReferenceLocation::new("step_input")
-            .with_step_id("step3");
-        
+
+        let location = ReferenceLocation::new("step_input").with_step_id("step3");
+
         let references = extract_references_from_value_ref(&value_ref, location);
-        
+
         assert_eq!(references.len(), 3);
-        
+
         // Find each reference by its field path
-        let input1_ref = references.iter().find(|r| r.location.field_path.as_deref() == Some("input1")).unwrap();
-        assert_eq!(input1_ref.base_ref, BaseRef::Step { step: "step1".to_string() });
+        let input1_ref = references
+            .iter()
+            .find(|r| r.location.field_path.as_deref() == Some("input1"))
+            .unwrap();
+        assert_eq!(
+            input1_ref.base_ref,
+            BaseRef::Step {
+                step: "step1".to_string()
+            }
+        );
         assert_eq!(input1_ref.path, Some("result".to_string()));
-        
-        let input2_ref = references.iter().find(|r| r.location.field_path.as_deref() == Some("input2")).unwrap();
+
+        let input2_ref = references
+            .iter()
+            .find(|r| r.location.field_path.as_deref() == Some("input2"))
+            .unwrap();
         assert_eq!(input2_ref.base_ref, BaseRef::Workflow(WorkflowRef::Input));
-        
-        let nested_ref = references.iter().find(|r| r.location.field_path.as_deref() == Some("nested.dynamic")).unwrap();
-        assert_eq!(nested_ref.base_ref, BaseRef::Step { step: "step2".to_string() });
+
+        let nested_ref = references
+            .iter()
+            .find(|r| r.location.field_path.as_deref() == Some("nested.dynamic"))
+            .unwrap();
+        assert_eq!(
+            nested_ref.base_ref,
+            BaseRef::Step {
+                step: "step2".to_string()
+            }
+        );
     }
 
     #[test]
     fn test_extract_step_dependencies() {
         let references = vec![
             ExpressionReference {
-                base_ref: BaseRef::Step { step: "step1".to_string() },
+                base_ref: BaseRef::Step {
+                    step: "step1".to_string(),
+                },
                 path: None,
                 location: ReferenceLocation::new("test"),
             },
@@ -262,14 +287,16 @@ mod tests {
                 location: ReferenceLocation::new("test"),
             },
             ExpressionReference {
-                base_ref: BaseRef::Step { step: "step2".to_string() },
+                base_ref: BaseRef::Step {
+                    step: "step2".to_string(),
+                },
                 path: Some("output".to_string()),
                 location: ReferenceLocation::new("test"),
             },
         ];
-        
+
         let dependencies = extract_step_dependencies(&references);
-        
+
         assert_eq!(dependencies.len(), 2);
         assert!(dependencies.contains("step1"));
         assert!(dependencies.contains("step2"));
@@ -279,7 +306,9 @@ mod tests {
     fn test_references_to_edges() {
         let references = vec![
             ExpressionReference {
-                base_ref: BaseRef::Step { step: "step1".to_string() },
+                base_ref: BaseRef::Step {
+                    step: "step1".to_string(),
+                },
                 path: Some("output".to_string()),
                 location: ReferenceLocation::new("step_input")
                     .with_step_id("step2")
@@ -293,21 +322,24 @@ mod tests {
                     .with_field_path("input.user_data"),
             },
         ];
-        
+
         let mut edge_counter = 0;
         let edges = references_to_edges(&references, &mut edge_counter);
-        
+
         assert_eq!(edges.len(), 2);
-        
+
         // Check step-to-step edge
         let step_edge = edges.iter().find(|e| e.source.step_id == "step1").unwrap();
         assert_eq!(step_edge.source.port_name, "result");
         assert_eq!(step_edge.target.step_id, "step2");
         assert_eq!(step_edge.target.port_name, "input.data");
         assert_eq!(step_edge.path, Some("output".to_string()));
-        
+
         // Check workflow-to-step edge
-        let workflow_edge = edges.iter().find(|e| e.source.step_id == "workflow").unwrap();
+        let workflow_edge = edges
+            .iter()
+            .find(|e| e.source.step_id == "workflow")
+            .unwrap();
         assert_eq!(workflow_edge.source.port_name, "input");
         assert_eq!(workflow_edge.target.step_id, "step1");
         assert_eq!(workflow_edge.target.port_name, "input.user_data");
@@ -321,13 +353,21 @@ mod tests {
             "literal_wrapper": {"$literal": {"$from": "not_a_real_reference"}},
             "static": "value"
         }));
-        
+
         let location = ReferenceLocation::new("test");
         let references = extract_references_from_value_ref(&value_ref, location);
-        
+
         // Should only find the normal reference, not the one inside $literal
         assert_eq!(references.len(), 1);
-        assert_eq!(references[0].base_ref, BaseRef::Step { step: "step1".to_string() });
-        assert_eq!(references[0].location.field_path, Some("normal_ref".to_string()));
+        assert_eq!(
+            references[0].base_ref,
+            BaseRef::Step {
+                step: "step1".to_string()
+            }
+        );
+        assert_eq!(
+            references[0].location.field_path,
+            Some("normal_ref".to_string())
+        );
     }
 }

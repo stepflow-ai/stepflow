@@ -3,15 +3,15 @@ use std::pin::Pin;
 
 use error_stack::{Result, ResultExt};
 use sqlx::{Row, SqlitePool, sqlite::SqlitePoolOptions};
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{
     FlowResult,
     blob::BlobId,
     workflow::{Flow, ValueRef},
 };
 use stepflow_state::{
-    CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters, 
-    ExecutionStatus, ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateError,
-    StateStore, StepResult,
+    CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters,
+    ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateError, StateStore, StepResult,
 };
 use uuid::Uuid;
 
@@ -543,13 +543,6 @@ impl StateStore for SqliteStateStore {
         result_blob_id: Option<&BlobId>,
     ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>> {
         let pool = self.pool.clone();
-        let status_str = match status {
-            ExecutionStatus::Running => "running",
-            ExecutionStatus::Completed => "completed",
-            ExecutionStatus::Failed => "failed",
-            ExecutionStatus::Paused => "paused",
-        }
-        .to_string();
         let result_blob_id = result_blob_id.map(|id| id.as_str().to_string());
 
         Box::pin(async move {
@@ -561,7 +554,7 @@ impl StateStore for SqliteStateStore {
             };
 
             sqlx::query(sql)
-                .bind(&status_str)
+                .bind(status.as_str())
                 .bind(&result_blob_id)
                 .bind(execution_id.to_string())
                 .execute(&pool)
@@ -598,7 +591,10 @@ impl StateStore for SqliteStateStore {
                 "completed" => ExecutionStatus::Completed,
                 "failed" => ExecutionStatus::Failed,
                 "paused" => ExecutionStatus::Paused,
-                _ => ExecutionStatus::Running,
+                _ => {
+                    tracing::warn!("Unrecognized execution status: {status_str}");
+                    ExecutionStatus::Running
+                }
             };
 
             let endpoint_name = row.get::<Option<String>, _>("endpoint_name");
@@ -748,7 +744,8 @@ impl StateStore for SqliteStateStore {
         &self,
         name: &str,
         label: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(Endpoint, Flow), StateError>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(Endpoint, Flow), StateError>> + Send + '_>>
+    {
         let pool = self.pool.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
@@ -805,12 +802,18 @@ impl StateStore for SqliteStateStore {
     fn get_execution_with_workflow(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(ExecutionDetails, Option<Flow>), StateError>> + Send + '_>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = error_stack::Result<(ExecutionDetails, Option<Flow>), StateError>>
+                + Send
+                + '_,
+        >,
+    > {
         let pool = self.pool.clone();
 
         Box::pin(async move {
             let sql = r#"
-                SELECT e.id, e.endpoint_name, e.endpoint_label, e.workflow_hash, e.status, e.debug_mode, 
+                SELECT e.id, e.endpoint_name, e.endpoint_label, e.workflow_hash, e.status, e.debug_mode,
                        e.input_blob_id, e.result_blob_id, e.created_at, e.completed_at, w.content
                 FROM executions e
                 LEFT JOIN workflows w ON e.workflow_hash = w.hash
@@ -880,7 +883,9 @@ impl StateStore for SqliteStateStore {
     fn get_execution_with_blobs(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionWithBlobs, StateError>> + Send + '_>> {
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<ExecutionWithBlobs, StateError>> + Send + '_>,
+    > {
         let _pool = self.pool.clone();
 
         Box::pin(async move {
@@ -911,7 +916,9 @@ impl StateStore for SqliteStateStore {
     fn get_execution_step_details(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionStepDetails, StateError>> + Send + '_>> {
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<ExecutionStepDetails, StateError>> + Send + '_>,
+    > {
         let _pool = self.pool.clone();
 
         Box::pin(async move {
@@ -940,7 +947,8 @@ impl StateStore for SqliteStateStore {
     fn get_debug_session_data(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<DebugSessionData, StateError>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<DebugSessionData, StateError>> + Send + '_>>
+    {
         Box::pin(async move {
             // Get execution with workflow
             let (execution, workflow) = self.get_execution_with_workflow(execution_id).await?;
@@ -979,7 +987,9 @@ impl StateStore for SqliteStateStore {
         name: &str,
         label: Option<&str>,
         workflow: &Flow,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(String, Endpoint), StateError>> + Send + '_>> {
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<(String, Endpoint), StateError>> + Send + '_>,
+    > {
         let pool = self.pool.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
@@ -1031,7 +1041,8 @@ impl StateStore for SqliteStateStore {
         execution_id: Uuid,
         params: CreateExecutionParams<'a>,
         input: Option<ValueRef>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionDetails, StateError>> + Send + 'a>>
+    {
         let pool = self.pool.clone();
 
         Box::pin(async move {
@@ -1040,7 +1051,8 @@ impl StateStore for SqliteStateStore {
 
             // Store input as blob if provided
             let input_blob_id = if let Some(input_data) = input {
-                let blob_id = BlobId::from_content(&input_data).change_context(StateError::Internal)?;
+                let blob_id =
+                    BlobId::from_content(&input_data).change_context(StateError::Internal)?;
                 let json_str = serde_json::to_string(input_data.as_ref())
                     .change_context(StateError::Serialization)?;
 
@@ -1086,7 +1098,9 @@ impl StateStore for SqliteStateStore {
         &self,
         execution_id: Uuid,
         step_id: &str,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Option<FlowResult>, StateError>> + Send + '_>> {
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<Option<FlowResult>, StateError>> + Send + '_>,
+    > {
         let step_id = step_id.to_string();
         Box::pin(async move {
             let sql = "SELECT result FROM step_results WHERE execution_id = ? AND step_id = ?";
@@ -1113,7 +1127,13 @@ impl StateStore for SqliteStateStore {
         &self,
         execution_id: Uuid,
         indices: &[usize],
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<Option<FlowResult>>, StateError>> + Send + '_>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = error_stack::Result<Vec<Option<FlowResult>>, StateError>>
+                + Send
+                + '_,
+        >,
+    > {
         let indices = indices.to_vec();
         Box::pin(async move {
             if indices.is_empty() {

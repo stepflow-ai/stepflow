@@ -13,4 +13,3 @@ pub mod test;
 pub use cli::Cli;
 pub use error::*;
 pub use run::run;
-pub use stepflow_config::StepflowConfig;

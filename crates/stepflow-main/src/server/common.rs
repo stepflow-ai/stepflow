@@ -1,8 +1,8 @@
 use poem_openapi::ApiResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{FlowResult, workflow::FlowRef};
-use stepflow_state::ExecutionStatus;
 
 use super::api_type::ApiType;
 

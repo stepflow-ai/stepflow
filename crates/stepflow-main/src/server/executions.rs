@@ -2,9 +2,10 @@ use poem_openapi::{OpenApi, payload::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{FlowResult, workflow::ValueRef};
 use stepflow_execution::StepFlowExecutor;
-use stepflow_state::{ExecutionDetails, ExecutionStatus, ExecutionSummary};
+use stepflow_state::{ExecutionDetails, ExecutionSummary};
 use uuid::Uuid;
 
 use super::api_type::ApiType;
@@ -196,8 +197,8 @@ impl ExecutionsApi {
         &self,
         execution_id: poem::web::Path<String>,
     ) -> ServerResult<Json<ApiListStepExecutionsResponse>> {
-        use std::collections::HashMap;
         use error_stack::ResultExt as _;
+        use std::collections::HashMap;
 
         let state_store = self.executor.state_store();
 
@@ -225,7 +226,7 @@ impl ExecutionsApi {
 
         // Create unified response with both status and results
         let mut step_responses = Vec::new();
-        
+
         // Create Arc wrapper for workflow (needed for debug session)
         let workflow_arc = std::sync::Arc::new(workflow);
 
@@ -261,9 +262,15 @@ impl ExecutionsApi {
             for (idx, _) in workflow_arc.steps.iter().enumerate() {
                 let status = if completed_steps.contains_key(&idx) {
                     match completed_steps[&idx].result() {
-                        stepflow_core::FlowResult::Success { .. } => stepflow_core::status::StepStatus::Completed,
-                        stepflow_core::FlowResult::Skipped => stepflow_core::status::StepStatus::Skipped,
-                        stepflow_core::FlowResult::Failed { .. } => stepflow_core::status::StepStatus::Failed,
+                        stepflow_core::FlowResult::Success { .. } => {
+                            stepflow_core::status::StepStatus::Completed
+                        }
+                        stepflow_core::FlowResult::Skipped => {
+                            stepflow_core::status::StepStatus::Skipped
+                        }
+                        stepflow_core::FlowResult::Failed { .. } => {
+                            stepflow_core::status::StepStatus::Failed
+                        }
                     }
                 } else {
                     // For regular executions, we can't easily determine if a step is blocked/runnable without
@@ -277,12 +284,19 @@ impl ExecutionsApi {
 
         // Build unified responses
         for (idx, step) in workflow_arc.steps.iter().enumerate() {
-            let state = step_statuses.get(&idx).copied().unwrap_or(stepflow_core::status::StepStatus::Blocked);
+            let state = step_statuses
+                .get(&idx)
+                .copied()
+                .unwrap_or(stepflow_core::status::StepStatus::Blocked);
             let result = completed_steps.get(&idx).map(|sr| sr.result().clone());
-            
+
             step_responses.push(StepExecutionResponse {
                 step_index: idx,
-                step_id: if step.id.is_empty() { None } else { Some(step.id.clone()) },
+                step_id: if step.id.is_empty() {
+                    None
+                } else {
+                    Some(step.id.clone())
+                },
                 component: Some(step.component.to_string()),
                 state,
                 result,
@@ -337,7 +351,7 @@ mod tests {
     use std::sync::Arc;
     use stepflow_core::{FlowResult, workflow::ValueRef};
     use stepflow_execution::StepFlowExecutor;
-    use stepflow_state::{ExecutionDetails, ExecutionStatus, ExecutionSummary, InMemoryStateStore};
+    use stepflow_state::{ExecutionDetails, ExecutionSummary, InMemoryStateStore};
     use uuid::Uuid;
 
     /// Helper to create a test executor for testing
@@ -350,7 +364,7 @@ mod tests {
     fn test_execution_summary_response_structure() {
         let now = Utc::now();
         let execution_id = Uuid::new_v4();
-        
+
         let summary = ExecutionSummary {
             execution_id,
             endpoint_name: Some("test_endpoint".to_string()),
@@ -379,7 +393,7 @@ mod tests {
     fn test_execution_summary_response_no_endpoint() {
         let now = Utc::now();
         let execution_id = Uuid::new_v4();
-        
+
         let summary = ExecutionSummary {
             execution_id,
             endpoint_name: None, // Ad-hoc execution
@@ -405,7 +419,7 @@ mod tests {
     fn test_execution_details_response_structure() {
         let now = Utc::now();
         let execution_id = Uuid::new_v4();
-        
+
         let details = ExecutionDetails {
             execution_id,
             endpoint_name: Some("test_endpoint".to_string()),
@@ -436,10 +450,10 @@ mod tests {
 
     #[test]
     fn test_step_execution_response_structure() {
-        let result = FlowResult::Success { 
-            result: ValueRef::new(json!("test result")) 
+        let result = FlowResult::Success {
+            result: ValueRef::new(json!("test result")),
         };
-        
+
         let response = StepExecutionResponse {
             step_index: 0,
             step_id: Some("test_step".to_string()),
@@ -464,7 +478,7 @@ mod tests {
     #[test]
     fn test_step_execution_response_no_step_id() {
         let result = FlowResult::Skipped;
-        
+
         let response = StepExecutionResponse {
             step_index: 1,
             step_id: None, // No step ID provided
@@ -510,9 +524,18 @@ mod tests {
         };
 
         assert_eq!(response.executions.len(), 2);
-        assert_eq!(response.executions[0].execution_id, execution_id1.to_string());
-        assert_eq!(response.executions[0].endpoint_name, Some("endpoint1".to_string()));
-        assert_eq!(response.executions[1].execution_id, execution_id2.to_string());
+        assert_eq!(
+            response.executions[0].execution_id,
+            execution_id1.to_string()
+        );
+        assert_eq!(
+            response.executions[0].endpoint_name,
+            Some("endpoint1".to_string())
+        );
+        assert_eq!(
+            response.executions[1].execution_id,
+            execution_id2.to_string()
+        );
         assert_eq!(response.executions[1].endpoint_name, None);
 
         // Test serialization
@@ -530,8 +553,8 @@ mod tests {
                     step_id: Some("step1".to_string()),
                     component: Some("builtin://transform".to_string()),
                     state: stepflow_core::status::StepStatus::Completed,
-                    result: Some(FlowResult::Success { 
-                        result: ValueRef::new(json!("result1")) 
+                    result: Some(FlowResult::Success {
+                        result: ValueRef::new(json!("result1")),
                     }),
                 },
                 StepExecutionResponse {

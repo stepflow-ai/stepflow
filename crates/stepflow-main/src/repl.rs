@@ -389,17 +389,9 @@ async fn handle_steps_command(state: &ReplState) -> Result<()> {
         let all_steps = debug_session.list_all_steps().await;
         println!("Workflow steps ({} total):", all_steps.len());
         for step_status in &all_steps {
-            let state_str = match step_status.state {
-                stepflow_core::status::StepStatus::Blocked => "BLOCKED",
-                stepflow_core::status::StepStatus::Runnable => "RUNNABLE",
-                stepflow_core::status::StepStatus::Running => "RUNNING",
-                stepflow_core::status::StepStatus::Completed => "COMPLETED",
-                stepflow_core::status::StepStatus::Skipped => "SKIPPED",
-                stepflow_core::status::StepStatus::Failed => "FAILED",
-            };
             println!(
                 "  [{}] {} ({}): {}",
-                step_status.index, step_status.id, state_str, step_status.component
+                step_status.index, step_status.id, step_status.state, step_status.component
             );
         }
     } else {

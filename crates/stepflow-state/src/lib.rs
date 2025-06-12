@@ -6,6 +6,5 @@ pub use error::{Result, StateError};
 pub use in_memory::InMemoryStateStore;
 pub use state_store::{
     CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters,
-    ExecutionStatus, ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateStore,
-    StepResult,
+    ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StateStore, StepResult,
 };

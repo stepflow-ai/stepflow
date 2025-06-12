@@ -1,14 +1,13 @@
 use std::borrow::Cow;
 use std::{future::Future, pin::Pin};
 
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{
     FlowResult,
     blob::BlobId,
     workflow::{Flow, ValueRef},
 };
 
-// Re-export for use by other modules in this crate
-pub use stepflow_core::status::ExecutionStatus;
 use uuid::Uuid;
 
 use crate::StateError;
@@ -291,7 +290,13 @@ pub trait StateStore: Send + Sync {
     fn get_execution_with_workflow(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(ExecutionDetails, Option<Flow>), StateError>> + Send + '_>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = error_stack::Result<(ExecutionDetails, Option<Flow>), StateError>>
+                + Send
+                + '_,
+        >,
+    >;
 
     /// Get execution details with input and result blobs resolved.
     ///
@@ -305,7 +310,9 @@ pub trait StateStore: Send + Sync {
     fn get_execution_with_blobs(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionWithBlobs, StateError>> + Send + '_>>;
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<ExecutionWithBlobs, StateError>> + Send + '_>,
+    >;
 
     /// Get comprehensive execution step details for debugging and inspection.
     ///
@@ -319,7 +326,9 @@ pub trait StateStore: Send + Sync {
     fn get_execution_step_details(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<ExecutionStepDetails, StateError>> + Send + '_>>;
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<ExecutionStepDetails, StateError>> + Send + '_>,
+    >;
 
     /// Get all data needed for debug session creation in a single operation.
     ///
@@ -353,7 +362,9 @@ pub trait StateStore: Send + Sync {
         name: &str,
         label: Option<&str>,
         workflow: &Flow,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(String, Endpoint), StateError>> + Send + '_>>;
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<(String, Endpoint), StateError>> + Send + '_>,
+    >;
 
     /// Create an execution with input storage in an atomic operation.
     ///
@@ -389,7 +400,9 @@ pub trait StateStore: Send + Sync {
         &self,
         execution_id: Uuid,
         step_id: &str,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Option<FlowResult>, StateError>> + Send + '_>>;
+    ) -> Pin<
+        Box<dyn Future<Output = error_stack::Result<Option<FlowResult>, StateError>> + Send + '_>,
+    >;
 
     /// Get multiple step results by their indices in a single operation.
     ///
@@ -405,7 +418,13 @@ pub trait StateStore: Send + Sync {
         &self,
         execution_id: Uuid,
         indices: &[usize],
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<Option<FlowResult>>, StateError>> + Send + '_>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = error_stack::Result<Vec<Option<FlowResult>>, StateError>>
+                + Send
+                + '_,
+        >,
+    >;
 }
 
 /// The step result.
@@ -471,7 +490,6 @@ pub struct Endpoint {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
-
 
 /// Summary information about a workflow execution.
 #[derive(Debug, Clone, PartialEq)]

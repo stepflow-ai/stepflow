@@ -3126,6 +3126,7 @@ dependencies = [
  "stepflow-core",
  "stepflow-state",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

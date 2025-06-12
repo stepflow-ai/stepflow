@@ -15,14 +15,20 @@ pub enum ExecutionStatus {
     Paused,
 }
 
+impl ExecutionStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ExecutionStatus::Running => "running",
+            ExecutionStatus::Completed => "completed",
+            ExecutionStatus::Failed => "failed",
+            ExecutionStatus::Paused => "paused",
+        }
+    }
+}
+
 impl std::fmt::Display for ExecutionStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExecutionStatus::Running => write!(f, "running"),
-            ExecutionStatus::Completed => write!(f, "completed"),
-            ExecutionStatus::Failed => write!(f, "failed"),
-            ExecutionStatus::Paused => write!(f, "paused"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -108,7 +114,7 @@ mod tests {
         let status = ExecutionStatus::Running;
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, "\"running\"");
-        
+
         let deserialized: ExecutionStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, status);
     }
@@ -118,7 +124,7 @@ mod tests {
         let status = StepStatus::Completed;
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, "\"completed\"");
-        
+
         let deserialized: StepStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, status);
     }
