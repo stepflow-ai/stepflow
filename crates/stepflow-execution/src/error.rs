@@ -37,6 +37,8 @@ pub enum ExecutionError {
     StepNotRunnable { step: String },
     #[error("error accessing state store")]
     StateError,
+    #[error("workflow analysis error: {message}")]
+    AnalysisError { message: String },
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

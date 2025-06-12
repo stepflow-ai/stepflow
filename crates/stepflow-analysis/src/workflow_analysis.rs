@@ -1,13 +1,8 @@
-/// Shared analysis functionality for workflows
-///
-/// This module provides common functionality for extracting dependencies and edges
-/// from workflow expressions. It unifies the logic currently spread across:
-/// - Edge extraction in Flow::analyze_ports_and_edges
-/// - Dependency analysis in stepflow-execution::dependency_analysis
-/// - Value resolution patterns in stepflow-execution::value_resolver
 use std::collections::HashSet;
+use stepflow_core::workflow::{BaseRef, Expr, ValueRef, WorkflowRef};
+use error_stack::Result;
 
-use super::{BaseRef, Edge, EdgeEndpoint, Expr, ValueRef};
+use crate::dependency_analysis::AnalysisError;
 
 /// A reference found in a workflow expression
 #[derive(Debug, Clone, PartialEq)]
@@ -58,10 +53,10 @@ impl ReferenceLocation {
 pub fn extract_references_from_value_ref(
     value_ref: &ValueRef,
     location: ReferenceLocation,
-) -> Vec<ExpressionReference> {
+) -> Result<Vec<ExpressionReference>, AnalysisError> {
     let mut references = Vec::new();
-    extract_references_recursive(value_ref.as_ref(), location, "", &mut references);
-    references
+    extract_references_recursive(value_ref.as_ref(), location, "", &mut references)?;
+    Ok(references)
 }
 
 /// Extract references from an expression
@@ -86,7 +81,7 @@ fn extract_references_recursive(
     location: ReferenceLocation,
     current_path: &str,
     references: &mut Vec<ExpressionReference>,
-) {
+) -> Result<(), AnalysisError> {
     match value {
         serde_json::Value::Object(fields) => {
             // Try to parse as an expression first
@@ -108,13 +103,13 @@ fn extract_references_recursive(
                             path,
                             location: location_with_path,
                         });
-                        return; // Don't recurse into reference objects
+                        return Ok(()); // Don't recurse into reference objects
                     }
                     Expr::Literal(_) => {
                         // Check if this is actually a $literal wrapper
                         if fields.contains_key("$literal") {
                             // It's a literal wrapper - don't recurse
-                            return;
+                            return Ok(());
                         }
                         // Otherwise, it's just a regular object that happened to parse as Literal
                         // Fall through to recursive processing
@@ -129,7 +124,7 @@ fn extract_references_recursive(
                 } else {
                     format!("{}.{}", current_path, k)
                 };
-                extract_references_recursive(v, location.clone(), &field_path, references);
+                extract_references_recursive(v, location.clone(), &field_path, references)?;
             }
         }
         serde_json::Value::Array(arr) => {
@@ -140,13 +135,14 @@ fn extract_references_recursive(
                 } else {
                     format!("{}[{}]", current_path, index)
                 };
-                extract_references_recursive(v, location.clone(), &array_path, references);
+                extract_references_recursive(v, location.clone(), &array_path, references)?;
             }
         }
         _ => {
             // Primitive values cannot contain references
         }
     }
+    Ok(())
 }
 
 /// Extract step dependencies from references (filtering out workflow input references)
@@ -163,40 +159,8 @@ pub fn extract_step_dependencies(references: &[ExpressionReference]) -> HashSet<
         .collect()
 }
 
-/// Convert references to edges for workflow graph analysis
-pub fn references_to_edges(
-    references: &[ExpressionReference],
-    edge_counter: &mut usize,
-) -> Vec<Edge> {
-    references
-        .iter()
-        .map(|reference| {
-            let source_endpoint = match &reference.base_ref {
-                BaseRef::Workflow(_) => EdgeEndpoint::workflow_input("input"),
-                BaseRef::Step { step } => EdgeEndpoint::new(step.clone(), "result"),
-            };
-
-            let target_step_id = reference.location.step_id.as_deref().unwrap_or("workflow");
-            let target_port = reference.location.field_path.as_deref().unwrap_or("input");
-            let target_endpoint = EdgeEndpoint::new(target_step_id, target_port);
-
-            let edge_id = format!("edge_{}", edge_counter);
-            *edge_counter += 1;
-
-            let mut edge = Edge::new(edge_id, source_endpoint, target_endpoint);
-            if let Some(path) = &reference.path {
-                edge = edge.with_path(path.clone());
-            }
-
-            edge
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::workflow::WorkflowRef;
-
     use super::*;
     use serde_json::json;
 
@@ -209,7 +173,7 @@ mod tests {
 
         let location = ReferenceLocation::new("test_input").with_step_id("step2");
 
-        let references = extract_references_from_value_ref(&value_ref, location);
+        let references = extract_references_from_value_ref(&value_ref, location).unwrap();
 
         assert_eq!(references.len(), 1);
         assert_eq!(
@@ -236,7 +200,7 @@ mod tests {
 
         let location = ReferenceLocation::new("step_input").with_step_id("step3");
 
-        let references = extract_references_from_value_ref(&value_ref, location);
+        let references = extract_references_from_value_ref(&value_ref, location).unwrap();
 
         assert_eq!(references.len(), 3);
 
@@ -303,50 +267,6 @@ mod tests {
     }
 
     #[test]
-    fn test_references_to_edges() {
-        let references = vec![
-            ExpressionReference {
-                base_ref: BaseRef::Step {
-                    step: "step1".to_string(),
-                },
-                path: Some("output".to_string()),
-                location: ReferenceLocation::new("step_input")
-                    .with_step_id("step2")
-                    .with_field_path("input.data"),
-            },
-            ExpressionReference {
-                base_ref: BaseRef::Workflow(WorkflowRef::Input),
-                path: Some("user".to_string()),
-                location: ReferenceLocation::new("step_input")
-                    .with_step_id("step1")
-                    .with_field_path("input.user_data"),
-            },
-        ];
-
-        let mut edge_counter = 0;
-        let edges = references_to_edges(&references, &mut edge_counter);
-
-        assert_eq!(edges.len(), 2);
-
-        // Check step-to-step edge
-        let step_edge = edges.iter().find(|e| e.source.step_id == "step1").unwrap();
-        assert_eq!(step_edge.source.port_name, "result");
-        assert_eq!(step_edge.target.step_id, "step2");
-        assert_eq!(step_edge.target.port_name, "input.data");
-        assert_eq!(step_edge.path, Some("output".to_string()));
-
-        // Check workflow-to-step edge
-        let workflow_edge = edges
-            .iter()
-            .find(|e| e.source.step_id == "workflow")
-            .unwrap();
-        assert_eq!(workflow_edge.source.port_name, "input");
-        assert_eq!(workflow_edge.target.step_id, "step1");
-        assert_eq!(workflow_edge.target.port_name, "input.user_data");
-        assert_eq!(workflow_edge.path, Some("user".to_string()));
-    }
-
-    #[test]
     fn test_literal_wrapper_ignored() {
         let value_ref = ValueRef::new(json!({
             "normal_ref": {"$from": {"step": "step1"}},
@@ -355,7 +275,7 @@ mod tests {
         }));
 
         let location = ReferenceLocation::new("test");
-        let references = extract_references_from_value_ref(&value_ref, location);
+        let references = extract_references_from_value_ref(&value_ref, location).unwrap();
 
         // Should only find the normal reference, not the one inside $literal
         assert_eq!(references.len(), 1);

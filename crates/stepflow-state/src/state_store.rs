@@ -344,27 +344,6 @@ pub trait StateStore: Send + Sync {
         execution_id: Uuid,
     ) -> Pin<Box<dyn Future<Output = error_stack::Result<DebugSessionData, StateError>> + Send + '_>>;
 
-    // Step Dependencies
-
-    /// Store step dependencies for a workflow.
-    fn store_step_dependencies(
-        &self,
-        dependencies: &[StepDependency],
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StateError>> + Send + '_>>;
-
-    /// Get step dependencies for a workflow.
-    fn get_step_dependencies(
-        &self,
-        workflow_hash: &str,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, StateError>> + Send + '_>>;
-
-    /// Get dependencies for a specific step.
-    fn get_step_dependencies_for_step(
-        &self,
-        workflow_hash: &str,
-        step_index: usize,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, StateError>> + Send + '_>>;
-
     // Step Status Management
 
     /// Initialize step info for an execution.
@@ -388,11 +367,12 @@ pub trait StateStore: Send + Sync {
         execution_id: Uuid,
     ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepInfo>, StateError>> + Send + '_>>;
 
-    /// Get runnable steps for an execution based on dependencies and current status.
+    /// Get runnable steps for an execution based on current status.
+    /// Note: This method returns steps based on persistent status only.
+    /// Dependency checking should be done by the caller using workflow analysis.
     fn get_runnable_steps(
         &self,
         execution_id: Uuid,
-        workflow_hash: &str,
     ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepInfo>, StateError>> + Send + '_>>;
 
     // Atomic Operations (for consistency)
@@ -605,20 +585,6 @@ pub struct DebugSessionData {
     pub step_results: Vec<StepResult<'static>>,
 }
 
-/// Step dependency information for a workflow.
-#[derive(Debug, Clone, PartialEq)]
-pub struct StepDependency {
-    /// Hash of the workflow this dependency belongs to
-    pub workflow_hash: String,
-    /// Index of the step that depends on another step
-    pub step_index: usize,
-    /// Index of the step that this step depends on
-    pub depends_on_step_index: usize,
-    /// Optional path within the source step's output (e.g., "result.data.field")
-    pub src_path: Option<String>,
-    /// Optional field in the dependent step's input where this dependency is used
-    pub dst_field: Option<String>,
-}
 
 /// Step information for a workflow execution.
 #[derive(Debug, Clone, PartialEq)]

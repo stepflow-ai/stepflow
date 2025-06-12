@@ -6,7 +6,7 @@ use crate::{
     StateStore,
     state_store::{
         CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters,
-        ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StepDependency, 
+        ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs,
         StepInfo, StepResult,
     },
 };
@@ -84,8 +84,6 @@ pub struct InMemoryStateStore {
     endpoints: EndpointMap,
     /// Map from execution_id to execution metadata
     execution_metadata: Arc<RwLock<HashMap<Uuid, ExecutionMetadata>>>,
-    /// Map from workflow hash to list of dependencies for that workflow
-    dependencies: Arc<RwLock<HashMap<String, Vec<StepDependency>>>>,
     /// Map from execution_id to step info
     step_info: Arc<RwLock<HashMap<Uuid, HashMap<usize, StepInfo>>>>,
 }
@@ -99,7 +97,6 @@ impl InMemoryStateStore {
             workflows: Arc::new(RwLock::new(HashMap::new())),
             endpoints: Arc::new(RwLock::new(HashMap::new())),
             execution_metadata: Arc::new(RwLock::new(HashMap::new())),
-            dependencies: Arc::new(RwLock::new(HashMap::new())),
             step_info: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -826,69 +823,6 @@ impl StateStore for InMemoryStateStore {
         })
     }
 
-    // Step Dependencies
-
-    fn store_step_dependencies(
-        &self,
-        dependencies: &[StepDependency],
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), crate::StateError>> + Send + '_>> {
-        let dependencies = dependencies.to_vec();
-        let dependencies_map = self.dependencies.clone();
-        
-        Box::pin(async move {
-            let mut deps_guard = dependencies_map.write().await;
-            
-            // Group dependencies by workflow hash
-            let mut grouped: HashMap<String, Vec<StepDependency>> = HashMap::new();
-            for dep in dependencies {
-                grouped.entry(dep.workflow_hash.clone()).or_default().push(dep);
-            }
-            
-            // Store each workflow's dependencies
-            for (workflow_hash, deps) in grouped {
-                deps_guard.insert(workflow_hash, deps);
-            }
-            
-            Ok(())
-        })
-    }
-
-    fn get_step_dependencies(
-        &self,
-        workflow_hash: &str,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, crate::StateError>> + Send + '_>> {
-        let workflow_hash = workflow_hash.to_string();
-        let dependencies_map = self.dependencies.clone();
-        
-        Box::pin(async move {
-            let deps_guard = dependencies_map.read().await;
-            let dependencies = deps_guard.get(&workflow_hash).cloned().unwrap_or_default();
-            Ok(dependencies)
-        })
-    }
-
-    fn get_step_dependencies_for_step(
-        &self,
-        workflow_hash: &str,
-        step_index: usize,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepDependency>, crate::StateError>> + Send + '_>> {
-        let workflow_hash = workflow_hash.to_string();
-        let dependencies_map = self.dependencies.clone();
-        
-        Box::pin(async move {
-            let deps_guard = dependencies_map.read().await;
-            let all_dependencies = deps_guard.get(&workflow_hash).cloned().unwrap_or_default();
-            
-            // Filter dependencies where this step is the dependent one
-            let step_dependencies: Vec<StepDependency> = all_dependencies
-                .into_iter()
-                .filter(|dep| dep.step_index == step_index)
-                .collect();
-            
-            Ok(step_dependencies)
-        })
-    }
-
     // Step Status Management
 
     fn initialize_step_info(
@@ -961,62 +895,20 @@ impl StateStore for InMemoryStateStore {
     fn get_runnable_steps(
         &self,
         execution_id: uuid::Uuid,
-        workflow_hash: &str,
     ) -> Pin<Box<dyn Future<Output = error_stack::Result<Vec<StepInfo>, crate::StateError>> + Send + '_>> {
-        let workflow_hash = workflow_hash.to_string();
-        let dependencies_map = self.dependencies.clone();
         let step_info_map = self.step_info.clone();
         
         Box::pin(async move {
-            let deps_guard = dependencies_map.read().await;
             let step_info_guard = step_info_map.read().await;
-            
-            // Get all dependencies for this workflow
-            let all_dependencies = deps_guard.get(&workflow_hash).cloned().unwrap_or_default();
             
             // Get all step info for this execution
             let execution_steps = step_info_guard.get(&execution_id).cloned().unwrap_or_default();
             
-            // Find steps that are blocked and runnable
+            // Find steps that are marked as runnable
             let mut runnable_steps = Vec::new();
             
-            for (step_index, step_info) in &execution_steps {
-                // Skip steps that are not blocked (already running, completed, failed, skipped)
-                if step_info.status != stepflow_core::status::StepStatus::Blocked {
-                    continue;
-                }
-                
-                // Check if all dependencies are satisfied
-                let step_dependencies: Vec<&StepDependency> = all_dependencies
-                    .iter()
-                    .filter(|dep| dep.step_index == *step_index)
-                    .collect();
-                
-                let mut all_dependencies_satisfied = true;
-                for dependency in step_dependencies {
-                    // Check if the dependency step is completed
-                    if let Some(dep_step_info) = execution_steps.get(&dependency.depends_on_step_index) {
-                        match dep_step_info.status {
-                            stepflow_core::status::StepStatus::Completed => {
-                                // Dependency is satisfied
-                            }
-                            stepflow_core::status::StepStatus::Skipped => {
-                                // Dependency is satisfied (step was skipped)
-                            }
-                            _ => {
-                                // Dependency is not yet completed
-                                all_dependencies_satisfied = false;
-                                break;
-                            }
-                        }
-                    } else {
-                        // Dependency step not found - treat as not satisfied
-                        all_dependencies_satisfied = false;
-                        break;
-                    }
-                }
-                
-                if all_dependencies_satisfied {
+            for (_step_index, step_info) in &execution_steps {
+                if step_info.status == stepflow_core::status::StepStatus::Runnable {
                     runnable_steps.push(step_info.clone());
                 }
             }

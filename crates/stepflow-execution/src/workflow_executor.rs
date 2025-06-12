@@ -13,7 +13,7 @@ use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
 
 use crate::{
-    ExecutionError, Result, StepFlowExecutor, dependency_analysis::build_dependencies_from_flow,
+    ExecutionError, Result, StepFlowExecutor,
     tracker::DependencyTracker, value_resolver::ValueResolver,
 };
 
@@ -59,8 +59,24 @@ impl WorkflowExecutor {
         input: ValueRef,
         state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
-        // Build dependencies for the workflow
-        let dependencies = build_dependencies_from_flow(&flow)?;
+        // Build dependencies for the workflow using the analysis crate
+        let analysis = stepflow_analysis::analyze_workflow_dependencies(&flow, "temp_hash".to_string())
+            .map_err(|e| ExecutionError::AnalysisError { message: e.to_string() })?;
+        
+        // Convert analysis dependencies to tracker format
+        let mut dependencies_builder = crate::tracker::DependenciesBuilder::new(flow.steps.len());
+        
+        for (step_index, step) in flow.steps.iter().enumerate() {
+            let step_dependencies: std::collections::HashSet<String> = analysis.get_dependencies_for_step(step_index)
+                .iter()
+                .filter_map(|dep| {
+                    flow.steps.get(dep.depends_on_step_index).map(|s| s.id.clone())
+                })
+                .collect();
+            dependencies_builder.add_step(&step.id, step_dependencies);
+        }
+        
+        let dependencies = dependencies_builder.finish();
         let tracker = DependencyTracker::new(dependencies);
 
         // Create value resolver
@@ -194,13 +210,10 @@ impl WorkflowExecutor {
     /// Get currently runnable steps.
     /// Uses persistent state store to determine which steps are ready to execute.
     pub async fn get_runnable_steps(&self) -> Vec<StepExecution> {
-        // Get workflow hash for dependency lookup
-        let workflow_hash = self.state_store.store_workflow(&self.flow).await.unwrap_or_default();
-        
-        // Query state store for runnable steps
+        // Query state store for runnable steps (based on status only)
         let runnable_step_infos = self
             .state_store
-            .get_runnable_steps(self.context.execution_id(), &workflow_hash)
+            .get_runnable_steps(self.context.execution_id())
             .await
             .unwrap_or_default();
 
@@ -866,8 +879,23 @@ mod tests {
 
         let flow = create_test_flow(steps, json!({"$from": {"step": "step2"}}));
 
-        // Build dependencies
-        let dependencies = build_dependencies_from_flow(&flow).unwrap();
+        // Build dependencies using analysis crate
+        let analysis = stepflow_analysis::analyze_workflow_dependencies(&flow, "test_hash".to_string()).unwrap();
+        
+        // Convert analysis dependencies to tracker format
+        let mut dependencies_builder = crate::tracker::DependenciesBuilder::new(flow.steps.len());
+        
+        for (step_index, step) in flow.steps.iter().enumerate() {
+            let step_dependencies: std::collections::HashSet<String> = analysis.get_dependencies_for_step(step_index)
+                .iter()
+                .filter_map(|dep| {
+                    flow.steps.get(dep.depends_on_step_index).map(|s| s.id.clone())
+                })
+                .collect();
+            dependencies_builder.add_step(&step.id, step_dependencies);
+        }
+        
+        let dependencies = dependencies_builder.finish();
         let tracker = DependencyTracker::new(dependencies);
 
         // Only step1 should be runnable initially

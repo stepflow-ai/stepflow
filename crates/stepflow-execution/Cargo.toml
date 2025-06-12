@@ -17,6 +17,7 @@ futures.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+stepflow-analysis.workspace = true
 stepflow-plugin.workspace = true
 stepflow-core.workspace = true
 stepflow-state.workspace = true
