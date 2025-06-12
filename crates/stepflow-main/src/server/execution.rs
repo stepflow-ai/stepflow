@@ -229,21 +229,20 @@ impl ExecutionApi {
             None => stepflow_core::workflow::ValueRef::new(serde_json::Value::Null),
         };
 
-        // Create debug session
-        let mut debug_session = stepflow_execution::DebugSession::new_with_execution_id(
+        // Create workflow executor
+        let mut workflow_executor = stepflow_execution::WorkflowExecutor::new(
             self.executor.clone(),
             workflow_arc,
+            uuid,
             input,
             state_store.clone(),
-            uuid,
         )
-        .await
         .change_context(super::error::ServerError::DebugSessionCreationFailed)
         .into_poem()?;
 
         // Execute the requested steps
-        let step_results = debug_session
-            .execute_multiple_steps(&req.0.0.step_ids)
+        let step_results = workflow_executor
+            .execute_steps(&req.0.0.step_ids)
             .await
             .change_context(super::error::ServerError::DebugStepExecutionFailed)
             .into_poem()?;
@@ -296,21 +295,20 @@ impl ExecutionApi {
             None => stepflow_core::workflow::ValueRef::new(serde_json::Value::Null),
         };
 
-        // Create debug session
-        let mut debug_session = stepflow_execution::DebugSession::new_with_execution_id(
+        // Create workflow executor
+        let mut workflow_executor = stepflow_execution::WorkflowExecutor::new(
             self.executor.clone(),
             workflow_arc,
+            uuid,
             input,
             state_store.clone(),
-            uuid,
         )
-        .await
         .change_context(super::error::ServerError::DebugSessionCreationFailed)
         .into_poem()?;
 
         // Continue execution to completion
-        let (_executed_steps, final_result) = debug_session
-            .continue_to_end()
+        let final_result = workflow_executor
+            .continue_to_completion()
             .await
             .change_context(super::error::ServerError::DebugContinueFailed)
             .into_poem()?;
@@ -374,20 +372,19 @@ impl ExecutionApi {
             None => stepflow_core::workflow::ValueRef::new(serde_json::Value::Null),
         };
 
-        // Create debug session
-        let debug_session = stepflow_execution::DebugSession::new_with_execution_id(
+        // Create workflow executor
+        let workflow_executor = stepflow_execution::WorkflowExecutor::new(
             self.executor.clone(),
             workflow_arc,
+            uuid,
             input,
             state_store.clone(),
-            uuid,
         )
-        .await
         .change_context(super::error::ServerError::DebugSessionCreationFailed)
         .into_poem()?;
 
         // Get runnable steps
-        let runnable_steps = debug_session.get_runnable_steps();
+        let runnable_steps = workflow_executor.get_runnable_steps();
         let runnable_step_ids: Vec<String> =
             runnable_steps.into_iter().map(|step| step.id).collect();
 

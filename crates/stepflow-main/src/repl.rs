@@ -4,7 +4,7 @@ use error_stack::ResultExt as _;
 use rustyline::{DefaultEditor, error::ReadlineError};
 use std::{path::PathBuf, sync::Arc};
 use stepflow_core::workflow::{Flow, ValueRef};
-use stepflow_execution::{DebugSession, StepFlowExecutor};
+use stepflow_execution::{StepFlowExecutor, WorkflowExecutor};
 use stepflow_plugin::Context as _;
 
 use crate::{
@@ -21,7 +21,7 @@ pub struct ReplState {
     input: Option<ValueRef>,
     config_path: Option<PathBuf>,
     debug_mode: bool,
-    debug_session: Option<DebugSession>,
+    debug_session: Option<WorkflowExecutor>,
 }
 
 impl ReplState {
@@ -240,16 +240,17 @@ async fn handle_run_command(
     // Create debug session if debug mode is enabled
     if debug {
         let state_store = executor.state_store();
-        let debug_session = DebugSession::new(
+        let execution_id = uuid::Uuid::new_v4();
+        let workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
+            execution_id,
             input_value.clone(),
             state_store.clone(),
         )
-        .await
         .change_context(MainError::FlowExecution)?;
 
-        state.debug_session = Some(debug_session);
+        state.debug_session = Some(workflow_executor);
 
         println!("Debug mode enabled. Workflow loaded but not started.");
         println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
@@ -298,16 +299,17 @@ async fn handle_rerun_command(
     // Create debug session if debug mode is enabled
     if debug {
         let state_store = executor.state_store();
-        let debug_session = DebugSession::new(
+        let execution_id = uuid::Uuid::new_v4();
+        let workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
+            execution_id,
             input_value.clone(),
             state_store.clone(),
         )
-        .await
         .change_context(MainError::FlowExecution)?;
 
-        state.debug_session = Some(debug_session);
+        state.debug_session = Some(workflow_executor);
 
         println!("Debug mode enabled. Workflow loaded but not started.");
         println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
@@ -444,7 +446,7 @@ async fn handle_run_step_command(step_id: String, state: &mut ReplState) -> Resu
     }
 
     if let Some(debug_session) = &mut state.debug_session {
-        match debug_session.execute_step(&step_id).await {
+        match debug_session.execute_step_by_id(&step_id).await {
             Ok(result) => {
                 print_step_result(&step_id, &result)?;
             }
@@ -470,7 +472,7 @@ async fn handle_run_steps_command(step_ids: Vec<String>, state: &mut ReplState) 
     }
 
     if let Some(debug_session) = &mut state.debug_session {
-        match debug_session.execute_multiple_steps(&step_ids).await {
+        match debug_session.execute_steps(&step_ids).await {
             Ok(results) => {
                 println!("Executed {} steps:", results.len());
                 for result in results {
@@ -549,13 +551,8 @@ async fn handle_continue_command(state: &mut ReplState) -> Result<()> {
 
     if let Some(debug_session) = &mut state.debug_session {
         println!("Continuing workflow execution to completion...");
-        match debug_session.continue_to_end().await {
-            Ok((executed_steps, final_result)) => {
-                // Print each step as it was executed
-                for (step_id, result) in executed_steps {
-                    print_step_result(&step_id, &result)?;
-                }
-
+        match debug_session.continue_to_completion().await {
+            Ok(final_result) => {
                 // Print final result
                 let result_json = serde_json::to_string_pretty(&final_result)
                     .change_context(MainError::FlowExecution)?;

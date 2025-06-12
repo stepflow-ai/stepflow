@@ -238,19 +238,18 @@ impl ExecutionsApi {
                 None => stepflow_core::workflow::ValueRef::new(serde_json::Value::Null),
             };
 
-            // Create debug session to get step status
-            let debug_session = stepflow_execution::DebugSession::new_with_execution_id(
+            // Create workflow executor to get step status
+            let workflow_executor = stepflow_execution::WorkflowExecutor::new(
                 self.executor.clone(),
                 workflow_arc.clone(),
+                uuid,
                 input,
                 state_store.clone(),
-                uuid,
             )
-            .await
             .change_context(super::error::ServerError::DebugSessionCreationFailed)
             .into_poem()?;
 
-            let statuses = debug_session.list_all_steps().await;
+            let statuses = workflow_executor.list_all_steps().await;
             let mut status_map = HashMap::new();
             for status in statuses {
                 status_map.insert(status.index, status.state);

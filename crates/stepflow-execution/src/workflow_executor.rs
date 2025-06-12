@@ -5,6 +5,7 @@ use error_stack::ResultExt as _;
 use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
 use stepflow_core::{
     FlowError, FlowResult,
+    status::StepStatus as CoreStepStatus,
     workflow::{Expr, Flow, ValueRef},
 };
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -24,10 +25,10 @@ pub(crate) async fn execute_workflow(
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
 ) -> Result<FlowResult> {
-    let workflow_executor =
+    let mut workflow_executor =
         WorkflowExecutor::new(executor, flow, execution_id, input, state_store)?;
 
-    workflow_executor.execute_to_completion().await
+    workflow_executor.continue_to_completion().await
 }
 
 /// Workflow executor that manages the execution of a single workflow.
@@ -93,8 +94,9 @@ impl WorkflowExecutor {
         self.tracker.unblocked_steps()
     }
 
-    /// Execute the workflow to completion using parallel execution.
-    pub async fn execute_to_completion(mut self) -> Result<FlowResult> {
+    /// Continue execution of the workflow to completion using parallel execution.
+    /// This method runs until all steps are completed and returns the final result.
+    pub async fn continue_to_completion(&mut self) -> Result<FlowResult> {
         let mut running_tasks = FuturesUnordered::new();
 
         tracing::debug!("Starting execution of {} steps", self.flow.steps.len());
@@ -146,6 +148,248 @@ impl WorkflowExecutor {
 
         // All tasks completed - try to complete the workflow
         self.resolve_workflow_output().await
+    }
+
+    /// List all steps in the workflow with their current status.
+    pub async fn list_all_steps(&self) -> Vec<StepStatus> {
+        let runnable = self.tracker.unblocked_steps();
+
+        let mut step_statuses = Vec::new();
+        for (idx, step) in self.flow.steps.iter().enumerate() {
+            let state = if runnable.contains(idx) {
+                CoreStepStatus::Runnable
+            } else {
+                // Check if step is completed by querying state store
+                match self
+                    .state_store
+                    .get_step_result_by_index(self.context.execution_id(), idx)
+                    .await
+                {
+                    Ok(result) => match result {
+                        FlowResult::Success { .. } => CoreStepStatus::Completed,
+                        FlowResult::Skipped => CoreStepStatus::Skipped,
+                        FlowResult::Failed { .. } => CoreStepStatus::Failed,
+                    },
+                    Err(_) => CoreStepStatus::Blocked,
+                }
+            };
+
+            step_statuses.push(StepStatus {
+                index: idx,
+                id: step.id.clone(),
+                component: step.component.to_string(),
+                state,
+            });
+        }
+
+        step_statuses
+    }
+
+    /// Get currently runnable steps.
+    pub fn get_runnable_steps(&self) -> Vec<StepStatus> {
+        let runnable = self.tracker.unblocked_steps();
+
+        runnable
+            .iter()
+            .map(|idx| {
+                let step = &self.flow.steps[idx];
+                StepStatus {
+                    index: idx,
+                    id: step.id.clone(),
+                    component: step.component.to_string(),
+                    state: CoreStepStatus::Runnable,
+                }
+            })
+            .collect()
+    }
+
+    /// Execute specific steps by their IDs.
+    /// Returns execution results for each step.
+    /// Only executes steps that are currently runnable.
+    pub async fn execute_steps(
+        &mut self,
+        step_ids: &[String],
+    ) -> Result<Vec<StepExecutionResult>> {
+        let mut results = Vec::new();
+
+        for step_id in step_ids {
+            match self.execute_step_by_id(step_id).await {
+                Ok(flow_result) => {
+                    results.push(StepExecutionResult::success(step_id.clone(), flow_result));
+                }
+                Err(e) => {
+                    results.push(StepExecutionResult::failed(step_id.clone(), e.to_string()));
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Execute all currently runnable steps.
+    /// Returns execution results for each step.
+    pub async fn execute_all_runnable(&mut self) -> Result<Vec<StepExecutionResult>> {
+        let runnable_steps = self.get_runnable_steps();
+        let step_ids: Vec<String> = runnable_steps.iter().map(|s| s.id.clone()).collect();
+        self.execute_steps(&step_ids).await
+    }
+
+    /// Execute a specific step by ID.
+    /// Returns an error if the step is not currently runnable.
+    pub async fn execute_step_by_id(&mut self, step_id: &str) -> Result<FlowResult> {
+        // Find the step by ID
+        let step_index = self
+            .flow
+            .steps
+            .iter()
+            .position(|step| step.id == step_id)
+            .ok_or_else(|| ExecutionError::StepNotFound {
+                step: step_id.to_string(),
+            })?;
+
+        // Check if the step is runnable
+        let runnable = self.tracker.unblocked_steps();
+        if !runnable.contains(step_index) {
+            return Err(ExecutionError::StepNotRunnable {
+                step: step_id.to_string(),
+            }
+            .into());
+        }
+
+        self.execute_step_by_index(step_index).await
+    }
+
+    /// Continue execution until a specific step is executed or becomes runnable.
+    /// Returns all steps that were executed during this operation.
+    pub async fn execute_until_step(&mut self, target_step_id: &str) -> Result<Vec<StepExecutionResult>> {
+        let mut executed_steps = Vec::new();
+
+        // Find the target step index
+        let target_step_index = self
+            .flow
+            .steps
+            .iter()
+            .position(|step| step.id == target_step_id)
+            .ok_or_else(|| ExecutionError::StepNotFound {
+                step: target_step_id.to_string(),
+            })?;
+
+        // Keep executing until the target step is runnable or completed
+        loop {
+            let runnable = self.tracker.unblocked_steps();
+
+            // Check if target step is runnable
+            if runnable.contains(target_step_index) {
+                break;
+            }
+
+            // Check if target step is already completed
+            if let Ok(_) = self
+                .state_store
+                .get_step_result_by_index(self.context.execution_id(), target_step_index)
+                .await
+            {
+                break;
+            }
+
+            // If no steps are runnable, we can't make progress
+            if runnable.is_empty() {
+                break;
+            }
+
+            // Execute all currently runnable steps
+            for step_index in runnable.iter() {
+                let step_id = self.flow.steps[step_index].id.clone();
+                match self.execute_step_by_index(step_index).await {
+                    Ok(result) => {
+                        executed_steps.push(StepExecutionResult::success(step_id, result));
+                    }
+                    Err(e) => {
+                        executed_steps.push(StepExecutionResult::failed(step_id, e.to_string()));
+                        return Ok(executed_steps); // Stop on error
+                    }
+                }
+            }
+        }
+
+        Ok(executed_steps)
+    }
+
+    /// Get all completed steps with their results.
+    pub async fn get_completed_steps(&self) -> Result<Vec<CompletedStep>> {
+        let step_results = self
+            .state_store
+            .list_step_results(self.context.execution_id())
+            .await
+            .change_context(ExecutionError::StateError)?;
+
+        let completed_steps = step_results
+            .into_iter()
+            .map(|step_result| CompletedStep {
+                index: step_result.step_idx(),
+                id: step_result.step_id().to_string(),
+                component: self.flow.steps[step_result.step_idx()]
+                    .component
+                    .to_string(),
+                result: step_result.into_result(),
+            })
+            .collect();
+
+        Ok(completed_steps)
+    }
+
+    /// Get the output/result of a specific step by ID.
+    pub async fn get_step_output(&self, step_id: &str) -> Result<FlowResult> {
+        self.state_store
+            .get_step_result_by_id(self.context.execution_id(), step_id)
+            .await
+            .attach_printable_lazy(|| format!("Failed to get output for step '{}'", step_id))
+            .change_context(ExecutionError::StepNotFound {
+                step: step_id.to_string(),
+            })
+    }
+
+    /// Get the details of a specific step for inspection.
+    pub async fn inspect_step(&self, step_id: &str) -> Result<StepInspection> {
+        let step_index = self
+            .flow
+            .steps
+            .iter()
+            .position(|step| step.id == step_id)
+            .ok_or_else(|| ExecutionError::StepNotFound {
+                step: step_id.to_string(),
+            })?;
+
+        let step = &self.flow.steps[step_index];
+        let runnable = self.tracker.unblocked_steps();
+
+        let state = if runnable.contains(step_index) {
+            CoreStepStatus::Runnable
+        } else {
+            // Check if step is completed by querying state store
+            match self
+                .state_store
+                .get_step_result_by_index(self.context.execution_id(), step_index)
+                .await
+            {
+                Ok(result) => match result {
+                    FlowResult::Success { .. } => CoreStepStatus::Completed,
+                    FlowResult::Skipped => CoreStepStatus::Skipped,
+                    FlowResult::Failed { .. } => CoreStepStatus::Failed,
+                },
+                Err(_) => CoreStepStatus::Blocked,
+            }
+        };
+
+        Ok(StepInspection {
+            index: step_index,
+            id: step.id.clone(),
+            component: step.component.to_string(),
+            input: step.input.clone(),
+            skip_if: step.skip_if.clone(),
+            on_error: step.on_error.clone(),
+            state,
+        })
     }
 
     /// Execute a single step by index and record the result.
@@ -432,6 +676,68 @@ pub(crate) async fn execute_step_async(
             }
         }
         _ => Ok(result),
+    }
+}
+
+/// Status information for a step.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct StepStatus {
+    pub index: usize,
+    pub id: String,
+    pub component: String,
+    pub state: CoreStepStatus,
+}
+
+/// Detailed inspection information for a step.
+#[derive(Debug, Clone)]
+pub struct StepInspection {
+    pub index: usize,
+    pub id: String,
+    pub component: String,
+    pub input: ValueRef,
+    pub skip_if: Option<Expr>,
+    pub on_error: stepflow_core::workflow::ErrorAction,
+    pub state: CoreStepStatus,
+}
+
+/// Information about a completed step.
+#[derive(Debug, Clone)]
+pub struct CompletedStep {
+    pub index: usize,
+    pub id: String,
+    pub component: String,
+    pub result: FlowResult,
+}
+
+/// Result of executing a step.
+#[derive(Debug, Clone)]
+pub struct StepExecutionResult {
+    pub step_id: String,
+    pub result: FlowResult,
+    pub error: Option<String>,
+}
+
+impl StepExecutionResult {
+    pub fn success(step_id: String, result: FlowResult) -> Self {
+        Self {
+            step_id,
+            result,
+            error: None,
+        }
+    }
+
+    pub fn failed(step_id: String, error: String) -> Self {
+        Self {
+            step_id,
+            result: FlowResult::Failed {
+                error: stepflow_core::FlowError::new(500, error.clone()),
+            },
+            error: Some(error),
+        }
+    }
+
+    pub fn is_success(&self) -> bool {
+        self.error.is_none()
     }
 }
 
