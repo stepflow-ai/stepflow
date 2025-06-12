@@ -1,75 +1,10 @@
 use std::collections::HashMap;
 use stepflow_core::workflow::{BaseRef, Expr, Flow, ValueRef};
-use error_stack::Result;
 
-/// Error types for workflow analysis
-#[derive(Debug, thiserror::Error)]
-pub enum AnalysisError {
-    #[error("Malformed reference in workflow: {message}")]
-    MalformedReference { message: String },
-    #[error("Step not found: {step_id}")]
-    StepNotFound { step_id: String },
-}
-
-/// Represents a dependency between two steps in a workflow
-#[derive(Debug, Clone, PartialEq)]
-pub struct StepDependency {
-    /// Hash of the workflow this dependency belongs to
-    pub workflow_hash: String,
-    /// Index of the step that depends on another step
-    pub step_index: usize,
-    /// Index of the step that this step depends on
-    pub depends_on_step_index: usize,
-    /// Optional source path within the dependency step's output
-    pub src_path: Option<String>,
-    /// Optional destination field where the dependency is used
-    pub dst_field: Option<String>,
-}
-
-/// Results of analyzing a workflow for dependencies
-#[derive(Debug, Clone)]
-pub struct WorkflowAnalysis {
-    /// The workflow hash for this analysis
-    pub workflow_hash: String,
-    /// All step dependencies found in the workflow
-    pub dependencies: Vec<StepDependency>,
-    /// Map from step ID to step index for efficient lookup
-    pub step_id_to_index: HashMap<String, usize>,
-}
-
-impl WorkflowAnalysis {
-    /// Create a new workflow analysis
-    pub fn new(workflow_hash: String, dependencies: Vec<StepDependency>, flow: &Flow) -> Self {
-        let step_id_to_index = flow
-            .steps
-            .iter()
-            .enumerate()
-            .map(|(idx, step)| (step.id.clone(), idx))
-            .collect();
-
-        Self {
-            workflow_hash,
-            dependencies,
-            step_id_to_index,
-        }
-    }
-
-    /// Get dependencies for a specific step
-    pub fn get_dependencies_for_step(&self, step_index: usize) -> Vec<&StepDependency> {
-        self.dependencies
-            .iter()
-            .filter(|dep| dep.step_index == step_index)
-            .collect()
-    }
-
-    /// Get the step index for a step ID
-    pub fn get_step_index(&self, step_id: &str) -> Option<usize> {
-        self.step_id_to_index.get(step_id).copied()
-    }
-}
+use crate::{error::AnalysisError, types::{StepDependency, WorkflowAnalysis}, Result};
 
 /// Analyze a workflow for step dependencies
-pub fn analyze_workflow_dependencies(flow: &Flow, workflow_hash: String) -> Result<WorkflowAnalysis, AnalysisError> {
+pub fn analyze_workflow_dependencies(flow: &Flow, workflow_hash: String) -> Result<WorkflowAnalysis> {
     let mut dependencies = Vec::new();
 
     // Create step ID to index mapping
@@ -117,7 +52,7 @@ fn extract_dependencies_from_value_ref(
     step_id_to_index: &HashMap<String, usize>,
     step_index: usize,
     dst_field: Option<String>,
-) -> Result<Vec<StepDependency>, AnalysisError> {
+) -> Result<Vec<StepDependency>> {
     extract_dependencies_from_value(value_ref.as_ref(), step_id_to_index, step_index, dst_field, "")
 }
 
@@ -127,7 +62,7 @@ fn extract_dependencies_from_expr(
     step_id_to_index: &HashMap<String, usize>,
     step_index: usize,
     dst_field: Option<String>,
-) -> Result<Vec<StepDependency>, AnalysisError> {
+) -> Result<Vec<StepDependency>> {
     if let Expr::Ref { from, path, .. } = expr {
         if let BaseRef::Step { step } = from {
             let depends_on_step_index = *step_id_to_index
@@ -155,7 +90,7 @@ fn extract_dependencies_from_value(
     step_index: usize,
     dst_field: Option<String>,
     current_path: &str,
-) -> Result<Vec<StepDependency>, AnalysisError> {
+) -> Result<Vec<StepDependency>> {
     let mut dependencies = Vec::new();
 
     match value {
@@ -260,7 +195,7 @@ fn extract_dependencies_from_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stepflow_core::workflow::{Component, ErrorAction, Step};
+    use stepflow_core::workflow::{Component, ErrorAction, Step, Flow};
     use serde_json::json;
     use url::Url;
 

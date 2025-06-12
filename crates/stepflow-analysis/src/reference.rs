@@ -1,59 +1,12 @@
-use std::collections::HashSet;
-use stepflow_core::workflow::{BaseRef, Expr, ValueRef, WorkflowRef};
-use error_stack::Result;
+use stepflow_core::workflow::{BaseRef, Expr, ValueRef};
 
-use crate::dependency_analysis::AnalysisError;
-
-/// A reference found in a workflow expression
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExpressionReference {
-    /// The base reference (step or workflow)
-    pub base_ref: BaseRef,
-    /// Optional path for accessing sub-fields
-    pub path: Option<String>,
-    /// Location where this reference was found (for debugging/tracing)
-    pub location: ReferenceLocation,
-}
-
-/// Location where a reference was found in the workflow
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReferenceLocation {
-    /// Context where the reference was found (e.g., "step_input", "skip_condition", "workflow_output")
-    pub context: String,
-    /// Step ID if the reference is within a step's configuration
-    pub step_id: Option<String>,
-    /// Field path within the context (e.g., "input.name", "output.result")
-    pub field_path: Option<String>,
-}
-
-impl ReferenceLocation {
-    /// Create a new reference location
-    pub fn new(context: impl Into<String>) -> Self {
-        Self {
-            context: context.into(),
-            step_id: None,
-            field_path: None,
-        }
-    }
-
-    /// Set the step ID for this location
-    pub fn with_step_id(mut self, step_id: impl Into<String>) -> Self {
-        self.step_id = Some(step_id.into());
-        self
-    }
-
-    /// Set the field path for this location
-    pub fn with_field_path(mut self, field_path: impl Into<String>) -> Self {
-        self.field_path = Some(field_path.into());
-        self
-    }
-}
+use crate::{types::{ExpressionReference, ReferenceLocation}, Result};
 
 /// Extract all references from a ValueRef with their locations
 pub fn extract_references_from_value_ref(
     value_ref: &ValueRef,
     location: ReferenceLocation,
-) -> Result<Vec<ExpressionReference>, AnalysisError> {
+) -> Result<Vec<ExpressionReference>> {
     let mut references = Vec::new();
     extract_references_recursive(value_ref.as_ref(), location, "", &mut references)?;
     Ok(references)
@@ -81,7 +34,7 @@ fn extract_references_recursive(
     location: ReferenceLocation,
     current_path: &str,
     references: &mut Vec<ExpressionReference>,
-) -> Result<(), AnalysisError> {
+) -> Result<()> {
     match value {
         serde_json::Value::Object(fields) => {
             // Try to parse as an expression first
@@ -145,23 +98,10 @@ fn extract_references_recursive(
     Ok(())
 }
 
-/// Extract step dependencies from references (filtering out workflow input references)
-pub fn extract_step_dependencies(references: &[ExpressionReference]) -> HashSet<String> {
-    references
-        .iter()
-        .filter_map(|reference| {
-            if let BaseRef::Step { step } = &reference.base_ref {
-                Some(step.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use stepflow_core::workflow::WorkflowRef;
     use serde_json::json;
 
     #[test]
@@ -233,37 +173,6 @@ mod tests {
                 step: "step2".to_string()
             }
         );
-    }
-
-    #[test]
-    fn test_extract_step_dependencies() {
-        let references = vec![
-            ExpressionReference {
-                base_ref: BaseRef::Step {
-                    step: "step1".to_string(),
-                },
-                path: None,
-                location: ReferenceLocation::new("test"),
-            },
-            ExpressionReference {
-                base_ref: BaseRef::Workflow(WorkflowRef::Input),
-                path: None,
-                location: ReferenceLocation::new("test"),
-            },
-            ExpressionReference {
-                base_ref: BaseRef::Step {
-                    step: "step2".to_string(),
-                },
-                path: Some("output".to_string()),
-                location: ReferenceLocation::new("test"),
-            },
-        ];
-
-        let dependencies = extract_step_dependencies(&references);
-
-        assert_eq!(dependencies.len(), 2);
-        assert!(dependencies.contains("step1"));
-        assert!(dependencies.contains("step2"));
     }
 
     #[test]
