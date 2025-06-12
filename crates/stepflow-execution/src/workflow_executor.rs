@@ -151,28 +151,34 @@ impl WorkflowExecutor {
     }
 
     /// List all steps in the workflow with their current status.
+    /// Uses persistent step info from state store for authoritative status.
     pub async fn list_all_steps(&self) -> Vec<StepExecution> {
-        let runnable = self.tracker.unblocked_steps();
+        // Get step info from persistent storage (single query for all steps)
+        let step_infos = self
+            .state_store
+            .get_step_info_for_execution(self.context.execution_id())
+            .await
+            .unwrap_or_default();
 
+        // Create a map from step_index to status for efficient lookup
+        let mut status_map = std::collections::HashMap::new();
+        for step_info in step_infos {
+            status_map.insert(step_info.step_index, step_info.status);
+        }
+
+        // Build step execution list using cached workflow data + persistent status
         let mut step_statuses = Vec::new();
         for (idx, step) in self.flow.steps.iter().enumerate() {
-            let state = if runnable.contains(idx) {
-                CoreStepStatus::Runnable
-            } else {
-                // Check if step is completed by querying state store
-                match self
-                    .state_store
-                    .get_step_result_by_index(self.context.execution_id(), idx)
-                    .await
-                {
-                    Ok(result) => match result {
-                        FlowResult::Success { .. } => CoreStepStatus::Completed,
-                        FlowResult::Skipped => CoreStepStatus::Skipped,
-                        FlowResult::Failed { .. } => CoreStepStatus::Failed,
-                    },
-                    Err(_) => CoreStepStatus::Blocked,
+            let state = status_map.get(&idx).copied().unwrap_or_else(|| {
+                // Fallback: check if step is runnable using in-memory tracker
+                let runnable = self.tracker.unblocked_steps();
+                if runnable.contains(idx) {
+                    CoreStepStatus::Runnable
+                } else {
+                    // Default to blocked for steps without persistent status
+                    CoreStepStatus::Blocked
                 }
-            };
+            });
 
             step_statuses.push(StepExecution::new(
                 idx,
@@ -186,15 +192,25 @@ impl WorkflowExecutor {
     }
 
     /// Get currently runnable steps.
-    pub fn get_runnable_steps(&self) -> Vec<StepExecution> {
-        let runnable = self.tracker.unblocked_steps();
+    /// Uses persistent state store to determine which steps are ready to execute.
+    pub async fn get_runnable_steps(&self) -> Vec<StepExecution> {
+        // Get workflow hash for dependency lookup
+        let workflow_hash = self.state_store.store_workflow(&self.flow).await.unwrap_or_default();
+        
+        // Query state store for runnable steps
+        let runnable_step_infos = self
+            .state_store
+            .get_runnable_steps(self.context.execution_id(), &workflow_hash)
+            .await
+            .unwrap_or_default();
 
-        runnable
+        // Convert step infos to step executions using cached workflow data
+        runnable_step_infos
             .iter()
-            .map(|idx| {
-                let step = &self.flow.steps[idx];
+            .map(|step_info| {
+                let step = &self.flow.steps[step_info.step_index];
                 StepExecution::new(
-                    idx,
+                    step_info.step_index,
                     step.id.clone(),
                     step.component.to_string(),
                     CoreStepStatus::Runnable,
@@ -229,7 +245,7 @@ impl WorkflowExecutor {
     /// Execute all currently runnable steps.
     /// Returns execution results for each step.
     pub async fn execute_all_runnable(&mut self) -> Result<Vec<StepExecutionResult>> {
-        let runnable_steps = self.get_runnable_steps();
+        let runnable_steps = self.get_runnable_steps().await;
         let step_ids: Vec<String> = runnable_steps.iter().map(|s| s.step_id.clone()).collect();
         self.execute_steps(&step_ids).await
     }

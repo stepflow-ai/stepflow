@@ -230,9 +230,9 @@ impl ExecutionsApi {
         // Create Arc wrapper for workflow (needed for debug session)
         let workflow_arc = std::sync::Arc::new(workflow);
 
-        // If execution is in debug mode, get real-time status
-        let step_statuses = if execution.debug_mode {
-            // Get input for debug session
+        // Get step status through WorkflowExecutor (consistent interface for all step info)
+        let step_statuses = {
+            // Get input for workflow executor
             let input = match execution.input_blob_id {
                 Some(blob_id) => state_store.get_blob(&blob_id).await.into_poem()?,
                 None => stepflow_core::workflow::ValueRef::new(serde_json::Value::Null),
@@ -249,34 +249,11 @@ impl ExecutionsApi {
             .change_context(super::error::ServerError::DebugSessionCreationFailed)
             .into_poem()?;
 
+            // Use unified interface for step status (works for both debug and non-debug)
             let statuses = workflow_executor.list_all_steps().await;
             let mut status_map = HashMap::new();
             for status in statuses {
                 status_map.insert(status.step_index, status.status);
-            }
-            status_map
-        } else {
-            // For non-debug executions, derive status from completion state
-            let mut status_map = HashMap::new();
-            for (idx, _) in workflow_arc.steps.iter().enumerate() {
-                let status = if completed_steps.contains_key(&idx) {
-                    match completed_steps[&idx].result() {
-                        stepflow_core::FlowResult::Success { .. } => {
-                            stepflow_core::status::StepStatus::Completed
-                        }
-                        stepflow_core::FlowResult::Skipped => {
-                            stepflow_core::status::StepStatus::Skipped
-                        }
-                        stepflow_core::FlowResult::Failed { .. } => {
-                            stepflow_core::status::StepStatus::Failed
-                        }
-                    }
-                } else {
-                    // For regular executions, we can't easily determine if a step is blocked/runnable without
-                    // running the dependency analysis, so we'll just show "blocked" for incomplete steps
-                    stepflow_core::status::StepStatus::Blocked
-                };
-                status_map.insert(idx, status);
             }
             status_map
         };

@@ -414,7 +414,7 @@ async fn handle_runnable_command(state: &ReplState) -> Result<()> {
     }
 
     if let Some(debug_session) = &state.debug_session {
-        let runnable_steps = debug_session.get_runnable_steps();
+        let runnable_steps = debug_session.get_runnable_steps().await;
         if runnable_steps.is_empty() {
             println!(
                 "No steps are currently runnable. All dependencies may be satisfied or workflow is complete."

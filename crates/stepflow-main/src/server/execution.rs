@@ -384,7 +384,7 @@ impl ExecutionApi {
         .into_poem()?;
 
         // Get runnable steps
-        let runnable_steps = workflow_executor.get_runnable_steps();
+        let runnable_steps = workflow_executor.get_runnable_steps().await;
         let runnable_step_ids: Vec<String> =
             runnable_steps.into_iter().map(|step| step.step_id).collect();
 
