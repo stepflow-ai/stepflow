@@ -30,13 +30,25 @@ Most steps are defined in a step-service, which the executor invokes using a JSO
    - Error handling and retry mechanisms
    - State management
 
-2. **Step Services**
+2. **HTTP Server & API**
+   - REST API for workflow management
+   - OpenAPI specification
+   - Execution tracking and debugging
+   - Endpoint management with versioning
+
+3. **React Frontend**
+   - Web interface for workflow management
+   - Real-time execution monitoring
+   - Interactive debugging tools
+   - Workflow visualization
+
+4. **Step Services**
    - JSON-RPC based communication
    - Service discovery and registration
    - Built-in step implementations
    - Extensible service architecture
 
-3. **Workflow Definition**
+5. **Workflow Definition**
    - YAML/JSON based workflow specification
    - Support for parallel execution
    - Configurable error handling
@@ -52,6 +64,7 @@ Most steps are defined in a step-service, which the executor invokes using a JSO
 - `crates/stepflow-execution` provides the core execution logic for workflows with parallel execution support.
 - `crates/stepflow-main` provides the main binary for executing workflows or running a stepflow service.
 - `crates/stepflow-mock` provides mock implementations for testing purposes.
+- `stepflow-ui/` contains the React frontend for web-based workflow management and monitoring.
 
 ## Getting Started
 
@@ -83,6 +96,8 @@ This project is built in Rust and uses:
 - JSON-RPC for service communication
 - Async runtime for parallel execution
 
+### Building and Testing
+
 Run tests with `cargo test` or `cargo insta test --unreferenced=delete --review`.
 The latter runs uses `insta` to delete outdated snapshots and review any changes after the tests run.
 Both commands will fail if any test fails, including if the snapshot output doesn't match the actual output.
@@ -95,6 +110,83 @@ To run cargo-deny, use the following command:
 ```sh
 cargo install --locked cargo-deny
 cargo deny check
+```
+
+### HTTP Server Development
+
+StepFlow includes an HTTP server for REST API access and a React frontend for workflow management.
+
+#### Starting the HTTP Server
+
+```bash
+# Start the server on default port (7837) without components
+cargo run -- serve
+
+# Start the server with a specific config and port
+cargo run -- serve --port=8080 --config=path/to/stepflow-config.yml
+
+# Check server health
+curl http://localhost:7837/api/v1/health
+
+# View OpenAPI specification
+curl http://localhost:7837/openapi.json
+```
+
+#### Starting the Frontend
+
+The React frontend provides a web interface for managing workflows, executions, and endpoints.
+
+```bash
+# Install dependencies (first time only)
+cd stepflow-ui
+npm install
+
+# Start the development server
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173` by default.
+
+#### Full Development Setup
+
+For complete development with both server and frontend:
+
+```bash
+# Terminal 1: Start the StepFlow server
+cargo run -- serve --port=7837
+
+# Terminal 2: Start the React frontend
+cd stepflow-ui
+npm run dev
+```
+
+#### Environment Configuration
+
+The frontend can be configured to connect to different server instances:
+
+```bash
+# Create a .env file in stepflow-ui/ directory
+echo "STEPFLOW_BASE_URL=http://localhost:7837/api/v1" > stepflow-ui/.env
+```
+
+#### API Testing
+
+Test the server API endpoints:
+
+```bash
+# Health check
+curl http://localhost:7837/api/v1/health
+
+# List components (requires config with plugins)
+curl http://localhost:7837/api/v1/components
+
+# Execute a workflow (ad-hoc)
+curl -X POST http://localhost:7837/api/v1/execute \
+  -H "Content-Type: application/json" \
+  -d '{"workflow": {...}, "input": {...}}'
+
+# List executions
+curl http://localhost:7837/api/v1/executions
 ```
 
 ## License

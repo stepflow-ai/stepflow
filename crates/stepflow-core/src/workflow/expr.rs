@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::workflow::ValueRef;
 
 /// An expression that can be either a literal value or a template expression.
-#[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum BaseRef {
     /// Reference properties of the workflow.
@@ -22,14 +24,16 @@ impl BaseRef {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowRef {
     Input,
 }
 
 /// An expression that can be either a literal value or a template expression.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum Expr {
     Ref {
@@ -98,7 +102,7 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case", tag = "action")]
 pub enum SkipAction {
     Skip,

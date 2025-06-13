@@ -9,7 +9,17 @@ use url::Url;
 /// - The protocol (e.g., "langflow", "mcp")
 /// - The transport (e.g., "http", "stdio")
 /// - The path to the specific functionality
-#[derive(Debug, Eq, PartialEq, Clone, Hash, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[derive(
+    Debug,
+    Eq,
+    PartialEq,
+    Clone,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    JsonSchema,
+    utoipa::ToSchema,
+)]
 #[serde(transparent)]
 pub struct Component {
     url: Url,

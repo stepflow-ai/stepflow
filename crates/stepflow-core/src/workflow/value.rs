@@ -3,6 +3,8 @@ use std::sync::Arc;
 use owning_ref::ArcRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::openapi::schema::Schema;
+use utoipa::openapi::{AllOfBuilder, RefOr};
 
 /// A literal value which may be passed to a component.
 ///
@@ -37,6 +39,20 @@ impl JsonSchema for ValueRef {
         serde_json::Value::json_schema(generator)
     }
 }
+
+impl utoipa::PartialSchema for ValueRef {
+    fn schema() -> RefOr<Schema> {
+        RefOr::T(utoipa::openapi::schema::Schema::AllOf(
+            AllOfBuilder::new()
+                .description(Some(
+                    "Any JSON value (object, array, string, number, boolean, or null)",
+                ))
+                .build(),
+        ))
+    }
+}
+
+impl utoipa::ToSchema for ValueRef {}
 
 impl Serialize for ValueRef {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

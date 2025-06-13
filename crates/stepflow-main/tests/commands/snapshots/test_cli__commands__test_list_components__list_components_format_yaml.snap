@@ -3,6 +3,8 @@ source: crates/stepflow-main/tests/commands/test_list_components.rs
 info:
   program: stepflow
   args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
     - "--config=../../tests/stepflow-config.yml"
@@ -50,6 +52,11 @@ components:
       workflow:
         description: The workflow to execute
         $ref: '#/definitions/Flow'
+      workflow_hash:
+        description: Precomputed hash of the workflow.
+        anyOf:
+        - $ref: '#/definitions/FlowHash'
+        - type: 'null'
   output_schema:
     description: |-
       Output from the eval component

@@ -24,6 +24,16 @@ impl AsRef<SchemaObject> for SchemaRef {
     }
 }
 
+impl utoipa::PartialSchema for SchemaRef {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::openapi::Ref;
+
+        utoipa::openapi::RefOr::Ref(Ref::new("https://json-schema.org/draft/2020-12/schema"))
+    }
+}
+
+impl utoipa::ToSchema for SchemaRef {}
+
 impl SchemaRef {
     /// Create a schema reference from a type that implements JsonSchema.
     pub fn for_type<T: JsonSchema>() -> Self {

@@ -1,8 +1,7 @@
 use error_stack::ResultExt as _;
+use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
@@ -88,10 +87,10 @@ impl IncomingHandler for PutBlobHandler {
         id: Option<Uuid>,
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StdioError>> + Send>> {
+    ) -> BoxFuture<'static, error_stack::Result<(), StdioError>> {
         let state_store = context.state_store().clone();
 
-        Box::pin(async move {
+        async move {
             // Only handle method calls (with ID)
             let id = match id {
                 Some(id) => id,
@@ -114,7 +113,8 @@ impl IncomingHandler for PutBlobHandler {
                 },
             )
             .await
-        })
+        }
+        .boxed()
     }
 }
 
@@ -129,10 +129,10 @@ impl IncomingHandler for GetBlobHandler {
         id: Option<Uuid>,
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StdioError>> + Send>> {
+    ) -> BoxFuture<'static, error_stack::Result<(), StdioError>> {
         let state_store = context.state_store().clone();
 
-        Box::pin(async move {
+        async move {
             // Only handle method calls (with ID)
             let id = match id {
                 Some(id) => id,
@@ -155,6 +155,7 @@ impl IncomingHandler for GetBlobHandler {
                 },
             )
             .await
-        })
+        }
+        .boxed()
     }
 }

@@ -13,7 +13,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::{FlowResult, workflow::ValueRef};
-    use stepflow_state::{StateStore, StepResult};
+    use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
 
     #[tokio::test]

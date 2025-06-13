@@ -3,12 +3,15 @@ authors = ["Ben Chambers"]
 edition = "2024"
 version = "0.1.0"
 license = "Apache-2.0"
+homepage = "https://fuzzy-journey-4j3y1we.pages.github.io/"
+repository = "https://github.com/riptano/stepflow"
 
 [workspace]
 resolver = "2"
 members = ["crates/*"]
 
 [workspace.dependencies]
+axum = "0.8"
 bit-set = "0.8.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.35", features = ["derive", "env"] }
@@ -22,13 +25,11 @@ indexmap = { version = "2.8.0", features = ["serde"] }
 insta = { version = "1.34.0", features = ["glob", "yaml" ] }
 insta-cmd = "0.6.0"
 openai-api-rs = "6.0.6"
-poem = "3.1"
-poem-openapi = "5.1"
 regex = "1.11.1"
 reqwest = { version = "0.12", features = ["json"] }
 rustyline = "14.0"
 safer_owning_ref = "0.5.0"
-schemars = { version = "0.8.22", features = ["indexmap2", "impl_json_schema", "url"] }
+schemars = { version = "0.8.22", features = ["indexmap2", "impl_json_schema", "url", "chrono"] }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["preserve_order", "raw_value"] }
 serde_yaml_ng = "0.10.0"
@@ -37,6 +38,7 @@ similar = "2.7.0"
 similar-asserts = { version = "1.7.0", features = ["serde" ] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "uuid", "sqlite"] }
 static_assertions = "1.1.0"
+stepflow-analysis = { path = "./crates/stepflow-analysis" }
 stepflow-builtins = { path = "./crates/stepflow-builtins" }
 stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }
 stepflow-core = { path = "./crates/stepflow-core" }
@@ -44,6 +46,7 @@ stepflow-execution = { path = "./crates/stepflow-execution" }
 stepflow-mock = { path = "./crates/stepflow-mock" }
 stepflow-plugin = { path = "./crates/stepflow-plugin" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
+stepflow-server = { path = "./crates/stepflow-server" }
 stepflow-state = { path = "./crates/stepflow-state" }
 stepflow-state-sql = { path = "./crates/stepflow-state-sql" }
 tempfile = "3.8"
@@ -51,11 +54,16 @@ test-with = { version = "0.14.10", features = ["runtime"] }
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "process", "sync", "io-util", "time"]}
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1.41"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "json", "local-time" ] }
 trait-variant = "0.1.2"
 url = { version = "2.5.4", features = ["serde"]}
+utoipa = { version = "5.3", features = ["axum_extras", "rc_schema", "url"] }
+utoipa-axum = "0.2"
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"]}
 walkdir = "2.5.0"
 which = { version = "7.0.3", features = ["tracing"] }

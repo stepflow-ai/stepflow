@@ -1,0 +1,39 @@
+[package]
+name = "stepflow-server"
+description = "Stepflow Server."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+axum.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+stepflow-analysis = { workspace = true }
+stepflow-core = { workspace = true }
+stepflow-execution.workspace = true
+stepflow-plugin.workspace = true
+stepflow-state.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+utoipa-swagger-ui.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+url.workspace = true

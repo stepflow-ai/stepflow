@@ -36,5 +36,5 @@ async fn test_command() {
 
     // The test should succeed (basic.yaml should pass, no_tests.yaml should be skipped)
     let result = result.expect("Test command should succeed");
-    assert!(!result, "Tests should succeed");
+    assert_eq!(result, 0);
 }

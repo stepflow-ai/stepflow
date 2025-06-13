@@ -1,23 +1,24 @@
 [package]
 name = "stepflow-main"
+description = "Stepflow CLI."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 publish = false
-description = "Stepflow CLI."
 
 [lib]
 doctest = false
 
+[lints]
+workspace = true
+
 [dependencies]
-chrono.workspace = true
 clap.workspace = true
 error-stack.workspace = true
-poem.workspace = true
-poem-openapi.workspace = true
 rustyline.workspace = true
-schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
@@ -27,6 +28,7 @@ stepflow-execution.workspace = true
 stepflow-mock.workspace = true
 stepflow-plugin.workspace = true
 stepflow-protocol.workspace = true
+stepflow-server.workspace = true
 stepflow-state.workspace = true
 stepflow-state-sql.workspace = true
 regex.workspace = true
@@ -48,6 +50,3 @@ tempfile.workspace = true
 [[bin]]
 name = "stepflow"
 path = "src/main.rs"
-
-[lints]
-workspace = true

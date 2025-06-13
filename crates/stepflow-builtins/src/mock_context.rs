@@ -1,4 +1,5 @@
 use std::{pin::Pin, sync::Arc};
+use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     workflow::{Flow, ValueRef},
@@ -46,6 +47,7 @@ impl stepflow_plugin::Context for MockExecutor {
     fn submit_flow(
         &self,
         _flow: Arc<Flow>,
+        _workflow_hash: FlowHash,
         _input: ValueRef,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
         Box::pin(async { Ok(Uuid::new_v4()) })

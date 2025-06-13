@@ -10,7 +10,9 @@ use schemars::JsonSchema;
 ///
 /// Flows should not be cloned. They should generally be stored and passed as a
 /// reference or inside an `Arc`.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema)]
+#[derive(
+    Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema, utoipa::ToSchema,
+)]
 pub struct Flow {
     /// The name of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -45,7 +47,41 @@ pub struct Flow {
     pub test: Option<TestConfig>,
 }
 
+/// Wraper around a string that represents a hash of a workflow.
+#[derive(
+    Eq,
+    Debug,
+    PartialEq,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    utoipa::ToSchema,
+    schemars::JsonSchema,
+)]
+#[repr(transparent)]
+pub struct FlowHash(String);
+
+impl From<&str> for FlowHash {
+    fn from(hash: &str) -> Self {
+        FlowHash(hash.to_owned())
+    }
+}
+
+impl std::fmt::Display for FlowHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl Flow {
+    /// Return a hash of the workflow.
+    pub fn hash(workflow: &Self) -> FlowHash {
+        use sha2::{Digest as _, Sha256};
+        let mut hasher = Sha256::new();
+        serde_json::to_writer(&mut hasher, workflow).unwrap();
+        FlowHash(format!("{:x}", hasher.finalize()))
+    }
+
     /// Returns a reference to all steps in the flow.
     pub fn steps(&self) -> &[Step] {
         &self.steps
@@ -289,7 +325,7 @@ mod tests {
 }
 
 /// Configuration for testing a workflow.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
 pub struct TestConfig {
     /// Stepflow configuration specific to tests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -301,7 +337,7 @@ pub struct TestConfig {
 }
 
 /// A single test case for a workflow.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
 pub struct TestCase {
     /// Unique identifier for the test case.
     pub name: String,

@@ -1,9 +1,10 @@
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
-use crate::workflow_executor::execute_workflow;
+use crate::workflow_executor::{WorkflowExecutor, execute_workflow};
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt as _;
-use futures::FutureExt as _;
+use futures::future::{BoxFuture, FutureExt as _};
+use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowError, FlowResult,
     workflow::{Component, Flow, ValueRef},
@@ -23,6 +24,8 @@ pub struct StepFlowExecutor {
     // TODO: Should treat this as a cache and evict old executions.
     // TODO: Should write execution state to the state store for persistence.
     pending: Arc<RwLock<HashMap<Uuid, FutureFlowResult>>>,
+    /// Active debug sessions for step-by-step execution control
+    debug_sessions: Arc<RwLock<HashMap<Uuid, WorkflowExecutor>>>,
     // Keep a weak reference to self for spawning tasks without circular references
     self_weak: std::sync::Weak<Self>,
 }
@@ -34,6 +37,7 @@ impl StepFlowExecutor {
             plugins: RwLock::new(HashMap::new()),
             state_store,
             pending: Arc::new(RwLock::new(HashMap::new())),
+            debug_sessions: Arc::new(RwLock::new(HashMap::new())),
             self_weak: weak.clone(),
         })
     }
@@ -102,6 +106,43 @@ impl StepFlowExecutor {
         guard.insert(protocol, plugin);
         Ok(())
     }
+
+    /// Get or create a debug session for step-by-step execution control
+    pub async fn debug_session(&self, execution_id: Uuid) -> Result<WorkflowExecutor> {
+        // Check if session already exists
+        {
+            let sessions = self.debug_sessions.read().await;
+            if let Some(_session) = sessions.get(&execution_id) {
+                // Return a clone of the session (WorkflowExecutor should implement Clone if needed)
+                // For now, we'll create a new session each time since WorkflowExecutor is not Clone
+            }
+        }
+
+        // Session doesn't exist, create a new one from state store data
+        let debug_data = self
+            .state_store
+            .get_debug_session_data(execution_id)
+            .await
+            .change_context(ExecutionError::StateError)?;
+
+        // Extract workflow hash from execution details
+        let workflow_hash = debug_data
+            .execution
+            .workflow_hash
+            .ok_or_else(|| ExecutionError::StateError)?;
+
+        // Create a new WorkflowExecutor for this debug session
+        let workflow_executor = WorkflowExecutor::new(
+            self.executor(),
+            debug_data.workflow,
+            FlowHash::from(workflow_hash.as_str()),
+            execution_id,
+            debug_data.input,
+            self.state_store.clone(),
+        )?;
+
+        Ok(workflow_executor)
+    }
 }
 
 impl Context for StepFlowExecutor {
@@ -112,6 +153,7 @@ impl Context for StepFlowExecutor {
     ///
     /// # Arguments
     /// * `flow` - The workflow to execute
+    /// * 'workflow_hash` - Hash of the workflow
     /// * `input` - The input value for the workflow
     ///
     /// # Returns
@@ -119,11 +161,12 @@ impl Context for StepFlowExecutor {
     fn submit_flow(
         &self,
         flow: Arc<Flow>,
+        workflow_hash: FlowHash,
         input: ValueRef,
-    ) -> Pin<Box<dyn Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
+    ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
         let executor = self.executor();
 
-        Box::pin(async move {
+        async move {
             let execution_id = Uuid::new_v4();
             let (tx, rx) = oneshot::channel();
 
@@ -138,8 +181,15 @@ impl Context for StepFlowExecutor {
                 tracing::info!("Executing workflow using tracker-based execution");
                 let state_store = executor.state_store.clone();
 
-                let result =
-                    execute_workflow(executor, flow, execution_id, input, state_store).await;
+                let result = execute_workflow(
+                    executor,
+                    flow,
+                    workflow_hash,
+                    execution_id,
+                    input,
+                    state_store,
+                )
+                .await;
 
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,
@@ -163,7 +213,8 @@ impl Context for StepFlowExecutor {
             });
 
             Ok(execution_id)
-        })
+        }
+        .boxed()
     }
 
     /// Retrieves the result of a previously submitted workflow.
@@ -178,8 +229,8 @@ impl Context for StepFlowExecutor {
     fn flow_result(
         &self,
         execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = stepflow_plugin::Result<FlowResult>> + Send + '_>> {
-        Box::pin(async move {
+    ) -> BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
+        async move {
             // Remove and get the receiver for this execution
             let receiver = {
                 let pending = self.pending.read().await;
@@ -211,7 +262,8 @@ impl Context for StepFlowExecutor {
                     })
                 }
             }
-        })
+        }
+        .boxed()
     }
 
     fn state_store(&self) -> &Arc<dyn StateStore> {

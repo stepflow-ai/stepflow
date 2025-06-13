@@ -1,20 +1,22 @@
 use crate::{Result, error::MainError};
+use std::sync::Arc;
 use stepflow_core::FlowResult;
-use stepflow_core::workflow::{Flow, FlowRef, ValueRef};
+use stepflow_core::workflow::{Flow, ValueRef};
+use stepflow_server::executions::{CreateExecutionRequest, CreateExecutionResponse};
 use url::Url;
 
 /// Submit a workflow to a StepFlow service for execution
 pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<FlowResult> {
-    // Create the request payload
-    let request = crate::server::execution::ExecuteRequest {
-        workflow: FlowRef::new(flow),
+    // Create the request payload using server struct
+    let request = CreateExecutionRequest {
+        workflow: Arc::new(flow),
         input,
         debug: false, // TODO: Add debug option to CLI
     };
 
-    // Build the execute endpoint URL
+    // Build the execute endpoint URL (correct path)
     let execute_url = service_url
-        .join("/api/v1/execute")
+        .join("/api/v1/executions")
         .map_err(|_| MainError::Configuration)?;
 
     // Create HTTP client
@@ -42,12 +44,11 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
         return Err(MainError::Configuration.into());
     }
 
-    // Parse the response
-    let execute_response: crate::server::common::ExecuteResponse =
-        response.json().await.map_err(|e| {
-            tracing::error!("Failed to parse response: {}", e);
-            MainError::Configuration
-        })?;
+    // Parse the response using server struct
+    let execute_response: CreateExecutionResponse = response.json().await.map_err(|e| {
+        tracing::error!("Failed to parse response: {}", e);
+        MainError::Configuration
+    })?;
 
     // Return the result if available
     match execute_response.result {

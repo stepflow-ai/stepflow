@@ -71,4 +71,4 @@ test:
       outcome: failed
       error:
         code: 500
-        message: 'Flow execution failed: step "step2" failed'
+        message: 'Flow execution failed: step "step1" failed'

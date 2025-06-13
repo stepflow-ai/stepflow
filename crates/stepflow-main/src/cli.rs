@@ -151,7 +151,8 @@ impl Cli {
 
                 let input = input_args.parse_input(flow_dir, true)?;
 
-                let output = run(executor, flow, input).await?;
+                let workflow_hash = Flow::hash(&flow);
+                let output = run(executor, flow, workflow_hash, input).await?;
                 output_args.write_output(output)?;
             }
             Command::Serve { port, config_args } => {
@@ -180,7 +181,7 @@ impl Cli {
             } => {
                 let failures =
                     crate::test::run_tests(&path, config_args.config_path, test_options).await?;
-                if failures {
+                if failures > 0 {
                     std::process::exit(1);
                 }
             }

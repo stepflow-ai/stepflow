@@ -3,8 +3,8 @@ use clap::Parser as _;
 use error_stack::ResultExt as _;
 use rustyline::{DefaultEditor, error::ReadlineError};
 use std::{path::PathBuf, sync::Arc};
-use stepflow_core::workflow::{Flow, ValueRef};
-use stepflow_execution::{DebugSession, StepFlowExecutor};
+use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
+use stepflow_execution::{StepFlowExecutor, WorkflowExecutor};
 use stepflow_plugin::Context as _;
 
 use crate::{
@@ -13,28 +13,109 @@ use crate::{
     args::{ConfigArgs, WorkflowLoader, load},
 };
 
+/// Information about the last workflow run
+pub struct LastRun {
+    pub workflow: Arc<Flow>,
+    pub workflow_hash: FlowHash,
+    pub workflow_path: PathBuf,
+    pub input: ValueRef,
+    pub last_execution: Option<WorkflowExecutor>,
+}
+
+impl LastRun {
+    pub fn new(
+        workflow: Arc<Flow>,
+        workflow_hash: FlowHash,
+        workflow_path: PathBuf,
+        input: ValueRef,
+    ) -> Self {
+        Self {
+            workflow,
+            workflow_hash,
+            workflow_path,
+            input,
+            last_execution: None,
+        }
+    }
+
+    /// Execute this workflow normally (non-debug mode)
+    pub async fn execute_normal(&self, executor: &StepFlowExecutor) -> Result<()> {
+        let execution_id = executor
+            .submit_flow(
+                self.workflow.clone(),
+                self.workflow_hash.clone(),
+                self.input.clone(),
+            )
+            .await
+            .change_context(MainError::FlowExecution)?;
+
+        let result = executor
+            .flow_result(execution_id)
+            .await
+            .change_context(MainError::FlowExecution)?;
+
+        // Display result
+        let result_json =
+            serde_json::to_string_pretty(&result).change_context(MainError::FlowExecution)?;
+        println!("Result:\n{}", result_json);
+
+        Ok(())
+    }
+
+    /// Create a debug execution for this workflow
+    pub async fn create_debug_execution(
+        &mut self,
+        executor: &Arc<StepFlowExecutor>,
+    ) -> Result<&mut WorkflowExecutor> {
+        let state_store = executor.state_store();
+        let execution_id = uuid::Uuid::new_v4();
+        let workflow_executor = WorkflowExecutor::new(
+            executor.clone(),
+            self.workflow.clone(),
+            self.workflow_hash.clone(),
+            execution_id,
+            self.input.clone(),
+            state_store.clone(),
+        )
+        .change_context(MainError::FlowExecution)?;
+
+        self.last_execution = Some(workflow_executor);
+        Ok(self.last_execution.as_mut().unwrap())
+    }
+
+    /// Get the current debug execution, if any
+    pub fn debug_execution(&mut self) -> Option<&mut WorkflowExecutor> {
+        self.last_execution.as_mut()
+    }
+
+    /// Update input and clear any existing execution
+    pub fn update_input(&mut self, input: ValueRef) {
+        self.input = input;
+        self.last_execution = None; // Clear execution since input changed
+    }
+}
+
 /// State maintained by the REPL
 pub struct ReplState {
-    executor: Option<Arc<StepFlowExecutor>>,
-    workflow: Option<Arc<Flow>>,
-    workflow_path: Option<PathBuf>,
-    input: Option<ValueRef>,
+    executor: Arc<StepFlowExecutor>,
+    last_run: Option<LastRun>,
     config_path: Option<PathBuf>,
     debug_mode: bool,
-    debug_session: Option<DebugSession>,
 }
 
 impl ReplState {
-    fn new(config_path: Option<PathBuf>) -> Self {
-        Self {
-            executor: None,
-            workflow: None,
-            workflow_path: None,
-            input: None,
+    async fn new(config_path: Option<PathBuf>) -> Result<Self> {
+        // Initialize executor with default config
+        let config_args = ConfigArgs::with_path(config_path.clone());
+        let config = config_args.load_config(None)?;
+        let executor = WorkflowLoader::create_executor_from_config(config).await?;
+
+        Ok(Self {
+            executor,
+            last_run: None,
             config_path,
             debug_mode: false,
-            debug_session: None,
-        }
+        })
     }
 }
 
@@ -142,39 +223,6 @@ fn parse_command(input: &str) -> Result<ReplCommand> {
     }
 }
 
-/// Execute a workflow with the given input, handling both debug and normal modes
-async fn execute_workflow(
-    executor: &StepFlowExecutor,
-    workflow: Arc<Flow>,
-    input_value: ValueRef,
-    debug: bool,
-) -> Result<()> {
-    if debug {
-        println!("Debug mode enabled. Workflow loaded but not started.");
-        println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
-        println!("Use 'run-step <step_id>' to execute a specific step, or 'continue' to run all.");
-        return Ok(());
-    }
-
-    // Execute workflow normally
-    let execution_id = executor
-        .submit_flow(workflow, input_value)
-        .await
-        .change_context(MainError::FlowExecution)?;
-
-    let result = executor
-        .flow_result(execution_id)
-        .await
-        .change_context(MainError::FlowExecution)?;
-
-    // Display result
-    let result_json =
-        serde_json::to_string_pretty(&result).change_context(MainError::FlowExecution)?;
-    println!("Result:\n{}", result_json);
-
-    Ok(())
-}
-
 /// Handle a parsed command
 async fn handle_command(command: ReplCommand, state: &mut ReplState) -> Result<()> {
     match command {
@@ -215,50 +263,32 @@ async fn handle_run_command(
 ) -> Result<()> {
     // Load workflow
     let workflow: Arc<Flow> = load(&workflow_path)?;
+    let workflow_hash = Flow::hash(workflow.as_ref());
     println!("Loaded workflow: {}", workflow_path.display());
 
-    // Load config and create executor
-    let config_args = ConfigArgs::with_path(state.config_path.clone());
-    let flow_dir = workflow_path.parent();
-    let config = config_args.load_config(flow_dir)?;
-    let executor = WorkflowLoader::create_executor_from_config(config).await?;
-    println!(
-        "Created executor with {} plugins",
-        executor.list_plugins().await.len()
-    );
-
     // Parse input with flow context
+    let flow_dir = workflow_path.parent();
     let input_value = input_args.parse_input(flow_dir, true)?;
 
-    // Store state for potential rerun
-    state.executor = Some(executor.clone());
-    state.workflow = Some(workflow.clone());
-    state.workflow_path = Some(workflow_path.clone());
-    state.input = Some(input_value.clone());
+    // Create LastRun structure
+    let mut last_run = LastRun::new(workflow, workflow_hash, workflow_path, input_value);
     state.debug_mode = debug;
 
-    // Create debug session if debug mode is enabled
     if debug {
-        let state_store = executor.state_store();
-        let debug_session = DebugSession::new(
-            executor.clone(),
-            workflow.clone(),
-            input_value.clone(),
-            state_store.clone(),
-        )
-        .await
-        .change_context(MainError::FlowExecution)?;
-
-        state.debug_session = Some(debug_session);
+        // Create debug execution
+        last_run.create_debug_execution(&state.executor).await?;
 
         println!("Debug mode enabled. Workflow loaded but not started.");
         println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
         println!("Use 'run-step <step_id>' to execute a specific step, or 'continue' to run all.");
-        Ok(())
     } else {
         // Execute workflow normally
-        execute_workflow(&executor, workflow, input_value, false).await
+        last_run.execute_normal(&state.executor).await?;
     }
+
+    // Store the last run
+    state.last_run = Some(last_run);
+    Ok(())
 }
 
 /// Handle the rerun command
@@ -267,57 +297,31 @@ async fn handle_rerun_command(
     debug: bool,
     state: &mut ReplState,
 ) -> Result<()> {
-    let executor = state.executor.as_ref().ok_or_else(|| {
-        MainError::ReplCommand("No workflow loaded. Use 'run' first.".to_string())
-    })?;
-    let workflow = state.workflow.as_ref().ok_or_else(|| {
+    let last_run = state.last_run.as_mut().ok_or_else(|| {
         MainError::ReplCommand("No workflow loaded. Use 'run' first.".to_string())
     })?;
 
     // Use new input if provided, otherwise use stored input
-    let input_value = if input_args.has_input() {
+    if input_args.has_input() {
         // Parse input with flow context from stored workflow path
-        let flow_dir = state.workflow_path.as_deref().and_then(|p| p.parent());
-        input_args.parse_input(flow_dir, false)?
-    } else {
-        state
-            .input
-            .as_ref()
-            .ok_or_else(|| {
-                MainError::ReplCommand(
-                    "No input available. Provide input or run workflow first.".to_string(),
-                )
-            })?
-            .clone()
-    };
+        let flow_dir = last_run.workflow_path.parent();
+        let input_value = input_args.parse_input(flow_dir, false)?;
+        last_run.update_input(input_value);
+    }
 
-    // Update state
-    state.input = Some(input_value.clone());
     state.debug_mode = debug;
 
-    // Create debug session if debug mode is enabled
     if debug {
-        let state_store = executor.state_store();
-        let debug_session = DebugSession::new(
-            executor.clone(),
-            workflow.clone(),
-            input_value.clone(),
-            state_store.clone(),
-        )
-        .await
-        .change_context(MainError::FlowExecution)?;
-
-        state.debug_session = Some(debug_session);
+        // Create debug execution
+        last_run.create_debug_execution(&state.executor).await?;
 
         println!("Debug mode enabled. Workflow loaded but not started.");
         println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
         println!("Use 'run-step <step_id>' to execute a specific step, or 'continue' to run all.");
         Ok(())
     } else {
-        // Clear any existing debug session
-        state.debug_session = None;
         // Execute workflow normally
-        execute_workflow(executor, workflow.clone(), input_value, false).await
+        last_run.execute_normal(&state.executor).await
     }
 }
 
@@ -327,25 +331,20 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     println!("  Config: {:?}", state.config_path);
     println!("  Debug mode: {}", state.debug_mode);
 
-    if let Some(executor) = &state.executor {
-        let plugins = executor.list_plugins().await;
-        println!("  Executor: {} plugins loaded", plugins.len());
-    } else {
-        println!("  Executor: Not loaded");
-    }
+    let plugins = state.executor.list_plugins().await;
+    println!("  Executor: {} plugins loaded", plugins.len());
 
-    if let Some(workflow) = &state.workflow {
-        println!("  Workflow: {} steps", workflow.steps.len());
-        if let Some(name) = &workflow.name {
+    if let Some(last_run) = &state.last_run {
+        println!("  Workflow: {} steps", last_run.workflow.steps.len());
+        if let Some(name) = &last_run.workflow.name {
             println!("    Name: {}", name);
+        }
+        println!("  Input: Loaded");
+        if last_run.last_execution.is_some() {
+            println!("  Debug execution: Active");
         }
     } else {
         println!("  Workflow: Not loaded");
-    }
-
-    if state.input.is_some() {
-        println!("  Input: Loaded");
-    } else {
         println!("  Input: Not loaded");
     }
 
@@ -354,8 +353,8 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
 
 /// Handle the workflow command
 async fn handle_workflow_command(state: &ReplState) -> Result<()> {
-    if let Some(workflow) = &state.workflow {
-        let workflow_json = serde_json::to_string_pretty(workflow.as_ref())
+    if let Some(last_run) = &state.last_run {
+        let workflow_json = serde_json::to_string_pretty(last_run.workflow.as_ref())
             .change_context(MainError::FlowExecution)?;
         println!("Current workflow:\n{}", workflow_json);
     } else {
@@ -366,8 +365,8 @@ async fn handle_workflow_command(state: &ReplState) -> Result<()> {
 
 /// Handle the input command
 async fn handle_input_command(state: &ReplState) -> Result<()> {
-    if let Some(input) = &state.input {
-        let input_json = serde_json::to_string_pretty(input.as_ref())
+    if let Some(last_run) = &state.last_run {
+        let input_json = serde_json::to_string_pretty(last_run.input.as_ref())
             .change_context(MainError::FlowExecution)?;
         println!("Current input:\n{}", input_json);
     } else {
@@ -385,20 +384,22 @@ async fn handle_steps_command(state: &ReplState) -> Result<()> {
         return Ok(());
     }
 
-    if let Some(debug_session) = &state.debug_session {
-        let all_steps = debug_session.list_all_steps().await;
-        println!("Workflow steps ({} total):", all_steps.len());
-        for step_status in &all_steps {
-            let state_str = match step_status.state {
-                stepflow_execution::StepState::Blocked => "BLOCKED",
-                stepflow_execution::StepState::Runnable => "RUNNABLE",
-                stepflow_execution::StepState::Completed => "COMPLETED",
-                stepflow_execution::StepState::Skipped => "SKIPPED",
-                stepflow_execution::StepState::Failed => "FAILED",
-            };
+    if let Some(last_run) = &state.last_run {
+        if let Some(debug_session) = &last_run.last_execution {
+            let all_steps = debug_session.list_all_steps().await;
+            println!("Workflow steps ({} total):", all_steps.len());
+            for step_status in &all_steps {
+                println!(
+                    "  [{}] {} ({}): {}",
+                    step_status.step_index,
+                    step_status.step_id,
+                    step_status.status,
+                    step_status.component
+                );
+            }
+        } else {
             println!(
-                "  [{}] {} ({}): {}",
-                step_status.index, step_status.id, state_str, step_status.component
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
             );
         }
     } else {
@@ -418,20 +419,26 @@ async fn handle_runnable_command(state: &ReplState) -> Result<()> {
         return Ok(());
     }
 
-    if let Some(debug_session) = &state.debug_session {
-        let runnable_steps = debug_session.get_runnable_steps();
-        if runnable_steps.is_empty() {
-            println!(
-                "No steps are currently runnable. All dependencies may be satisfied or workflow is complete."
-            );
-        } else {
-            println!("Currently runnable steps ({} total):", runnable_steps.len());
-            for step_status in &runnable_steps {
+    if let Some(last_run) = &state.last_run {
+        if let Some(debug_session) = &last_run.last_execution {
+            let runnable_steps = debug_session.get_runnable_steps().await;
+            if runnable_steps.is_empty() {
                 println!(
-                    "  [{}] {}: {}",
-                    step_status.index, step_status.id, step_status.component
+                    "No steps are currently runnable. All dependencies may be satisfied or workflow is complete."
                 );
+            } else {
+                println!("Currently runnable steps ({} total):", runnable_steps.len());
+                for step_status in &runnable_steps {
+                    println!(
+                        "  [{}] {}: {}",
+                        step_status.step_index, step_status.step_id, step_status.component
+                    );
+                }
             }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -450,14 +457,20 @@ async fn handle_run_step_command(step_id: String, state: &mut ReplState) -> Resu
         return Ok(());
     }
 
-    if let Some(debug_session) = &mut state.debug_session {
-        match debug_session.execute_step(&step_id).await {
-            Ok(result) => {
-                print_step_result(&step_id, &result)?;
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            match debug_session.execute_step_by_id(&step_id).await {
+                Ok(result) => {
+                    print_step_result(&step_id, &result.result)?;
+                }
+                Err(e) => {
+                    println!("Failed to execute step '{}': {}", step_id, e);
+                }
             }
-            Err(e) => {
-                println!("Failed to execute step '{}': {}", step_id, e);
-            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -476,25 +489,23 @@ async fn handle_run_steps_command(step_ids: Vec<String>, state: &mut ReplState) 
         return Ok(());
     }
 
-    if let Some(debug_session) = &mut state.debug_session {
-        match debug_session.execute_multiple_steps(&step_ids).await {
-            Ok(results) => {
-                println!("Executed {} steps:", results.len());
-                for result in results {
-                    if result.is_success() {
-                        print_step_result(&result.step_id, &result.result)?;
-                    } else {
-                        println!(
-                            "Step '{}' failed: {}",
-                            result.step_id,
-                            result.error.unwrap_or_default()
-                        );
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            match debug_session.execute_steps(&step_ids).await {
+                Ok(results) => {
+                    println!("Executed {} steps:", results.len());
+                    for result in results {
+                        print_step_result(&result.metadata.step_id, &result.result)?;
                     }
                 }
+                Err(e) => {
+                    println!("Failed to execute steps: {}", e);
+                }
             }
-            Err(e) => {
-                println!("Failed to execute steps: {}", e);
-            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -513,29 +524,27 @@ async fn handle_run_all_command(state: &mut ReplState) -> Result<()> {
         return Ok(());
     }
 
-    if let Some(debug_session) = &mut state.debug_session {
-        match debug_session.execute_all_runnable().await {
-            Ok(results) => {
-                if results.is_empty() {
-                    println!("No runnable steps to execute.");
-                } else {
-                    println!("Executed {} runnable steps:", results.len());
-                    for result in results {
-                        if result.is_success() {
-                            print_step_result(&result.step_id, &result.result)?;
-                        } else {
-                            println!(
-                                "Step '{}' failed: {}",
-                                result.step_id,
-                                result.error.unwrap_or_default()
-                            );
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            match debug_session.execute_all_runnable().await {
+                Ok(results) => {
+                    if results.is_empty() {
+                        println!("No runnable steps to execute.");
+                    } else {
+                        println!("Executed {} runnable steps:", results.len());
+                        for result in results {
+                            print_step_result(&result.metadata.step_id, &result.result)?;
                         }
                     }
                 }
+                Err(e) => {
+                    println!("Failed to execute runnable steps: {}", e);
+                }
             }
-            Err(e) => {
-                println!("Failed to execute runnable steps: {}", e);
-            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -554,24 +563,25 @@ async fn handle_continue_command(state: &mut ReplState) -> Result<()> {
         return Ok(());
     }
 
-    if let Some(debug_session) = &mut state.debug_session {
-        println!("Continuing workflow execution to completion...");
-        match debug_session.continue_to_end().await {
-            Ok((executed_steps, final_result)) => {
-                // Print each step as it was executed
-                for (step_id, result) in executed_steps {
-                    print_step_result(&step_id, &result)?;
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            println!("Continuing workflow execution to completion...");
+            match debug_session.execute_to_completion().await {
+                Ok(final_result) => {
+                    // Print final result
+                    let result_json = serde_json::to_string_pretty(&final_result)
+                        .change_context(MainError::FlowExecution)?;
+                    println!("Workflow completed successfully.");
+                    println!("Final result: {}", result_json);
                 }
-
-                // Print final result
-                let result_json = serde_json::to_string_pretty(&final_result)
-                    .change_context(MainError::FlowExecution)?;
-                println!("Workflow completed successfully.");
-                println!("Final result: {}", result_json);
+                Err(e) => {
+                    println!("Workflow execution failed: {}", e);
+                }
             }
-            Err(e) => {
-                println!("Workflow execution failed: {}", e);
-            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -604,29 +614,35 @@ async fn handle_inspect_command(step_id: String, state: &ReplState) -> Result<()
         return Ok(());
     }
 
-    if let Some(debug_session) = &state.debug_session {
-        match debug_session.inspect_step(&step_id).await {
-            Ok(inspection) => {
-                println!("Step '{}' inspection:", step_id);
-                println!("  Index: {}", inspection.index);
-                println!("  Component: {}", inspection.component);
-                println!("  State: {:?}", inspection.state);
+    if let Some(last_run) = &state.last_run {
+        if let Some(debug_session) = &last_run.last_execution {
+            match debug_session.inspect_step(&step_id).await {
+                Ok(inspection) => {
+                    println!("Step '{}' inspection:", step_id);
+                    println!("  Index: {}", inspection.metadata.step_index);
+                    println!("  Component: {}", inspection.metadata.component);
+                    println!("  State: {:?}", inspection.state);
 
-                let input_json = serde_json::to_string_pretty(&inspection.input)
-                    .change_context(MainError::FlowExecution)?;
-                println!("  Input: {}", input_json);
-
-                if let Some(skip_if) = &inspection.skip_if {
-                    let skip_json = serde_json::to_string_pretty(skip_if)
+                    let input_json = serde_json::to_string_pretty(&inspection.input)
                         .change_context(MainError::FlowExecution)?;
-                    println!("  Skip condition: {}", skip_json);
-                }
+                    println!("  Input: {}", input_json);
 
-                println!("  Error handling: {:?}", inspection.on_error);
+                    if let Some(skip_if) = &inspection.skip_if {
+                        let skip_json = serde_json::to_string_pretty(skip_if)
+                            .change_context(MainError::FlowExecution)?;
+                        println!("  Skip condition: {}", skip_json);
+                    }
+
+                    println!("  Error handling: {:?}", inspection.on_error);
+                }
+                Err(e) => {
+                    println!("Failed to inspect step '{}': {}", step_id, e);
+                }
             }
-            Err(e) => {
-                println!("Failed to inspect step '{}': {}", step_id, e);
-            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -645,29 +661,38 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
         return Ok(());
     }
 
-    if let Some(debug_session) = &state.debug_session {
-        match debug_session.get_completed_steps().await {
-            Ok(completed_steps) => {
-                if completed_steps.is_empty() {
-                    println!("No steps have been completed yet.");
-                } else {
-                    println!("Completed steps ({} total):", completed_steps.len());
-                    for step in &completed_steps {
-                        let status = match &step.result {
-                            stepflow_core::FlowResult::Success { .. } => "SUCCESS",
-                            stepflow_core::FlowResult::Skipped => "SKIPPED",
-                            stepflow_core::FlowResult::Failed { .. } => "FAILED",
-                        };
-                        println!(
-                            "  [{}] {} ({}): {}",
-                            step.index, step.id, status, step.component
-                        );
+    if let Some(last_run) = &state.last_run {
+        if let Some(debug_session) = &last_run.last_execution {
+            match debug_session.get_completed_steps().await {
+                Ok(completed_steps) => {
+                    if completed_steps.is_empty() {
+                        println!("No steps have been completed yet.");
+                    } else {
+                        println!("Completed steps ({} total):", completed_steps.len());
+                        for step in &completed_steps {
+                            let status = match &step.result {
+                                stepflow_core::FlowResult::Success { .. } => "SUCCESS",
+                                stepflow_core::FlowResult::Skipped => "SKIPPED",
+                                stepflow_core::FlowResult::Failed { .. } => "FAILED",
+                            };
+                            println!(
+                                "  [{}] {} ({}): {}",
+                                step.metadata.step_index,
+                                step.metadata.step_id,
+                                status,
+                                step.metadata.component
+                            );
+                        }
                     }
                 }
+                Err(e) => {
+                    println!("Failed to get completed steps: {}", e);
+                }
             }
-            Err(e) => {
-                println!("Failed to get completed steps: {}", e);
-            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -686,15 +711,21 @@ async fn handle_output_command(step_id: String, state: &ReplState) -> Result<()>
         return Ok(());
     }
 
-    if let Some(debug_session) = &state.debug_session {
-        match debug_session.get_step_output(&step_id).await {
-            Ok(result) => {
-                println!("Output of step '{}':", step_id);
-                print_flow_result(&result)?;
+    if let Some(last_run) = &state.last_run {
+        if let Some(debug_session) = &last_run.last_execution {
+            match debug_session.get_step_output(&step_id).await {
+                Ok(result) => {
+                    println!("Output of step '{}':", step_id);
+                    print_flow_result(&result)?;
+                }
+                Err(e) => {
+                    println!("Failed to get output for step '{}': {}", step_id, e);
+                }
             }
-            Err(e) => {
-                println!("Failed to get output for step '{}': {}", step_id, e);
-            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!(
@@ -754,7 +785,7 @@ fn print_help() {
 pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
     let mut rl = DefaultEditor::new().change_context(MainError::ReplInit)?;
 
-    let mut state = ReplState::new(config_path);
+    let mut state = ReplState::new(config_path).await?;
 
     println!("StepFlow REPL v{}", env!("CARGO_PKG_VERSION"));
     println!("Type 'help' for available commands, 'quit' to exit");

@@ -21,8 +21,6 @@ pub enum ExecutionError {
     StepPanic,
     #[error("step {step:?} failed")]
     StepFailed { step: String },
-    #[error("step {step:?} error")]
-    StepError { step: String },
     #[error("blob not found: {blob_id}")]
     BlobNotFound { blob_id: String },
     #[error("no plugin registered for protocol: {0}")]
@@ -37,6 +35,8 @@ pub enum ExecutionError {
     StepNotRunnable { step: String },
     #[error("error accessing state store")]
     StateError,
+    #[error("error analyzing workflow")]
+    AnalysisError,
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

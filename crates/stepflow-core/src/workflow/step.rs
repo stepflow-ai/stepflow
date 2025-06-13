@@ -3,7 +3,7 @@ use crate::schema::SchemaRef;
 use schemars::JsonSchema;
 
 /// A step in a workflow that executes a component with specific arguments.
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema)]
 pub struct Step {
     /// Optional identifier for the step
     pub id: String,
@@ -29,7 +29,9 @@ pub struct Step {
     pub input: ValueRef,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[derive(
+    Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case", tag = "action")]
 pub enum ErrorAction {
     /// If the step fails, the flow will fail.

@@ -1,7 +1,6 @@
+use futures::future::BoxFuture;
 use serde_json::value::RawValue;
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::{Arc, LazyLock};
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
@@ -32,7 +31,7 @@ pub trait IncomingHandler: Send + Sync {
         id: Option<Uuid>,
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
-    ) -> Pin<Box<dyn Future<Output = error_stack::Result<(), StdioError>> + Send>>;
+    ) -> BoxFuture<'static, error_stack::Result<(), StdioError>>;
 }
 
 /// Registry for incoming method handlers.
