@@ -11,6 +11,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.dependencies]
+axum = "0.8"
 bit-set = "0.8.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.35", features = ["derive", "env"] }
@@ -53,20 +54,19 @@ test-with = { version = "0.14.10", features = ["runtime"] }
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "process", "sync", "io-util", "time"]}
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1.41"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "json", "local-time" ] }
 trait-variant = "0.1.2"
 url = { version = "2.5.4", features = ["serde"]}
+utoipa = { version = "5.3", features = ["axum_extras", "rc_schema", "url"] }
+utoipa-axum = "0.2"
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"]}
 walkdir = "2.5.0"
 which = { version = "7.0.3", features = ["tracing"] }
-axum = "0.7"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors"] }
-utoipa = { version = "5.3", features = ["axum_extras", "rc_schema", "url"] }
-utoipa-axum = "0.1"
-utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
 
 # Enable max optimizations for dependencies, but not for our code
 [profile.dev.package."*"]
