@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -14,6 +13,8 @@ use stepflow_execution::StepFlowExecutor;
 use stepflow_state::{ExecutionDetails, ExecutionSummary};
 use utoipa::{OpenApi, ToSchema};
 use uuid::Uuid;
+
+use crate::error::{ErrorResponse, ServerError};
 
 /// Request to create/execute a workflow ad-hoc
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -31,7 +32,7 @@ pub struct CreateExecutionRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateExecutionResponse {
     /// The execution ID
-    pub execution_id: String,
+    pub execution_id: Uuid,
     /// The result of the workflow execution (if completed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<FlowResult>,
@@ -53,8 +54,7 @@ pub struct ExecutionSummaryResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint_label: Option<String>,
     /// The workflow hash
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workflow_hash: Option<FlowHash>,
+    pub workflow_hash: FlowHash,
     /// Current status of the execution
     pub status: ExecutionStatus,
     /// Whether execution is in debug mode
@@ -78,8 +78,7 @@ pub struct ExecutionDetailsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint_label: Option<String>,
     /// The workflow hash
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workflow_hash: Option<FlowHash>,
+    pub workflow_hash: FlowHash,
     /// Current status of the execution
     pub status: ExecutionStatus,
     /// Whether execution is in debug mode
@@ -175,7 +174,7 @@ pub struct ExecutionsApi;
 pub async fn create_execution(
     State(executor): State<Arc<StepFlowExecutor>>,
     Json(req): Json<CreateExecutionRequest>,
-) -> Result<Json<CreateExecutionResponse>, StatusCode> {
+) -> Result<Json<CreateExecutionResponse>, ErrorResponse> {
     let execution_id = Uuid::new_v4();
     let state_store = executor.state_store();
 
@@ -183,18 +182,7 @@ pub async fn create_execution(
     let workflow = req.workflow;
     let workflow_hash = Flow::hash(&workflow);
 
-    state_store
-        .store_workflow(workflow.clone())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Store input as blob
-    let input_blob_id = Some(
-        state_store
-            .put_blob(req.input.clone())
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-    );
+    state_store.store_workflow(workflow.clone()).await?;
 
     // Create execution record
     state_store
@@ -202,12 +190,11 @@ pub async fn create_execution(
             execution_id,
             None, // No endpoint name for ad-hoc execution
             None, // No endpoint label for ad-hoc execution
-            Some(&workflow_hash.to_string()),
+            workflow_hash.clone(),
             req.debug,
-            input_blob_id.as_ref(),
+            req.input.clone(),
         )
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     let debug_mode = req.debug;
     let input = req.input;
@@ -215,12 +202,12 @@ pub async fn create_execution(
     if debug_mode {
         // In debug mode, return immediately without executing
         // The execution will be controlled via debug endpoints
-        let _ = state_store
+        state_store
             .update_execution_status(execution_id, ExecutionStatus::Running, None)
-            .await;
+            .await?;
 
         return Ok(Json(CreateExecutionResponse {
-            execution_id: execution_id.to_string(),
+            execution_id,
             result: None,
             status: ExecutionStatus::Running,
             debug: debug_mode,
@@ -231,38 +218,25 @@ pub async fn create_execution(
     use stepflow_plugin::Context as _;
 
     // Submit the workflow for execution
-    let submitted_execution_id = executor
-        .submit_flow(workflow, workflow_hash, input)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let submitted_execution_id = executor.submit_flow(workflow, workflow_hash, input).await?;
 
     // Wait for the result (synchronous execution for the HTTP endpoint)
-    let flow_result = match executor.flow_result(submitted_execution_id).await {
-        Ok(result) => result,
-        Err(_) => {
-            // Update execution status to failed
-            let _ = state_store
-                .update_execution_status(execution_id, ExecutionStatus::Failed, None)
-                .await;
-
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
+    let flow_result = executor.flow_result(submitted_execution_id).await?;
 
     // Check if the workflow execution was successful
     match &flow_result {
-        FlowResult::Success { .. } => {
+        FlowResult::Success { result } => {
             // Update execution status to completed
-            let _ = state_store
+            state_store
                 .update_execution_status(
                     execution_id,
                     ExecutionStatus::Completed,
-                    None, // TODO: Store result as blob
+                    Some(result.clone()),
                 )
-                .await;
+                .await?;
 
             Ok(Json(CreateExecutionResponse {
-                execution_id: execution_id.to_string(),
+                execution_id,
                 result: Some(flow_result),
                 status: ExecutionStatus::Completed,
                 debug: debug_mode,
@@ -270,12 +244,12 @@ pub async fn create_execution(
         }
         FlowResult::Failed { .. } | FlowResult::Skipped => {
             // Update execution status to failed
-            let _ = state_store
+            state_store
                 .update_execution_status(execution_id, ExecutionStatus::Failed, None)
-                .await;
+                .await?;
 
             Ok(Json(CreateExecutionResponse {
-                execution_id: execution_id.to_string(),
+                execution_id,
                 result: Some(flow_result),
                 status: ExecutionStatus::Failed,
                 debug: debug_mode,
@@ -289,7 +263,7 @@ pub async fn create_execution(
     get,
     path = "/executions/{execution_id}",
     params(
-        ("execution_id" = String, Path, description = "Execution ID (UUID)")
+        ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
     ),
     responses(
         (status = 200, description = "Execution details retrieved successfully", body = ExecutionDetailsResponse),
@@ -300,18 +274,15 @@ pub async fn create_execution(
 )]
 pub async fn get_execution(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(execution_id): Path<String>,
-) -> Result<Json<ExecutionDetailsResponse>, StatusCode> {
+    Path(execution_id): Path<Uuid>,
+) -> Result<Json<ExecutionDetailsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
-
-    // Parse UUID from string
-    let uuid = Uuid::parse_str(&execution_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Get execution details
     let details = state_store
-        .get_execution(uuid)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .get_execution(execution_id)
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(execution_id)))?;
 
     let response = ExecutionDetailsResponse::from(details);
 
@@ -325,7 +296,7 @@ pub async fn get_execution(
     get,
     path = "/executions/{execution_id}/workflow",
     params(
-        ("execution_id" = String, Path, description = "Execution ID (UUID)")
+        ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
     ),
     responses(
         (status = 200, description = "Execution workflow retrieved successfully", body = WorkflowResponse),
@@ -336,29 +307,24 @@ pub async fn get_execution(
 )]
 pub async fn get_execution_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(execution_id): Path<String>,
-) -> Result<Json<WorkflowResponse>, StatusCode> {
+    Path(execution_id): Path<Uuid>,
+) -> Result<Json<WorkflowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
-
-    // Parse UUID from string
-    let uuid = Uuid::parse_str(&execution_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Get execution details to retrieve the workflow hash
     let execution = state_store
-        .get_execution(uuid)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .get_execution(execution_id)
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(execution_id)))?;
 
-    // Get the workflow hash
-    let workflow_hash_str = execution.workflow_hash.ok_or(StatusCode::NOT_FOUND)?;
-
+    let workflow_hash = execution.workflow_hash;
     // Get the workflow from the state store
     let workflow = state_store
-        .get_workflow(&workflow_hash_str)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let workflow_hash = FlowHash::from(workflow_hash_str.as_str());
+        .get_workflow(&workflow_hash)
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::WorkflowNotFound(workflow_hash.clone()))
+        })?;
 
     Ok(Json(WorkflowResponse {
         workflow,
@@ -377,16 +343,13 @@ pub async fn get_execution_workflow(
 )]
 pub async fn list_executions(
     State(executor): State<Arc<StepFlowExecutor>>,
-) -> Result<Json<ListExecutionsResponse>, StatusCode> {
+) -> Result<Json<ListExecutionsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // TODO: Add query parameters for filtering (status, endpoint_name, limit, offset)
     let filters = stepflow_state::ExecutionFilters::default();
 
-    let executions = state_store
-        .list_executions(&filters)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let executions = state_store.list_executions(&filters).await?;
 
     let execution_responses: Vec<ExecutionSummaryResponse> = executions
         .into_iter()
@@ -403,7 +366,7 @@ pub async fn list_executions(
     get,
     path = "/executions/{execution_id}/steps",
     params(
-        ("execution_id" = String, Path, description = "Execution ID (UUID)")
+        ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
     ),
     responses(
         (status = 200, description = "Execution step details retrieved successfully", body = ListStepExecutionsResponse),
@@ -414,35 +377,30 @@ pub async fn list_executions(
 )]
 pub async fn get_execution_steps(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(execution_id): Path<String>,
-) -> Result<Json<ListStepExecutionsResponse>, StatusCode> {
+    Path(execution_id): Path<Uuid>,
+) -> Result<Json<ListStepExecutionsResponse>, ErrorResponse> {
     use std::collections::HashMap;
 
     let state_store = executor.state_store();
 
-    // Parse UUID from string
-    let uuid = Uuid::parse_str(&execution_id).map_err(|_| StatusCode::BAD_REQUEST)?;
-
     // Get execution details to retrieve the workflow hash
     let execution = state_store
-        .get_execution(uuid)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .get_execution(execution_id)
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(execution_id)))?;
 
-    // Get the workflow hash
-    let workflow_hash_str = execution.workflow_hash.ok_or(StatusCode::NOT_FOUND)?;
+    let workflow_hash = execution.workflow_hash;
 
     // Get the workflow from the state store
     let workflow = state_store
-        .get_workflow(&workflow_hash_str)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .get_workflow(&workflow_hash)
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::WorkflowNotFound(workflow_hash.clone()))
+        })?;
 
     // Get step results for completed steps
-    let step_results = state_store
-        .list_step_results(uuid)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let step_results = state_store.list_step_results(execution_id).await?;
 
     let mut completed_steps: HashMap<usize, stepflow_state::StepResult<'_>> = HashMap::new();
     for step_result in step_results {
@@ -455,24 +413,17 @@ pub async fn get_execution_steps(
     // Get step status through WorkflowExecutor (consistent interface for all step info)
     let step_statuses = {
         // Get input for workflow executor
-        let input = match execution.input_blob_id {
-            Some(blob_id) => state_store
-                .get_blob(&blob_id)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-            None => ValueRef::new(serde_json::Value::Null),
-        };
+        let input = execution.input;
 
         // Create workflow executor to get step status
         let workflow_executor = stepflow_execution::WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
-            stepflow_core::workflow::FlowHash::from(workflow_hash_str.as_str()),
-            uuid,
+            workflow_hash,
+            execution_id,
             input,
             state_store.clone(),
-        )
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        )?;
 
         // Use unified interface for step status (works for both debug and non-debug)
         let statuses = workflow_executor.list_all_steps().await;
@@ -516,7 +467,7 @@ impl From<ExecutionSummary> for ExecutionSummaryResponse {
             execution_id: summary.execution_id.to_string(),
             endpoint_name: summary.endpoint_name,
             endpoint_label: summary.endpoint_label,
-            workflow_hash: summary.workflow_hash.map(|h| FlowHash::from(h.as_str())),
+            workflow_hash: summary.workflow_hash,
             status: summary.status,
             debug_mode: summary.debug_mode,
             created_at: summary.created_at.to_rfc3339(),
@@ -531,7 +482,7 @@ impl From<ExecutionDetails> for ExecutionDetailsResponse {
             execution_id: details.execution_id.to_string(),
             endpoint_name: details.endpoint_name,
             endpoint_label: details.endpoint_label,
-            workflow_hash: details.workflow_hash.map(|h| FlowHash::from(h.as_str())),
+            workflow_hash: details.workflow_hash,
             status: details.status,
             debug_mode: details.debug_mode,
             input: None,  // Will be populated separately if needed

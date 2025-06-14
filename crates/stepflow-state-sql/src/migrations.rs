@@ -8,16 +8,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
 
     // Apply the collapsed schema migration
-    apply_migration(pool, "001_create_complete_schema", || {
+    apply_migration(pool, "001_create_initial_schema", || {
         create_complete_schema(pool)
     })
     .await?;
 
-    // Apply the step dependencies and step info migration
-    apply_migration(pool, "002_add_step_dependencies", || {
-        add_step_dependencies_tables(pool)
-    })
-    .await?;
+    // Apply the step info migration
+    apply_migration(pool, "002_add_step_info", || add_step_info_table(pool)).await?;
 
     Ok(())
 }
@@ -107,13 +104,11 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 workflow_hash TEXT,
                 status TEXT DEFAULT 'running',
                 debug_mode BOOLEAN DEFAULT FALSE,
-                input_blob_id TEXT,
-                result_blob_id TEXT,
+                input_json TEXT,
+                result_json TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 completed_at DATETIME,
-                FOREIGN KEY (workflow_hash) REFERENCES workflows(hash),
-                FOREIGN KEY (input_blob_id) REFERENCES blobs(id),
-                FOREIGN KEY (result_blob_id) REFERENCES blobs(id)
+                FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
             )
         "#,
         // Step results table for workflow step execution results
@@ -177,26 +172,8 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
     Ok(())
 }
 
-/// Create step dependencies and step info tables
-async fn add_step_dependencies_tables(pool: &SqlitePool) -> Result<(), StateError> {
-    // Create step dependencies table
-    let step_dependencies_sql = r#"
-        CREATE TABLE IF NOT EXISTS step_dependencies (
-            workflow_hash TEXT NOT NULL,
-            step_index INTEGER NOT NULL,
-            depends_on_step_index INTEGER NOT NULL,
-            src_path TEXT,
-            dst_field TEXT,
-            PRIMARY KEY (workflow_hash, step_index, depends_on_step_index),
-            FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
-        )
-    "#;
-
-    sqlx::query(step_dependencies_sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
+/// Create step info table
+async fn add_step_info_table(pool: &SqlitePool) -> Result<(), StateError> {
     // Create step info table
     let step_info_sql = r#"
         CREATE TABLE IF NOT EXISTS step_info (
@@ -219,8 +196,6 @@ async fn add_step_dependencies_tables(pool: &SqlitePool) -> Result<(), StateErro
 
     // Create indexes for performance
     let index_commands = vec![
-        "CREATE INDEX IF NOT EXISTS idx_step_dependencies_workflow_hash ON step_dependencies(workflow_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_step_dependencies_step_index ON step_dependencies(workflow_hash, step_index)",
         "CREATE INDEX IF NOT EXISTS idx_step_info_execution_id ON step_info(execution_id)",
         "CREATE INDEX IF NOT EXISTS idx_step_info_status ON step_info(execution_id, status)",
     ];

@@ -1,7 +1,9 @@
 use axum::Router;
 use std::sync::Arc;
 use stepflow_execution::StepFlowExecutor;
+use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -67,16 +69,24 @@ impl AppConfig {
             app = app.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api_doc));
         }
 
-        // Add CORS if requested
-        if self.include_cors {
-            app = app.layer(
+        // Setup CORS if requested.
+        let cors_layer = if self.include_cors {
+            Some(
                 CorsLayer::new()
                     .allow_origin(Any)
                     .allow_methods(Any)
                     .allow_headers(Any),
-            );
-        }
+            )
+        } else {
+            None
+        };
 
+        // Apply the layers.
+        app = app.layer(
+            ServiceBuilder::new()
+                .layer(TraceLayer::new_for_http())
+                .option_layer(cors_layer),
+        );
         app
     }
 }

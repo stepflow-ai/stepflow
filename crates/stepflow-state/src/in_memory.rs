@@ -7,8 +7,7 @@ use stepflow_core::workflow::FlowHash;
 use crate::{
     StateStore,
     state_store::{
-        CreateExecutionParams, DebugSessionData, Endpoint, ExecutionDetails, ExecutionFilters,
-        ExecutionStepDetails, ExecutionSummary, ExecutionWithBlobs, StepInfo, StepResult,
+        Endpoint, ExecutionDetails, ExecutionFilters, ExecutionSummary, StepInfo, StepResult,
     },
 };
 use stepflow_core::{
@@ -30,21 +29,6 @@ struct ExecutionState {
     step_results: Vec<Option<StepResult<'static>>>,
     /// Map from step_id to step_index for O(1) lookup by ID
     step_id_to_index: HashMap<String, usize>,
-}
-
-/// Enhanced execution metadata for workflow management.
-#[derive(Debug, Clone)]
-struct ExecutionMetadata {
-    execution_id: Uuid,
-    endpoint_name: Option<String>,
-    endpoint_label: Option<String>,
-    workflow_hash: Option<String>,
-    status: ExecutionStatus,
-    debug_mode: bool,
-    input_blob_id: Option<String>,
-    result_blob_id: Option<String>,
-    created_at: chrono::DateTime<chrono::Utc>,
-    completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl ExecutionState {
@@ -83,8 +67,8 @@ pub struct InMemoryStateStore {
     /// Map from (endpoint_name, label) to endpoint metadata
     /// where label = None represents the default version
     endpoints: EndpointMap,
-    /// Map from execution_id to execution metadata
-    execution_metadata: Arc<RwLock<HashMap<Uuid, ExecutionMetadata>>>,
+    /// Map from execution_id to execution details
+    execution_metadata: Arc<RwLock<HashMap<Uuid, ExecutionDetails>>>,
     /// Map from execution_id to step info
     step_info: Arc<RwLock<HashMap<Uuid, HashMap<usize, StepInfo>>>>,
 }
@@ -309,21 +293,16 @@ impl StateStore for InMemoryStateStore {
 
     fn get_workflow(
         &self,
-        workflow_hash: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Arc<Flow>, StateError>> {
+        workflow_hash: &FlowHash,
+    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
         let workflows = self.workflows.clone();
         let hash = workflow_hash.to_string();
 
         async move {
             let workflows = workflows.read().await;
-            let workflow = workflows.get(&hash).ok_or_else(|| {
-                error_stack::report!(StateError::WorkflowNotFound {
-                    workflow_hash: hash.clone()
-                })
-            })?;
+            let workflow = workflows.get(&hash).cloned();
 
-            // Return the stored Arc<Flow> directly (already cloneable)
-            Ok(workflow.clone())
+            Ok(workflow)
         }
         .boxed()
     }
@@ -332,12 +311,11 @@ impl StateStore for InMemoryStateStore {
         &self,
         name: &str,
         label: Option<&str>,
-        workflow_hash: &str,
+        workflow_hash: FlowHash,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let endpoints = self.endpoints.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
-        let workflow_hash = workflow_hash.to_string();
 
         async move {
             let now = chrono::Utc::now();
@@ -361,24 +339,16 @@ impl StateStore for InMemoryStateStore {
         &self,
         name: &str,
         label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Endpoint, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<Endpoint>, StateError>> {
         let endpoints = self.endpoints.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
 
         async move {
             let endpoints = endpoints.read().await;
-            let key = (name.clone(), label.clone());
+            let key = (name, label);
 
-            let identifier = if let Some(ref l) = label {
-                format!("{}:{}", name, l)
-            } else {
-                name
-            };
-
-            endpoints.get(&key).cloned().ok_or_else(|| {
-                error_stack::report!(StateError::EndpointNotFound { name: identifier })
-            })
+            Ok(endpoints.get(&key).cloned())
         }
         .boxed()
     }
@@ -446,27 +416,27 @@ impl StateStore for InMemoryStateStore {
         execution_id: Uuid,
         endpoint_name: Option<&str>,
         endpoint_label: Option<&str>,
-        workflow_hash: Option<&str>,
+        workflow_hash: FlowHash,
         debug_mode: bool,
-        input_blob_id: Option<&BlobId>,
+        input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let metadata = self.execution_metadata.clone();
-        let execution_metadata = ExecutionMetadata {
+        let execution_details = ExecutionDetails {
             execution_id,
             endpoint_name: endpoint_name.map(|s| s.to_string()),
             endpoint_label: endpoint_label.map(|s| s.to_string()),
-            workflow_hash: workflow_hash.map(|s| s.to_string()),
+            workflow_hash,
             status: ExecutionStatus::Running,
             debug_mode,
-            input_blob_id: input_blob_id.map(|id| id.as_str().to_string()),
-            result_blob_id: None,
+            input,
+            result: None,
             created_at: chrono::Utc::now(),
             completed_at: None,
         };
 
         async move {
             let mut metadata = metadata.write().await;
-            metadata.insert(execution_id, execution_metadata);
+            metadata.insert(execution_id, execution_details);
             Ok(())
         }
         .boxed()
@@ -476,16 +446,15 @@ impl StateStore for InMemoryStateStore {
         &self,
         execution_id: Uuid,
         status: ExecutionStatus,
-        result_blob_id: Option<&BlobId>,
+        result: Option<ValueRef>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let metadata = self.execution_metadata.clone();
-        let result_blob_id = result_blob_id.map(|id| id.as_str().to_string());
 
         async move {
             let mut metadata = metadata.write().await;
             if let Some(exec_metadata) = metadata.get_mut(&execution_id) {
                 exec_metadata.status = status;
-                exec_metadata.result_blob_id = result_blob_id;
+                exec_metadata.result = result;
 
                 if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed) {
                     exec_metadata.completed_at = Some(chrono::Utc::now());
@@ -499,35 +468,17 @@ impl StateStore for InMemoryStateStore {
     fn get_execution(
         &self,
         execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<ExecutionDetails, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<ExecutionDetails>, StateError>> {
         let metadata = self.execution_metadata.clone();
 
         async move {
             let metadata = metadata.read().await;
-            let exec_metadata = metadata.get(&execution_id).ok_or_else(|| {
-                error_stack::report!(StateError::ExecutionNotFound { execution_id })
-            })?;
-
-            let details = ExecutionDetails {
-                execution_id: exec_metadata.execution_id,
-                endpoint_name: exec_metadata.endpoint_name.clone(),
-                endpoint_label: exec_metadata.endpoint_label.clone(),
-                workflow_hash: exec_metadata.workflow_hash.clone(),
-                status: exec_metadata.status,
-                debug_mode: exec_metadata.debug_mode,
-                input_blob_id: exec_metadata
-                    .input_blob_id
-                    .as_ref()
-                    .and_then(|s| BlobId::new(s.clone()).ok()),
-                result_blob_id: exec_metadata
-                    .result_blob_id
-                    .as_ref()
-                    .and_then(|s| BlobId::new(s.clone()).ok()),
-                created_at: exec_metadata.created_at,
-                completed_at: exec_metadata.completed_at,
+            let exec_metadata = match metadata.get(&execution_id) {
+                Some(metadata) => metadata,
+                None => return Ok(None),
             };
 
-            Ok(details)
+            Ok(Some(exec_metadata.clone()))
         }
         .boxed()
     }
@@ -588,308 +539,6 @@ impl StateStore for InMemoryStateStore {
                 results.truncate(limit);
             }
 
-            Ok(results)
-        }
-        .boxed()
-    }
-
-    // Compound Query Methods (simple delegating implementations for now)
-
-    fn get_endpoint_with_workflow(
-        &self,
-        name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<(Endpoint, Arc<Flow>), StateError>> {
-        let self_ref = self as &dyn StateStore;
-        let name = name.to_string();
-        let label = label.map(|s| s.to_string());
-
-        async move {
-            // Simple implementation that delegates to existing methods
-            let endpoint = self_ref.get_endpoint(&name, label.as_deref()).await?;
-            let workflow = self_ref.get_workflow(&endpoint.workflow_hash).await?;
-            Ok((endpoint, workflow))
-        }
-        .boxed()
-    }
-
-    fn get_execution_with_workflow(
-        &self,
-        execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(ExecutionDetails, Option<Arc<Flow>>), StateError>> {
-        let self_ref = self as &dyn StateStore;
-
-        async move {
-            // Simple implementation that delegates to existing methods
-            let execution = self_ref.get_execution(execution_id).await?;
-            let workflow = if let Some(ref hash) = execution.workflow_hash {
-                Some(self_ref.get_workflow(hash).await?)
-            } else {
-                None
-            };
-            Ok((execution, workflow))
-        }
-        .boxed()
-    }
-
-    fn get_execution_with_blobs(
-        &self,
-        execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<ExecutionWithBlobs, StateError>> {
-        let self_ref = self as &dyn StateStore;
-
-        async move {
-            // Simple implementation that delegates to existing methods
-            let execution = self_ref.get_execution(execution_id).await?;
-
-            let input = if let Some(ref blob_id) = execution.input_blob_id {
-                Some(self_ref.get_blob(blob_id).await?)
-            } else {
-                None
-            };
-
-            let result = if let Some(ref blob_id) = execution.result_blob_id {
-                Some(self_ref.get_blob(blob_id).await?)
-            } else {
-                None
-            };
-
-            Ok(ExecutionWithBlobs {
-                execution,
-                input,
-                result,
-            })
-        }
-        .boxed()
-    }
-
-    fn get_execution_step_details(
-        &self,
-        execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<ExecutionStepDetails, StateError>> {
-        let self_ref = self as &dyn StateStore;
-
-        async move {
-            // Simple implementation that delegates to existing methods
-            let execution = self_ref.get_execution(execution_id).await?;
-
-            let workflow = if let Some(ref hash) = execution.workflow_hash {
-                Some(self_ref.get_workflow(hash).await?)
-            } else {
-                None
-            };
-
-            let input = if let Some(ref blob_id) = execution.input_blob_id {
-                Some(self_ref.get_blob(blob_id).await?)
-            } else {
-                None
-            };
-
-            let step_results = self_ref.list_step_results(execution_id).await?;
-
-            Ok(ExecutionStepDetails {
-                execution,
-                workflow,
-                step_results,
-                input,
-            })
-        }
-        .boxed()
-    }
-
-    fn get_debug_session_data(
-        &self,
-        execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<DebugSessionData, StateError>> {
-        let self_ref = self as &dyn StateStore;
-
-        async move {
-            // Simple implementation that delegates to existing methods
-            let execution = self_ref.get_execution(execution_id).await?;
-
-            let workflow_hash =
-                execution
-                    .workflow_hash
-                    .clone()
-                    .ok_or(StateError::WorkflowNotFound {
-                        workflow_hash: "missing".to_string(),
-                    })?;
-            let workflow = self_ref.get_workflow(&workflow_hash).await?;
-
-            let input = if let Some(ref blob_id) = execution.input_blob_id {
-                self_ref.get_blob(blob_id).await?
-            } else {
-                ValueRef::new(serde_json::Value::Null)
-            };
-
-            let step_results = self_ref.list_step_results(execution_id).await?;
-
-            Ok(DebugSessionData {
-                execution,
-                workflow,
-                input,
-                step_results,
-            })
-        }
-        .boxed()
-    }
-
-    // Atomic Operations (stubbed due to async trait lifetime complexities)
-
-    fn create_endpoint_with_workflow(
-        &self,
-        name: &str,
-        label: Option<&str>,
-        workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<(String, Endpoint), StateError>> {
-        let name = name.to_string();
-        let label = label.map(|s| s.to_string());
-        let workflow_hash = Flow::hash(workflow.as_ref());
-        let workflows = self.workflows.clone();
-        let endpoints = self.endpoints.clone();
-
-        async move {
-            let workflow_hash_str = workflow_hash.to_string();
-
-            // Store workflow directly as Arc<Flow> (atomic with lock)
-            {
-                let mut workflows_guard = workflows.write().await;
-                workflows_guard.insert(workflow_hash_str.clone(), workflow);
-            }
-
-            // Create endpoint
-            let endpoint = Endpoint {
-                name: name.clone(),
-                label: label.clone(),
-                workflow_hash: workflow_hash_str.clone(),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            };
-
-            // Store endpoint (atomic with lock)
-            {
-                let mut endpoints_guard = endpoints.write().await;
-                let key = (name, label);
-                endpoints_guard.insert(key, endpoint.clone());
-            }
-
-            Ok((workflow_hash_str, endpoint))
-        }
-        .boxed()
-    }
-
-    fn create_execution_with_input(
-        &self,
-        execution_id: Uuid,
-        params: CreateExecutionParams<'_>,
-        input: Option<ValueRef>,
-    ) -> BoxFuture<'_, error_stack::Result<ExecutionDetails, StateError>> {
-        let blobs = self.blobs.clone();
-        let executions = self.executions.clone();
-        let execution_metadata_store = self.execution_metadata.clone();
-        let endpoint_name = params.endpoint_name.map(|s| s.to_string());
-        let endpoint_label = params.endpoint_label.map(|s| s.to_string());
-        let workflow_hash = params.workflow_hash.map(|s| s.to_string());
-        let debug_mode = params.debug_mode;
-
-        async move {
-            // Store input as blob if provided (atomic with lock)
-            let (input_blob_id, input_blob_id_str) = if let Some(input_data) = input {
-                let blob_id =
-                    BlobId::from_content(&input_data).change_context(StateError::Internal)?;
-                let blob_id_str = blob_id.to_string();
-
-                {
-                    let mut blobs_guard = blobs.write().await;
-                    blobs_guard.insert(blob_id_str.clone(), input_data);
-                }
-
-                (Some(blob_id), Some(blob_id_str))
-            } else {
-                (None, None)
-            };
-
-            // Create execution state and metadata
-            let execution_state = ExecutionState::new(0); // Start with 0 capacity, will grow as needed
-            let execution_metadata = ExecutionMetadata {
-                execution_id,
-                endpoint_name: endpoint_name.clone(),
-                endpoint_label: endpoint_label.clone(),
-                workflow_hash: workflow_hash.clone(),
-                status: stepflow_core::status::ExecutionStatus::Running,
-                debug_mode,
-                input_blob_id: input_blob_id_str,
-                result_blob_id: None,
-                created_at: chrono::Utc::now(),
-                completed_at: None,
-            };
-
-            // Store execution state and metadata (atomic with locks)
-            {
-                let mut executions_guard = executions.write().await;
-                executions_guard.insert(execution_id, execution_state);
-            }
-            {
-                let mut metadata_guard = execution_metadata_store.write().await;
-                metadata_guard.insert(execution_id, execution_metadata);
-            }
-
-            // Create execution details to return
-            let execution_details = ExecutionDetails {
-                execution_id,
-                endpoint_name,
-                endpoint_label,
-                workflow_hash,
-                status: stepflow_core::status::ExecutionStatus::Running,
-                debug_mode,
-                input_blob_id,
-                result_blob_id: None,
-                created_at: chrono::Utc::now(),
-                completed_at: None,
-            };
-
-            Ok(execution_details)
-        }
-        .boxed()
-    }
-
-    // Optimized Query Methods (simple implementations for now)
-
-    fn try_get_step_result_by_id(
-        &self,
-        execution_id: Uuid,
-        step_id: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Option<FlowResult>, StateError>> {
-        let self_ref = self as &dyn StateStore;
-        let step_id = step_id.to_string();
-
-        async move {
-            // Simple implementation that delegates to existing method
-            match self_ref.get_step_result_by_id(execution_id, &step_id).await {
-                Ok(result) => Ok(Some(result)),
-                Err(_) => Ok(None), // Convert error to None for this optimized version
-            }
-        }
-        .boxed()
-    }
-
-    fn get_step_results_by_indices(
-        &self,
-        execution_id: Uuid,
-        indices: &[usize],
-    ) -> BoxFuture<'_, error_stack::Result<Vec<Option<FlowResult>>, StateError>> {
-        let self_ref = self as &dyn StateStore;
-        let indices = indices.to_vec();
-
-        async move {
-            // Simple implementation that delegates to existing method
-            let mut results = Vec::with_capacity(indices.len());
-            for &index in &indices {
-                match self_ref.get_step_result_by_index(execution_id, index).await {
-                    Ok(result) => results.push(Some(result)),
-                    Err(_) => results.push(None), // Convert error to None
-                }
-            }
             Ok(results)
         }
         .boxed()

@@ -119,25 +119,32 @@ impl StepFlowExecutor {
         }
 
         // Session doesn't exist, create a new one from state store data
-        let debug_data = self
+        let execution = self
             .state_store
-            .get_debug_session_data(execution_id)
+            .get_execution(execution_id)
             .await
-            .change_context(ExecutionError::StateError)?;
+            .change_context(ExecutionError::StateError)?
+            .ok_or_else(|| error_stack::report!(ExecutionError::ExecutionNotFound(execution_id)))?;
 
         // Extract workflow hash from execution details
-        let workflow_hash = debug_data
-            .execution
-            .workflow_hash
-            .ok_or_else(|| ExecutionError::StateError)?;
+        let workflow_hash = execution.workflow_hash;
+
+        let workflow = self
+            .state_store
+            .get_workflow(&workflow_hash)
+            .await
+            .change_context(ExecutionError::StateError)?
+            .ok_or_else(|| {
+                error_stack::report!(ExecutionError::WorkflowNotFound(workflow_hash.clone()))
+            })?;
 
         // Create a new WorkflowExecutor for this debug session
         let workflow_executor = WorkflowExecutor::new(
             self.executor(),
-            debug_data.workflow,
-            FlowHash::from(workflow_hash.as_str()),
+            workflow,
+            workflow_hash,
             execution_id,
-            debug_data.input,
+            execution.input,
             self.state_store.clone(),
         )?;
 
