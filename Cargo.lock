@@ -3064,6 +3064,7 @@ dependencies = [
  "chrono",
  "error-stack",
  "futures",
+ "serde",
  "serde_json",
  "stepflow-core",
  "thiserror 2.0.12",
