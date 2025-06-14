@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
-use error_stack::ResultExt;
+use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::FlowResult;

@@ -9,7 +9,7 @@ use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
 use tower::ServiceExt as _;
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 use url::Url;
 
@@ -40,7 +40,7 @@ async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
     executor
         .register_plugin(
             "builtin".to_owned(),
-            DynPlugin::boxed(stepflow_builtins::Builtins::default()),
+            DynPlugin::boxed(stepflow_builtins::Builtins),
         )
         .await
         .unwrap();

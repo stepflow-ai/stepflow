@@ -280,7 +280,7 @@ pub async fn get_execution(
 
     // Get execution details
     let details = state_store
-        .get_execution(execution_id.clone())
+        .get_execution(execution_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(execution_id)))?;
 
@@ -313,7 +313,7 @@ pub async fn get_execution_workflow(
 
     // Get execution details to retrieve the workflow hash
     let execution = state_store
-        .get_execution(execution_id.clone())
+        .get_execution(execution_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(execution_id)))?;
 
