@@ -19,38 +19,191 @@ const EXAMPLE_WORKFLOW = `{
   "input_schema": {
     "type": "object",
     "properties": {
-      "message": {
-        "type": "string",
-        "description": "Message to process"
+      "pattern": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
       }
-    },
-    "required": ["message"]
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "pattern_matches": {
+        "type": "array"
+      },
+      "sentiment_score": {
+        "type": "number"
+      },
+      "word_analysis": {
+        "type": "object"
+      }
+    }
   },
   "steps": [
     {
-      "id": "process_message",
-      "component": "builtins://eval",
+      "id": "create_word_analysis_blob",
+      "component": "builtins://put_blob",
+      "input_schema": null,
+      "output_schema": null,
       "input": {
-        "expression": "input.message + ' - processed'",
-        "context": {
-          "input": {
+        "data": {
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          },
+          "code": "text = data['text'].lower()\nwords = text.split()\n\nword_count = len(words)\nchar_count = len(text.replace(' ', ''))\n\n# Count word lengths\nword_lengths = {}\nfor word in words:\n    length = len(word)\n    word_lengths[length] = word_lengths.get(length, 0) + 1\n\n# Find most common words\nword_freq = {}\nfor word in words:\n    word_freq[word] = word_freq.get(word, 0) + 1\n\nmost_common = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:3]\n\nreturn {\n    'word_count': word_count,\n    'char_count': char_count,\n    'avg_word_length': round(char_count / word_count, 2) if word_count > 0 else 0,\n    'word_length_distribution': word_lengths,\n    'most_common_words': [{'word': word, 'count': count} for word, count in most_common]\n}\n"
+        }
+      }
+    },
+    {
+      "id": "create_pattern_search_blob",
+      "component": "builtins://put_blob",
+      "input_schema": null,
+      "output_schema": null,
+      "input": {
+        "data": {
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "pattern"
+            ]
+          },
+          "code": "text = data['text']\npattern = data['pattern']\n\ntry:\n    matches = re.findall(pattern, text)\n    return [{'match': match, 'index': i} for i, match in enumerate(matches)]\nexcept:\n    return []\n"
+        }
+      }
+    },
+    {
+      "id": "create_sentiment_analysis_blob",
+      "component": "builtins://put_blob",
+      "input_schema": null,
+      "output_schema": null,
+      "input": {
+        "data": {
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          },
+          "code": "# Simple sentiment analysis based on positive/negative words\npositive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'joy']\nnegative_words = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'sad', 'angry', 'upset', 'disappointed']\n\ntext = data['text'].lower()\nwords = text.split()\n\npositive_count = sum(1 for word in words if word in positive_words)\nnegative_count = sum(1 for word in words if word in negative_words)\n\ntotal_sentiment_words = positive_count + negative_count\nif total_sentiment_words == 0:\n    return 0.0  # Neutral\n\n# Return score between -1 (very negative) and 1 (very positive)\nsentiment_score = (positive_count - negative_count) / total_sentiment_words\nreturn round(sentiment_score, 2)\n"
+        }
+      }
+    },
+    {
+      "id": "word_analysis",
+      "component": "python://udf",
+      "input_schema": null,
+      "output_schema": null,
+      "input": {
+        "blob_id": {
+          "$from": {
+            "step": "create_word_analysis_blob"
+          },
+          "path": "blob_id"
+        },
+        "input": {
+          "text": {
             "$from": {
               "workflow": "input"
-            }
+            },
+            "path": "text"
+          }
+        }
+      }
+    },
+    {
+      "id": "pattern_search",
+      "component": "python://udf",
+      "input_schema": null,
+      "output_schema": null,
+      "input": {
+        "blob_id": {
+          "$from": {
+            "step": "create_pattern_search_blob"
+          },
+          "path": "blob_id"
+        },
+        "input": {
+          "text": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "text"
+          },
+          "pattern": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "pattern"
+          }
+        }
+      }
+    },
+    {
+      "id": "sentiment_analysis",
+      "component": "python://udf",
+      "input_schema": null,
+      "output_schema": null,
+      "input": {
+        "blob_id": {
+          "$from": {
+            "step": "create_sentiment_analysis_blob"
+          },
+          "path": "blob_id"
+        },
+        "input": {
+          "text": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "text"
           }
         }
       }
     }
   ],
   "output": {
-    "result": {
+    "word_analysis": {
       "$from": {
-        "step": "process_message"
-      },
-      "path": "result"
+        "step": "word_analysis"
+      }
+    },
+    "pattern_matches": {
+      "$from": {
+        "step": "pattern_search"
+      }
+    },
+    "sentiment_score": {
+      "$from": {
+        "step": "sentiment_analysis"
+      }
     }
   }
-}`
+}
+`
 
 export function CreateEndpointDialog({ trigger }: CreateEndpointDialogProps) {
   const [open, setOpen] = useState(false)
@@ -63,7 +216,7 @@ export function CreateEndpointDialog({ trigger }: CreateEndpointDialogProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!name.trim()) {
       return
     }
@@ -216,8 +369,8 @@ export function CreateEndpointDialog({ trigger }: CreateEndpointDialogProps) {
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={!name.trim() || !workflowContent.trim() || createEndpointMutation.isPending}
             >
               {createEndpointMutation.isPending ? (

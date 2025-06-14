@@ -46,6 +46,15 @@ pub fn analyze_workflow_dependencies(
         }
     }
 
+    // Analyze workflow output dependencies
+    let output_dependencies = extract_dependencies_from_value(
+        &flow.output,
+        &step_id_to_index,
+        usize::MAX, // Use MAX to indicate this is workflow output, not a specific step
+        DestinationField::Output,
+    )?;
+    dependencies.extend(output_dependencies);
+
     // Build the Dependencies structure from the analyzed dependencies
     let mut dependencies_builder = crate::tracker::DependenciesBuilder::new(flow.steps.len());
 
@@ -93,7 +102,7 @@ fn extract_dependencies_from_expr(
     if let Expr::Ref {
         from: BaseRef::Step { step },
         path,
-        ..
+        on_skip,
     } = expr
     {
         let depends_on_step_index = *step_id_to_index.get(step).ok_or_else(|| {
@@ -107,6 +116,7 @@ fn extract_dependencies_from_expr(
             depends_on_step_index,
             src_path: path.clone(),
             dst_field,
+            skip_action: on_skip.clone(),
         }]);
     }
     Ok(vec![])
@@ -129,7 +139,7 @@ fn extract_dependencies_from_value(
             } else if map.contains_key("$from") {
                 // This is a reference object
                 match serde_json::from_value::<Expr>(value.clone()) {
-                    Ok(Expr::Ref { from, path, .. }) => {
+                    Ok(Expr::Ref { from, path, on_skip }) => {
                         // Successfully parsed as a reference expression
                         if let BaseRef::Step { step } = from {
                             let depends_on_step_index =
@@ -144,6 +154,7 @@ fn extract_dependencies_from_value(
                                 depends_on_step_index,
                                 src_path: path,
                                 dst_field: dst_field.clone(),
+                                skip_action: on_skip,
                             });
                         }
                         // Don't recurse into reference objects
@@ -248,10 +259,15 @@ mod tests {
         let flow = create_test_flow();
         let analysis = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
 
-        assert_eq!(analysis.dependencies.len(), 1);
-        let dep = &analysis.dependencies[0];
-        assert_eq!(dep.step_index, 1); // step2
-        assert_eq!(dep.depends_on_step_index, 0); // step1
+        // Should find 2 dependencies: step2 -> step1 (input) + workflow output -> step2
+        assert_eq!(analysis.dependencies.len(), 2);
+        
+        // Find the step input dependency
+        let step_dep = analysis.dependencies.iter()
+            .find(|dep| dep.step_index == 1 && dep.depends_on_step_index == 0)
+            .expect("Should find step2 -> step1 dependency");
+        assert_eq!(step_dep.step_index, 1); // step2
+        assert_eq!(step_dep.depends_on_step_index, 0); // step1
     }
 
     #[test]
@@ -270,11 +286,17 @@ mod tests {
 
         let analysis = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
 
-        // Should find 2 dependencies: input dependency + skip condition dependency
-        assert_eq!(analysis.dependencies.len(), 2);
+        // Should find 3 dependencies: input dependency + skip condition dependency + workflow output dependency
+        assert_eq!(analysis.dependencies.len(), 3);
 
+        // Find step2's dependencies (input and skip condition)
+        let step2_deps: Vec<_> = analysis.dependencies.iter()
+            .filter(|dep| dep.step_index == 1)
+            .collect();
+        assert_eq!(step2_deps.len(), 2);
+        
         // Both should be from step2 to step1
-        for dep in &analysis.dependencies {
+        for dep in step2_deps {
             assert_eq!(dep.step_index, 1); // step2
             assert_eq!(dep.depends_on_step_index, 0); // step1
         }

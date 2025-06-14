@@ -146,12 +146,12 @@ export const apiClient = {
     return response.data
   },
 
-  getWorkflowDependencies: async (workflowHash: string): Promise<{ dependencies: unknown[] }> => {
+  getWorkflowDependencies: async (workflowHash: string): Promise<WorkflowDependenciesResponse> => {
     const response = await api.get(`/workflows/${workflowHash}/dependencies`)
     return response.data
   },
 
-  getEndpointDependencies: async (name: string, label?: string): Promise<{ dependencies: unknown[] }> => {
+  getEndpointDependencies: async (name: string, label?: string): Promise<WorkflowDependenciesResponse> => {
     const url = label ? `/endpoints/${name}/dependencies?label=${label}` : `/endpoints/${name}/dependencies`
     const response = await api.get(url)
     return response.data
@@ -167,22 +167,22 @@ export interface ExecutionDetails {
   created_at: string
   completed_at?: string
   debug_mode: boolean
-  final_result?: unknown
+  result?: unknown
 }
 
 export interface StepExecution {
   step_index: number
   step_id?: string
+  component?: string
+  state: 'blocked' | 'runnable' | 'running' | 'completed' | 'failed' | 'skipped'
   result?: {
-    Success?: unknown
-    Failed?: {
-      error_code: number
+    outcome: 'success' | 'failed' | 'skipped'
+    result?: unknown
+    error?: {
+      code: number
       message: string
     }
-    Skipped?: unknown
   }
-  started_at?: string
-  completed_at?: string
 }
 
 export interface Workflow {
@@ -251,6 +251,31 @@ export interface ComponentInfo {
   description?: string
   input_schema?: unknown
   output_schema?: unknown
+}
+
+export interface WorkflowDependenciesResponse {
+  workflow_hash: string
+  dependencies: StepDependency[]
+}
+
+export interface StepDependency {
+  step_index: number
+  depends_on_step_index: number
+  src_path?: string
+  dst_field: DestinationField
+  skip_action: SkipAction
+}
+
+export interface DestinationField {
+  skip_if?: boolean
+  input?: boolean
+  input_field?: string
+  output?: boolean
+}
+
+export interface SkipAction {
+  action: 'skip' | 'use_default'
+  default_value?: unknown
 }
 
 export default apiClient

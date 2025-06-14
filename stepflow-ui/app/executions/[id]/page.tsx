@@ -10,14 +10,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { 
-  ArrowLeft, 
-  Activity, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
-  Play, 
-  Pause, 
+import {
+  ArrowLeft,
+  Activity,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Play,
+  Pause,
   RotateCcw,
   Eye,
   Bug,
@@ -27,7 +27,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { WorkflowVisualizer } from '@/components/workflow-visualizer'
-import { useExecution, useExecutionSteps, useExecutionWorkflow, transformStepsForVisualizer } from '@/lib/hooks/use-api'
+import { useExecution, useExecutionSteps, useExecutionWorkflow, useWorkflowDependencies, transformStepsForVisualizer } from '@/lib/hooks/use-api'
 
 // Helper functions
 const formatDate = (dateString: string) => {
@@ -48,7 +48,7 @@ const getDuration = (createdAt: string, completedAt?: string) => {
   const diffSecs = Math.floor(diffMs / 1000)
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)
-  
+
   if (diffSecs < 60) return `${diffSecs}s`
   if (diffMins < 60) return `${diffMins}m ${diffSecs % 60}s`
   if (diffHours < 24) return `${diffHours}h ${diffMins % 60}m`
@@ -73,11 +73,11 @@ function getStatusIcon(status: string, className = "h-4 w-4") {
 function getStatusBadge(status: string) {
   const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
     completed: 'default',
-    running: 'secondary', 
+    running: 'secondary',
     failed: 'destructive',
     pending: 'outline',
   }
-  
+
   return (
     <Badge variant={variants[status] || 'outline'}>
       {status}
@@ -122,23 +122,32 @@ function StepOutputDialog({ step }: { step: { id: string; name: string; componen
   )
 }
 
-function WorkflowVisualization({ 
-  visualizerSteps, 
-  isDebugMode, 
-  isLoading 
-}: { 
+function WorkflowVisualization({
+  visualizerSteps,
+  dependencies,
+  workflow,
+  isDebugMode,
+  isLoading
+}: {
   visualizerSteps: Array<{
     id: string
     name: string
     component: string
     status: 'completed' | 'running' | 'failed' | 'pending'
-    dependencies: string[]
     startTime: string | null
     duration: string | null
     output: string | null
-  }>, 
-  isDebugMode: boolean, 
-  isLoading: boolean 
+  }>,
+  dependencies?: Array<{
+    step_index: number
+    depends_on_step_index: number
+    src_path?: string
+    dst_field: { skip_if?: boolean; input?: boolean; input_field?: string }
+    skip_action: { action: 'skip' | 'use_default'; default_value?: unknown }
+  }>,
+  workflow?: any,
+  isDebugMode: boolean,
+  isLoading: boolean
 }) {
   const handleStepClick = (stepId: string) => {
     const step = visualizerSteps.find(s => s.id === stepId)
@@ -174,8 +183,10 @@ function WorkflowVisualization({
   }
 
   return (
-    <WorkflowVisualizer 
+    <WorkflowVisualizer
       steps={visualizerSteps}
+      dependencies={dependencies}
+      workflow={workflow}
       isDebugMode={isDebugMode}
       onStepClick={handleStepClick}
       onStepExecute={handleStepExecute}
@@ -188,14 +199,14 @@ export default function ExecutionDetailsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const executionId = params.id as string
-  
+
   // Get tab from URL or default to 'overview'
   const validTabs = ['overview', 'steps', 'visualization'] as const
   const tabFromUrl = searchParams.get('tab')
-  const selectedTab: string = tabFromUrl && validTabs.includes(tabFromUrl as typeof validTabs[number]) 
-    ? tabFromUrl 
+  const selectedTab: string = tabFromUrl && validTabs.includes(tabFromUrl as typeof validTabs[number])
+    ? tabFromUrl
     : 'overview'
-  
+
   // Function to update tab in URL
   const setSelectedTab = (tab: string) => {
     const newParams = new URLSearchParams(searchParams.toString())
@@ -213,23 +224,25 @@ export default function ExecutionDetailsPage() {
   const { data: execution, isLoading: executionLoading, error: executionError, refetch: refetchExecution } = useExecution(executionId)
   const { data: steps, isLoading: stepsLoading, error: stepsError, refetch: refetchSteps } = useExecutionSteps(executionId)
   const { data: workflowData, isLoading: workflowLoading, error: workflowError, refetch: refetchWorkflow } = useExecutionWorkflow(executionId)
+  const { data: workflowDependencies, isLoading: dependenciesLoading, error: dependenciesError, refetch: refetchDependencies } = useWorkflowDependencies(execution?.workflow_hash || workflowData?.workflow_hash || '')
 
   const refetchAll = () => {
     refetchExecution()
     refetchSteps()
     refetchWorkflow()
+    refetchDependencies()
   }
 
   // Transform data for display
   const workflowName = execution?.endpoint_name || workflowData?.workflow?.name || 'Ad-hoc Execution'
   const isDebugMode = execution?.debug_mode || false
   const totalSteps = workflowData?.workflow?.steps?.length || 0
-  const completedSteps = steps?.filter(step => 
-    step.result?.Success !== undefined || 
-    step.result?.Failed !== undefined || 
+  const completedSteps = steps?.filter(step =>
+    step.result?.Success !== undefined ||
+    step.result?.Failed !== undefined ||
     step.result?.Skipped !== undefined
   ).length || 0
-  const runningSteps = steps?.filter(step => 
+  const runningSteps = steps?.filter(step =>
     step.started_at && !step.completed_at
   ).length || 0
   const pendingSteps = totalSteps - completedSteps - runningSteps
@@ -239,7 +252,7 @@ export default function ExecutionDetailsPage() {
   const visualizerSteps = transformStepsForVisualizer(steps || [], workflowData?.workflow)
 
   // Error handling
-  if (executionError || stepsError || workflowError) {
+  if (executionError || stepsError || workflowError || dependenciesError) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
@@ -249,7 +262,7 @@ export default function ExecutionDetailsPage() {
             </Link>
           </Button>
         </div>
-        
+
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
@@ -257,7 +270,7 @@ export default function ExecutionDetailsPage() {
               Failed to load execution
             </h2>
             <p className="text-muted-foreground mb-4">
-              {executionError?.message || stepsError?.message || workflowError?.message || 'Unknown error occurred'}
+              {executionError?.message || stepsError?.message || workflowError?.message || dependenciesError?.message || 'Unknown error occurred'}
             </p>
             <Button onClick={refetchAll}>
               <RotateCcw className="mr-2 h-4 w-4" />
@@ -307,8 +320,8 @@ export default function ExecutionDetailsPage() {
               </Button>
             </>
           )}
-          <Button variant="outline" size="sm" onClick={refetchAll} disabled={executionLoading || stepsLoading || workflowLoading}>
-            <RotateCcw className={`mr-2 h-4 w-4 ${(executionLoading || stepsLoading || workflowLoading) ? 'animate-spin' : ''}`} />
+          <Button variant="outline" size="sm" onClick={refetchAll} disabled={executionLoading || stepsLoading || workflowLoading || dependenciesLoading}>
+            <RotateCcw className={`mr-2 h-4 w-4 ${(executionLoading || stepsLoading || workflowLoading || dependenciesLoading) ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
@@ -337,7 +350,7 @@ export default function ExecutionDetailsPage() {
             )}
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Duration</CardTitle>
@@ -458,10 +471,10 @@ export default function ExecutionDetailsPage() {
                   <div className="flex items-center justify-center h-32">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                ) : execution?.final_result ? (
+                ) : execution?.result ? (
                   <div className="bg-muted rounded-lg p-4">
                     <pre className="text-sm font-mono whitespace-pre-wrap">
-                      {JSON.stringify(execution.final_result, null, 2)}
+                      {JSON.stringify(execution.result, null, 2)}
                     </pre>
                   </div>
                 ) : (
@@ -487,7 +500,7 @@ export default function ExecutionDetailsPage() {
             </CardHeader>
             <CardContent>
               <TooltipProvider>
-{stepsLoading ? (
+                {stepsLoading ? (
                   <div className="flex items-center justify-center h-32">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
@@ -561,8 +574,8 @@ export default function ExecutionDetailsPage() {
                                   </TooltipTrigger>
                                   <TooltipContent side="left" className="max-w-80">
                                     <pre className="text-xs whitespace-pre-wrap">
-                                      {output.length > 200 
-                                        ? `${output.substring(0, 200)}...` 
+                                      {output.length > 200
+                                        ? `${output.substring(0, 200)}...`
                                         : output
                                       }
                                     </pre>
@@ -602,10 +615,12 @@ export default function ExecutionDetailsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <WorkflowVisualization 
+              <WorkflowVisualization
                 visualizerSteps={visualizerSteps}
+                dependencies={workflowDependencies?.dependencies}
+                workflow={workflowData?.workflow}
                 isDebugMode={isDebugMode}
-                isLoading={workflowLoading || stepsLoading}
+                isLoading={workflowLoading || stepsLoading || dependenciesLoading}
               />
             </CardContent>
           </Card>

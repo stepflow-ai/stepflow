@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
-use stepflow_core::workflow::{Flow, FlowHash};
+use stepflow_core::workflow::{Flow, FlowHash, SkipAction};
 
 use crate::tracker::{Dependencies, DependencyTracker};
 
@@ -16,6 +16,8 @@ pub struct StepDependency {
     pub src_path: Option<String>,
     /// Where the dependency is used in the dependent step.
     pub dst_field: DestinationField,
+    /// The skip action for this dependency (determines if it's optional)
+    pub skip_action: SkipAction,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -27,6 +29,8 @@ pub enum DestinationField {
     Input,
     /// The dependency is used in a specific top-level field of the step's input.
     InputField(String),
+    /// The dependency is used in the workflow output.
+    Output,
 }
 
 /// Results of analyzing a workflow for dependencies
