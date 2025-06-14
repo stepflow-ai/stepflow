@@ -3034,17 +3034,22 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "error-stack",
  "serde",
  "serde_json",
  "stepflow-analysis",
+ "stepflow-builtins",
  "stepflow-core",
  "stepflow-execution",
  "stepflow-plugin",
  "stepflow-state",
+ "thiserror 2.0.12",
  "tokio",
  "tower",
  "tower-http",
  "tracing",
+ "tracing-error",
+ "tracing-subscriber",
  "url",
  "utoipa",
  "utoipa-axum",
@@ -3745,6 +3750,7 @@ dependencies = [
  "regex",
  "syn 2.0.103",
  "url",
+ "uuid",
 ]
 
 [[package]]

@@ -1,5 +1,6 @@
-use stepflow_core::workflow::{BaseRef, ValueRef};
+use stepflow_core::workflow::{BaseRef, FlowHash, ValueRef};
 use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ExecutionError {
@@ -37,6 +38,10 @@ pub enum ExecutionError {
     StateError,
     #[error("error analyzing workflow")]
     AnalysisError,
+    #[error("execution '{0}' not found")]
+    ExecutionNotFound(Uuid),
+    #[error("workflow '{0}' not found")]
+    WorkflowNotFound(FlowHash),
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

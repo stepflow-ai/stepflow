@@ -5,14 +5,45 @@ use serde_json::json;
 use std::sync::Arc;
 use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, ValueRef};
 use stepflow_execution::StepFlowExecutor;
+use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
 use tower::ServiceExt as _;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt as _;
 use url::Url;
+
+static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
+
+/// Makes sure logging is initialized for test.
+///
+/// This needs to be called on each test.
+pub fn init_test_logging() {
+    INIT_TEST_LOGGING.call_once(|| {
+        // We don't use a test writer for end to end tests.
+        let fmt_layer = tracing_subscriber::fmt::layer();
+
+        tracing_subscriber::registry()
+            .with(EnvFilter::new("stepflow_=trace,info"))
+            .with(fmt_layer)
+            .with(tracing_error::ErrorLayer::default())
+            .try_init()
+            .unwrap();
+    });
+}
 
 /// Helper to create a test server with in-memory state
 async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
     let state_store = Arc::new(InMemoryStateStore::new());
     let executor = StepFlowExecutor::new(state_store);
+
+    executor
+        .register_plugin(
+            "builtin".to_owned(),
+            DynPlugin::boxed(stepflow_builtins::Builtins::default()),
+        )
+        .await
+        .unwrap();
 
     // Use the real startup logic but without swagger UI for tests
     use stepflow_server::startup::AppConfig;
@@ -36,8 +67,10 @@ fn create_test_workflow() -> Flow {
         output_schema: None,
         steps: vec![Step {
             id: "test_step".to_string(),
-            component: Component::new(Url::parse("builtin://messages").unwrap()),
-            input: ValueRef::new(json!("Hello from test")),
+            component: Component::new(Url::parse("builtin://create_messages").unwrap()),
+            input: ValueRef::new(json!({
+                "user_prompt": "Hello from test"
+            })),
             input_schema: None,
             output_schema: None,
             skip_if: None,
@@ -50,6 +83,8 @@ fn create_test_workflow() -> Flow {
 
 #[tokio::test]
 async fn test_health_endpoint() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
 
     let request = Request::builder()
@@ -73,6 +108,8 @@ async fn test_health_endpoint() {
 
 #[tokio::test]
 async fn test_workflow_crud_operations() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -146,6 +183,8 @@ async fn test_workflow_crud_operations() {
 
 #[tokio::test]
 async fn test_endpoint_crud_operations() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -246,6 +285,8 @@ async fn test_endpoint_crud_operations() {
 
 #[tokio::test]
 async fn test_endpoint_with_labels() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -325,6 +366,8 @@ async fn test_endpoint_with_labels() {
 
 #[tokio::test]
 async fn test_ad_hoc_execution() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -353,11 +396,16 @@ async fn test_ad_hoc_execution() {
 
     assert!(execute_response["execution_id"].is_string());
     assert_eq!(execute_response["debug"], false);
-    // Note: The actual result depends on whether builtin://messages is available
+    assert_eq!(execute_response["status"], "completed");
+    // Workflow completes successfully with null output as defined in workflow
+    assert_eq!(execute_response["result"]["outcome"], "success");
+    assert!(execute_response["result"]["result"].is_null());
 }
 
 #[tokio::test]
 async fn test_debug_execution() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -427,6 +475,8 @@ async fn test_debug_execution() {
 
 #[tokio::test]
 async fn test_execution_tracking() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
 
     // List executions (should be empty initially)
@@ -449,6 +499,8 @@ async fn test_execution_tracking() {
 
 #[tokio::test]
 async fn test_components_endpoint() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
 
     // List components
@@ -487,6 +539,8 @@ async fn test_components_endpoint() {
 
 #[tokio::test]
 async fn test_error_responses() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
 
     // Test 404 for non-existent endpoint
@@ -523,6 +577,8 @@ async fn test_error_responses() {
 
 #[tokio::test]
 async fn test_cors_headers() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
 
     // Test OPTIONS request for CORS
@@ -548,6 +604,8 @@ async fn test_cors_headers() {
 
 #[tokio::test]
 async fn test_workflow_deletion() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -598,6 +656,8 @@ async fn test_workflow_deletion() {
 
 #[tokio::test]
 async fn test_endpoint_execution() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -683,6 +743,8 @@ async fn test_endpoint_execution() {
 
 #[tokio::test]
 async fn test_execution_details() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -738,6 +800,8 @@ async fn test_execution_details() {
 
 #[tokio::test]
 async fn test_execution_workflow_retrieval() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -787,6 +851,8 @@ async fn test_execution_workflow_retrieval() {
 
 #[tokio::test]
 async fn test_execution_step_details() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
@@ -849,6 +915,8 @@ async fn test_execution_step_details() {
 
 #[tokio::test]
 async fn test_debug_continue_execution() {
+    init_test_logging();
+
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 

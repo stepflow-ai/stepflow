@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -12,6 +11,8 @@ use stepflow_execution::StepFlowExecutor;
 use stepflow_state::Endpoint;
 use utoipa::{OpenApi, ToSchema};
 use uuid::Uuid;
+
+use crate::error::{ErrorResponse, ServerError};
 
 /// Request to create or update an endpoint
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -144,29 +145,25 @@ pub async fn create_endpoint(
     Path(name): Path<String>,
     Query(query): Query<EndpointQuery>,
     Json(req): Json<CreateEndpointRequest>,
-) -> Result<Json<EndpointResponse>, StatusCode> {
+) -> Result<Json<EndpointResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // Store the workflow in the state store
     let workflow = req.workflow;
     let workflow_hash = Flow::hash(&workflow);
 
-    state_store
-        .store_workflow(workflow.clone())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    state_store.store_workflow(workflow.clone()).await?;
 
     // Create or update the endpoint
     state_store
-        .create_endpoint(&name, query.label.as_deref(), &workflow_hash.to_string())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .create_endpoint(&name, query.label.as_deref(), workflow_hash)
+        .await?;
 
     // Retrieve the created endpoint to return
     let endpoint = state_store
         .get_endpoint(&name, query.label.as_deref())
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::EndpointNotFound(name.clone())))?;
 
     Ok(Json(EndpointResponse::from(endpoint)))
 }
@@ -183,13 +180,10 @@ pub async fn create_endpoint(
 pub async fn list_endpoints(
     State(executor): State<Arc<StepFlowExecutor>>,
     Query(query): Query<ListEndpointsQuery>,
-) -> Result<Json<ListEndpointsResponse>, StatusCode> {
+) -> Result<Json<ListEndpointsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
-    let endpoints = state_store
-        .list_endpoints(query.name.as_deref())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let endpoints = state_store.list_endpoints(query.name.as_deref()).await?;
 
     let endpoint_responses: Vec<EndpointResponse> =
         endpoints.into_iter().map(EndpointResponse::from).collect();
@@ -216,13 +210,13 @@ pub async fn get_endpoint(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(name): Path<String>,
     Query(query): Query<EndpointQuery>,
-) -> Result<Json<EndpointResponse>, StatusCode> {
+) -> Result<Json<EndpointResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
     let endpoint = state_store
         .get_endpoint(&name, query.label.as_deref())
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::EndpointNotFound(name.clone())))?;
 
     Ok(Json(EndpointResponse::from(endpoint)))
 }
@@ -236,7 +230,7 @@ pub async fn get_endpoint(
     ),
     responses(
         (status = 200, description = "Endpoint workflow retrieved successfully", body = WorkflowResponse),
-        (status = 404, description = "Endpoint not found"),
+        (status = 404, description = "Endpoint or workflow not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -244,24 +238,28 @@ pub async fn get_endpoint_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(name): Path<String>,
     Query(query): Query<EndpointQuery>,
-) -> Result<Json<WorkflowResponse>, StatusCode> {
+) -> Result<Json<WorkflowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // Get the endpoint to retrieve the workflow hash
     let endpoint = state_store
         .get_endpoint(&name, query.label.as_deref())
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::EndpointNotFound(name.clone())))?;
 
     // Get the workflow from the state store
     let workflow = state_store
         .get_workflow(&endpoint.workflow_hash)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::WorkflowNotFound(
+                endpoint.workflow_hash.clone()
+            ))
+        })?;
 
     Ok(Json(WorkflowResponse {
         workflow,
-        workflow_hash: FlowHash::from(endpoint.workflow_hash.as_str()),
+        workflow_hash: endpoint.workflow_hash,
     }))
 }
 
@@ -274,7 +272,7 @@ pub async fn get_endpoint_workflow(
     ),
     responses(
         (status = 200, description = "Endpoint workflow dependencies retrieved successfully", body = WorkflowDependenciesResponse),
-        (status = 404, description = "Endpoint not found"),
+        (status = 404, description = "Endpoint or workflow not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -282,29 +280,31 @@ pub async fn get_endpoint_workflow_dependencies(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(name): Path<String>,
     Query(query): Query<EndpointQuery>,
-) -> Result<Json<WorkflowDependenciesResponse>, StatusCode> {
+) -> Result<Json<WorkflowDependenciesResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // Get the endpoint to retrieve the workflow hash
     let endpoint = state_store
         .get_endpoint(&name, query.label.as_deref())
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::EndpointNotFound(name.clone())))?;
 
     // Get the workflow from the state store
     let workflow = state_store
         .get_workflow(&endpoint.workflow_hash)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::WorkflowNotFound(
+                endpoint.workflow_hash.clone()
+            ))
+        })?;
 
     // TODO: We should cache the analysis based on the workflow ID.
-    let workflow_hash = FlowHash::from(endpoint.workflow_hash.as_str());
     let analysis =
-        stepflow_analysis::analyze_workflow_dependencies(workflow, workflow_hash.clone())
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        stepflow_analysis::analyze_workflow_dependencies(workflow, endpoint.workflow_hash.clone())?;
 
     Ok(Json(WorkflowDependenciesResponse {
-        workflow_hash,
+        workflow_hash: endpoint.workflow_hash,
         dependencies: analysis.dependencies,
     }))
 }
@@ -326,7 +326,7 @@ pub async fn delete_endpoint(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(name): Path<String>,
     Query(query): Query<EndpointQuery>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<serde_json::Value>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // For non-wildcard deletes, check if endpoint exists first
@@ -336,14 +336,17 @@ pub async fn delete_endpoint(
             .await
             .is_err()
     {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(error_stack::report!(ServerError::EndpointLabelNotFound {
+            name,
+            label: query.label.clone()
+        })
+        .into());
     }
 
     // Delete the endpoint(s)
     state_store
         .delete_endpoint(&name, query.label.as_deref())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     let message = if query.label.as_deref() == Some("*") {
         format!("All versions of endpoint '{}' deleted successfully", name)
@@ -375,30 +378,26 @@ pub async fn execute_endpoint(
     Path(name): Path<String>,
     Query(query): Query<EndpointQuery>,
     Json(req): Json<ExecuteEndpointRequest>,
-) -> Result<Json<ExecuteResponse>, StatusCode> {
+) -> Result<Json<ExecuteResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // Get the endpoint to retrieve the workflow hash
     let endpoint = state_store
         .get_endpoint(&name, query.label.as_deref())
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::EndpointNotFound(name.clone())))?;
 
     // Get the workflow from the state store
     let workflow = state_store
         .get_workflow(&endpoint.workflow_hash)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::WorkflowNotFound(
+                endpoint.workflow_hash.clone()
+            ))
+        })?;
 
     let execution_id = Uuid::new_v4();
-
-    // Store input as blob
-    let input_blob_id = Some(
-        state_store
-            .put_blob(req.input.clone())
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-    );
 
     // Create execution record
     state_store
@@ -406,12 +405,11 @@ pub async fn execute_endpoint(
             execution_id,
             Some(&name),            // Include endpoint name
             query.label.as_deref(), // Include endpoint label
-            Some(&endpoint.workflow_hash),
+            endpoint.workflow_hash.clone(),
             req.debug,
-            input_blob_id.as_ref(),
+            req.input.clone(),
         )
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
     let debug_mode = req.debug;
     let input = req.input;
@@ -419,9 +417,9 @@ pub async fn execute_endpoint(
     if debug_mode {
         // In debug mode, return immediately without executing
         // The execution will be controlled via debug endpoints
-        let _ = state_store
+        state_store
             .update_execution_status(execution_id, ExecutionStatus::Running, None)
-            .await;
+            .await?;
 
         return Ok(Json(ExecuteResponse {
             execution_id: execution_id.to_string(),
@@ -435,36 +433,24 @@ pub async fn execute_endpoint(
     use stepflow_plugin::Context as _;
 
     // Submit the workflow for execution
-    let workflow_hash = FlowHash::from(endpoint.workflow_hash.as_str());
     let submitted_execution_id = executor
-        .submit_flow(workflow, workflow_hash, input)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .submit_flow(workflow, endpoint.workflow_hash, input)
+        .await?;
 
     // Wait for the result (synchronous execution for the HTTP endpoint)
-    let flow_result = match executor.flow_result(submitted_execution_id).await {
-        Ok(result) => result,
-        Err(_) => {
-            // Update execution status to failed
-            let _ = state_store
-                .update_execution_status(execution_id, ExecutionStatus::Failed, None)
-                .await;
-
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
+    let flow_result = executor.flow_result(submitted_execution_id).await?;
 
     // Check if the workflow execution was successful
     match &flow_result {
-        stepflow_core::FlowResult::Success { .. } => {
+        stepflow_core::FlowResult::Success { result } => {
             // Update execution status to completed
-            let _ = state_store
+            state_store
                 .update_execution_status(
                     execution_id,
                     ExecutionStatus::Completed,
-                    None, // TODO: Store result as blob
+                    Some(result.clone()),
                 )
-                .await;
+                .await?;
 
             Ok(Json(ExecuteResponse {
                 execution_id: execution_id.to_string(),
@@ -475,9 +461,9 @@ pub async fn execute_endpoint(
         }
         stepflow_core::FlowResult::Failed { .. } | stepflow_core::FlowResult::Skipped => {
             // Update execution status to failed
-            let _ = state_store
+            state_store
                 .update_execution_status(execution_id, ExecutionStatus::Failed, None)
-                .await;
+                .await?;
 
             Ok(Json(ExecuteResponse {
                 execution_id: execution_id.to_string(),
@@ -495,7 +481,7 @@ impl From<Endpoint> for EndpointResponse {
         Self {
             name: endpoint.name,
             label: endpoint.label,
-            workflow_hash: FlowHash::from(endpoint.workflow_hash.as_str()),
+            workflow_hash: endpoint.workflow_hash,
             created_at: endpoint.created_at.to_rfc3339(),
             updated_at: endpoint.updated_at.to_rfc3339(),
         }

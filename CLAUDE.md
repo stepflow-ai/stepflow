@@ -225,6 +225,27 @@ StepFlow uses a dual error approach to distinguish between business logic and sy
 - Add context with `error_stack::ResultExt::attach_printable`
 - Define custom error types with `thiserror::Error`
 
+#### State Store Error Pattern
+The state store follows a specific pattern for handling "not found" conditions:
+
+- **Use `Option<T>` in `Ok` results**: Things like `NotFound` should be indicated in the `Ok(..)` result by returning `Option<T>`
+- **Reserve `Err` for system failures**: Only use `Err(..)` for actual system/infrastructure errors like database connection failures, serialization errors, etc.
+- **Let the server layer decide HTTP codes**: This allows the server to inspect the `Ok(None)` value and select the appropriate HTTP status code (404, etc.) rather than digging through error stacks
+
+Example patterns:
+```rust
+// Good: Not found is represented as Ok(None)
+fn get_workflow(&self, hash: &FlowHash) -> Result<Option<Arc<Flow>>, StateError>;
+
+// Bad: Not found as an error makes HTTP code selection harder
+fn get_workflow(&self, hash: &FlowHash) -> Result<Arc<Flow>, StateError>;
+```
+
+This pattern enables clean error handling where:
+- `Ok(Some(value))` → 200 OK with data
+- `Ok(None)` → 404 Not Found
+- `Err(system_error)` → 500 Internal Server Error
+
 ### Derive Patterns
 
 Use consistent derive patterns based on type purpose:

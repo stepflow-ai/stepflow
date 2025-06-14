@@ -1,6 +1,5 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -9,6 +8,8 @@ use stepflow_core::schema::SchemaRef;
 use stepflow_execution::StepFlowExecutor;
 use stepflow_plugin::Plugin as _;
 use utoipa::{IntoParams, OpenApi, ToSchema};
+
+use crate::error::ErrorResponse;
 
 /// Component information for API responses
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -68,7 +69,7 @@ pub struct ComponentsApi;
 pub async fn list_components(
     State(executor): State<Arc<StepFlowExecutor>>,
     Query(query): Query<ListComponentsQuery>,
-) -> Result<Json<ListComponentsResponse>, StatusCode> {
+) -> Result<Json<ListComponentsResponse>, ErrorResponse> {
     let include_schemas = query.include_schemas;
 
     // Get all registered plugins and query their components
@@ -77,17 +78,11 @@ pub async fn list_components(
     // Get the list of plugins from the executor
     for (plugin_name, plugin) in executor.list_plugins().await {
         // List components available from this plugin
-        let components = plugin
-            .list_components()
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let components = plugin.list_components().await?;
 
         // For each component, get detailed information
         for component in components {
-            let info = plugin
-                .component_info(&component)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let info = plugin.component_info(&component).await?;
 
             let component_response = ComponentInfoResponse {
                 name: component.url().to_string(),

@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -9,6 +8,8 @@ use stepflow_analysis::StepDependency;
 use stepflow_core::workflow::{Flow, FlowHash};
 use stepflow_execution::StepFlowExecutor;
 use utoipa::{OpenApi, ToSchema};
+
+use crate::error::{ErrorResponse, ServerError};
 
 /// Request to store a workflow
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -82,15 +83,12 @@ pub struct WorkflowApi;
 pub async fn store_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
     Json(req): Json<StoreWorkflowRequest>,
-) -> Result<Json<StoreWorkflowResponse>, StatusCode> {
+) -> Result<Json<StoreWorkflowResponse>, ErrorResponse> {
     let workflow = req.workflow;
     let workflow_hash = Flow::hash(&workflow);
 
     let state_store = executor.state_store();
-    state_store
-        .store_workflow(workflow.clone())
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    state_store.store_workflow(workflow.clone()).await?;
 
     Ok(Json(StoreWorkflowResponse { workflow_hash }))
 }
@@ -109,15 +107,16 @@ pub async fn store_workflow(
 )]
 pub async fn get_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(workflow_hash_str): Path<String>,
-) -> Result<Json<WorkflowResponse>, StatusCode> {
+    Path(workflow_hash): Path<FlowHash>,
+) -> Result<Json<WorkflowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
-    let workflow_hash = FlowHash::from(workflow_hash_str.as_str());
 
     let workflow = state_store
-        .get_workflow(&workflow_hash_str)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .get_workflow(&workflow_hash)
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::WorkflowNotFound(workflow_hash.clone()))
+        })?;
 
     Ok(Json(WorkflowResponse {
         workflow,
@@ -135,7 +134,7 @@ pub async fn get_workflow(
 )]
 pub async fn list_workflows(
     State(_executor): State<Arc<StepFlowExecutor>>,
-) -> Result<Json<ListWorkflowsResponse>, StatusCode> {
+) -> Result<Json<ListWorkflowsResponse>, ErrorResponse> {
     // For now, return empty list since the state store doesn't have list_workflows method
     Ok(Json(ListWorkflowsResponse {
         workflow_hashes: vec![],
@@ -157,9 +156,9 @@ pub async fn list_workflows(
 pub async fn delete_workflow(
     State(_executor): State<Arc<StepFlowExecutor>>,
     Path(_workflow_hash): Path<String>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<(), ErrorResponse> {
     // For now, just return success since the state store doesn't have delete_workflow method
-    Ok(StatusCode::OK)
+    Ok(())
 }
 
 /// Get workflow dependencies analysis by hash
@@ -177,20 +176,20 @@ pub async fn delete_workflow(
 )]
 pub async fn get_workflow_dependencies(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(workflow_hash_str): Path<String>,
-) -> Result<Json<WorkflowDependenciesResponse>, StatusCode> {
+    Path(workflow_hash): Path<FlowHash>,
+) -> Result<Json<WorkflowDependenciesResponse>, ErrorResponse> {
     let state_store = executor.state_store();
-    let workflow_hash = FlowHash::from(workflow_hash_str.as_str());
 
     let workflow = state_store
-        .get_workflow(&workflow_hash_str)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .get_workflow(&workflow_hash)
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::WorkflowNotFound(workflow_hash.clone()))
+        })?;
 
-    // TODO: We should cache the analysis based on the workflow ID.
+    // TODO: We could cache the analysis based on the workflow ID.
     let analysis =
-        stepflow_analysis::analyze_workflow_dependencies(workflow, workflow_hash.clone())
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        stepflow_analysis::analyze_workflow_dependencies(workflow, workflow_hash.clone())?;
 
     Ok(Json(WorkflowDependenciesResponse {
         workflow_hash,
