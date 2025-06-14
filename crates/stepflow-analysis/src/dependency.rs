@@ -139,7 +139,11 @@ fn extract_dependencies_from_value(
             } else if map.contains_key("$from") {
                 // This is a reference object
                 match serde_json::from_value::<Expr>(value.clone()) {
-                    Ok(Expr::Ref { from, path, on_skip }) => {
+                    Ok(Expr::Ref {
+                        from,
+                        path,
+                        on_skip,
+                    }) => {
                         // Successfully parsed as a reference expression
                         if let BaseRef::Step { step } = from {
                             let depends_on_step_index =
@@ -261,9 +265,11 @@ mod tests {
 
         // Should find 2 dependencies: step2 -> step1 (input) + workflow output -> step2
         assert_eq!(analysis.dependencies.len(), 2);
-        
+
         // Find the step input dependency
-        let step_dep = analysis.dependencies.iter()
+        let step_dep = analysis
+            .dependencies
+            .iter()
             .find(|dep| dep.step_index == 1 && dep.depends_on_step_index == 0)
             .expect("Should find step2 -> step1 dependency");
         assert_eq!(step_dep.step_index, 1); // step2
@@ -290,11 +296,13 @@ mod tests {
         assert_eq!(analysis.dependencies.len(), 3);
 
         // Find step2's dependencies (input and skip condition)
-        let step2_deps: Vec<_> = analysis.dependencies.iter()
+        let step2_deps: Vec<_> = analysis
+            .dependencies
+            .iter()
             .filter(|dep| dep.step_index == 1)
             .collect();
         assert_eq!(step2_deps.len(), 2);
-        
+
         // Both should be from step2 to step1
         for dep in step2_deps {
             assert_eq!(dep.step_index, 1); // step2
