@@ -434,7 +434,7 @@ mod tests {
         let now = chrono::Utc::now();
         let execution_id = Uuid::new_v4();
         let workflow_hash = FlowHash::from("test-hash");
-        
+
         let details = ExecutionDetails {
             summary: ExecutionSummary {
                 execution_id,
@@ -447,25 +447,27 @@ mod tests {
                 completed_at: Some(now),
             },
             input: stepflow_core::workflow::ValueRef::new(json!({"test": "input"})),
-            result: Some(stepflow_core::workflow::ValueRef::new(json!({"test": "output"}))),
+            result: Some(stepflow_core::workflow::ValueRef::new(
+                json!({"test": "output"}),
+            )),
         };
 
         // Serialize the ExecutionDetails
         let serialized = serde_json::to_string(&details).unwrap();
-        
+
         // Parse as a generic JSON value to verify flattening
         let value: serde_json::Value = serde_json::from_str(&serialized).unwrap();
-        
+
         // Verify that summary fields are flattened to the top level
         assert_eq!(value["execution_id"], json!(execution_id));
         assert_eq!(value["endpoint_name"], json!("test-endpoint"));
         assert_eq!(value["status"], json!("completed"));
         assert_eq!(value["debug_mode"], json!(false));
-        
+
         // Verify that detail-specific fields are also present
         assert_eq!(value["input"], json!({"test": "input"}));
         assert_eq!(value["result"], json!({"test": "output"}));
-        
+
         // Verify there's no nested "summary" object
         assert!(value.get("summary").is_none());
 

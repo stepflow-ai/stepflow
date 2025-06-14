@@ -604,7 +604,7 @@ impl StateStore for SqliteStateStore {
                     )
                     .change_context(StateError::Internal)?
                     .with_timezone(&chrono::Utc);
-                    
+
                     let completed_at = row
                         .get::<Option<String>, _>("completed_at")
                         .map(|s| {
