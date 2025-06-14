@@ -3,7 +3,8 @@ import { apiClient } from '../api'
 import type { 
   ExecutionDetails, 
   StepExecution, 
-  Workflow
+  Workflow,
+  WorkflowDependenciesResponse
 } from '../api'
 
 // Query Keys
@@ -16,6 +17,8 @@ export const queryKeys = {
   endpoints: ['endpoints'],
   endpoint: (name: string, label?: string) => ['endpoints', name, label],
   endpointWorkflow: (name: string, label?: string) => ['endpoints', name, 'workflow', label],
+  endpointDependencies: (name: string, label?: string) => ['endpoints', name, 'dependencies', label],
+  workflowDependencies: (workflowHash: string) => ['workflows', workflowHash, 'dependencies'],
   components: ['components'],
   debugRunnableSteps: (executionId: string) => ['executions', executionId, 'debug', 'runnable'],
 } as const
@@ -62,7 +65,7 @@ export const useExecutionSteps = (executionId: string) => {
       // More frequent updates during active execution
       const steps = query.state.data as { steps: StepExecution[] } | undefined
       const hasRunningSteps = steps?.steps.some(step => 
-        !step.result || (!step.result.Success && !step.result.Failed && !step.result.Skipped)
+        step.state === 'running' || step.state === 'runnable'
       )
       return hasRunningSteps ? 2000 : 10000
     },
@@ -102,6 +105,24 @@ export const useEndpointWorkflow = (name: string, label?: string) => {
     queryFn: () => apiClient.getEndpointWorkflow(name, label),
     enabled: !!name,
     staleTime: 5 * 60 * 1000, // Workflows don't change often, cache for 5 minutes
+  })
+}
+
+export const useEndpointDependencies = (name: string, label?: string) => {
+  return useQuery({
+    queryKey: queryKeys.endpointDependencies(name, label),
+    queryFn: () => apiClient.getEndpointDependencies(name, label),
+    enabled: !!name,
+    staleTime: 5 * 60 * 1000, // Dependencies don't change often, cache for 5 minutes
+  })
+}
+
+export const useWorkflowDependencies = (workflowHash: string) => {
+  return useQuery({
+    queryKey: queryKeys.workflowDependencies(workflowHash),
+    queryFn: () => apiClient.getWorkflowDependencies(workflowHash),
+    enabled: !!workflowHash,
+    staleTime: 5 * 60 * 1000, // Dependencies don't change often, cache for 5 minutes
   })
 }
 
@@ -215,30 +236,43 @@ export const transformStepsForVisualizer = (steps: StepExecution[], workflow?: W
     let startTime: string | null = null
     let duration: string | null = null
 
-    if (stepExecution?.result) {
-      if (stepExecution.result.Success !== undefined) {
-        status = 'completed'
-        output = JSON.stringify(stepExecution.result.Success)
-      } else if (stepExecution.result.Failed) {
-        status = 'failed'
-        output = JSON.stringify(stepExecution.result.Failed)
-      } else if (stepExecution.result.Skipped !== undefined) {
-        status = 'completed' // Skipped is considered completed
-        output = 'Skipped'
+    if (stepExecution?.state) {
+      // Map the new state field to status
+      switch (stepExecution.state) {
+        case 'completed':
+          status = 'completed'
+          break
+        case 'running':
+          status = 'running'
+          break
+        case 'failed':
+          status = 'failed'
+          break
+        case 'skipped':
+          status = 'completed' // Skipped is considered completed for visualization
+          break
+        case 'blocked':
+        case 'runnable':
+        default:
+          status = 'pending'
+          break
       }
-    } else if (stepExecution?.started_at && !stepExecution?.completed_at) {
-      status = 'running'
     }
 
-    if (stepExecution?.started_at) {
-      startTime = new Date(stepExecution.started_at).toLocaleTimeString()
-      
-      if (stepExecution.completed_at) {
-        const start = new Date(stepExecution.started_at)
-        const end = new Date(stepExecution.completed_at)
-        const diffMs = end.getTime() - start.getTime()
-        const diffSecs = (diffMs / 1000).toFixed(1)
-        duration = `${diffSecs}s`
+    // Handle result output
+    if (stepExecution?.result) {
+      switch (stepExecution.result.outcome) {
+        case 'success':
+          output = stepExecution.result.result ? JSON.stringify(stepExecution.result.result) : 'Success'
+          break
+        case 'failed':
+          output = stepExecution.result.error ? 
+            `Error ${stepExecution.result.error.code}: ${stepExecution.result.error.message}` : 
+            'Failed'
+          break
+        case 'skipped':
+          output = 'Skipped'
+          break
       }
     }
 
@@ -247,7 +281,6 @@ export const transformStepsForVisualizer = (steps: StepExecution[], workflow?: W
       name: workflowStep.id,
       component: workflowStep.component,
       status,
-      dependencies: workflowStep.depends_on || [],
       startTime,
       duration,
       output

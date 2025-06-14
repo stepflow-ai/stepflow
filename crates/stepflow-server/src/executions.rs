@@ -285,8 +285,6 @@ pub async fn get_execution(
 
     let response = ExecutionDetailsResponse::from(details);
 
-    // TODO: Populate input and result from blobs if available
-
     Ok(Json(response))
 }
 
@@ -409,26 +407,14 @@ pub async fn get_execution_steps(
     // Create unified response with both status and results
     let mut step_responses = Vec::new();
 
-    // Get step status through WorkflowExecutor (consistent interface for all step info)
+    // Get step status from state store
     let step_statuses = {
-        // Get input for workflow executor
-        let input = execution.input;
-
-        // Create workflow executor to get step status
-        let workflow_executor = stepflow_execution::WorkflowExecutor::new(
-            executor.clone(),
-            workflow.clone(),
-            workflow_hash,
-            execution_id,
-            input,
-            state_store.clone(),
-        )?;
-
-        // Use unified interface for step status (works for both debug and non-debug)
-        let statuses = workflow_executor.list_all_steps().await;
+        let step_info_list = state_store
+            .get_step_info_for_execution(execution_id)
+            .await?;
         let mut status_map = HashMap::new();
-        for status in statuses {
-            status_map.insert(status.step_index, status.status);
+        for step_info in step_info_list {
+            status_map.insert(step_info.step_index, step_info.status);
         }
         status_map
     };
@@ -485,7 +471,7 @@ impl From<ExecutionDetails> for ExecutionDetailsResponse {
             status: details.summary.status,
             debug_mode: details.summary.debug_mode,
             input: details.input,
-            result: None, // TODO: Align these structs better.
+            result: details.result.map(|r| FlowResult::Success { result: r }),
             created_at: details.summary.created_at.to_rfc3339(),
             completed_at: details.summary.completed_at.map(|dt| dt.to_rfc3339()),
         }
