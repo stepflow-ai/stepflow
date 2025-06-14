@@ -346,7 +346,7 @@ pub struct Endpoint {
 }
 
 /// Summary information about a workflow execution.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionSummary {
     pub execution_id: Uuid,
     pub endpoint_name: Option<String>,
@@ -359,18 +359,12 @@ pub struct ExecutionSummary {
 }
 
 /// Detailed execution information including input and result.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionDetails {
-    pub execution_id: Uuid,
-    pub endpoint_name: Option<String>,
-    pub endpoint_label: Option<String>,
-    pub workflow_hash: FlowHash,
-    pub status: ExecutionStatus,
-    pub debug_mode: bool,
+    #[serde(flatten)]
+    pub summary: ExecutionSummary,
     pub input: ValueRef,
     pub result: Option<ValueRef>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Filters for listing executions.
@@ -425,4 +419,60 @@ pub struct StepInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the step was last updated
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use stepflow_core::status::ExecutionStatus;
+    use stepflow_core::workflow::FlowHash;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_execution_details_serde_flatten() {
+        let now = chrono::Utc::now();
+        let execution_id = Uuid::new_v4();
+        let workflow_hash = FlowHash::from("test-hash");
+
+        let details = ExecutionDetails {
+            summary: ExecutionSummary {
+                execution_id,
+                endpoint_name: Some("test-endpoint".to_string()),
+                endpoint_label: None,
+                workflow_hash,
+                status: ExecutionStatus::Completed,
+                debug_mode: false,
+                created_at: now,
+                completed_at: Some(now),
+            },
+            input: stepflow_core::workflow::ValueRef::new(json!({"test": "input"})),
+            result: Some(stepflow_core::workflow::ValueRef::new(
+                json!({"test": "output"}),
+            )),
+        };
+
+        // Serialize the ExecutionDetails
+        let serialized = serde_json::to_string(&details).unwrap();
+
+        // Parse as a generic JSON value to verify flattening
+        let value: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+
+        // Verify that summary fields are flattened to the top level
+        assert_eq!(value["execution_id"], json!(execution_id));
+        assert_eq!(value["endpoint_name"], json!("test-endpoint"));
+        assert_eq!(value["status"], json!("completed"));
+        assert_eq!(value["debug_mode"], json!(false));
+
+        // Verify that detail-specific fields are also present
+        assert_eq!(value["input"], json!({"test": "input"}));
+        assert_eq!(value["result"], json!({"test": "output"}));
+
+        // Verify there's no nested "summary" object
+        assert!(value.get("summary").is_none());
+
+        // Verify it deserializes back correctly
+        let deserialized: ExecutionDetails = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, details);
+    }
 }

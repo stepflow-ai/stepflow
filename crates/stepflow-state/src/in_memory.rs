@@ -421,17 +421,20 @@ impl StateStore for InMemoryStateStore {
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let metadata = self.execution_metadata.clone();
+        let now = chrono::Utc::now();
         let execution_details = ExecutionDetails {
-            execution_id,
-            endpoint_name: endpoint_name.map(|s| s.to_string()),
-            endpoint_label: endpoint_label.map(|s| s.to_string()),
-            workflow_hash,
-            status: ExecutionStatus::Running,
-            debug_mode,
+            summary: ExecutionSummary {
+                execution_id,
+                endpoint_name: endpoint_name.map(|s| s.to_string()),
+                endpoint_label: endpoint_label.map(|s| s.to_string()),
+                workflow_hash,
+                status: ExecutionStatus::Running,
+                debug_mode,
+                created_at: now,
+                completed_at: None,
+            },
             input,
             result: None,
-            created_at: chrono::Utc::now(),
-            completed_at: None,
         };
 
         async move {
@@ -453,11 +456,11 @@ impl StateStore for InMemoryStateStore {
         async move {
             let mut metadata = metadata.write().await;
             if let Some(exec_metadata) = metadata.get_mut(&execution_id) {
-                exec_metadata.status = status;
+                exec_metadata.summary.status = status;
                 exec_metadata.result = result;
 
                 if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed) {
-                    exec_metadata.completed_at = Some(chrono::Utc::now());
+                    exec_metadata.summary.completed_at = Some(chrono::Utc::now());
                 }
             }
             Ok(())
@@ -497,30 +500,21 @@ impl StateStore for InMemoryStateStore {
                 .filter(|exec| {
                     // Apply status filter
                     if let Some(ref status) = filters.status {
-                        if &exec.status != status {
+                        if &exec.summary.status != status {
                             return false;
                         }
                     }
 
                     // Apply endpoint name filter
                     if let Some(ref endpoint_name) = filters.endpoint_name {
-                        if exec.endpoint_name.as_ref() != Some(endpoint_name) {
+                        if exec.summary.endpoint_name.as_ref() != Some(endpoint_name) {
                             return false;
                         }
                     }
 
                     true
                 })
-                .map(|exec| ExecutionSummary {
-                    execution_id: exec.execution_id,
-                    endpoint_name: exec.endpoint_name.clone(),
-                    endpoint_label: exec.endpoint_label.clone(),
-                    workflow_hash: exec.workflow_hash.clone(),
-                    status: exec.status,
-                    debug_mode: exec.debug_mode,
-                    created_at: exec.created_at,
-                    completed_at: exec.completed_at,
-                })
+                .map(|exec| exec.summary.clone())
                 .collect();
 
             // Sort by creation time (newest first)

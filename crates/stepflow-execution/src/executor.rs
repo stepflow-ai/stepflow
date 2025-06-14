@@ -127,7 +127,7 @@ impl StepFlowExecutor {
             .ok_or_else(|| error_stack::report!(ExecutionError::ExecutionNotFound(execution_id)))?;
 
         // Extract workflow hash from execution details
-        let workflow_hash = execution.workflow_hash;
+        let workflow_hash = execution.summary.workflow_hash;
 
         let workflow = self
             .state_store

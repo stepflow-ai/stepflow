@@ -83,9 +83,8 @@ pub struct ExecutionDetailsResponse {
     pub status: ExecutionStatus,
     /// Whether execution is in debug mode
     pub debug_mode: bool,
-    /// Input data (if available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub input: Option<ValueRef>,
+    /// Input data for the execution
+    pub input: ValueRef,
     /// Result data (if completed and available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<FlowResult>,
@@ -317,7 +316,7 @@ pub async fn get_execution_workflow(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(execution_id)))?;
 
-    let workflow_hash = execution.workflow_hash;
+    let workflow_hash = execution.summary.workflow_hash;
     // Get the workflow from the state store
     let workflow = state_store
         .get_workflow(&workflow_hash)
@@ -389,7 +388,7 @@ pub async fn get_execution_steps(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(execution_id)))?;
 
-    let workflow_hash = execution.workflow_hash;
+    let workflow_hash = execution.summary.workflow_hash;
 
     // Get the workflow from the state store
     let workflow = state_store
@@ -479,16 +478,16 @@ impl From<ExecutionSummary> for ExecutionSummaryResponse {
 impl From<ExecutionDetails> for ExecutionDetailsResponse {
     fn from(details: ExecutionDetails) -> Self {
         Self {
-            execution_id: details.execution_id.to_string(),
-            endpoint_name: details.endpoint_name,
-            endpoint_label: details.endpoint_label,
-            workflow_hash: details.workflow_hash,
-            status: details.status,
-            debug_mode: details.debug_mode,
-            input: None,  // Will be populated separately if needed
-            result: None, // Will be populated separately if needed
-            created_at: details.created_at.to_rfc3339(),
-            completed_at: details.completed_at.map(|dt| dt.to_rfc3339()),
+            execution_id: details.summary.execution_id.to_string(),
+            endpoint_name: details.summary.endpoint_name,
+            endpoint_label: details.summary.endpoint_label,
+            workflow_hash: details.summary.workflow_hash,
+            status: details.summary.status,
+            debug_mode: details.summary.debug_mode,
+            input: details.input,
+            result: None, // TODO: Align these structs better.
+            created_at: details.summary.created_at.to_rfc3339(),
+            completed_at: details.summary.completed_at.map(|dt| dt.to_rfc3339()),
         }
     }
 }

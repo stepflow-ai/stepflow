@@ -599,28 +599,34 @@ impl StateStore for SqliteStateStore {
                         None
                     };
 
+                    let created_at = chrono::DateTime::parse_from_rfc3339(
+                        &row.get::<String, _>("created_at"),
+                    )
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc);
+
+                    let completed_at = row
+                        .get::<Option<String>, _>("completed_at")
+                        .map(|s| {
+                            chrono::DateTime::parse_from_rfc3339(&s)
+                                .change_context(StateError::Internal)
+                                .map(|dt| dt.with_timezone(&chrono::Utc))
+                        })
+                        .transpose()?;
+
                     let details = ExecutionDetails {
-                        execution_id,
-                        endpoint_name,
-                        endpoint_label,
-                        workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
-                        status,
-                        debug_mode: row.get("debug_mode"),
+                        summary: ExecutionSummary {
+                            execution_id,
+                            endpoint_name,
+                            endpoint_label,
+                            workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
+                            status,
+                            debug_mode: row.get("debug_mode"),
+                            created_at,
+                            completed_at,
+                        },
                         input,
                         result,
-                        created_at: chrono::DateTime::parse_from_rfc3339(
-                            &row.get::<String, _>("created_at"),
-                        )
-                        .change_context(StateError::Internal)?
-                        .with_timezone(&chrono::Utc),
-                        completed_at: row
-                            .get::<Option<String>, _>("completed_at")
-                            .map(|s| {
-                                chrono::DateTime::parse_from_rfc3339(&s)
-                                    .change_context(StateError::Internal)
-                                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                            })
-                            .transpose()?,
                     };
 
                     Ok(Some(details))
