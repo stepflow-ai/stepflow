@@ -78,6 +78,7 @@ fn create_test_workflow() -> Flow {
         }],
         output: json!(null),
         test: None,
+        examples: vec![],
     }
 }
 

@@ -32,6 +32,9 @@ pub struct WorkflowResponse {
     pub workflow: Arc<Flow>,
     /// The workflow hash
     pub workflow_hash: FlowHash,
+    /// All available examples (includes both examples and test cases)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub all_examples: Vec<stepflow_core::workflow::ExampleInput>,
 }
 
 /// Response for listing workflows
@@ -119,6 +122,7 @@ pub async fn get_workflow(
         })?;
 
     Ok(Json(WorkflowResponse {
+        all_examples: workflow.get_all_examples(),
         workflow,
         workflow_hash,
     }))

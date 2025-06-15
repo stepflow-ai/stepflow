@@ -855,6 +855,7 @@ mod tests {
             steps,
             output,
             test: None,
+            examples: vec![],
         }
     }
 

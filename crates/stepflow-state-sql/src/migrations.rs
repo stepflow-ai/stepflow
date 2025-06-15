@@ -16,6 +16,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     // Apply the step info migration
     apply_migration(pool, "002_add_step_info", || add_step_info_table(pool)).await?;
 
+
     Ok(())
 }
 
@@ -209,3 +210,4 @@ async fn add_step_info_table(pool: &SqlitePool) -> Result<(), StateError> {
 
     Ok(())
 }
+

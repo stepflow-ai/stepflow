@@ -45,6 +45,10 @@ pub struct Flow {
     /// Test configuration for the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test: Option<TestConfig>,
+
+    /// Example inputs for the workflow that can be used for testing and UI dropdowns.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<ExampleInput>,
 }
 
 /// Wraper around a string that represents a hash of a workflow.
@@ -319,8 +323,63 @@ mod tests {
                 }),
                 output_schema: Some(output_schema),
                 test: None,
+                examples: vec![],
             }
         );
+    }
+
+    #[test]
+    fn test_get_all_examples() {
+        use super::*;
+        use serde_json::json;
+
+        // Create a flow with both examples and test cases
+        let flow = Flow {
+            name: Some("test_flow".to_string()),
+            description: None,
+            version: None,
+            input_schema: None,
+            output_schema: None,
+            steps: vec![],
+            output: json!({}),
+            examples: vec![
+                ExampleInput {
+                    name: "example1".to_string(),
+                    description: Some("Direct example".to_string()),
+                    input: ValueRef::new(json!({"input": "example"})),
+                }
+            ],
+            test: Some(TestConfig {
+                stepflow_config: None,
+                cases: vec![
+                    TestCase {
+                        name: "test1".to_string(),
+                        description: Some("Test case as example".to_string()),
+                        input: ValueRef::new(json!({"input": "test"})),
+                        output: None,
+                    },
+                    TestCase {
+                        name: "example1".to_string(), // Duplicate name, should not be added
+                        description: Some("Duplicate name".to_string()),
+                        input: ValueRef::new(json!({"input": "duplicate"})),
+                        output: None,
+                    },
+                ],
+            }),
+        };
+
+        let all_examples = flow.get_all_examples();
+        
+        // Should have 2 examples: 1 direct + 1 from test cases (duplicate name ignored)
+        assert_eq!(all_examples.len(), 2);
+        
+        // Check first example (direct)
+        assert_eq!(all_examples[0].name, "example1");
+        assert_eq!(all_examples[0].description, Some("Direct example".to_string()));
+        
+        // Check second example (from test case)
+        assert_eq!(all_examples[1].name, "test1");
+        assert_eq!(all_examples[1].description, Some("Test case as example".to_string()));
     }
 }
 
@@ -352,4 +411,47 @@ pub struct TestCase {
     /// Expected output from the workflow for this test case.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<FlowResult>,
+}
+
+/// An example input for a workflow that can be used in UI dropdowns.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct ExampleInput {
+    /// Name of the example input for display purposes.
+    pub name: String,
+
+    /// Optional description of what this example demonstrates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// The input data for this example.
+    pub input: ValueRef,
+}
+
+impl From<&TestCase> for ExampleInput {
+    fn from(test_case: &TestCase) -> Self {
+        Self {
+            name: test_case.name.clone(),
+            description: test_case.description.clone(),
+            input: test_case.input.clone(),
+        }
+    }
+}
+
+impl Flow {
+    /// Get all example inputs, including those derived from test cases.
+    pub fn get_all_examples(&self) -> Vec<ExampleInput> {
+        let mut examples = self.examples.clone();
+        
+        // Add examples from test cases if they exist
+        if let Some(test_config) = &self.test {
+            for test_case in &test_config.cases {
+                // Only add if there isn't already an example with the same name
+                if !examples.iter().any(|ex| ex.name == test_case.name) {
+                    examples.push(ExampleInput::from(test_case));
+                }
+            }
+        }
+        
+        examples
+    }
 }
