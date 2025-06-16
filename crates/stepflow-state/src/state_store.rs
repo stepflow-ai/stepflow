@@ -138,6 +138,7 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// A vector of (workflow_hash, created_at) tuples for workflows with the given name
+    #[allow(clippy::type_complexity)]
     fn get_workflows_by_name(
         &self,
         name: &str,
