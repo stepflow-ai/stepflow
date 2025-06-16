@@ -7,7 +7,7 @@ use std::sync::Arc;
 use stepflow_core::schema::SchemaRef;
 use stepflow_execution::StepFlowExecutor;
 use stepflow_plugin::Plugin as _;
-use utoipa::{IntoParams, OpenApi, ToSchema};
+use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ErrorResponse;
 
@@ -48,14 +48,6 @@ fn default_include_schemas() -> bool {
     true
 }
 
-/// Components API
-#[derive(OpenApi)]
-#[openapi(
-    paths(list_components),
-    components(schemas(ComponentInfoResponse, ListComponentsResponse, ListComponentsQuery))
-)]
-pub struct ComponentsApi;
-
 /// List all available components from plugins
 #[utoipa::path(
     get,
@@ -64,7 +56,8 @@ pub struct ComponentsApi;
     responses(
         (status = 200, description = "Components listed successfully", body = ListComponentsResponse),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::COMPONENT_TAG,
 )]
 pub async fn list_components(
     State(executor): State<Arc<StepFlowExecutor>>,

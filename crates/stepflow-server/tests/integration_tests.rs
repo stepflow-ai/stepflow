@@ -46,7 +46,7 @@ async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
         .unwrap();
 
     // Use the real startup logic but without swagger UI for tests
-    use stepflow_server::startup::AppConfig;
+    use stepflow_server::AppConfig;
     let config = AppConfig {
         include_swagger: false, // Skip swagger for tests to keep them fast
         include_cors: true,     // Keep CORS for test compatibility

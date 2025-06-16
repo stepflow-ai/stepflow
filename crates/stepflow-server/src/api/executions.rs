@@ -12,7 +12,7 @@ use stepflow_core::{
 };
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::{ExecutionDetails, ExecutionSummary};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
@@ -121,29 +121,6 @@ pub struct WorkflowResponse {
     pub workflow_hash: FlowHash,
 }
 
-/// Executions API
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        create_execution,
-        get_execution,
-        get_execution_workflow,
-        list_executions,
-        get_execution_steps
-    ),
-    components(schemas(
-        CreateExecutionRequest,
-        CreateExecutionResponse,
-        ExecutionSummaryResponse,
-        ExecutionDetailsResponse,
-        ListExecutionsResponse,
-        StepExecutionResponse,
-        ListStepExecutionsResponse,
-        WorkflowResponse
-    ))
-)]
-pub struct ExecutionsApi;
-
 /// Create and execute a workflow ad-hoc
 #[utoipa::path(
     post,
@@ -153,7 +130,8 @@ pub struct ExecutionsApi;
         (status = 200, description = "Workflow execution created successfully", body = CreateExecutionResponse),
         (status = 400, description = "Invalid request"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::EXECUTION_TAG,
 )]
 pub async fn create_execution(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -254,7 +232,8 @@ pub async fn create_execution(
         (status = 400, description = "Invalid execution ID format"),
         (status = 404, description = "Execution not found"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::EXECUTION_TAG,
 )]
 pub async fn get_execution(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -285,7 +264,8 @@ pub async fn get_execution(
         (status = 400, description = "Invalid execution ID format"),
         (status = 404, description = "Execution or workflow not found"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::EXECUTION_TAG,
 )]
 pub async fn get_execution_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -321,7 +301,8 @@ pub async fn get_execution_workflow(
     responses(
         (status = 200, description = "Executions listed successfully", body = ListExecutionsResponse),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::EXECUTION_TAG,
 )]
 pub async fn list_executions(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -355,7 +336,8 @@ pub async fn list_executions(
         (status = 400, description = "Invalid execution ID format"),
         (status = 404, description = "Execution not found"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::EXECUTION_TAG,
 )]
 pub async fn get_execution_steps(
     State(executor): State<Arc<StepFlowExecutor>>,

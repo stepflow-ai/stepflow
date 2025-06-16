@@ -21,8 +21,6 @@ pub struct ErrorResponse {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
-    #[error("Invalid execution ID '{0}'")]
-    InvalidExecutionId(String),
     #[error("Execution '{0}' not found")]
     ExecutionNotFound(Uuid),
     #[error("Workflow '{0}' not found")]
@@ -40,9 +38,7 @@ pub enum ServerError {
 impl ServerError {
     pub fn status_code(&self) -> StatusCode {
         match self {
-            ServerError::InvalidExecutionId(_) | ServerError::WorkflowExecutionFailed(_) => {
-                StatusCode::BAD_REQUEST
-            }
+            ServerError::WorkflowExecutionFailed(_) => StatusCode::BAD_REQUEST,
             ServerError::ExecutionNotFound(_)
             | ServerError::WorkflowNotFound(_)
             | ServerError::WorkflowNameNotFound(_)

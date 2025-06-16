@@ -1,6 +1,6 @@
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::ToSchema;
 
 /// Health check response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -13,11 +13,6 @@ pub struct HealthResponse {
     pub version: String,
 }
 
-/// Health check API
-#[derive(OpenApi)]
-#[openapi(paths(health_check), components(schemas(HealthResponse)))]
-pub struct HealthApi;
-
 /// Check service health
 #[utoipa::path(
     get,
@@ -26,7 +21,7 @@ pub struct HealthApi;
         (status = 200, description = "Service is healthy", body = HealthResponse)
     )
 )]
-pub async fn health_check() -> Json<HealthResponse> {
+pub async fn get_health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "healthy".to_string(),
         timestamp: chrono::Utc::now().to_rfc3339(),
