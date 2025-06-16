@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Play, Upload, FileText, Globe, Code, Bug, Loader2 } from 'lucide-react'
+import { Play, Upload, FileText, Globe, Code, Bug, Loader2, Zap } from 'lucide-react'
 import { useEndpoints, useExecuteWorkflow, useExecuteEndpoint } from '@/lib/hooks/use-api'
+import { ExecutionDialog } from '@/components/execution-dialog'
+import { EXAMPLE_WORKFLOWS } from '@/lib/examples'
 
 // Example workflow from tests/python/python_math.yaml
 const EXAMPLE_WORKFLOW = `input_schema:
@@ -280,6 +282,41 @@ function ExecutePageContent() {
           Submit and run workflows using endpoints or direct upload
         </p>
       </div>
+
+      {/* Quick Execute Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Zap className="h-5 w-5" />
+            <span>Quick Execute</span>
+          </CardTitle>
+          <CardDescription>
+            Try example workflows with pre-configured inputs
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {EXAMPLE_WORKFLOWS.map((example) => (
+              <div key={example.name} className="border rounded-lg p-4">
+                <h3 className="font-semibold text-sm mb-2">{example.name}</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  {example.description}
+                </p>
+                <ExecutionDialog
+                  workflow={example.workflow}
+                  examples={example.inputExamples}
+                  trigger={
+                    <Button size="sm" className="w-full">
+                      <Play className="mr-2 h-4 w-4" />
+                      Quick Execute
+                    </Button>
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2 h-[calc(100vh-12rem)]">
         <Card className="flex flex-col">

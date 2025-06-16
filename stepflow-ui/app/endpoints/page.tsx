@@ -8,6 +8,7 @@ import { Globe, Play, Loader2 } from 'lucide-react'
 import { useEndpoints } from '@/lib/hooks/use-api'
 import { CreateEndpointDialog } from '@/components/create-endpoint-dialog'
 import { EndpointActionsMenu } from '@/components/endpoint-actions-menu'
+import { ExecutionDialog } from '@/components/execution-dialog'
 
 
 export default function EndpointsPage() {
@@ -76,10 +77,18 @@ export default function EndpointsPage() {
                   )}
                 </div>
                 <div className="flex items-center space-x-2">
+                  <ExecutionDialog
+                    endpoint={endpoint}
+                    trigger={
+                      <Button variant="ghost" size="sm">
+                        <Play className="mr-2 h-4 w-4" />
+                        Execute
+                      </Button>
+                    }
+                  />
                   <Link href={`/execute?endpoint=${endpoint.name}${endpoint.label ? `&label=${endpoint.label}` : ''}`}>
-                    <Button variant="ghost" size="sm">
-                      <Play className="mr-2 h-4 w-4" />
-                      Execute
+                    <Button variant="outline" size="sm">
+                      Full Page
                     </Button>
                   </Link>
                   <EndpointActionsMenu endpoint={endpoint} />

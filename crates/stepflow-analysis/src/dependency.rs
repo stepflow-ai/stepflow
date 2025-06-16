@@ -255,6 +255,7 @@ mod tests {
             ],
             output: json!({"$from": {"step": "step2"}}),
             test: None,
+            examples: vec![],
         }
     }
 

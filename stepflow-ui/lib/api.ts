@@ -57,7 +57,7 @@ export const apiClient = {
     return response.data
   },
 
-  getExecutionWorkflow: async (executionId: string): Promise<{ workflow: Workflow; workflow_hash: string }> => {
+  getExecutionWorkflow: async (executionId: string): Promise<{ workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] }> => {
     const response = await api.get(`/executions/${executionId}/workflow`)
     return response.data
   },
@@ -92,7 +92,7 @@ export const apiClient = {
     return response.data
   },
 
-  getEndpointWorkflow: async (name: string, label?: string): Promise<{ workflow: Workflow; workflow_hash: string }> => {
+  getEndpointWorkflow: async (name: string, label?: string): Promise<{ workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] }> => {
     const url = label ? `/endpoints/${name}/workflow?label=${label}` : `/endpoints/${name}/workflow`
     const response = await api.get(url)
     return response.data
@@ -136,7 +136,7 @@ export const apiClient = {
     return response.data
   },
 
-  getWorkflow: async (workflowHash: string): Promise<{ workflow: Workflow; workflow_hash: string }> => {
+  getWorkflow: async (workflowHash: string): Promise<{ workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] }> => {
     const response = await api.get(`/workflows/${workflowHash}`)
     return response.data
   },
@@ -191,6 +191,13 @@ export interface Workflow {
   input_schema?: Record<string, unknown>
   output?: Record<string, unknown>
   steps: WorkflowStep[]
+  examples?: ExampleInput[]
+}
+
+export interface ExampleInput {
+  name: string
+  description?: string
+  input: Record<string, unknown>
 }
 
 export interface WorkflowStep {
