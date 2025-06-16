@@ -4,10 +4,9 @@ use stepflow_execution::StepFlowExecutor;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::{components, debug, executions, health, workflows};
+use crate::api::create_api_router;
 
 pub struct AppConfig {
     pub include_swagger: bool,
@@ -27,40 +26,7 @@ impl AppConfig {
     /// Create the application router with the current configuration
     pub fn create_app_router(&self, executor: Arc<StepFlowExecutor>) -> Router {
         // Create the main API router with state using utoipa-axum for consistency
-        let (api_router, api_doc) = OpenApiRouter::new()
-            // Health routes.
-            .routes(routes!(health::health_check))
-            // Workflow routes by hash.
-            .routes(routes!(workflows::store_workflow))
-            .routes(routes!(workflows::list_workflows))
-            .routes(routes!(workflows::get_workflow))
-            .routes(routes!(workflows::execute_workflow_by_hash))
-            .routes(routes!(workflows::delete_workflow))
-            .routes(routes!(workflows::get_workflow_dependencies))
-            // Named workflow routes.
-            .routes(routes!(workflows::list_workflow_names))
-            .routes(routes!(workflows::get_workflows_by_name))
-            .routes(routes!(workflows::get_latest_workflow_by_name))
-            .routes(routes!(workflows::execute_workflow_by_name))
-            // Workflow label routes.
-            .routes(routes!(workflows::list_labels_for_name))
-            .routes(routes!(workflows::create_or_update_label))
-            .routes(routes!(workflows::get_workflow_by_label))
-            .routes(routes!(workflows::execute_workflow_by_label))
-            .routes(routes!(workflows::delete_label))
-            // Execution routes.
-            .routes(routes!(executions::create_execution))
-            .routes(routes!(executions::get_execution))
-            .routes(routes!(executions::get_execution_workflow))
-            .routes(routes!(executions::list_executions))
-            .routes(routes!(executions::get_execution_steps))
-            // Execution debugging routes.
-            .routes(routes!(debug::debug_execute_step))
-            .routes(routes!(debug::debug_continue))
-            .routes(routes!(debug::debug_get_runnable))
-            // Component routes.
-            .routes(routes!(components::list_components))
-            .split_for_parts();
+        let (api_router, api_doc) = create_api_router().split_for_parts();
 
         // Add state to the router
         let api_router = api_router.with_state(executor);

@@ -8,7 +8,7 @@ use stepflow_analysis::StepDependency;
 use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
 use stepflow_execution::StepFlowExecutor;
 use stepflow_plugin::Context as _;
-use utoipa::{OpenApi, ToSchema};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
@@ -137,45 +137,6 @@ pub struct ExecuteWorkflowRequest {
     pub debug: bool,
 }
 
-/// Workflow management API
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        store_workflow,
-        get_workflow,
-        execute_workflow_by_hash,
-        list_workflows,
-        delete_workflow,
-        get_workflow_dependencies,
-        list_workflow_names,
-        get_workflows_by_name,
-        get_latest_workflow_by_name,
-        execute_workflow_by_name,
-        list_labels_for_name,
-        create_or_update_label,
-        get_workflow_by_label,
-        execute_workflow_by_label,
-        delete_label
-    ),
-    components(schemas(
-        StoreWorkflowRequest,
-        StoreWorkflowResponse,
-        WorkflowResponse,
-        ListWorkflowsResponse,
-        WorkflowDependenciesResponse,
-        ListWorkflowNamesResponse,
-        WorkflowNameQuery,
-        WorkflowsByNameResponse,
-        WorkflowVersionInfo,
-        CreateLabelRequest,
-        WorkflowLabelResponse,
-        ListLabelsResponse,
-        ExecuteWorkflowRequest,
-        ExecuteWorkflowResponse
-    ))
-)]
-pub struct WorkflowApi;
-
 /// Store a workflow and return its hash
 #[utoipa::path(
     post,
@@ -184,7 +145,8 @@ pub struct WorkflowApi;
     responses(
         (status = 200, description = "Workflow stored successfully", body = StoreWorkflowResponse),
         (status = 400, description = "Invalid workflow")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn store_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -209,7 +171,8 @@ pub async fn store_workflow(
     responses(
         (status = 200, description = "Workflow retrieved successfully", body = WorkflowResponse),
         (status = 404, description = "Workflow not found")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn get_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -237,7 +200,8 @@ pub async fn get_workflow(
     path = "/workflows",
     responses(
         (status = 200, description = "Workflows listed successfully", body = ListWorkflowsResponse)
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn list_workflows(
     State(_executor): State<Arc<StepFlowExecutor>>,
@@ -258,7 +222,8 @@ pub async fn list_workflows(
     responses(
         (status = 200, description = "Workflow deleted successfully"),
         (status = 404, description = "Workflow not found")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn delete_workflow(
     State(_executor): State<Arc<StepFlowExecutor>>,
@@ -280,7 +245,8 @@ pub async fn delete_workflow(
         (status = 200, description = "Workflow execution started", body = ExecuteWorkflowResponse),
         (status = 404, description = "Workflow not found"),
         (status = 400, description = "Invalid input")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn execute_workflow_by_hash(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -348,7 +314,8 @@ pub async fn execute_workflow_by_hash(
         (status = 200, description = "Workflow dependencies retrieved successfully", body = WorkflowDependenciesResponse),
         (status = 404, description = "Workflow not found"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn get_workflow_dependencies(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -379,7 +346,8 @@ pub async fn get_workflow_dependencies(
     path = "/workflows/names",
     responses(
         (status = 200, description = "Workflow names listed successfully", body = ListWorkflowNamesResponse)
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn list_workflow_names(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -400,7 +368,8 @@ pub async fn list_workflow_names(
     responses(
         (status = 200, description = "Workflows retrieved successfully", body = WorkflowsByNameResponse),
         (status = 404, description = "No workflows found with this name")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn get_workflows_by_name(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -437,7 +406,8 @@ pub async fn get_workflows_by_name(
     responses(
         (status = 200, description = "Latest workflow retrieved successfully", body = WorkflowResponse),
         (status = 404, description = "No workflows found with this name")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn get_latest_workflow_by_name(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -472,7 +442,8 @@ pub async fn get_latest_workflow_by_name(
         (status = 200, description = "Workflow execution started", body = ExecuteWorkflowResponse),
         (status = 404, description = "No workflows found with this name"),
         (status = 400, description = "Invalid input")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn execute_workflow_by_name(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -538,7 +509,8 @@ pub async fn execute_workflow_by_name(
     ),
     responses(
         (status = 200, description = "Labels listed successfully", body = ListLabelsResponse)
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn list_labels_for_name(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -573,7 +545,8 @@ pub async fn list_labels_for_name(
     responses(
         (status = 200, description = "Label created/updated successfully", body = WorkflowLabelResponse),
         (status = 404, description = "Workflow not found")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn create_or_update_label(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -625,7 +598,8 @@ pub async fn create_or_update_label(
     responses(
         (status = 200, description = "Workflow retrieved successfully", body = WorkflowResponse),
         (status = 404, description = "Workflow or label not found")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn get_workflow_by_label(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -666,7 +640,8 @@ pub async fn get_workflow_by_label(
         (status = 200, description = "Workflow execution started", body = ExecuteWorkflowResponse),
         (status = 404, description = "Workflow or label not found"),
         (status = 400, description = "Invalid input")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn execute_workflow_by_label(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -739,7 +714,8 @@ pub async fn execute_workflow_by_label(
     responses(
         (status = 200, description = "Label deleted successfully"),
         (status = 404, description = "Label not found")
-    )
+    ),
+    tag = crate::api::WORKFLOW_TAG,
 )]
 pub async fn delete_label(
     State(executor): State<Arc<StepFlowExecutor>>,

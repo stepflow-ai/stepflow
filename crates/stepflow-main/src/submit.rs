@@ -2,7 +2,7 @@ use crate::{Result, error::MainError};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Flow, ValueRef};
-use stepflow_server::executions::{CreateExecutionRequest, CreateExecutionResponse};
+use stepflow_server::{CreateExecutionRequest, CreateExecutionResponse};
 use url::Url;
 
 /// Submit a workflow to a StepFlow service for execution

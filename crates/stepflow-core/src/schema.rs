@@ -26,9 +26,12 @@ impl AsRef<SchemaObject> for SchemaRef {
 
 impl utoipa::PartialSchema for SchemaRef {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        use utoipa::openapi::Ref;
-
-        utoipa::openapi::RefOr::Ref(Ref::new("https://json-schema.org/draft/2020-12/schema"))
+        // OpenAPI doesn't allow external references, so there is no good way to
+        // enforce that this is consistent with the JSON schema.
+        let schema = utoipa::openapi::ObjectBuilder::new()
+            .description(Some("A valid JSON Schema object."))
+            .build();
+        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(schema))
     }
 }
 

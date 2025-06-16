@@ -8,7 +8,7 @@ use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_execution::StepFlowExecutor;
-use utoipa::{OpenApi, ToSchema};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
@@ -34,14 +34,6 @@ pub struct DebugRunnableResponse {
     pub runnable_steps: Vec<String>,
 }
 
-/// Debug API for step-by-step execution control
-#[derive(OpenApi)]
-#[openapi(
-    paths(debug_execute_step, debug_continue, debug_get_runnable),
-    components(schemas(DebugStepRequest, DebugStepResponse, DebugRunnableResponse))
-)]
-pub struct DebugApi;
-
 /// Execute specific steps in debug mode
 #[utoipa::path(
     post,
@@ -55,7 +47,8 @@ pub struct DebugApi;
         (status = 400, description = "Invalid execution ID or request"),
         (status = 404, description = "Execution not found"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_execute_step(
     State(executor): State<Arc<StepFlowExecutor>>,
@@ -88,16 +81,17 @@ pub async fn debug_execute_step(
         ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Execution continued successfully", body = crate::executions::CreateExecutionResponse),
+        (status = 200, description = "Execution continued successfully", body = super::executions::CreateExecutionResponse),
         (status = 400, description = "Invalid execution ID"),
         (status = 404, description = "Execution not found"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_continue(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(execution_id): Path<Uuid>,
-) -> Result<Json<crate::executions::CreateExecutionResponse>, ErrorResponse> {
+) -> Result<Json<super::executions::CreateExecutionResponse>, ErrorResponse> {
     // Get the debug session for this execution
     let mut debug_session = executor
         .debug_session(execution_id)
@@ -118,7 +112,7 @@ pub async fn debug_continue(
         .update_execution_status(execution_id, status, None)
         .await?;
 
-    Ok(Json(crate::executions::CreateExecutionResponse {
+    Ok(Json(super::executions::CreateExecutionResponse {
         execution_id,
         result: Some(final_result),
         status,
@@ -138,7 +132,8 @@ pub async fn debug_continue(
         (status = 400, description = "Invalid execution ID"),
         (status = 404, description = "Execution not found"),
         (status = 500, description = "Internal server error")
-    )
+    ),
+    tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_get_runnable(
     State(executor): State<Arc<StepFlowExecutor>>,

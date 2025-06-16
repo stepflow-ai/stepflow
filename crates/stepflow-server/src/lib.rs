@@ -3,14 +3,9 @@
 //! This crate provides the core HTTP server functionality for StepFlow.
 //! It contains all the API endpoints, request/response types, and server startup logic.
 
-// Server modules
-pub mod components;
-pub mod debug;
-pub mod error;
-pub mod executions;
-pub mod health;
-pub mod startup;
-pub mod workflows;
+mod api;
+mod error;
+mod startup;
 
-// Re-export the main server function
-pub use startup::start_server;
+pub use api::*;
+pub use startup::*;
