@@ -4,7 +4,6 @@ import { ReactNode } from 'react'
 import {
   useHealth,
   useExecutions,
-  useEndpoints,
   useComponents,
   useExecuteWorkflow,
   transformStepsForVisualizer
@@ -79,24 +78,6 @@ describe('React Query Hooks', () => {
     })
   })
 
-  describe('useEndpoints', () => {
-    test('should fetch endpoints list', async () => {
-      const wrapper = createWrapper()
-      const { result } = renderHook(() => useEndpoints(), { wrapper })
-
-      expect(result.current.isLoading).toBe(true)
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
-      }, { timeout: 10000 })
-
-      if (result.current.isSuccess) {
-        expect(Array.isArray(result.current.data)).toBe(true)
-      } else {
-        expect(result.current.isError).toBe(true)
-      }
-    })
-  })
 
   describe('useComponents', () => {
     test('should fetch components list', async () => {
@@ -198,20 +179,20 @@ describe('Data Transformation Utilities', () => {
         {
           step_index: 0,
           step_id: 'step1',
+          state: 'completed',
           result: {
-            Success: { value: 'result1' }
-          },
-          started_at: '2024-01-01T10:00:00Z',
-          completed_at: '2024-01-01T10:00:05Z'
+            outcome: 'success',
+            result: { value: 'result1' }
+          }
         },
         {
           step_index: 1,
           step_id: 'step2',
+          state: 'completed',
           result: {
-            Success: { value: 'result2' }
-          },
-          started_at: '2024-01-01T10:00:05Z',
-          completed_at: '2024-01-01T10:00:08Z'
+            outcome: 'success',
+            result: { value: 'result2' }
+          }
         }
       ]
 
@@ -223,8 +204,8 @@ describe('Data Transformation Utilities', () => {
         component: 'test://component1',
         status: 'completed',
         dependencies: [],
-        startTime: new Date('2024-01-01T10:00:00Z').toLocaleTimeString(),
-        duration: '5.0s',
+        startTime: null,
+        duration: null,
         output: '{"value":"result1"}'
       })
 
@@ -234,8 +215,8 @@ describe('Data Transformation Utilities', () => {
         component: 'test://component2', 
         status: 'completed',
         dependencies: ['step1'],
-        startTime: new Date('2024-01-01T10:00:05Z').toLocaleTimeString(),
-        duration: '3.0s',
+        startTime: null,
+        duration: null,
         output: '{"value":"result2"}'
       })
     })
@@ -245,14 +226,14 @@ describe('Data Transformation Utilities', () => {
         {
           step_index: 0,
           step_id: 'step1',
+          state: 'failed',
           result: {
-            Failed: {
-              error_code: 500,
+            outcome: 'failed',
+            error: {
+              code: 500,
               message: 'Component failed'
             }
-          },
-          started_at: '2024-01-01T10:00:00Z',
-          completed_at: '2024-01-01T10:00:02Z'
+          }
         }
       ]
 
@@ -264,9 +245,9 @@ describe('Data Transformation Utilities', () => {
         component: 'test://component1',
         status: 'failed',
         dependencies: [],
-        startTime: new Date('2024-01-01T10:00:00Z').toLocaleTimeString(),
-        duration: '2.0s',
-        output: '{"error_code":500,"message":"Component failed"}'
+        startTime: null,
+        duration: null,
+        output: 'Error 500: Component failed'
       })
     })
 
@@ -275,15 +256,15 @@ describe('Data Transformation Utilities', () => {
         {
           step_index: 0,
           step_id: 'step1',
-          started_at: '2024-01-01T10:00:00Z'
-          // No completed_at or result means it's running
+          state: 'running'
+          // No result means it's running
         }
       ]
 
       const result = transformStepsForVisualizer(steps, mockWorkflow)
 
       expect(result[0].status).toBe('running')
-      expect(result[0].startTime).toBe(new Date('2024-01-01T10:00:00Z').toLocaleTimeString())
+      expect(result[0].startTime).toBeNull()
       expect(result[0].duration).toBeNull()
       expect(result[0].output).toBeNull()
     })
@@ -293,11 +274,10 @@ describe('Data Transformation Utilities', () => {
         {
           step_index: 0,
           step_id: 'step1',
+          state: 'skipped',
           result: {
-            Skipped: null
-          },
-          started_at: '2024-01-01T10:00:00Z',
-          completed_at: '2024-01-01T10:00:01Z'
+            outcome: 'skipped'
+          }
         }
       ]
 

@@ -18,21 +18,24 @@ use stepflow_execution::StepFlowExecutor;
 /// ## Core Features
 ///
 /// ### 1. Ad-hoc Workflow Execution
-/// Execute workflows directly without creating endpoints:
+/// Execute workflows directly by hash or definition:
 /// ```
-/// POST /execute
+/// POST /executions                           # Execute workflow with definition
+/// POST /workflows/{hash}/execute             # Execute workflow by hash
 /// ```
 ///
-/// ### 2. Endpoint Management (with Optional Labels)
-/// Manage named workflow endpoints with optional version labels:
+/// ### 2. Named Workflow Management with Labels
+/// Manage workflows by name with optional version labels:
 /// ```
-/// PUT    /endpoints/{name}?label={label}      # Create/update endpoint (label optional)
-/// GET    /endpoints                           # List all endpoints
-/// GET    /endpoints?name={name}               # List all versions of specific endpoint
-/// GET    /endpoints/{name}?label={label}      # Get endpoint details (label optional)
-/// GET    /endpoints/{name}/workflow?label={label}  # Get workflow definition (label optional)
-/// DELETE /endpoints/{name}?label={label}     # Delete endpoint (label optional, * for all)
-/// POST   /endpoints/{name}/execute?label={label}   # Execute endpoint (label optional)
+/// GET    /workflows/names                              # List all workflow names
+/// GET    /workflows/by-name/{name}                     # List all versions of named workflow
+/// GET    /workflows/by-name/{name}/latest              # Get latest version of named workflow
+/// POST   /workflows/by-name/{name}/execute             # Execute latest version
+/// GET    /workflows/by-name/{name}/labels              # List labels for workflow
+/// PUT    /workflows/by-name/{name}/labels/{label}      # Create/update labeled version
+/// GET    /workflows/by-name/{name}/labels/{label}      # Get labeled version
+/// POST   /workflows/by-name/{name}/labels/{label}/execute  # Execute labeled version
+/// DELETE /workflows/by-name/{name}/labels/{label}      # Delete labeled version
 /// ```
 ///
 /// ### 3. Execution Tracking
@@ -41,29 +44,28 @@ use stepflow_execution::StepFlowExecutor;
 /// GET /executions                    # List executions
 /// GET /executions/{id}               # Get execution details
 /// GET /executions/{id}/steps         # Get step-level results
+/// GET /executions/{id}/workflow      # Get execution workflow
 /// ```
 ///
 /// ### 4. Debug Mode
-/// Step-by-step workflow debugging (layered on top of executions):
+/// Step-by-step workflow debugging:
 /// ```
-/// POST   /execute                                     # Create execution (with debug=true)
+/// POST   /executions                                  # Create execution (with debug=true)
 /// POST   /executions/{id}/debug/step                  # Execute specific steps
 /// POST   /executions/{id}/debug/continue              # Continue to completion
 /// GET    /executions/{id}/debug/runnable              # Get runnable steps
-/// GET    /executions/{id}/debug/state                 # Get debug state
 /// ```
 ///
 /// ## Key Concepts
 ///
-/// ### Endpoints with Optional Labels
-/// - **Endpoints**: Named workflow references with optional version labels
-/// - **Labels**: Optional version identifiers (e.g., "v1.0", "stable", "beta")
-/// - **Default Version**: Access without label parameter uses the default version
-/// - **Unified Model**: Single concept instead of separate endpoints and labels
+/// ### Three Workflow Access Patterns
+/// 1. **Ad-hoc workflows**: Execute by hash or definition directly
+/// 2. **Named workflows**: Workflows with a `name` field, accessible by name
+/// 3. **Labeled workflows**: Named workflows with version labels (e.g., "production", "staging", "v1.0")
 ///
 /// ### Content-based Deduplication
 /// - Workflows are stored by SHA-256 hash for deduplication
-/// - Multiple endpoints/labels can reference the same workflow
+/// - Multiple names/labels can reference the same workflow
 /// - Efficient storage and caching
 ///
 /// ### Debug Mode
@@ -74,25 +76,25 @@ use stepflow_execution::StepFlowExecutor;
 ///
 /// ## Example Usage
 ///
-/// ### Create and Execute Endpoint
+/// ### Create and Execute Named Workflow
 /// ```bash
-/// # Create default endpoint version
-/// curl -X PUT http://localhost:7837/api/v1/endpoints/my-workflow \
+/// # Store a workflow (creates hash)
+/// curl -X POST http://localhost:7837/api/v1/workflows \
 ///   -H "Content-Type: application/json" \
-///   -d '{"workflow": {...}}'
+///   -d '{"workflow": {"name": "my-workflow", "steps": [...]}}'
 ///
 /// # Create labeled version
-/// curl -X PUT "http://localhost:7837/api/v1/endpoints/my-workflow?label=v1.0" \
+/// curl -X PUT http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0 \
 ///   -H "Content-Type: application/json" \
-///   -d '{"workflow": {...}}'
+///   -d '{"workflow_hash": "abc123..."}'
 ///
-/// # Execute default version
-/// curl -X POST http://localhost:7837/api/v1/endpoints/my-workflow/execute \
+/// # Execute latest version
+/// curl -X POST http://localhost:7837/api/v1/workflows/by-name/my-workflow/execute \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"input": {"key": "value"}}'
 ///
 /// # Execute specific version
-/// curl -X POST "http://localhost:7837/api/v1/endpoints/my-workflow/execute?label=v1.0" \
+/// curl -X POST http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0/execute \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"input": {"key": "value"}}'
 /// ```
@@ -100,7 +102,7 @@ use stepflow_execution::StepFlowExecutor;
 /// ### Debug Execution
 /// ```bash
 /// # Create debug execution
-/// curl -X POST http://localhost:7837/api/v1/execute \
+/// curl -X POST http://localhost:7837/api/v1/executions \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"workflow": {...}, "input": {"key": "value"}, "debug": true}'
 ///
@@ -120,6 +122,8 @@ use stepflow_execution::StepFlowExecutor;
 ///
 /// - **Health Check**: `GET /health`
 /// - **OpenAPI Spec**: `GET /openapi.json`
+/// - **Components**: `GET /components` for available plugins
+/// - **Workflow Dependencies**: `GET /workflows/{hash}/dependencies`
 /// - **Comprehensive Error Handling**: Structured error responses
 /// - **State Store Integration**: Persistent execution history
 /// - **Plugin Architecture**: Extensible component system

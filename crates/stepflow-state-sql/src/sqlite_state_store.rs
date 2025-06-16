@@ -11,7 +11,7 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
-    Endpoint, ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore,
+    WorkflowLabelMetadata, WorkflowWithMetadata, ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore,
     StepInfo, StepResult,
 };
 use uuid::Uuid;
@@ -329,18 +329,140 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn create_endpoint(
+    fn get_workflows_by_name(
+        &self,
+        name: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>> {
+        let pool = self.pool.clone();
+        let name = name.to_string();
+
+        async move {
+            let sql = "SELECT hash, first_seen FROM workflows w WHERE EXISTS (SELECT 1 FROM workflow_labels l WHERE l.workflow_hash = w.hash AND l.name = ?) OR w.hash IN (SELECT w2.hash FROM workflows w2 WHERE json_extract(w2.content, '$.name') = ?) ORDER BY first_seen DESC";
+
+            let rows = sqlx::query(sql)
+                .bind(&name)
+                .bind(&name)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut results = Vec::new();
+            for row in rows {
+                let workflow_hash = FlowHash::from(row.get::<String, _>("hash").as_str());
+                let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("first_seen"))
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc);
+                results.push((workflow_hash, created_at));
+            }
+
+            Ok(results)
+        }.boxed()
+    }
+
+    fn get_named_workflow(
         &self,
         name: &str,
         label: Option<&str>,
-        workflow_hash: FlowHash,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>> {
         let pool = self.pool.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
 
         async move {
-            let sql = "INSERT OR REPLACE INTO endpoints (name, label, workflow_hash, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
+            match label {
+                Some(label_str) => {
+                    // Get workflow by label
+                    let sql = "SELECT l.name, l.label, l.workflow_hash, l.created_at, l.updated_at, w.content, w.first_seen FROM workflow_labels l JOIN workflows w ON l.workflow_hash = w.hash WHERE l.name = ? AND l.label = ?";
+
+                    let row = sqlx::query(sql)
+                        .bind(&name)
+                        .bind(&label_str)
+                        .fetch_optional(&pool)
+                        .await
+                        .change_context(StateError::Internal)?;
+
+                    match row {
+                        Some(row) => {
+                            let workflow_content: String = row.get("content");
+                            let workflow: Flow = serde_json::from_str(&workflow_content)
+                                .change_context(StateError::Internal)?;
+                            let workflow_hash = FlowHash::from(row.get::<String, _>("workflow_hash").as_str());
+                            let label_metadata = WorkflowLabelMetadata {
+                                name: row.get("name"),
+                                label: row.get("label"),
+                                workflow_hash: workflow_hash.clone(),
+                                created_at: chrono::DateTime::parse_from_rfc3339(
+                                    &row.get::<String, _>("created_at"),
+                                )
+                                .change_context(StateError::Internal)?
+                                .with_timezone(&chrono::Utc),
+                                updated_at: chrono::DateTime::parse_from_rfc3339(
+                                    &row.get::<String, _>("updated_at"),
+                                )
+                                .change_context(StateError::Internal)?
+                                .with_timezone(&chrono::Utc),
+                            };
+                            let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("first_seen"))
+                                .change_context(StateError::Internal)?
+                                .with_timezone(&chrono::Utc);
+
+                            Ok(Some(WorkflowWithMetadata {
+                                workflow: Arc::new(workflow),
+                                workflow_hash,
+                                created_at,
+                                label_info: Some(label_metadata),
+                            }))
+                        },
+                        None => Ok(None),
+                    }
+                },
+                None => {
+                    // Get latest workflow by name
+                    let sql = "SELECT hash, content, first_seen FROM workflows w WHERE EXISTS (SELECT 1 FROM workflow_labels l WHERE l.workflow_hash = w.hash AND l.name = ?) OR w.hash IN (SELECT w2.hash FROM workflows w2 WHERE json_extract(w2.content, '$.name') = ?) ORDER BY first_seen DESC LIMIT 1";
+
+                    let row = sqlx::query(sql)
+                        .bind(&name)
+                        .bind(&name)
+                        .fetch_optional(&pool)
+                        .await
+                        .change_context(StateError::Internal)?;
+
+                    match row {
+                        Some(row) => {
+                            let workflow_content: String = row.get("content");
+                            let workflow: Flow = serde_json::from_str(&workflow_content)
+                                .change_context(StateError::Internal)?;
+                            let workflow_hash = FlowHash::from(row.get::<String, _>("hash").as_str());
+                            let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("first_seen"))
+                                .change_context(StateError::Internal)?
+                                .with_timezone(&chrono::Utc);
+
+                            Ok(Some(WorkflowWithMetadata {
+                                workflow: Arc::new(workflow),
+                                workflow_hash,
+                                created_at,
+                                label_info: None,
+                            }))
+                        },
+                        None => Ok(None),
+                    }
+                }
+            }
+        }.boxed()
+    }
+
+    fn create_or_update_label(
+        &self,
+        name: &str,
+        label: &str,
+        workflow_hash: FlowHash,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        let name = name.to_string();
+        let label = label.to_string();
+
+        async move {
+            let sql = "INSERT OR REPLACE INTO workflow_labels (name, label, workflow_hash, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
 
             sqlx::query(sql)
                 .bind(&name)
@@ -354,83 +476,26 @@ impl StateStore for SqliteStateStore {
         }.boxed()
     }
 
-    fn get_endpoint(
+
+    fn list_labels_for_name(
         &self,
         name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Endpoint>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>> {
         let pool = self.pool.clone();
         let name = name.to_string();
-        let label = label.map(|s| s.to_string());
 
         async move {
-            let sql = "SELECT name, label, workflow_hash, created_at, updated_at FROM endpoints WHERE name = ? AND label IS ?";
+            let sql = "SELECT name, label, workflow_hash, created_at, updated_at FROM workflow_labels WHERE name = ? ORDER BY created_at DESC";
 
-            let row = sqlx::query(sql)
+            let rows = sqlx::query(sql)
                 .bind(&name)
-                .bind(&label)
-                .fetch_optional(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            match row {
-                Some(row) => {
-                    let endpoint = Endpoint {
-                        name: row.get("name"),
-                        label: row.get("label"),
-                        workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
-                        created_at: chrono::DateTime::parse_from_rfc3339(
-                            &row.get::<String, _>("created_at"),
-                        )
-                        .change_context(StateError::Internal)?
-                        .with_timezone(&chrono::Utc),
-                        updated_at: chrono::DateTime::parse_from_rfc3339(
-                            &row.get::<String, _>("updated_at"),
-                        )
-                        .change_context(StateError::Internal)?
-                        .with_timezone(&chrono::Utc),
-                    };
-
-                    Ok(Some(endpoint))
-                },
-                None => Ok(None),
-            }
-        }.boxed()
-    }
-
-    fn list_endpoints(
-        &self,
-        name_filter: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<Endpoint>, StateError>> {
-        let pool = self.pool.clone();
-        let name_filter = name_filter.map(|s| s.to_string());
-
-        async move {
-            let (sql, bind_name) = if let Some(ref name) = name_filter {
-                (
-                    "SELECT name, label, workflow_hash, created_at, updated_at FROM endpoints WHERE name = ? ORDER BY created_at DESC",
-                    Some(name),
-                )
-            } else {
-                (
-                    "SELECT name, label, workflow_hash, created_at, updated_at FROM endpoints ORDER BY created_at DESC",
-                    None,
-                )
-            };
-
-            let mut query = sqlx::query(sql);
-            if let Some(name) = bind_name {
-                query = query.bind(name);
-            }
-
-            let rows = query
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)?;
 
-            let mut endpoints = Vec::new();
+            let mut labels = Vec::new();
             for row in rows {
-                let endpoint = Endpoint {
+                let workflow_label = WorkflowLabelMetadata {
                     name: row.get("name"),
                     label: row.get("label"),
                     workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
@@ -446,68 +511,81 @@ impl StateStore for SqliteStateStore {
                     .with_timezone(&chrono::Utc),
                 };
 
-                endpoints.push(endpoint);
+                labels.push(workflow_label);
             }
 
-            Ok(endpoints)
+            Ok(labels)
         }.boxed()
     }
 
-    fn delete_endpoint(
+    fn list_workflow_names(
+        &self,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "SELECT DISTINCT name FROM workflow_labels UNION SELECT DISTINCT json_extract(content, '$.name') as name FROM workflows WHERE json_extract(content, '$.name') IS NOT NULL ORDER BY name";
+
+            let rows = sqlx::query(sql)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut names = Vec::new();
+            for row in rows {
+                let name: String = row.get("name");
+                names.push(name);
+            }
+
+            Ok(names)
+        }.boxed()
+    }
+
+    fn delete_label(
         &self,
         name: &str,
-        label: Option<&str>,
+        label: &str,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
         let name = name.to_string();
-        let label = label.map(|s| s.to_string());
+        let label = label.to_string();
 
         async move {
-            let sql = if label.as_deref() == Some("*") {
-                // Delete all versions of this endpoint
-                "DELETE FROM endpoints WHERE name = ?"
-            } else {
-                // Delete specific version (including default when label is None)
-                "DELETE FROM endpoints WHERE name = ? AND label IS ?"
-            };
+            let sql = "DELETE FROM workflow_labels WHERE name = ? AND label = ?";
 
-            let mut query = sqlx::query(sql).bind(&name);
-            if label.as_deref() != Some("*") {
-                query = query.bind(&label);
-            }
-
-            query
+            sqlx::query(sql)
+                .bind(&name)
+                .bind(&label)
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
 
             Ok(())
-        }
-        .boxed()
+        }.boxed()
     }
 
     fn create_execution(
         &self,
         execution_id: Uuid,
-        endpoint_name: Option<&str>,
-        endpoint_label: Option<&str>,
         workflow_hash: FlowHash,
+        workflow_name: Option<&str>,
+        workflow_label: Option<&str>,
         debug_mode: bool,
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
-        let endpoint_name = endpoint_name.map(|s| s.to_string());
-        let endpoint_label = endpoint_label.map(|s| s.to_string());
+        let workflow_name = workflow_name.map(|s| s.to_string());
+        let workflow_label = workflow_label.map(|s| s.to_string());
         let workflow_hash = workflow_hash.to_string();
         async move {
             let input_json = serde_json::to_string(input.as_ref()).change_context(StateError::Serialization)?;
-            let sql = "INSERT INTO executions (id, endpoint_name, endpoint_label, workflow_hash, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
+            let sql = "INSERT INTO executions (id, workflow_hash, workflow_name, workflow_label, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
 
             sqlx::query(sql)
                 .bind(execution_id.to_string())
-                .bind(endpoint_name)
-                .bind(endpoint_label)
                 .bind(&workflow_hash)
+                .bind(workflow_name)
+                .bind(workflow_label)
                 .bind(debug_mode)
                 .bind(&input_json)
                 .execute(&pool)
@@ -559,7 +637,7 @@ impl StateStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT id, endpoint_name, endpoint_label, workflow_hash, status, debug_mode, input_json, result_json, created_at, completed_at FROM executions WHERE id = ?";
+            let sql = "SELECT id, workflow_name, workflow_label, workflow_hash, status, debug_mode, input_json, result_json, created_at, completed_at FROM executions WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(execution_id.to_string())
@@ -581,8 +659,8 @@ impl StateStore for SqliteStateStore {
                         }
                     };
 
-                    let endpoint_name = row.get::<Option<String>, _>("endpoint_name");
-                    let endpoint_label = row.get::<Option<String>, _>("endpoint_label");
+                    let workflow_name = row.get::<Option<String>, _>("workflow_name");
+                    let workflow_label = row.get::<Option<String>, _>("workflow_label");
 
                     // Parse input JSON
                     let input_json: String = row.get("input_json");
@@ -617,8 +695,8 @@ impl StateStore for SqliteStateStore {
                     let details = ExecutionDetails {
                         summary: ExecutionSummary {
                             execution_id,
-                            endpoint_name,
-                            endpoint_label,
+                            workflow_name,
+                            workflow_label,
                             workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
                             status,
                             debug_mode: row.get("debug_mode"),
@@ -644,7 +722,7 @@ impl StateStore for SqliteStateStore {
         let filters = filters.clone();
 
         async move {
-            let mut sql = "SELECT id, endpoint_name, endpoint_label, workflow_hash, status, debug_mode, created_at, completed_at FROM executions".to_string();
+            let mut sql = "SELECT id, workflow_name, workflow_label, workflow_hash, status, debug_mode, created_at, completed_at FROM executions".to_string();
             let mut conditions = Vec::new();
             let mut bind_values: Vec<String> = Vec::new();
 
@@ -659,9 +737,9 @@ impl StateStore for SqliteStateStore {
                 bind_values.push(status_str.to_string());
             }
 
-            if let Some(ref endpoint_name) = filters.endpoint_name {
-                conditions.push("endpoint_name = ?".to_string());
-                bind_values.push(endpoint_name.clone());
+            if let Some(ref workflow_name) = filters.workflow_name {
+                conditions.push("workflow_name = ?".to_string());
+                bind_values.push(workflow_name.clone());
             }
 
             if !conditions.is_empty() {
@@ -706,13 +784,13 @@ impl StateStore for SqliteStateStore {
                     _ => ExecutionStatus::Running,
                 };
 
-                let endpoint_name = row.get::<Option<String>, _>("endpoint_name");
-                let endpoint_label = row.get::<Option<String>, _>("endpoint_label");
+                let workflow_name = row.get::<Option<String>, _>("workflow_name");
+                let workflow_label = row.get::<Option<String>, _>("workflow_label");
 
                 let summary = ExecutionSummary {
                     execution_id,
-                    endpoint_name,
-                    endpoint_label,
+                    workflow_name,
+                    workflow_label,
                     workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
                     status,
                     debug_mode: row.get("debug_mode"),

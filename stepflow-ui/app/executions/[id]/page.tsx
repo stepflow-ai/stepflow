@@ -234,7 +234,7 @@ export default function ExecutionDetailsPage() {
   }
 
   // Transform data for display
-  const workflowName = execution?.endpoint_name || workflowData?.workflow?.name || 'Ad-hoc Execution'
+  const workflowName = execution?.workflow_name || workflowData?.workflow?.name || 'Ad-hoc Execution'
   const isDebugMode = execution?.debug_mode || false
   const totalSteps = workflowData?.workflow?.steps?.length || 0
   const completedSteps = steps?.filter(step =>

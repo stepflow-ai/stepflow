@@ -5,14 +5,13 @@ use utoipa::OpenApi;
 #[tokio::test]
 async fn test_openapi_schema_generation() {
     use stepflow_server::{
-        components::ComponentsApi, debug::DebugApi, endpoints::EndpointsApi,
+        components::ComponentsApi, debug::DebugApi,
         executions::ExecutionsApi, health::HealthApi, workflows::WorkflowApi,
     };
 
     // Generate OpenAPI specs for each API
     let health_spec = HealthApi::openapi();
     let workflow_spec = WorkflowApi::openapi();
-    let endpoints_spec = EndpointsApi::openapi();
     let executions_spec = ExecutionsApi::openapi();
     let debug_spec = DebugApi::openapi();
     let components_spec = ComponentsApi::openapi();
@@ -23,9 +22,6 @@ async fn test_openapi_schema_generation() {
 
     assert_eq!(workflow_spec.info.title, "stepflow-server");
     assert!(!workflow_spec.paths.paths.is_empty());
-
-    assert_eq!(endpoints_spec.info.title, "stepflow-server");
-    assert!(!endpoints_spec.paths.paths.is_empty());
 
     assert_eq!(executions_spec.info.title, "stepflow-server");
     assert!(!executions_spec.paths.paths.is_empty());
@@ -46,7 +42,6 @@ async fn test_combined_openapi_schema() {
         nest(
             (path = "/api/v1", api = stepflow_server::health::HealthApi),
             (path = "/api/v1", api = stepflow_server::workflows::WorkflowApi),
-            (path = "/api/v1", api = stepflow_server::endpoints::EndpointsApi),
             (path = "/api/v1", api = stepflow_server::executions::ExecutionsApi),
             (path = "/api/v1", api = stepflow_server::debug::DebugApi),
             (path = "/api/v1", api = stepflow_server::components::ComponentsApi)
@@ -80,12 +75,15 @@ async fn test_combined_openapi_schema() {
     assert!(paths.contains_key("/api/v1/workflows/{workflow_hash}"));
     assert!(paths.contains_key("/api/v1/workflows/{workflow_hash}/dependencies"));
 
-    // Endpoint endpoints
-    assert!(paths.contains_key("/api/v1/endpoints"));
-    assert!(paths.contains_key("/api/v1/endpoints/{name}"));
-    assert!(paths.contains_key("/api/v1/endpoints/{name}/workflow"));
-    assert!(paths.contains_key("/api/v1/endpoints/{name}/dependencies"));
-    assert!(paths.contains_key("/api/v1/endpoints/{name}/execute"));
+    // Named workflow endpoints
+    assert!(paths.contains_key("/api/v1/workflows/names"));
+    assert!(paths.contains_key("/api/v1/workflows/by-name/{name}"));
+    assert!(paths.contains_key("/api/v1/workflows/by-name/{name}/latest"));
+    assert!(paths.contains_key("/api/v1/workflows/by-name/{name}/execute"));
+    assert!(paths.contains_key("/api/v1/workflows/by-name/{name}/labels"));
+    assert!(paths.contains_key("/api/v1/workflows/by-name/{name}/labels/{label}"));
+    assert!(paths.contains_key("/api/v1/workflows/by-name/{name}/labels/{label}/execute"));
+    assert!(paths.contains_key("/api/v1/workflows/{workflow_hash}/execute"));
 
     // Execution tracking endpoints
     assert!(paths.contains_key("/api/v1/executions"));
@@ -114,7 +112,6 @@ async fn test_openapi_schema_serialization() {
         nest(
             (path = "/api/v1", api = stepflow_server::health::HealthApi),
             (path = "/api/v1", api = stepflow_server::workflows::WorkflowApi),
-            (path = "/api/v1", api = stepflow_server::endpoints::EndpointsApi),
             (path = "/api/v1", api = stepflow_server::executions::ExecutionsApi),
             (path = "/api/v1", api = stepflow_server::debug::DebugApi),
             (path = "/api/v1", api = stepflow_server::components::ComponentsApi)
@@ -158,7 +155,6 @@ async fn test_schema_components_exist() {
         nest(
             (path = "/api/v1", api = stepflow_server::health::HealthApi),
             (path = "/api/v1", api = stepflow_server::workflows::WorkflowApi),
-            (path = "/api/v1", api = stepflow_server::endpoints::EndpointsApi),
             (path = "/api/v1", api = stepflow_server::executions::ExecutionsApi),
             (path = "/api/v1", api = stepflow_server::debug::DebugApi),
             (path = "/api/v1", api = stepflow_server::components::ComponentsApi)
@@ -184,9 +180,9 @@ async fn test_schema_components_exist() {
         "StoreWorkflowResponse",
         "WorkflowResponse",
         "WorkflowDependenciesResponse",
-        "CreateEndpointRequest",
-        "EndpointResponse",
-        "ExecuteEndpointRequest",
+        "CreateLabelRequest",
+        "WorkflowLabelResponse",
+        "ExecuteWorkflowRequest",
         "CreateExecutionResponse",
         "ExecutionSummaryResponse",
         "ExecutionDetailsResponse",
@@ -219,7 +215,6 @@ async fn test_http_methods_in_openapi() {
         nest(
             (path = "/api/v1", api = stepflow_server::health::HealthApi),
             (path = "/api/v1", api = stepflow_server::workflows::WorkflowApi),
-            (path = "/api/v1", api = stepflow_server::endpoints::EndpointsApi),
             (path = "/api/v1", api = stepflow_server::executions::ExecutionsApi),
             (path = "/api/v1", api = stepflow_server::debug::DebugApi),
             (path = "/api/v1", api = stepflow_server::components::ComponentsApi)
@@ -256,16 +251,21 @@ async fn test_http_methods_in_openapi() {
     assert!(workflow_hash_path.delete.is_some());
     assert!(workflow_hash_path.post.is_none());
 
-    // Endpoints - GET and PUT for specific endpoint
-    let endpoint_name_path = paths.get("/api/v1/endpoints/{name}").unwrap();
-    assert!(endpoint_name_path.get.is_some());
-    assert!(endpoint_name_path.put.is_some());
-    assert!(endpoint_name_path.delete.is_some());
+    // Named workflows - GET for specific workflow name
+    let workflow_name_path = paths.get("/api/v1/workflows/by-name/{name}").unwrap();
+    assert!(workflow_name_path.get.is_some());
+    assert!(workflow_name_path.post.is_none());
 
-    // Endpoint execution - POST
-    let endpoint_execute_path = paths.get("/api/v1/endpoints/{name}/execute").unwrap();
-    assert!(endpoint_execute_path.post.is_some());
-    assert!(endpoint_execute_path.get.is_none());
+    // Workflow labels - PUT and DELETE for specific label
+    let workflow_label_path = paths.get("/api/v1/workflows/by-name/{name}/labels/{label}").unwrap();
+    assert!(workflow_label_path.get.is_some());
+    assert!(workflow_label_path.put.is_some());
+    assert!(workflow_label_path.delete.is_some());
+
+    // Named workflow execution - POST
+    let workflow_execute_path = paths.get("/api/v1/workflows/by-name/{name}/execute").unwrap();
+    assert!(workflow_execute_path.post.is_some());
+    assert!(workflow_execute_path.get.is_none());
 
     // Ad-hoc execution - POST (now under /executions)
     let executions_path = paths.get("/api/v1/executions").unwrap();
@@ -287,7 +287,6 @@ async fn test_openapi_response_schemas() {
         nest(
             (path = "/api/v1", api = stepflow_server::health::HealthApi),
             (path = "/api/v1", api = stepflow_server::workflows::WorkflowApi),
-            (path = "/api/v1", api = stepflow_server::endpoints::EndpointsApi),
             (path = "/api/v1", api = stepflow_server::executions::ExecutionsApi),
             (path = "/api/v1", api = stepflow_server::debug::DebugApi),
             (path = "/api/v1", api = stepflow_server::components::ComponentsApi)
@@ -315,10 +314,10 @@ async fn test_openapi_response_schemas() {
     let workflows_post = workflows_path.post.as_ref().unwrap();
     assert!(workflows_post.responses.responses.contains_key("200"));
 
-    // Endpoints GET should have 200 response
-    let endpoints_path = paths.get("/api/v1/endpoints").unwrap();
-    let endpoints_get = endpoints_path.get.as_ref().unwrap();
-    assert!(endpoints_get.responses.responses.contains_key("200"));
+    // Workflow names GET should have 200 response
+    let workflow_names_path = paths.get("/api/v1/workflows/names").unwrap();
+    let workflow_names_get = workflow_names_path.get.as_ref().unwrap();
+    assert!(workflow_names_get.responses.responses.contains_key("200"));
 
     // Executions GET should have 200 response
     let executions_path = paths.get("/api/v1/executions").unwrap();

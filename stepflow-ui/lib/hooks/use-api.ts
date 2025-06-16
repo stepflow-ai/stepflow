@@ -14,10 +14,11 @@ export const queryKeys = {
   execution: (id: string) => ['executions', id],
   executionSteps: (id: string) => ['executions', id, 'steps'],
   executionWorkflow: (id: string) => ['executions', id, 'workflow'],
-  endpoints: ['endpoints'],
-  endpoint: (name: string, label?: string) => ['endpoints', name, label],
-  endpointWorkflow: (name: string, label?: string) => ['endpoints', name, 'workflow', label],
-  endpointDependencies: (name: string, label?: string) => ['endpoints', name, 'dependencies', label],
+  workflowNames: ['workflows', 'names'],
+  workflowsByName: (name: string) => ['workflows', 'by-name', name],
+  latestWorkflowByName: (name: string) => ['workflows', 'by-name', name, 'latest'],
+  workflowByLabel: (name: string, label: string) => ['workflows', 'by-name', name, 'labels', label],
+  labelsForName: (name: string) => ['workflows', 'by-name', name, 'labels'],
   workflowDependencies: (workflowHash: string) => ['workflows', workflowHash, 'dependencies'],
   components: ['components'],
   debugRunnableSteps: (executionId: string) => ['executions', executionId, 'debug', 'runnable'],
@@ -82,40 +83,6 @@ export const useExecutionWorkflow = (executionId: string) => {
   })
 }
 
-// Endpoints
-export const useEndpoints = () => {
-  return useQuery({
-    queryKey: queryKeys.endpoints,
-    queryFn: apiClient.listEndpoints,
-    select: (data) => data.endpoints,
-  })
-}
-
-export const useEndpoint = (name: string, label?: string) => {
-  return useQuery({
-    queryKey: queryKeys.endpoint(name, label),
-    queryFn: () => apiClient.getEndpoint(name, label),
-    enabled: !!name,
-  })
-}
-
-export const useEndpointWorkflow = (name: string, label?: string) => {
-  return useQuery({
-    queryKey: queryKeys.endpointWorkflow(name, label),
-    queryFn: () => apiClient.getEndpointWorkflow(name, label),
-    enabled: !!name,
-    staleTime: 5 * 60 * 1000, // Workflows don't change often, cache for 5 minutes
-  })
-}
-
-export const useEndpointDependencies = (name: string, label?: string) => {
-  return useQuery({
-    queryKey: queryKeys.endpointDependencies(name, label),
-    queryFn: () => apiClient.getEndpointDependencies(name, label),
-    enabled: !!name,
-    staleTime: 5 * 60 * 1000, // Dependencies don't change often, cache for 5 minutes
-  })
-}
 
 export const useWorkflowDependencies = (workflowHash: string) => {
   return useQuery({
@@ -123,6 +90,51 @@ export const useWorkflowDependencies = (workflowHash: string) => {
     queryFn: () => apiClient.getWorkflowDependencies(workflowHash),
     enabled: !!workflowHash,
     staleTime: 5 * 60 * 1000, // Dependencies don't change often, cache for 5 minutes
+  })
+}
+
+// Workflows
+export const useWorkflowNames = () => {
+  return useQuery({
+    queryKey: queryKeys.workflowNames,
+    queryFn: apiClient.listWorkflowNames,
+    select: (data) => data.names,
+  })
+}
+
+export const useWorkflowsByName = (name: string) => {
+  return useQuery({
+    queryKey: queryKeys.workflowsByName(name),
+    queryFn: () => apiClient.getWorkflowsByName(name),
+    enabled: !!name,
+    staleTime: 5 * 60 * 1000, // Workflow versions don't change often
+  })
+}
+
+export const useLatestWorkflowByName = (name: string) => {
+  return useQuery({
+    queryKey: queryKeys.latestWorkflowByName(name),
+    queryFn: () => apiClient.getLatestWorkflowByName(name),
+    enabled: !!name,
+    staleTime: 5 * 60 * 1000, // Workflows don't change often
+  })
+}
+
+export const useWorkflowByLabel = (name: string, label: string) => {
+  return useQuery({
+    queryKey: queryKeys.workflowByLabel(name, label),
+    queryFn: () => apiClient.getWorkflowByLabel(name, label),
+    enabled: !!name && !!label,
+    staleTime: 5 * 60 * 1000, // Labeled workflows don't change often
+  })
+}
+
+export const useLabelsForName = (name: string) => {
+  return useQuery({
+    queryKey: queryKeys.labelsForName(name),
+    queryFn: () => apiClient.listLabelsForName(name),
+    enabled: !!name,
+    select: (data) => data.labels,
   })
 }
 
@@ -160,41 +172,56 @@ export const useExecuteWorkflow = () => {
   })
 }
 
-export const useCreateEndpoint = () => {
+export const useExecuteWorkflowByName = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: ({ name, data, label }: { name: string; data: { workflow: Workflow }; label?: string }) => 
-      apiClient.createEndpoint(name, data, label),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints })
-    },
-  })
-}
-
-export const useDeleteEndpoint = () => {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: ({ name, label }: { name: string; label?: string }) =>
-      apiClient.deleteEndpoint(name, label),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints })
-    },
-  })
-}
-
-export const useExecuteEndpoint = () => {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: ({ name, data, label }: { name: string; data: { input: unknown; debug?: boolean }; label?: string }) => 
-      apiClient.executeEndpoint(name, data, label),
+    mutationFn: ({ name, data }: { name: string; data: { input: unknown; debug?: boolean } }) => 
+      apiClient.executeWorkflowByName(name, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.executions })
     },
   })
 }
+
+export const useExecuteWorkflowByLabel = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ name, label, data }: { name: string; label: string; data: { input: unknown; debug?: boolean } }) => 
+      apiClient.executeWorkflowByLabel(name, label, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.executions })
+    },
+  })
+}
+
+export const useCreateOrUpdateLabel = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ name, label, workflowHash }: { name: string; label: string; workflowHash: string }) => 
+      apiClient.createOrUpdateLabel(name, label, workflowHash),
+    onSuccess: (_, { name }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.labelsForName(name) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowNames })
+    },
+  })
+}
+
+export const useDeleteLabel = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ name, label }: { name: string; label: string }) =>
+      apiClient.deleteLabel(name, label),
+    onSuccess: (_, { name }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.labelsForName(name) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowNames })
+    },
+  })
+}
+
 
 export const useExecuteDebugSteps = () => {
   const queryClient = useQueryClient()
@@ -281,6 +308,7 @@ export const transformStepsForVisualizer = (steps: StepExecution[], workflow?: W
       name: workflowStep.id,
       component: workflowStep.component,
       status,
+      dependencies: workflowStep.depends_on || [],
       startTime,
       duration,
       output

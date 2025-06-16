@@ -100,7 +100,7 @@ export default function ExecutionsPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   {getStatusIcon(execution.status)}
-                  <CardTitle className="text-lg">{execution.endpoint_name || 'Ad-hoc Workflow'}</CardTitle>
+                  <CardTitle className="text-lg">{execution.workflow_name || 'Ad-hoc Workflow'}</CardTitle>
                   {getStatusBadge(execution.status)}
                 </div>
                 <div className="flex items-center space-x-2">

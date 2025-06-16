@@ -2,6 +2,7 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
@@ -45,54 +46,38 @@ pub struct CreateExecutionResponse {
 /// Execution summary for API responses
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExecutionSummaryResponse {
-    /// The execution ID (UUID string)
-    pub execution_id: String,
-    /// The endpoint name (if executed via endpoint)
+    /// The execution ID
+    pub execution_id: Uuid,
+    /// The workflow name (from workflow.name field)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub endpoint_name: Option<String>,
-    /// The endpoint label (if executed via endpoint)
+    pub workflow_name: Option<String>,
+    /// The workflow label (if executed via labeled workflow route)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub endpoint_label: Option<String>,
+    pub workflow_label: Option<String>,
     /// The workflow hash
     pub workflow_hash: FlowHash,
     /// Current status of the execution
     pub status: ExecutionStatus,
     /// Whether execution is in debug mode
     pub debug_mode: bool,
-    /// When the execution was created (RFC3339 format)
-    pub created_at: String,
-    /// When the execution was completed (if applicable, RFC3339 format)
+    /// When the execution was created
+    pub created_at: DateTime<Utc>,
+    /// When the execution was completed (if applicable)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub completed_at: Option<String>,
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 /// Detailed execution information for API responses
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExecutionDetailsResponse {
-    /// The execution ID (UUID string)
-    pub execution_id: String,
-    /// The endpoint name (if executed via endpoint)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub endpoint_name: Option<String>,
-    /// The endpoint label (if executed via endpoint)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub endpoint_label: Option<String>,
-    /// The workflow hash
-    pub workflow_hash: FlowHash,
-    /// Current status of the execution
-    pub status: ExecutionStatus,
-    /// Whether execution is in debug mode
-    pub debug_mode: bool,
+    /// Execution summary information (same as list response)
+    #[serde(flatten)]
+    pub summary: ExecutionSummaryResponse,
     /// Input data for the execution
     pub input: ValueRef,
     /// Result data (if completed and available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<FlowResult>,
-    /// When the execution was created (RFC3339 format)
-    pub created_at: String,
-    /// When the execution was completed (if applicable, RFC3339 format)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub completed_at: Option<String>,
 }
 
 /// Response for listing executions
@@ -187,9 +172,9 @@ pub async fn create_execution(
     state_store
         .create_execution(
             execution_id,
-            None, // No endpoint name for ad-hoc execution
-            None, // No endpoint label for ad-hoc execution
             workflow_hash.clone(),
+            workflow.name.as_deref(), // Use workflow name if available
+            None,                     // No workflow label for ad-hoc execution
             req.debug,
             req.input.clone(),
         )
@@ -343,7 +328,7 @@ pub async fn list_executions(
 ) -> Result<Json<ListExecutionsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
-    // TODO: Add query parameters for filtering (status, endpoint_name, limit, offset)
+    // TODO: Add query parameters for filtering (status, workflow_name, workflow_label, limit, offset)
     let filters = stepflow_state::ExecutionFilters::default();
 
     let executions = state_store.list_executions(&filters).await?;
@@ -449,14 +434,14 @@ pub async fn get_execution_steps(
 impl From<ExecutionSummary> for ExecutionSummaryResponse {
     fn from(summary: ExecutionSummary) -> Self {
         Self {
-            execution_id: summary.execution_id.to_string(),
-            endpoint_name: summary.endpoint_name,
-            endpoint_label: summary.endpoint_label,
+            execution_id: summary.execution_id,
+            workflow_name: summary.workflow_name,
+            workflow_label: summary.workflow_label,
             workflow_hash: summary.workflow_hash,
             status: summary.status,
             debug_mode: summary.debug_mode,
-            created_at: summary.created_at.to_rfc3339(),
-            completed_at: summary.completed_at.map(|dt| dt.to_rfc3339()),
+            created_at: summary.created_at,
+            completed_at: summary.completed_at,
         }
     }
 }
@@ -464,16 +449,9 @@ impl From<ExecutionSummary> for ExecutionSummaryResponse {
 impl From<ExecutionDetails> for ExecutionDetailsResponse {
     fn from(details: ExecutionDetails) -> Self {
         Self {
-            execution_id: details.summary.execution_id.to_string(),
-            endpoint_name: details.summary.endpoint_name,
-            endpoint_label: details.summary.endpoint_label,
-            workflow_hash: details.summary.workflow_hash,
-            status: details.summary.status,
-            debug_mode: details.summary.debug_mode,
+            summary: ExecutionSummaryResponse::from(details.summary),
             input: details.input,
             result: details.result.map(|r| FlowResult::Success { result: r }),
-            created_at: details.summary.created_at.to_rfc3339(),
-            completed_at: details.summary.completed_at.map(|dt| dt.to_rfc3339()),
         }
     }
 }

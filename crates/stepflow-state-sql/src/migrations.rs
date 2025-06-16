@@ -95,13 +95,13 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 first_seen DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         "#,
-        // Executions table with all metadata columns
+        // Executions table with workflow metadata
         r#"
             CREATE TABLE IF NOT EXISTS executions (
                 id TEXT PRIMARY KEY,
-                endpoint_name TEXT,
-                endpoint_label TEXT,
                 workflow_hash TEXT,
+                workflow_name TEXT,        -- from workflow.name field for display
+                workflow_label TEXT,       -- label used for execution (if any)
                 status TEXT DEFAULT 'running',
                 debug_mode BOOLEAN DEFAULT FALSE,
                 input_json TEXT,
@@ -123,11 +123,11 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 FOREIGN KEY (execution_id) REFERENCES executions(id)
             )
         "#,
-        // Unified endpoints table with composite primary key
+        // Workflow labels table for named workflow versions
         r#"
-            CREATE TABLE IF NOT EXISTS endpoints (
-                name TEXT NOT NULL,
-                label TEXT, -- NULL represents the default version
+            CREATE TABLE IF NOT EXISTS workflow_labels (
+                name TEXT NOT NULL,  -- from workflow.name field
+                label TEXT NOT NULL, -- like "production", "staging", "latest"
                 workflow_hash TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -150,15 +150,13 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
         // Step results indexes
         "CREATE INDEX IF NOT EXISTS idx_step_results_step_id ON step_results(execution_id, step_id)",
         // Executions indexes
-        "CREATE INDEX IF NOT EXISTS idx_executions_endpoint_name ON executions(endpoint_name)",
-        "CREATE INDEX IF NOT EXISTS idx_executions_endpoint_label ON executions(endpoint_label)",
         "CREATE INDEX IF NOT EXISTS idx_executions_workflow_hash ON executions(workflow_hash)",
         "CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status)",
         "CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions(created_at)",
-        // Endpoints indexes
-        "CREATE INDEX IF NOT EXISTS idx_endpoints_name ON endpoints(name)",
-        "CREATE INDEX IF NOT EXISTS idx_endpoints_workflow_hash ON endpoints(workflow_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_endpoints_created_at ON endpoints(created_at)",
+        // Workflow labels indexes
+        "CREATE INDEX IF NOT EXISTS idx_workflow_labels_name ON workflow_labels(name)",
+        "CREATE INDEX IF NOT EXISTS idx_workflow_labels_workflow_hash ON workflow_labels(workflow_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_workflow_labels_created_at ON workflow_labels(created_at)",
     ];
 
     // Execute index creation commands

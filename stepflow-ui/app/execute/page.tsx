@@ -4,85 +4,50 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Play, Upload, FileText, Globe, Code, Bug, Loader2, Zap } from 'lucide-react'
-import { useEndpoints, useExecuteWorkflow, useExecuteEndpoint } from '@/lib/hooks/use-api'
-import { ExecutionDialog } from '@/components/execution-dialog'
+import { Play, Upload, FileText, Workflow, Code, Bug, Loader2, Zap } from 'lucide-react'
+import { useWorkflowNames, useExecuteWorkflow, useExecuteWorkflowByName, useExecuteWorkflowByLabel } from '@/lib/hooks/use-api'
+import { WorkflowExecutionDialog } from '@/components/workflow-execution-dialog'
 import { EXAMPLE_WORKFLOWS } from '@/lib/examples'
 
 // Example workflow from tests/python/python_math.yaml
-const EXAMPLE_WORKFLOW = `input_schema:
-  type: object
-  properties:
-    m:
-      type: integer
-    n:
-      type: integer
-output_schema:
-  type: object
-  properties:
-    x:
-      type: integer
-    y:
-      type: integer
-steps:
-- id: m_plus_n
-  component: python://add
-  input_schema: null
-  output_schema: null
-  input:
-    a:
-      $from:
-        workflow: input
-      path: m
-    b:
-      $from:
-        workflow: input
-      path: n
-- id: m_times_n
-  component: python://multiply
-  input_schema: null
-  output_schema: null
-  input:
-    a:
-      $from:
-        workflow: input
-      path: m
-    b:
-      $from:
-        workflow: input
-      path: n
-- id: m_plus_n_times_n
-  component: python://multiply
-  input_schema: null
-  output_schema: null
-  input:
-    a:
-      $from:
-        step: m_plus_n
-      path: result
-    b:
-      $from:
-        workflow: input
-      path: n
-output:
-  m_plus_n_times_n:
-    $from:
-      step: m_plus_n_times_n
-    path: result
-  m_times_n:
-    $from:
-      step: m_times_n
-    path: result
-  m_plus_n:
-    $from:
-      step: m_plus_n
-    path: result`
+const EXAMPLE_WORKFLOW = `{
+  "name": "Math Operations",
+  "description": "Demonstrates basic math operations",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "m": { "type": "integer" },
+      "n": { "type": "integer" }
+    }
+  },
+  "steps": [
+    {
+      "id": "m_plus_n",
+      "component": "python://add",
+      "input": {
+        "a": { "$from": { "workflow": "input" }, "path": "m" },
+        "b": { "$from": { "workflow": "input" }, "path": "n" }
+      }
+    },
+    {
+      "id": "m_times_n", 
+      "component": "python://multiply",
+      "input": {
+        "a": { "$from": { "workflow": "input" }, "path": "m" },
+        "b": { "$from": { "workflow": "input" }, "path": "n" }
+      }
+    }
+  ],
+  "output": {
+    "sum": { "$from": { "step": "m_plus_n" }, "path": "result" },
+    "product": { "$from": { "step": "m_times_n" }, "path": "result" }
+  }
+}`
 
 const EXAMPLE_INPUT_JSON = `{
   "m": 8,
@@ -96,32 +61,34 @@ function ExecutePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Check for endpoint parameter from URL
-  const preselectedEndpoint = searchParams.get('endpoint')
-  const preselectedLabel = searchParams.get('label')
+  // Check for workflow parameter from URL
+  const preselectedWorkflow = searchParams.get('workflow') ? decodeURIComponent(searchParams.get('workflow')!) : null
+  const preselectedLabel = searchParams.get('label') ? decodeURIComponent(searchParams.get('label')!) : null
 
-  const [selectedMethod, setSelectedMethod] = useState<'endpoint' | 'upload'>('upload') // Default to upload (ad-hoc)
-  const [selectedEndpoint, setSelectedEndpoint] = useState('')
+  const [selectedMethod, setSelectedMethod] = useState<'workflow' | 'upload'>('upload') // Default to upload (ad-hoc)
+  const [selectedWorkflow, setSelectedWorkflow] = useState('')
+  const [selectedLabel, setSelectedLabel] = useState('')
   const [workflowContent, setWorkflowContent] = useState(EXAMPLE_WORKFLOW)
   const [inputContent, setInputContent] = useState(EXAMPLE_INPUT_JSON)
   const [inputFormat, setInputFormat] = useState<'json' | 'yaml'>('json')
   const [debugMode, setDebugMode] = useState(false)
 
   // API hooks
-  const { data: endpoints, isLoading: endpointsLoading } = useEndpoints()
+  const { data: workflowNames, isLoading: workflowsLoading } = useWorkflowNames()
   const executeWorkflowMutation = useExecuteWorkflow()
-  const executeEndpointMutation = useExecuteEndpoint()
+  const executeWorkflowByNameMutation = useExecuteWorkflowByName()
+  const executeWorkflowByLabelMutation = useExecuteWorkflowByLabel()
 
-  // Handle preselected endpoint from URL
+  // Handle preselected workflow from URL
   useEffect(() => {
-    if (preselectedEndpoint) {
-      setSelectedMethod('endpoint')
-      const endpointKey = preselectedLabel
-        ? `${preselectedEndpoint}?label=${preselectedLabel}`
-        : preselectedEndpoint
-      setSelectedEndpoint(endpointKey)
+    if (preselectedWorkflow) {
+      setSelectedMethod('workflow')
+      setSelectedWorkflow(preselectedWorkflow)
+      if (preselectedLabel) {
+        setSelectedLabel(preselectedLabel)
+      }
     }
-  }, [preselectedEndpoint, preselectedLabel])
+  }, [preselectedWorkflow, preselectedLabel])
 
   // Update input content when format changes
   useEffect(() => {
@@ -156,25 +123,26 @@ function ExecutePageContent() {
       }
 
       let result
-      if (selectedMethod === 'endpoint') {
-        const [endpointName, labelParam] = selectedEndpoint.split('?')
-        const label = labelParam?.split('=')[1]
-
-        result = await executeEndpointMutation.mutateAsync({
-          name: endpointName,
-          data: { input: parsedInput, debug: debugMode },
-          label
-        })
+      if (selectedMethod === 'workflow') {
+        if (selectedLabel) {
+          result = await executeWorkflowByLabelMutation.mutateAsync({
+            name: selectedWorkflow,
+            label: selectedLabel,
+            data: { input: parsedInput, debug: debugMode }
+          })
+        } else {
+          result = await executeWorkflowByNameMutation.mutateAsync({
+            name: selectedWorkflow,
+            data: { input: parsedInput, debug: debugMode }
+          })
+        }
       } else {
-        // Parse workflow YAML to JSON (simplified for this example)
+        // Parse workflow JSON
         let workflowObj
         try {
-          // For now, we'll assume it's already in JSON format or simple YAML
-          // In a real implementation, you'd use a proper YAML parser
           workflowObj = JSON.parse(workflowContent)
-        } catch {
-          // Simple YAML to JSON conversion for the example workflow
-          workflowObj = parseSimpleYaml(workflowContent)
+        } catch (error) {
+          throw new Error(`Invalid JSON format in workflow: ${error}`)
         }
 
         result = await executeWorkflowMutation.mutateAsync({
@@ -197,89 +165,12 @@ function ExecutePageContent() {
     setInputContent(inputFormat === 'json' ? EXAMPLE_INPUT_JSON : EXAMPLE_INPUT_YAML)
   }
 
-  // Simple YAML parser for the example workflow
-  const parseSimpleYaml = (yamlString: string) => {
-    // This is a very basic YAML parser for demonstration
-    // In production, use a proper YAML library like js-yaml
-    const lines = yamlString.split('\n')
-    const result: Record<string, unknown> = {}
-    let currentKey = ''
-    let currentArray: Record<string, unknown>[] = []
-    let inArray = false
-
-    lines.forEach(line => {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) return
-
-      if (trimmed.endsWith(':')) {
-        currentKey = trimmed.slice(0, -1)
-        if (currentKey === 'steps') {
-          inArray = true
-          currentArray = []
-          result[currentKey] = currentArray
-        } else {
-          inArray = false
-          result[currentKey] = {}
-        }
-      } else if (trimmed.startsWith('- ')) {
-        if (inArray) {
-          const stepMatch = trimmed.match(/- id: (.+)/)
-          if (stepMatch) {
-            currentArray.push({ id: stepMatch[1] })
-          }
-        }
-      }
-    })
-
-    // Simplified structure for the math example
-    return {
-      input_schema: {
-        type: "object",
-        properties: {
-          m: { type: "integer" },
-          n: { type: "integer" }
-        }
-      },
-      steps: [
-        {
-          id: "m_plus_n",
-          component: "python://add",
-          input: {
-            a: { $from: { workflow: "input" }, path: "m" },
-            b: { $from: { workflow: "input" }, path: "n" }
-          }
-        },
-        {
-          id: "m_times_n",
-          component: "python://multiply",
-          input: {
-            a: { $from: { workflow: "input" }, path: "m" },
-            b: { $from: { workflow: "input" }, path: "n" }
-          }
-        },
-        {
-          id: "m_plus_n_times_n",
-          component: "python://multiply",
-          input: {
-            a: { $from: { step: "m_plus_n" }, path: "result" },
-            b: { $from: { workflow: "input" }, path: "n" }
-          }
-        }
-      ],
-      output: {
-        m_plus_n_times_n: { $from: { step: "m_plus_n_times_n" }, path: "result" },
-        m_times_n: { $from: { step: "m_times_n" }, path: "result" },
-        m_plus_n: { $from: { step: "m_plus_n" }, path: "result" }
-      }
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Execute Workflow</h1>
         <p className="text-muted-foreground">
-          Submit and run workflows using endpoints or direct upload
+          Submit and run workflows using named workflows or direct upload
         </p>
       </div>
 
@@ -302,7 +193,7 @@ function ExecutePageContent() {
                 <p className="text-sm text-muted-foreground mb-3">
                   {example.description}
                 </p>
-                <ExecutionDialog
+                <WorkflowExecutionDialog
                   workflow={example.workflow}
                   examples={example.inputExamples}
                   trigger={
@@ -327,11 +218,11 @@ function ExecutePageContent() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 flex-1 overflow-hidden">
-            <Tabs value={selectedMethod} onValueChange={(value) => setSelectedMethod(value as 'endpoint' | 'upload')} className="flex-1 flex flex-col">
+            <Tabs value={selectedMethod} onValueChange={(value) => setSelectedMethod(value as 'workflow' | 'upload')} className="flex-1 flex flex-col">
               <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
-                <TabsTrigger value="endpoint">
-                  <Globe className="mr-2 h-4 w-4" />
-                  Endpoint
+                <TabsTrigger value="workflow">
+                  <Workflow className="mr-2 h-4 w-4" />
+                  Named Workflow
                 </TabsTrigger>
                 <TabsTrigger value="upload">
                   <Upload className="mr-2 h-4 w-4" />
@@ -339,57 +230,70 @@ function ExecutePageContent() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="endpoint" className="space-y-4 flex-1 flex flex-col">
+              <TabsContent value="workflow" className="space-y-4 flex-1 flex flex-col">
                 <div className="space-y-2">
-                  <Label htmlFor="endpoint-select">Select Endpoint</Label>
-                  <Select value={selectedEndpoint} onValueChange={setSelectedEndpoint}>
+                  <Label htmlFor="workflow-select">Select Workflow</Label>
+                  <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Choose an endpoint" />
+                      <SelectValue placeholder="Choose a workflow" />
                     </SelectTrigger>
                     <SelectContent>
-                      {endpointsLoading ? (
+                      {workflowsLoading ? (
                         <SelectItem value="loading" disabled>
                           <div className="flex items-center space-x-2">
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            <span>Loading endpoints...</span>
+                            <span>Loading workflows...</span>
                           </div>
                         </SelectItem>
-                      ) : endpoints?.length === 0 ? (
-                        <SelectItem value="no-endpoints" disabled>
-                          No endpoints available
+                      ) : workflowNames?.length === 0 ? (
+                        <SelectItem value="no-workflows" disabled>
+                          No workflows available
                         </SelectItem>
                       ) : (
-                        endpoints?.map((endpoint) => (
-                          <SelectItem
-                            key={`${endpoint.name}-${endpoint.label || 'default'}`}
-                            value={`${endpoint.name}${endpoint.label ? `?label=${endpoint.label}` : ''}`}
-                          >
-                            <div className="flex items-center space-x-2">
-                              <span>{endpoint.name}</span>
-                              {endpoint.label && (
-                                <Badge variant="outline" className="text-xs">
-                                  {endpoint.label}
-                                </Badge>
-                              )}
-                            </div>
+                        workflowNames?.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
                           </SelectItem>
                         ))
                       )}
                     </SelectContent>
                   </Select>
                 </div>
+                
+                {selectedWorkflow && (
+                  <div className="space-y-2">
+                    <Label htmlFor="label-input">Label (optional)</Label>
+                    <input
+                      id="label-input"
+                      type="text"
+                      placeholder="e.g., production, staging, latest"
+                      className="w-full px-3 py-2 border border-input rounded-md"
+                      value={selectedLabel}
+                      onChange={(e) => setSelectedLabel(e.target.value)}
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Leave empty to use the latest version
+                    </p>
+                  </div>
+                )}
+                
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                  <p className="text-sm">Workflow definition will be loaded from the selected endpoint</p>
+                  <p className="text-sm">
+                    {selectedWorkflow 
+                      ? `Will execute workflow: ${selectedWorkflow}${selectedLabel ? ` (${selectedLabel})` : ' (latest)'}`
+                      : 'Select a workflow to execute'
+                    }
+                  </p>
                 </div>
               </TabsContent>
 
               <TabsContent value="upload" className="space-y-4 flex-1 flex flex-col">
                 <div className="space-y-2 flex-1 flex flex-col">
-                  <Label htmlFor="workflow-content">Workflow Definition</Label>
+                  <Label htmlFor="workflow-content">Workflow Definition (JSON)</Label>
                   <Textarea
                     id="workflow-content"
-                    placeholder="Paste your workflow YAML or JSON here..."
-                    className="h-128 font-mono text-sm resize-none"
+                    placeholder="Paste your workflow JSON here..."
+                    className="flex-1 font-mono text-sm resize-none"
                     value={workflowContent}
                     onChange={(e) => setWorkflowContent(e.target.value)}
                   />
@@ -484,8 +388,8 @@ function ExecutePageContent() {
                 <div className="space-y-1">
                   <div className="font-medium">Ready to Execute</div>
                   <div className="text-sm text-muted-foreground">
-                    {selectedMethod === 'endpoint'
-                      ? `Using endpoint: ${selectedEndpoint || 'None selected'}`
+                    {selectedMethod === 'workflow'
+                      ? `Using workflow: ${selectedWorkflow || 'None selected'}${selectedLabel ? ` (${selectedLabel})` : ''}`
                       : 'Using ad-hoc workflow definition'
                     }
                     {debugMode && ' • Debug mode enabled'}
@@ -495,12 +399,13 @@ function ExecutePageContent() {
                   size="lg"
                   onClick={handleExecute}
                   disabled={
-                    (selectedMethod === 'endpoint' ? !selectedEndpoint : !workflowContent) ||
+                    (selectedMethod === 'workflow' ? !selectedWorkflow : !workflowContent) ||
                     executeWorkflowMutation.isPending ||
-                    executeEndpointMutation.isPending
+                    executeWorkflowByNameMutation.isPending ||
+                    executeWorkflowByLabelMutation.isPending
                   }
                 >
-                  {(executeWorkflowMutation.isPending || executeEndpointMutation.isPending) ? (
+                  {(executeWorkflowMutation.isPending || executeWorkflowByNameMutation.isPending || executeWorkflowByLabelMutation.isPending) ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                       Executing...

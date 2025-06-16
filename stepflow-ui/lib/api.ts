@@ -62,41 +62,53 @@ export const apiClient = {
     return response.data
   },
 
-  // Endpoints
-  listEndpoints: async (): Promise<ListEndpointsResponse> => {
-    const response = await api.get('/endpoints')
+  // Named Workflows
+  listWorkflowNames: async (): Promise<ListWorkflowNamesResponse> => {
+    const response = await api.get('/workflows/names')
     return response.data
   },
 
-  getEndpoint: async (name: string, label?: string): Promise<EndpointDetails> => {
-    const url = label ? `/endpoints/${name}?label=${label}` : `/endpoints/${name}`
-    const response = await api.get(url)
+  getWorkflowsByName: async (name: string): Promise<WorkflowsByNameResponse> => {
+    const response = await api.get(`/workflows/by-name/${name}`)
     return response.data
   },
 
-  createEndpoint: async (name: string, data: { workflow: Workflow }, label?: string): Promise<EndpointDetails> => {
-    const url = label ? `/endpoints/${name}?label=${label}` : `/endpoints/${name}`
-    const response = await api.put(url, data)
+  getLatestWorkflowByName: async (name: string): Promise<{ workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] }> => {
+    const response = await api.get(`/workflows/by-name/${name}/latest`)
     return response.data
   },
 
-  deleteEndpoint: async (name: string, label?: string): Promise<{ message: string }> => {
-    const url = label ? `/endpoints/${name}?label=${label}` : `/endpoints/${name}`
-    const response = await api.delete(url)
+  executeWorkflowByName: async (name: string, data: { input: unknown; debug?: boolean }): Promise<ExecuteResponse> => {
+    const response = await api.post(`/workflows/by-name/${name}/execute`, data)
     return response.data
   },
 
-  executeEndpoint: async (name: string, data: { input: unknown; debug?: boolean }, label?: string): Promise<ExecuteResponse> => {
-    const url = label ? `/endpoints/${name}/execute?label=${label}` : `/endpoints/${name}/execute`
-    const response = await api.post(url, data)
+  // Workflow Labels
+  listLabelsForName: async (name: string): Promise<ListLabelsResponse> => {
+    const response = await api.get(`/workflows/by-name/${name}/labels`)
     return response.data
   },
 
-  getEndpointWorkflow: async (name: string, label?: string): Promise<{ workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] }> => {
-    const url = label ? `/endpoints/${name}/workflow?label=${label}` : `/endpoints/${name}/workflow`
-    const response = await api.get(url)
+  createOrUpdateLabel: async (name: string, label: string, workflowHash: string): Promise<WorkflowLabelResponse> => {
+    const response = await api.put(`/workflows/by-name/${name}/labels/${label}`, { workflow_hash: workflowHash })
     return response.data
   },
+
+  getWorkflowByLabel: async (name: string, label: string): Promise<{ workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] }> => {
+    const response = await api.get(`/workflows/by-name/${name}/labels/${label}`)
+    return response.data
+  },
+
+  executeWorkflowByLabel: async (name: string, label: string, data: { input: unknown; debug?: boolean }): Promise<ExecuteResponse> => {
+    const response = await api.post(`/workflows/by-name/${name}/labels/${label}/execute`, data)
+    return response.data
+  },
+
+  deleteLabel: async (name: string, label: string): Promise<{ message: string }> => {
+    const response = await api.delete(`/workflows/by-name/${name}/labels/${label}`)
+    return response.data
+  },
+
 
   // Ad-hoc execution
   execute: async (data: { workflow: Workflow; input: unknown; debug?: boolean }): Promise<ExecuteResponse> => {
@@ -151,17 +163,29 @@ export const apiClient = {
     return response.data
   },
 
-  getEndpointDependencies: async (name: string, label?: string): Promise<WorkflowDependenciesResponse> => {
-    const url = label ? `/endpoints/${name}/dependencies?label=${label}` : `/endpoints/${name}/dependencies`
-    const response = await api.get(url)
+  getWorkflowDependenciesByLabel: async (name: string, label: string): Promise<WorkflowDependenciesResponse> => {
+    // First get the workflow by label
+    const workflowResponse = await api.get(`/workflows/by-name/${name}/labels/${label}`)
+    const workflowHash = workflowResponse.data.workflow_hash
+    const response = await api.get(`/workflows/${workflowHash}/dependencies`)
     return response.data
   },
+
+  getWorkflowDependenciesByName: async (name: string): Promise<WorkflowDependenciesResponse> => {
+    // First get the latest workflow by name
+    const workflowResponse = await api.get(`/workflows/by-name/${name}/latest`)
+    const workflowHash = workflowResponse.data.workflow_hash
+    const response = await api.get(`/workflows/${workflowHash}/dependencies`)
+    return response.data
+  },
+
 }
 
 // Type definitions
 export interface ExecutionDetails {
   execution_id: string
-  endpoint_name?: string
+  workflow_name?: string
+  workflow_label?: string
   workflow_hash?: string
   status: 'Pending' | 'Running' | 'Completed' | 'Failed'
   created_at: string
@@ -220,7 +244,8 @@ export interface ListExecutionsResponse {
 
 export interface ExecutionSummary {
   execution_id: string
-  endpoint_name?: string
+  workflow_name?: string
+  workflow_label?: string
   workflow_hash?: string
   status: 'Pending' | 'Running' | 'Completed' | 'Failed'
   created_at: string
@@ -228,25 +253,6 @@ export interface ExecutionSummary {
   debug_mode: boolean
 }
 
-export interface ListEndpointsResponse {
-  endpoints: EndpointSummary[]
-}
-
-export interface EndpointSummary {
-  name: string
-  label?: string
-  workflow_hash: string
-  created_at: string
-  updated_at: string
-}
-
-export interface EndpointDetails {
-  name: string
-  label?: string
-  workflow_hash: string
-  created_at: string
-  updated_at: string
-}
 
 export interface ListComponentsResponse {
   components: ComponentInfo[]
@@ -283,6 +289,33 @@ export interface DestinationField {
 export interface SkipAction {
   action: 'skip' | 'use_default'
   default_value?: unknown
+}
+
+// New Workflow API Types
+export interface ListWorkflowNamesResponse {
+  names: string[]
+}
+
+export interface WorkflowsByNameResponse {
+  name: string
+  workflows: WorkflowVersionInfo[]
+}
+
+export interface WorkflowVersionInfo {
+  workflow_hash: string
+  created_at: string
+}
+
+export interface ListLabelsResponse {
+  labels: WorkflowLabelResponse[]
+}
+
+export interface WorkflowLabelResponse {
+  name: string
+  label: string
+  workflow_hash: string
+  created_at: string
+  updated_at: string
 }
 
 export default apiClient

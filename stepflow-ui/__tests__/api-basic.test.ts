@@ -71,17 +71,17 @@ describe('Basic API Connectivity', () => {
     expect(Array.isArray(response.executions)).toBe(true)
   })
 
-  test('should list endpoints (empty initially)', async () => {
+  test('should list workflow names (empty initially)', async () => {
     const serverRunning = await isServerRunning()
     if (!serverRunning) {
       console.warn('⚠️  StepFlow server not running. Skipping test.')
       return
     }
 
-    const response = await apiClient.listEndpoints()
+    const response = await apiClient.listWorkflowNames()
     
-    expect(response).toHaveProperty('endpoints')
-    expect(Array.isArray(response.endpoints)).toBe(true)
+    expect(response).toHaveProperty('names')
+    expect(Array.isArray(response.names)).toBe(true)
   })
 })
 
@@ -90,24 +90,32 @@ describe('API Types and Schema Validation', () => {
     // Test that our TypeScript interfaces compile correctly
     expect(typeof apiClient.health).toBe('function')
     expect(typeof apiClient.listExecutions).toBe('function')
-    expect(typeof apiClient.listEndpoints).toBe('function')
     expect(typeof apiClient.listComponents).toBe('function')
     expect(typeof apiClient.execute).toBe('function')
-    expect(typeof apiClient.createEndpoint).toBe('function')
-    expect(typeof apiClient.deleteEndpoint).toBe('function')
-    expect(typeof apiClient.executeEndpoint).toBe('function')
+    
+    // Workflow-centric API methods
+    expect(typeof apiClient.listWorkflowNames).toBe('function')
+    expect(typeof apiClient.getWorkflowsByName).toBe('function')
+    expect(typeof apiClient.getLatestWorkflowByName).toBe('function')
+    expect(typeof apiClient.executeWorkflowByName).toBe('function')
+    expect(typeof apiClient.listLabelsForName).toBe('function')
+    expect(typeof apiClient.createOrUpdateLabel).toBe('function')
+    expect(typeof apiClient.getWorkflowByLabel).toBe('function')
+    expect(typeof apiClient.executeWorkflowByLabel).toBe('function')
+    expect(typeof apiClient.deleteLabel).toBe('function')
+    
   })
 })
 
 describe('Error Handling', () => {
-  test('should handle non-existent endpoints gracefully', async () => {
+  test('should handle non-existent workflow names gracefully', async () => {
     const serverRunning = await isServerRunning()
     if (!serverRunning) {
       console.warn('⚠️  StepFlow server not running. Skipping test.')
       return
     }
 
-    await expect(apiClient.getEndpoint('non-existent-endpoint'))
+    await expect(apiClient.getLatestWorkflowByName('non-existent-workflow'))
       .rejects.toThrow()
   })
 

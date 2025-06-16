@@ -6,7 +6,6 @@
 // Server modules
 pub mod components;
 pub mod debug;
-pub mod endpoints;
 pub mod error;
 pub mod executions;
 pub mod health;
