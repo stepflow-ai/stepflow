@@ -7,7 +7,7 @@ use tower_http::trace::TraceLayer;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::{components, debug, endpoints, executions, health, workflows};
+use crate::{components, debug, executions, health, workflows};
 
 pub struct AppConfig {
     pub include_swagger: bool,
@@ -30,20 +30,24 @@ impl AppConfig {
         let (api_router, api_doc) = OpenApiRouter::new()
             // Health routes.
             .routes(routes!(health::health_check))
-            // Workflow routes.
+            // Workflow routes by hash.
             .routes(routes!(workflows::store_workflow))
             .routes(routes!(workflows::list_workflows))
             .routes(routes!(workflows::get_workflow))
+            .routes(routes!(workflows::execute_workflow_by_hash))
             .routes(routes!(workflows::delete_workflow))
             .routes(routes!(workflows::get_workflow_dependencies))
-            // Endpoint routes.
-            .routes(routes!(endpoints::create_endpoint))
-            .routes(routes!(endpoints::list_endpoints))
-            .routes(routes!(endpoints::get_endpoint))
-            .routes(routes!(endpoints::get_endpoint_workflow))
-            .routes(routes!(endpoints::get_endpoint_workflow_dependencies))
-            .routes(routes!(endpoints::delete_endpoint))
-            .routes(routes!(endpoints::execute_endpoint))
+            // Named workflow routes.
+            .routes(routes!(workflows::list_workflow_names))
+            .routes(routes!(workflows::get_workflows_by_name))
+            .routes(routes!(workflows::get_latest_workflow_by_name))
+            .routes(routes!(workflows::execute_workflow_by_name))
+            // Workflow label routes.
+            .routes(routes!(workflows::list_labels_for_name))
+            .routes(routes!(workflows::create_or_update_label))
+            .routes(routes!(workflows::get_workflow_by_label))
+            .routes(routes!(workflows::execute_workflow_by_label))
+            .routes(routes!(workflows::delete_label))
             // Execution routes.
             .routes(routes!(executions::create_execution))
             .routes(routes!(executions::get_execution))

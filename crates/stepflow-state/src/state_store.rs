@@ -131,69 +131,95 @@ pub trait StateStore: Send + Sync {
         workflow_hash: &FlowHash,
     ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>>;
 
-    /// Create or update a named endpoint with optional label.
+    /// Get all workflows with a specific name, ordered by creation time (newest first).
     ///
     /// # Arguments
-    /// * `name` - The endpoint name
-    /// * `label` - The label name (None for default version)
+    /// * `name` - The workflow name to search for
+    ///
+    /// # Returns
+    /// A vector of (workflow_hash, created_at) tuples for workflows with the given name
+    #[allow(clippy::type_complexity)]
+    fn get_workflows_by_name(
+        &self,
+        name: &str,
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
+    >;
+
+    /// Get a named workflow, optionally with a specific label.
+    ///
+    /// This unified method replaces get_latest_workflow_by_name and get_workflow_by_label.
+    /// If label is None, returns the latest workflow with the given name.
+    /// If label is Some, returns the workflow with that specific label.
+    ///
+    /// # Arguments
+    /// * `name` - The workflow name
+    /// * `label` - Optional label name. If None, returns latest workflow.
+    ///
+    /// # Returns
+    /// The workflow with metadata if found
+    fn get_named_workflow(
+        &self,
+        name: &str,
+        label: Option<&str>,
+    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>>;
+
+    /// Create or update a workflow label.
+    ///
+    /// # Arguments
+    /// * `name` - The workflow name (from workflow.name field)
+    /// * `label` - The label name (like "production", "staging")
     /// * `workflow_hash` - The content hash of the workflow
     ///
     /// # Returns
-    /// Success if the endpoint was created/updated
-    fn create_endpoint(
+    /// Success if the label was created/updated
+    fn create_or_update_label(
         &self,
         name: &str,
-        label: Option<&str>,
+        label: &str,
         workflow_hash: FlowHash,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Get an endpoint by name and optional label.
+    /// List all labels for a specific workflow name.
     ///
     /// # Arguments
-    /// * `name` - The endpoint name
-    /// * `label` - The label name (None for default version)
+    /// * `name` - The workflow name
     ///
     /// # Returns
-    /// The endpoint if found, or an error if not found
-    fn get_endpoint(
+    /// A vector of workflow labels with metadata
+    fn list_labels_for_name(
         &self,
         name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Endpoint>, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>>;
 
-    /// List all endpoints, optionally filtered by name.
-    ///
-    /// # Arguments
-    /// * `name_filter` - Optional name filter to list all versions of a specific endpoint
+    /// List all workflow names.
     ///
     /// # Returns
-    /// A vector of all endpoints (all versions if name_filter is provided, otherwise all endpoints)
-    fn list_endpoints(
-        &self,
-        name_filter: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<Endpoint>, StateError>>;
+    /// A vector of all unique workflow names in the system
+    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>>;
 
-    /// Delete an endpoint by name and optional label.
+    /// Delete a workflow label.
     ///
     /// # Arguments
-    /// * `name` - The endpoint name
-    /// * `label` - The label name (None for default version, "*" to delete all versions)
+    /// * `name` - The workflow name
+    /// * `label` - The label name
     ///
     /// # Returns
-    /// Success if the endpoint was deleted
-    fn delete_endpoint(
+    /// Success if the label was deleted
+    fn delete_label(
         &self,
         name: &str,
-        label: Option<&str>,
+        label: &str,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Create a new execution record.
     ///
     /// # Arguments
     /// * `execution_id` - The unique identifier for the execution
-    /// * `endpoint_name` - Optional endpoint name if executing an endpoint
-    /// * `endpoint_label` - Optional endpoint label if executing a labeled endpoint
     /// * `workflow_hash` - Workflow hash
+    /// * `workflow_name` - Optional workflow name (from workflow.name field)
+    /// * `workflow_label` - Optional workflow label used for execution
     /// * `debug_mode` - Whether execution is in debug mode
     /// * `input` - Input data as JSON
     ///
@@ -202,9 +228,9 @@ pub trait StateStore: Send + Sync {
     fn create_execution(
         &self,
         execution_id: Uuid,
-        endpoint_name: Option<&str>,
-        endpoint_label: Option<&str>,
         workflow_hash: FlowHash,
+        workflow_name: Option<&str>,
+        workflow_label: Option<&str>,
         debug_mode: bool,
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
@@ -335,11 +361,24 @@ impl PartialOrd for StepResult<'_> {
     }
 }
 
-/// An endpoint represents a named workflow that can be executed, with an optional label.
+/// A workflow with its metadata (creation time, label info, etc.)
 #[derive(Debug, Clone, PartialEq)]
-pub struct Endpoint {
+pub struct WorkflowWithMetadata {
+    /// The workflow definition
+    pub workflow: Arc<Flow>,
+    /// The workflow hash
+    pub workflow_hash: FlowHash,
+    /// When this workflow was created/stored
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Optional label information if accessed via label
+    pub label_info: Option<WorkflowLabelMetadata>,
+}
+
+/// Metadata about a workflow label (without the workflow itself)
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkflowLabelMetadata {
     pub name: String,
-    pub label: Option<String>, // None represents the default version
+    pub label: String,
     pub workflow_hash: FlowHash,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -349,9 +388,9 @@ pub struct Endpoint {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionSummary {
     pub execution_id: Uuid,
-    pub endpoint_name: Option<String>,
-    pub endpoint_label: Option<String>,
     pub workflow_hash: FlowHash,
+    pub workflow_name: Option<String>,
+    pub workflow_label: Option<String>,
     pub status: ExecutionStatus,
     pub debug_mode: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -371,7 +410,8 @@ pub struct ExecutionDetails {
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionFilters {
     pub status: Option<ExecutionStatus>,
-    pub endpoint_name: Option<String>,
+    pub workflow_name: Option<String>,
+    pub workflow_label: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -438,9 +478,9 @@ mod tests {
         let details = ExecutionDetails {
             summary: ExecutionSummary {
                 execution_id,
-                endpoint_name: Some("test-endpoint".to_string()),
-                endpoint_label: None,
                 workflow_hash,
+                workflow_name: Some("test-workflow".to_string()),
+                workflow_label: Some("production".to_string()),
                 status: ExecutionStatus::Completed,
                 debug_mode: false,
                 created_at: now,
@@ -460,7 +500,8 @@ mod tests {
 
         // Verify that summary fields are flattened to the top level
         assert_eq!(value["execution_id"], json!(execution_id));
-        assert_eq!(value["endpoint_name"], json!("test-endpoint"));
+        assert_eq!(value["workflow_name"], json!("test-workflow"));
+        assert_eq!(value["workflow_label"], json!("production"));
         assert_eq!(value["status"], json!("completed"));
         assert_eq!(value["debug_mode"], json!(false));
 

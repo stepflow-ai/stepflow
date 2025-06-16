@@ -1,12 +1,11 @@
 import { apiClient } from '@/lib/api'
 import type { 
   ExecutionDetails, 
-  EndpointSummary, 
   ComponentInfo, 
   Workflow 
 } from '@/lib/api'
 
-// Test workflow for endpoint creation and execution
+// Test workflow for workflow execution
 const testWorkflow: Workflow = {
   name: 'Test Math Workflow',
   description: 'A simple test workflow for API integration tests',
@@ -42,19 +41,21 @@ const testWorkflow: Workflow = {
 const testInput = { a: 5, b: 3 }
 
 describe('StepFlow API Integration Tests', () => {
-  let createdEndpointName: string
+  let createdWorkflowName: string
+  let createdLabel: string
   let executionId: string
 
   beforeAll(() => {
-    // Generate unique endpoint name for this test run
-    createdEndpointName = `test-endpoint-${Date.now()}`
+    // Generate unique workflow name for this test run
+    createdWorkflowName = `test-workflow-${Date.now()}`
+    createdLabel = 'test-label'
   })
 
   afterAll(async () => {
-    // Cleanup: Delete test endpoint if it was created
-    if (createdEndpointName) {
+    // Cleanup: Delete test labels if they were created
+    if (createdWorkflowName && createdLabel) {
       try {
-        await apiClient.deleteEndpoint(createdEndpointName)
+        await apiClient.deleteLabel(createdWorkflowName, createdLabel)
       } catch (error) {
         // Ignore errors during cleanup
         console.warn('Cleanup failed:', error)
@@ -188,51 +189,32 @@ describe('StepFlow API Integration Tests', () => {
     })
   })
 
-  describe('Endpoints API', () => {
-    test('should list endpoints (initially empty or existing)', async () => {
-      const response = await apiClient.listEndpoints()
+  describe('Workflow Names and Labels API', () => {
+    test('should list workflow names', async () => {
+      const response = await apiClient.listWorkflowNames()
       
-      expect(response).toHaveProperty('endpoints')
-      expect(Array.isArray(response.endpoints)).toBe(true)
+      expect(response).toHaveProperty('names')
+      expect(Array.isArray(response.names)).toBe(true)
     })
 
-    test('should create a new endpoint', async () => {
-      const endpoint = await apiClient.createEndpoint(createdEndpointName, {
-        workflow: testWorkflow
-      })
+    test('should store a workflow and create a label', async () => {
+      // First store the workflow
+      const storeResponse = await apiClient.storeWorkflow(testWorkflow)
+      expect(storeResponse).toHaveProperty('workflow_hash')
+      expect(typeof storeResponse.workflow_hash).toBe('string')
       
-      expect(endpoint).toHaveProperty('name', createdEndpointName)
-      expect(endpoint).toHaveProperty('workflow_hash')
-      expect(endpoint).toHaveProperty('created_at')
-      expect(endpoint).toHaveProperty('updated_at')
-      expect(typeof endpoint.workflow_hash).toBe('string')
+      // Create a label for the workflow
+      const label = await apiClient.createOrUpdateLabel(createdWorkflowName, createdLabel, storeResponse.workflow_hash)
+      
+      expect(label).toHaveProperty('name', createdWorkflowName)
+      expect(label).toHaveProperty('label', createdLabel)
+      expect(label).toHaveProperty('workflow_hash', storeResponse.workflow_hash)
+      expect(label).toHaveProperty('created_at')
+      expect(label).toHaveProperty('updated_at')
     })
 
-    test('should create an endpoint with label', async () => {
-      const labeledEndpointName = `${createdEndpointName}-labeled`
-      const endpoint = await apiClient.createEndpoint(labeledEndpointName, {
-        workflow: testWorkflow
-      }, 'v1.0')
-      
-      expect(endpoint).toHaveProperty('name', labeledEndpointName)
-      expect(endpoint).toHaveProperty('label', 'v1.0')
-      expect(endpoint).toHaveProperty('workflow_hash')
-      
-      // Cleanup the labeled endpoint
-      await apiClient.deleteEndpoint(labeledEndpointName, 'v1.0')
-    })
-
-    test('should get endpoint details', async () => {
-      const endpoint = await apiClient.getEndpoint(createdEndpointName)
-      
-      expect(endpoint).toHaveProperty('name', createdEndpointName)
-      expect(endpoint).toHaveProperty('workflow_hash')
-      expect(endpoint).toHaveProperty('created_at')
-      expect(endpoint).toHaveProperty('updated_at')
-    })
-
-    test('should get endpoint workflow', async () => {
-      const response = await apiClient.getEndpointWorkflow(createdEndpointName)
+    test('should get workflow by label', async () => {
+      const response = await apiClient.getWorkflowByLabel(createdWorkflowName, createdLabel)
       
       expect(response).toHaveProperty('workflow')
       expect(response).toHaveProperty('workflow_hash')
@@ -240,8 +222,20 @@ describe('StepFlow API Integration Tests', () => {
       expect(response.workflow.name).toBe(testWorkflow.name)
     })
 
-    test('should execute endpoint', async () => {
-      const result = await apiClient.executeEndpoint(createdEndpointName, {
+    test('should list labels for a workflow name', async () => {
+      const response = await apiClient.listLabelsForName(createdWorkflowName)
+      
+      expect(response).toHaveProperty('labels')
+      expect(Array.isArray(response.labels)).toBe(true)
+      expect(response.labels.length).toBeGreaterThan(0)
+      
+      const label = response.labels.find(l => l.label === createdLabel)
+      expect(label).toBeDefined()
+      expect(label?.name).toBe(createdWorkflowName)
+    })
+
+    test('should execute workflow by label', async () => {
+      const result = await apiClient.executeWorkflowByLabel(createdWorkflowName, createdLabel, {
         input: testInput,
         debug: false
       })
@@ -251,18 +245,47 @@ describe('StepFlow API Integration Tests', () => {
       expect(typeof result.execution_id).toBe('string')
     })
 
-    test('should delete endpoint', async () => {
-      const result = await apiClient.deleteEndpoint(createdEndpointName)
+    test('should execute workflow by name (latest)', async () => {
+      const result = await apiClient.executeWorkflowByName(createdWorkflowName, {
+        input: testInput,
+        debug: false
+      })
+      
+      expect(result).toHaveProperty('execution_id')
+      expect(result).toHaveProperty('status')
+      expect(typeof result.execution_id).toBe('string')
+    })
+
+    test('should get latest workflow by name', async () => {
+      const response = await apiClient.getLatestWorkflowByName(createdWorkflowName)
+      
+      expect(response).toHaveProperty('workflow')
+      expect(response).toHaveProperty('workflow_hash')
+      expect(response.workflow).toHaveProperty('steps')
+      expect(response.workflow.name).toBe(testWorkflow.name)
+    })
+
+    test('should get workflows by name', async () => {
+      const response = await apiClient.getWorkflowsByName(createdWorkflowName)
+      
+      expect(response).toHaveProperty('name', createdWorkflowName)
+      expect(response).toHaveProperty('workflows')
+      expect(Array.isArray(response.workflows)).toBe(true)
+      expect(response.workflows.length).toBeGreaterThan(0)
+    })
+
+    test('should delete label', async () => {
+      const result = await apiClient.deleteLabel(createdWorkflowName, createdLabel)
       
       expect(result).toHaveProperty('message')
       expect(typeof result.message).toBe('string')
       
-      // Verify endpoint is deleted by trying to get it (should fail)
-      await expect(apiClient.getEndpoint(createdEndpointName))
+      // Verify label is deleted by trying to get it (should fail)
+      await expect(apiClient.getWorkflowByLabel(createdWorkflowName, createdLabel))
         .rejects.toThrow()
       
-      // Clear the endpoint name so cleanup doesn't try to delete it again
-      createdEndpointName = ''
+      // Clear the label so cleanup doesn't try to delete it again
+      createdLabel = ''
     })
   })
 
@@ -296,8 +319,13 @@ describe('StepFlow API Integration Tests', () => {
       })).rejects.toThrow()
     })
 
-    test('should handle non-existent endpoint', async () => {
-      await expect(apiClient.getEndpoint('non-existent-endpoint'))
+    test('should handle non-existent workflow name', async () => {
+      await expect(apiClient.getLatestWorkflowByName('non-existent-workflow'))
+        .rejects.toThrow()
+    })
+
+    test('should handle non-existent workflow label', async () => {
+      await expect(apiClient.getWorkflowByLabel('non-existent-workflow', 'non-existent-label'))
         .rejects.toThrow()
     })
 

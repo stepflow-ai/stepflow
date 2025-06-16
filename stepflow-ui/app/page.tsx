@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Activity, Globe, Zap, Play } from 'lucide-react'
+import { Activity, FileText, Zap, Play } from 'lucide-react'
 
 export default function Dashboard() {
   return (
@@ -31,9 +31,9 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Endpoints
+              Workflows
             </CardTitle>
-            <Globe className="h-4 w-4 text-muted-foreground" />
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">8</div>
@@ -94,9 +94,9 @@ export default function Dashboard() {
               </Link>
             </Button>
             <Button variant="outline" asChild className="w-full justify-start">
-              <Link href="/endpoints">
-                <Globe className="mr-2 h-4 w-4" />
-                Manage Endpoints
+              <Link href="/workflows">
+                <FileText className="mr-2 h-4 w-4" />
+                Manage Workflows
               </Link>
             </Button>
           </CardContent>
@@ -124,7 +124,7 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="ml-4 space-y-1">
                   <p className="text-sm font-medium leading-none">
-                    New endpoint &quot;analytics&quot; created
+                    New workflow &quot;analytics&quot; created
                   </p>
                   <p className="text-sm text-muted-foreground">
                     1 hour ago

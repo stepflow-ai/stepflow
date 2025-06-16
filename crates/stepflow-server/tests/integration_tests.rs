@@ -183,16 +183,16 @@ async fn test_workflow_crud_operations() {
 }
 
 #[tokio::test]
-async fn test_endpoint_crud_operations() {
+async fn test_named_workflow_operations() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
-    // Create endpoint
-    let create_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint")
-        .method("PUT")
+    // Store workflow
+    let store_request = Request::builder()
+        .uri("/api/v1/workflows")
+        .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
@@ -202,24 +202,22 @@ async fn test_endpoint_crud_operations() {
         ))
         .unwrap();
 
-    let response = app.clone().oneshot(create_request).await.unwrap();
+    let response = app.clone().oneshot(store_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let create_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
 
-    assert_eq!(create_response["name"], "test-endpoint");
-    assert!(create_response["workflow_hash"].is_string());
-
-    // List endpoints
-    let list_request = Request::builder()
-        .uri("/api/v1/endpoints")
+    // List workflow names
+    let list_names_request = Request::builder()
+        .uri("/api/v1/workflows/names")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(list_request).await.unwrap();
+    let response = app.clone().oneshot(list_names_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -227,74 +225,59 @@ async fn test_endpoint_crud_operations() {
         .unwrap();
     let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(list_response["endpoints"].as_array().unwrap().len(), 1);
-    assert_eq!(list_response["endpoints"][0]["name"], "test-endpoint");
+    assert!(
+        list_response["names"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("test_workflow"))
+    );
 
-    // Get endpoint
-    let get_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint")
+    // Get workflows by name
+    let get_by_name_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(get_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Get endpoint workflow
-    let workflow_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint/workflow")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(workflow_request).await.unwrap();
+    let response = app.clone().oneshot(get_by_name_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let workflow_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let by_name_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(workflow_response["workflow"]["name"], "test_workflow");
+    assert_eq!(by_name_response["name"], "test_workflow");
+    assert!(!by_name_response["workflows"].as_array().unwrap().is_empty());
 
-    // Get endpoint dependencies
-    let deps_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint/dependencies")
+    // Get latest workflow by name
+    let get_latest_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow/latest")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(deps_request).await.unwrap();
+    let response = app.clone().oneshot(get_latest_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Delete endpoint
-    let delete_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint")
-        .method("DELETE")
-        .body(Body::empty())
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
         .unwrap();
+    let latest_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let response = app.clone().oneshot(delete_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Verify deletion
-    let get_after_delete = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(get_after_delete).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(latest_response["workflow_hash"], workflow_hash);
+    assert_eq!(latest_response["workflow"]["name"], "test_workflow");
 }
 
 #[tokio::test]
-async fn test_endpoint_with_labels() {
+async fn test_workflow_with_labels() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
-    // Create endpoint with label
-    let create_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint?label=v1.0")
-        .method("PUT")
+    // Store workflow first
+    let store_request = Request::builder()
+        .uri("/api/v1/workflows")
+        .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
@@ -304,7 +287,29 @@ async fn test_endpoint_with_labels() {
         ))
         .unwrap();
 
-    let response = app.clone().oneshot(create_request).await.unwrap();
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
+
+    // Create workflow label
+    let create_label_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
+        .method("PUT")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "workflow_hash": workflow_hash
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(create_label_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -312,32 +317,36 @@ async fn test_endpoint_with_labels() {
         .unwrap();
     let create_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(create_response["name"], "test-endpoint");
+    assert_eq!(create_response["name"], "test_workflow");
     assert_eq!(create_response["label"], "v1.0");
 
-    // Create default version (no label)
-    let create_default_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint")
+    // Create another label
+    let create_prod_label_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow/labels/production")
         .method("PUT")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow": workflow
+                "workflow_hash": workflow_hash
             }))
             .unwrap(),
         ))
         .unwrap();
 
-    let response = app.clone().oneshot(create_default_request).await.unwrap();
+    let response = app
+        .clone()
+        .oneshot(create_prod_label_request)
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    // List all versions of the endpoint
-    let list_request = Request::builder()
-        .uri("/api/v1/endpoints?name=test-endpoint")
+    // List all labels for the workflow
+    let list_labels_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow/labels")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(list_request).await.unwrap();
+    let response = app.clone().oneshot(list_labels_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -345,12 +354,12 @@ async fn test_endpoint_with_labels() {
         .unwrap();
     let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let endpoints = list_response["endpoints"].as_array().unwrap();
-    assert_eq!(endpoints.len(), 2); // Default + v1.0 versions
+    let labels = list_response["labels"].as_array().unwrap();
+    assert_eq!(labels.len(), 2); // v1.0 + production labels
 
     // Get specific labeled version
     let get_labeled_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint?label=v1.0")
+        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
         .body(Body::empty())
         .unwrap();
 
@@ -362,7 +371,27 @@ async fn test_endpoint_with_labels() {
         .unwrap();
     let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(get_response["label"], "v1.0");
+    assert_eq!(get_response["workflow_hash"], workflow_hash);
+    assert_eq!(get_response["workflow"]["name"], "test_workflow");
+
+    // Delete a label
+    let delete_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
+        .method("DELETE")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(delete_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify deletion
+    let get_after_delete = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(get_after_delete).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -544,16 +573,16 @@ async fn test_error_responses() {
 
     let (app, _executor) = create_test_server().await;
 
-    // Test 404 for non-existent endpoint
+    // Test 404 for non-existent workflow name
     let not_found_request = Request::builder()
-        .uri("/api/v1/endpoints/non-existent")
+        .uri("/api/v1/workflows/by-name/non-existent")
         .body(Body::empty())
         .unwrap();
 
     let response = app.clone().oneshot(not_found_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-    // Test 404 for non-existent workflow
+    // Test 404 for non-existent workflow hash
     let workflow_not_found_request = Request::builder()
         .uri("/api/v1/workflows/non-existent-hash")
         .body(Body::empty())
@@ -564,6 +593,15 @@ async fn test_error_responses() {
         .oneshot(workflow_not_found_request)
         .await
         .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // Test 404 for non-existent workflow label
+    let label_not_found_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/non-existent/labels/production")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(label_not_found_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
     // Test 400 for invalid UUID in execution endpoint
@@ -656,16 +694,16 @@ async fn test_workflow_deletion() {
 }
 
 #[tokio::test]
-async fn test_endpoint_execution() {
+async fn test_named_workflow_execution() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
-    // Create endpoint
-    let create_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint")
-        .method("PUT")
+    // Store workflow
+    let store_request = Request::builder()
+        .uri("/api/v1/workflows")
+        .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
@@ -675,12 +713,18 @@ async fn test_endpoint_execution() {
         ))
         .unwrap();
 
-    let response = app.clone().oneshot(create_request).await.unwrap();
+    let response = app.clone().oneshot(store_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Execute endpoint
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
+
+    // Execute workflow by name
     let execute_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint/execute")
+        .uri("/api/v1/workflows/by-name/test_workflow/execute")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -700,27 +744,42 @@ async fn test_endpoint_execution() {
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(execute_response["execution_id"].is_string());
-    // The result depends on whether builtin://messages is available
 
-    // Test executing with a specific label
-    let create_labeled_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint?label=v1.0")
-        .method("PUT")
+    // Execute workflow by hash directly
+    let execute_hash_request = Request::builder()
+        .uri(format!("/api/v1/workflows/{}/execute", workflow_hash))
+        .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow": workflow
+                "input": {"message": "test input for hash"}
             }))
             .unwrap(),
         ))
         .unwrap();
 
-    let response = app.clone().oneshot(create_labeled_request).await.unwrap();
+    let response = app.clone().oneshot(execute_hash_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Execute labeled endpoint
+    // Create and execute with label
+    let create_label_request = Request::builder()
+        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
+        .method("PUT")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "workflow_hash": workflow_hash
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(create_label_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Execute labeled workflow
     let execute_labeled_request = Request::builder()
-        .uri("/api/v1/endpoints/test-endpoint/execute?label=v1.0")
+        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0/execute")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(

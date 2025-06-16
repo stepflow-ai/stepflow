@@ -134,7 +134,7 @@ curl http://localhost:7837/openapi.json
 
 #### Starting the Frontend
 
-The React frontend provides a web interface for managing workflows, executions, and endpoints.
+The React frontend provides a web interface for managing workflows and executions.
 
 ```bash
 # Install dependencies (first time only)
@@ -171,7 +171,7 @@ echo "STEPFLOW_BASE_URL=http://localhost:7837/api/v1" > stepflow-ui/.env
 
 #### API Testing
 
-Test the server API endpoints:
+Test the server API:
 
 ```bash
 # Health check

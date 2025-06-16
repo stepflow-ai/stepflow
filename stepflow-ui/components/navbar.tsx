@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 
 const navigationItems = [
   { name: 'Executions', href: '/executions' },
-  { name: 'Endpoints', href: '/endpoints' },
+  { name: 'Workflows', href: '/workflows' },
   { name: 'Components', href: '/components' },
 ]
 

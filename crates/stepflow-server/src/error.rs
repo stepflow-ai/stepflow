@@ -1,9 +1,17 @@
+use std::borrow::Cow;
+
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use stepflow_core::workflow::FlowHash;
 use uuid::Uuid;
 
 /// Error response structure.
+///
+/// Server handlers should return this, but usually it is better to create it
+/// by returning an `error_stack::Report<ServerError>` and using the automatic
+/// conversion to `ErrorResponse`.
+///
+/// Other `error_stack::Report` types will automatically convert to internal errors.
 #[derive(Debug, serde::Serialize)]
 pub struct ErrorResponse {
     #[serde(serialize_with = "serialize_status_code")]
@@ -17,23 +25,34 @@ pub enum ServerError {
     InvalidExecutionId(String),
     #[error("Execution '{0}' not found")]
     ExecutionNotFound(Uuid),
-    #[error("Endpoint '{0}' not found")]
-    EndpointNotFound(String),
-    #[error("Endpoint '{name}' does not have label {label:?}")]
-    EndpointLabelNotFound { name: String, label: Option<String> },
     #[error("Workflow '{0}' not found")]
     WorkflowNotFound(FlowHash),
+    #[error("No workflows found with name '{0}'")]
+    WorkflowNameNotFound(String),
+    #[error("No label '{label}' found for workflow '{name}'")]
+    WorkflowLabelNotFound { name: String, label: String },
+    #[error("Workflow failed: {0}")]
+    WorkflowExecutionFailed(String),
+    #[error("Internal error: {0}")]
+    Internal(Cow<'static, str>),
 }
 
 impl ServerError {
     pub fn status_code(&self) -> StatusCode {
         match self {
-            ServerError::InvalidExecutionId(_) => StatusCode::BAD_REQUEST,
+            ServerError::InvalidExecutionId(_) | ServerError::WorkflowExecutionFailed(_) => {
+                StatusCode::BAD_REQUEST
+            }
             ServerError::ExecutionNotFound(_)
-            | ServerError::EndpointNotFound(_)
-            | ServerError::EndpointLabelNotFound { .. }
-            | ServerError::WorkflowNotFound(_) => StatusCode::NOT_FOUND,
+            | ServerError::WorkflowNotFound(_)
+            | ServerError::WorkflowNameNotFound(_)
+            | ServerError::WorkflowLabelNotFound { .. } => StatusCode::NOT_FOUND,
+            ServerError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
+    }
+
+    pub fn internal(s: impl Into<Cow<'static, str>>) -> Self {
+        ServerError::Internal(s.into())
     }
 }
 
@@ -48,6 +67,15 @@ impl IntoResponse for ErrorResponse {
     fn into_response(self) -> axum::response::Response {
         let body = serde_json::to_string(&self).unwrap();
         (self.code, body).into_response()
+    }
+}
+
+impl From<ServerError> for ErrorResponse {
+    fn from(value: ServerError) -> Self {
+        ErrorResponse {
+            code: value.status_code(),
+            message: value.to_string(),
+        }
     }
 }
 

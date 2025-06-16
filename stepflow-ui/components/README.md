@@ -2,13 +2,13 @@
 
 This directory contains reusable UI components for the Stepflow application.
 
-## ExecutionDialog Component
+## WorkflowExecutionDialog Component
 
-The `ExecutionDialog` component provides a shared, reusable dialog for executing workflows in different contexts throughout the application.
+The `WorkflowExecutionDialog` component provides a shared, reusable dialog for executing workflows in different contexts throughout the application.
 
 ### Features
 
-- **Dual Mode Support**: Can execute both endpoint-based workflows and ad-hoc workflow definitions
+- **Workflow Execution Modes**: Can execute named workflows (latest or labeled versions) and ad-hoc workflow definitions
 - **Input Examples**: Pre-configured examples with intelligent suggestions based on workflow components
 - **Format Support**: JSON and YAML input formats with automatic conversion
 - **Debug Mode**: Optional debug mode execution with step-by-step inspection
@@ -18,17 +18,34 @@ The `ExecutionDialog` component provides a shared, reusable dialog for executing
 
 ### Usage
 
-#### Endpoint Execution
+#### Named Workflow Execution (Latest Version)
 ```tsx
-import { ExecutionDialog } from '@/components/execution-dialog'
+import { WorkflowExecutionDialog } from '@/components/workflow-execution-dialog'
 
-// Execute an endpoint with the dialog
-<ExecutionDialog
-  endpoint={endpointSummary}
+// Execute the latest version of a named workflow
+<WorkflowExecutionDialog
+  workflowName="data-pipeline"
   trigger={
     <Button>
       <Play className="mr-2 h-4 w-4" />
-      Execute
+      Execute Latest
+    </Button>
+  }
+/>
+```
+
+#### Labeled Workflow Execution
+```tsx
+import { WorkflowExecutionDialog } from '@/components/workflow-execution-dialog'
+
+// Execute a specific labeled version
+<WorkflowExecutionDialog
+  workflowName="data-pipeline"
+  workflowLabel="production"
+  trigger={
+    <Button>
+      <Play className="mr-2 h-4 w-4" />
+      Execute Production
     </Button>
   }
 />
@@ -36,10 +53,10 @@ import { ExecutionDialog } from '@/components/execution-dialog'
 
 #### Ad-hoc Workflow Execution
 ```tsx
-import { ExecutionDialog } from '@/components/execution-dialog'
+import { WorkflowExecutionDialog } from '@/components/workflow-execution-dialog'
 
 // Execute a workflow definition directly
-<ExecutionDialog
+<WorkflowExecutionDialog
   workflow={workflowDefinition}
   examples={customInputExamples}
   trigger={
@@ -52,11 +69,11 @@ import { ExecutionDialog } from '@/components/execution-dialog'
 
 #### Controlled Dialog
 ```tsx
-import { ExecutionDialog } from '@/components/execution-dialog'
+import { WorkflowExecutionDialog } from '@/components/workflow-execution-dialog'
 
 const [dialogOpen, setDialogOpen] = useState(false)
 
-<ExecutionDialog
+<WorkflowExecutionDialog
   workflow={workflow}
   open={dialogOpen}
   onOpenChange={setDialogOpen}
@@ -67,7 +84,8 @@ const [dialogOpen, setDialogOpen] = useState(false)
 
 | Prop | Type | Required | Description |
 |------|------|----------|-------------|
-| `endpoint` | `EndpointSummary` | No | Endpoint to execute (for endpoint mode) |
+| `workflowName` | `string` | No | Name of workflow to execute (for named mode) |
+| `workflowLabel` | `string` | No | Label of workflow version (for labeled mode) |
 | `workflow` | `Workflow` | No | Workflow definition (for ad-hoc mode) |
 | `trigger` | `React.ReactNode` | No | Custom trigger element |
 | `open` | `boolean` | No | Controlled dialog state |
@@ -91,9 +109,9 @@ Examples are defined in `/lib/examples.ts` and include:
 
 ### Integration Points
 
-The ExecutionDialog is integrated in several places:
+The WorkflowExecutionDialog is integrated in several places:
 
-1. **Endpoints Page**: Quick execution from endpoint cards
+1. **Workflows Page**: Quick execution from workflow cards
 2. **Execute Page**: Quick execute section with example workflows
 3. **Components Page**: Could be extended for component testing
 4. **Workflow Visualizer**: Could be added for testing workflows

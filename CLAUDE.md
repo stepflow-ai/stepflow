@@ -194,7 +194,7 @@ use futures::future::{BoxFuture, FutureExt as _};
 // Trait method signature
 fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>>;
 
-// Implementation  
+// Implementation
 fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>> {
     async move {
         // async logic here
@@ -224,6 +224,41 @@ StepFlow uses a dual error approach to distinguish between business logic and sy
 - Use `Result<T, error_stack::Report<YourError>>` for system failures
 - Add context with `error_stack::ResultExt::attach_printable`
 - Define custom error types with `thiserror::Error`
+
+#### Server Error Handling Pattern
+The `stepflow-server` crate follows a specific pattern for HTTP error responses:
+
+**Do NOT create `ErrorResponse` directly.** Instead, create `ServerError` variants and use automatic conversion:
+
+```rust
+// Good: Define error variants in ServerError enum
+#[derive(Debug, thiserror::Error)]
+pub enum ServerError {
+    #[error("Workflow '{0}' not found")]
+    WorkflowNotFound(FlowHash),
+    #[error("No workflows found with name '{0}'")]
+    WorkflowNameNotFound(String),
+}
+
+// Good: Use error_stack::report! and automatic conversion
+return Err(error_stack::report!(ServerError::WorkflowNotFound(hash)));
+
+// Bad: Don't create ErrorResponse directly
+return Err(ErrorResponse::not_found("Workflow not found"));
+```
+
+**Benefits of this pattern:**
+- **Type Safety**: Compile-time checking of error variants
+- **Rich Context**: `error-stack` provides detailed error context and chains
+- **Consistent HTTP Codes**: `ServerError::status_code()` ensures consistent HTTP status mapping
+- **Better Debugging**: Rich error context helps with troubleshooting
+- **Future-Proof**: Easy to add context or change error handling behavior
+
+**Return Type Pattern:**
+- HTTP handlers return `Result<Response, ErrorResponse>`
+- Create `error_stack::Report<ServerError>` for errors
+- Automatic conversion via `From<error_stack::Report<ServerError>>` for `ErrorResponse`
+- Use `.into()` when explicit conversion is needed in `return` statements
 
 #### State Store Error Pattern
 The state store follows a specific pattern for handling "not found" conditions:
@@ -312,83 +347,101 @@ state_store:
 - **Execution State**: Persistent workflow step results for recovery and debugging
 - **Migration Support**: Automatic schema creation and versioning
 - **Multi-backend**: Extensible design for future database support (PostgreSQL, etc.)
-- **Unified Endpoints**: Named workflow endpoints with optional labels for versioning
+- **Named Workflows**: Workflows with optional labels for versioning
 
-### Workflow Endpoints
+### Workflow Management
 
-StepFlow provides a REST API for managing named workflow endpoints. Each endpoint can have multiple versions identified by optional labels.
+StepFlow provides three workflow access patterns for flexible workflow execution and management:
 
-#### Endpoint Structure
-- **Name**: Human-readable identifier (e.g., "data-processing")
+#### Three Access Patterns
+1. **Ad-hoc workflows**: Execute by hash or definition directly
+2. **Named workflows**: Workflows with a `name` field, accessible by name
+3. **Labeled workflows**: Named workflows with version labels (e.g., "production", "staging", "v1.0")
+
+#### Workflow Structure
+- **Name**: From workflow.name field (e.g., "data-processing")
 - **Label**: Optional version identifier (e.g., "stable", "beta", "v1.2")
 - **Workflow Hash**: Content-based ID linking to the workflow definition
 
-#### API Endpoints
+#### API Operations
 
-**Create/Update Endpoint:**
+**Store Workflow:**
 ```bash
-# Create default version
-curl -X PUT http://localhost:8080/api/v1/endpoints/my-workflow \
+# Store workflow (creates hash)
+curl -X POST http://localhost:8080/api/v1/workflows \
   -H "Content-Type: application/json" \
-  -d '{"workflow": {...}}'
-
-# Create labeled version
-curl -X PUT "http://localhost:8080/api/v1/endpoints/my-workflow?label=v1.0" \
-  -H "Content-Type: application/json" \
-  -d '{"workflow": {...}}'
+  -d '{"workflow": {"name": "my-workflow", "steps": [...]}}'
 ```
 
-**Execute Endpoint:**
+**Create/Update Labels:**
 ```bash
-# Execute default version
-curl -X POST http://localhost:8080/api/v1/endpoints/my-workflow/execute \
+# Create labeled version
+curl -X PUT http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0 \
+  -H "Content-Type: application/json" \
+  -d '{"workflow_hash": "abc123..."}'
+```
+
+**Execute Workflows:**
+```bash
+# Execute latest version by name
+curl -X POST http://localhost:8080/api/v1/workflows/by-name/my-workflow/execute \
   -H "Content-Type: application/json" \
   -d '{"input": {...}}'
 
 # Execute labeled version
-curl -X POST "http://localhost:8080/api/v1/endpoints/my-workflow/execute?label=v1.0" \
+curl -X POST http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0/execute \
   -H "Content-Type: application/json" \
   -d '{"input": {...}}'
+
+# Execute by hash
+curl -X POST http://localhost:8080/api/v1/workflows/{hash}/execute \
+  -H "Content-Type: application/json" \
+  -d '{"input": {...}}'
+
+# Execute ad-hoc
+curl -X POST http://localhost:8080/api/v1/executions \
+  -H "Content-Type: application/json" \
+  -d '{"workflow": {...}, "input": {...}}'
 ```
 
-**List Endpoints:**
+**List Workflows:**
 ```bash
-# List all endpoints
-curl http://localhost:8080/api/v1/endpoints
+# List all workflow names
+curl http://localhost:8080/api/v1/workflows/names
 
-# List all versions of specific endpoint
-curl "http://localhost:8080/api/v1/endpoints?name=my-workflow"
+# List all versions of specific workflow
+curl http://localhost:8080/api/v1/workflows/by-name/my-workflow
+
+# List labels for workflow
+curl http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels
 ```
 
-**Get Endpoint:**
+**Get Workflows:**
 ```bash
-# Get default version
-curl http://localhost:8080/api/v1/endpoints/my-workflow
+# Get latest version by name
+curl http://localhost:8080/api/v1/workflows/by-name/my-workflow/latest
 
 # Get labeled version
-curl "http://localhost:8080/api/v1/endpoints/my-workflow?label=v1.0"
+curl http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0
+
+# Get by hash
+curl http://localhost:8080/api/v1/workflows/{hash}
 ```
 
-**Delete Endpoint:**
+**Delete Labels:**
 ```bash
-# Delete default version
-curl -X DELETE http://localhost:8080/api/v1/endpoints/my-workflow
-
 # Delete labeled version
-curl -X DELETE "http://localhost:8080/api/v1/endpoints/my-workflow?label=v1.0"
-
-# Delete all versions
-curl -X DELETE "http://localhost:8080/api/v1/endpoints/my-workflow?label=*"
+curl -X DELETE http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0
 ```
 
 #### Database Schema
 
-The unified endpoint design uses a single table with composite primary key:
+The workflow-centric design uses workflow_labels table:
 
 ```sql
-CREATE TABLE endpoints (
-    name TEXT NOT NULL,
-    label TEXT, -- NULL represents the default version
+CREATE TABLE workflow_labels (
+    name TEXT NOT NULL,        -- from workflow.name field
+    label TEXT NOT NULL,       -- like "production", "staging", "latest"
     workflow_hash TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -398,10 +451,9 @@ CREATE TABLE endpoints (
 ```
 
 This design provides:
-- **Unified Model**: Single concept instead of separate endpoints and labels
-- **Flexible Versioning**: Optional labels with null representing default
-- **Content Deduplication**: Multiple endpoints can reference same workflow
-- **Atomic Operations**: Composite key ensures data consistency
+- **Three Access Patterns**: Ad-hoc, named, and labeled workflow execution
+- **Content Deduplication**: Multiple names/labels can reference same workflow
+- **Flexible Versioning**: Labels for production, staging, etc.
 
 ## Testing
 

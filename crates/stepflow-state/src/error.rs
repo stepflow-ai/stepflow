@@ -26,9 +26,6 @@ pub enum StateError {
     #[error("Workflow not found: {workflow_hash}")]
     WorkflowNotFound { workflow_hash: String },
 
-    #[error("Endpoint not found: {name}")]
-    EndpointNotFound { name: String },
-
     #[error("Execution not found: {execution_id}")]
     ExecutionNotFound { execution_id: Uuid },
 

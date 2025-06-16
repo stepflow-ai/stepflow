@@ -7,7 +7,8 @@ use stepflow_core::workflow::FlowHash;
 use crate::{
     StateStore,
     state_store::{
-        Endpoint, ExecutionDetails, ExecutionFilters, ExecutionSummary, StepInfo, StepResult,
+        ExecutionDetails, ExecutionFilters, ExecutionSummary, StepInfo, StepResult,
+        WorkflowLabelMetadata, WorkflowWithMetadata,
     },
 };
 use stepflow_core::{
@@ -20,7 +21,7 @@ use uuid::Uuid;
 use crate::StateError;
 use tokio::sync::RwLock;
 
-type EndpointMap = Arc<RwLock<HashMap<(String, Option<String>), Endpoint>>>;
+type WorkflowLabelsMap = Arc<RwLock<HashMap<(String, String), WorkflowLabelMetadata>>>;
 /// Execution-specific state storage for a single workflow execution.
 #[derive(Debug)]
 struct ExecutionState {
@@ -64,9 +65,8 @@ pub struct InMemoryStateStore {
     executions: Arc<RwLock<HashMap<Uuid, ExecutionState>>>,
     /// Map from workflow hash to workflow content
     workflows: Arc<RwLock<HashMap<String, Arc<Flow>>>>,
-    /// Map from (endpoint_name, label) to endpoint metadata
-    /// where label = None represents the default version
-    endpoints: EndpointMap,
+    /// Map from (workflow_name, label) to workflow label metadata
+    workflow_labels: WorkflowLabelsMap,
     /// Map from execution_id to execution details
     execution_metadata: Arc<RwLock<HashMap<Uuid, ExecutionDetails>>>,
     /// Map from execution_id to step info
@@ -80,7 +80,7 @@ impl InMemoryStateStore {
             blobs: Arc::new(RwLock::new(HashMap::new())),
             executions: Arc::new(RwLock::new(HashMap::new())),
             workflows: Arc::new(RwLock::new(HashMap::new())),
-            endpoints: Arc::new(RwLock::new(HashMap::new())),
+            workflow_labels: Arc::new(RwLock::new(HashMap::new())),
             execution_metadata: Arc::new(RwLock::new(HashMap::new())),
             step_info: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -307,19 +307,104 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn create_endpoint(
+    fn get_workflows_by_name(
+        &self,
+        name: &str,
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
+    > {
+        let workflows = self.workflows.clone();
+        let name = name.to_string();
+
+        async move {
+            let workflows = workflows.read().await;
+            let mut results = Vec::new();
+
+            for workflow in workflows.values() {
+                if workflow.name.as_ref() == Some(&name) {
+                    // Use current time for creation since we don't track it in in-memory
+                    let created_at = chrono::Utc::now();
+                    let hash = Flow::hash(workflow);
+                    results.push((hash, created_at));
+                }
+            }
+
+            // Sort by creation time (newest first)
+            results.sort_by(|a, b| b.1.cmp(&a.1));
+            Ok(results)
+        }
+        .boxed()
+    }
+
+    fn get_named_workflow(
         &self,
         name: &str,
         label: Option<&str>,
-        workflow_hash: FlowHash,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let endpoints = self.endpoints.clone();
+    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>> {
+        let workflows = self.workflows.clone();
+        let workflow_labels = self.workflow_labels.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
 
         async move {
+            match label {
+                Some(label_str) => {
+                    // Get workflow by label
+                    let labels = workflow_labels.read().await;
+                    let key = (name, label_str);
+
+                    if let Some(label_metadata) = labels.get(&key) {
+                        let workflows = workflows.read().await;
+                        if let Some(workflow) =
+                            workflows.get(&label_metadata.workflow_hash.to_string())
+                        {
+                            return Ok(Some(WorkflowWithMetadata {
+                                workflow: workflow.clone(),
+                                workflow_hash: label_metadata.workflow_hash.clone(),
+                                created_at: label_metadata.created_at,
+                                label_info: Some(label_metadata.clone()),
+                            }));
+                        }
+                    }
+                    Ok(None)
+                }
+                None => {
+                    // Get latest workflow by name
+                    let workflows = workflows.read().await;
+
+                    for workflow in workflows.values() {
+                        if workflow.name.as_ref() == Some(&name) {
+                            let created_at = chrono::Utc::now();
+                            let hash = Flow::hash(workflow);
+                            return Ok(Some(WorkflowWithMetadata {
+                                workflow: workflow.clone(),
+                                workflow_hash: hash,
+                                created_at,
+                                label_info: None,
+                            }));
+                        }
+                    }
+                    Ok(None)
+                }
+            }
+        }
+        .boxed()
+    }
+
+    fn create_or_update_label(
+        &self,
+        name: &str,
+        label: &str,
+        workflow_hash: FlowHash,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let workflow_labels = self.workflow_labels.clone();
+        let name = name.to_string();
+        let label = label.to_string();
+
+        async move {
             let now = chrono::Utc::now();
-            let endpoint = Endpoint {
+            let workflow_label = WorkflowLabelMetadata {
                 name: name.clone(),
                 label: label.clone(),
                 workflow_hash,
@@ -327,84 +412,66 @@ impl StateStore for InMemoryStateStore {
                 updated_at: now,
             };
 
-            let mut endpoints = endpoints.write().await;
-            endpoints.insert((name, label), endpoint);
+            let mut labels = workflow_labels.write().await;
+            labels.insert((name, label), workflow_label);
 
             Ok(())
         }
         .boxed()
     }
 
-    fn get_endpoint(
+    fn list_labels_for_name(
         &self,
         name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Endpoint>, StateError>> {
-        let endpoints = self.endpoints.clone();
+    ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>> {
+        let workflow_labels = self.workflow_labels.clone();
         let name = name.to_string();
-        let label = label.map(|s| s.to_string());
 
         async move {
-            let endpoints = endpoints.read().await;
-            let key = (name, label);
-
-            Ok(endpoints.get(&key).cloned())
-        }
-        .boxed()
-    }
-
-    fn list_endpoints(
-        &self,
-        name_filter: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<Endpoint>, StateError>> {
-        let endpoints = self.endpoints.clone();
-        let name_filter = name_filter.map(|s| s.to_string());
-
-        async move {
-            let endpoints = endpoints.read().await;
-            let results: Vec<Endpoint> = endpoints
+            let labels = workflow_labels.read().await;
+            let results: Vec<WorkflowLabelMetadata> = labels
                 .iter()
-                .filter(|((name, _label), _endpoint)| {
-                    if let Some(ref filter) = name_filter {
-                        name == filter
-                    } else {
-                        true
-                    }
-                })
-                .map(|((_name, _label), endpoint)| endpoint.clone())
+                .filter(|((n, _label), _workflow_label)| n == &name)
+                .map(|((_name, _label), workflow_label)| workflow_label.clone())
                 .collect();
             Ok(results)
         }
         .boxed()
     }
 
-    fn delete_endpoint(
-        &self,
-        name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let endpoints = self.endpoints.clone();
-        let name = name.to_string();
-        let label = label.map(|s| s.to_string());
+    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
+        let workflows = self.workflows.clone();
 
         async move {
-            let mut endpoints = endpoints.write().await;
+            let workflows = workflows.read().await;
+            let mut names = std::collections::HashSet::new();
 
-            if label.as_deref() == Some("*") {
-                // Delete all versions of this endpoint
-                let keys_to_remove: Vec<_> = endpoints
-                    .keys()
-                    .filter(|(n, _l)| n == &name)
-                    .cloned()
-                    .collect();
-                for key in keys_to_remove {
-                    endpoints.remove(&key);
+            for workflow in workflows.values() {
+                if let Some(name) = &workflow.name {
+                    names.insert(name.clone());
                 }
-            } else {
-                // Delete specific version (including default when label is None)
-                let key = (name, label);
-                endpoints.remove(&key);
             }
+
+            let mut result: Vec<String> = names.into_iter().collect();
+            result.sort();
+            Ok(result)
+        }
+        .boxed()
+    }
+
+    fn delete_label(
+        &self,
+        name: &str,
+        label: &str,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let workflow_labels = self.workflow_labels.clone();
+        let name = name.to_string();
+        let label = label.to_string();
+
+        async move {
+            let mut labels = workflow_labels.write().await;
+            let key = (name, label);
+            labels.remove(&key);
 
             Ok(())
         }
@@ -414,9 +481,9 @@ impl StateStore for InMemoryStateStore {
     fn create_execution(
         &self,
         execution_id: Uuid,
-        endpoint_name: Option<&str>,
-        endpoint_label: Option<&str>,
         workflow_hash: FlowHash,
+        workflow_name: Option<&str>,
+        workflow_label: Option<&str>,
         debug_mode: bool,
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
@@ -425,9 +492,9 @@ impl StateStore for InMemoryStateStore {
         let execution_details = ExecutionDetails {
             summary: ExecutionSummary {
                 execution_id,
-                endpoint_name: endpoint_name.map(|s| s.to_string()),
-                endpoint_label: endpoint_label.map(|s| s.to_string()),
                 workflow_hash,
+                workflow_name: workflow_name.map(|s| s.to_string()),
+                workflow_label: workflow_label.map(|s| s.to_string()),
                 status: ExecutionStatus::Running,
                 debug_mode,
                 created_at: now,
@@ -505,9 +572,16 @@ impl StateStore for InMemoryStateStore {
                         }
                     }
 
-                    // Apply endpoint name filter
-                    if let Some(ref endpoint_name) = filters.endpoint_name {
-                        if exec.summary.endpoint_name.as_ref() != Some(endpoint_name) {
+                    // Apply workflow name filter
+                    if let Some(ref workflow_name) = filters.workflow_name {
+                        if exec.summary.workflow_name.as_ref() != Some(workflow_name) {
+                            return false;
+                        }
+                    }
+
+                    // Apply workflow label filter
+                    if let Some(ref workflow_label) = filters.workflow_label {
+                        if exec.summary.workflow_label.as_ref() != Some(workflow_label) {
                             return false;
                         }
                     }

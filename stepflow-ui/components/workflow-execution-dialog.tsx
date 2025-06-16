@@ -10,13 +10,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Play, Upload, Bug, Loader2, Code, Lightbulb } from 'lucide-react'
-import { useExecuteWorkflow, useExecuteEndpoint, useEndpointWorkflow } from '@/lib/hooks/use-api'
+import { useExecuteWorkflow, useExecuteWorkflowByName, useExecuteWorkflowByLabel, useLatestWorkflowByName, useWorkflowByLabel } from '@/lib/hooks/use-api'
 import { COMMON_INPUT_EXAMPLES, getInputExamplesForComponents, type InputExample } from '@/lib/examples'
-import type { Workflow, EndpointSummary, ExampleInput } from '@/lib/api'
+import type { Workflow, ExampleInput } from '@/lib/api'
 
-interface ExecutionDialogProps {
-  // Endpoint execution
-  endpoint?: EndpointSummary
+interface WorkflowExecutionDialogProps {
+  // Named workflow execution (latest version)
+  workflowName?: string
+  // Labeled workflow execution
+  workflowLabel?: string
   // Ad-hoc workflow execution
   workflow?: Workflow
   // Dialog trigger element
@@ -60,14 +62,15 @@ function getRelevantExamples(workflow?: Workflow, backendExamples?: ExampleInput
   return COMMON_INPUT_EXAMPLES
 }
 
-export function ExecutionDialog({ 
-  endpoint, 
+export function WorkflowExecutionDialog({ 
+  workflowName,
+  workflowLabel,
   workflow, 
   trigger, 
   open: controlledOpen, 
   onOpenChange: controlledOnOpenChange,
   examples
-}: ExecutionDialogProps) {
+}: WorkflowExecutionDialogProps) {
   const router = useRouter()
   
   // Dialog state management
@@ -84,38 +87,48 @@ export function ExecutionDialog({
 
   // API hooks
   const executeWorkflowMutation = useExecuteWorkflow()
-  const executeEndpointMutation = useExecuteEndpoint()
+  const executeWorkflowByNameMutation = useExecuteWorkflowByName()
+  const executeWorkflowByLabelMutation = useExecuteWorkflowByLabel()
 
-  // Fetch workflow data for endpoints to get examples
-  const endpointWorkflowQuery = useEndpointWorkflow(
-    endpoint?.name || '', 
-    endpoint?.label,
-  )
+  // Fetch workflow data based on execution type
+  const latestWorkflowQuery = useLatestWorkflowByName(workflowName || '')
+  const labeledWorkflowQuery = useWorkflowByLabel(workflowName || '', workflowLabel || '')
 
-  // Determine execution mode and examples
-  const isEndpointExecution = !!endpoint
-  const workflowForExecution = isEndpointExecution ? endpointWorkflowQuery.data?.workflow : workflow
+  // Determine execution mode and workflow data
+  const isNamedExecution = !!workflowName && !workflowLabel
+  const isLabeledExecution = !!workflowName && !!workflowLabel
+
+  let workflowForExecution: Workflow | undefined
+  let workflowData: { workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] } | undefined
+  let isLoadingWorkflow = false
+
+  if (isLabeledExecution) {
+    workflowData = labeledWorkflowQuery.data
+    workflowForExecution = workflowData?.workflow
+    isLoadingWorkflow = labeledWorkflowQuery.isLoading
+  } else if (isNamedExecution) {
+    workflowData = latestWorkflowQuery.data
+    workflowForExecution = workflowData?.workflow
+    isLoadingWorkflow = latestWorkflowQuery.isLoading
+  } else {
+    workflowForExecution = workflow
+  }
   
-  const executionTitle = isEndpointExecution 
-    ? `Execute ${endpoint!.name}${endpoint!.label ? ` (${endpoint!.label})` : ''}`
+  const executionTitle = isLabeledExecution
+    ? `Execute ${workflowName} (${workflowLabel})`
+    : isNamedExecution
+    ? `Execute ${workflowName} (latest)`
     : workflowForExecution?.name || 'Execute Workflow'
   
-  const executionDescription = isEndpointExecution
-    ? `${workflowForExecution?.description || `Execute the ${endpoint!.name} endpoint`} with custom input data`
-    : workflowForExecution?.description || 'Execute an ad-hoc workflow with input data'
+  const executionDescription = workflowForExecution?.description || 'Execute workflow with input data'
   
   // Get examples from multiple sources with priority:
   // 1. Explicitly provided examples
-  // 2. Examples from endpoint workflow (backend API)
+  // 2. Examples from workflow API response
   // 3. Examples from direct workflow
   // 4. Fallback to component-based examples
-  const backendExamples = isEndpointExecution 
-    ? endpointWorkflowQuery.data?.all_examples 
-    : undefined
-  const relevantExamples = examples || getRelevantExamples(
-    isEndpointExecution ? endpointWorkflowQuery.data?.workflow : workflow, 
-    backendExamples
-  )
+  const backendExamples = workflowData?.all_examples
+  const relevantExamples = examples || getRelevantExamples(workflowForExecution, backendExamples)
 
   // Load example data
   const loadExample = useCallback((exampleName: string) => {
@@ -186,20 +199,25 @@ export function ExecutionDialog({
       }
 
       let result
-      if (isEndpointExecution) {
-        result = await executeEndpointMutation.mutateAsync({
-          name: endpoint!.name,
-          data: { input: parsedInput, debug: debugMode },
-          label: endpoint!.label
+      if (isLabeledExecution) {
+        result = await executeWorkflowByLabelMutation.mutateAsync({
+          name: workflowName!,
+          label: workflowLabel!,
+          data: { input: parsedInput, debug: debugMode }
         })
-      } else if (workflow) {
+      } else if (isNamedExecution) {
+        result = await executeWorkflowByNameMutation.mutateAsync({
+          name: workflowName!,
+          data: { input: parsedInput, debug: debugMode }
+        })
+      } else if (workflowForExecution) {
         result = await executeWorkflowMutation.mutateAsync({
-          workflow,
+          workflow: workflowForExecution,
           input: parsedInput,
           debug: debugMode
         })
       } else {
-        throw new Error('No workflow or endpoint specified for execution')
+        throw new Error('No workflow specified for execution')
       }
 
       // Close dialog and navigate to results
@@ -228,8 +246,9 @@ export function ExecutionDialog({
     </Button>
   )
 
-  const isExecuting = executeWorkflowMutation.isPending || executeEndpointMutation.isPending
-  const isLoadingWorkflow = isEndpointExecution && endpointWorkflowQuery.isLoading
+  const isExecuting = executeWorkflowMutation.isPending || 
+                     executeWorkflowByNameMutation.isPending || 
+                     executeWorkflowByLabelMutation.isPending
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -256,7 +275,7 @@ export function ExecutionDialog({
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
-          {/* Loading state for endpoint workflow data */}
+          {/* Loading state for workflow data */}
           {isLoadingWorkflow && (
             <Card>
               <CardContent className="pt-6">
@@ -281,19 +300,19 @@ export function ExecutionDialog({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                   {relevantExamples.map((example) => (
                     <Button
                       key={example.name}
                       variant={selectedExample === example.name ? "default" : "outline"}
                       size="sm"
                       onClick={() => loadExample(example.name)}
-                      className="text-left justify-start h-auto p-3"
+                      className="text-left justify-start h-auto p-3 min-h-[3rem] max-h-[5rem] overflow-hidden"
                     >
-                      <div>
-                        <div className="font-medium text-sm">{example.name}</div>
+                      <div className="w-full overflow-hidden">
+                        <div className="font-medium text-sm truncate">{example.name}</div>
                         {example.description && (
-                          <div className="text-xs text-muted-foreground mt-1">
+                          <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                             {example.description}
                           </div>
                         )}
@@ -379,8 +398,10 @@ export function ExecutionDialog({
                 <div className="space-y-1">
                   <div className="font-medium">Ready to Execute</div>
                   <div className="text-sm text-muted-foreground">
-                    {isEndpointExecution
-                      ? `Endpoint: ${endpoint!.name}${endpoint!.label ? ` (${endpoint!.label})` : ''}`
+                    {isLabeledExecution
+                      ? `Workflow: ${workflowName} (${workflowLabel})`
+                      : isNamedExecution
+                      ? `Workflow: ${workflowName} (latest)`
                       : 'Ad-hoc workflow execution'
                     }
                     {debugMode && ' • Debug mode enabled'}
