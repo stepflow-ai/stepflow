@@ -8,7 +8,7 @@ import {
   useExecuteWorkflow,
   transformStepsForVisualizer
 } from '@/lib/hooks/use-api'
-import type { StepExecution, Workflow } from '@/lib/api'
+import type { StepExecutionResponse as StepExecution, Flow as Workflow } from '@/api-client'
 
 // Create a test wrapper for React Query
 const createWrapper = () => {
@@ -131,18 +131,15 @@ describe('Data Transformation Utilities', () => {
       steps: [
         {
           id: 'step1',
-          component: 'test://component1',
-          depends_on: []
+          component: 'test://component1'
         },
         {
           id: 'step2', 
-          component: 'test://component2',
-          depends_on: ['step1']
+          component: 'test://component2'
         },
         {
           id: 'step3',
-          component: 'test://component3',
-          depends_on: ['step1', 'step2']
+          component: 'test://component3'
         }
       ]
     }
@@ -167,7 +164,7 @@ describe('Data Transformation Utilities', () => {
         name: 'step2', 
         component: 'test://component2',
         status: 'pending',
-        dependencies: ['step1'],
+        dependencies: [],
         startTime: null,
         duration: null,
         output: null
@@ -177,8 +174,8 @@ describe('Data Transformation Utilities', () => {
     test('should transform steps with successful execution', () => {
       const steps: StepExecution[] = [
         {
-          step_index: 0,
-          step_id: 'step1',
+          stepIndex: 0,
+          stepId: 'step1',
           state: 'completed',
           result: {
             outcome: 'success',
@@ -186,8 +183,8 @@ describe('Data Transformation Utilities', () => {
           }
         },
         {
-          step_index: 1,
-          step_id: 'step2',
+          stepIndex: 1,
+          stepId: 'step2',
           state: 'completed',
           result: {
             outcome: 'success',
@@ -214,7 +211,7 @@ describe('Data Transformation Utilities', () => {
         name: 'step2',
         component: 'test://component2', 
         status: 'completed',
-        dependencies: ['step1'],
+        dependencies: [],
         startTime: null,
         duration: null,
         output: '{"value":"result2"}'
@@ -224,8 +221,8 @@ describe('Data Transformation Utilities', () => {
     test('should transform steps with failed execution', () => {
       const steps: StepExecution[] = [
         {
-          step_index: 0,
-          step_id: 'step1',
+          stepIndex: 0,
+          stepId: 'step1',
           state: 'failed',
           result: {
             outcome: 'failed',
@@ -254,8 +251,8 @@ describe('Data Transformation Utilities', () => {
     test('should transform running steps', () => {
       const steps: StepExecution[] = [
         {
-          step_index: 0,
-          step_id: 'step1',
+          stepIndex: 0,
+          stepId: 'step1',
           state: 'running'
           // No result means it's running
         }
@@ -272,8 +269,8 @@ describe('Data Transformation Utilities', () => {
     test('should transform skipped steps', () => {
       const steps: StepExecution[] = [
         {
-          step_index: 0,
-          step_id: 'step1',
+          stepIndex: 0,
+          stepId: 'step1',
           state: 'skipped',
           result: {
             outcome: 'skipped'

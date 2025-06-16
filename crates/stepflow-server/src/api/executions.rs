@@ -31,6 +31,7 @@ pub struct CreateExecutionRequest {
 
 /// Response for create execution operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateExecutionResponse {
     /// The execution ID
     pub execution_id: Uuid,
@@ -45,6 +46,7 @@ pub struct CreateExecutionResponse {
 
 /// Execution summary for API responses
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutionSummaryResponse {
     /// The execution ID
     pub execution_id: Uuid,

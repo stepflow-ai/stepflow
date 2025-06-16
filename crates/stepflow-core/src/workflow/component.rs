@@ -21,13 +21,11 @@ use url::Url;
     utoipa::ToSchema,
 )]
 #[serde(transparent)]
-pub struct Component {
-    url: Url,
-}
+pub struct Component(#[schema(inline)] Url);
 
 impl std::fmt::Display for Component {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.url.as_str())
+        write!(f, "{}", self.0.as_str())
     }
 }
 
@@ -36,30 +34,30 @@ pub type ComponentKey<'a> = (Option<&'a str>, &'a str);
 impl Component {
     /// Creates a new component from a URL.
     pub fn new(url: Url) -> Self {
-        Self { url }
+        Self(url)
     }
 
     /// Returns the URL of the component.
     pub fn url(&self) -> &Url {
-        &self.url
+        &self.0
     }
 
     /// Returns the host of the component, if present.
     pub fn host(&self) -> Option<&str> {
-        self.url.host_str()
+        self.0.host_str()
     }
 
     /// Returns the path component of the URL.
     pub fn path(&self) -> &str {
-        self.url.path()
+        self.0.path()
     }
 
     /// Returns the protocol and transport parts of the URL.
     ///
     /// For example, for "mcp+http://example.com", returns ("mcp", Some("http")).
     pub fn protocol_transport(&self) -> (&str, Option<&str>) {
-        let scheme = self.url.scheme();
-        match self.url.scheme().split_once("+") {
+        let scheme = self.0.scheme();
+        match self.0.scheme().split_once("+") {
             Some((protocol, transport)) => (protocol, Some(transport)),
             None => (scheme, None),
         }

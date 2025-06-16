@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Play, Upload, Bug, Loader2, Code, Lightbulb } from 'lucide-react'
 import { useExecuteWorkflow, useExecuteWorkflowByName, useExecuteWorkflowByLabel, useLatestWorkflowByName, useWorkflowByLabel } from '@/lib/hooks/use-api'
 import { COMMON_INPUT_EXAMPLES, getInputExamplesForComponents, type InputExample } from '@/lib/examples'
-import type { Workflow, ExampleInput } from '@/lib/api'
+import type { Flow as Workflow, ExampleInput } from '@/api-client'
 
 interface WorkflowExecutionDialogProps {
   // Named workflow execution (latest version)
@@ -222,7 +222,7 @@ export function WorkflowExecutionDialog({
 
       // Close dialog and navigate to results
       setOpen(false)
-      router.push(`/executions/${result.execution_id}`)
+      router.push(`/executions/${result.executionId}`)
     } catch (error) {
       console.error('Execution failed:', error)
       // TODO: Show error toast notification

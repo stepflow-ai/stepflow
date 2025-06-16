@@ -24,19 +24,26 @@ impl Default for AppConfig {
 
 impl AppConfig {
     /// Create the application router with the current configuration
-    pub fn create_app_router(&self, executor: Arc<StepFlowExecutor>) -> Router {
+    pub fn create_app_router(&self, executor: Arc<StepFlowExecutor>, port: u16) -> Router {
         // Create the main API router with state using utoipa-axum for consistency
-        let (api_router, api_doc) = create_api_router().split_for_parts();
+        let (api_router, mut api_doc) = create_api_router().split_for_parts();
+
+        api_doc.servers = Some(vec![
+            utoipa::openapi::ServerBuilder::new()
+                .url(format!("http://localhost:{port}"))
+                .description(Some("Localhost development server"))
+                .build(),
+        ]);
 
         // Add state to the router
         let api_router = api_router.with_state(executor);
 
         // Create the full app router
-        let mut app = Router::new().nest("/api/v1", api_router);
+        let mut app = Router::new().nest("/api/v1/", api_router.into());
 
         // Add swagger if requested
         if self.include_swagger {
-            app = app.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api_doc));
+            app = app.merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", api_doc));
         }
 
         // Setup CORS if requested.
@@ -67,7 +74,7 @@ pub async fn start_server(
     executor: Arc<StepFlowExecutor>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create the app with default configuration (includes swagger and CORS)
-    let app = AppConfig::default().create_app_router(executor);
+    let app = AppConfig::default().create_app_router(executor, port);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
@@ -77,7 +84,7 @@ pub async fn start_server(
         port
     );
     tracing::info!(
-        "📄 OpenAPI spec available at http://localhost:{}/api-docs/openapi.json",
+        "📄 OpenAPI spec available at http://localhost:{}/api/v1/openapi.json",
         port
     );
 

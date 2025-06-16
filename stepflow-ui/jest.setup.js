@@ -1,5 +1,7 @@
 import '@testing-library/jest-dom'
 
+globalThis.fetch = require('node-fetch');
+
 // Mock Next.js router
 jest.mock('next/navigation', () => ({
   useRouter() {

@@ -189,6 +189,28 @@ curl -X POST http://localhost:7837/api/v1/execute \
 curl http://localhost:7837/api/v1/executions
 ```
 
+## Frontend API Client Code Generation
+
+The React frontend (`stepflow-ui/`) uses a generated TypeScript API client based on the StepFlow OpenAPI specification. This client is **not checked into version control** and should be (re)generated whenever the API changes.
+
+### How to Generate the API Client
+
+1. **Start the StepFlow server** so the OpenAPI spec is available (default: `http://localhost:7837/openapi.json`).
+
+2. **Install dependencies** (first time only):
+   ```sh
+   cd stepflow-ui
+   pnpm install
+   ```
+
+3. **Generate the API client:**
+   ```sh
+   pnpm generate:api-client
+   ```
+   This will generate the client in `stepflow-ui/src/api-client/`.
+
+> **Note:** The generated code is excluded from version control. If you update the OpenAPI spec or backend API, always re-run this step.
+
 ## License
 
 StepFlow and it's components are licensed under the Apache License 2.0.

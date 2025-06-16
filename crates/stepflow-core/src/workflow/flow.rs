@@ -63,7 +63,7 @@ pub struct Flow {
     schemars::JsonSchema,
 )]
 #[repr(transparent)]
-pub struct FlowHash(String);
+pub struct FlowHash(#[schema(inline)] String);
 
 impl From<&str> for FlowHash {
     fn from(hash: &str) -> Self {

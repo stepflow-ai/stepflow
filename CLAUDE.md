@@ -76,6 +76,27 @@ cargo check -p stepflow-protocol
 uv run --project sdks/python pytest
 ```
 
+### UI Development (stepflow-ui)
+```bash
+# Run development server
+pnpm dev
+
+# Install dependencies
+pnpm install
+
+# Run tests
+pnpm test
+
+# Build for production
+pnpm build
+
+# Run linting
+pnpm lint
+
+# Run type checking
+pnpm type-check
+```
+
 ## Project Architecture
 
 Step Flow is an execution engine for AI workflows, built in Rust. The project is structured as a workspace with multiple crates, each serving a specific purpose.

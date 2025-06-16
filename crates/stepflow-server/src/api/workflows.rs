@@ -2,6 +2,7 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_analysis::StepDependency;
@@ -22,6 +23,7 @@ pub struct StoreWorkflowRequest {
 
 /// Response when a workflow is stored
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct StoreWorkflowResponse {
     /// The hash of the stored workflow
     pub workflow_hash: FlowHash,
@@ -29,6 +31,7 @@ pub struct StoreWorkflowResponse {
 
 /// Response containing a workflow definition and its hash
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowResponse {
     /// The workflow definition
     pub workflow: Arc<Flow>,
@@ -41,6 +44,7 @@ pub struct WorkflowResponse {
 
 /// Response for listing workflows
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ListWorkflowsResponse {
     /// List of workflow hashes
     pub workflow_hashes: Vec<FlowHash>,
@@ -48,6 +52,7 @@ pub struct ListWorkflowsResponse {
 
 /// Response for workflow dependencies
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowDependenciesResponse {
     /// The workflow hash
     pub workflow_hash: FlowHash,
@@ -57,6 +62,7 @@ pub struct WorkflowDependenciesResponse {
 
 /// Response for listing workflow names
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ListWorkflowNamesResponse {
     /// List of workflow names
     pub names: Vec<String>,
@@ -64,6 +70,7 @@ pub struct ListWorkflowNamesResponse {
 
 /// Query parameters for workflow name operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowNameQuery {
     /// Optional label to filter by
     pub label: Option<String>,
@@ -71,6 +78,7 @@ pub struct WorkflowNameQuery {
 
 /// Response for workflows by name
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowsByNameResponse {
     /// The workflow name
     pub name: String,
@@ -80,15 +88,17 @@ pub struct WorkflowsByNameResponse {
 
 /// Information about a specific version of a named workflow
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowVersionInfo {
     /// The workflow hash
     pub workflow_hash: FlowHash,
     /// When this version was created
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 /// Request to create or update a workflow label
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateLabelRequest {
     /// The workflow hash to point the label to
     pub workflow_hash: FlowHash,
@@ -96,6 +106,7 @@ pub struct CreateLabelRequest {
 
 /// Response for workflow label operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowLabelResponse {
     /// The workflow name
     pub name: String,
@@ -104,13 +115,14 @@ pub struct WorkflowLabelResponse {
     /// The workflow hash this label points to
     pub workflow_hash: FlowHash,
     /// When the label was created
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
     /// When the label was last updated
-    pub updated_at: String,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Response for listing labels
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ListLabelsResponse {
     /// List of labels for the workflow name
     pub labels: Vec<WorkflowLabelResponse>,
@@ -118,6 +130,7 @@ pub struct ListLabelsResponse {
 
 /// Response for workflow execution
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecuteWorkflowResponse {
     /// The execution ID
     pub execution_id: Uuid,
@@ -129,6 +142,7 @@ pub struct ExecuteWorkflowResponse {
 
 /// Request for workflow execution
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecuteWorkflowRequest {
     /// Input data for the workflow
     pub input: ValueRef,
@@ -386,7 +400,7 @@ pub async fn get_workflows_by_name(
         .into_iter()
         .map(|(workflow_hash, created_at)| WorkflowVersionInfo {
             workflow_hash,
-            created_at: created_at.to_rfc3339(),
+            created_at,
         })
         .collect();
 
@@ -525,8 +539,8 @@ pub async fn list_labels_for_name(
             name: wl.name,
             label: wl.label,
             workflow_hash: wl.workflow_hash,
-            created_at: wl.created_at.to_rfc3339(),
-            updated_at: wl.updated_at.to_rfc3339(),
+            created_at: wl.created_at,
+            updated_at: wl.updated_at,
         })
         .collect();
 
@@ -582,8 +596,8 @@ pub async fn create_or_update_label(
         name: label_info.name,
         label: label_info.label,
         workflow_hash: label_info.workflow_hash,
-        created_at: label_info.created_at.to_rfc3339(),
-        updated_at: label_info.updated_at.to_rfc3339(),
+        created_at: label_info.created_at,
+        updated_at: label_info.updated_at,
     }))
 }
 

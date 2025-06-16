@@ -52,7 +52,7 @@ async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
         include_cors: true,     // Keep CORS for test compatibility
     };
 
-    let app = config.create_app_router(executor.clone());
+    let app = config.create_app_router(executor.clone(), 7837);
 
     (app, executor)
 }

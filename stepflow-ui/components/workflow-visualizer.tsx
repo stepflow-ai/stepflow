@@ -1,7 +1,7 @@
 'use client'
 
 import { WorkflowVisualizerBase } from './workflow-visualizer-base'
-import { StepDependency, Workflow } from '@/lib/api'
+import type { StepDependency, Flow as Workflow } from '@/api-client'
 
 interface StepData {
   id: string

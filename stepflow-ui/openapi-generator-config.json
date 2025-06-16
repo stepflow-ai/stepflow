@@ -1,0 +1,10 @@
+{
+    "generatorName": "typescript-fetch",
+    "output": "./src/api-client",
+    "inputSpec": "http://localhost:7837/api/v1/openapi.json",
+    "additionalProperties": {
+        "typescriptThreePlus": true,
+        "withSeparateModelsAndApi": true,
+        "modelPropertyNaming": "camelCase"
+    }
+}

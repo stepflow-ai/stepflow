@@ -21,7 +21,7 @@ pub struct HealthResponse {
         (status = 200, description = "Service is healthy", body = HealthResponse)
     )
 )]
-pub async fn get_health() -> Json<HealthResponse> {
+pub async fn health_check() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "healthy".to_string(),
         timestamp: chrono::Utc::now().to_rfc3339(),
