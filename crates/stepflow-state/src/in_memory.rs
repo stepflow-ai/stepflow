@@ -7,7 +7,8 @@ use stepflow_core::workflow::FlowHash;
 use crate::{
     StateStore,
     state_store::{
-        WorkflowWithMetadata, WorkflowLabelMetadata, ExecutionDetails, ExecutionFilters, ExecutionSummary, StepInfo, StepResult,
+        ExecutionDetails, ExecutionFilters, ExecutionSummary, StepInfo, StepResult,
+        WorkflowLabelMetadata, WorkflowWithMetadata,
     },
 };
 use stepflow_core::{
@@ -309,7 +310,10 @@ impl StateStore for InMemoryStateStore {
     fn get_workflows_by_name(
         &self,
         name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>> {
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
+    > {
         let workflows = self.workflows.clone();
         let name = name.to_string();
 
@@ -349,10 +353,12 @@ impl StateStore for InMemoryStateStore {
                     // Get workflow by label
                     let labels = workflow_labels.read().await;
                     let key = (name, label_str);
-                    
+
                     if let Some(label_metadata) = labels.get(&key) {
                         let workflows = workflows.read().await;
-                        if let Some(workflow) = workflows.get(&label_metadata.workflow_hash.to_string()) {
+                        if let Some(workflow) =
+                            workflows.get(&label_metadata.workflow_hash.to_string())
+                        {
                             return Ok(Some(WorkflowWithMetadata {
                                 workflow: workflow.clone(),
                                 workflow_hash: label_metadata.workflow_hash.clone(),
@@ -362,11 +368,11 @@ impl StateStore for InMemoryStateStore {
                         }
                     }
                     Ok(None)
-                },
+                }
                 None => {
                     // Get latest workflow by name
                     let workflows = workflows.read().await;
-                    
+
                     for workflow in workflows.values() {
                         if workflow.name.as_ref() == Some(&name) {
                             let created_at = chrono::Utc::now();
@@ -414,7 +420,6 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-
     fn list_labels_for_name(
         &self,
         name: &str,
@@ -434,9 +439,7 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn list_workflow_names(
-        &self,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
+    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
         let workflows = self.workflows.clone();
 
         async move {

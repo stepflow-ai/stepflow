@@ -225,7 +225,12 @@ async fn test_named_workflow_operations() {
         .unwrap();
     let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(list_response["names"].as_array().unwrap().contains(&json!("test_workflow")));
+    assert!(
+        list_response["names"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("test_workflow"))
+    );
 
     // Get workflows by name
     let get_by_name_request = Request::builder()
@@ -242,7 +247,7 @@ async fn test_named_workflow_operations() {
     let by_name_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(by_name_response["name"], "test_workflow");
-    assert!(by_name_response["workflows"].as_array().unwrap().len() >= 1);
+    assert!(!by_name_response["workflows"].as_array().unwrap().is_empty());
 
     // Get latest workflow by name
     let get_latest_request = Request::builder()
@@ -328,7 +333,11 @@ async fn test_workflow_with_labels() {
         ))
         .unwrap();
 
-    let response = app.clone().oneshot(create_prod_label_request).await.unwrap();
+    let response = app
+        .clone()
+        .oneshot(create_prod_label_request)
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     // List all labels for the workflow

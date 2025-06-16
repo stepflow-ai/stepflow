@@ -5,8 +5,8 @@ use utoipa::OpenApi;
 #[tokio::test]
 async fn test_openapi_schema_generation() {
     use stepflow_server::{
-        components::ComponentsApi, debug::DebugApi,
-        executions::ExecutionsApi, health::HealthApi, workflows::WorkflowApi,
+        components::ComponentsApi, debug::DebugApi, executions::ExecutionsApi, health::HealthApi,
+        workflows::WorkflowApi,
     };
 
     // Generate OpenAPI specs for each API
@@ -257,13 +257,17 @@ async fn test_http_methods_in_openapi() {
     assert!(workflow_name_path.post.is_none());
 
     // Workflow labels - PUT and DELETE for specific label
-    let workflow_label_path = paths.get("/api/v1/workflows/by-name/{name}/labels/{label}").unwrap();
+    let workflow_label_path = paths
+        .get("/api/v1/workflows/by-name/{name}/labels/{label}")
+        .unwrap();
     assert!(workflow_label_path.get.is_some());
     assert!(workflow_label_path.put.is_some());
     assert!(workflow_label_path.delete.is_some());
 
     // Named workflow execution - POST
-    let workflow_execute_path = paths.get("/api/v1/workflows/by-name/{name}/execute").unwrap();
+    let workflow_execute_path = paths
+        .get("/api/v1/workflows/by-name/{name}/execute")
+        .unwrap();
     assert!(workflow_execute_path.post.is_some());
     assert!(workflow_execute_path.get.is_none());
 

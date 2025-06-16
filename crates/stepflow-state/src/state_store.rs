@@ -141,7 +141,10 @@ pub trait StateStore: Send + Sync {
     fn get_workflows_by_name(
         &self,
         name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>>;
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
+    >;
 
     /// Get a named workflow, optionally with a specific label.
     ///
@@ -193,9 +196,7 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// A vector of all unique workflow names in the system
-    fn list_workflow_names(
-        &self,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>>;
+    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>>;
 
     /// Delete a workflow label.
     ///

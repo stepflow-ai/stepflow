@@ -11,8 +11,8 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
-    WorkflowLabelMetadata, WorkflowWithMetadata, ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore,
-    StepInfo, StepResult,
+    ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore, StepInfo,
+    StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
 };
 use uuid::Uuid;
 
@@ -332,7 +332,10 @@ impl StateStore for SqliteStateStore {
     fn get_workflows_by_name(
         &self,
         name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>> {
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
+    > {
         let pool = self.pool.clone();
         let name = name.to_string();
 
@@ -476,7 +479,6 @@ impl StateStore for SqliteStateStore {
         }.boxed()
     }
 
-
     fn list_labels_for_name(
         &self,
         name: &str,
@@ -518,9 +520,7 @@ impl StateStore for SqliteStateStore {
         }.boxed()
     }
 
-    fn list_workflow_names(
-        &self,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
+    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
         let pool = self.pool.clone();
 
         async move {
@@ -561,7 +561,8 @@ impl StateStore for SqliteStateStore {
                 .change_context(StateError::Internal)?;
 
             Ok(())
-        }.boxed()
+        }
+        .boxed()
     }
 
     fn create_execution(

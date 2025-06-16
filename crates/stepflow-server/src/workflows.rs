@@ -7,7 +7,7 @@ use std::sync::Arc;
 use stepflow_analysis::StepDependency;
 use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
 use stepflow_execution::StepFlowExecutor;
-use stepflow_plugin::Context;
+use stepflow_plugin::Context as _;
 use utoipa::{OpenApi, ToSchema};
 use uuid::Uuid;
 
