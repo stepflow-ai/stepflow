@@ -342,13 +342,11 @@ mod tests {
             output_schema: None,
             steps: vec![],
             output: json!({}),
-            examples: vec![
-                ExampleInput {
-                    name: "example1".to_string(),
-                    description: Some("Direct example".to_string()),
-                    input: ValueRef::new(json!({"input": "example"})),
-                }
-            ],
+            examples: vec![ExampleInput {
+                name: "example1".to_string(),
+                description: Some("Direct example".to_string()),
+                input: ValueRef::new(json!({"input": "example"})),
+            }],
             test: Some(TestConfig {
                 stepflow_config: None,
                 cases: vec![
@@ -369,17 +367,23 @@ mod tests {
         };
 
         let all_examples = flow.get_all_examples();
-        
+
         // Should have 2 examples: 1 direct + 1 from test cases (duplicate name ignored)
         assert_eq!(all_examples.len(), 2);
-        
+
         // Check first example (direct)
         assert_eq!(all_examples[0].name, "example1");
-        assert_eq!(all_examples[0].description, Some("Direct example".to_string()));
-        
+        assert_eq!(
+            all_examples[0].description,
+            Some("Direct example".to_string())
+        );
+
         // Check second example (from test case)
         assert_eq!(all_examples[1].name, "test1");
-        assert_eq!(all_examples[1].description, Some("Test case as example".to_string()));
+        assert_eq!(
+            all_examples[1].description,
+            Some("Test case as example".to_string())
+        );
     }
 }
 
@@ -414,7 +418,9 @@ pub struct TestCase {
 }
 
 /// An example input for a workflow that can be used in UI dropdowns.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 pub struct ExampleInput {
     /// Name of the example input for display purposes.
     pub name: String,
@@ -441,7 +447,7 @@ impl Flow {
     /// Get all example inputs, including those derived from test cases.
     pub fn get_all_examples(&self) -> Vec<ExampleInput> {
         let mut examples = self.examples.clone();
-        
+
         // Add examples from test cases if they exist
         if let Some(test_config) = &self.test {
             for test_case in &test_config.cases {
@@ -451,7 +457,7 @@ impl Flow {
                 }
             }
         }
-        
+
         examples
     }
 }
