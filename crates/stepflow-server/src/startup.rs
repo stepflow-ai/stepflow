@@ -39,7 +39,7 @@ impl AppConfig {
         let api_router = api_router.with_state(executor);
 
         // Create the full app router
-        let mut app = Router::new().nest("/api/v1/", api_router.into());
+        let mut app = Router::new().nest("/api/v1/", api_router);
 
         // Add swagger if requested
         if self.include_swagger {
