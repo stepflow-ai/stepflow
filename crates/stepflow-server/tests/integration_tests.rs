@@ -849,8 +849,7 @@ async fn test_execution_details() {
 
     assert_eq!(details_response["executionId"], execution_id);
     assert!(
-        details_response["workflowHash"].is_string()
-            || details_response["workflowHash"].is_null()
+        details_response["workflowHash"].is_string() || details_response["workflowHash"].is_null()
     );
     assert!(details_response["status"].is_string());
     assert!(details_response["debugMode"].is_boolean());
