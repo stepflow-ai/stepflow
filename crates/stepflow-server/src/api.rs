@@ -7,16 +7,16 @@ use utoipa_axum::routes;
 
 mod components;
 mod debug;
-mod executions;
+mod flows;
 mod health;
-mod workflows;
+mod runs;
 
 const COMPONENT_TAG: &str = "Component";
-const WORKFLOW_TAG: &str = "Workflow";
-const EXECUTION_TAG: &str = "Execution";
+const FLOW_TAG: &str = "Flow";
+const RUN_TAG: &str = "Run";
 const DEBUG_TAG: &str = "Debug";
 
-pub use executions::{CreateExecutionRequest, CreateExecutionResponse};
+pub use runs::{CreateRunRequest, CreateRunResponse};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -27,8 +27,8 @@ pub use executions::{CreateExecutionRequest, CreateExecutionResponse};
     ),
     tags(
         (name = COMPONENT_TAG, description = "Component API endpoints"),
-        (name = WORKFLOW_TAG, description = "Workflow API endpoints"),
-        (name = EXECUTION_TAG, description = "Execution API endpoints"),
+        (name = FLOW_TAG, description = "Flow API endpoints"),
+        (name = RUN_TAG, description = "Run API endpoints"),
         (name = DEBUG_TAG, description = "Debug API endpoints")
     ),
     paths(
@@ -37,26 +37,17 @@ pub use executions::{CreateExecutionRequest, CreateExecutionResponse};
         debug::debug_execute_step,
         debug::debug_continue,
         debug::debug_get_runnable,
-        executions::create_execution,
-        executions::get_execution,
-        executions::get_execution_workflow,
-        executions::list_executions,
-        executions::get_execution_steps,
-        workflows::store_workflow,
-        workflows::get_workflow,
-        workflows::execute_workflow_by_hash,
-        workflows::list_workflows,
-        workflows::delete_workflow,
-        workflows::get_workflow_dependencies,
-        workflows::list_workflow_names,
-        workflows::get_workflows_by_name,
-        workflows::get_latest_workflow_by_name,
-        workflows::execute_workflow_by_name,
-        workflows::list_labels_for_name,
-        workflows::create_or_update_label,
-        workflows::get_workflow_by_label,
-        workflows::execute_workflow_by_label,
-        workflows::delete_label,
+        runs::create_run,
+        runs::get_run,
+        runs::get_run_flow,
+        runs::list_runs,
+        runs::get_run_steps,
+        runs::cancel_run,
+        runs::delete_run,
+        flows::store_flow,
+        flows::get_flow,
+        flows::delete_flow,
+        flows::get_flow_dependencies,
     ),
     components(schemas(
         components::ComponentInfoResponse,
@@ -66,28 +57,18 @@ pub use executions::{CreateExecutionRequest, CreateExecutionResponse};
         debug::DebugStepResponse,
         debug::DebugRunnableResponse,
         health::HealthResponse,
-        executions::CreateExecutionRequest,
-        executions::CreateExecutionResponse,
-        executions::ExecutionSummaryResponse,
-        executions::ExecutionDetailsResponse,
-        executions::ListExecutionsResponse,
-        executions::StepExecutionResponse,
-        executions::ListStepExecutionsResponse,
-        executions::ExecutionWorkflowResponse,
-        workflows::StoreWorkflowRequest,
-        workflows::StoreWorkflowResponse,
-        workflows::WorkflowResponse,
-        workflows::ListWorkflowsResponse,
-        workflows::WorkflowDependenciesResponse,
-        workflows::ListWorkflowNamesResponse,
-        workflows::WorkflowNameQuery,
-        workflows::WorkflowsByNameResponse,
-        workflows::WorkflowVersionInfo,
-        workflows::CreateLabelRequest,
-        workflows::WorkflowLabelResponse,
-        workflows::ListLabelsResponse,
-        workflows::ExecuteWorkflowRequest,
-        workflows::ExecuteWorkflowResponse
+        runs::CreateRunRequest,
+        runs::CreateRunResponse,
+        runs::RunSummaryResponse,
+        runs::RunDetailsResponse,
+        runs::ListRunsResponse,
+        runs::StepRunResponse,
+        runs::ListStepRunsResponse,
+        runs::RunFlowResponse,
+        flows::StoreFlowRequest,
+        flows::StoreFlowResponse,
+        flows::FlowResponse,
+        flows::FlowDependenciesResponse,
     )),
 )]
 struct StepflowApi;
@@ -99,24 +80,15 @@ pub fn create_api_router() -> OpenApiRouter<Arc<StepFlowExecutor>> {
         .routes(routes!(debug::debug_execute_step))
         .routes(routes!(debug::debug_continue))
         .routes(routes!(debug::debug_get_runnable))
-        .routes(routes!(executions::create_execution))
-        .routes(routes!(executions::get_execution))
-        .routes(routes!(executions::get_execution_workflow))
-        .routes(routes!(executions::list_executions))
-        .routes(routes!(executions::get_execution_steps))
-        .routes(routes!(workflows::store_workflow))
-        .routes(routes!(workflows::get_workflow))
-        .routes(routes!(workflows::execute_workflow_by_hash))
-        .routes(routes!(workflows::list_workflows))
-        .routes(routes!(workflows::delete_workflow))
-        .routes(routes!(workflows::get_workflow_dependencies))
-        .routes(routes!(workflows::list_workflow_names))
-        .routes(routes!(workflows::get_workflows_by_name))
-        .routes(routes!(workflows::get_latest_workflow_by_name))
-        .routes(routes!(workflows::execute_workflow_by_name))
-        .routes(routes!(workflows::list_labels_for_name))
-        .routes(routes!(workflows::create_or_update_label))
-        .routes(routes!(workflows::get_workflow_by_label))
-        .routes(routes!(workflows::execute_workflow_by_label))
-        .routes(routes!(workflows::delete_label))
+        .routes(routes!(runs::create_run))
+        .routes(routes!(runs::get_run))
+        .routes(routes!(runs::get_run_flow))
+        .routes(routes!(runs::list_runs))
+        .routes(routes!(runs::get_run_steps))
+        .routes(routes!(runs::cancel_run))
+        .routes(routes!(runs::delete_run))
+        .routes(routes!(flows::store_flow))
+        .routes(routes!(flows::get_flow))
+        .routes(routes!(flows::delete_flow))
+        .routes(routes!(flows::get_flow_dependencies))
 }

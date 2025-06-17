@@ -613,7 +613,7 @@ impl StateStore for SqliteStateStore {
             };
 
             let sql = match status {
-                ExecutionStatus::Completed | ExecutionStatus::Failed => {
+                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled => {
                     "UPDATE executions SET status = ?, result_json = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
                 }
                 _ => "UPDATE executions SET status = ?, result_json = ? WHERE id = ?",
@@ -732,6 +732,7 @@ impl StateStore for SqliteStateStore {
                     ExecutionStatus::Running => "running",
                     ExecutionStatus::Completed => "completed",
                     ExecutionStatus::Failed => "failed",
+                    ExecutionStatus::Cancelled => "cancelled",
                     ExecutionStatus::Paused => "paused",
                 };
                 conditions.push("status = ?".to_string());

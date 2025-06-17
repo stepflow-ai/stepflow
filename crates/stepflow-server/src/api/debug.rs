@@ -20,7 +20,7 @@ pub struct DebugStepRequest {
     pub step_ids: Vec<String>,
 }
 
-/// Response from debug step executions
+/// Response from debug step runs
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DebugStepResponse {
     /// Results of executed steps
@@ -37,29 +37,29 @@ pub struct DebugRunnableResponse {
 /// Execute specific steps in debug mode
 #[utoipa::path(
     post,
-    path = "/executions/{execution_id}/debug/step",
+    path = "/runs/{run_id}/debug/step",
     params(
-        ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     request_body = DebugStepRequest,
     responses(
         (status = 200, description = "Steps executed successfully", body = DebugStepResponse),
-        (status = 400, description = "Invalid execution ID or request"),
-        (status = 404, description = "Execution not found"),
+        (status = 400, description = "Invalid run ID or request"),
+        (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_execute_step(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(execution_id): Path<Uuid>,
+    Path(run_id): Path<Uuid>,
     Json(req): Json<DebugStepRequest>,
 ) -> Result<Json<DebugStepResponse>, ErrorResponse> {
-    // Get the debug session for this execution
+    // Get the debug session for this run
     let mut debug_session = executor
-        .debug_session(execution_id)
+        .debug_session(run_id)
         .await
-        .change_context(ServerError::ExecutionNotFound(execution_id))?;
+        .change_context(ServerError::ExecutionNotFound(run_id))?;
 
     // Execute the requested steps
     let step_results = debug_session.execute_steps(&req.step_ids).await?;
@@ -73,35 +73,35 @@ pub async fn debug_execute_step(
     Ok(Json(DebugStepResponse { results }))
 }
 
-/// Continue debug execution to completion
+/// Continue debug run to completion
 #[utoipa::path(
     post,
-    path = "/executions/{execution_id}/debug/continue",
+    path = "/runs/{run_id}/debug/continue",
     params(
-        ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Execution continued successfully", body = super::executions::CreateExecutionResponse),
-        (status = 400, description = "Invalid execution ID"),
-        (status = 404, description = "Execution not found"),
+        (status = 200, description = "Run continued successfully", body = super::runs::CreateRunResponse),
+        (status = 400, description = "Invalid run ID"),
+        (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_continue(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(execution_id): Path<Uuid>,
-) -> Result<Json<super::executions::CreateExecutionResponse>, ErrorResponse> {
-    // Get the debug session for this execution
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<super::runs::CreateRunResponse>, ErrorResponse> {
+    // Get the debug session for this run
     let mut debug_session = executor
-        .debug_session(execution_id)
+        .debug_session(run_id)
         .await
-        .change_context(ServerError::ExecutionNotFound(execution_id))?;
+        .change_context(ServerError::ExecutionNotFound(run_id))?;
 
-    // Continue execution to completion
+    // Continue run to completion
     let final_result = debug_session.execute_to_completion().await?;
 
-    // Update execution status based on the result
+    // Update run status based on the result
     let state_store = executor.state_store();
     let status = match &final_result {
         FlowResult::Success { .. } => ExecutionStatus::Completed,
@@ -109,11 +109,11 @@ pub async fn debug_continue(
     };
 
     state_store
-        .update_execution_status(execution_id, status, None)
+        .update_execution_status(run_id, status, None)
         .await?;
 
-    Ok(Json(super::executions::CreateExecutionResponse {
-        execution_id,
+    Ok(Json(super::runs::CreateRunResponse {
+        run_id,
         result: Some(final_result),
         status,
         debug: true,
@@ -123,27 +123,27 @@ pub async fn debug_continue(
 /// Get runnable steps in debug mode
 #[utoipa::path(
     get,
-    path = "/executions/{execution_id}/debug/runnable",
+    path = "/runs/{run_id}/debug/runnable",
     params(
-        ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
         (status = 200, description = "Runnable steps retrieved successfully", body = DebugRunnableResponse),
-        (status = 400, description = "Invalid execution ID"),
-        (status = 404, description = "Execution not found"),
+        (status = 400, description = "Invalid run ID"),
+        (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_get_runnable(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(execution_id): Path<Uuid>,
+    Path(run_id): Path<Uuid>,
 ) -> Result<Json<DebugRunnableResponse>, ErrorResponse> {
-    // Get the debug session for this execution
+    // Get the debug session for this run
     let debug_session = executor
-        .debug_session(execution_id)
+        .debug_session(run_id)
         .await
-        .change_context(ServerError::ExecutionNotFound(execution_id))?;
+        .change_context(ServerError::ExecutionNotFound(run_id))?;
 
     // Get runnable steps
     let runnable_steps = debug_session

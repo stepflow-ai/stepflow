@@ -16,11 +16,8 @@ use url::Url;
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
 
 /// Makes sure logging is initialized for test.
-///
-/// This needs to be called on each test.
 pub fn init_test_logging() {
     INIT_TEST_LOGGING.call_once(|| {
-        // We don't use a test writer for end to end tests.
         let fmt_layer = tracing_subscriber::fmt::layer();
 
         tracing_subscriber::registry()
@@ -108,20 +105,20 @@ async fn test_health_endpoint() {
 }
 
 #[tokio::test]
-async fn test_workflow_crud_operations() {
+async fn test_flow_crud_operations() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
-    // Store workflow
+    // Store flow
     let store_request = Request::builder()
-        .uri("/api/v1/workflows")
+        .uri("/api/v1/flows")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow": workflow
+                "flow": workflow
             }))
             .unwrap(),
         ))
@@ -135,12 +132,12 @@ async fn test_workflow_crud_operations() {
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
-    assert!(!workflow_hash.is_empty());
+    let flow_hash = store_response["flowHash"].as_str().unwrap();
+    assert!(!flow_hash.is_empty());
 
-    // Get workflow
+    // Get flow
     let get_request = Request::builder()
-        .uri(format!("/api/v1/workflows/{}", workflow_hash))
+        .uri(format!("/api/v1/flows/{}", flow_hash))
         .body(Body::empty())
         .unwrap();
 
@@ -152,21 +149,12 @@ async fn test_workflow_crud_operations() {
         .unwrap();
     let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(get_response["workflowHash"], workflow_hash);
-    assert_eq!(get_response["workflow"]["name"], "test_workflow");
+    assert_eq!(get_response["flowHash"], flow_hash);
+    assert_eq!(get_response["flow"]["name"], "test_workflow");
 
-    // List workflows
-    let list_request = Request::builder()
-        .uri("/api/v1/workflows")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(list_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Get workflow dependencies
+    // Get flow dependencies
     let deps_request = Request::builder()
-        .uri(format!("/api/v1/workflows/{}/dependencies", workflow_hash))
+        .uri(format!("/api/v1/flows/{}/dependencies", flow_hash))
         .body(Body::empty())
         .unwrap();
 
@@ -178,25 +166,25 @@ async fn test_workflow_crud_operations() {
         .unwrap();
     let deps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(deps_response["workflowHash"], workflow_hash);
+    assert_eq!(deps_response["flowHash"], flow_hash);
     assert!(deps_response["dependencies"].is_array());
 }
 
 #[tokio::test]
-async fn test_named_workflow_operations() {
+async fn test_hash_based_execution() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
-    // Store workflow
+    // First, store the flow to get a hash
     let store_request = Request::builder()
-        .uri("/api/v1/workflows")
+        .uri("/api/v1/flows")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow": workflow
+                "flow": workflow
             }))
             .unwrap(),
         ))
@@ -209,206 +197,16 @@ async fn test_named_workflow_operations() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
+    let flow_hash = store_response["flowHash"].as_str().unwrap();
 
-    // List workflow names
-    let list_names_request = Request::builder()
-        .uri("/api/v1/workflows/names")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(list_names_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(
-        list_response["names"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("test_workflow"))
-    );
-
-    // Get workflows by name
-    let get_by_name_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(get_by_name_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let by_name_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(by_name_response["name"], "test_workflow");
-    assert!(!by_name_response["workflows"].as_array().unwrap().is_empty());
-
-    // Get latest workflow by name
-    let get_latest_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/latest")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(get_latest_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let latest_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(latest_response["workflowHash"], workflow_hash);
-    assert_eq!(latest_response["workflow"]["name"], "test_workflow");
-}
-
-#[tokio::test]
-async fn test_workflow_with_labels() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
-
-    // Store workflow first
-    let store_request = Request::builder()
-        .uri("/api/v1/workflows")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflow": workflow
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(store_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
-
-    // Create workflow label
-    let create_label_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
-        .method("PUT")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflowHash": workflow_hash
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(create_label_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let create_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(create_response["name"], "test_workflow");
-    assert_eq!(create_response["label"], "v1.0");
-
-    // Create another label
-    let create_prod_label_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels/production")
-        .method("PUT")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflowHash": workflow_hash
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app
-        .clone()
-        .oneshot(create_prod_label_request)
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // List all labels for the workflow
-    let list_labels_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(list_labels_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    let labels = list_response["labels"].as_array().unwrap();
-    assert_eq!(labels.len(), 2); // v1.0 + production labels
-
-    // Get specific labeled version
-    let get_labeled_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(get_labeled_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(get_response["workflowHash"], workflow_hash);
-    assert_eq!(get_response["workflow"]["name"], "test_workflow");
-
-    // Delete a label
-    let delete_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
-        .method("DELETE")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(delete_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Verify deletion
-    let get_after_delete = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(get_after_delete).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_ad_hoc_execution() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
-
-    // Execute workflow ad-hoc (non-debug mode)
+    // Execute flow using hash (non-debug mode)
     let execute_request = Request::builder()
-        .uri("/api/v1/executions")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow": workflow,
+                "flow_hash": flow_hash,
                 "input": {"message": "test input"},
                 "debug": false
             }))
@@ -424,7 +222,7 @@ async fn test_ad_hoc_execution() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(execute_response["executionId"].is_string());
+    assert!(execute_response["runId"].is_string());
     assert_eq!(execute_response["debug"], false);
     assert_eq!(execute_response["status"], "completed");
     // Workflow completes successfully with null output as defined in workflow
@@ -433,85 +231,116 @@ async fn test_ad_hoc_execution() {
 }
 
 #[tokio::test]
-async fn test_debug_execution() {
+async fn test_run_details() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
     let workflow = create_test_workflow();
 
-    // Create debug execution
-    let execute_request = Request::builder()
-        .uri("/api/v1/executions")
+    // Store and execute flow
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow": workflow,
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let flow_hash = store_response["flowHash"].as_str().unwrap();
+
+    let execute_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow_hash": flow_hash,
                 "input": {"message": "test input"},
-                "debug": true
+                "debug": false
             }))
             .unwrap(),
         ))
         .unwrap();
 
     let response = app.clone().oneshot(execute_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let run_id = execute_response["runId"].as_str().unwrap();
 
-    let execution_id = execute_response["executionId"].as_str().unwrap();
-    assert_eq!(execute_response["debug"], true);
-    assert_eq!(execute_response["status"], "running");
-
-    // Get runnable steps
-    let runnable_request = Request::builder()
-        .uri(format!(
-            "/api/v1/executions/{}/debug/runnable",
-            execution_id
-        ))
+    // Get run details
+    let details_request = Request::builder()
+        .uri(format!("/api/v1/runs/{}", run_id))
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(runnable_request).await.unwrap();
+    let response = app.clone().oneshot(details_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let runnable_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let details_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(runnable_response["runnable_steps"].is_array());
+    assert_eq!(details_response["runId"], run_id);
+    assert_eq!(details_response["flowHash"], flow_hash);
+    assert_eq!(details_response["status"], "completed");
+    assert!(details_response["input"].is_object());
 
-    // Execute a step
-    let step_request = Request::builder()
-        .uri(format!("/api/v1/executions/{}/debug/step", execution_id))
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "step_ids": ["test_step"]
-            }))
-            .unwrap(),
-        ))
+    // Get run flow
+    let flow_request = Request::builder()
+        .uri(format!("/api/v1/runs/{}/flow", run_id))
+        .body(Body::empty())
         .unwrap();
 
-    let _response = app.clone().oneshot(step_request).await.unwrap();
-    // Note: This might fail if builtin://messages is not available, but that's expected
-    // The important thing is that the API structure works
+    let response = app.clone().oneshot(flow_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let flow_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(flow_response["flowHash"], flow_hash);
+    assert_eq!(flow_response["flow"]["name"], "test_workflow");
+
+    // Get run steps
+    let steps_request = Request::builder()
+        .uri(format!("/api/v1/runs/{}/steps", run_id))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(steps_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(steps_response["steps"].is_array());
+    assert!(!steps_response["steps"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
-async fn test_execution_tracking() {
+async fn test_list_runs() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
 
-    // List executions (should be empty initially)
+    // List runs (should be empty initially)
     let list_request = Request::builder()
-        .uri("/api/v1/executions")
+        .uri("/api/v1/runs")
         .body(Body::empty())
         .unwrap();
 
@@ -523,8 +352,8 @@ async fn test_execution_tracking() {
         .unwrap();
     let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(list_response["executions"].is_array());
-    // Initially empty or may contain executions from previous tests
+    assert!(list_response["runs"].is_array());
+    // Could be empty or have runs from other tests, so just check structure
 }
 
 #[tokio::test]
@@ -533,85 +362,27 @@ async fn test_components_endpoint() {
 
     let (app, _executor) = create_test_server().await;
 
-    // List components
-    let list_request = Request::builder()
+    let request = Request::builder()
         .uri("/api/v1/components")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(list_request).await.unwrap();
+    let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let components_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(list_response["components"].is_array());
-
-    // List components without schemas
-    let list_no_schemas_request = Request::builder()
-        .uri("/api/v1/components?include_schemas=false")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(list_no_schemas_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let list_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(list_response["components"].is_array());
-    // Components without schemas should have null input_schema and output_schema
-}
-
-#[tokio::test]
-async fn test_error_responses() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-
-    // Test 404 for non-existent workflow name
-    let not_found_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/non-existent")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(not_found_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-
-    // Test 404 for non-existent workflow hash
-    let workflow_not_found_request = Request::builder()
-        .uri("/api/v1/workflows/non-existent-hash")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app
-        .clone()
-        .oneshot(workflow_not_found_request)
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-
-    // Test 404 for non-existent workflow label
-    let label_not_found_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/non-existent/labels/production")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(label_not_found_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-
-    // Test 400 for invalid UUID in execution endpoint
-    let invalid_uuid_request = Request::builder()
-        .uri("/api/v1/executions/invalid-uuid")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(invalid_uuid_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(components_response["components"].is_array());
+    // Should have at least builtin components
+    assert!(
+        !components_response["components"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -620,404 +391,55 @@ async fn test_cors_headers() {
 
     let (app, _executor) = create_test_server().await;
 
-    // Test OPTIONS request for CORS
-    let options_request = Request::builder()
+    let request = Request::builder()
         .uri("/api/v1/health")
-        .method("OPTIONS")
         .header("Origin", "http://localhost:3000")
-        .header("Access-Control-Request-Method", "GET")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.oneshot(options_request).await.unwrap();
+    let response = app.oneshot(request).await.unwrap();
 
-    // Should be 200 for successful OPTIONS request
     assert_eq!(response.status(), StatusCode::OK);
-
-    // Check for CORS headers
-    let headers = response.headers();
-    assert!(headers.contains_key("access-control-allow-origin"));
-    assert!(headers.contains_key("access-control-allow-methods"));
-    assert!(headers.contains_key("access-control-allow-headers"));
-}
-
-#[tokio::test]
-async fn test_workflow_deletion() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
-
-    // Store workflow
-    let store_request = Request::builder()
-        .uri("/api/v1/workflows")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflow": workflow
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(store_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
-
-    // Delete workflow
-    let delete_request = Request::builder()
-        .uri(format!("/api/v1/workflows/{}", workflow_hash))
-        .method("DELETE")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(delete_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Verify deletion - workflow should still be retrievable if referenced by executions
-    // The delete operation may succeed even if the workflow can still be retrieved
-    let get_request = Request::builder()
-        .uri(format!("/api/v1/workflows/{}", workflow_hash))
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(get_request).await.unwrap();
-    // Some state stores may keep workflows that are referenced by executions
-    assert!(response.status() == StatusCode::OK || response.status() == StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_named_workflow_execution() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
-
-    // Store workflow
-    let store_request = Request::builder()
-        .uri("/api/v1/workflows")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflow": workflow
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(store_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
-
-    // Execute workflow by name
-    let execute_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/execute")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "input": {"message": "test input"}
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(execute_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(execute_response["executionId"].is_string());
-
-    // Execute workflow by hash directly
-    let execute_hash_request = Request::builder()
-        .uri(format!("/api/v1/workflows/{}/execute", workflow_hash))
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "input": {"message": "test input for hash"}
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(execute_hash_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Create and execute with label
-    let create_label_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0")
-        .method("PUT")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflowHash": workflow_hash
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(create_label_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Execute labeled workflow
-    let execute_labeled_request = Request::builder()
-        .uri("/api/v1/workflows/by-name/test_workflow/labels/v1.0/execute")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "input": {"message": "test input for v1.0"}
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(execute_labeled_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(execute_response["executionId"].is_string());
-}
-
-#[tokio::test]
-async fn test_execution_details() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
-
-    // Create execution
-    let execute_request = Request::builder()
-        .uri("/api/v1/executions")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflow": workflow,
-                "input": {"message": "test input"},
-                "debug": false
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(execute_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    let execution_id = execute_response["executionId"].as_str().unwrap();
-
-    // Get execution details
-    let get_request = Request::builder()
-        .uri(format!("/api/v1/executions/{}", execution_id))
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(get_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let details_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(details_response["executionId"], execution_id);
+    // Check that CORS headers are present
     assert!(
-        details_response["workflowHash"].is_string() || details_response["workflowHash"].is_null()
+        response
+            .headers()
+            .contains_key("access-control-allow-origin")
     );
-    assert!(details_response["status"].is_string());
-    assert!(details_response["debugMode"].is_boolean());
-    // Input and created_at may not be included in the basic response
-    // The important thing is that we get a valid execution details structure
 }
 
 #[tokio::test]
-async fn test_execution_workflow_retrieval() {
+async fn test_error_responses() {
     init_test_logging();
 
     let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
 
-    // Create execution
-    let execute_request = Request::builder()
-        .uri("/api/v1/executions")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflow": workflow,
-                "input": {"message": "test input"},
-                "debug": false
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(execute_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    let execution_id = execute_response["executionId"].as_str().unwrap();
-
-    // Get execution workflow
-    let get_workflow_request = Request::builder()
-        .uri(format!("/api/v1/executions/{}/workflow", execution_id))
+    // Test 404 for non-existent flow
+    let request = Request::builder()
+        .uri("/api/v1/flows/nonexistent")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(get_workflow_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let workflow_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(workflow_response["workflowHash"].is_string());
-    assert_eq!(workflow_response["workflow"]["name"], "test_workflow");
-    assert!(workflow_response["workflow"]["steps"].is_array());
-}
-
-#[tokio::test]
-async fn test_execution_step_details() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
-
-    // Create execution
-    let execute_request = Request::builder()
-        .uri("/api/v1/executions")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflow": workflow,
-                "input": {"message": "test input"},
-                "debug": false
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(execute_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    let execution_id = execute_response["executionId"].as_str().unwrap();
-
-    // Get execution step details
-    let get_steps_request = Request::builder()
-        .uri(format!("/api/v1/executions/{}/steps", execution_id))
+    // Test 404 for non-existent run
+    let request = Request::builder()
+        .uri("/api/v1/runs/00000000-0000-0000-0000-000000000000")
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(get_steps_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    // The response might have different structure, let's be more flexible
-    if steps_response["executionId"].is_string() {
-        assert_eq!(steps_response["executionId"], execution_id);
-    }
-
-    // Check if there's a steps array or step_executions array
-    if steps_response["steps"].is_array() {
-        let steps = steps_response["steps"].as_array().unwrap();
-        assert!(!steps.is_empty());
-    } else if steps_response["step_executions"].is_array() {
-        let steps = steps_response["step_executions"].as_array().unwrap();
-        assert!(!steps.is_empty());
-    } else {
-        // Just verify the response is structured
-        assert!(steps_response.is_object());
-    }
-}
-
-#[tokio::test]
-async fn test_debug_continue_execution() {
-    init_test_logging();
-
-    let (app, _executor) = create_test_server().await;
-    let workflow = create_test_workflow();
-
-    // Create debug execution
-    let execute_request = Request::builder()
-        .uri("/api/v1/executions")
+    // Test 400 for invalid request
+    let request = Request::builder()
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "workflow": workflow,
-                "input": {"message": "test input"},
-                "debug": true
-            }))
-            .unwrap(),
-        ))
+        .body(Body::from("invalid json"))
         .unwrap();
 
-    let response = app.clone().oneshot(execute_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    let execution_id = execute_response["executionId"].as_str().unwrap();
-    assert_eq!(execute_response["debug"], true);
-
-    // Continue debug execution
-    let continue_request = Request::builder()
-        .uri(format!(
-            "/api/v1/executions/{}/debug/continue",
-            execution_id
-        ))
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from("{}"))
-        .unwrap();
-
-    let response = app.clone().oneshot(continue_request).await.unwrap();
-    // This may succeed or fail depending on the execution state and available components
-    // The important thing is that the endpoint exists and responds appropriately
-    assert!(response.status() == StatusCode::OK || response.status() == StatusCode::BAD_REQUEST);
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

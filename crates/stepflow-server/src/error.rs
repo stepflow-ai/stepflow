@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::FlowHash;
 use uuid::Uuid;
 
@@ -31,6 +32,13 @@ pub enum ServerError {
     WorkflowLabelNotFound { name: String, label: String },
     #[error("Workflow failed: {0}")]
     WorkflowExecutionFailed(String),
+    #[error("Execution '{execution_id}' cannot be cancelled (status: {status:?})")]
+    ExecutionNotCancellable {
+        execution_id: Uuid,
+        status: ExecutionStatus,
+    },
+    #[error("Execution '{0}' is still running and cannot be deleted")]
+    ExecutionStillRunning(Uuid),
     #[error("Internal error: {0}")]
     Internal(Cow<'static, str>),
 }
@@ -43,6 +51,9 @@ impl ServerError {
             | ServerError::WorkflowNotFound(_)
             | ServerError::WorkflowNameNotFound(_)
             | ServerError::WorkflowLabelNotFound { .. } => StatusCode::NOT_FOUND,
+            ServerError::ExecutionNotCancellable { .. } | ServerError::ExecutionStillRunning(_) => {
+                StatusCode::CONFLICT
+            }
             ServerError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
