@@ -73,7 +73,7 @@ pub use executions::{CreateExecutionRequest, CreateExecutionResponse};
         executions::ListExecutionsResponse,
         executions::StepExecutionResponse,
         executions::ListStepExecutionsResponse,
-        executions::WorkflowResponse,
+        executions::ExecutionWorkflowResponse,
         workflows::StoreWorkflowRequest,
         workflows::StoreWorkflowResponse,
         workflows::WorkflowResponse,
