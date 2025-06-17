@@ -24,7 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { CheckCircle, XCircle, Clock, Activity, Play, Copy, ArrowRight, ArrowLeft, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { StepDependency, Workflow } from '@/lib/api'
+import type { StepDependency, Flow as Workflow } from '@/api-client'
 import '@xyflow/react/dist/style.css'
 
 interface StepData {
@@ -392,18 +392,19 @@ async function calculateLayout(steps: StepData[], dependencies?: StepDependency[
   // Process dependencies
   if (dependencies && dependencies.length > 0) {
     dependencies.forEach(dep => {
-      if (dep.step_index > 1000000) { // Workflow output dependency
-        const sourceStepId = stepIndexMap.get(dep.depends_on_step_index)
+      if (dep.stepIndex > 1000000) { // Workflow output dependency
+        const sourceStepId = stepIndexMap.get(dep.dependsOnStepIndex)
         if (sourceStepId) {
           stepsWithWorkflowOutput.add(sourceStepId)
           hasWorkflowOutputDeps = true
         }
       } else {
         // Track skip condition fields
-        const targetStepId = stepIndexMap.get(dep.step_index)
-        if (targetStepId && dep.dst_field.skip_if) {
+        const targetStepId = stepIndexMap.get(dep.stepIndex)
+        const dstField = dep.dstField as any;
+        if (targetStepId && dstField.skipIf) {
           const skipFields = stepSkipFields.get(targetStepId) || []
-          const fieldName = dep.dst_field.input_field || 'condition'
+          const fieldName = dstField.inputField || 'condition'
           if (!skipFields.includes(fieldName)) {
             skipFields.push(fieldName)
             stepSkipFields.set(targetStepId, skipFields)

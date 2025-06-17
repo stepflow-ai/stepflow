@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import {
   ArrowLeft,
   Activity,
@@ -24,12 +24,12 @@ import {
 } from 'lucide-react'
 import { WorkflowVisualizerBase } from '@/components/workflow-visualizer-base'
 import { WorkflowExecutionDialog } from '@/components/workflow-execution-dialog'
-import { 
-  useLatestWorkflowByName, 
-  useWorkflowDependencies, 
-  useExecutions,
-  transformStepsForVisualizer 
+import {
+  useLatestWorkflowByName,
+  useWorkflowDependencies,
+  useExecutions
 } from '@/lib/hooks/use-api'
+import type { StepDependency } from '@/api-client'
 
 // Helper functions
 const formatDate = (dateString: string) => {
@@ -79,13 +79,7 @@ function WorkflowVisualization({
   isLoading
 }: {
   workflow?: any,
-  dependencies?: Array<{
-    step_index: number
-    depends_on_step_index: number
-    src_path?: string
-    dst_field: { skip_if?: boolean; input?: boolean; input_field?: string }
-    skip_action: { action: 'skip' | 'use_default'; default_value?: unknown }
-  }>,
+  dependencies?: StepDependency[],
   isLoading: boolean
 }) {
   const handleStepClick = (stepId: string) => {
@@ -162,12 +156,12 @@ export default function WorkflowDetailsPage() {
 
   // API calls
   const { data: workflowData, isLoading: workflowLoading, error: workflowError } = useLatestWorkflowByName(workflowName)
-  const { data: workflowDependencies, isLoading: dependenciesLoading, error: dependenciesError } = useWorkflowDependencies(workflowData?.workflow_hash || '')
+  const { data: workflowDependencies, isLoading: dependenciesLoading, error: dependenciesError } = useWorkflowDependencies(workflowData?.workflowHash || '')
   const { data: executionsData, isLoading: executionsLoading, error: executionsError } = useExecutions()
 
   // Filter executions for this workflow
-  const workflowExecutions = executionsData?.filter(execution => 
-    execution.workflow_name === workflowName
+  const workflowExecutions = executionsData?.filter(execution =>
+    execution.workflowName === workflowName
   ).slice(0, 10) || [] // Show last 10 executions
 
   // Error handling
@@ -331,10 +325,10 @@ export default function WorkflowDetailsPage() {
                       <span className="text-sm text-muted-foreground">Description:</span>
                       <div className="text-sm">{workflow?.description || 'No description available'}</div>
                     </div>
-                    {workflowData?.workflow_hash && (
+                    {workflowData?.workflowHash && (
                       <div>
                         <span className="text-sm text-muted-foreground">Workflow Hash:</span>
-                        <div className="font-mono text-sm">{workflowData.workflow_hash.substring(0, 12)}...</div>
+                        <div className="font-mono text-sm">{workflowData.workflowHash.substring(0, 12)}...</div>
                       </div>
                     )}
                     <div>
@@ -358,10 +352,10 @@ export default function WorkflowDetailsPage() {
                   <div className="flex items-center justify-center h-32">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                ) : workflow?.input_schema ? (
+                ) : workflow?.inputSchema ? (
                   <div className="bg-muted rounded-lg p-4">
                     <pre className="text-sm font-mono whitespace-pre-wrap">
-                      {JSON.stringify(workflow.input_schema, null, 2)}
+                      {JSON.stringify(workflow.inputSchema, null, 2)}
                     </pre>
                   </div>
                 ) : (
@@ -520,10 +514,10 @@ export default function WorkflowDetailsPage() {
                   </TableHeader>
                   <TableBody>
                     {workflowExecutions.map((execution) => (
-                      <TableRow key={execution.execution_id}>
+                      <TableRow key={execution.executionId}>
                         <TableCell>
                           <div className="font-mono text-sm">
-                            {execution.execution_id.substring(0, 8)}...
+                            {execution.executionId.substring(0, 8)}...
                           </div>
                         </TableCell>
                         <TableCell>
@@ -533,17 +527,17 @@ export default function WorkflowDetailsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="text-sm">{formatDate(execution.created_at)}</div>
+                          <div className="text-sm">{formatDate(execution.createdAt.toString())}</div>
                         </TableCell>
                         <TableCell>
-                          {execution.completed_at ? (
-                            <div className="text-sm">{formatDate(execution.completed_at)}</div>
+                          {execution.completedAt ? (
+                            <div className="text-sm">{formatDate(execution.completedAt.toString())}</div>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
                         <TableCell>
-                          {execution.debug_mode && (
+                          {execution.debugMode && (
                             <Badge variant="outline" className="text-orange-600">
                               Debug
                             </Badge>
@@ -551,7 +545,7 @@ export default function WorkflowDetailsPage() {
                         </TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" asChild>
-                            <Link href={`/executions/${execution.execution_id}`}>
+                            <Link href={`/executions/${execution.executionId}`}>
                               View
                             </Link>
                           </Button>

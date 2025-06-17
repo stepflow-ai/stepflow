@@ -32,7 +32,7 @@ pub use executions::{CreateExecutionRequest, CreateExecutionResponse};
         (name = DEBUG_TAG, description = "Debug API endpoints")
     ),
     paths(
-        health::get_health,
+        health::health_check,
         components::list_components,
         debug::debug_execute_step,
         debug::debug_continue,
@@ -73,7 +73,7 @@ pub use executions::{CreateExecutionRequest, CreateExecutionResponse};
         executions::ListExecutionsResponse,
         executions::StepExecutionResponse,
         executions::ListStepExecutionsResponse,
-        executions::WorkflowResponse,
+        executions::ExecutionWorkflowResponse,
         workflows::StoreWorkflowRequest,
         workflows::StoreWorkflowResponse,
         workflows::WorkflowResponse,
@@ -94,7 +94,7 @@ struct StepflowApi;
 
 pub fn create_api_router() -> OpenApiRouter<Arc<StepFlowExecutor>> {
     OpenApiRouter::with_openapi(StepflowApi::openapi())
-        .routes(routes!(health::get_health))
+        .routes(routes!(health::health_check))
         .routes(routes!(components::list_components))
         .routes(routes!(debug::debug_execute_step))
         .routes(routes!(debug::debug_continue))

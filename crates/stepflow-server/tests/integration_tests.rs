@@ -52,7 +52,7 @@ async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
         include_cors: true,     // Keep CORS for test compatibility
     };
 
-    let app = config.create_app_router(executor.clone());
+    let app = config.create_app_router(executor.clone(), 7837);
 
     (app, executor)
 }
@@ -135,7 +135,7 @@ async fn test_workflow_crud_operations() {
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
+    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
     assert!(!workflow_hash.is_empty());
 
     // Get workflow
@@ -152,7 +152,7 @@ async fn test_workflow_crud_operations() {
         .unwrap();
     let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(get_response["workflow_hash"], workflow_hash);
+    assert_eq!(get_response["workflowHash"], workflow_hash);
     assert_eq!(get_response["workflow"]["name"], "test_workflow");
 
     // List workflows
@@ -178,7 +178,7 @@ async fn test_workflow_crud_operations() {
         .unwrap();
     let deps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(deps_response["workflow_hash"], workflow_hash);
+    assert_eq!(deps_response["workflowHash"], workflow_hash);
     assert!(deps_response["dependencies"].is_array());
 }
 
@@ -209,7 +209,7 @@ async fn test_named_workflow_operations() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
+    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
 
     // List workflow names
     let list_names_request = Request::builder()
@@ -263,7 +263,7 @@ async fn test_named_workflow_operations() {
         .unwrap();
     let latest_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(latest_response["workflow_hash"], workflow_hash);
+    assert_eq!(latest_response["workflowHash"], workflow_hash);
     assert_eq!(latest_response["workflow"]["name"], "test_workflow");
 }
 
@@ -294,7 +294,7 @@ async fn test_workflow_with_labels() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
+    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
 
     // Create workflow label
     let create_label_request = Request::builder()
@@ -303,7 +303,7 @@ async fn test_workflow_with_labels() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow_hash": workflow_hash
+                "workflowHash": workflow_hash
             }))
             .unwrap(),
         ))
@@ -327,7 +327,7 @@ async fn test_workflow_with_labels() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow_hash": workflow_hash
+                "workflowHash": workflow_hash
             }))
             .unwrap(),
         ))
@@ -371,7 +371,7 @@ async fn test_workflow_with_labels() {
         .unwrap();
     let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(get_response["workflow_hash"], workflow_hash);
+    assert_eq!(get_response["workflowHash"], workflow_hash);
     assert_eq!(get_response["workflow"]["name"], "test_workflow");
 
     // Delete a label
@@ -424,7 +424,7 @@ async fn test_ad_hoc_execution() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(execute_response["execution_id"].is_string());
+    assert!(execute_response["executionId"].is_string());
     assert_eq!(execute_response["debug"], false);
     assert_eq!(execute_response["status"], "completed");
     // Workflow completes successfully with null output as defined in workflow
@@ -462,7 +462,7 @@ async fn test_debug_execution() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let execution_id = execute_response["execution_id"].as_str().unwrap();
+    let execution_id = execute_response["executionId"].as_str().unwrap();
     assert_eq!(execute_response["debug"], true);
     assert_eq!(execute_response["status"], "running");
 
@@ -669,7 +669,7 @@ async fn test_workflow_deletion() {
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
+    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
 
     // Delete workflow
     let delete_request = Request::builder()
@@ -720,7 +720,7 @@ async fn test_named_workflow_execution() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let workflow_hash = store_response["workflow_hash"].as_str().unwrap();
+    let workflow_hash = store_response["workflowHash"].as_str().unwrap();
 
     // Execute workflow by name
     let execute_request = Request::builder()
@@ -743,7 +743,7 @@ async fn test_named_workflow_execution() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(execute_response["execution_id"].is_string());
+    assert!(execute_response["executionId"].is_string());
 
     // Execute workflow by hash directly
     let execute_hash_request = Request::builder()
@@ -768,7 +768,7 @@ async fn test_named_workflow_execution() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "workflow_hash": workflow_hash
+                "workflowHash": workflow_hash
             }))
             .unwrap(),
         ))
@@ -798,7 +798,7 @@ async fn test_named_workflow_execution() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(execute_response["execution_id"].is_string());
+    assert!(execute_response["executionId"].is_string());
 }
 
 #[tokio::test]
@@ -831,7 +831,7 @@ async fn test_execution_details() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let execution_id = execute_response["execution_id"].as_str().unwrap();
+    let execution_id = execute_response["executionId"].as_str().unwrap();
 
     // Get execution details
     let get_request = Request::builder()
@@ -847,13 +847,12 @@ async fn test_execution_details() {
         .unwrap();
     let details_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(details_response["execution_id"], execution_id);
+    assert_eq!(details_response["executionId"], execution_id);
     assert!(
-        details_response["workflow_hash"].is_string()
-            || details_response["workflow_hash"].is_null()
+        details_response["workflowHash"].is_string() || details_response["workflowHash"].is_null()
     );
     assert!(details_response["status"].is_string());
-    assert!(details_response["debug_mode"].is_boolean());
+    assert!(details_response["debugMode"].is_boolean());
     // Input and created_at may not be included in the basic response
     // The important thing is that we get a valid execution details structure
 }
@@ -888,7 +887,7 @@ async fn test_execution_workflow_retrieval() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let execution_id = execute_response["execution_id"].as_str().unwrap();
+    let execution_id = execute_response["executionId"].as_str().unwrap();
 
     // Get execution workflow
     let get_workflow_request = Request::builder()
@@ -904,7 +903,7 @@ async fn test_execution_workflow_retrieval() {
         .unwrap();
     let workflow_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(workflow_response["workflow_hash"].is_string());
+    assert!(workflow_response["workflowHash"].is_string());
     assert_eq!(workflow_response["workflow"]["name"], "test_workflow");
     assert!(workflow_response["workflow"]["steps"].is_array());
 }
@@ -939,7 +938,7 @@ async fn test_execution_step_details() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let execution_id = execute_response["execution_id"].as_str().unwrap();
+    let execution_id = execute_response["executionId"].as_str().unwrap();
 
     // Get execution step details
     let get_steps_request = Request::builder()
@@ -956,8 +955,8 @@ async fn test_execution_step_details() {
     let steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     // The response might have different structure, let's be more flexible
-    if steps_response["execution_id"].is_string() {
-        assert_eq!(steps_response["execution_id"], execution_id);
+    if steps_response["executionId"].is_string() {
+        assert_eq!(steps_response["executionId"], execution_id);
     }
 
     // Check if there's a steps array or step_executions array
@@ -1003,7 +1002,7 @@ async fn test_debug_continue_execution() {
         .unwrap();
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let execution_id = execute_response["execution_id"].as_str().unwrap();
+    let execution_id = execute_response["executionId"].as_str().unwrap();
     assert_eq!(execute_response["debug"], true);
 
     // Continue debug execution

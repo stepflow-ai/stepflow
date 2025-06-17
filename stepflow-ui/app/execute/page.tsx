@@ -35,7 +35,7 @@ const EXAMPLE_WORKFLOW = `{
       }
     },
     {
-      "id": "m_times_n", 
+      "id": "m_times_n",
       "component": "python://multiply",
       "input": {
         "a": { "$from": { "workflow": "input" }, "path": "m" },
@@ -153,7 +153,7 @@ function ExecutePageContent() {
       }
 
       // Navigate to execution details
-      router.push(`/executions/${result.execution_id}`)
+      router.push(`/executions/${result.executionId}`)
     } catch (error) {
       console.error('Execution failed:', error)
       // TODO: Show error toast
@@ -259,7 +259,7 @@ function ExecutePageContent() {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 {selectedWorkflow && (
                   <div className="space-y-2">
                     <Label htmlFor="label-input">Label (optional)</Label>
@@ -276,10 +276,10 @@ function ExecutePageContent() {
                     </p>
                   </div>
                 )}
-                
+
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
                   <p className="text-sm">
-                    {selectedWorkflow 
+                    {selectedWorkflow
                       ? `Will execute workflow: ${selectedWorkflow}${selectedLabel ? ` (${selectedLabel})` : ' (latest)'}`
                       : 'Select a workflow to execute'
                     }

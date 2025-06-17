@@ -30,7 +30,7 @@ function getStatusBadge(status: string) {
     failed: 'destructive',
     pending: 'outline',
   }
-  
+
   return (
     <Badge variant={variants[status.toLowerCase()] || 'outline'}>
       {status}
@@ -95,58 +95,58 @@ export default function ExecutionsPage() {
           </Card>
         ) : (
           executions?.map((execution) => (
-          <Card key={execution.execution_id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  {getStatusIcon(execution.status)}
-                  <CardTitle className="text-lg">{execution.workflow_name || 'Ad-hoc Workflow'}</CardTitle>
-                  {getStatusBadge(execution.status)}
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={`/executions/${execution.execution_id}`}>
-                      View Details
-                    </Link>
-                  </Button>
-                  <Button variant="ghost" size="sm">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              <CardDescription>
-                Execution ID: {execution.execution_id}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Started:</span>
-                  <div>{new Date(execution.created_at).toLocaleString()}</div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Duration:</span>
-                  <div>
-                    {execution.completed_at ? (
-                      `${Math.round((new Date(execution.completed_at).getTime() - new Date(execution.created_at).getTime()) / 1000)}s`
-                    ) : execution.status === 'Running' ? (
-                      `${Math.round((Date.now() - new Date(execution.created_at).getTime()) / 1000)}s`
-                    ) : (
-                      '-'
-                    )}
+            <Card key={execution.executionId}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(execution.status)}
+                    <CardTitle className="text-lg">{execution.workflowName || 'Ad-hoc Workflow'}</CardTitle>
+                    {getStatusBadge(execution.status)}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/executions/${execution.executionId}`}>
+                        View Details
+                      </Link>
+                    </Button>
+                    <Button variant="ghost" size="sm">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Debug Mode:</span>
-                  <div>{execution.debug_mode ? 'Yes' : 'No'}</div>
+                <CardDescription>
+                  Execution ID: {execution.executionId}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Started:</span>
+                    <div>{new Date(execution.createdAt).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Duration:</span>
+                    <div>
+                      {execution.completedAt ? (
+                        `${Math.round((new Date(execution.completedAt).getTime() - new Date(execution.createdAt).getTime()) / 1000)}s`
+                      ) : execution.status === 'running' ? (
+                        `${Math.round((Date.now() - new Date(execution.createdAt).getTime()) / 1000)}s`
+                      ) : (
+                        '-'
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Debug Mode:</span>
+                    <div>{execution.debugMode ? 'Yes' : 'No'}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>
+                    <div className="capitalize">{execution.status}</div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Status:</span>
-                  <div className="capitalize">{execution.status}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
           ))
         )}
       </div>

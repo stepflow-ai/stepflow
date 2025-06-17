@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { WorkflowVisualizer } from '@/components/workflow-visualizer'
 import { useExecution, useExecutionSteps, useExecutionWorkflow, useWorkflowDependencies, transformStepsForVisualizer } from '@/lib/hooks/use-api'
+import type { StepDependency } from '@/api-client'
 
 // Helper functions
 const formatDate = (dateString: string) => {
@@ -138,13 +139,7 @@ function WorkflowVisualization({
     duration: string | null
     output: string | null
   }>,
-  dependencies?: Array<{
-    step_index: number
-    depends_on_step_index: number
-    src_path?: string
-    dst_field: { skip_if?: boolean; input?: boolean; input_field?: string }
-    skip_action: { action: 'skip' | 'use_default'; default_value?: unknown }
-  }>,
+  dependencies?: StepDependency[],
   workflow?: any,
   isDebugMode: boolean,
   isLoading: boolean
@@ -200,6 +195,21 @@ export default function ExecutionDetailsPage() {
   const searchParams = useSearchParams()
   const executionId = params.id as string
 
+  // API calls - hooks must be called unconditionally, but they're protected by enabled guards
+  const { data: execution, isLoading: executionLoading, error: executionError, refetch: refetchExecution } = useExecution(executionId)
+  const { data: steps, isLoading: stepsLoading, error: stepsError, refetch: refetchSteps } = useExecutionSteps(executionId)
+  const { data: workflowData, isLoading: workflowLoading, error: workflowError, refetch: refetchWorkflow } = useExecutionWorkflow(executionId)
+  const { data: workflowDependencies, isLoading: dependenciesLoading, error: dependenciesError, refetch: refetchDependencies } = useWorkflowDependencies(execution?.workflowHash || workflowData?.workflowHash || '')
+
+  // Early return if execution ID is not available yet (during Next.js hydration)
+  if (!executionId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
   // Get tab from URL or default to 'overview'
   const validTabs = ['overview', 'steps', 'visualization'] as const
   const tabFromUrl = searchParams.get('tab')
@@ -220,12 +230,6 @@ export default function ExecutionDetailsPage() {
     router.replace(`/executions/${executionId}${newUrl}`, { scroll: false })
   }
 
-  // API calls
-  const { data: execution, isLoading: executionLoading, error: executionError, refetch: refetchExecution } = useExecution(executionId)
-  const { data: steps, isLoading: stepsLoading, error: stepsError, refetch: refetchSteps } = useExecutionSteps(executionId)
-  const { data: workflowData, isLoading: workflowLoading, error: workflowError, refetch: refetchWorkflow } = useExecutionWorkflow(executionId)
-  const { data: workflowDependencies, isLoading: dependenciesLoading, error: dependenciesError, refetch: refetchDependencies } = useWorkflowDependencies(execution?.workflow_hash || workflowData?.workflow_hash || '')
-
   const refetchAll = () => {
     refetchExecution()
     refetchSteps()
@@ -234,16 +238,15 @@ export default function ExecutionDetailsPage() {
   }
 
   // Transform data for display
-  const workflowName = execution?.workflow_name || workflowData?.workflow?.name || 'Ad-hoc Execution'
-  const isDebugMode = execution?.debug_mode || false
+  const workflowName = execution?.workflowName || workflowData?.workflow?.name || 'Ad-hoc Execution'
+  const isDebugMode = execution?.debugMode || false
   const totalSteps = workflowData?.workflow?.steps?.length || 0
-  const completedSteps = steps?.filter(step =>
-    step.result?.Success !== undefined ||
-    step.result?.Failed !== undefined ||
-    step.result?.Skipped !== undefined
-  ).length || 0
+  const completedSteps = steps?.filter(step => {
+    const result = step.result as any;
+    return result?.outcome === 'success' || result?.outcome === 'failed' || result?.outcome === 'skipped';
+  }).length || 0
   const runningSteps = steps?.filter(step =>
-    step.started_at && !step.completed_at
+    step.state === 'running'
   ).length || 0
   const pendingSteps = totalSteps - completedSteps - runningSteps
   const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
@@ -304,7 +307,7 @@ export default function ExecutionDetailsPage() {
             )}
           </div>
           <p className="text-muted-foreground mt-1">
-            Execution ID: {executionId} • Started: {execution ? formatDate(execution.created_at) : 'Loading...'}
+            Execution ID: {executionId} • Started: {execution ? formatDate(execution.createdAt.toString()) : 'Loading...'}
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -363,9 +366,9 @@ export default function ExecutionDetailsPage() {
               </div>
             ) : execution ? (
               <>
-                <div className="text-2xl font-bold">{getDuration(execution.created_at, execution.completed_at)}</div>
+                <div className="text-2xl font-bold">{getDuration(execution.createdAt.toString(), execution.completedAt?.toString())}</div>
                 <p className="text-xs text-muted-foreground">
-                  {execution.status === 'Running' ? 'Running time' : 'Total time'}
+                  {execution.status === 'running' ? 'Running time' : 'Total time'}
                 </p>
               </>
             ) : null}
@@ -444,10 +447,10 @@ export default function ExecutionDetailsPage() {
                       <span className="text-sm text-muted-foreground">Description:</span>
                       <div className="text-sm">{workflowData?.workflow?.description || 'No description available'}</div>
                     </div>
-                    {execution?.workflow_hash && (
+                    {execution?.workflowHash && (
                       <div>
                         <span className="text-sm text-muted-foreground">Workflow Hash:</span>
-                        <div className="font-mono text-sm">{execution.workflow_hash.substring(0, 12)}...</div>
+                        <div className="font-mono text-sm">{execution.workflowHash.substring(0, 12)}...</div>
                       </div>
                     )}
                     <div>
@@ -481,7 +484,7 @@ export default function ExecutionDetailsPage() {
                   <div className="flex items-center justify-center h-32 text-muted-foreground">
                     <div className="text-center">
                       <Clock className="h-8 w-8 mx-auto mb-2" />
-                      <p>{execution?.status === 'Running' ? 'Execution in progress...' : 'No output available'}</p>
+                      <p>{execution?.status === 'running' ? 'Execution in progress...' : 'No output available'}</p>
                     </div>
                   </div>
                 )}
@@ -528,22 +531,23 @@ export default function ExecutionDetailsPage() {
                     </TableHeader>
                     <TableBody>
                       {visualizerSteps.map((step, index) => {
-                        const stepExecution = steps?.find(s => s.step_index === index)
+                        const stepExecution = steps?.find(s => s.stepIndex === index)
                         let status = 'pending'
                         let output = null
 
                         if (stepExecution?.result) {
-                          if (stepExecution.result.Success !== undefined) {
+                          const result = stepExecution.result as any;
+                          if (result.outcome === 'success') {
                             status = 'completed'
-                            output = JSON.stringify(stepExecution.result.Success)
-                          } else if (stepExecution.result.Failed) {
+                            output = JSON.stringify(result.result)
+                          } else if (result.outcome === 'failed') {
                             status = 'failed'
-                            output = JSON.stringify(stepExecution.result.Failed)
-                          } else if (stepExecution.result.Skipped !== undefined) {
+                            output = JSON.stringify(result.error)
+                          } else if (result.outcome === 'skipped') {
                             status = 'completed'
                             output = 'Skipped'
                           }
-                        } else if (stepExecution?.started_at && !stepExecution?.completed_at) {
+                        } else if (stepExecution?.state === 'running') {
                           status = 'running'
                         }
 

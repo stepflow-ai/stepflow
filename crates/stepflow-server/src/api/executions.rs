@@ -31,6 +31,7 @@ pub struct CreateExecutionRequest {
 
 /// Response for create execution operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateExecutionResponse {
     /// The execution ID
     pub execution_id: Uuid,
@@ -45,6 +46,7 @@ pub struct CreateExecutionResponse {
 
 /// Execution summary for API responses
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutionSummaryResponse {
     /// The execution ID
     pub execution_id: Uuid,
@@ -112,9 +114,10 @@ pub struct ListStepExecutionsResponse {
     pub steps: Vec<StepExecutionResponse>,
 }
 
-/// Response containing a workflow definition and its hash
+/// Response containing a workflow definition and its hash for execution endpoints
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct WorkflowResponse {
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionWorkflowResponse {
     /// The workflow definition
     pub workflow: Arc<Flow>,
     /// The workflow hash
@@ -260,7 +263,7 @@ pub async fn get_execution(
         ("execution_id" = Uuid, Path, description = "Execution ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Execution workflow retrieved successfully", body = WorkflowResponse),
+        (status = 200, description = "Execution workflow retrieved successfully", body = ExecutionWorkflowResponse),
         (status = 400, description = "Invalid execution ID format"),
         (status = 404, description = "Execution or workflow not found"),
         (status = 500, description = "Internal server error")
@@ -270,7 +273,7 @@ pub async fn get_execution(
 pub async fn get_execution_workflow(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(execution_id): Path<Uuid>,
-) -> Result<Json<WorkflowResponse>, ErrorResponse> {
+) -> Result<Json<ExecutionWorkflowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // Get execution details to retrieve the workflow hash
@@ -288,7 +291,7 @@ pub async fn get_execution_workflow(
             error_stack::report!(ServerError::WorkflowNotFound(workflow_hash.clone()))
         })?;
 
-    Ok(Json(WorkflowResponse {
+    Ok(Json(ExecutionWorkflowResponse {
         workflow,
         workflow_hash,
     }))

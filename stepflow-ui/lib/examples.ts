@@ -1,4 +1,4 @@
-import type { Workflow } from './api'
+import type { Flow as Workflow } from '@/api-client'
 
 export interface InputExample {
   name: string
