@@ -7,7 +7,7 @@ use crate::workflow::ValueRef;
 #[derive(
     Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum BaseRef {
     /// Reference properties of the workflow.
     Workflow(WorkflowRef),
@@ -27,15 +27,16 @@ impl BaseRef {
 #[derive(
     Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum WorkflowRef {
     Input,
 }
 
 /// An expression that can be either a literal value or a template expression.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(untagged)]
+#[serde(untagged, rename_all = "camelCase")]
 pub enum Expr {
+    #[serde(rename_all = "camelCase")]
     Ref {
         /// The source of the reference.
         #[serde(rename = "$from")]
@@ -103,9 +104,10 @@ impl Expr {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(rename_all = "snake_case", tag = "action")]
+#[serde(rename_all = "camelCase", tag = "action")]
 pub enum SkipAction {
     Skip,
+    #[serde(rename_all = "camelCase")]
     UseDefault {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<ValueRef>,
@@ -121,6 +123,10 @@ impl Default for SkipAction {
 impl SkipAction {
     pub fn is_default(&self) -> bool {
         matches!(self, Self::Skip)
+    }
+
+    pub fn is_optional(&self) -> bool {
+        matches!(self, Self::UseDefault { .. })
     }
 }
 
@@ -167,16 +173,16 @@ mod tests {
             @r###"
         $from:
           step: step1
-        on_skip:
-          action: use_default
+        onSkip:
+          action: useDefault
         "###);
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "out", SkipAction::UseDefault { default_value: None }),
             @r###"
         $from:
           step: step1
         path: out
-        on_skip:
-          action: use_default
+        onSkip:
+          action: useDefault
         "###);
 
         // Step reference with and without path, with use_default skip action (and default vaule).
@@ -186,17 +192,17 @@ mod tests {
         $from:
           step: step1
         path: out
-        on_skip:
-          action: use_default
-          default_value: test_default
+        onSkip:
+          action: useDefault
+          defaultValue: test_default
         "###);
         insta::assert_yaml_snapshot!(&Expr::step_path("step1", "", SkipAction::UseDefault { default_value: Some(value) }),
             @r###"
         $from:
           step: step1
-        on_skip:
-          action: use_default
-          default_value: test_default
+        onSkip:
+          action: useDefault
+          defaultValue: test_default
         "###);
     }
 
@@ -222,7 +228,7 @@ mod tests {
         assert_eq!(skip, SkipAction::Skip);
 
         let use_default_no_value: SkipAction =
-            serde_yaml_ng::from_str("action: use_default").unwrap();
+            serde_yaml_ng::from_str("action: useDefault").unwrap();
         assert_eq!(
             use_default_no_value,
             SkipAction::UseDefault {
@@ -231,7 +237,7 @@ mod tests {
         );
 
         let use_default_with_value: SkipAction =
-            serde_yaml_ng::from_str("action: use_default\ndefault_value: test_default").unwrap();
+            serde_yaml_ng::from_str("action: useDefault\ndefaultValue: test_default").unwrap();
         assert_eq!(
             use_default_with_value,
             SkipAction::UseDefault {
@@ -243,7 +249,7 @@ mod tests {
     #[test]
     fn test_expr_with_skip_action_from_yaml() {
         let expr_with_skip: Expr = serde_yaml_ng::from_str(
-            "$from: { step: step1 }\npath: out\non_skip:\n  action: use_default\n  default_value: fallback",
+            "$from: { step: step1 }\npath: out\nonSkip:\n  action: useDefault\n  defaultValue: fallback",
         )
         .unwrap();
 

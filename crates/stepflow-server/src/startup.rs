@@ -30,7 +30,7 @@ impl AppConfig {
 
         api_doc.servers = Some(vec![
             utoipa::openapi::ServerBuilder::new()
-                .url(format!("http://localhost:{port}"))
+                .url(format!("http://localhost:{port}/api/v1"))
                 .description(Some("Localhost development server"))
                 .build(),
         ]);

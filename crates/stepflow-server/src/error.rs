@@ -1,7 +1,6 @@
-use std::borrow::Cow;
-
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::FlowHash;
 use uuid::Uuid;
 
@@ -25,30 +24,25 @@ pub enum ServerError {
     ExecutionNotFound(Uuid),
     #[error("Workflow '{0}' not found")]
     WorkflowNotFound(FlowHash),
-    #[error("No workflows found with name '{0}'")]
-    WorkflowNameNotFound(String),
-    #[error("No label '{label}' found for workflow '{name}'")]
-    WorkflowLabelNotFound { name: String, label: String },
-    #[error("Workflow failed: {0}")]
-    WorkflowExecutionFailed(String),
-    #[error("Internal error: {0}")]
-    Internal(Cow<'static, str>),
+    #[error("Execution '{execution_id}' cannot be cancelled (status: {status:?})")]
+    ExecutionNotCancellable {
+        execution_id: Uuid,
+        status: ExecutionStatus,
+    },
+    #[error("Execution '{0}' is still running and cannot be deleted")]
+    ExecutionStillRunning(Uuid),
 }
 
 impl ServerError {
     pub fn status_code(&self) -> StatusCode {
         match self {
-            ServerError::WorkflowExecutionFailed(_) => StatusCode::BAD_REQUEST,
-            ServerError::ExecutionNotFound(_)
-            | ServerError::WorkflowNotFound(_)
-            | ServerError::WorkflowNameNotFound(_)
-            | ServerError::WorkflowLabelNotFound { .. } => StatusCode::NOT_FOUND,
-            ServerError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ServerError::ExecutionNotFound(_) | ServerError::WorkflowNotFound(_) => {
+                StatusCode::NOT_FOUND
+            }
+            ServerError::ExecutionNotCancellable { .. } | ServerError::ExecutionStillRunning(_) => {
+                StatusCode::CONFLICT
+            }
         }
-    }
-
-    pub fn internal(s: impl Into<Cow<'static, str>>) -> Self {
-        ServerError::Internal(s.into())
     }
 }
 

@@ -24,7 +24,7 @@ pub struct StepflowConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum StateStoreConfig {
     /// In-memory state store (default, for testing and demos)
     InMemory,
@@ -54,7 +54,7 @@ impl StateStoreConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "camelCase")]
 enum SupportedPlugin {
     Stdio(StdioPluginConfig),
     Builtin(BuiltinPluginConfig),

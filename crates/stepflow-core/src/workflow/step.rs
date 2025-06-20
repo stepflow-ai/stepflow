@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 
 /// A step in a workflow that executes a component with specific arguments.
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Step {
     /// Optional identifier for the step
     pub id: String,
@@ -32,13 +33,14 @@ pub struct Step {
 #[derive(
     Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema,
 )]
-#[serde(rename_all = "snake_case", tag = "action")]
+#[serde(rename_all = "camelCase", tag = "action")]
 pub enum ErrorAction {
     /// If the step fails, the flow will fail.
     Fail,
     /// If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.
     Skip,
-    /// If the step fails, use the `default_value` instead.
+    /// If the step fails, use the `defaultValue` instead.
+    #[serde(rename_all = "camelCase")]
     UseDefault {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<ValueRef>,
@@ -81,7 +83,7 @@ mod tests {
         };
         assert_eq!(
             serde_yaml_ng::to_string(&use_default).unwrap(),
-            "action: use_default\ndefault_value: test_default\n"
+            "action: useDefault\ndefaultValue: test_default\n"
         );
     }
 
@@ -97,7 +99,7 @@ mod tests {
         assert_eq!(retry, ErrorAction::Retry);
 
         let use_default: ErrorAction =
-            serde_yaml_ng::from_str("action: use_default\ndefault_value: test_default").unwrap();
+            serde_yaml_ng::from_str("action: useDefault\ndefaultValue: test_default").unwrap();
         assert_eq!(
             use_default,
             ErrorAction::UseDefault {
@@ -135,9 +137,9 @@ mod tests {
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
-        assert!(yaml.contains("on_error:"));
-        assert!(yaml.contains("action: use_default"));
-        assert!(yaml.contains("default_value: fallback"));
+        assert!(yaml.contains("onError:"));
+        assert!(yaml.contains("action: useDefault"));
+        assert!(yaml.contains("defaultValue: fallback"));
     }
 
     #[test]

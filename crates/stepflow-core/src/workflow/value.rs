@@ -214,14 +214,11 @@ where
 }
 
 impl ValueRef<serde_json::Map<String, serde_json::Value>> {
-    pub fn iter(&self) -> Vec<(&str, ValueRef)> {
-        self.0
-            .iter()
-            .map(|(k, v)| {
-                let k = k.as_str();
-                (k, ValueRef(project_to_subfield(self.0.clone(), v)))
-            })
-            .collect()
+    pub fn iter(&self) -> impl Iterator<Item = (&str, ValueRef)> + '_ {
+        self.0.iter().map(|(k, v)| {
+            let k = k.as_str();
+            (k, ValueRef(project_to_subfield(self.0.clone(), v)))
+        })
     }
 
     pub fn get(&self, key: &str) -> Option<ValueRef> {
@@ -343,7 +340,7 @@ mod tests {
         assert!(keys.contains(&"key2"));
 
         // Test iter
-        let items = obj.iter();
+        let items: Vec<_> = obj.iter().collect();
         assert_eq!(items.len(), 2);
     }
 

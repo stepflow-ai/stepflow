@@ -32,7 +32,7 @@ pub struct MockPlugin {
 
 /// Enumeration of behaviors for the mock components.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(untagged, rename_all = "snake_case")]
+#[serde(untagged, rename_all = "camelCase")]
 pub enum MockComponentBehavior {
     /// Produce the given internal (non-flow) error.
     Error { error: String },

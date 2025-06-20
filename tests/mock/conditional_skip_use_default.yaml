@@ -1,26 +1,26 @@
-input_schema:
+inputSchema:
   type: object
   properties:
-    should_skip:
+    shouldSkip:
       type: boolean
     value:
       type: string
-output_schema:
+outputSchema:
   type: object
   properties:
     result:
       type: string
-    skipped_result:
+    skippedResult:
       type: string
 steps:
 - id: conditional_step
   component: mock://one_output
-  input_schema: null
-  output_schema: null
-  skip_if:
+  inputSchema: null
+  outputSchema: null
+  skipIf:
     $from:
       workflow: input
-    path: should_skip
+    path: shouldSkip
   input:
     input:
       $from:
@@ -28,18 +28,18 @@ steps:
       path: value
 - id: dependent_step
   component: mock://handle_skip
-  input_schema: null
-  output_schema: null
+  inputSchema: null
+  outputSchema: null
   input:
     input:
       $from:
         step: conditional_step
       path: output
-      on_skip:
-        action: use_default
-        default_value: it was skipped
+      onSkip:
+        action: useDefault
+        defaultValue: it was skipped
 output:
-  dependent_result:
+  dependentResult:
     $from:
       step: dependent_step
     path: output
@@ -47,23 +47,23 @@ test:
   cases:
   - name: do not skip with input 'a'
     input:
-      should_skip: false
+      shouldSkip: false
       value: a
     output:
       outcome: success
       result:
-        dependent_result: received b
+        dependentResult: received b
   - name: skip with input 'a'
     input:
-      should_skip: true
+      shouldSkip: true
       value: a
     output:
       outcome: success
       result:
-        dependent_result: received it was skipped
+        dependentResult: received it was skipped
   - name: do not skip with input 'hello'
     input:
-      should_skip: false
+      shouldSkip: false
       value: hello
     output:
       outcome: failed

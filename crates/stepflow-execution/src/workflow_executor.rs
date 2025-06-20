@@ -481,8 +481,7 @@ impl WorkflowExecutor {
 
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
-        let output_template = ValueRef::new(self.flow.output.clone());
-        self.resolver.resolve(&output_template).await
+        self.resolver.resolve(&self.flow.output).await
     }
 
     /// Get access to the state store for querying step results.
@@ -845,7 +844,7 @@ mod tests {
         }
     }
 
-    fn create_test_flow(steps: Vec<Step>, output: serde_json::Value) -> Flow {
+    fn create_test_flow(steps: Vec<Step>, output: ValueRef) -> Flow {
         Flow {
             name: None,
             description: None,
@@ -867,7 +866,7 @@ mod tests {
             create_test_step("step2", json!({"$from": {"step": "step1"}})),
         ];
 
-        let flow = create_test_flow(steps, json!({"$from": {"step": "step2"}}));
+        let flow = create_test_flow(steps, json!({"$from": {"step": "step2"}}).into());
 
         // Build dependencies using analysis crate
         let analysis = stepflow_analysis::analyze_workflow_dependencies(
@@ -1177,7 +1176,7 @@ output:
 steps:
   - id: failing_step
     component: mock://error
-    on_error:
+    onError:
       action: skip
     input:
       mode: error
@@ -1212,9 +1211,9 @@ output:
 steps:
   - id: failing_step
     component: mock://error
-    on_error:
-      action: use_default
-      default_value: {"fallback": "value"}
+    onError:
+      action: useDefault
+      defaultValue: {"fallback": "value"}
     input:
       mode: error
 output:
@@ -1247,8 +1246,8 @@ output:
 steps:
   - id: failing_step
     component: mock://error
-    on_error:
-      action: use_default
+    onError:
+      action: useDefault
     input:
       mode: error
 output:
@@ -1281,7 +1280,7 @@ output:
 steps:
   - id: failing_step
     component: mock://error
-    on_error:
+    onError:
       action: fail
     input:
       mode: error
@@ -1316,7 +1315,7 @@ output:
 steps:
   - id: success_step
     component: mock://success
-    on_error:
+    onError:
       action: skip
     input: {}
 output:
@@ -1350,7 +1349,7 @@ output:
 steps:
   - id: failing_step
     component: mock://error
-    on_error:
+    onError:
       action: skip
     input:
       mode: error

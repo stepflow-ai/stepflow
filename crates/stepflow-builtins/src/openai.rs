@@ -49,7 +49,7 @@ pub struct ChatMessage {
 }
 
 #[derive(Serialize, Deserialize, schemars::JsonSchema, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum ChatMessageRole {
     System,
     User,

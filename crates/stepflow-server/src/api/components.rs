@@ -13,6 +13,7 @@ use crate::error::ErrorResponse;
 
 /// Component information for API responses
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ComponentInfoResponse {
     /// The component name/URL
     pub name: String,
@@ -31,6 +32,7 @@ pub struct ComponentInfoResponse {
 
 /// Response for listing components
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ListComponentsResponse {
     /// List of available components
     pub components: Vec<ComponentInfoResponse>,
@@ -38,6 +40,7 @@ pub struct ListComponentsResponse {
 
 /// Query parameters for listing components
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[serde(rename_all = "camelCase")]
 pub struct ListComponentsQuery {
     /// Whether to include schemas in the response (default: true)
     #[serde(default = "default_include_schemas")]

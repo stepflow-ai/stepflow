@@ -2871,6 +2871,7 @@ version = "0.1.0"
 dependencies = [
  "bit-set",
  "error-stack",
+ "indexmap",
  "schemars",
  "serde",
  "serde_json",

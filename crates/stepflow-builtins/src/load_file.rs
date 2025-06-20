@@ -25,7 +25,7 @@ struct LoadFileInput {
 }
 
 #[derive(Serialize, Deserialize, schemars::JsonSchema, Clone, Copy, Debug, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 enum FileFormat {
     Json,
     Yaml,
