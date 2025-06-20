@@ -3036,7 +3036,6 @@ dependencies = [
  "axum",
  "chrono",
  "error-stack",
- "indexmap",
  "serde",
  "serde_json",
  "stepflow-analysis",

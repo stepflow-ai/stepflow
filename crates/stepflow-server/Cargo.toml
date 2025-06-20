@@ -19,7 +19,6 @@ workspace = true
 axum.workspace = true
 chrono.workspace = true
 error-stack.workspace = true
-indexmap.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 stepflow-analysis.workspace = true
