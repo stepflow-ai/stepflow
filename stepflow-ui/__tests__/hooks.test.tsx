@@ -2,13 +2,11 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactNode } from 'react'
 import {
-  useHealth,
-  useExecutions,
+  useHealthCheck,
+  useFlows,
   useComponents,
-  useExecuteWorkflow,
-  transformStepsForVisualizer
-} from '@/lib/hooks/use-api'
-import type { StepExecutionResponse as StepExecution, Flow as Workflow } from '@/api-client'
+  useExecuteFlow,
+} from '@/lib/hooks/use-flow-api'
 
 // Create a test wrapper for React Query
 const createWrapper = () => {
@@ -34,10 +32,10 @@ describe('React Query Hooks', () => {
     jest.clearAllMocks()
   })
 
-  describe('useHealth', () => {
+  describe('useHealthCheck', () => {
     test('should fetch health status', async () => {
       const wrapper = createWrapper()
-      const { result } = renderHook(() => useHealth(), { wrapper })
+      const { result } = renderHook(() => useHealthCheck(), { wrapper })
 
       // Initially loading
       expect(result.current.isLoading).toBe(true)
@@ -58,10 +56,10 @@ describe('React Query Hooks', () => {
     })
   })
 
-  describe('useExecutions', () => {
-    test('should fetch executions list', async () => {
+  describe('useFlows', () => {
+    test('should fetch flows list', async () => {
       const wrapper = createWrapper()
-      const { result } = renderHook(() => useExecutions(), { wrapper })
+      const { result } = renderHook(() => useFlows(), { wrapper })
 
       // Initially loading
       expect(result.current.isLoading).toBe(true)
@@ -113,185 +111,14 @@ describe('React Query Hooks', () => {
     })
   })
 
-  describe('useExecuteWorkflow', () => {
-    test('should provide execute workflow mutation', () => {
+  describe('useExecuteFlow', () => {
+    test('should provide execute flow mutation', () => {
       const wrapper = createWrapper()
-      const { result } = renderHook(() => useExecuteWorkflow(), { wrapper })
+      const { result } = renderHook(() => useExecuteFlow(), { wrapper })
 
       expect(result.current.mutate).toBeInstanceOf(Function)
       expect(result.current.mutateAsync).toBeInstanceOf(Function)
       expect(result.current.isPending).toBe(false)
-    })
-  })
-})
-
-describe('Data Transformation Utilities', () => {
-  describe('transformStepsForVisualizer', () => {
-    const mockWorkflow: Workflow = {
-      steps: [
-        {
-          id: 'step1',
-          component: 'test://component1'
-        },
-        {
-          id: 'step2', 
-          component: 'test://component2'
-        },
-        {
-          id: 'step3',
-          component: 'test://component3'
-        }
-      ]
-    }
-
-    test('should transform steps with no execution data', () => {
-      const steps: StepExecution[] = []
-      const result = transformStepsForVisualizer(steps, mockWorkflow)
-
-      expect(result).toHaveLength(3)
-      expect(result[0]).toEqual({
-        id: 'step1',
-        name: 'step1',
-        component: 'test://component1',
-        status: 'pending',
-        dependencies: [],
-        startTime: null,
-        duration: null,
-        output: null
-      })
-      expect(result[1]).toEqual({
-        id: 'step2',
-        name: 'step2', 
-        component: 'test://component2',
-        status: 'pending',
-        dependencies: [],
-        startTime: null,
-        duration: null,
-        output: null
-      })
-    })
-
-    test('should transform steps with successful execution', () => {
-      const steps: StepExecution[] = [
-        {
-          stepIndex: 0,
-          stepId: 'step1',
-          state: 'completed',
-          result: {
-            outcome: 'success',
-            result: { value: 'result1' }
-          }
-        },
-        {
-          stepIndex: 1,
-          stepId: 'step2',
-          state: 'completed',
-          result: {
-            outcome: 'success',
-            result: { value: 'result2' }
-          }
-        }
-      ]
-
-      const result = transformStepsForVisualizer(steps, mockWorkflow)
-
-      expect(result[0]).toEqual({
-        id: 'step1',
-        name: 'step1',
-        component: 'test://component1',
-        status: 'completed',
-        dependencies: [],
-        startTime: null,
-        duration: null,
-        output: '{"value":"result1"}'
-      })
-
-      expect(result[1]).toEqual({
-        id: 'step2',
-        name: 'step2',
-        component: 'test://component2', 
-        status: 'completed',
-        dependencies: [],
-        startTime: null,
-        duration: null,
-        output: '{"value":"result2"}'
-      })
-    })
-
-    test('should transform steps with failed execution', () => {
-      const steps: StepExecution[] = [
-        {
-          stepIndex: 0,
-          stepId: 'step1',
-          state: 'failed',
-          result: {
-            outcome: 'failed',
-            error: {
-              code: 500,
-              message: 'Component failed'
-            }
-          }
-        }
-      ]
-
-      const result = transformStepsForVisualizer(steps, mockWorkflow)
-
-      expect(result[0]).toEqual({
-        id: 'step1',
-        name: 'step1',
-        component: 'test://component1',
-        status: 'failed',
-        dependencies: [],
-        startTime: null,
-        duration: null,
-        output: 'Error 500: Component failed'
-      })
-    })
-
-    test('should transform running steps', () => {
-      const steps: StepExecution[] = [
-        {
-          stepIndex: 0,
-          stepId: 'step1',
-          state: 'running'
-          // No result means it's running
-        }
-      ]
-
-      const result = transformStepsForVisualizer(steps, mockWorkflow)
-
-      expect(result[0].status).toBe('running')
-      expect(result[0].startTime).toBeNull()
-      expect(result[0].duration).toBeNull()
-      expect(result[0].output).toBeNull()
-    })
-
-    test('should transform skipped steps', () => {
-      const steps: StepExecution[] = [
-        {
-          stepIndex: 0,
-          stepId: 'step1',
-          state: 'skipped',
-          result: {
-            outcome: 'skipped'
-          }
-        }
-      ]
-
-      const result = transformStepsForVisualizer(steps, mockWorkflow)
-
-      expect(result[0].status).toBe('completed') // Skipped is considered completed
-      expect(result[0].output).toBe('Skipped')
-    })
-
-    test('should handle empty workflow', () => {
-      const result = transformStepsForVisualizer([], undefined)
-      expect(result).toEqual([])
-    })
-
-    test('should handle workflow without steps', () => {
-      const result = transformStepsForVisualizer([], { steps: [] })
-      expect(result).toEqual([])
     })
   })
 })

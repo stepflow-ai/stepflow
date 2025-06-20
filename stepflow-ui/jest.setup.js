@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom'
 
-globalThis.fetch = require('node-fetch');
+// Mock fetch for tests
+globalThis.fetch = jest.fn();
 
 // Mock Next.js router
 jest.mock('next/navigation', () => ({
@@ -20,7 +21,14 @@ jest.mock('next/navigation', () => ({
 }))
 
 // Mock environment variables
-process.env.STEPFLOW_API_URL = 'http://localhost:7837/api/v1'
+process.env.STEPFLOW_SERVER_URL = 'http://localhost:7837/api/v1'
+process.env.NODE_ENV = 'test'
+
+// Setup test environment with absolute URLs
+global.location = {
+  origin: 'http://localhost:3000',
+  href: 'http://localhost:3000',
+}
 
 // Increase timeout for API integration tests
 jest.setTimeout(30000)

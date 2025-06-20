@@ -8,8 +8,8 @@ import { Play, Workflow } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navigationItems = [
-  { name: 'Executions', href: '/executions' },
-  { name: 'Workflows', href: '/workflows' },
+  { name: 'Runs', href: '/runs' },
+  { name: 'Flows', href: '/flows' },
   { name: 'Components', href: '/components' },
 ]
 
@@ -82,9 +82,9 @@ export function Navbar() {
             </div>
           </div>
           <Button asChild>
-            <Link href="/execute">
+            <Link href="/run">
               <Play className="mr-2 h-4 w-4" />
-              Execute
+              Run
             </Link>
           </Button>
         </div>

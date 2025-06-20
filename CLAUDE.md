@@ -46,10 +46,10 @@ echo '{"m": 1, "n": 2}' | cargo run -- run --flow=examples/python/basic.yaml --f
 cargo run -- run --flow=<flow.yaml> --input=<input.json> --config=<stepflow-config.yml>
 
 # Run a workflow service
-cargo run -- serve --port=8080 --config=<stepflow-config.yml>
+cargo run -- serve --port=7837 --config=<stepflow-config.yml>
 
 # Submit a workflow to a running service
-cargo run -- submit --url=http://localhost:8080 --flow=<flow.yaml> --input=<input.json>
+cargo run -- submit --url=http://localhost:7837/api/v1 --flow=<flow.yaml> --input=<input.json>
 ```
 
 ### Code Linting
@@ -389,7 +389,7 @@ StepFlow provides three workflow access patterns for flexible workflow execution
 **Store Workflow:**
 ```bash
 # Store workflow (creates hash)
-curl -X POST http://localhost:8080/api/v1/workflows \
+curl -X POST http://localhost:7837/api/v1/workflows \
   -H "Content-Type: application/json" \
   -d '{"workflow": {"name": "my-workflow", "steps": [...]}}'
 ```
@@ -397,7 +397,7 @@ curl -X POST http://localhost:8080/api/v1/workflows \
 **Create/Update Labels:**
 ```bash
 # Create labeled version
-curl -X PUT http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0 \
+curl -X PUT http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0 \
   -H "Content-Type: application/json" \
   -d '{"workflow_hash": "abc123..."}'
 ```
@@ -405,22 +405,22 @@ curl -X PUT http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1
 **Execute Workflows:**
 ```bash
 # Execute latest version by name
-curl -X POST http://localhost:8080/api/v1/workflows/by-name/my-workflow/execute \
+curl -X POST http://localhost:7837/api/v1/workflows/by-name/my-workflow/execute \
   -H "Content-Type: application/json" \
   -d '{"input": {...}}'
 
 # Execute labeled version
-curl -X POST http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0/execute \
+curl -X POST http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0/execute \
   -H "Content-Type: application/json" \
   -d '{"input": {...}}'
 
 # Execute by hash
-curl -X POST http://localhost:8080/api/v1/workflows/{hash}/execute \
+curl -X POST http://localhost:7837/api/v1/workflows/{hash}/execute \
   -H "Content-Type: application/json" \
   -d '{"input": {...}}'
 
 # Execute ad-hoc
-curl -X POST http://localhost:8080/api/v1/executions \
+curl -X POST http://localhost:7837/api/v1/executions \
   -H "Content-Type: application/json" \
   -d '{"workflow": {...}, "input": {...}}'
 ```
@@ -428,31 +428,31 @@ curl -X POST http://localhost:8080/api/v1/executions \
 **List Workflows:**
 ```bash
 # List all workflow names
-curl http://localhost:8080/api/v1/workflows/names
+curl http://localhost:7837/api/v1/workflows/names
 
 # List all versions of specific workflow
-curl http://localhost:8080/api/v1/workflows/by-name/my-workflow
+curl http://localhost:7837/api/v1/workflows/by-name/my-workflow
 
 # List labels for workflow
-curl http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels
+curl http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels
 ```
 
 **Get Workflows:**
 ```bash
 # Get latest version by name
-curl http://localhost:8080/api/v1/workflows/by-name/my-workflow/latest
+curl http://localhost:7837/api/v1/workflows/by-name/my-workflow/latest
 
 # Get labeled version
-curl http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0
+curl http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0
 
 # Get by hash
-curl http://localhost:8080/api/v1/workflows/{hash}
+curl http://localhost:7837/api/v1/workflows/{hash}
 ```
 
 **Delete Labels:**
 ```bash
 # Delete labeled version
-curl -X DELETE http://localhost:8080/api/v1/workflows/by-name/my-workflow/labels/v1.0
+curl -X DELETE http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0
 ```
 
 #### Database Schema
