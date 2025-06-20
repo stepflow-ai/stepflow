@@ -45,7 +45,7 @@ impl FlowError {
 #[derive(
     Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema, utoipa::ToSchema,
 )]
-#[serde(rename_all = "snake_case", tag = "outcome")]
+#[serde(rename_all = "camelCase", tag = "outcome")]
 pub enum FlowResult {
     /// The step execution was successful.
     Success { result: ValueRef },

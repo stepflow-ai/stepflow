@@ -116,9 +116,9 @@ mod tests {
         let test_flow = Flow {
             name: Some("test-nested".to_string()),
             steps: vec![],
-            output: serde_json::json!({
+            output: ValueRef::new(serde_json::json!({
                 "result": "Hello from nested flow"
-            }),
+            })),
             ..Default::default()
         };
 

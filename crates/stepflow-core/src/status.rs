@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum ExecutionStatus {
     /// Execution is currently running
     Running,
@@ -13,6 +13,8 @@ pub enum ExecutionStatus {
     Completed,
     /// Execution failed with an error
     Failed,
+    /// Execution was cancelled by user request
+    Cancelled,
     /// Execution is paused (debug mode)
     Paused,
 }
@@ -23,6 +25,7 @@ impl ExecutionStatus {
             ExecutionStatus::Running => "running",
             ExecutionStatus::Completed => "completed",
             ExecutionStatus::Failed => "failed",
+            ExecutionStatus::Cancelled => "cancelled",
             ExecutionStatus::Paused => "paused",
         }
     }
@@ -38,7 +41,7 @@ impl std::fmt::Display for ExecutionStatus {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum StepStatus {
     /// Step is waiting for dependencies to complete
     Blocked,
@@ -100,6 +103,7 @@ mod tests {
         assert_eq!(ExecutionStatus::Running.to_string(), "running");
         assert_eq!(ExecutionStatus::Completed.to_string(), "completed");
         assert_eq!(ExecutionStatus::Failed.to_string(), "failed");
+        assert_eq!(ExecutionStatus::Cancelled.to_string(), "cancelled");
         assert_eq!(ExecutionStatus::Paused.to_string(), "paused");
     }
 

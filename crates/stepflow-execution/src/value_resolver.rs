@@ -402,7 +402,7 @@ mod tests {
         // Test resolving with skip and default value using resolve_expr
         let expr = serde_json::from_value(json!({
             "$from": {"step": "step1"},
-            "on_skip": {"action": "use_default", "default_value": "fallback"}
+            "onSkip": {"action": "useDefault", "defaultValue": "fallback"}
         }))
         .unwrap();
 

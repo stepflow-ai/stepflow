@@ -13,6 +13,7 @@ use schemars::JsonSchema;
 #[derive(
     Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema, utoipa::ToSchema,
 )]
+#[serde(rename_all = "camelCase")]
 pub struct Flow {
     /// The name of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -39,8 +40,8 @@ pub struct Flow {
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub output: serde_json::Value,
+    #[serde(default, skip_serializing_if = "ValueRef::is_null")]
+    pub output: ValueRef,
 
     /// Test configuration for the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -101,7 +102,7 @@ impl Flow {
     }
 
     /// Returns a reference to the flow's output value.
-    pub fn output(&self) -> &serde_json::Value {
+    pub fn output(&self) -> &ValueRef {
         &self.output
     }
 
@@ -250,7 +251,7 @@ mod tests {
         name: test
         description: test
         version: 1.0.0
-        input_schema:
+        inputSchema:
             type: object
             properties:
                 name:
@@ -270,7 +271,7 @@ mod tests {
         output:
             s1a: { $from: { step: s1 }, path: "a" }
             s2b: { $from: { step: s2 }, path: a }
-        output_schema:
+        outputSchema:
             type: object
             properties:
                 s1a:
@@ -320,7 +321,8 @@ mod tests {
                 output: serde_json::json!({
                     "s1a": { "$from": { "step": "s1" }, "path": "a" },
                     "s2b": { "$from": { "step": "s2" }, "path": "a" }
-                }),
+                })
+                .into(),
                 output_schema: Some(output_schema),
                 test: None,
                 examples: vec![],
@@ -341,7 +343,7 @@ mod tests {
             input_schema: None,
             output_schema: None,
             steps: vec![],
-            output: json!({}),
+            output: json!({}).into(),
             examples: vec![ExampleInput {
                 name: "example1".to_string(),
                 description: Some("Direct example".to_string()),
@@ -389,6 +391,7 @@ mod tests {
 
 /// Configuration for testing a workflow.
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TestConfig {
     /// Stepflow configuration specific to tests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -401,6 +404,7 @@ pub struct TestConfig {
 
 /// A single test case for a workflow.
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TestCase {
     /// Unique identifier for the test case.
     pub name: String,
@@ -421,6 +425,7 @@ pub struct TestCase {
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
 )]
+#[serde(rename_all = "camelCase")]
 pub struct ExampleInput {
     /// Name of the example input for display purposes.
     pub name: String,

@@ -1,6 +1,6 @@
-input_schema:
+inputSchema:
   type: object
-output_schema:
+outputSchema:
   type: object
   properties:
     result:
@@ -8,11 +8,11 @@ output_schema:
 steps:
 - id: error
   component: mock://error
-  input_schema: null
-  output_schema: null
-  on_error:
-    action: use_default
-    default_value:
+  inputSchema: null
+  outputSchema: null
+  onError:
+    action: useDefault
+    defaultValue:
       output: using default value
   input:
     mode:
@@ -20,7 +20,7 @@ steps:
         workflow: input
       path: mode
 output:
-  error_result:
+  errorResult:
     $from:
       step: error
     path: output
@@ -32,11 +32,11 @@ test:
     output:
       outcome: success
       result:
-        error_result: using default value
+        errorResult: using default value
   - name: test success case
     input:
       mode: succeed
     output:
       outcome: success
       result:
-        error_result: succeeded
+        errorResult: succeeded

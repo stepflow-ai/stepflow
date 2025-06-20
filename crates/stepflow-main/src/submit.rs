@@ -1,57 +1,105 @@
 use crate::{Result, error::MainError};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
-use stepflow_core::workflow::{Flow, ValueRef};
-use stepflow_server::{CreateExecutionRequest, CreateExecutionResponse};
+use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
+use stepflow_server::{CreateRunRequest, CreateRunResponse};
 use url::Url;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoreFlowRequest {
+    flow: Arc<Flow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoreFlowResponse {
+    flow_hash: FlowHash,
+}
 
 /// Submit a workflow to a StepFlow service for execution
 pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<FlowResult> {
-    // Create the request payload using server struct
-    let request = CreateExecutionRequest {
-        workflow: Arc::new(flow),
+    let client = reqwest::Client::new();
+
+    // Step 1: Store the flow to get its hash
+    let store_request = StoreFlowRequest {
+        flow: Arc::new(flow),
+    };
+
+    let store_url = service_url
+        .join("/api/v1/flows")
+        .map_err(|_| MainError::Configuration)?;
+
+    let store_response = client
+        .post(store_url)
+        .json(&store_request)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to store workflow: {}", e);
+            MainError::Configuration
+        })?;
+
+    if !store_response.status().is_success() {
+        let status = store_response.status();
+        let error_text = store_response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        tracing::error!(
+            "Server returned error storing workflow {}: {}",
+            status,
+            error_text
+        );
+        return Err(MainError::Configuration.into());
+    }
+
+    let store_result: StoreFlowResponse = store_response.json().await.map_err(|e| {
+        tracing::error!("Failed to parse store response: {}", e);
+        MainError::Configuration
+    })?;
+
+    // Step 2: Execute the workflow by hash
+    let execute_request = CreateRunRequest {
+        flow_hash: store_result.flow_hash,
         input,
         debug: false, // TODO: Add debug option to CLI
     };
 
-    // Build the execute endpoint URL (correct path)
     let execute_url = service_url
-        .join("/api/v1/executions")
+        .join("/api/v1/runs")
         .map_err(|_| MainError::Configuration)?;
 
-    // Create HTTP client
-    let client = reqwest::Client::new();
-
-    // Send the request
-    let response = client
+    let execute_response = client
         .post(execute_url)
-        .json(&request)
+        .json(&execute_request)
         .send()
         .await
         .map_err(|e| {
-            tracing::error!("Failed to send request: {}", e);
+            tracing::error!("Failed to execute workflow: {}", e);
             MainError::Configuration
         })?;
 
-    // Check if the request was successful
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response
+    if !execute_response.status().is_success() {
+        let status = execute_response.status();
+        let error_text = execute_response
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        tracing::error!("Server returned error {}: {}", status, error_text);
+        tracing::error!(
+            "Server returned error executing workflow {}: {}",
+            status,
+            error_text
+        );
         return Err(MainError::Configuration.into());
     }
 
-    // Parse the response using server struct
-    let execute_response: CreateExecutionResponse = response.json().await.map_err(|e| {
-        tracing::error!("Failed to parse response: {}", e);
+    let execute_result: CreateRunResponse = execute_response.json().await.map_err(|e| {
+        tracing::error!("Failed to parse execute response: {}", e);
         MainError::Configuration
     })?;
 
     // Return the result if available
-    match execute_response.result {
+    match execute_result.result {
         Some(result) => Ok(result),
         None => {
             tracing::error!("No result in response");

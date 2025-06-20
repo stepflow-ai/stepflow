@@ -1,70 +1,118 @@
+use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
-use stepflow_core::workflow::{Flow, FlowHash, SkipAction};
+use std::collections::HashSet;
+use std::sync::Arc;
+use stepflow_core::workflow::{Flow, FlowHash};
 
 use crate::tracker::{Dependencies, DependencyTracker};
 
-/// Represents a dependency between two steps in a workflow
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-pub struct StepDependency {
-    /// Index of the step that depends on another step.
-    pub step_index: usize,
-    /// Index of the step that this step depends on
-    pub depends_on_step_index: usize,
-    /// Optional source path within the dependency step's output
-    pub src_path: Option<String>,
-    /// Where the dependency is used in the dependent step.
-    pub dst_field: DestinationField,
-    /// The skip action for this dependency (determines if it's optional)
-    pub skip_action: SkipAction,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum DestinationField {
-    /// The dependency is used to determine if the step should be skipped.
-    SkipIf,
-    /// The dependency is used as the complete input to the step.
-    Input,
-    /// The dependency is used in a specific top-level field of the step's input.
-    InputField(String),
-    /// The dependency is used in the workflow output.
-    Output,
-}
-
-/// Results of analyzing a workflow for dependencies
-#[derive(Debug, Clone)]
-pub struct WorkflowAnalysis {
+/// High-level analysis of a flow that supports both frontend consumption and execution
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FlowAnalysis {
     /// The workflow hash for this analysis
-    pub workflow_hash: FlowHash,
-    /// All step dependencies found in the workflow
-    pub dependencies: Vec<StepDependency>,
-    /// Map from step ID to step index for efficient lookup
-    pub step_id_to_index: HashMap<String, usize>,
-    /// The workflow reference for step names and count
+    pub flow_hash: FlowHash,
+    /// The workflow reference
     pub flow: Arc<Flow>,
-    /// Pre-computed dependencies for efficient tracker creation
-    pub computed_dependencies: Arc<Dependencies>,
+    /// Step-by-step analysis keyed by step ID for easy lookup
+    pub steps: IndexMap<String, StepAnalysis>,
+    /// Dependencies for the workflow output.
+    pub output_depends: ValueDependencies,
+    /// Validation results
+    pub validation_errors: Vec<ValidationMessage>,
+    pub validation_warnings: Vec<ValidationMessage>,
+    /// Pre-built dependency graph for execution (not serialized)
+    #[serde(skip)]
+    pub dependencies: Arc<Dependencies>,
 }
 
-impl WorkflowAnalysis {
-    /// Get dependencies for a specific step
-    pub fn get_dependencies_for_step(&self, step_index: usize) -> Vec<&StepDependency> {
-        self.dependencies
-            .iter()
-            .filter(|dep| dep.step_index == step_index)
-            .collect()
-    }
-
+impl FlowAnalysis {
     /// Get the step index for a step ID
     pub fn get_step_index(&self, step_id: &str) -> Option<usize> {
-        self.step_id_to_index.get(step_id).copied()
+        self.steps.get_index_of(step_id)
     }
 
-    /// Create a new dependency tracker from this analysis
-    /// This is very efficient as it just clones the pre-computed Arc<Dependencies>
+    /// Create a dependency tracker for execution
     pub fn new_dependency_tracker(&self) -> DependencyTracker {
-        DependencyTracker::new(self.computed_dependencies.clone())
+        DependencyTracker::new(self.dependencies.clone())
     }
+}
+
+/// Analysis for a single step
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StepAnalysis {
+    /// Input dependencies for this step
+    pub input_depends: ValueDependencies,
+    /// Optional skip condition dependency
+    pub skip_if_depend: Option<Dependency>,
+}
+
+/// How a step receives its input data
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ValueDependencies {
+    /// Step input is an object with named fields
+    Object(IndexMap<String, HashSet<Dependency>>),
+    /// Step input is not an object (single value, array, etc.)
+    Other(HashSet<Dependency>),
+}
+
+impl ValueDependencies {
+    /// Iterator over all dependencies of this value.
+    pub fn dependencies(&self) -> Box<dyn Iterator<Item = &Dependency> + '_> {
+        match self {
+            ValueDependencies::Object(map) => Box::new(map.values().flatten()),
+            ValueDependencies::Other(set) => Box::new(set.iter()),
+        }
+    }
+
+    /// Iterator over all steps this value depends on.
+    pub fn step_dependencies(&self) -> impl Iterator<Item = &str> {
+        self.dependencies().filter_map(Dependency::step_id)
+    }
+}
+
+/// Source of input data for a step
+#[derive(
+    Debug, Clone, Serialize, Deserialize, JsonSchema, utoipa::ToSchema, Hash, PartialEq, Eq,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum Dependency {
+    /// Comes from workflow input
+    #[serde(rename_all = "camelCase")]
+    FlowInput {
+        /// Optional field path within workflow input
+        field: Option<String>,
+    },
+    /// Comes from another step's output
+    #[serde(rename_all = "camelCase")]
+    StepOutput {
+        /// Which step produces this data
+        step_id: String,
+        /// Optional field path within step output
+        field: Option<String>,
+        /// If true, the step_id may be skipped and this step still executed.
+        optional: bool,
+    },
+}
+
+impl Dependency {
+    /// Return the step this dependency is on, if any.
+    pub fn step_id(&self) -> Option<&str> {
+        match self {
+            Dependency::FlowInput { .. } => None,
+            Dependency::StepOutput { step_id, .. } => Some(step_id),
+        }
+    }
+}
+
+/// Validation error in the flow
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationMessage {
+    pub message: String,
+    pub step_id: Option<String>,
+    pub field: Option<String>,
 }

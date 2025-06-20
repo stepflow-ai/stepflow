@@ -4,6 +4,7 @@ use utoipa::ToSchema;
 
 /// Health check response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct HealthResponse {
     /// Service status
     pub status: String,
