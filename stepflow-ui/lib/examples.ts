@@ -1,4 +1,8 @@
-import type { Flow as Workflow } from '@/api-client'
+import { Flow } from '../stepflow-api-client/model/flow'
+
+// TODO: Replace all uses of `Workflow` with `Flow` throughout the codebase
+// This alias is temporary to ease the migration
+type Workflow = Flow
 
 export interface InputExample {
   name: string
@@ -69,7 +73,7 @@ export const EXAMPLE_WORKFLOWS: WorkflowExample[] = [
     workflow: {
       name: 'Math Operations',
       description: 'Performs addition, multiplication, and compound operations',
-      input_schema: {
+      inputSchema: {
         type: 'object',
         properties: {
           m: { type: 'integer' },
@@ -130,7 +134,7 @@ export const EXAMPLE_WORKFLOWS: WorkflowExample[] = [
     workflow: {
       name: 'Text Analysis',
       description: 'Analyzes text for word patterns, sentiment, and statistics',
-      input_schema: {
+      inputSchema: {
         type: 'object',
         properties: {
           text: { type: 'string' },
@@ -144,7 +148,7 @@ export const EXAMPLE_WORKFLOWS: WorkflowExample[] = [
           component: 'builtins://put_blob',
           input: {
             data: {
-              input_schema: {
+              inputSchema: {
                 type: 'object',
                 properties: { text: { type: 'string' } },
                 required: ['text']
@@ -215,7 +219,7 @@ return {
     workflow: {
       name: 'Expression Evaluator',
       description: 'Evaluates mathematical expressions and returns results',
-      input_schema: {
+      inputSchema: {
         type: 'object',
         properties: {
           expression: { type: 'string' },

@@ -42,3 +42,8 @@ next-env.d.ts
 
 # generated code
 api-client
+stepflow-api-client
+
+# development db
+prisma/dev.db
+prisma/dev.db-journal

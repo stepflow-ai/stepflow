@@ -9,7 +9,7 @@ export default function Dashboard() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">
-          Welcome to StepFlow - manage your workflows, executions, and components
+          Welcome to StepFlow - manage your flows, runs, and components
         </p>
       </div>
 
@@ -17,7 +17,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Active Executions
+              Active Runs
             </CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -31,7 +31,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Workflows
+              Flows
             </CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -82,21 +82,21 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="space-y-2">
             <Button asChild className="w-full justify-start">
-              <Link href="/execute">
+              <Link href="/run">
                 <Play className="mr-2 h-4 w-4" />
-                Execute Workflow
+                Run Flow
               </Link>
             </Button>
             <Button variant="outline" asChild className="w-full justify-start">
-              <Link href="/executions">
+              <Link href="/runs">
                 <Activity className="mr-2 h-4 w-4" />
-                View Executions
+                View Runs
               </Link>
             </Button>
             <Button variant="outline" asChild className="w-full justify-start">
-              <Link href="/workflows">
+              <Link href="/flows">
                 <FileText className="mr-2 h-4 w-4" />
-                Manage Workflows
+                Manage Flows
               </Link>
             </Button>
           </CardContent>
@@ -106,7 +106,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
             <CardDescription>
-              Latest workflow executions and updates
+              Latest flow runs and updates
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -124,7 +124,7 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="ml-4 space-y-1">
                   <p className="text-sm font-medium leading-none">
-                    New workflow &quot;analytics&quot; created
+                    New flow &quot;analytics&quot; created
                   </p>
                   <p className="text-sm text-muted-foreground">
                     1 hour ago

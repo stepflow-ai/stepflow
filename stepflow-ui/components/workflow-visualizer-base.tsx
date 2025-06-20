@@ -7,7 +7,6 @@ import {
   Edge,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   ConnectionMode,
@@ -22,9 +21,20 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { CheckCircle, XCircle, Clock, Activity, Play, Copy, ArrowRight, ArrowLeft, HelpCircle } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Activity, Play, Copy, ArrowRight, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { StepDependency, Flow as Workflow } from '@/api-client'
+import type { Flow } from '../stepflow-api-client/model'
+import { convertAnalysisToDependencies, type StepDependency, type FlowAnalysis } from '@/lib/dependency-types'
+
+type WorkflowStep = {
+  id: string
+  component: string
+  input?: Record<string, unknown>
+  // Add other fields that the visualizer needs to display
+}
+
+type Workflow = Flow
+
 import '@xyflow/react/dist/style.css'
 
 interface StepData {
@@ -39,8 +49,9 @@ interface StepData {
 
 interface WorkflowVisualizerBaseProps {
   steps: StepData[]
-  dependencies?: StepDependency[]
+  dependencies?: StepDependency[] // Use the simple internal type
   workflow?: Workflow
+  analysis?: unknown // New: dependency analysis data from API
   isDebugMode?: boolean
   showExecutionData?: boolean // Controls whether to show runtime status, times, outputs
   onStepClick?: (stepId: string) => void
@@ -213,7 +224,7 @@ function StepNode({ data }: StepNodeProps) {
           {inputFields.length > 0 && (
             <div className="text-xs space-y-1">
               <div className="text-muted-foreground">Inputs:</div>
-              {inputFields.map((field, index) => {
+              {inputFields.map((field) => {
                 // Check if this field is a skip condition
                 const isSkipCondition = data.skipFields?.includes(field)
 
@@ -222,7 +233,7 @@ function StepNode({ data }: StepNodeProps) {
                     <div className="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
                     <span className="font-mono">{field}</span>
                     {isSkipCondition && (
-                      <HelpCircle className="h-3 w-3 ml-1 text-orange-500" title="Skip condition" />
+                      <HelpCircle className="h-3 w-3 ml-1 text-orange-500" />
                     )}
                   </div>
                 )
@@ -245,7 +256,7 @@ function StepNode({ data }: StepNodeProps) {
   )
 }
 
-function WorkflowInputNode({ data }: { data: any }) {
+function WorkflowInputNode() {
   return (
     <>
       <Handle
@@ -263,7 +274,7 @@ function WorkflowInputNode({ data }: { data: any }) {
   )
 }
 
-function WorkflowOutputNode({ data }: { data: any }) {
+function WorkflowOutputNode() {
   return (
     <>
       <Handle
@@ -347,22 +358,24 @@ async function getLayoutedElements(nodes: Node[], edges: Edge[]) {
   return { nodes, edges }
 }
 
-async function calculateLayout(steps: StepData[], dependencies?: StepDependency[], workflow?: any): Promise<{ nodes: Node[], edges: Edge[] }> {
-  const stepMap = new Map(steps.map((step, index) => [step.id, { ...step, index }]))
+// Note: convertAnalysisToDependencies is now imported from @/lib/dependency-types
+
+async function calculateLayout(steps: StepData[], dependencies?: StepDependency[], workflow?: Workflow): Promise<{ nodes: Node[], edges: Edge[] }> {
+  // stepMap removed as it was unused
   const stepIndexMap = new Map(steps.map((step, index) => [index, step.id]))
-  let nodes: Node[] = []
-  let edges: Edge[] = []
+  const nodes: Node[] = []
+  const edges: Edge[] = []
 
   // Track workflow input/output dependencies
   let hasWorkflowInputDeps = false
-  let hasWorkflowOutputDeps = false
+  const hasWorkflowOutputDeps = false
   const stepInputFields = new Map<string, string[]>()
   const stepWorkflowInputFields = new Map<string, string[]>()
   const stepSkipFields = new Map<string, string[]>()
   const stepsWithWorkflowOutput = new Set<string>()
 
   // Initialize step data
-  steps.forEach((step, index) => {
+  steps.forEach((step) => {
     stepInputFields.set(step.id, [])
     stepSkipFields.set(step.id, [])
     stepWorkflowInputFields.set(step.id, [])
@@ -370,7 +383,7 @@ async function calculateLayout(steps: StepData[], dependencies?: StepDependency[
 
   // Extract input fields from workflow definition
   if (workflow?.steps) {
-    workflow.steps.forEach((workflowStep: any, index: number) => {
+    workflow.steps.forEach((workflowStep: WorkflowStep, index: number) => {
       const stepId = stepIndexMap.get(index)
       if (stepId && workflowStep.input && typeof workflowStep.input === 'object') {
         const fields = Object.keys(workflowStep.input)
@@ -378,8 +391,9 @@ async function calculateLayout(steps: StepData[], dependencies?: StepDependency[
 
         // Track workflow input fields
         const workflowInputFields: string[] = []
-        Object.entries(workflowStep.input).forEach(([fieldName, inputValue]: [string, any]) => {
-          if (inputValue && typeof inputValue === 'object' && inputValue.$from?.workflow === 'input') {
+        Object.entries(workflowStep.input).forEach(([fieldName, inputValue]: [string, unknown]) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (inputValue && typeof inputValue === 'object' && (inputValue as any).$from?.workflow === 'input') {
             workflowInputFields.push(fieldName)
             hasWorkflowInputDeps = true
           }
@@ -392,30 +406,21 @@ async function calculateLayout(steps: StepData[], dependencies?: StepDependency[
   // Process dependencies
   if (dependencies && dependencies.length > 0) {
     dependencies.forEach(dep => {
-      if (dep.stepIndex > 1000000) { // Workflow output dependency
-        const sourceStepId = stepIndexMap.get(dep.dependsOnStepIndex)
-        if (sourceStepId) {
-          stepsWithWorkflowOutput.add(sourceStepId)
-          hasWorkflowOutputDeps = true
-        }
-      } else {
-        // Track skip condition fields
-        const targetStepId = stepIndexMap.get(dep.stepIndex)
-        const dstField = dep.dstField as any;
-        if (targetStepId && dstField.skipIf) {
-          const skipFields = stepSkipFields.get(targetStepId) || []
-          const fieldName = dstField.inputField || 'condition'
-          if (!skipFields.includes(fieldName)) {
-            skipFields.push(fieldName)
-            stepSkipFields.set(targetStepId, skipFields)
-          }
-        }
-      }
+      // For simplified format, we assume these are all step-to-step dependencies
+      // Workflow output dependencies would be handled by the adapter
+      const sourceStepIds = dep.dependsOn
+      // const targetStepId = dep.stepId
+      
+      sourceStepIds.forEach(() => {
+        // For now, treat all dependencies as regular step dependencies
+        // The adapter will handle the distinction between workflow input/output deps
+        // TODO: Implement actual dependency edge creation
+      })
     })
   }
 
   // Create step nodes
-  steps.forEach((step, index) => {
+  steps.forEach((step) => {
     const inputFields = stepInputFields.get(step.id) || []
     const workflowInputFields = stepWorkflowInputFields.get(step.id) || []
     const skipFields = stepSkipFields.get(step.id) || []
@@ -465,11 +470,12 @@ async function calculateLayout(steps: StepData[], dependencies?: StepDependency[
 
   // Create workflow input edges
   if (hasWorkflowInputDeps && workflow?.steps) {
-    workflow.steps.forEach((workflowStep: any, index: number) => {
+    workflow.steps.forEach((workflowStep: WorkflowStep, index: number) => {
       const targetStepId = stepIndexMap.get(index)
       if (targetStepId && workflowStep.input && typeof workflowStep.input === 'object') {
-        Object.entries(workflowStep.input).forEach(([fieldName, inputValue]: [string, any]) => {
-          if (inputValue && typeof inputValue === 'object' && inputValue.$from?.workflow === 'input') {
+        Object.entries(workflowStep.input).forEach(([fieldName, inputValue]: [string, unknown]) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (inputValue && typeof inputValue === 'object' && (inputValue as any).$from?.workflow === 'input') {
             edges.push({
               id: `edge-input-${index}-${fieldName}`,
               source: 'workflow-input',
@@ -493,58 +499,25 @@ async function calculateLayout(steps: StepData[], dependencies?: StepDependency[
   // Create step-to-step and workflow output edges
   if (dependencies && dependencies.length > 0) {
     dependencies.forEach(dep => {
-      // Handle workflow output dependencies
-      if (dep.step_index > 1000000) {
-        const sourceStepId = stepIndexMap.get(dep.depends_on_step_index)
-        if (sourceStepId) {
+      const targetStepId = dep.stepId
+      
+      dep.dependsOn.forEach(sourceStepId => {
+        if (sourceStepId && targetStepId) {
           edges.push({
-            id: `edge-${sourceStepId}-to-output`,
+            id: `edge-${sourceStepId}-${targetStepId}`,
             source: sourceStepId,
-            target: 'workflow-output',
-            targetHandle: 'input-result',
+            target: targetStepId,
             type: 'smoothstep',
-            style: { strokeWidth: 2, stroke: '#10b981' },
+            style: { strokeWidth: 2, stroke: '#94a3b8' },
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: '#10b981',
-              width: 20,
-              height: 20
+              color: '#94a3b8',
+              width: 16,
+              height: 16
             }
           })
         }
-        return
-      }
-
-      const sourceStepId = stepIndexMap.get(dep.depends_on_step_index)
-      const targetStepId = stepIndexMap.get(dep.step_index)
-
-      if (sourceStepId && targetStepId) {
-        const isOptional = dep.skip_action.action === 'use_default'
-        const isSkipCondition = dep.dst_field.skip_if === true
-
-        let edgeStyle = { strokeWidth: 2, stroke: '#94a3b8' }
-
-        if (isSkipCondition) {
-          edgeStyle = { strokeWidth: 2, stroke: '#f97316' }
-        } else if (isOptional) {
-          edgeStyle = { strokeWidth: 2, stroke: '#94a3b8', strokeDasharray: '5,5' }
-        }
-
-        edges.push({
-          id: `edge-${dep.depends_on_step_index}-${dep.step_index}-${dep.dst_field.input_field || 'default'}`,
-          source: sourceStepId,
-          target: targetStepId,
-          targetHandle: dep.dst_field.input_field ? `input-${dep.dst_field.input_field}` : undefined,
-          type: 'smoothstep',
-          style: edgeStyle,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: edgeStyle.stroke,
-            width: 20,
-            height: 20
-          }
-        })
-      }
+      })
     })
   }
 
@@ -587,7 +560,7 @@ function StepDefinitionDialog({
   isOpen: boolean
   onClose: () => void
 }) {
-  const step = workflow?.steps.find(s => s.id === stepId)
+  const step = workflow?.steps?.find(s => s.id === stepId)
 
   if (!step) {
     return null
@@ -645,29 +618,17 @@ function StepDefinitionDialog({
             </div>
           )}
 
-          {/* Dependencies */}
-          {step.depends_on && step.depends_on.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-gray-900">Dependencies</h3>
-              <div className="flex flex-wrap gap-2">
-                {step.depends_on.map((dep, index) => (
-                  <Badge key={index} variant="outline">
-                    {dep}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Note: Dependencies are handled via the dependencies prop, not embedded in steps */}
 
-          {/* Component Configuration */}
-          {step.config && (
+          {/* Step Input Configuration */}
+          {step.input && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-900">Component Configuration</h3>
+                <h3 className="text-sm font-medium text-gray-900">Input Configuration</h3>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => copyToClipboard(JSON.stringify(step.config, null, 2))}
+                  onClick={() => copyToClipboard(JSON.stringify(step.input, null, 2))}
                 >
                   <Copy className="h-3 w-3 mr-1" />
                   Copy
@@ -675,7 +636,7 @@ function StepDefinitionDialog({
               </div>
               <div className="bg-muted rounded-lg p-4">
                 <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
-                  {JSON.stringify(step.config, null, 2)}
+                  {JSON.stringify(step.input, null, 2)}
                 </pre>
               </div>
             </div>
@@ -717,6 +678,7 @@ export function WorkflowVisualizerBase({
   steps,
   dependencies,
   workflow,
+  analysis,
   isDebugMode = false,
   showExecutionData = true,
   onStepClick,
@@ -732,13 +694,20 @@ export function WorkflowVisualizerBase({
   }, [onStepClick])
 
   // Memoize layout calculation input to prevent unnecessary recalculations
-  const layoutInputs = useMemo(() => ({
-    steps,
-    dependencies,
-    workflow,
-    isDebugMode,
-    showExecutionData
-  }), [steps, dependencies, workflow, isDebugMode, showExecutionData])
+  const layoutInputs = useMemo(() => {
+    // Use analysis data for dependencies if available, otherwise fall back to provided dependencies
+    const effectiveDependencies = analysis && typeof analysis === 'object' && 'flow' in analysis 
+      ? convertAnalysisToDependencies(analysis as FlowAnalysis) 
+      : dependencies
+    
+    return {
+      steps,
+      dependencies: effectiveDependencies,
+      workflow,
+      isDebugMode,
+      showExecutionData
+    }
+  }, [steps, dependencies, analysis, workflow, isDebugMode, showExecutionData])
 
   const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([])
   const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([])
@@ -784,8 +753,8 @@ export function WorkflowVisualizerBase({
     runLayout()
   }, [layoutInputs, handleStepClick, onStepExecute])
 
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   // Update nodes and edges when layout is complete
   useEffect(() => {

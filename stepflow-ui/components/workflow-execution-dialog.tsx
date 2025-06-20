@@ -10,51 +10,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Play, Upload, Bug, Loader2, Code, Lightbulb } from 'lucide-react'
-import { useExecuteWorkflow, useExecuteWorkflowByName, useExecuteWorkflowByLabel, useLatestWorkflowByName, useWorkflowByLabel } from '@/lib/hooks/use-api'
+import { useExecuteFlow, useFlow } from '@/lib/hooks/use-flow-api'
 import { COMMON_INPUT_EXAMPLES, getInputExamplesForComponents, type InputExample } from '@/lib/examples'
-import type { Flow as Workflow, ExampleInput } from '@/api-client'
 
 interface WorkflowExecutionDialogProps {
-  // Named workflow execution (latest version)
-  workflowName?: string
-  // Labeled workflow execution
-  workflowLabel?: string
-  // Ad-hoc workflow execution
-  workflow?: Workflow
+  // Named workflow execution
+  workflowName: string
   // Dialog trigger element
   trigger?: React.ReactNode
   // Dialog state control
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  // Examples
-  examples?: InputExample[]
-}
-
-// Helper function to convert backend ExampleInput to UI InputExample format
-function convertBackendExamples(backendExamples: ExampleInput[]): InputExample[] {
-  return backendExamples.map(example => ({
-    name: example.name,
-    description: example.description,
-    data: example.input,
-    format: 'json' as const
-  }))
 }
 
 // Helper function to get relevant examples based on workflow
-function getRelevantExamples(workflow?: Workflow, backendExamples?: ExampleInput[]): InputExample[] {
-  // If we have examples from the backend, use those first
-  if (backendExamples && backendExamples.length > 0) {
-    return convertBackendExamples(backendExamples)
-  }
-
-  // If the workflow has examples directly, use those
-  if (workflow?.examples && workflow.examples.length > 0) {
-    return convertBackendExamples(workflow.examples)
-  }
-
-  // Fallback to component-based examples for backward compatibility
-  if (workflow?.steps) {
-    const components = workflow.steps.map(step => step.component)
+function getRelevantExamples(workflow?: { flow?: { steps?: Array<{ component: string }> } }): InputExample[] {
+  // If the workflow has steps, try to get component-based examples
+  if (workflow?.flow?.steps) {
+    const components = workflow.flow.steps.map((step) => step.component)
     const relevantExamples = getInputExamplesForComponents(components)
     return relevantExamples.length > 0 ? relevantExamples : COMMON_INPUT_EXAMPLES
   }
@@ -64,12 +37,9 @@ function getRelevantExamples(workflow?: Workflow, backendExamples?: ExampleInput
 
 export function WorkflowExecutionDialog({ 
   workflowName,
-  workflowLabel,
-  workflow, 
   trigger, 
   open: controlledOpen, 
-  onOpenChange: controlledOnOpenChange,
-  examples
+  onOpenChange: controlledOnOpenChange
 }: WorkflowExecutionDialogProps) {
   const router = useRouter()
   
@@ -86,49 +56,18 @@ export function WorkflowExecutionDialog({
   const [selectedExample, setSelectedExample] = useState<string>('')
 
   // API hooks
-  const executeWorkflowMutation = useExecuteWorkflow()
-  const executeWorkflowByNameMutation = useExecuteWorkflowByName()
-  const executeWorkflowByLabelMutation = useExecuteWorkflowByLabel()
+  const executeFlowMutation = useExecuteFlow()
+  const flowQuery = useFlow(workflowName)
 
-  // Fetch workflow data based on execution type
-  const latestWorkflowQuery = useLatestWorkflowByName(workflowName || '')
-  const labeledWorkflowQuery = useWorkflowByLabel(workflowName || '', workflowLabel || '')
-
-  // Determine execution mode and workflow data
-  const isNamedExecution = !!workflowName && !workflowLabel
-  const isLabeledExecution = !!workflowName && !!workflowLabel
-
-  let workflowForExecution: Workflow | undefined
-  let workflowData: { workflow: Workflow; workflow_hash: string; all_examples: ExampleInput[] } | undefined
-  let isLoadingWorkflow = false
-
-  if (isLabeledExecution) {
-    workflowData = labeledWorkflowQuery.data
-    workflowForExecution = workflowData?.workflow
-    isLoadingWorkflow = labeledWorkflowQuery.isLoading
-  } else if (isNamedExecution) {
-    workflowData = latestWorkflowQuery.data
-    workflowForExecution = workflowData?.workflow
-    isLoadingWorkflow = latestWorkflowQuery.isLoading
-  } else {
-    workflowForExecution = workflow
-  }
+  // Flow data
+  const flowData = flowQuery.data
+  const isLoadingFlow = flowQuery.isLoading
   
-  const executionTitle = isLabeledExecution
-    ? `Execute ${workflowName} (${workflowLabel})`
-    : isNamedExecution
-    ? `Execute ${workflowName} (latest)`
-    : workflowForExecution?.name || 'Execute Workflow'
+  const executionTitle = `Execute ${workflowName}`
+  const executionDescription = flowData?.flow?.description || 'Execute flow with input data'
   
-  const executionDescription = workflowForExecution?.description || 'Execute workflow with input data'
-  
-  // Get examples from multiple sources with priority:
-  // 1. Explicitly provided examples
-  // 2. Examples from workflow API response
-  // 3. Examples from direct workflow
-  // 4. Fallback to component-based examples
-  const backendExamples = workflowData?.all_examples
-  const relevantExamples = examples || getRelevantExamples(workflowForExecution, backendExamples)
+  // Get examples from flow
+  const relevantExamples = getRelevantExamples(flowData)
 
   // Load example data
   const loadExample = useCallback((exampleName: string) => {
@@ -198,31 +137,15 @@ export function WorkflowExecutionDialog({
         throw new Error(`Invalid ${inputFormat.toUpperCase()} format in input: ${error}`)
       }
 
-      let result
-      if (isLabeledExecution) {
-        result = await executeWorkflowByLabelMutation.mutateAsync({
-          name: workflowName!,
-          label: workflowLabel!,
-          data: { input: parsedInput, debug: debugMode }
-        })
-      } else if (isNamedExecution) {
-        result = await executeWorkflowByNameMutation.mutateAsync({
-          name: workflowName!,
-          data: { input: parsedInput, debug: debugMode }
-        })
-      } else if (workflowForExecution) {
-        result = await executeWorkflowMutation.mutateAsync({
-          workflow: workflowForExecution,
-          input: parsedInput,
-          debug: debugMode
-        })
-      } else {
-        throw new Error('No workflow specified for execution')
-      }
+      const result = await executeFlowMutation.mutateAsync({
+        name: workflowName,
+        input: parsedInput,
+        debug: debugMode
+      })
 
       // Close dialog and navigate to results
       setOpen(false)
-      router.push(`/executions/${result.executionId}`)
+      router.push(`/runs/${result.runId}`)
     } catch (error) {
       console.error('Execution failed:', error)
       // TODO: Show error toast notification
@@ -246,9 +169,7 @@ export function WorkflowExecutionDialog({
     </Button>
   )
 
-  const isExecuting = executeWorkflowMutation.isPending || 
-                     executeWorkflowByNameMutation.isPending || 
-                     executeWorkflowByLabelMutation.isPending
+  const isExecuting = executeFlowMutation.isPending
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -275,20 +196,20 @@ export function WorkflowExecutionDialog({
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
-          {/* Loading state for workflow data */}
-          {isLoadingWorkflow && (
+          {/* Loading state for flow data */}
+          {isLoadingFlow && (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Loading workflow information...</span>
+                  <span>Loading flow information...</span>
                 </div>
               </CardContent>
             </Card>
           )}
 
           {/* Examples Section */}
-          {!isLoadingWorkflow && relevantExamples.length > 0 && (
+          {!isLoadingFlow && relevantExamples.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2 text-base">
@@ -398,12 +319,7 @@ export function WorkflowExecutionDialog({
                 <div className="space-y-1">
                   <div className="font-medium">Ready to Execute</div>
                   <div className="text-sm text-muted-foreground">
-                    {isLabeledExecution
-                      ? `Workflow: ${workflowName} (${workflowLabel})`
-                      : isNamedExecution
-                      ? `Workflow: ${workflowName} (latest)`
-                      : 'Ad-hoc workflow execution'
-                    }
+                    Flow: {workflowName}
                     {debugMode && ' • Debug mode enabled'}
                     {selectedExample && ` • Using ${selectedExample} example`}
                   </div>
@@ -414,16 +330,16 @@ export function WorkflowExecutionDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isExecuting || isLoadingWorkflow}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isExecuting || isLoadingFlow}>
             Cancel
           </Button>
-          <Button onClick={handleExecute} disabled={isExecuting || isLoadingWorkflow}>
+          <Button onClick={handleExecute} disabled={isExecuting || isLoadingFlow}>
             {isExecuting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Executing...
               </>
-            ) : isLoadingWorkflow ? (
+            ) : isLoadingFlow ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading...

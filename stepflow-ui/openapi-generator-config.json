@@ -1,10 +1,14 @@
 {
-    "generatorName": "typescript-fetch",
-    "output": "./src/api-client",
+    "generatorName": "typescript-axios",
+    "output": "./stepflow-api-client",
     "inputSpec": "http://localhost:7837/api/v1/openapi.json",
     "additionalProperties": {
         "typescriptThreePlus": true,
         "withSeparateModelsAndApi": true,
-        "modelPropertyNaming": "camelCase"
+        "modelPropertyNaming": "camelCase",
+        "npmName": "stepflow-api-client",
+        "supportsES6": true,
+        "apiPackage": "api",
+        "modelPackage": "model"
     }
 }

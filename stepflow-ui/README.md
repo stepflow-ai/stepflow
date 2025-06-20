@@ -1,30 +1,311 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StepFlow UI
 
-## Getting Started
+A modern web interface for the StepFlow workflow execution engine. Built with Next.js, React, and TypeScript.
 
-First, run the development server:
+## Features
 
+- 🔄 **Workflow Management**: Create, store, and version workflows with labels
+- 🚀 **Execution Tracking**: Monitor workflow executions with real-time status
+- 📊 **Visual Workflow Editor**: Interactive workflow visualization and editing
+- ⚡ **Ad-hoc Execution**: Execute workflows directly without storing (great for testing)
+- 🏷️ **Version Labels**: Tag workflows with semantic versions (production, staging, etc.)
+- 💾 **Persistent Storage**: SQLite for development, PostgreSQL for production
+- 🔌 **Plugin Integration**: Seamless integration with StepFlow components and plugins
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+
+- pnpm (recommended) or npm
+- StepFlow core server running on localhost:7837
+
+### Quick Start (Recommended)
+
+For zero-config development:
+
+```bash
+# Clone and start - automated setup! 🚀
+git clone <repository>
+cd stepflow-ui
+pnpm install
+pnpm dev
+```
+
+The `pnpm dev` command automatically:
+- Creates `.env` file if missing
+- Generates Prisma client if needed
+- Creates and migrates SQLite database (non-interactive)
+- Checks core server connection
+- Starts the development server
+
+No prompts or user input required!
+
+Open [http://localhost:3000](http://localhost:3000) to access the UI.
+
+### Manual Setup (Alternative)
+
+For complete control over the setup process:
+
+```bash
+# 1. Install dependencies
+pnpm install
+
+# 2. Full setup with database choice
+./scripts/dev-setup.sh sqlite    # SQLite (default)
+./scripts/dev-setup.sh postgres  # PostgreSQL with Docker
+
+# 3. Start development server
+pnpm dev
+```
+
+
+## Database Setup
+
+StepFlow UI supports both SQLite (development) and PostgreSQL (production).
+
+### SQLite (Development)
+```bash
+# Quick setup
+./scripts/setup-database.sh dev
+
+# Or manually
+pnpm db:migrate
+```
+
+### PostgreSQL (Production)
+```bash
+# With Docker
+docker compose -f docker-compose.dev.yml up -d postgres
+
+# Setup database
+export DATABASE_URL="postgresql://stepflow:password@localhost:5432/stepflow_ui"
+./scripts/setup-database.sh prod
+```
+
+See [DATABASE_SETUP.md](DATABASE_SETUP.md) for detailed instructions.
+
+## Development
+
+### Available Scripts
+
+```bash
+# Development
+pnpm dev              # Start development server
+pnpm build            # Build for production
+pnpm start            # Start production server
+
+# Testing
+pnpm test             # Run tests
+pnpm test:watch       # Run tests in watch mode
+pnpm lint             # Run linting
+
+# Database
+pnpm db:generate      # Generate Prisma client
+pnpm db:migrate       # Run migrations
+pnpm db:push          # Push schema changes
+pnpm db:studio        # Open database browser
+pnpm db:seed          # Seed database with sample data
+pnpm db:reset         # Reset database (development only)
+
+# API Client
+pnpm generate:api-client  # Regenerate StepFlow API client
+```
+
+### Project Structure
+
+```
+stepflow-ui/
+├── app/                 # Next.js app router pages
+├── components/          # Reusable React components
+├── lib/                 # Utilities and API clients
+│   ├── hooks/          # React Query hooks
+│   ├── api-types.ts    # Shared API types
+│   └── ui-api-client.ts # UI server API client
+├── prisma/             # Database schema and migrations
+│   ├── schema.prisma   # Database schema
+│   └── seed.ts         # Database seeding
+├── scripts/            # Setup and utility scripts
+└── __tests__/          # Test files
+```
+
+## Architecture
+
+StepFlow UI uses a three-tier architecture:
+
+```
+Browser → UI Server → StepFlow Core Server
+```
+
+1. **Browser**: React frontend with Next.js
+2. **UI Server**: Next.js API routes providing business logic
+3. **Core Server**: StepFlow execution engine
+
+### Key Components
+
+- **Workflow Management**: Store workflow metadata and version labels
+- **Execution Tracking**: Track execution status and results
+- **Flow Cache**: Cache workflow definitions for performance
+- **API Gateway**: Higher-level API wrapping core server operations
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Database
+DATABASE_URL="file:./dev.db"                              # SQLite
+# DATABASE_URL="postgresql://user:pass@localhost:5432/db" # PostgreSQL
+
+# StepFlow Core Server
+STEPFLOW_SERVER_URL="http://localhost:7837/api/v1"
+
+# Environment
+NODE_ENV="development"
+```
+
+### Database Schema
+
+The UI maintains metadata about workflows while the core server handles execution:
+
+- **Workflows**: Metadata, descriptions, flow references
+- **WorkflowLabels**: Version tags (production, staging, v1.0)
+- **WorkflowExecutions**: Execution metadata and status
+- **FlowCache**: Cached flow definitions from core server
+
+## API Documentation
+
+### UI Server Endpoints
+
+The UI server provides a higher-level API:
+
+```bash
+# Workflows
+GET    /api/workflows                    # List all workflows
+POST   /api/workflows                    # Store new workflow
+GET    /api/workflows/{name}             # Get workflow details
+PUT    /api/workflows/{name}             # Update workflow
+DELETE /api/workflows/{name}             # Delete workflow
+
+# Execution
+POST   /api/workflows/{name}/execute     # Execute named workflow
+POST   /api/workflows/{name}/labels/{label}/execute  # Execute by label
+POST   /api/runs                         # Execute ad-hoc workflow (provide definition directly)
+
+# Labels
+GET    /api/workflows/{name}/labels      # List workflow labels
+POST   /api/workflows/{name}/labels/{label}  # Create/update label
+DELETE /api/workflows/{name}/labels/{label}  # Delete label
+
+# Runs (proxy to core)
+GET    /api/runs/{id}                    # Get run details
+POST   /api/runs/{id}/cancel             # Cancel run
+DELETE /api/runs/{id}                    # Delete run
+
+# Components (proxy to core)
+GET    /api/components                   # List available components
+```
+
+## Testing
+
+```bash
+# Run all tests
+pnpm test
+
+# Run tests with coverage
+pnpm test:coverage
+
+# Run specific test file
+pnpm test __tests__/api.test.ts
+
+# Watch mode for development
+pnpm test:watch
+```
+
+### Test Structure
+
+- **Unit Tests**: Component and utility testing
+- **Integration Tests**: API endpoint testing
+- **Hooks Tests**: React Query hook testing
+
+## Deployment
+
+### Development
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Production Build
+```bash
+# Build application
+pnpm build
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+# Start production server
+pnpm start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Database Migration (Production)
+```bash
+# Deploy migrations
+npx prisma migrate deploy
 
-## Learn More
+# Or use setup script
+DATABASE_URL="postgresql://..." ./scripts/setup-database.sh prod
+```
 
-To learn more about Next.js, take a look at the following resources:
+### Docker Deployment
+```bash
+# PostgreSQL for production
+docker compose -f docker-compose.dev.yml up -d postgres
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Update DATABASE_URL in production environment
+export DATABASE_URL="postgresql://stepflow:password@localhost:5432/stepflow_ui"
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Troubleshooting
 
-## Deploy on Vercel
+### Common Issues
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Database Connection Failed**
+```bash
+# Check if core server is running
+curl http://localhost:7837/api/v1/health
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Verify database setup
+pnpm db:studio
+```
+
+**API Client Issues**
+```bash
+# Regenerate API client
+pnpm generate:api-client
+
+# Check core server OpenAPI spec
+curl http://localhost:7837/openapi.json
+```
+
+**Build Errors**
+```bash
+# Clear Next.js cache
+rm -rf .next
+
+# Clear dependencies
+rm -rf node_modules pnpm-lock.yaml
+pnpm install
+```
+
+For detailed troubleshooting, see [DATABASE_SETUP.md](DATABASE_SETUP.md).
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Run the test suite: `pnpm test`
+6. Run linting: `pnpm lint`
+7. Submit a pull request
+
+## License
+
+This project is part of the StepFlow workflow engine. See the main repository for license information.

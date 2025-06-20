@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Named workflow definitions with metadata
+model Workflow {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  flowHash    String   @map("flow_hash") // Latest version flow hash
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  labels      WorkflowLabel[]
+  executions  WorkflowExecution[]
+
+  @@map("workflows")
+}
+
+// Version labels for workflows (production, staging, v1.0, etc.)
+model WorkflowLabel {
+  id           Int      @id @default(autoincrement())
+  workflowName String   @map("workflow_name")
+  label        String
+  flowHash     String   @map("flow_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  workflow Workflow @relation(fields: [workflowName], references: [name], onDelete: Cascade)
+
+  @@unique([workflowName, label])
+  @@map("workflow_labels")
+}
+
+// Track executions initiated through the UI server
+model WorkflowExecution {
+  id           String   @id // UUID from core server
+  workflowName String   @map("workflow_name")
+  label        String?  // Which label was used (if any)
+  flowHash     String   @map("flow_hash")
+  status       String   // running, completed, failed, cancelled
+  debug        Boolean  @default(false)
+  input        String   // JSON string of input data
+  result       String?  // JSON string of result data (if completed)
+  createdAt    DateTime @default(now()) @map("created_at")
+  completedAt  DateTime? @map("completed_at")
+
+  // Relations
+  workflow Workflow @relation(fields: [workflowName], references: [name], onDelete: Cascade)
+
+  @@map("workflow_executions")
+}
+
+// Store flow definitions locally for caching (optional optimization)
+model FlowCache {
+  flowHash    String   @id @map("flow_hash")
+  definition  String   // JSON string of flow definition
+  createdAt   DateTime @default(now()) @map("created_at")
+  accessedAt  DateTime @updatedAt @map("accessed_at")
+
+  @@map("flow_cache")
+}
