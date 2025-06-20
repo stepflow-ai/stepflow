@@ -1,20 +1,9 @@
 use crate::{Result, error::MainError};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
-use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
-use stepflow_server::{CreateRunRequest, CreateRunResponse};
+use stepflow_core::workflow::{Flow, ValueRef};
+use stepflow_server::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
 use url::Url;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoreFlowRequest {
-    flow: Arc<Flow>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoreFlowResponse {
-    flow_hash: FlowHash,
-}
 
 /// Submit a workflow to a StepFlow service for execution
 pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<FlowResult> {
