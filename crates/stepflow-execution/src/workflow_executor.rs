@@ -66,9 +66,23 @@ impl WorkflowExecutor {
         state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
         // Build dependencies for the workflow using the analysis crate
-        let analysis =
+        let analysis_result =
             stepflow_analysis::analyze_workflow_dependencies(flow.clone(), workflow_hash)
                 .change_context(ExecutionError::AnalysisError)?;
+
+        let analysis = match analysis_result.analysis {
+            Some(analysis) => analysis,
+            None => {
+                // Convert validation failure to execution error
+                let (fatal, error, _warning) = analysis_result.diagnostic_counts();
+                return Err(
+                    error_stack::report!(ExecutionError::AnalysisError).attach_printable(format!(
+                        "Workflow validation failed with {} fatal and {} error diagnostics",
+                        fatal, error
+                    )),
+                );
+            }
+        };
 
         // Create tracker from analysis
         let tracker = analysis.new_dependency_tracker();
@@ -869,14 +883,14 @@ mod tests {
         let flow = create_test_flow(steps, json!({"$from": {"step": "step2"}}).into());
 
         // Build dependencies using analysis crate
-        let analysis = stepflow_analysis::analyze_workflow_dependencies(
+        let analysis_result = stepflow_analysis::analyze_workflow_dependencies(
             std::sync::Arc::new(flow),
             "test_hash".into(),
         )
         .unwrap();
 
         // Create tracker from analysis
-        let tracker = analysis.new_dependency_tracker();
+        let tracker = analysis_result.analysis.unwrap().new_dependency_tracker();
 
         // Only step1 should be runnable initially
         let unblocked = tracker.unblocked_steps();

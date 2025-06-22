@@ -1,5 +1,5 @@
 plugins:
-  - name: builtins
+  - name: builtin
     type: builtin
   - name: python
     type: stdio

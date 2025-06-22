@@ -2,7 +2,7 @@ name: "Test Builtins Registry"
 
 steps:
   - id: test_create_messages
-    component: "builtins://create_messages"
+    component: "builtin://create_messages"
     input:
       system_instructions: "You are a test assistant"
       user_prompt: "Say hello"

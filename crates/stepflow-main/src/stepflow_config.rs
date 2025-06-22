@@ -23,6 +23,19 @@ pub struct StepflowConfig {
     pub state_store: StateStoreConfig,
 }
 
+impl Default for StepflowConfig {
+    fn default() -> Self {
+        Self {
+            working_directory: None,
+            plugins: vec![SupportedPluginConfig {
+                name: "builtin".to_string(),
+                plugin: SupportedPlugin::Builtin(BuiltinPluginConfig),
+            }],
+            state_store: StateStoreConfig::default(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StateStoreConfig {

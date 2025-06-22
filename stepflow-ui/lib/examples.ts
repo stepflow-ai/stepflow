@@ -145,7 +145,7 @@ export const EXAMPLE_WORKFLOWS: WorkflowExample[] = [
       steps: [
         {
           id: 'create_word_analysis_blob',
-          component: 'builtins://put_blob',
+          component: 'builtin://put_blob',
           input: {
             data: {
               inputSchema: {
@@ -230,7 +230,7 @@ return {
       steps: [
         {
           id: 'evaluate',
-          component: 'builtins://eval',
+          component: 'builtin://eval',
           input: {
             expression: { $from: { workflow: 'input' }, path: 'expression' },
             context: { $from: { workflow: 'input' }, path: 'variables' }
@@ -267,7 +267,7 @@ return {
 // Get input examples for a specific workflow type or use common examples
 export function getInputExamplesForWorkflow(workflowName?: string): InputExample[] {
   if (workflowName) {
-    const workflowExample = EXAMPLE_WORKFLOWS.find(w => 
+    const workflowExample = EXAMPLE_WORKFLOWS.find(w =>
       w.name.toLowerCase().includes(workflowName.toLowerCase()) ||
       w.workflow.name?.toLowerCase().includes(workflowName.toLowerCase())
     )
@@ -286,28 +286,28 @@ export function getExampleWorkflow(name: string): WorkflowExample | undefined {
 // Get examples based on workflow components
 export function getInputExamplesForComponents(components: string[]): InputExample[] {
   const examples: InputExample[] = []
-  
+
   // Add specific examples based on components present
   if (components.some(c => c.includes('python') && (c.includes('add') || c.includes('multiply')))) {
     examples.push(COMMON_INPUT_EXAMPLES[0]) // Python Math Example
   }
-  
+
   if (components.some(c => c.includes('openai'))) {
     examples.push(COMMON_INPUT_EXAMPLES[2]) // OpenAI Chat
   }
-  
+
   if (components.some(c => c.includes('load_file') || c.includes('file'))) {
     examples.push(COMMON_INPUT_EXAMPLES[3]) // File Processing
   }
-  
+
   if (components.some(c => c.includes('udf') || c.includes('text'))) {
     examples.push(COMMON_INPUT_EXAMPLES[1]) // Text Processing
   }
-  
+
   // If no specific examples found, return common examples
   if (examples.length === 0) {
     return COMMON_INPUT_EXAMPLES.slice(0, 3)
   }
-  
+
   return examples
 }

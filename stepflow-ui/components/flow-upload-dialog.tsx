@@ -73,7 +73,7 @@ const WORKFLOW_EXAMPLES: InputExample[] = [
       steps: [
         {
           id: 'load',
-          component: 'builtins://load_file',
+          component: 'builtin://load_file',
           input: {
             path: { $from: { workflow: 'input' }, path: 'file_path' }
           }
@@ -108,7 +108,7 @@ const WORKFLOW_EXAMPLES: InputExample[] = [
       steps: [
         {
           id: 'chat',
-          component: 'builtins://openai',
+          component: 'builtin://openai',
           input: {
             messages: [
               {
@@ -156,7 +156,7 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
         setFlowFormat('json')
       }
       setSelectedExample(templateName)
-      
+
       // Auto-fill name from template if not set
       if (!name && template.data && typeof template.data === 'object' && 'name' in template.data) {
         setName(template.data.name as string)
@@ -178,20 +178,20 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
       reader.onload = (e) => {
         const content = e.target?.result as string
         setFlowContent(content)
-        
+
         // Detect format from file extension
         if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
           setFlowFormat('yaml')
         } else {
           setFlowFormat('json')
         }
-        
+
         // Try to extract name from filename if not set
         if (!name) {
           const filename = file.name.replace(/\.(yaml|yml|json)$/, '')
           setName(filename)
         }
-        
+
         setSelectedExample('') // Clear template selection
       }
       reader.readAsText(file)
@@ -200,12 +200,12 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!name.trim()) {
       toast.error('Flow name is required')
       return
     }
-    
+
     if (!flowContent.trim()) {
       toast.error('Flow content is required')
       return
@@ -226,13 +226,13 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
             if (colonIndex > 0) {
               const key = line.substring(0, colonIndex).trim()
               let value = line.substring(colonIndex + 1).trim()
-              
+
               // Remove quotes if present
-              if ((value.startsWith('"') && value.endsWith('"')) || 
-                  (value.startsWith("'") && value.endsWith("'"))) {
+              if ((value.startsWith('"') && value.endsWith('"')) ||
+                (value.startsWith("'") && value.endsWith("'"))) {
                 value = value.slice(1, -1)
               }
-              
+
               // Try to parse as number or boolean
               if (value === 'true') {
                 flow[key] = true
@@ -257,11 +257,11 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
       })
 
       toast.success(`Flow "${name}" created successfully!`)
-      
+
       // Reset form
       resetForm()
       setOpen(false)
-      
+
       onSuccess?.()
     } catch (error) {
       console.error('Failed to create flow:', error)
@@ -292,7 +292,7 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      
+
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
@@ -437,8 +437,8 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
                 <Label>Flow Definition</Label>
                 <div className="flex items-center space-x-2">
                   <Label htmlFor="flow-format" className="text-sm">Format:</Label>
-                  <Select 
-                    value={flowFormat} 
+                  <Select
+                    value={flowFormat}
                     onValueChange={(value) => setFlowFormat(value as 'json' | 'yaml')}
                   >
                     <SelectTrigger className="w-24">
@@ -451,7 +451,7 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
                   </Select>
                 </div>
               </div>
-              
+
               <Textarea
                 placeholder={`Enter workflow definition in ${flowFormat.toUpperCase()} format...`}
                 className="min-h-[300px] font-mono text-sm"
@@ -461,7 +461,7 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
                   setSelectedExample('') // Clear template selection when manually editing
                 }}
               />
-              
+
               <div className="flex items-center space-x-2">
                 <Button type="button" variant="outline" size="sm">
                   <Code className="mr-2 h-4 w-4" />

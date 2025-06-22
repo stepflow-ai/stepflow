@@ -70,9 +70,9 @@ describe('End-to-End Workflow Tests', () => {
       // Mock API responses
       const mockFlows = {
         workflows: [
-          { 
+          {
             id: 1,
-            name: 'data-processing', 
+            name: 'data-processing',
             description: 'Process data',
             flowHash: 'hash1',
             createdAt: '2024-01-15T10:30:00Z',
@@ -80,9 +80,9 @@ describe('End-to-End Workflow Tests', () => {
             labelCount: 1,
             executionCount: 5
           },
-          { 
+          {
             id: 2,
-            name: 'email-sender', 
+            name: 'email-sender',
             description: 'Send emails',
             flowHash: 'hash2',
             createdAt: '2024-01-15T11:00:00Z',
@@ -187,28 +187,28 @@ describe('End-to-End Workflow Tests', () => {
 
       // This would be a test of a complete page component
       // For this example, we'll test the workflow conceptually
-      
+
       const user = userEvent.setup()
       const wrapper = createWrapper()
 
       // Step 1: User visits flows page and sees available flows
       // (This would render a FlowsPage component)
-      
+
       // Step 2: User selects a flow to execute
       // User clicks on "data-processing" flow
-      
+
       // Step 3: User fills out execution form
       // Modal opens with input form based on schema
-      
+
       // Step 4: User submits execution
       // Form is submitted with input data
-      
+
       // Step 5: User is redirected to execution view
       // Page shows running execution with real-time updates
-      
+
       // Step 6: User monitors execution progress
       // Steps complete one by one, status updates
-      
+
       // Verify API calls were made in correct sequence
       expect(mockUiApi.listFlows).toHaveBeenCalled()
       // Additional assertions would depend on actual component implementation
@@ -228,7 +228,7 @@ describe('End-to-End Workflow Tests', () => {
   describe('Flow Management Workflow', () => {
     it('should allow uploading and managing flow versions', async () => {
       const user = userEvent.setup()
-      
+
       // Mock flow upload and version management
       const mockUploadResponse = {
         id: 1,
@@ -242,23 +242,23 @@ describe('End-to-End Workflow Tests', () => {
       }
 
       const mockFlowVersions = [
-        { 
-          label: 'production', 
-          flowHash: 'hash1', 
+        {
+          label: 'production',
+          flowHash: 'hash1',
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           workflowName: 'test-flow'
         },
-        { 
-          label: 'staging', 
-          flowHash: 'hash2', 
+        {
+          label: 'staging',
+          flowHash: 'hash2',
           createdAt: '2023-01-01T01:00:00Z',
           updatedAt: '2023-01-01T01:00:00Z',
           workflowName: 'test-flow'
         },
-        { 
-          label: 'latest', 
-          flowHash: 'new-hash-123', 
+        {
+          label: 'latest',
+          flowHash: 'new-hash-123',
           createdAt: '2023-01-01T02:00:00Z',
           updatedAt: '2023-01-01T02:00:00Z',
           workflowName: 'test-flow'
@@ -365,7 +365,7 @@ describe('End-to-End Workflow Tests', () => {
       const mockComponents = [
         {
           name: 'file-loader',
-          url: 'builtins://load_file',
+          url: 'builtin://load_file',
           description: 'Load data from files',
           inputSchema: {
             type: 'object',
@@ -409,7 +409,7 @@ describe('Integration Error Scenarios', () => {
   it('should handle network failures gracefully', async () => {
     // Test network error handling across the application
     mockUiApi.listFlows.mockRejectedValue(new Error('Network error'))
-    
+
     // Verify:
     // 1. Error messages are user-friendly
     // 2. Users can retry operations

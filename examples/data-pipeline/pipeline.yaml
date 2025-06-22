@@ -39,7 +39,7 @@ steps:
 
   # Regional analysis using eval components (run in parallel)
   - id: analyze_west_region
-    component: "builtins://eval"
+    component: "builtin://eval"
     input:
       workflow:
         $literal:
@@ -51,27 +51,27 @@ steps:
                 data: { $from: { workflow: input }, path: "sales_data" }
                 field: "region"
                 value: "West"
-            
+
             - id: region_revenue
               component: python://sum_field
               input:
                 data: { $from: { step: filter_region }, path: "filtered_data" }
                 field: "revenue"
-            
+
             - id: region_count
               component: python://count_items
               input:
                 data: { $from: { step: filter_region }, path: "filtered_data" }
-          
+
           output:
             revenue: { $from: { step: region_revenue }, path: "result" }
             count: { $from: { step: region_count }, path: "result" }
-      
+
       input:
         sales_data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: analyze_east_region
-    component: "builtins://eval"
+    component: "builtin://eval"
     input:
       workflow:
         $literal:
@@ -83,26 +83,26 @@ steps:
                 data: { $from: { workflow: input }, path: "sales_data" }
                 field: "region"
                 value: "East"
-            
+
             - id: region_revenue
               component: python://sum_field
               input:
                 data: { $from: { step: filter_region }, path: "filtered_data" }
                 field: "revenue"
-            
+
             - id: region_count
               component: python://count_items
               input:
                 data: { $from: { step: filter_region }, path: "filtered_data" }
-          
+
           output:
             revenue: { $from: { step: region_revenue }, path: "result" }
             count: { $from: { step: region_count }, path: "result" }
-      
+
       input:
         sales_data: { $from: { workflow: input }, path: "sales_data" }
 
-  # Compare regional performance  
+  # Compare regional performance
   - id: compare_regions
     component: python://compare_regions
     input:
@@ -120,16 +120,16 @@ steps:
       target_revenue: { $from: { workflow: input }, path: "target_revenue" }
       regional_comparison: { $from: { step: compare_regions }, path: "comparison" }
 
-  # Format messages for OpenAI (depends on metrics summary)  
+  # Format messages for OpenAI (depends on metrics summary)
   - id: create_openai_messages
-    component: "builtins://create_messages"
+    component: "builtin://create_messages"
     input:
       system_instructions: "You are a senior sales analyst providing insights based on business metrics and regional performance. Be specific and actionable in your recommendations."
       user_prompt: { $from: { step: format_metrics_summary }, path: "summary" }
 
   # Generate AI insights from the comprehensive metrics
   - id: generate_ai_insights
-    component: "builtins://openai"
+    component: "builtin://openai"
     input:
       messages: { $from: { step: create_openai_messages }, path: "messages" }
 

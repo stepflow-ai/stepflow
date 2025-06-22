@@ -60,6 +60,7 @@ fn locate_config(directory: Option<&Path>) -> Result<Option<PathBuf>> {
 /// Attempt to load a config file from `config_path`.
 ///
 /// If that is not set, look either in the `flow_directory` or the current directory.
+/// If no config file is found, return a default config with builtins only.
 fn load_config_impl(
     flow_directory: Option<&Path>,
     mut config_path: Option<PathBuf>,
@@ -70,15 +71,25 @@ fn load_config_impl(
 
     tracing::info!("Loading config from {:?}", config_path);
 
-    let config_path = config_path.ok_or(MainError::StepflowConfigNotFound)?;
-    let mut config: StepflowConfig = load(&config_path)?;
+    let mut config = if let Some(config_path) = config_path.as_ref() {
+        load(config_path)?
+    } else {
+        tracing::info!("No config file found, using default config with builtins only");
+        StepflowConfig::default()
+    };
 
     if config.working_directory.is_none() {
-        let config_dir = config_path
-            .parent()
-            .expect("config_path should have a parent directory");
-        config.working_directory = Some(config_dir.to_owned());
+        if let Some(config_dir) = config_path.as_ref().and_then(|p| p.parent()) {
+            config.working_directory = Some(config_dir.to_owned());
+        } else if let Some(flow_dir) = flow_directory {
+            config.working_directory = Some(flow_dir.to_owned());
+        } else {
+            // If no config path or flow directory, use current directory
+            config.working_directory =
+                Some(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        }
     }
+    tracing::info!("Using working directory: {:?}", config.working_directory);
     Ok(config)
 }
 

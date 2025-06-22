@@ -17,7 +17,7 @@ output_schema:
 steps:
 # Create blobs for function definitions
 - id: create_word_analysis_blob
-  component: builtins://put_blob
+  component: builtin://put_blob
   input_schema: null
   output_schema: null
   input:
@@ -57,7 +57,7 @@ steps:
             'most_common_words': [{'word': word, 'count': count} for word, count in most_common]
         }
 - id: create_pattern_search_blob
-  component: builtins://put_blob
+  component: builtin://put_blob
   input_schema: null
   output_schema: null
   input:
@@ -82,7 +82,7 @@ steps:
         except:
             return []
 - id: create_sentiment_analysis_blob
-  component: builtins://put_blob
+  component: builtin://put_blob
   input_schema: null
   output_schema: null
   input:

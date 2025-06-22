@@ -5,10 +5,57 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use stepflow_core::workflow::{Flow, FlowHash};
 
-use crate::tracker::{Dependencies, DependencyTracker};
+use crate::{
+    diagnostics::Diagnostics,
+    tracker::{Dependencies, DependenciesBuilder, DependencyTracker},
+};
+
+/// Result of workflow analysis including diagnostics
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalysisResult {
+    /// Analysis results (None if fatal diagnostics prevented analysis)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analysis: Option<FlowAnalysis>,
+    /// All diagnostics found during analysis
+    pub diagnostics: Diagnostics,
+}
+
+impl AnalysisResult {
+    /// Create a new analysis result with analysis and diagnostics
+    pub fn with_analysis(analysis: FlowAnalysis, diagnostics: Diagnostics) -> Self {
+        Self {
+            analysis: Some(analysis),
+            diagnostics,
+        }
+    }
+
+    /// Create a new analysis result with only diagnostics (analysis failed)
+    pub fn with_diagnostics_only(diagnostics: Diagnostics) -> Self {
+        Self {
+            analysis: None,
+            diagnostics,
+        }
+    }
+
+    /// Check if analysis was successful
+    pub fn has_analysis(&self) -> bool {
+        self.analysis.is_some()
+    }
+
+    /// Check if there are fatal diagnostics
+    pub fn has_fatal_diagnostics(&self) -> bool {
+        self.diagnostics.has_fatal()
+    }
+
+    /// Get diagnostic counts
+    pub fn diagnostic_counts(&self) -> (usize, usize, usize) {
+        self.diagnostics.counts()
+    }
+}
 
 /// High-level analysis of a flow that supports both frontend consumption and execution
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowAnalysis {
     /// The workflow hash for this analysis
@@ -19,11 +66,8 @@ pub struct FlowAnalysis {
     pub steps: IndexMap<String, StepAnalysis>,
     /// Dependencies for the workflow output.
     pub output_depends: ValueDependencies,
-    /// Validation results
-    pub validation_errors: Vec<ValidationMessage>,
-    pub validation_warnings: Vec<ValidationMessage>,
     /// Pre-built dependency graph for execution (not serialized)
-    #[serde(skip)]
+    #[serde(skip, default = "default_dependencies")]
     pub dependencies: Arc<Dependencies>,
 }
 
@@ -37,6 +81,11 @@ impl FlowAnalysis {
     pub fn new_dependency_tracker(&self) -> DependencyTracker {
         DependencyTracker::new(self.dependencies.clone())
     }
+}
+
+/// Default empty dependencies for deserialization
+fn default_dependencies() -> Arc<Dependencies> {
+    DependenciesBuilder::new(0).finish()
 }
 
 /// Analysis for a single step
@@ -106,13 +155,4 @@ impl Dependency {
             Dependency::StepOutput { step_id, .. } => Some(step_id),
         }
     }
-}
-
-/// Validation error in the flow
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ValidationMessage {
-    pub message: String,
-    pub step_id: Option<String>,
-    pub field: Option<String>,
 }
