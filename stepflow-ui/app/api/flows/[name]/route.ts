@@ -5,6 +5,7 @@ import {
   WorkflowDetailSchema,
   ErrorResponseSchema,
   type WorkflowDetail,
+  type StoreFlowResponse,
 } from '@/lib/api-types'
 
 // GET /api/flows/[name] - Get flow details with flow definition
@@ -122,8 +123,13 @@ export async function PUT(
 
     // Store the updated flow in core server
     const stepflowClient = getStepFlowClient()
-    const storeResult = await stepflowClient.storeFlow(flow)
+    const storeResult = await stepflowClient.storeFlow(flow) as StoreFlowResponse
+    
+    // Extract flow hash from the new response format
     const flowHash = storeResult.flowHash
+    if (!flowHash) {
+      throw new Error('Failed to store flow: no flow hash returned')
+    }
 
     // Update in our database
     const workflow = await prisma.workflow.update({

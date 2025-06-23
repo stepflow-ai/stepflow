@@ -212,7 +212,7 @@ function WorkflowVisualization({
     output: string | null
   }>,
   dependencies?: StepDependency[],
-  workflow?: { name?: string; description?: string; steps?: Array<{ id: string; component: string }> },
+  workflow?: unknown,
   analysisData?: FlowAnalysis,
   isDebugMode: boolean,
   isLoading: boolean

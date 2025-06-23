@@ -16,10 +16,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, FileText, Loader2, Code, Lightbulb, Upload } from 'lucide-react'
-import { useStoreFlow } from '@/lib/hooks/use-flow-api'
+import { Plus, FileText, Loader2, Code, Lightbulb } from 'lucide-react'
+import { useStoreFlowWithValidation } from '@/lib/hooks/use-workflow-validation'
+import { WorkflowDiagnostics, extractDiagnostics } from '@/components/workflow-diagnostics'
+import { DiagnosticLevel } from '@/stepflow-api-client/model/diagnostic-level'
 import { toast } from 'sonner'
 import { type InputExample } from '@/lib/examples'
+import { type Diagnostic } from '@/lib/api-types'
 
 interface FlowUploadDialogProps {
   trigger: React.ReactNode
@@ -134,8 +137,14 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
   const [flowFormat, setFlowFormat] = useState<'json' | 'yaml'>('json')
   const [uploadMethod, setUploadMethod] = useState<'template' | 'file' | 'paste'>('template')
   const [selectedExample, setSelectedExample] = useState<string>('')
+  const [validationDiagnostics, setValidationDiagnostics] = useState<Diagnostic[]>([])
+  const [showValidation, setShowValidation] = useState(false)
 
-  const storeFlowMutation = useStoreFlow()
+  const storeFlowMutation = useStoreFlowWithValidation()
+
+  // Check if there are fatal errors preventing save
+  const hasFatalErrors = validationDiagnostics.some(d => d.level === DiagnosticLevel.Fatal)
+  const isCreating = storeFlowMutation.isPending
 
   // Load template data
   const loadTemplate = useCallback((templateName: string) => {
@@ -250,23 +259,58 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
         throw new Error(`Invalid ${flowFormat.toUpperCase()} format: ${error}`)
       }
 
-      await storeFlowMutation.mutateAsync({
+      const result = await storeFlowMutation.mutateAsync({
+        flow,
         name: name.trim(),
         description: description.trim() || undefined,
-        flow,
+        checkOnly: false,
       })
 
-      toast.success(`Flow "${name}" created successfully!`)
+      // Extract diagnostics from the response
+      const diagnostics = extractDiagnostics(result)
+      setValidationDiagnostics(diagnostics)
 
-      // Reset form
-      resetForm()
-      setOpen(false)
+      // Check if workflow was successfully stored
+      if (result.flowHash) {
+        // Workflow was stored successfully
+        const errorCount = diagnostics.filter(d => d.level === DiagnosticLevel.Error).length
+        const warningCount = diagnostics.filter(d => d.level === DiagnosticLevel.Warning).length
 
-      onSuccess?.()
+        if (errorCount > 0 || warningCount > 0) {
+          // Success with warnings/errors - show summary toast
+          const issueText = [
+            errorCount > 0 ? `${errorCount} error${errorCount !== 1 ? 's' : ''}` : null,
+            warningCount > 0 ? `${warningCount} warning${warningCount !== 1 ? 's' : ''}` : null
+          ].filter(Boolean).join(', ')
+          
+          toast.success(`Flow "${name}" created with ${issueText}. Check the workflow page for details.`)
+        } else {
+          // Success without issues
+          toast.success(`Flow "${name}" created successfully!`)
+        }
+
+        // Reset form and close dialog
+        resetForm()
+        setShowValidation(false)
+        setOpen(false)
+        onSuccess?.()
+      } else {
+        // Workflow was not stored due to fatal errors
+        const fatalCount = diagnostics.filter(d => d.level === DiagnosticLevel.Fatal).length
+        toast.error(`Cannot save workflow: ${fatalCount} fatal error${fatalCount !== 1 ? 's' : ''} must be fixed first`)
+        setShowValidation(true) // Show validation details
+      }
     } catch (error) {
       console.error('Failed to create flow:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to create flow')
     }
+  }
+
+  const handleAutoValidate = async () => {
+    // For now, disable auto-validation to avoid calling the store endpoint unnecessarily
+    // We'll only validate when the user explicitly tries to submit
+    // TODO: Implement proper validation-only endpoint or client-side validation
+    return
   }
 
   const resetForm = () => {
@@ -276,6 +320,8 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
     setFlowFormat('json')
     setUploadMethod('template')
     setSelectedExample('')
+    setValidationDiagnostics([])
+    setShowValidation(false)
   }
 
   // Reset form when dialog closes
@@ -284,8 +330,6 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
       resetForm()
     }
   }, [open])
-
-  const isCreating = storeFlowMutation.isPending
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -459,19 +503,14 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
                 onChange={(e) => {
                   setFlowContent(e.target.value)
                   setSelectedExample('') // Clear template selection when manually editing
+                  // Clear validation when user is actively editing
+                  if (showValidation) {
+                    setShowValidation(false)
+                    setValidationDiagnostics([])
+                  }
                 }}
+                onBlur={handleAutoValidate}
               />
-
-              <div className="flex items-center space-x-2">
-                <Button type="button" variant="outline" size="sm">
-                  <Code className="mr-2 h-4 w-4" />
-                  Validate
-                </Button>
-                <Button type="button" variant="outline" size="sm">
-                  <Upload className="mr-2 h-4 w-4" />
-                  Load from File
-                </Button>
-              </div>
             </div>
           )}
 
@@ -492,15 +531,34 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
           </Card>
         </div>
 
+        {/* Validation Diagnostics Display */}
+        {showValidation && validationDiagnostics.length > 0 && (
+          <div className="mt-4">
+            <WorkflowDiagnostics 
+              diagnostics={validationDiagnostics}
+              className="max-h-64 overflow-y-auto"
+            />
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={isCreating}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isCreating || !name.trim() || !flowContent.trim() || flowContent === '{}'}>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={isCreating || !name.trim() || !flowContent.trim() || flowContent === '{}' || hasFatalErrors}
+            variant={hasFatalErrors ? "destructive" : "default"}
+          >
             {isCreating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Creating...
+              </>
+            ) : hasFatalErrors ? (
+              <>
+                <Plus className="mr-2 h-4 w-4" />
+                Fix Fatal Errors First
               </>
             ) : (
               <>

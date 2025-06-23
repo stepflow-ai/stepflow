@@ -135,8 +135,14 @@ function ExecutePageContent() {
         let workflow: Record<string, unknown>
         try {
           workflow = JSON.parse(flowContent)
-        } catch {
-          throw new Error('Invalid JSON format in workflow definition')
+          
+          // Basic validation - workflow should be an object
+          if (typeof workflow !== 'object' || workflow === null || Array.isArray(workflow)) {
+            throw new Error('Workflow definition must be a JSON object, not an array or primitive value')
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown JSON parsing error'
+          throw new Error(`Invalid JSON format in workflow definition: ${errorMessage}`)
         }
 
         result = await executeAdHocMutation.mutateAsync({
