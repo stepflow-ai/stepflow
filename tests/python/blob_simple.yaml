@@ -16,7 +16,7 @@ output_schema:
       type: object
 steps:
 - id: store_with_builtin
-  component: builtins://put_blob
+  component: builtin://put_blob
   input_schema: null
   output_schema: null
   input:
@@ -32,7 +32,7 @@ steps:
       timestamp: 2024-01-01T00:00:00Z
 # Create blob for Python function definition
 - id: create_store_data_blob
-  component: builtins://put_blob
+  component: builtin://put_blob
   input_schema: null
   output_schema: null
   input:
@@ -78,7 +78,7 @@ steps:
           workflow: input
         path: number
 - id: retrieve_with_builtin
-  component: builtins://get_blob
+  component: builtin://get_blob
   input_schema: null
   output_schema: null
   input:

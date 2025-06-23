@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(Default)]
 struct Registry {
-    components: HashMap<ComponentKey<'static>, Arc<DynBuiltinComponent<'static>>>,
+    components: HashMap<ComponentKey, Arc<DynBuiltinComponent<'static>>>,
 }
 
 impl Registry {
@@ -26,7 +26,7 @@ impl Registry {
         path: &'static str,
         component: C,
     ) {
-        let key = (Some(host), path);
+        let key = (Some(host.to_string()), path.to_string());
         let component = DynBuiltinComponent::boxed(component);
         let component = Arc::from(component);
         self.components.insert(key, component);
@@ -35,7 +35,7 @@ impl Registry {
 
 static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     let mut registry = Registry::default();
-    // For URLs like "builtins://component_name", the host is "component_name" and path is ""
+    // For URLs like "builtin://component_name", the host is "component_name" and path is ""
     registry.register("openai", "", OpenAIComponent::new("gpt-3.5-turbo"));
     registry.register("create_messages", "", CreateMessagesComponent);
     registry.register("eval", "", EvalComponent::new());
@@ -46,16 +46,23 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
 });
 
 pub fn get_component(component: &Component) -> Result<Arc<DynBuiltinComponent<'_>>> {
-    // For URLs like "builtins://eval", the host is "eval" and path is ""
-    // The components are registered with (host, path) keys
-    let key = (component.host(), component.path());
+    // For builtin components, use the builtin name as the host
+    // For other components, use the actual host and path
+    let key = if component.is_builtin() {
+        (
+            component.builtin_name().map(|s| s.to_string()),
+            String::new(),
+        )
+    } else {
+        component.key()
+    };
 
-    let component = REGISTRY
+    let builtin_component = REGISTRY
         .components
         .get(&key)
         .ok_or_else(|| PluginError::UnknownComponent(component.clone()))?;
 
-    Ok(component.clone())
+    Ok(builtin_component.clone())
 }
 
 pub fn list_components() -> Vec<Component> {
@@ -63,12 +70,18 @@ pub fn list_components() -> Vec<Component> {
         .components
         .keys()
         .map(|(host, path)| {
-            let url = if path.is_empty() {
-                format!("builtins://{}", host.unwrap_or(""))
+            if let Some(host) = host {
+                if path.is_empty() {
+                    // This is a builtin component
+                    Component::from_string(host)
+                } else {
+                    let url = format!("builtin://{}/{}", host, path);
+                    Component::from_string(&url)
+                }
             } else {
-                format!("builtins://{}/{}", host.unwrap_or(""), path)
-            };
-            Component::new(url.parse().expect("Invalid URL"))
+                // Fallback case
+                Component::from_string(path)
+            }
         })
         .collect()
 }

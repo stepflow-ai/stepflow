@@ -9,7 +9,7 @@ input_schema:
 
 steps:
   - id: nested_math
-    component: "builtins://eval"
+    component: "builtin://eval"
     input:
       workflow:
         $literal:

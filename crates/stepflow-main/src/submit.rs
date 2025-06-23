@@ -47,9 +47,15 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
         MainError::Configuration
     })?;
 
+    // Check if the workflow was stored successfully
+    let flow_hash = store_result.flow_hash.ok_or_else(|| {
+        tracing::error!("Workflow validation failed - flow was not stored");
+        MainError::Configuration
+    })?;
+
     // Step 2: Execute the workflow by hash
     let execute_request = CreateRunRequest {
-        flow_hash: store_result.flow_hash,
+        flow_hash,
         input,
         debug: false, // TODO: Add debug option to CLI
     };

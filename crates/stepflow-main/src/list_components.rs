@@ -84,7 +84,7 @@ pub async fn list_components(
     }
 
     // Sort components by their URL for consistent output
-    all_components.sort_by(|a, b| a.component.url().as_str().cmp(b.component.url().as_str()));
+    all_components.sort_by(|a, b| a.component.to_string().cmp(&b.component.to_string()));
 
     let component_list = ComponentList {
         components: all_components,
@@ -119,7 +119,7 @@ fn print_pretty(components: &[ComponentDetails]) {
 
     for component in components {
         println!();
-        println!("Component: {}", component.component.url());
+        println!("Component: {}", component.component);
 
         // Print description if present
         if let Some(ref description) = component.description {

@@ -8,14 +8,45 @@ use crate::{
     Result,
     error::AnalysisError,
     tracker::DependenciesBuilder,
-    types::{Dependency, FlowAnalysis, StepAnalysis, ValueDependencies},
+    types::{AnalysisResult, Dependency, FlowAnalysis, StepAnalysis, ValueDependencies},
+    validation::validate_workflow,
 };
 
 /// Analyze a workflow for step dependencies
+/// Returns Ok(AnalysisResult) with analysis (if no fatal diagnostics) and all diagnostics
+/// Returns Err(AnalysisError) for internal/unexpected errors
 pub fn analyze_workflow_dependencies(
     flow: Arc<Flow>,
     workflow_hash: FlowHash,
-) -> Result<FlowAnalysis> {
+) -> Result<AnalysisResult> {
+    // 1. Run validation first
+    let diagnostics = validate_workflow(&flow);
+
+    // 2. If fatal diagnostics exist, return diagnostics without analysis
+    if diagnostics.has_fatal() {
+        return Ok(AnalysisResult::with_diagnostics_only(diagnostics));
+    }
+
+    // 3. Proceed with dependency analysis (should not fail on user errors now)
+    let analysis = analyze_dependencies_internal(flow.clone(), workflow_hash)?;
+
+    // 4. Return analysis with diagnostics
+    Ok(AnalysisResult::with_analysis(analysis, diagnostics))
+}
+
+/// Validate a workflow without performing full analysis
+/// Returns Ok(AnalysisResult) with diagnostics but no analysis
+/// Returns Err(AnalysisError) for internal/unexpected errors
+pub fn validate_workflow_only(flow: &Flow) -> Result<AnalysisResult> {
+    // Run validation
+    let diagnostics = validate_workflow(flow);
+
+    // Return diagnostics without analysis
+    Ok(AnalysisResult::with_diagnostics_only(diagnostics))
+}
+
+/// Internal dependency analysis - assumes validation has already passed
+fn analyze_dependencies_internal(flow: Arc<Flow>, workflow_hash: FlowHash) -> Result<FlowAnalysis> {
     // Analyze each step for dependencies
     let steps = flow
         .steps
@@ -37,17 +68,11 @@ pub fn analyze_workflow_dependencies(
     }
     let dependencies = builder.finish();
 
-    // TODO: Add validation logic
-    let validation_errors = vec![];
-    let validation_warnings = vec![];
-
     Ok(FlowAnalysis {
         flow_hash: workflow_hash,
-        flow: flow.clone(),
+        flow,
         steps,
         output_depends,
-        validation_errors,
-        validation_warnings,
         dependencies,
     })
 }
@@ -238,7 +263,18 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::workflow::{Component, ErrorAction, Flow, Step};
-    use url::Url;
+
+    fn create_test_step(id: &str, input: serde_json::Value) -> Step {
+        Step {
+            id: id.to_string(),
+            component: Component::from_string("mock://test"),
+            input: ValueRef::new(input),
+            input_schema: None,
+            output_schema: None,
+            skip_if: None,
+            on_error: ErrorAction::Fail,
+        }
+    }
 
     fn create_test_flow() -> Flow {
         Flow {
@@ -250,7 +286,7 @@ mod tests {
             steps: vec![
                 Step {
                     id: "step1".to_string(),
-                    component: Component::new(Url::parse("mock://test").unwrap()),
+                    component: Component::from_string("mock://test"),
                     input: ValueRef::new(json!({"$from": {"workflow": "input"}})),
                     input_schema: None,
                     output_schema: None,
@@ -259,7 +295,7 @@ mod tests {
                 },
                 Step {
                     id: "step2".to_string(),
-                    component: Component::new(Url::parse("mock://test").unwrap()),
+                    component: Component::from_string("mock://test"),
                     input: ValueRef::new(json!({"$from": {"step": "step1"}})),
                     input_schema: None,
                     output_schema: None,
@@ -276,7 +312,8 @@ mod tests {
     #[test]
     fn test_analyze_simple_chain() {
         let flow = create_test_flow();
-        let analysis = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let analysis = result.analysis.unwrap(); // Should succeed without validation errors
 
         // Should have 2 steps: step1 and step2
         assert_eq!(analysis.steps.len(), 2);
@@ -318,7 +355,8 @@ mod tests {
             },
         });
 
-        let analysis = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let analysis = result.analysis.unwrap(); // Should succeed without validation errors
 
         // Should have 2 steps: step1 and step2
         assert_eq!(analysis.steps.len(), 2);
@@ -364,7 +402,8 @@ mod tests {
             "literal_value": 42
         }));
 
-        let analysis = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let analysis = result.analysis.unwrap(); // Should succeed without validation errors
 
         // step2 should have dependencies parsed as an object
         let step2 = analysis.steps.get("step2").expect("Should find step2");
@@ -394,5 +433,155 @@ mod tests {
             }
             _ => panic!("Expected Object variant for step2 input"),
         }
+    }
+
+    #[test]
+    fn test_new_validation_api_valid_workflow() {
+        let flow = create_test_flow();
+        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+
+        // Valid workflow should have analysis
+        assert!(result.has_analysis(), "Expected analysis to be present");
+        assert!(
+            !result.has_fatal_diagnostics(),
+            "Expected no fatal diagnostics"
+        );
+
+        let (fatal, error, warning) = result.diagnostic_counts();
+        assert_eq!(fatal, 0, "Expected no fatal diagnostics");
+        assert_eq!(error, 0, "Expected no error diagnostics");
+        assert!(
+            warning > 0,
+            "Expected some warnings (mock components, field access)"
+        );
+
+        // Should be able to get the analysis
+        let analysis = result.analysis.unwrap();
+        assert_eq!(analysis.steps.len(), 2);
+    }
+
+    #[test]
+    fn test_new_validation_api_invalid_workflow() {
+        let flow = Flow {
+            name: Some("invalid_workflow".to_string()),
+            description: None,
+            version: None,
+            input_schema: None,
+            output_schema: None,
+            steps: vec![
+                create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
+                create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
+            ],
+            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            test: None,
+            examples: vec![],
+        };
+
+        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+
+        // Invalid workflow should not have analysis
+        assert!(
+            !result.has_analysis(),
+            "Expected no analysis due to fatal diagnostics"
+        );
+        assert!(result.has_fatal_diagnostics(), "Expected fatal diagnostics");
+
+        let (fatal, _error, _warning) = result.diagnostic_counts();
+        assert!(fatal > 0, "Expected fatal diagnostics");
+
+        // Analysis should be None
+        assert!(result.analysis.is_none(), "Expected no analysis");
+
+        // Should have specific diagnostic messages
+        let has_duplicate_id = result.diagnostics.diagnostics.iter().any(|d| {
+            matches!(
+                d.message,
+                crate::diagnostics::DiagnosticMessage::DuplicateStepId { .. }
+            )
+        });
+        let has_undefined_reference = result.diagnostics.diagnostics.iter().any(|d| {
+            matches!(
+                d.message,
+                crate::diagnostics::DiagnosticMessage::UndefinedStepReference { .. }
+            )
+        });
+
+        assert!(has_duplicate_id, "Expected duplicate step ID diagnostic");
+        assert!(
+            has_undefined_reference,
+            "Expected undefined step reference diagnostic"
+        );
+    }
+
+    #[test]
+    fn test_diagnostic_levels_behavior() {
+        use crate::diagnostics::{Diagnostic, DiagnosticLevel, DiagnosticMessage};
+
+        // Test that fatal diagnostics block analysis
+        let fatal = Diagnostic::new(DiagnosticMessage::DuplicateStepId {
+            step_id: "test".to_string(),
+        });
+        assert_eq!(fatal.level, DiagnosticLevel::Fatal);
+        assert!(fatal.blocks_analysis());
+        assert!(fatal.indicates_execution_failure());
+
+        // Test that errors don't block analysis but indicate execution failure
+        let error = Diagnostic::new(DiagnosticMessage::InvalidFieldAccess {
+            step_id: "test".to_string(),
+            field: "field".to_string(),
+            reason: "missing".to_string(),
+        });
+        assert_eq!(error.level, DiagnosticLevel::Error);
+        assert!(!error.blocks_analysis());
+        assert!(error.indicates_execution_failure());
+
+        // Test that warnings don't block analysis or indicate execution failure
+        let warning = Diagnostic::new(DiagnosticMessage::MockComponent {
+            step_id: "test".to_string(),
+        });
+        assert_eq!(warning.level, DiagnosticLevel::Warning);
+        assert!(!warning.blocks_analysis());
+        assert!(!warning.indicates_execution_failure());
+    }
+
+    #[test]
+    fn test_analysis_result_convenience_methods() {
+        use crate::diagnostics::{DiagnosticMessage, Diagnostics};
+
+        // Test with analysis
+        let flow = create_test_flow();
+        let analysis_result = analyze_dependencies_internal(Arc::new(flow), "test".into()).unwrap();
+        let mut diagnostics = Diagnostics::new();
+        diagnostics.add(
+            DiagnosticMessage::MockComponent {
+                step_id: "test".to_string(),
+            },
+            vec![],
+        );
+
+        let result = crate::types::AnalysisResult::with_analysis(analysis_result, diagnostics);
+        assert!(result.has_analysis());
+        assert!(!result.has_fatal_diagnostics());
+        let (fatal, error, warning) = result.diagnostic_counts();
+        assert_eq!(fatal, 0);
+        assert_eq!(error, 0);
+        assert_eq!(warning, 1);
+
+        // Test without analysis
+        let mut diagnostics = Diagnostics::new();
+        diagnostics.add(
+            DiagnosticMessage::DuplicateStepId {
+                step_id: "test".to_string(),
+            },
+            vec![],
+        );
+
+        let result = crate::types::AnalysisResult::with_diagnostics_only(diagnostics);
+        assert!(!result.has_analysis());
+        assert!(result.has_fatal_diagnostics());
+        let (fatal, error, warning) = result.diagnostic_counts();
+        assert_eq!(fatal, 1);
+        assert_eq!(error, 0);
+        assert_eq!(warning, 0);
     }
 }

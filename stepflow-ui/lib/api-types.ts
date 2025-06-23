@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AnalysisResult } from '@/stepflow-api-client'
 
 // ============================================================================
 // Core StepFlow Types (mirrored from Rust)
@@ -223,3 +224,16 @@ export const ErrorResponseSchema = z.object({
 })
 
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>
+
+// ============================================================================
+// Extended Types (fixes for OpenAPI generator issues)
+// ============================================================================
+
+// StoreFlowResponse should be AnalysisResult + optional flowHash
+// The OpenAPI generator simplified this incorrectly
+export interface StoreFlowResponse extends AnalysisResult {
+  flowHash?: string | null
+}
+
+// Re-export commonly used types for convenience
+export type { AnalysisResult, Diagnostic, DiagnosticLevel, Diagnostics } from '@/stepflow-api-client'

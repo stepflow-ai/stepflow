@@ -25,7 +25,6 @@ serde.workspace = true
 stepflow-core.workspace = true
 utoipa.workspace = true
 thiserror.workspace = true
-url.workspace = true
 
 [features]
 default = []

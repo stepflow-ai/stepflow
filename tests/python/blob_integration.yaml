@@ -17,13 +17,13 @@ output_schema:
 steps:
   # Step 1: Store initial data as blob using builtin component
   - id: store_original_data
-    component: builtins://put_blob
+    component: builtin://put_blob
     input:
       data: { $from: { workflow: input }, path: user_data }
 
   # Step 2: Create blob for Python function definition
   - id: create_process_data_blob
-    component: builtins://put_blob
+    component: builtin://put_blob
     input:
       data:
         input_schema:
@@ -36,22 +36,22 @@ steps:
           async def process_data(data, context):
               # Retrieve the original data from blob
               original_data = await context.get_blob(data['blob_id'])
-              
+
               # Process the data (example: add multiply numbers)
               processed_data = {
                   'original': original_data,
                   'config': data['config']
               }
-              
+
               # If original data has numeric values, transform them
               if isinstance(original_data, dict):
                   for key, value in original_data.items():
                       if isinstance(value, (int, float)):
                           processed_data[f'{key}_doubled'] = value * 2
-              
+
               # Store processed data as new blob
               new_blob_id = await context.put_blob(processed_data)
-              
+
               return {
                   'original_blob_id': data['blob_id'],
                   'processed_blob_id': new_blob_id,
@@ -70,7 +70,7 @@ steps:
 
   # Step 4: Retrieve final processed data using builtin component
   - id: get_final_result
-    component: builtins://get_blob
+    component: builtin://get_blob
     input:
       blob_id: { $from: { step: process_blob_data }, path: processed_blob_id }
 

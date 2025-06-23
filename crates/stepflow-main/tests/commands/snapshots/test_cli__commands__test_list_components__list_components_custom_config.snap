@@ -3,9 +3,11 @@ source: crates/stepflow-main/tests/commands/test_list_components.rs
 info:
   program: stepflow
   args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpo6AAlh/custom-config.yml"
+    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpBR6YqE/custom-config.yml"
 ---
 success: true
 exit_code: 0
@@ -13,22 +15,22 @@ exit_code: 0
 Available Components:
 ====================
 
-Component: builtins://create_messages
+Component: builtin://create_messages
   Description: Create a chat message list from system instructions and user prompt
 
-Component: builtins://eval
+Component: builtin://eval
   Description: Execute a nested workflow with given input and return the result
 
-Component: builtins://get_blob
+Component: builtin://get_blob
   Description: Retrieve JSON data from a blob using its ID
 
-Component: builtins://load_file
+Component: builtin://load_file
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
 
-Component: builtins://openai
+Component: builtin://openai
   Description: Send messages to OpenAI's chat completion API and get a response
 
-Component: builtins://put_blob
+Component: builtin://put_blob
   Description: Store JSON data as a blob and return its content-addressable ID
 
 Total components: 6

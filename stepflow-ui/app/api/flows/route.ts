@@ -6,6 +6,7 @@ import {
   ListWorkflowsResponseSchema,
   ErrorResponseSchema,
   type WorkflowSummary,
+  type StoreFlowResponse,
 } from '@/lib/api-types'
 
 // GET /api/flows - List all flows
@@ -59,8 +60,12 @@ export async function POST(request: NextRequest) {
     const stepflowClient = getStepFlowClient()
 
     // Store the flow in the core server to get its hash
-    const storeResult = await stepflowClient.storeFlow(flow)
+    const storeResult = await stepflowClient.storeFlow(flow) as StoreFlowResponse
     const flowHash = storeResult.flowHash
+    
+    if (!flowHash) {
+      throw new Error('Failed to store flow: no flow hash returned')
+    }
 
     // Store in our database with metadata
     const workflow = await prisma.workflow.upsert({

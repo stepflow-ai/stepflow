@@ -12,9 +12,9 @@ input_schema:
       description: "Target revenue for analysis"
 
 steps:
-  # Load the sales data from file  
+  # Load the sales data from file
   - id: load_sales_data
-    component: "builtins://load_file"
+    component: "builtin://load_file"
     input:
       path: { $from: "$input", path: "data_file_path" }
 

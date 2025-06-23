@@ -4,6 +4,7 @@ import {
   ErrorResponseSchema,
   ExecuteAdHocWorkflowRequestSchema,
   ExecuteWorkflowResponseSchema,
+  type StoreFlowResponse,
 } from '@/lib/api-types'
 
 // GET /api/runs - List all runs (proxy to core server)  
@@ -68,7 +69,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 400 })
     }
     
-    const flowHash = storeResult.flowHash
+    const storeResponse = storeResult as StoreFlowResponse
+    const flowHash = storeResponse.flowHash
+    
+    if (!flowHash) {
+      throw new Error('Failed to store workflow: no flow hash returned')
+    }
     
     // Execute the workflow directly by hash
     let runResult

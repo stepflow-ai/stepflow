@@ -4,7 +4,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_analysis::{FlowAnalysis, analyze_workflow_dependencies};
+use stepflow_analysis::{AnalysisResult, FlowAnalysis, analyze_workflow_dependencies};
 use stepflow_core::workflow::{Flow, FlowHash};
 use stepflow_execution::StepFlowExecutor;
 use utoipa::ToSchema;
@@ -23,8 +23,12 @@ pub struct StoreFlowRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreFlowResponse {
-    /// The hash of the stored flow
-    pub flow_hash: FlowHash,
+    /// The hash of the stored flow (only present if no fatal diagnostics)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_hash: Option<FlowHash>,
+    /// Analysis result with diagnostics and optional analysis
+    #[serde(flatten)]
+    pub analysis_result: AnalysisResult,
 }
 
 /// Response containing a flow definition and its hash
@@ -60,10 +64,24 @@ pub async fn store_flow(
     let flow = req.flow;
     let flow_hash = Flow::hash(&flow);
 
-    let state_store = executor.state_store();
-    state_store.store_workflow(flow.clone()).await?;
+    // First validate the workflow
+    let analysis_result = analyze_workflow_dependencies(flow.clone(), flow_hash.clone())?;
 
-    Ok(Json(StoreFlowResponse { flow_hash }))
+    // Determine if we can store the flow (no fatal diagnostics)
+    let stored_flow_hash = if analysis_result.has_fatal_diagnostics() {
+        // Validation failed: don't store the flow
+        None
+    } else {
+        // Store the flow
+        let state_store = executor.state_store();
+        state_store.store_workflow(flow.clone()).await?;
+        Some(flow_hash)
+    };
+
+    Ok(Json(StoreFlowResponse {
+        flow_hash: stored_flow_hash,
+        analysis_result,
+    }))
 }
 
 /// Get a flow by its hash
@@ -92,7 +110,22 @@ pub async fn get_flow(
 
     // Generate analysis for the flow.
     // TODO: Cache this to avoid re-analysis.
-    let analysis = analyze_workflow_dependencies(flow.clone(), flow_hash.clone())?;
+    let analysis_result = analyze_workflow_dependencies(flow.clone(), flow_hash.clone())?;
+
+    let analysis = match &analysis_result.analysis {
+        Some(analysis) => analysis.clone(),
+        None => {
+            // If validation fails, return a 400 error with diagnostic details
+            let (fatal, error, _warning) = analysis_result.diagnostic_counts();
+            return Err(ErrorResponse {
+                code: axum::http::StatusCode::BAD_REQUEST,
+                message: format!(
+                    "Workflow validation failed with {} fatal and {} error diagnostics",
+                    fatal, error
+                ),
+            });
+        }
+    };
 
     Ok(Json(FlowResponse {
         all_examples: flow.get_all_examples(),

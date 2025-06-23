@@ -51,7 +51,7 @@ cargo run -- run \
 **Purpose**: Tests the built-in component registry, specifically the `create_messages` component.
 
 **What it demonstrates**:
-- Using the `builtins://create_messages` component
+- Using the `builtin://create_messages` component
 - Proper input/output structure for builtin components
 
 **Run it**:
@@ -73,7 +73,7 @@ cargo run -- run \
         "content": "You are a test assistant"
       },
       {
-        "role": "user", 
+        "role": "user",
         "content": "Say hello"
       }
     ]
@@ -128,7 +128,7 @@ The `stepflow-config.yml` includes:
 
 ```yaml
 plugins:
-  - name: builtins
+  - name: builtin
     type: builtin
   - name: python  # Only needed for math-eval example
     type: stdio
@@ -149,7 +149,7 @@ The examples have been updated to use the correct workflow syntax:
 ```yaml
 steps:
   - id: my_eval_step
-    component: "builtins://eval"
+    component: "builtin://eval"
     input:  # Not 'args'
       workflow:
         $literal:  # Required for inline workflow definitions
@@ -169,7 +169,7 @@ output:  # Not 'outputs'
 
 1. **"Component not found" errors**
    - Make sure the builtin plugin is registered in your config
-   - Verify the component URLs (e.g., `builtins://eval`)
+   - Verify the component URLs (e.g., `builtin://eval`)
 
 2. **"Nested flow execution was cancelled" errors**
    - Check that output references use the correct format
@@ -192,7 +192,7 @@ Once you've verified the basic examples work, you can use eval components for:
 ### Regional Analysis Pattern
 ```yaml
 - id: analyze_region
-  component: "builtins://eval"
+  component: "builtin://eval"
   input:
     workflow:
       $literal:
@@ -218,7 +218,7 @@ Once you've verified the basic examples work, you can use eval components for:
 ### Dynamic Workflow Generation
 ```yaml
 - id: process_all_regions
-  component: "builtins://eval"
+  component: "builtin://eval"
   input:
     workflow: { $from: { step: generate_region_workflow }, path: "workflow_def" }
     input: { $from: { step: prepare_region_data }, path: "data" }

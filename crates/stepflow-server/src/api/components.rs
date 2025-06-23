@@ -81,7 +81,7 @@ pub async fn list_components(
             let info = plugin.component_info(&component).await?;
 
             let component_response = ComponentInfoResponse {
-                name: component.url().to_string(),
+                name: component.to_string(),
                 plugin_name: plugin_name.clone(),
                 description: info.description,
                 input_schema: if include_schemas {

@@ -3,7 +3,7 @@ description: "Simple test of the load_file component"
 
 steps:
   - id: load_sales_data
-    component: "builtins://load_file"
+    component: "builtin://load_file"
     input:
       path: "examples/data-pipeline/sales-data.json"
 
