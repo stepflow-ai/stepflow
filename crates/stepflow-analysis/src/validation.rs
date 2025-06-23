@@ -15,7 +15,13 @@ pub fn validate_workflow(flow: &Flow) -> Diagnostics {
 
     // Validate workflow output
     let all_step_ids: HashSet<String> = flow.steps.iter().map(|s| s.id.clone()).collect();
-    validate_value_references(&flow.output, &["output".to_string()], &all_step_ids, "workflow_output", &mut diagnostics);
+    validate_value_references(
+        &flow.output,
+        &["output".to_string()],
+        &all_step_ids,
+        "workflow_output",
+        &mut diagnostics,
+    );
 
     // Check for unreachable steps
     detect_unreachable_steps(flow, &mut diagnostics);
@@ -55,7 +61,10 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
 
     // Warn if workflow has no name
     if flow.name.is_none() || flow.name.as_ref().unwrap().trim().is_empty() {
-        diagnostics.add(DiagnosticMessage::MissingWorkflowName, vec!["name".to_string()]);
+        diagnostics.add(
+            DiagnosticMessage::MissingWorkflowName,
+            vec!["name".to_string()],
+        );
     }
 
     // Warn if workflow has no description
@@ -92,7 +101,13 @@ fn validate_step_references(
     // Validate step input references
     let mut input_path = step_path.clone();
     input_path.push("input".to_string());
-    validate_value_references(&step.input, &input_path, available_steps, &step.id, diagnostics);
+    validate_value_references(
+        &step.input,
+        &input_path,
+        available_steps,
+        &step.id,
+        diagnostics,
+    );
 
     // Validate skip condition references
     if let Some(skip_if) = &step.skip_if {
@@ -136,7 +151,13 @@ fn validate_value_references(
     current_step_id: &str,
     diagnostics: &mut Diagnostics,
 ) {
-    validate_value_references_recursive(value.as_ref(), path, available_steps, current_step_id, diagnostics);
+    validate_value_references_recursive(
+        value.as_ref(),
+        path,
+        available_steps,
+        current_step_id,
+        diagnostics,
+    );
 }
 
 /// Recursively validate references in a JSON value
@@ -152,9 +173,13 @@ fn validate_value_references_recursive(
             if obj.contains_key("$from") {
                 // Parse and validate expression
                 match serde_json::from_value::<Expr>(value.clone()) {
-                    Ok(expr) => {
-                        validate_expression_references(&expr, path, available_steps, current_step_id, diagnostics)
-                    }
+                    Ok(expr) => validate_expression_references(
+                        &expr,
+                        path,
+                        available_steps,
+                        current_step_id,
+                        diagnostics,
+                    ),
                     Err(e) => {
                         diagnostics.add(
                             DiagnosticMessage::InvalidReferenceExpression {
@@ -173,7 +198,13 @@ fn validate_value_references_recursive(
                 for (key, val) in obj.iter() {
                     let mut field_path = path.to_vec();
                     field_path.push(key.clone());
-                    validate_value_references_recursive(val, &field_path, available_steps, current_step_id, diagnostics);
+                    validate_value_references_recursive(
+                        val,
+                        &field_path,
+                        available_steps,
+                        current_step_id,
+                        diagnostics,
+                    );
                 }
             }
         }
@@ -182,7 +213,13 @@ fn validate_value_references_recursive(
             for (index, val) in arr.iter().enumerate() {
                 let mut element_path = path.to_vec();
                 element_path.push(index.to_string());
-                validate_value_references_recursive(val, &element_path, available_steps, current_step_id, diagnostics);
+                validate_value_references_recursive(
+                    val,
+                    &element_path,
+                    available_steps,
+                    current_step_id,
+                    diagnostics,
+                );
             }
         }
         _ => {
@@ -200,7 +237,11 @@ fn validate_expression_references(
     diagnostics: &mut Diagnostics,
 ) {
     match expr {
-        Expr::Ref { from, path: field_path, .. } => match from {
+        Expr::Ref {
+            from,
+            path: field_path,
+            ..
+        } => match from {
             BaseRef::Step { step } => {
                 // Check for self-reference
                 if current_step_id == step {
@@ -339,9 +380,7 @@ fn validate_component(component: &Component, path: &[String], diagnostics: &mut 
                 // Extract step_id from path for backwards compatibility with DiagnosticMessage
                 let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();
                 diagnostics.add(
-                    DiagnosticMessage::EmptyComponentName {
-                        step_id,
-                    },
+                    DiagnosticMessage::EmptyComponentName { step_id },
                     path.to_vec(),
                 );
             }

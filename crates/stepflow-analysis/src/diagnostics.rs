@@ -333,7 +333,8 @@ impl Diagnostics {
 
     /// Add a diagnostic with a specific path
     pub fn add(&mut self, message: DiagnosticMessage, path: Vec<String>) {
-        self.diagnostics.push(Diagnostic::new_with_path(message, path));
+        self.diagnostics
+            .push(Diagnostic::new_with_path(message, path));
     }
 
     /// Check if there are any fatal diagnostics
@@ -351,10 +352,7 @@ impl Diagnostics {
 
     /// Get all diagnostics that should be shown by default (excludes ignored)
     pub fn shown_by_default(&self) -> Vec<&Diagnostic> {
-        self.diagnostics
-            .iter()
-            .filter(|d| !d.ignore)
-            .collect()
+        self.diagnostics.iter().filter(|d| !d.ignore).collect()
     }
 
     /// Get count of diagnostics at each level (fatal, error, warning)
@@ -419,12 +417,18 @@ mod tests {
     fn test_diagnostics_collection() {
         let mut diagnostics = Diagnostics::new();
 
-        diagnostics.add(DiagnosticMessage::DuplicateStepId {
-            step_id: "test".to_string(),
-        }, vec![]);
-        diagnostics.add(DiagnosticMessage::MockComponent {
-            step_id: "test".to_string(),
-        }, vec![]);
+        diagnostics.add(
+            DiagnosticMessage::DuplicateStepId {
+                step_id: "test".to_string(),
+            },
+            vec![],
+        );
+        diagnostics.add(
+            DiagnosticMessage::MockComponent {
+                step_id: "test".to_string(),
+            },
+            vec![],
+        );
 
         assert_eq!(diagnostics.len(), 2);
         assert!(diagnostics.has_fatal());

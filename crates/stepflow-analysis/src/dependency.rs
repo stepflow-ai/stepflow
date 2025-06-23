@@ -484,10 +484,7 @@ mod tests {
             !result.has_analysis(),
             "Expected no analysis due to fatal diagnostics"
         );
-        assert!(
-            result.has_fatal_diagnostics(),
-            "Expected fatal diagnostics"
-        );
+        assert!(result.has_fatal_diagnostics(), "Expected fatal diagnostics");
 
         let (fatal, _error, _warning) = result.diagnostic_counts();
         assert!(fatal > 0, "Expected fatal diagnostics");
@@ -555,9 +552,12 @@ mod tests {
         let flow = create_test_flow();
         let analysis_result = analyze_dependencies_internal(Arc::new(flow), "test".into()).unwrap();
         let mut diagnostics = Diagnostics::new();
-        diagnostics.add(DiagnosticMessage::MockComponent {
-            step_id: "test".to_string(),
-        }, vec![]);
+        diagnostics.add(
+            DiagnosticMessage::MockComponent {
+                step_id: "test".to_string(),
+            },
+            vec![],
+        );
 
         let result = crate::types::AnalysisResult::with_analysis(analysis_result, diagnostics);
         assert!(result.has_analysis());
@@ -569,9 +569,12 @@ mod tests {
 
         // Test without analysis
         let mut diagnostics = Diagnostics::new();
-        diagnostics.add(DiagnosticMessage::DuplicateStepId {
-            step_id: "test".to_string(),
-        }, vec![]);
+        diagnostics.add(
+            DiagnosticMessage::DuplicateStepId {
+                step_id: "test".to_string(),
+            },
+            vec![],
+        );
 
         let result = crate::types::AnalysisResult::with_diagnostics_only(diagnostics);
         assert!(!result.has_analysis());

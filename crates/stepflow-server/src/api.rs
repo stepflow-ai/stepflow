@@ -16,9 +16,7 @@ const FLOW_TAG: &str = "Flow";
 const RUN_TAG: &str = "Run";
 const DEBUG_TAG: &str = "Debug";
 
-pub use flows::{
-    StoreFlowRequest, StoreFlowResponse,
-};
+pub use flows::{StoreFlowRequest, StoreFlowResponse};
 pub use runs::{CreateRunRequest, CreateRunResponse};
 
 #[derive(OpenApi)]
