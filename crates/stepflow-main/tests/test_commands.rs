@@ -20,7 +20,7 @@ pub fn init_test_logging() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_command() {
+async fn test_run_test_workflows() {
     init_test_logging();
 
     // Test the stepflow test command on our test directory
@@ -36,5 +36,25 @@ async fn test_command() {
 
     // The test should succeed (basic.yaml should pass, no_tests.yaml should be skipped)
     let result = result.expect("Test command should succeed");
+    assert_eq!(result, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_run_example_workflows() {
+    init_test_logging();
+
+    // Test the stepflow test command on our examples directory
+    let test_path = std::path::Path::new("../../examples");
+    let test_options = stepflow_main::test::TestOptions {
+        cases: vec![],
+        update: false,
+        diff: false,
+    };
+
+    // This should find and run tests in the examples directory
+    let result = stepflow_main::test::run_tests(test_path, None, test_options).await;
+
+    // The test should succeed - all example workflows with test cases should pass
+    let result = result.expect("Example test command should succeed");
     assert_eq!(result, 0);
 }

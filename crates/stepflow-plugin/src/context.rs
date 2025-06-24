@@ -1,4 +1,5 @@
 use futures::future::{BoxFuture, FutureExt as _};
+use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
@@ -40,6 +41,9 @@ pub trait Context: Send + Sync {
 
     /// Get the state store for this executor.
     fn state_store(&self) -> &Arc<dyn StateStore>;
+
+    /// Working directory of the StepFlow Config.
+    fn working_directory(&self) -> &Path;
 }
 
 /// Execution context that combines a Context with an execution ID.
@@ -97,5 +101,9 @@ impl Context for ExecutionContext {
         input: ValueRef,
     ) -> BoxFuture<'_, crate::Result<FlowResult>> {
         self.context.execute_flow(flow, workflow_hash, input)
+    }
+
+    fn working_directory(&self) -> &Path {
+        self.context.working_directory()
     }
 }

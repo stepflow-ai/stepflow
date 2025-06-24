@@ -32,7 +32,7 @@ pub fn init_test_logging() {
 /// Helper to create a test server with in-memory state
 async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
     let state_store = Arc::new(InMemoryStateStore::new());
-    let executor = StepFlowExecutor::new(state_store);
+    let executor = StepFlowExecutor::new(state_store, std::path::PathBuf::from("."));
 
     executor
         .register_plugin(

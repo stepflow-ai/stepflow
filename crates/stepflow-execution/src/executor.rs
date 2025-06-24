@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use crate::workflow_executor::{WorkflowExecutor, execute_workflow};
 use crate::{ExecutionError, Result};
@@ -19,6 +19,7 @@ type FutureFlowResult = futures::future::Shared<oneshot::Receiver<FlowResult>>;
 /// Main executor of StepFlow workflows.
 pub struct StepFlowExecutor {
     state_store: Arc<dyn StateStore>,
+    working_directory: PathBuf,
     plugins: RwLock<HashMap<String, Arc<DynPlugin<'static>>>>,
     /// Pending workflows and their result futures.
     // TODO: Should treat this as a cache and evict old executions.
@@ -32,10 +33,11 @@ pub struct StepFlowExecutor {
 
 impl StepFlowExecutor {
     /// Create a new stepflow executor with a custom state store.
-    pub fn new(state_store: Arc<dyn StateStore>) -> Arc<Self> {
+    pub fn new(state_store: Arc<dyn StateStore>, working_directory: PathBuf) -> Arc<Self> {
         Arc::new_cyclic(|weak| Self {
             plugins: RwLock::new(HashMap::new()),
             state_store,
+            working_directory,
             pending: Arc::new(RwLock::new(HashMap::new())),
             debug_sessions: Arc::new(RwLock::new(HashMap::new())),
             self_weak: weak.clone(),
@@ -46,7 +48,7 @@ impl StepFlowExecutor {
     ///
     /// Will initialize the plugins.
     pub fn new_in_memory() -> Arc<Self> {
-        Self::new(Arc::new(InMemoryStateStore::new()))
+        Self::new(Arc::new(InMemoryStateStore::new()), PathBuf::from("."))
     }
 
     pub fn executor(&self) -> Arc<Self> {
@@ -280,6 +282,10 @@ impl Context for StepFlowExecutor {
     fn state_store(&self) -> &Arc<dyn StateStore> {
         &self.state_store
     }
+
+    fn working_directory(&self) -> &std::path::Path {
+        &self.working_directory
+    }
 }
 
 #[cfg(test)]
@@ -310,7 +316,7 @@ mod tests {
     async fn test_executor_with_custom_state_store() {
         // Create executor with custom state store
         let state_store = Arc::new(InMemoryStateStore::new());
-        let executor = StepFlowExecutor::new(state_store.clone());
+        let executor = StepFlowExecutor::new(state_store.clone(), PathBuf::from("."));
 
         // Create blob through executor context
         let test_data = json!({"custom": "state store test"});
