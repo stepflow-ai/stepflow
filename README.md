@@ -1,217 +1,234 @@
-# Step Flow
+<a id="readme-top"></a>
+
+<!-- PROJECT SHIELDS -->
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![Apache License][license-shield]][license-url]
+
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+  <a href="https://github.com/riptano/stepflow">
+    <img src="images/logo.png" alt="Logo" width="80" height="80">
+  </a>
+
+  <h3 align="center">StepFlow</h3>
+
+  <p align="center">
+    Open protocol and runtime for building GenAI workflows
+    <br />
+    <a href="https://fuzzy-journey-4j3y1we.pages.github.io/"><strong>Explore the docs »</strong></a>
+    <br />
+    <br />
+    <a href="https://github.com/riptano/stepflow">View Demo</a>
+    &middot;
+    <a href="https://github.com/riptano/stepflow/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    &middot;
+    <a href="https://github.com/riptano/stepflow/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+  </p>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+    </li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ol>
+</details>
+
+<!-- ABOUT THE PROJECT -->
+## About The Project
 
 StepFlow is an open protocol and runtime for building, executing, and scaling GenAI workflows across local and cloud environments. Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production. With durability, fault-tolerance, and an open specification, StepFlow empowers anyone to create, share, and run AI workflows across platforms and tools.
 
+### Key Features
+
 - **⚙️ Reliable, Scalable Workflow Execution**
-   Run workflows locally with confidence they’ll scale. StepFlow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
+   Run workflows locally with confidence they'll scale. StepFlow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
 - **🔐 Secure, Isolated Components**
    Each workflow step runs in a sandboxed process or container with strict resource and environment controls. StepFlow's design prioritizes security, reproducibility, and platform independence.
 - **🌐 Open, Portable Workflow Standard**
    Build once, run anywhere. The StepFlow protocol is open and extensible, enabling workflow portability across different environments and platforms.
 
-## Overview
+### What StepFlow Enables
 
-Step Flow enables developers to:
 - Define AI workflows using YAML or JSON
 - Execute workflows with built-in support for parallel execution
 - Extend functionality through step services
 - Handle errors at both flow and step levels
 - Use as both a library and a service
 
-## Architecture
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-Most steps are defined in a step-service, which the executor invokes using a JSON-RPC protocol similar to the Language Server Protocol (LSP) or Model Context Protocol (MCP).
-
-### Core Components
-
-1. **Execution Engine**
-   - Workflow parser and validator
-   - Parallel execution support
-   - Error handling and retry mechanisms
-   - State management
-
-2. **HTTP Server & API**
-   - REST API for workflow management
-   - OpenAPI specification
-   - Execution tracking and debugging
-   - Endpoint management with versioning
-
-3. **React Frontend**
-   - Web interface for workflow management
-   - Real-time execution monitoring
-   - Interactive debugging tools
-   - Workflow visualization
-
-4. **Step Services**
-   - JSON-RPC based communication
-   - Service discovery and registration
-   - Built-in step implementations
-   - Extensible service architecture
-
-5. **Workflow Definition**
-   - YAML/JSON based workflow specification
-   - Support for parallel execution
-   - Configurable error handling
-   - Step service integration
-
-### Organization
-
-- `crates/stepflow-protocol` defines the JSON-RPC protocol using Rust structs and `serde`.
-- `crates/stepflow-core` defines the Rust structs representing workflows, components, and value expressions.
-- `crates/stepflow-plugin` provides the trait for component execution plugins and plugin management.
-- `crates/stepflow-builtins` provides built-in component implementations including OpenAI integration.
-- `crates/stepflow-components-mcp` provides a component plugin for executing MCP (Model Context Protocol) tools.
-- `crates/stepflow-execution` provides the core execution logic for workflows with parallel execution support.
-- `crates/stepflow-main` provides the main binary for executing workflows or running a stepflow service.
-- `crates/stepflow-mock` provides mock implementations for testing purposes.
-- `stepflow-ui/` contains the React frontend for web-based workflow management and monitoring.
-
+<!-- GETTING STARTED -->
 ## Getting Started
+To get a local copy up and running quickly follow these simple steps.
+### Prerequisites
 
-*[Installation and usage instructions will be added as the project develops]*
+- Rust 1.70+ (for building from source)
+- Python 3.8+ (for Python SDK examples)
 
-### Build and Run
+### Installation
 
-The easiest way to run a workflow is to run it locally.
-To do this, you need to create a `stepflow-config.yaml`.
-If you don't specify one, the CLI will attempt to locate one in the directory containing the workflow.
-
-The following command builds and uses the CLI to run a workflow.
-
-```sh
-cargo run -- run --flow=<flow.yaml> --input=<input_path.json>
-```
-
-If you wish to build and run separately, you can use the following commands:
-
-```sh
-cargo build
-./target/debug/stepflow-main run --flow=<flow.yaml> --input=<input_path.json>
-```
-
-## Development
-
-This project is built in Rust and uses:
-- `serde` for serialization/deserialization
-- JSON-RPC for service communication
-- Async runtime for parallel execution
-
-### Building and Testing
-
-Run tests with `cargo test` or `cargo insta test --unreferenced=delete --review`.
-The latter runs uses `insta` to delete outdated snapshots and review any changes after the tests run.
-Both commands will fail if any test fails, including if the snapshot output doesn't match the actual output.
-
-### Cargo Deny
-
-This project uses [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) to check dependencies for security vulnerabilities and license compliance.
-To run cargo-deny, use the following command:
-
-```sh
-cargo install --locked cargo-deny
-cargo deny check
-```
-
-### HTTP Server Development
-
-StepFlow includes an HTTP server for REST API access and a React frontend for workflow management.
-
-#### Starting the HTTP Server
-
-```bash
-# Start the server on default port (7837) without components
-cargo run -- serve
-
-# Start the server with a specific config and port
-cargo run -- serve --port=8080 --config=path/to/stepflow-config.yml
-
-# Check server health
-curl http://localhost:7837/api/v1/health
-
-# View OpenAPI specification
-curl http://localhost:7837/openapi.json
-```
-
-#### Starting the Frontend
-
-The React frontend provides a web interface for managing workflows and executions.
-
-```bash
-# Install dependencies (first time only)
-cd stepflow-ui
-npm install
-
-# Start the development server
-npm run dev
-```
-
-The frontend will be available at `http://localhost:5173` by default.
-
-#### Full Development Setup
-
-For complete development with both server and frontend:
-
-```bash
-# Terminal 1: Start the StepFlow server
-cargo run -- serve --port=7837
-
-# Terminal 2: Start the React frontend
-cd stepflow-ui
-npm run dev
-```
-
-#### Environment Configuration
-
-The frontend can be configured to connect to different server instances:
-
-```bash
-# Create a .env file in stepflow-ui/ directory
-echo "STEPFLOW_BASE_URL=http://localhost:7837/api/v1" > stepflow-ui/.env
-```
-
-#### API Testing
-
-Test the server API:
-
-```bash
-# Health check
-curl http://localhost:7837/api/v1/health
-
-# List components (requires config with plugins)
-curl http://localhost:7837/api/v1/components
-
-# Execute a workflow (ad-hoc)
-curl -X POST http://localhost:7837/api/v1/execute \
-  -H "Content-Type: application/json" \
-  -d '{"workflow": {...}, "input": {...}}'
-
-# List executions
-curl http://localhost:7837/api/v1/executions
-```
-
-## Frontend API Client Code Generation
-
-The React frontend (`stepflow-ui/`) uses a generated TypeScript API client based on the StepFlow OpenAPI specification. This client is **not checked into version control** and should be (re)generated whenever the API changes.
-
-### How to Generate the API Client
-
-1. **Start the StepFlow server** so the OpenAPI spec is available (default: `http://localhost:7837/openapi.json`).
-
-2. **Install dependencies** (first time only):
+1. Clone the repository
    ```sh
-   cd stepflow-ui
-   pnpm install
+   git clone https://github.com/riptano/stepflow.git
+   cd stepflow
    ```
 
-3. **Generate the API client:**
+2. Build the project
    ```sh
-   pnpm generate:api-client
+   cargo build --release
    ```
-   This will generate the client in `stepflow-ui/src/api-client/`.
 
-> **Note:** The generated code is excluded from version control. If you update the OpenAPI spec or backend API, always re-run this step.
+3. Run a sample workflow
+   ```sh
+   cargo run -- run --flow=examples/python/basic.yaml --input=examples/python/input1.json
+   ```
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- USAGE EXAMPLES -->
+## Usage
+
+### Quick Start Example
+
+Here's a simple workflow that demonstrates basic StepFlow usage:
+
+**workflow.yaml:**
+```yaml
+input_schema:
+  type: object
+  properties:
+    m:
+      type: integer
+    n:
+      type: integer
+
+steps:
+  - id: add_numbers
+    component: python://add
+    args:
+      a: { $from: $input, path: m }
+      b: { $from: $input, path: n }
+
+outputs:
+  result: { $from: add_numbers, path: result }
+```
+
+**input.json:**
+```json
+{
+  "m": 8,
+  "n": 5
+}
+```
+
+**Run the workflow:**
+```sh
+cargo run -- run --flow=workflow.yaml --input=input.json
+```
+
+### Configuration
+
+Create a `stepflow-config.yaml` file to define available plugins:
+
+```yaml
+plugins:
+  - name: builtin
+    type: builtin
+  - name: python
+    type: stdio
+    command: uv
+    args: ["--project", "sdks/python", "run", "stepflow_sdk"]
+```
+
+_For more examples, please refer to the [Documentation](https://fuzzy-journey-4j3y1we.pages.github.io/)_
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- ROADMAP -->
+## Roadmap
+
+- [x] Workflow execution and debugging
+- [x] JSON-RPC over stdio protocol for component servers
+- [x] Initial Stepflow UI
+- [x] SQL state store for durable execution
+- [ ] MCP tools as components
+- [ ] Container-based component servers
+- [ ] JSON-RPC over http protocol for remote execution
+- [ ] Improve Python SDK
+- [ ] Enrich component libraries
+- [ ] Distributed state stores for scalable execution
+- [ ] Kubernetes and container based deployments
+
+See the [open issues](https://github.com/riptano/stepflow/issues) for a full list of proposed features (and known issues).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTRIBUTING -->
+## Contributing
+
+Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+Don't forget to give the project a star! Thanks again!
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+For detailed development instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Top contributors:
+
+<a href="https://github.com/riptano/stepflow/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=riptano/stepflow" alt="contrib.rocks image" />
+</a>
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- LICENSE -->
 ## License
 
-StepFlow and it's components are licensed under the Apache License 2.0.
-See the [LICENSE](LICENSE) file for details.
+Distributed under the Apache License. See `LICENSE.txt` for more information.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTACT -->
+## Contact
+
+Project Link: [https://github.com/riptano/stepflow](https://github.com/riptano/stepflow)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- MARKDOWN LINKS & IMAGES -->
+<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
+[contributors-shield]: https://img.shields.io/github/contributors/riptano/stepflow.svg?style=for-the-badge
+[contributors-url]: https://github.com/riptano/stepflow/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/riptano/stepflow.svg?style=for-the-badge
+[forks-url]: https://github.com/riptano/stepflow/network/members
+[stars-shield]: https://img.shields.io/github/stars/riptano/stepflow.svg?style=for-the-badge
+[stars-url]: https://github.com/riptano/stepflow/stargazers
+[issues-shield]: https://img.shields.io/github/issues/riptano/stepflow.svg?style=for-the-badge
+[issues-url]: https://github.com/riptano/stepflow/issues
+[license-shield]: https://img.shields.io/github/license/riptano/stepflow.svg?style=for-the-badge
+[license-url]: https://github.com/riptano/stepflow/blob/master/LICENSE.txt

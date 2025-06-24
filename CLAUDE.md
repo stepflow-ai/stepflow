@@ -187,7 +187,22 @@ The `FlowResult` enum enables proper error propagation through workflow executio
 - `Skipped`: Step was conditionally skipped
 - `Failed(FlowError)`: Step failed with a business logic error
 
+#### Error Handling Best Practices
+
+- Define custom error types in `error.rs` at the crate root (or in appropriate modules)
+- Include a `type Result<T, E = TheErrorType> = std::result::Result<T, E>` alias
+- Use `thiserror` for defining error types
+- Include context in error messages
+- Document error variants and their meanings
+
 ## Code Style & Best Practices
+
+### Rust Code Standards
+
+- Use `rustfmt` for consistent code formatting (run `cargo fmt`)
+- Use `clippy` for linting (run `cargo clippy`)
+- Follow the Rust API Guidelines (https://rust-lang.github.io/api-guidelines/)
+- Maximum line length: 100 characters
 
 ### Module Organization
 
@@ -224,6 +239,46 @@ fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>> {
 }
 ```
 
+### Documentation
+
+- Use `///` for public API documentation
+- Use `//!` for module-level documentation
+- Include examples in documentation where appropriate
+- Document all public types, functions, and traits
+- Use markdown in documentation comments
+
+### Testing
+
+- Place unit tests in the same file as the code they test
+- Use `#[test]` for unit tests
+- Use `#[cfg(test)]` for test modules
+- Follow the pattern: `mod tests { ... }`
+- Place integration tests in the `tests/` directory
+- Test both success and failure cases
+
+### Git Commit Messages
+
+- Use conventional commit prefixes:
+  - `feat:` for new features
+  - `fix:` for bug fixes
+  - `docs:` for documentation changes
+  - `style:` for formatting changes
+  - `refactor:` for code refactoring
+  - `test:` for adding or modifying tests
+  - `chore:` for maintenance tasks
+- Use present tense ("Add feature" not "Added feature")
+- Start with a capital letter
+- Keep the first line under 50 characters
+
+### Logging and Tracing
+
+- Use the `tracing` package for all logging and instrumentation
+- Use appropriate log levels (error, warn, info, debug, trace)
+- Include relevant context in log messages
+- Use structured logging where appropriate
+- Use spans for tracking operation context
+- Use events for discrete log messages
+
 ### Error Handling Patterns
 
 #### Dual Error System
@@ -240,67 +295,11 @@ StepFlow uses a dual error approach to distinguish between business logic and sy
    - Each crate has its own `error.rs` module with custom error types
    - Uses `error-stack` for rich error context and `thiserror` for error enums
 
-#### Error Handling Best Practices
+#### Advanced Error Patterns
 - Use `FlowError` for expected business failures
 - Use `Result<T, error_stack::Report<YourError>>` for system failures
 - Add context with `error_stack::ResultExt::attach_printable`
 - Define custom error types with `thiserror::Error`
-
-#### Server Error Handling Pattern
-The `stepflow-server` crate follows a specific pattern for HTTP error responses:
-
-**Do NOT create `ErrorResponse` directly.** Instead, create `ServerError` variants and use automatic conversion:
-
-```rust
-// Good: Define error variants in ServerError enum
-#[derive(Debug, thiserror::Error)]
-pub enum ServerError {
-    #[error("Workflow '{0}' not found")]
-    WorkflowNotFound(FlowHash),
-    #[error("No workflows found with name '{0}'")]
-    WorkflowNameNotFound(String),
-}
-
-// Good: Use error_stack::report! and automatic conversion
-return Err(error_stack::report!(ServerError::WorkflowNotFound(hash)));
-
-// Bad: Don't create ErrorResponse directly
-return Err(ErrorResponse::not_found("Workflow not found"));
-```
-
-**Benefits of this pattern:**
-- **Type Safety**: Compile-time checking of error variants
-- **Rich Context**: `error-stack` provides detailed error context and chains
-- **Consistent HTTP Codes**: `ServerError::status_code()` ensures consistent HTTP status mapping
-- **Better Debugging**: Rich error context helps with troubleshooting
-- **Future-Proof**: Easy to add context or change error handling behavior
-
-**Return Type Pattern:**
-- HTTP handlers return `Result<Response, ErrorResponse>`
-- Create `error_stack::Report<ServerError>` for errors
-- Automatic conversion via `From<error_stack::Report<ServerError>>` for `ErrorResponse`
-- Use `.into()` when explicit conversion is needed in `return` statements
-
-#### State Store Error Pattern
-The state store follows a specific pattern for handling "not found" conditions:
-
-- **Use `Option<T>` in `Ok` results**: Things like `NotFound` should be indicated in the `Ok(..)` result by returning `Option<T>`
-- **Reserve `Err` for system failures**: Only use `Err(..)` for actual system/infrastructure errors like database connection failures, serialization errors, etc.
-- **Let the server layer decide HTTP codes**: This allows the server to inspect the `Ok(None)` value and select the appropriate HTTP status code (404, etc.) rather than digging through error stacks
-
-Example patterns:
-```rust
-// Good: Not found is represented as Ok(None)
-fn get_workflow(&self, hash: &FlowHash) -> Result<Option<Arc<Flow>>, StateError>;
-
-// Bad: Not found as an error makes HTTP code selection harder
-fn get_workflow(&self, hash: &FlowHash) -> Result<Arc<Flow>, StateError>;
-```
-
-This pattern enables clean error handling where:
-- `Ok(Some(value))` → 200 OK with data
-- `Ok(None)` → 404 Not Found
-- `Err(system_error)` → 500 Internal Server Error
 
 ### Derive Patterns
 
@@ -321,11 +320,19 @@ The `stepflow-config.yml` file defines plugins and state storage available to th
 
 ```yaml
 plugins:
-  - name: python  # Plugin identifier
-    type: stdio   # Communication method (stdio or http)
-    command: uv   # Command to execute
+  - name: builtin  # Built-in components
+    type: builtin
+  - name: python   # Plugin identifier
+    type: stdio    # Communication method (stdio or http)
+    command: uv    # Command to execute
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]  # Arguments
 ```
+
+### Plugin Types
+
+- **builtin**: Built-in components (OpenAI, etc.)
+- **stdio**: JSON-RPC over stdio communication
+- **http**: JSON-RPC over HTTP (future feature)
 
 ### State Store Configuration
 
@@ -347,134 +354,12 @@ state_store:
   max_connections: 10                       # Connection pool size
 ```
 
-#### Example Complete Configuration
-```yaml
-plugins:
-  - name: python
-    type: stdio
-    command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
+### Project Dependencies
 
-state_store:
-  type: sqlite
-  database_url: "sqlite:./data/stepflow.db"
-  auto_migrate: true
-  max_connections: 5
-```
-
-### State Store Features
-
-- **Blob Storage**: Content-addressable storage with automatic deduplication
-- **Execution State**: Persistent workflow step results for recovery and debugging
-- **Migration Support**: Automatic schema creation and versioning
-- **Multi-backend**: Extensible design for future database support (PostgreSQL, etc.)
-- **Named Workflows**: Workflows with optional labels for versioning
-
-### Workflow Management
-
-StepFlow provides three workflow access patterns for flexible workflow execution and management:
-
-#### Three Access Patterns
-1. **Ad-hoc workflows**: Execute by hash or definition directly
-2. **Named workflows**: Workflows with a `name` field, accessible by name
-3. **Labeled workflows**: Named workflows with version labels (e.g., "production", "staging", "v1.0")
-
-#### Workflow Structure
-- **Name**: From workflow.name field (e.g., "data-processing")
-- **Label**: Optional version identifier (e.g., "stable", "beta", "v1.2")
-- **Workflow Hash**: Content-based ID linking to the workflow definition
-
-#### API Operations
-
-**Store Workflow:**
-```bash
-# Store workflow (creates hash)
-curl -X POST http://localhost:7837/api/v1/workflows \
-  -H "Content-Type: application/json" \
-  -d '{"workflow": {"name": "my-workflow", "steps": [...]}}'
-```
-
-**Create/Update Labels:**
-```bash
-# Create labeled version
-curl -X PUT http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0 \
-  -H "Content-Type: application/json" \
-  -d '{"workflow_hash": "abc123..."}'
-```
-
-**Execute Workflows:**
-```bash
-# Execute latest version by name
-curl -X POST http://localhost:7837/api/v1/workflows/by-name/my-workflow/execute \
-  -H "Content-Type: application/json" \
-  -d '{"input": {...}}'
-
-# Execute labeled version
-curl -X POST http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0/execute \
-  -H "Content-Type: application/json" \
-  -d '{"input": {...}}'
-
-# Execute by hash
-curl -X POST http://localhost:7837/api/v1/workflows/{hash}/execute \
-  -H "Content-Type: application/json" \
-  -d '{"input": {...}}'
-
-# Execute ad-hoc
-curl -X POST http://localhost:7837/api/v1/executions \
-  -H "Content-Type: application/json" \
-  -d '{"workflow": {...}, "input": {...}}'
-```
-
-**List Workflows:**
-```bash
-# List all workflow names
-curl http://localhost:7837/api/v1/workflows/names
-
-# List all versions of specific workflow
-curl http://localhost:7837/api/v1/workflows/by-name/my-workflow
-
-# List labels for workflow
-curl http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels
-```
-
-**Get Workflows:**
-```bash
-# Get latest version by name
-curl http://localhost:7837/api/v1/workflows/by-name/my-workflow/latest
-
-# Get labeled version
-curl http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0
-
-# Get by hash
-curl http://localhost:7837/api/v1/workflows/{hash}
-```
-
-**Delete Labels:**
-```bash
-# Delete labeled version
-curl -X DELETE http://localhost:7837/api/v1/workflows/by-name/my-workflow/labels/v1.0
-```
-
-#### Database Schema
-
-The workflow-centric design uses workflow_labels table:
-
-```sql
-CREATE TABLE workflow_labels (
-    name TEXT NOT NULL,        -- from workflow.name field
-    label TEXT NOT NULL,       -- like "production", "staging", "latest"
-    workflow_hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (name, label),
-    FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
-);
-```
-
-This design provides:
-- **Three Access Patterns**: Ad-hoc, named, and labeled workflow execution
-- **Content Deduplication**: Multiple names/labels can reference same workflow
-- **Flexible Versioning**: Labels for production, staging, etc.
+- Keep dependencies minimal and well-documented
+- Use workspace dependencies where appropriate
+- Document the purpose of each dependency
+- Keep dependencies up to date
 
 ## Testing
 
