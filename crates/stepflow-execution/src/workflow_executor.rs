@@ -160,6 +160,23 @@ impl WorkflowExecutor {
             // Update tracker and store result
             let newly_unblocked = self.tracker.complete_step(completed_step_index);
 
+            // Update step status based on result
+            let final_status = match &step_result {
+                FlowResult::Success { .. } => stepflow_core::status::StepStatus::Completed,
+                FlowResult::Failed { .. } => stepflow_core::status::StepStatus::Failed,
+                FlowResult::Skipped => stepflow_core::status::StepStatus::Skipped,
+                FlowResult::Streaming { .. } => stepflow_core::status::StepStatus::Running, // Keep as running for streaming
+            };
+
+            self.state_store
+                .update_step_status(
+                    self.context.execution_id(),
+                    completed_step_index,
+                    final_status,
+                )
+                .await
+                .change_context_lazy(|| ExecutionError::StateError)?;
+
             // Record the completed result in the state store
             let step_id = &self.flow.steps[completed_step_index].id;
             tracing::debug!(
@@ -311,7 +328,18 @@ impl WorkflowExecutor {
             })?;
 
         // Keep executing until the target step is runnable or completed
+        let max_iterations = 1000; // Safety limit to prevent infinite loops
+        let mut iteration_count = 0;
+        
         loop {
+            iteration_count += 1;
+            if iteration_count > max_iterations {
+                tracing::error!("execute_until_runnable exceeded maximum iterations ({}), stopping execution", max_iterations);
+                return Err(ExecutionError::StepFailed { 
+                    step: format!("execute_until_runnable for {}", target_step_id) 
+                }.into());
+            }
+            
             let runnable = self.tracker.unblocked_steps();
 
             // Check if target step is runnable
@@ -433,10 +461,31 @@ impl WorkflowExecutor {
             .into());
         }
 
+        // Update step status to Running
+        self.state_store
+            .update_step_status(
+                self.context.execution_id(),
+                step_index,
+                stepflow_core::status::StepStatus::Running,
+            )
+            .await
+            .change_context_lazy(|| ExecutionError::StateError)?;
+
         // Check skip condition if present
         if let Some(skip_if) = &step.skip_if {
             if self.should_skip_step(skip_if).await? {
                 let result = FlowResult::Skipped;
+                
+                // Update step status to Skipped
+                self.state_store
+                    .update_step_status(
+                        self.context.execution_id(),
+                        step_index,
+                        stepflow_core::status::StepStatus::Skipped,
+                    )
+                    .await
+                    .change_context_lazy(|| ExecutionError::StateError)?;
+                
                 self.record_step_completion(step_index, &result).await?;
                 return Ok(StepExecutionResult::new(
                     step_index,
@@ -469,6 +518,23 @@ impl WorkflowExecutor {
         // Get plugin and execute the step
         let plugin = self.executor.get_plugin(&step.component).await?;
         let result = execute_step_async(plugin, step, step_input, self.context.clone()).await?;
+
+        // Update step status based on result
+        let final_status = match &result {
+            FlowResult::Success { .. } => stepflow_core::status::StepStatus::Completed,
+            FlowResult::Failed { .. } => stepflow_core::status::StepStatus::Failed,
+            FlowResult::Skipped => stepflow_core::status::StepStatus::Skipped,
+            FlowResult::Streaming { .. } => stepflow_core::status::StepStatus::Running, // Keep as running for streaming
+        };
+
+        self.state_store
+            .update_step_status(
+                self.context.execution_id(),
+                step_index,
+                final_status,
+            )
+            .await
+            .change_context_lazy(|| ExecutionError::StateError)?;
 
         // For streaming steps, don't record in state store
         if step.streaming {
@@ -626,6 +692,16 @@ impl WorkflowExecutor {
         let newly_unblocked_from_skip = self.tracker.complete_step(step_index);
         let skip_result = FlowResult::Skipped;
 
+        // Update step status to Skipped
+        self.state_store
+            .update_step_status(
+                self.context.execution_id(),
+                step_index,
+                stepflow_core::status::StepStatus::Skipped,
+            )
+            .await
+            .change_context_lazy(|| ExecutionError::StateError)?;
+
         // Record the skipped result in the state store
         self.state_store
             .record_step_result(
@@ -657,6 +733,16 @@ impl WorkflowExecutor {
     ) -> Result<()> {
         let step = &self.flow.steps[step_index];
         tracing::debug!("Starting execution of step {}", step.id);
+
+        // Update step status to Running
+        self.state_store
+            .update_step_status(
+                self.context.execution_id(),
+                step_index,
+                stepflow_core::status::StepStatus::Running,
+            )
+            .await
+            .change_context_lazy(|| ExecutionError::StateError)?;
 
         // Get plugin for this step
         let plugin = self.executor.get_plugin(&step.component).await?;
@@ -742,6 +828,16 @@ impl WorkflowExecutor {
 
         tracing::info!("Executing streaming pipeline step: {}", step_id);
 
+        // Update step status to Running
+        self.state_store
+            .update_step_status(
+                self.context.execution_id(),
+                step_index,
+                stepflow_core::status::StepStatus::Running,
+            )
+            .await
+            .change_context_lazy(|| ExecutionError::StateError)?;
+
         // Find all streaming steps in the pipeline
         let pipeline_steps = self.find_streaming_pipeline_steps(step_index);
         
@@ -755,7 +851,33 @@ impl WorkflowExecutor {
         self.streaming_coordinator = Some(coordinator.clone());
 
         // Execute the entire pipeline
-        coordinator.lock().await.execute_pipeline().await?;
+        let pipeline_result = coordinator.lock().await.execute_pipeline().await;
+        
+        match pipeline_result {
+            Ok(_) => {
+                // Update step status to Completed
+                self.state_store
+                    .update_step_status(
+                        self.context.execution_id(),
+                        step_index,
+                        stepflow_core::status::StepStatus::Completed,
+                    )
+                    .await
+                    .change_context_lazy(|| ExecutionError::StateError)?;
+            }
+            Err(e) => {
+                // Update step status to Failed
+                self.state_store
+                    .update_step_status(
+                        self.context.execution_id(),
+                        step_index,
+                        stepflow_core::status::StepStatus::Failed,
+                    )
+                    .await
+                    .change_context_lazy(|| ExecutionError::StateError)?;
+                return Err(e);
+            }
+        }
 
         // Update dependency tracker
         self.tracker.complete_step(step_index);
@@ -807,6 +929,16 @@ impl WorkflowExecutor {
         let step = &self.flow.steps[step_index];
         let step_id = step.id.clone();
 
+        // Update step status to Running
+        self.state_store
+            .update_step_status(
+                self.context.execution_id(),
+                step_index,
+                stepflow_core::status::StepStatus::Running,
+            )
+            .await
+            .change_context_lazy(|| ExecutionError::StateError)?;
+
         // Resolve step inputs
         let step_input = match self.resolver.resolve(&step.input).await? {
             FlowResult::Success { result } => result,
@@ -831,6 +963,7 @@ impl WorkflowExecutor {
 
         // Execute streaming step in a loop
         let mut chunk_index = 0;
+        
         loop {
             let result = execute_step_async(plugin.clone(), step, step_input.clone(), self.context.clone()).await?;
             
@@ -858,6 +991,17 @@ impl WorkflowExecutor {
                 }
                 FlowResult::Failed { error } => {
                     tracing::error!("Streaming step {} failed: {:?}", step_id, error);
+                    
+                    // Update step status to Failed
+                    self.state_store
+                        .update_step_status(
+                            self.context.execution_id(),
+                            step_index,
+                            stepflow_core::status::StepStatus::Failed,
+                        )
+                        .await
+                        .change_context_lazy(|| ExecutionError::StateError)?;
+                    
                     return Err(ExecutionError::StepFailed { step: step_id }.into());
                 }
                 FlowResult::Skipped => {
@@ -866,6 +1010,16 @@ impl WorkflowExecutor {
                 }
             }
         }
+
+        // Update step status to Completed
+        self.state_store
+            .update_step_status(
+                self.context.execution_id(),
+                step_index,
+                stepflow_core::status::StepStatus::Completed,
+            )
+            .await
+            .change_context_lazy(|| ExecutionError::StateError)?;
 
         // Update dependency tracker for streaming step
         self.tracker.complete_step(step_index);
@@ -1198,15 +1352,26 @@ impl StreamingPipelineCoordinator {
 
                 // Continue processing if not final
                 if !is_final {
-                    // Wait for input from upstream steps
-                    while let Some(input_chunk) = receiver.recv().await {
-                        // Process the input chunk and continue streaming
-                        // This is where you'd call the step again with the new input
-                        tracing::debug!("Step {} received chunk, continuing stream", step_id);
-                        
-                        // For now, just continue the loop
-                        // In a full implementation, you'd call the step again
-                        break;
+                    // Wait for input from upstream steps with a timeout
+                    // This prevents infinite hanging if no chunks are sent
+                    let timeout = tokio::time::Duration::from_secs(30); // 30 second timeout
+                    match tokio::time::timeout(timeout, receiver.recv()).await {
+                        Ok(Some(input_chunk)) => {
+                            // Process the input chunk and continue streaming
+                            tracing::debug!("Step {} received chunk, continuing stream", step_id);
+                            
+                            // For now, just log the chunk and continue
+                            // In a full implementation, you'd call the step again with the new input
+                            tracing::debug!("Step {} processing chunk: {:?}", step_id, input_chunk);
+                        }
+                        Ok(None) => {
+                            // Channel closed, no more input expected
+                            tracing::debug!("Step {} input channel closed", step_id);
+                        }
+                        Err(_) => {
+                            // Timeout reached, no input received
+                            tracing::warn!("Step {} timed out waiting for input chunks", step_id);
+                        }
                     }
                 }
             }
