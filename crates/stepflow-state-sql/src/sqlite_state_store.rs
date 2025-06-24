@@ -1,19 +1,22 @@
 use std::sync::Arc;
 
+use bit_set::BitSet;
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
-use stepflow_core::status::ExecutionStatus;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     blob::BlobId,
-    workflow::{Component, Flow, ValueRef},
+    workflow::{Component, Flow, StepId, ValueRef},
 };
 use stepflow_state::{
-    ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore, StepInfo,
-    StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
+    ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore,
+    StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
 };
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::migrations;
@@ -36,9 +39,11 @@ fn default_auto_migrate() -> bool {
     true
 }
 
-/// SQLite-based StateStore implementation
+/// SQLite-based StateStore implementation with async write queuing
 pub struct SqliteStateStore {
     pool: SqlitePool,
+    write_queue: mpsc::UnboundedSender<StateWriteOperation>,
+    _background_task: JoinHandle<()>,
 }
 
 impl SqliteStateStore {
@@ -54,7 +59,16 @@ impl SqliteStateStore {
             migrations::run_migrations(&pool).await?;
         }
 
-        Ok(Self { pool })
+        // Create write queue and background worker
+        let (write_queue, receiver) = mpsc::unbounded_channel();
+        let pool_for_worker = pool.clone();
+        let background_task = tokio::spawn(Self::process_write_queue(receiver, pool_for_worker));
+
+        Ok(Self {
+            pool,
+            write_queue,
+            _background_task: background_task,
+        })
     }
 
     /// Create SqliteStateStore directly from a database URL
@@ -67,22 +81,169 @@ impl SqliteStateStore {
         Self::new(config).await
     }
 
-    /// Create an in-memory SQLite database for testing
-    pub async fn in_memory() -> Result<Self, StateError> {
-        Self::from_url("sqlite::memory:").await
+    /// Background worker that processes write operations
+    async fn process_write_queue(
+        mut receiver: mpsc::UnboundedReceiver<StateWriteOperation>,
+        pool: SqlitePool,
+    ) {
+        while let Some(operation) = receiver.recv().await {
+            match operation {
+                StateWriteOperation::RecordStepResult {
+                    execution_id,
+                    step_result,
+                } => {
+                    if let Err(e) =
+                        Self::record_step_result_sync(&pool, execution_id, step_result).await
+                    {
+                        tracing::error!("Failed to record step result: {:?}", e);
+                    }
+                }
+                StateWriteOperation::UpdateStepStatuses {
+                    execution_id,
+                    status,
+                    step_indices,
+                } => {
+                    if let Err(e) =
+                        Self::update_step_statuses_sync(&pool, execution_id, status, step_indices)
+                            .await
+                    {
+                        tracing::error!("Failed to update step statuses: {:?}", e);
+                    }
+                }
+                StateWriteOperation::Flush {
+                    execution_id: _,
+                    completion_notify,
+                } => {
+                    // All previous operations are already processed at this point
+                    let _ = completion_notify.send(Ok(()));
+                }
+            }
+        }
     }
 
-    /// Ensure an execution record exists
-    async fn ensure_execution_exists(&self, execution_id: Uuid) -> Result<(), StateError> {
-        let sql = "INSERT OR IGNORE INTO executions (id) VALUES (?)";
+    /// Synchronous version of create_execution for background worker
+    async fn create_execution_sync(
+        pool: &SqlitePool,
+        execution_id: Uuid,
+        workflow_hash: FlowHash,
+        workflow_name: Option<String>,
+        workflow_label: Option<String>,
+        debug_mode: bool,
+        input: ValueRef,
+    ) -> Result<(), StateError> {
+        let input_json =
+            serde_json::to_string(input.as_ref()).change_context(StateError::Serialization)?;
+        let sql = "INSERT INTO executions (id, workflow_hash, workflow_name, workflow_label, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
 
         sqlx::query(sql)
             .bind(execution_id.to_string())
-            .execute(&self.pool)
+            .bind(workflow_hash.to_string())
+            .bind(workflow_name)
+            .bind(workflow_label)
+            .bind(debug_mode)
+            .bind(&input_json)
+            .execute(pool)
             .await
             .change_context(StateError::Internal)?;
 
         Ok(())
+    }
+
+    /// Synchronous version of record_step_result for background worker
+    async fn record_step_result_sync(
+        pool: &SqlitePool,
+        execution_id: Uuid,
+        step_result: StepResult,
+    ) -> Result<(), StateError> {
+        // Ensure execution exists
+        Self::ensure_execution_exists_static(pool, execution_id)
+            .await
+            .change_context(StateError::Internal)?;
+
+        // Serialize the FlowResult
+        let result_json = serde_json::to_string(step_result.result())
+            .change_context(StateError::Serialization)
+            .change_context(StateError::Internal)?;
+
+        // Insert or replace step result
+        let sql = "INSERT OR REPLACE INTO step_results (execution_id, step_index, step_id, result) VALUES (?, ?, ?, ?)";
+
+        sqlx::query(sql)
+            .bind(execution_id.to_string())
+            .bind(step_result.step_idx() as i64)
+            .bind(step_result.step_id())
+            .bind(&result_json)
+            .execute(pool)
+            .await
+            .change_context(StateError::Internal)?;
+
+        Ok(())
+    }
+
+    /// Synchronous version of update_step_statuses for background worker
+    async fn update_step_statuses_sync(
+        pool: &SqlitePool,
+        execution_id: Uuid,
+        status: StepStatus,
+        step_indices: BitSet,
+    ) -> Result<(), StateError> {
+        if step_indices.is_empty() {
+            return Ok(());
+        }
+
+        // Begin transaction for batching
+        let mut tx = pool.begin().await.change_context(StateError::Internal)?;
+
+        let status_str = match status {
+            StepStatus::Blocked => "blocked",
+            StepStatus::Runnable => "runnable",
+            StepStatus::Running => "running",
+            StepStatus::Completed => "completed",
+            StepStatus::Failed => "failed",
+            StepStatus::Skipped => "skipped",
+        };
+
+        let sql = "UPDATE step_info SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE execution_id = ? AND step_index = ?";
+
+        for step_index in step_indices.iter() {
+            sqlx::query(sql)
+                .bind(status_str)
+                .bind(execution_id.to_string())
+                .bind(step_index as i64)
+                .execute(&mut *tx)
+                .await
+                .change_context(StateError::Internal)?;
+        }
+
+        tx.commit().await.change_context(StateError::Internal)?;
+        Ok(())
+    }
+
+    /// Static version of ensure_execution_exists for background worker
+    async fn ensure_execution_exists_static(
+        pool: &SqlitePool,
+        execution_id: Uuid,
+    ) -> Result<(), StateError> {
+        let sql = "SELECT 1 FROM executions WHERE id = ? LIMIT 1";
+        let exists = sqlx::query(sql)
+            .bind(execution_id.to_string())
+            .fetch_optional(pool)
+            .await
+            .change_context(StateError::Internal)?
+            .is_some();
+
+        if !exists {
+            return Err(error_stack::report!(StateError::ExecutionNotFound {
+                execution_id
+            }));
+        }
+
+        Ok(())
+    }
+
+    /// Create an in-memory SQLite database for testing
+    pub async fn in_memory() -> Result<Self, StateError> {
+        Self::from_url("sqlite::memory:").await
     }
 }
 
@@ -140,40 +301,6 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn record_step_result(
-        &self,
-        execution_id: Uuid,
-        step_result: StepResult<'_>,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        // Convert to owned version to move into async block
-        let step_result = step_result.to_owned();
-        async move {
-            // Ensure execution exists
-            self.ensure_execution_exists(execution_id)
-                .await
-                .change_context(StateError::Internal)?;
-
-            // Serialize the FlowResult
-            let result_json = serde_json::to_string(step_result.result())
-                .change_context(StateError::Serialization)
-                .change_context(StateError::Internal)?;
-
-            // Insert or replace step result
-            let sql = "INSERT OR REPLACE INTO step_results (execution_id, step_index, step_id, result) VALUES (?, ?, ?, ?)";
-
-            sqlx::query(sql)
-                .bind(execution_id.to_string())
-                .bind(step_result.step_idx() as i64)
-                .bind(step_result.step_id())
-                .bind(&result_json)
-                .execute(&self.pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(())
-        }.boxed()
-    }
-
     fn get_step_result_by_index(
         &self,
         execution_id: Uuid,
@@ -208,7 +335,7 @@ impl StateStore for SqliteStateStore {
     fn get_step_result_by_id(
         &self,
         execution_id: Uuid,
-        step_id: &str,
+        step_id: StepId,
     ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
         let step_id = step_id.to_string();
         async move {
@@ -240,7 +367,7 @@ impl StateStore for SqliteStateStore {
     fn list_step_results(
         &self,
         execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult<'static>>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>> {
         async move {
             let sql = "SELECT step_index, step_id, result FROM step_results WHERE execution_id = ? ORDER BY step_index";
 
@@ -574,27 +701,24 @@ impl StateStore for SqliteStateStore {
         debug_mode: bool,
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        // Execute synchronously to avoid race condition with step results
         let pool = self.pool.clone();
         let workflow_name = workflow_name.map(|s| s.to_string());
         let workflow_label = workflow_label.map(|s| s.to_string());
-        let workflow_hash = workflow_hash.to_string();
+
         async move {
-            let input_json = serde_json::to_string(input.as_ref()).change_context(StateError::Serialization)?;
-            let sql = "INSERT INTO executions (id, workflow_hash, workflow_name, workflow_label, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
-
-            sqlx::query(sql)
-                .bind(execution_id.to_string())
-                .bind(&workflow_hash)
-                .bind(workflow_name)
-                .bind(workflow_label)
-                .bind(debug_mode)
-                .bind(&input_json)
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(())
-        }.boxed()
+            Self::create_execution_sync(
+                &pool,
+                execution_id,
+                workflow_hash,
+                workflow_name,
+                workflow_label,
+                debug_mode,
+                input,
+            )
+            .await
+        }
+        .boxed()
     }
 
     fn update_execution_status(
@@ -872,31 +996,50 @@ impl StateStore for SqliteStateStore {
         execution_id: Uuid,
         step_index: usize,
         status: stepflow_core::status::StepStatus,
+    ) {
+        // Queue the operation for background processing
+        let mut step_indices = BitSet::new();
+        step_indices.insert(step_index);
+
+        if let Err(e) = self
+            .write_queue
+            .send(StateWriteOperation::UpdateStepStatuses {
+                execution_id,
+                status,
+                step_indices,
+            })
+        {
+            tracing::error!("Failed to queue step status update: {:?}", e);
+        }
+    }
+
+    fn flush_pending_writes(
+        &self,
+        execution_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.write_queue.send(StateWriteOperation::Flush {
+            execution_id: Some(execution_id),
+            completion_notify: tx,
+        }) {
+            tracing::error!("Failed to queue flush operation: {:?}", e);
+            return async move { Err(error_stack::report!(StateError::Internal)) }.boxed();
+        }
 
         async move {
-            let status_str = match status {
-                stepflow_core::status::StepStatus::Blocked => "blocked",
-                stepflow_core::status::StepStatus::Runnable => "runnable",
-                stepflow_core::status::StepStatus::Running => "running",
-                stepflow_core::status::StepStatus::Completed => "completed",
-                stepflow_core::status::StepStatus::Failed => "failed",
-                stepflow_core::status::StepStatus::Skipped => "skipped",
-            };
+            match rx.await {
+                Ok(result) => result.map_err(|e| error_stack::report!(e)),
+                Err(_) => Err(error_stack::report!(StateError::Internal)),
+            }
+        }
+        .boxed()
+    }
 
-            let sql = "UPDATE step_info SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE execution_id = ? AND step_index = ?";
-
-            sqlx::query(sql)
-                .bind(status_str)
-                .bind(execution_id.to_string())
-                .bind(step_index as i64)
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(())
-        }.boxed()
+    fn queue_write(&self, operation: StateWriteOperation) -> error_stack::Result<(), StateError> {
+        self.write_queue
+            .send(operation)
+            .map_err(|_| error_stack::report!(StateError::Internal))
     }
 
     fn get_step_info_for_execution(

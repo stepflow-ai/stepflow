@@ -1,10 +1,12 @@
+use error_stack::ResultExt as _;
 use std::collections::HashSet;
 use stepflow_core::workflow::{BaseRef, Component, Expr, Flow, Step, ValueRef, WorkflowRef};
 
 use crate::diagnostics::{DiagnosticMessage, Diagnostics};
+use crate::{AnalysisError, Result};
 
 /// Validates a workflow and collects all diagnostics
-pub fn validate_workflow(flow: &Flow) -> Diagnostics {
+pub fn validate_workflow(flow: &Flow) -> Result<Diagnostics> {
     let mut diagnostics = Diagnostics::new();
 
     // Validate workflow structure
@@ -24,9 +26,9 @@ pub fn validate_workflow(flow: &Flow) -> Diagnostics {
     );
 
     // Check for unreachable steps
-    detect_unreachable_steps(flow, &mut diagnostics);
+    detect_unreachable_steps(flow, &mut diagnostics)?;
 
-    diagnostics
+    Ok(diagnostics)
 }
 
 /// Validate basic workflow structure
@@ -300,19 +302,19 @@ fn validate_expression_references(
 }
 
 /// Detect unreachable steps (steps that no other step or output depends on)
-fn detect_unreachable_steps(flow: &Flow, diagnostics: &mut Diagnostics) {
+fn detect_unreachable_steps(flow: &Flow, diagnostics: &mut Diagnostics) -> Result<()> {
     let mut referenced_steps = HashSet::new();
 
     // Collect steps referenced by other steps
     for step in &flow.steps {
-        collect_step_dependencies(&step.input, &mut referenced_steps);
+        collect_step_dependencies(&step.input, &mut referenced_steps)?;
         if let Some(skip_if) = &step.skip_if {
             collect_expression_dependencies(skip_if, &mut referenced_steps);
         }
     }
 
     // Collect steps referenced by workflow output
-    collect_step_dependencies(&flow.output, &mut referenced_steps);
+    collect_step_dependencies(&flow.output, &mut referenced_steps)?;
 
     // Find unreachable steps
     for (index, step) in flow.steps.iter().enumerate() {
@@ -325,34 +327,19 @@ fn detect_unreachable_steps(flow: &Flow, diagnostics: &mut Diagnostics) {
             );
         }
     }
+
+    Ok(())
 }
 
 /// Collect step dependencies from a ValueRef
-fn collect_step_dependencies(value: &ValueRef, dependencies: &mut HashSet<String>) {
-    collect_value_dependencies(value.as_ref(), dependencies);
-}
+fn collect_step_dependencies(value: &ValueRef, dependencies: &mut HashSet<String>) -> Result<()> {
+    // Use the ValueRef's built-in step_dependencies method
+    let step_deps = value
+        .step_dependencies()
+        .change_context(AnalysisError::DependencyAnalysis)?;
+    dependencies.extend(step_deps);
 
-/// Recursively collect step dependencies from a JSON value
-fn collect_value_dependencies(value: &serde_json::Value, dependencies: &mut HashSet<String>) {
-    match value {
-        serde_json::Value::Object(obj) => {
-            if obj.contains_key("$from") {
-                if let Ok(expr) = serde_json::from_value::<Expr>(value.clone()) {
-                    collect_expression_dependencies(&expr, dependencies);
-                }
-            } else if !obj.contains_key("$literal") {
-                for val in obj.values() {
-                    collect_value_dependencies(val, dependencies);
-                }
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            for val in arr {
-                collect_value_dependencies(val, dependencies);
-            }
-        }
-        _ => {}
-    }
+    Ok(())
 }
 
 /// Collect step dependencies from an expression
@@ -442,7 +429,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         // Should have warnings about mock components and field access
@@ -466,7 +453,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
         assert!(fatal > 0, "Expected fatal diagnostics");
         assert!(
@@ -494,7 +481,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
         assert!(fatal > 0, "Expected fatal diagnostics");
         assert!(
@@ -522,7 +509,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
         assert!(fatal > 0, "Expected fatal diagnostics");
         assert!(
@@ -550,7 +537,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (_fatal, _error, warning) = diagnostics.counts();
         assert!(warning > 0, "Expected warnings");
         assert!(
@@ -578,7 +565,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics"); // These are warnings, not fatal
         assert!(warning >= 2, "Expected at least 2 warnings"); // name + description + possibly others
@@ -618,7 +605,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         assert!(error > 0, "Expected error diagnostics");
@@ -652,7 +639,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         assert!(error > 0, "Expected error diagnostics");
@@ -686,7 +673,7 @@ mod tests {
             examples: vec![],
         };
 
-        let diagnostics = validate_workflow(&flow);
+        let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         assert_eq!(error, 0, "Expected no error diagnostics for valid builtin");

@@ -1,5 +1,6 @@
 pub mod blob;
 pub mod component;
+pub mod dependencies;
 pub mod schema;
 pub mod status;
 pub mod workflow;

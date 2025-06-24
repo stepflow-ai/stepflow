@@ -127,26 +127,36 @@ impl StepFlowExecutor {
             .ok_or_else(|| error_stack::report!(ExecutionError::ExecutionNotFound(execution_id)))?;
 
         // Extract workflow hash from execution details
-        let workflow_hash = execution.summary.workflow_hash;
+        let flow_hash = execution.summary.workflow_hash;
 
         let workflow = self
             .state_store
-            .get_workflow(&workflow_hash)
+            .get_workflow(&flow_hash)
             .await
             .change_context(ExecutionError::StateError)?
             .ok_or_else(|| {
-                error_stack::report!(ExecutionError::WorkflowNotFound(workflow_hash.clone()))
+                error_stack::report!(ExecutionError::WorkflowNotFound(flow_hash.clone()))
             })?;
 
         // Create a new WorkflowExecutor for this debug session
-        let workflow_executor = WorkflowExecutor::new(
+        let mut workflow_executor = WorkflowExecutor::new(
             self.executor(),
             workflow,
-            workflow_hash,
+            flow_hash,
             execution_id,
             execution.input,
             self.state_store.clone(),
         )?;
+
+        // Recover execution state from the state store to ensure consistency
+        let corrections_made = workflow_executor.recover_from_state_store().await?;
+        if corrections_made > 0 {
+            tracing::info!(
+                "Execution recovery completed for execution {}: fixed {} status mismatches",
+                execution_id,
+                corrections_made
+            );
+        }
 
         Ok(workflow_executor)
     }
@@ -160,7 +170,7 @@ impl Context for StepFlowExecutor {
     ///
     /// # Arguments
     /// * `flow` - The workflow to execute
-    /// * 'workflow_hash` - Hash of the workflow
+    /// * 'flow_hash` - Hash of the workflow
     /// * `input` - The input value for the workflow
     ///
     /// # Returns
@@ -168,7 +178,7 @@ impl Context for StepFlowExecutor {
     fn submit_flow(
         &self,
         flow: Arc<Flow>,
-        workflow_hash: FlowHash,
+        flow_hash: FlowHash,
         input: ValueRef,
     ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
         let executor = self.executor();
@@ -188,15 +198,9 @@ impl Context for StepFlowExecutor {
                 tracing::info!("Executing workflow using tracker-based execution");
                 let state_store = executor.state_store.clone();
 
-                let result = execute_workflow(
-                    executor,
-                    flow,
-                    workflow_hash,
-                    execution_id,
-                    input,
-                    state_store,
-                )
-                .await;
+                let result =
+                    execute_workflow(executor, flow, flow_hash, execution_id, input, state_store)
+                        .await;
 
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,

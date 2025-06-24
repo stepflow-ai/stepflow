@@ -2,13 +2,14 @@ use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use stepflow_core::dependencies::{Dependency, ValueDependencies};
 use stepflow_core::workflow::{BaseRef, Expr, Flow, FlowHash, Step, ValueRef, WorkflowRef};
 
 use crate::{
     Result,
     error::AnalysisError,
     tracker::DependenciesBuilder,
-    types::{AnalysisResult, Dependency, FlowAnalysis, StepAnalysis, ValueDependencies},
+    types::{AnalysisResult, FlowAnalysis, StepAnalysis},
     validation::validate_workflow,
 };
 
@@ -20,7 +21,7 @@ pub fn analyze_workflow_dependencies(
     workflow_hash: FlowHash,
 ) -> Result<AnalysisResult> {
     // 1. Run validation first
-    let diagnostics = validate_workflow(&flow);
+    let diagnostics = validate_workflow(&flow)?;
 
     // 2. If fatal diagnostics exist, return diagnostics without analysis
     if diagnostics.has_fatal() {
@@ -39,7 +40,7 @@ pub fn analyze_workflow_dependencies(
 /// Returns Err(AnalysisError) for internal/unexpected errors
 pub fn validate_workflow_only(flow: &Flow) -> Result<AnalysisResult> {
     // Run validation
-    let diagnostics = validate_workflow(flow);
+    let diagnostics = validate_workflow(flow)?;
 
     // Return diagnostics without analysis
     Ok(AnalysisResult::with_diagnostics_only(diagnostics))
@@ -91,8 +92,10 @@ fn extract_step_dependencies(step_analysis: &StepAnalysis) -> impl Iterator<Item
 }
 
 fn analyze_step(step: &Step) -> Result<StepAnalysis> {
-    // Extract dependencies from step input
-    let input_depends = extract_value_deps(&step.input)?;
+    let input_depends = step
+        .input
+        .value_dependencies()
+        .change_context(AnalysisError::DependencyAnalysis)?;
 
     // Extract dependencies from skip condition
     let skip_if_depend = if let Some(skip_if) = &step.skip_if {

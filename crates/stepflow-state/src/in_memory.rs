@@ -2,7 +2,7 @@ use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
 use stepflow_core::status::ExecutionStatus;
-use stepflow_core::workflow::FlowHash;
+use stepflow_core::workflow::{FlowHash, StepId};
 
 use crate::{
     StateStore,
@@ -27,7 +27,7 @@ type WorkflowLabelsMap = Arc<RwLock<HashMap<(String, String), WorkflowLabelMetad
 struct ExecutionState {
     /// Vector of step results indexed by step index
     /// None indicates the step hasn't completed yet
-    step_results: Vec<Option<StepResult<'static>>>,
+    step_results: Vec<Option<StepResult>>,
     /// Map from step_id to step_index for O(1) lookup by ID
     step_id_to_index: HashMap<String, usize>,
 }
@@ -101,6 +101,52 @@ impl InMemoryStateStore {
         let mut step_info = self.step_info.write().await;
         step_info.remove(&execution_id);
     }
+
+    /// Record the result of a step execution (private implementation method).
+    ///
+    /// This operation is executed synchronously since it's in-memory with no I/O cost.
+    fn record_step_result(&self, execution_id: Uuid, step_result: StepResult) {
+        // For in-memory store, execute synchronously - no I/O cost justifies async complexity
+        let step_idx = step_result.step_idx();
+
+        // Block until we can get the lock - this is acceptable for in-memory operations
+        let mut executions = futures::executor::block_on(self.executions.write());
+        let execution_state = executions.entry(execution_id).or_default();
+
+        // Ensure the vector has enough capacity
+        execution_state.ensure_capacity(step_idx);
+
+        // Update the step_id_to_index mapping for fast lookup by ID
+        execution_state
+            .step_id_to_index
+            .insert(step_result.step_id().to_string(), step_idx);
+
+        // Store the result at the step index
+        execution_state.step_results[step_idx] = Some(step_result);
+    }
+
+    /// Update multiple steps to the same status (private implementation method).
+    ///
+    /// This operation is executed synchronously since it's in-memory with no I/O cost.
+    fn update_step_statuses(
+        &self,
+        execution_id: Uuid,
+        status: stepflow_core::status::StepStatus,
+        step_indices: bit_set::BitSet,
+    ) {
+        // For in-memory store, execute synchronously
+        let mut step_info_guard = futures::executor::block_on(self.step_info.write());
+
+        if let Some(execution_steps) = step_info_guard.get_mut(&execution_id) {
+            let now = chrono::Utc::now();
+            for step_index in step_indices.iter() {
+                if let Some(step_info) = execution_steps.get_mut(&step_index) {
+                    step_info.status = status;
+                    step_info.updated_at = now;
+                }
+            }
+        }
+    }
 }
 
 impl Default for InMemoryStateStore {
@@ -145,35 +191,6 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn record_step_result(
-        &self,
-        execution_id: Uuid,
-        step_result: StepResult<'_>,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let executions = self.executions.clone();
-        let step_idx = step_result.step_idx();
-        let owned_step_result = step_result.to_owned();
-
-        async move {
-            let mut executions = executions.write().await;
-            let execution_state = executions.entry(execution_id).or_default();
-
-            // Ensure the vector has enough capacity
-            execution_state.ensure_capacity(step_idx);
-
-            // Update the step_id_to_index mapping for fast lookup by ID
-            execution_state
-                .step_id_to_index
-                .insert(owned_step_result.step_id().to_string(), step_idx);
-
-            // Store the result at the step index
-            execution_state.step_results[step_idx] = Some(owned_step_result);
-
-            Ok(())
-        }
-        .boxed()
-    }
-
     fn get_step_result_by_index(
         &self,
         execution_id: Uuid,
@@ -209,7 +226,7 @@ impl StateStore for InMemoryStateStore {
     fn get_step_result_by_id(
         &self,
         execution_id: Uuid,
-        step_id: &str,
+        step_id: StepId,
     ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
         let executions = self.executions.clone();
         let step_id_owned = step_id.to_string();
@@ -248,7 +265,7 @@ impl StateStore for InMemoryStateStore {
     fn list_step_results(
         &self,
         execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult<'static>>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>> {
         let executions = self.executions.clone();
 
         async move {
@@ -259,10 +276,10 @@ impl StateStore for InMemoryStateStore {
             };
 
             // Vec maintains natural ordering, so no sorting needed
-            let results: Vec<StepResult<'static>> = execution_state
+            let results: Vec<StepResult> = execution_state
                 .step_results
                 .iter()
-                .filter_map(|opt| opt.as_ref().map(|step_result| step_result.to_owned()))
+                .filter_map(|opt| opt.as_ref().cloned())
                 .collect();
 
             Ok(results)
@@ -642,22 +659,56 @@ impl StateStore for InMemoryStateStore {
         execution_id: uuid::Uuid,
         step_index: usize,
         status: stepflow_core::status::StepStatus,
-    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
-        let step_info_map = self.step_info.clone();
+    ) {
+        // For in-memory store, execute synchronously
+        let mut step_info_guard = futures::executor::block_on(self.step_info.write());
 
-        async move {
-            let mut step_info_guard = step_info_map.write().await;
-
-            if let Some(execution_steps) = step_info_guard.get_mut(&execution_id) {
-                if let Some(step_info) = execution_steps.get_mut(&step_index) {
-                    step_info.status = status;
-                    step_info.updated_at = chrono::Utc::now();
-                }
+        if let Some(execution_steps) = step_info_guard.get_mut(&execution_id) {
+            if let Some(step_info) = execution_steps.get_mut(&step_index) {
+                step_info.status = status;
+                step_info.updated_at = chrono::Utc::now();
             }
-
-            Ok(())
         }
-        .boxed()
+    }
+
+    fn queue_write(
+        &self,
+        operation: crate::StateWriteOperation,
+    ) -> error_stack::Result<(), crate::StateError> {
+        // For in-memory store, process operations immediately since there's no I/O cost
+        match operation {
+            crate::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result,
+            } => {
+                self.record_step_result(execution_id, step_result);
+                Ok(())
+            }
+            crate::StateWriteOperation::UpdateStepStatuses {
+                execution_id,
+                status,
+                step_indices,
+            } => {
+                self.update_step_statuses(execution_id, status, step_indices);
+                Ok(())
+            }
+            crate::StateWriteOperation::Flush {
+                execution_id: _,
+                completion_notify,
+            } => {
+                // For in-memory store, all writes are immediate, so nothing to flush
+                let _ = completion_notify.send(Ok(()));
+                Ok(())
+            }
+        }
+    }
+
+    fn flush_pending_writes(
+        &self,
+        _execution_id: uuid::Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
+        // For in-memory store, all writes are immediate, so nothing to flush
+        async move { Ok(()) }.boxed()
     }
 
     fn get_step_info_for_execution(
@@ -789,8 +840,43 @@ mod tests {
 
     #[tokio::test]
     async fn test_step_result_storage() {
+        use serde_json::json;
+        use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, ValueRef};
+
         let store = InMemoryStateStore::new();
         let execution_id = Uuid::new_v4();
+
+        // Create a test workflow with the steps we want to test
+        let flow = Arc::new(Flow {
+            name: None,
+            description: None,
+            version: None,
+            input_schema: None,
+            output_schema: None,
+            steps: vec![
+                Step {
+                    id: "step1".to_string(),
+                    component: Component::from_string("test://mock"),
+                    input: ValueRef::new(json!({})),
+                    input_schema: None,
+                    output_schema: None,
+                    skip_if: None,
+                    on_error: ErrorAction::Fail,
+                },
+                Step {
+                    id: "step2".to_string(),
+                    component: Component::from_string("test://mock"),
+                    input: ValueRef::new(json!({})),
+                    input_schema: None,
+                    output_schema: None,
+                    skip_if: None,
+                    on_error: ErrorAction::Fail,
+                },
+            ],
+            output: ValueRef::new(json!(null)),
+            test: None,
+            examples: vec![],
+        });
 
         // Test data
         let step1_result = FlowResult::Success {
@@ -799,20 +885,14 @@ mod tests {
         let step2_result = FlowResult::Skipped;
 
         // Record step results with both index and ID
-        store
-            .record_step_result(
-                execution_id,
-                StepResult::new(0, "step1", step1_result.clone()),
-            )
-            .await
-            .unwrap();
-        store
-            .record_step_result(
-                execution_id,
-                StepResult::new(1, "step2", step2_result.clone()),
-            )
-            .await
-            .unwrap();
+        store.record_step_result(
+            execution_id,
+            StepResult::new(0, "step1", step1_result.clone()),
+        );
+        store.record_step_result(
+            execution_id,
+            StepResult::new(1, "step2", step2_result.clone()),
+        );
 
         // Retrieve by index
         let retrieved_by_idx_0 = store
@@ -826,13 +906,22 @@ mod tests {
         assert_eq!(retrieved_by_idx_0, step1_result);
         assert_eq!(retrieved_by_idx_1, step2_result);
 
-        // Retrieve by ID
+        // Retrieve by ID using proper StepId instances
+        let step1_id = StepId {
+            index: 0,
+            flow: flow.clone(),
+        };
+        let step2_id = StepId {
+            index: 1,
+            flow: flow.clone(),
+        };
+
         let retrieved_by_id_1 = store
-            .get_step_result_by_id(execution_id, "step1")
+            .get_step_result_by_id(execution_id, step1_id)
             .await
             .unwrap();
         let retrieved_by_id_2 = store
-            .get_step_result_by_id(execution_id, "step2")
+            .get_step_result_by_id(execution_id, step2_id)
             .await
             .unwrap();
         assert_eq!(retrieved_by_id_1, step1_result);
@@ -847,8 +936,34 @@ mod tests {
         // Non-existent step should return error
         let result_by_idx = store.get_step_result_by_index(execution_id, 99).await;
         assert!(result_by_idx.is_err());
+
+        // Create a StepId for a step that wasn't recorded
+        let nonexistent_flow = Arc::new(Flow {
+            name: None,
+            description: None,
+            version: None,
+            input_schema: None,
+            output_schema: None,
+            steps: vec![Step {
+                id: "nonexistent".to_string(),
+                component: Component::from_string("test://mock"),
+                input: ValueRef::new(json!({})),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: ErrorAction::Fail,
+            }],
+            output: ValueRef::new(json!(null)),
+            test: None,
+            examples: vec![],
+        });
+        let nonexistent_step_id = StepId {
+            index: 0,
+            flow: nonexistent_flow,
+        };
+
         let result_by_id = store
-            .get_step_result_by_id(execution_id, "nonexistent")
+            .get_step_result_by_id(execution_id, nonexistent_step_id)
             .await;
         assert!(result_by_id.is_err());
 
@@ -860,37 +975,59 @@ mod tests {
 
     #[tokio::test]
     async fn test_step_result_overwrite() {
+        use serde_json::json;
+        use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, ValueRef};
+
         let store = InMemoryStateStore::new();
         let execution_id = Uuid::new_v4();
+
+        // Create a test workflow
+        let flow = Arc::new(Flow {
+            name: None,
+            description: None,
+            version: None,
+            input_schema: None,
+            output_schema: None,
+            steps: vec![Step {
+                id: "step1".to_string(),
+                component: Component::from_string("test://mock"),
+                input: ValueRef::new(json!({})),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: ErrorAction::Fail,
+            }],
+            output: ValueRef::new(json!(null)),
+            test: None,
+            examples: vec![],
+        });
 
         // Record initial result
         let initial_result = FlowResult::Success {
             result: ValueRef::new(serde_json::json!({"attempt": 1})),
         };
-        store
-            .record_step_result(execution_id, StepResult::new(0, "step1", initial_result))
-            .await
-            .unwrap();
+        store.record_step_result(execution_id, StepResult::new(0, "step1", initial_result));
 
         // Overwrite with new result
         let new_result = FlowResult::Success {
             result: ValueRef::new(serde_json::json!({"attempt": 2})),
         };
-        store
-            .record_step_result(
-                execution_id,
-                StepResult::new(0, "step1", new_result.clone()),
-            )
-            .await
-            .unwrap();
+        store.record_step_result(
+            execution_id,
+            StepResult::new(0, "step1", new_result.clone()),
+        );
 
         // Should retrieve the new result by both index and ID
         let retrieved_by_idx = store
             .get_step_result_by_index(execution_id, 0)
             .await
             .unwrap();
+        let step1_id = StepId {
+            index: 0,
+            flow: flow.clone(),
+        };
         let retrieved_by_id = store
-            .get_step_result_by_id(execution_id, "step1")
+            .get_step_result_by_id(execution_id, step1_id)
             .await
             .unwrap();
         assert_eq!(retrieved_by_idx, new_result);
@@ -917,27 +1054,18 @@ mod tests {
         let step1_result = FlowResult::Skipped;
 
         // Record in non-sequential order
-        store
-            .record_step_result(
-                execution_id,
-                StepResult::new(2, "step2", step2_result.clone()),
-            )
-            .await
-            .unwrap();
-        store
-            .record_step_result(
-                execution_id,
-                StepResult::new(0, "step0", step0_result.clone()),
-            )
-            .await
-            .unwrap();
-        store
-            .record_step_result(
-                execution_id,
-                StepResult::new(1, "step1", step1_result.clone()),
-            )
-            .await
-            .unwrap();
+        store.record_step_result(
+            execution_id,
+            StepResult::new(2, "step2", step2_result.clone()),
+        );
+        store.record_step_result(
+            execution_id,
+            StepResult::new(0, "step0", step0_result.clone()),
+        );
+        store.record_step_result(
+            execution_id,
+            StepResult::new(1, "step1", step1_result.clone()),
+        );
 
         // List should return results ordered by step index
         let all_results = store.list_step_results(execution_id).await.unwrap();
@@ -956,13 +1084,10 @@ mod tests {
         let step_result = FlowResult::Success {
             result: ValueRef::new(serde_json::json!({"output": "test"})),
         };
-        store
-            .record_step_result(
-                execution_id,
-                StepResult::new(0, "step1", step_result.clone()),
-            )
-            .await
-            .unwrap();
+        store.record_step_result(
+            execution_id,
+            StepResult::new(0, "step1", step_result.clone()),
+        );
 
         // Verify the result exists
         let retrieved = store
