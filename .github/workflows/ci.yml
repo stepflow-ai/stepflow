@@ -61,7 +61,10 @@ jobs:
         run: cargo test
 
       - name: Lint (clippy)
-        run: cargo clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
 
   rustfmt:
     name: Rust Format
