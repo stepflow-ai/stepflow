@@ -154,13 +154,6 @@ exit_code: 0
           "path": {
             "description": "Path to the file to load",
             "type": "string"
-          },
-          "working_directory": {
-            "description": "Working directory to resolve relative paths (defaults to current directory)",
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },

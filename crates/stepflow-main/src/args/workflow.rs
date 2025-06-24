@@ -13,12 +13,13 @@ use crate::{
 async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepFlowExecutor>> {
     // Create state store from configuration
     let state_store = config.state_store.create_state_store().await?;
-    let executor = StepFlowExecutor::new(state_store);
 
     let working_directory = config
         .working_directory
         .as_ref()
         .expect("working_directory");
+
+    let executor = StepFlowExecutor::new(state_store, working_directory.clone());
 
     for plugin_config in config.plugins {
         let (protocol, plugin) = plugin_config.instantiate(working_directory).await?;

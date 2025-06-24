@@ -9,3 +9,17 @@ steps:
 
 output:
   messages: { $from: { step: test_create_messages }, path: "messages" }
+
+test:
+  cases:
+  - name: create_messages_test
+    description: Test builtin create_messages component
+    input: {}
+    output:
+      outcome: success
+      result:
+        messages:
+        - role: "system"
+          content: "You are a test assistant"
+        - role: "user"
+          content: "Say hello"

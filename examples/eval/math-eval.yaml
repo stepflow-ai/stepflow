@@ -28,3 +28,15 @@ steps:
 
 output:
   math_result: { $from: { step: nested_math }, path: "result" }
+
+test:
+  cases:
+  - name: nested_math_calculation
+    description: Test nested workflow evaluation with math
+    input:
+      numbers: [5, 3]
+    output:
+      outcome: success
+      result:
+        math_result:
+          sum_result: 8

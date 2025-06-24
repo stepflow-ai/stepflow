@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::{pin::Pin, sync::Arc};
 use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
@@ -68,5 +69,9 @@ impl stepflow_plugin::Context for MockExecutor {
 
     fn state_store(&self) -> &Arc<dyn stepflow_state::StateStore> {
         &self.state_store
+    }
+
+    fn working_directory(&self) -> &std::path::Path {
+        Path::new(".")
     }
 }

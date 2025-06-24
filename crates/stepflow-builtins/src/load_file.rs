@@ -2,7 +2,7 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
-use stepflow_plugin::ExecutionContext;
+use stepflow_plugin::{Context as _, ExecutionContext};
 use tokio::fs;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
@@ -18,10 +18,6 @@ struct LoadFileInput {
     /// Format of the file (json, yaml, text). If not specified, inferred from extension
     #[serde(default, skip_serializing_if = "Option::is_none")]
     format: Option<FileFormat>,
-
-    /// Working directory to resolve relative paths (defaults to current directory)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    working_directory: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, schemars::JsonSchema, Clone, Copy, Debug, PartialEq)]
@@ -93,19 +89,12 @@ impl BuiltinComponent for LoadFileComponent {
         })
     }
 
-    async fn execute(&self, _context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
-        let LoadFileInput {
-            path,
-            format,
-            working_directory,
-        } = serde_json::from_value(input.as_ref().clone())
+    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+        let LoadFileInput { path, format } = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
-        // Resolve the file path
-        let base_dir = working_directory
-            .as_deref()
-            .map(Path::new)
-            .unwrap_or_else(|| Path::new("."));
+        // Resolve the file path using the execution context's working directory
+        let base_dir = context.working_directory();
 
         let file_path = if Path::new(&path).is_absolute() {
             Path::new(&path).to_path_buf()
@@ -163,7 +152,6 @@ mod tests {
         let input = LoadFileInput {
             path: temp_file.path().to_string_lossy().to_string(),
             format: Some(FileFormat::Json),
-            working_directory: None,
         };
 
         let input_value = serde_json::to_value(input).unwrap();

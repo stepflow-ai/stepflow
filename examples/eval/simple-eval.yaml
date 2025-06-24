@@ -15,3 +15,14 @@ steps:
 
 output:
   result: { $from: { step: test_eval }, path: "result" }
+
+test:
+  cases:
+  - name: basic_eval_test
+    description: Test basic eval component functionality
+    input: {}
+    output:
+      outcome: success
+      result:
+        result:
+          test_result: "Hello from nested workflow!"
