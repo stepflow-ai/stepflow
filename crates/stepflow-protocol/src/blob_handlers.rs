@@ -184,11 +184,12 @@ impl IncomingHandler for StreamingChunkHandler {
                     if let Some(executor) = context.executor() {
                         if let Ok(execution_id) = Uuid::parse_str(&notification.request_id) {
                             // Try to find the workflow executor for this execution
-                            if let Ok(Some(_boxed_executor)) = executor.get_workflow_executor(execution_id).await {
+                            if let Ok(Some(mut workflow_executor)) = executor.get_workflow_executor(execution_id).await {
                                 // For now, just log that we received the chunk
                                 // TODO: Implement proper chunk routing when the streaming pipeline is ready
                                 tracing::info!("Received streaming chunk for execution {}: {:?}", 
                                               execution_id, notification.chunk);
+                                tracing::warn!("Streaming chunk routing not yet implemented for trait objects");
                             } else {
                                 tracing::warn!("No workflow executor found for execution ID: {}", execution_id);
                             }

@@ -671,7 +671,7 @@ def audio_stream_source(data: Dict[str, Any], context=None):
                 
             except Exception as e:
                 print(f"Failed to start recording: {e}", file=sys.stderr)
-        
+    
         # Start recording thread
         recording_thread = threading.Thread(target=record_audio_continuously, daemon=True)
         recording_thread.start()
@@ -723,7 +723,7 @@ def audio_stream_source(data: Dict[str, Any], context=None):
             
             chunk_end_time = time.time()
             print(f"TIMING: Total chunk {chunk_index} processing took {chunk_end_time - chunk_start_time:.4f}s", file=sys.stderr)
-        
+    
         # Stop recording
         recording_stop.set()
         recording_thread.join(timeout=2.0)

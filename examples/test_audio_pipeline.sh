@@ -20,7 +20,7 @@ if [[ "$CURRENT_DIR" == "$SCRIPT_DIR" ]]; then
     INPUT_DIR="."
 else
     # Running from root directory
-    INPUT_FILE="examples/input.json"
+    INPUT_FILE="examples/audio_input.json"
     FLOW_FILE="examples/audio-streaming-pipeline.yaml"
     INPUT_DIR="examples"
 fi
@@ -34,47 +34,14 @@ echo "Device: $DEVICE_NAME"
 echo "Running from: $CURRENT_DIR"
 echo ""
 
-# Create input file
+# Run the workflow
 if [[ "$CURRENT_DIR" == "$SCRIPT_DIR" ]]; then
-    # Running from examples directory
-    cat > "$INPUT_FILE" << EOF
-{
-  "operation": "$OPERATION",
-  "sample_rate": 16000,
-  "channels": 1,
-  "chunk_size": 1024,
-  "frequency": 440.0,
-  "source": "$SOURCE",
-  "duration": $DURATION,
-  "output_file": "$OUTPUT_FILE",
-  "device_name": "$DEVICE_NAME",
-  "play_audio": true
-}
-EOF
+    # Running from examples directory - run from current directory
+    cargo run -- run --flow audio-streaming-pipeline.yaml --input audio_input.json
 else
     # Running from root directory
-    cat > "$INPUT_FILE" << EOF
-{
-  "operation": "$OPERATION",
-  "sample_rate": 16000,
-  "channels": 1,
-  "chunk_size": 1024,
-  "frequency": 440.0,
-  "source": "$SOURCE",
-  "duration": $DURATION,
-  "output_file": "$OUTPUT_FILE",
-  "device_name": "$DEVICE_NAME",
-  "play_audio": true
-}
-EOF
+    cargo run -- run --flow examples/audio-streaming-pipeline.yaml --input examples/audio_input.json
 fi
-
-# Run the workflow
-cd examples
-cargo run --bin stepflow -- run \
-  --flow audio-streaming-pipeline.yaml \
-  --input input.json
-cd ..
 
 echo ""
 echo "✅ Test completed!"
@@ -91,4 +58,3 @@ else
 fi
 
 # Clean up input file
-rm -f "$INPUT_FILE" 

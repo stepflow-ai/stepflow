@@ -688,30 +688,46 @@ impl StateStore for InMemoryStateStore {
         &self,
         execution_id: uuid::Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, crate::StateError>> {
-        let step_info_map = self.step_info.clone();
+        let step_info = self.step_info.clone();
 
         async move {
-            let step_info_guard = step_info_map.read().await;
+            let step_info = step_info.read().await;
+            let execution_steps = step_info.get(&execution_id).ok_or_else(|| {
+                error_stack::report!(crate::StateError::ExecutionNotFound { execution_id })
+            })?;
 
-            // Get all step info for this execution
-            let execution_steps = step_info_guard
-                .get(&execution_id)
+            let runnable_steps: Vec<StepInfo> = execution_steps
+                .values()
+                .filter(|step| matches!(step.status, stepflow_core::status::StepStatus::Runnable))
                 .cloned()
-                .unwrap_or_default();
-
-            // Find steps that are marked as runnable
-            let mut runnable_steps = Vec::new();
-
-            for step_info in execution_steps.values() {
-                if step_info.status == stepflow_core::status::StepStatus::Runnable {
-                    runnable_steps.push(step_info.clone());
-                }
-            }
-
-            // Sort by step_index for consistent ordering
-            runnable_steps.sort_by_key(|step| step.step_index);
+                .collect();
 
             Ok(runnable_steps)
+        }
+        .boxed()
+    }
+
+    fn get_step_status(
+        &self,
+        execution_id: uuid::Uuid,
+        step_index: usize,
+    ) -> BoxFuture<'_, error_stack::Result<stepflow_core::status::StepStatus, crate::StateError>> {
+        let step_info = self.step_info.clone();
+
+        async move {
+            let step_info = step_info.read().await;
+            let execution_steps = step_info.get(&execution_id).ok_or_else(|| {
+                error_stack::report!(crate::StateError::ExecutionNotFound { execution_id })
+            })?;
+
+            let step = execution_steps.get(&step_index).ok_or_else(|| {
+                error_stack::report!(crate::StateError::StepResultNotFoundByIndex {
+                    execution_id: execution_id.to_string(),
+                    step_idx: step_index,
+                })
+            })?;
+
+            Ok(step.status)
         }
         .boxed()
     }

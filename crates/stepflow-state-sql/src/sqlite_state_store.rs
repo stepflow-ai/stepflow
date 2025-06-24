@@ -1005,7 +1005,45 @@ impl StateStore for SqliteStateStore {
             }
 
             Ok(runnable_steps)
-        }
-        .boxed()
+        }.boxed()
+    }
+
+    fn get_step_status(
+        &self,
+        execution_id: Uuid,
+        step_index: usize,
+    ) -> BoxFuture<'_, error_stack::Result<stepflow_core::status::StepStatus, StateError>> {
+        let pool = self.pool.clone();
+        
+        async move {
+            let sql = "SELECT status FROM step_info WHERE execution_id = ? AND step_index = ?";
+
+            let row = sqlx::query(sql)
+                .bind(execution_id.to_string())
+                .bind(step_index as i64)
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let row = row.ok_or_else(|| {
+                error_stack::report!(StateError::StepResultNotFoundByIndex {
+                    execution_id: execution_id.to_string(),
+                    step_idx: step_index,
+                })
+            })?;
+
+            let status_str: String = row.get("status");
+            let status = match status_str.as_str() {
+                "blocked" => stepflow_core::status::StepStatus::Blocked,
+                "runnable" => stepflow_core::status::StepStatus::Runnable,
+                "running" => stepflow_core::status::StepStatus::Running,
+                "completed" => stepflow_core::status::StepStatus::Completed,
+                "failed" => stepflow_core::status::StepStatus::Failed,
+                "skipped" => stepflow_core::status::StepStatus::Skipped,
+                _ => stepflow_core::status::StepStatus::Blocked, // Default fallback
+            };
+
+            Ok(status)
+        }.boxed()
     }
 }

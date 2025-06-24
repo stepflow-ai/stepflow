@@ -305,6 +305,20 @@ pub trait StateStore: Send + Sync {
         &self,
         execution_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
+
+    /// Get the status of a specific step.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `step_index` - The index of the step within the workflow (0-based)
+    ///
+    /// # Returns
+    /// The step status if found, or an error if not found
+    fn get_step_status(
+        &self,
+        execution_id: Uuid,
+        step_index: usize,
+    ) -> BoxFuture<'_, error_stack::Result<stepflow_core::status::StepStatus, StateError>>;
 }
 
 /// The step result.

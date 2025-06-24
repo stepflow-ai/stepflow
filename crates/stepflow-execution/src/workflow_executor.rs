@@ -83,6 +83,29 @@ impl WorkflowExecutor {
         // Create execution context
         let context = executor.execution_context(execution_id);
 
+        // Initialize streaming coordinator if workflow has streaming steps
+        let streaming_coordinator = if flow.steps.iter().any(|step| step.streaming) {
+            let pipeline_steps: Vec<usize> = flow.steps.iter()
+                .enumerate()
+                .filter(|(_, step)| step.streaming)
+                .map(|(index, _)| index)
+                .collect();
+            
+            if !pipeline_steps.is_empty() {
+                let coordinator = StreamingPipelineCoordinator::new(
+                    executor.clone(),
+                    flow.clone(),
+                    pipeline_steps,
+                    context.clone(),
+                );
+                Some(std::sync::Arc::new(tokio::sync::Mutex::new(coordinator)))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             tracker,
             resolver,
@@ -90,7 +113,7 @@ impl WorkflowExecutor {
             executor,
             flow,
             context,
-            streaming_coordinator: None,
+            streaming_coordinator,
         })
     }
 
@@ -725,6 +748,7 @@ impl WorkflowExecutor {
         // Create a streaming coordinator and store it
         let coordinator = std::sync::Arc::new(tokio::sync::Mutex::new(StreamingPipelineCoordinator::new(
             self.executor.clone(),
+            self.flow.clone(),
             pipeline_steps,
             self.context.clone(),
         )));
@@ -853,17 +877,69 @@ impl WorkflowExecutor {
     pub async fn route_streaming_chunk(&mut self, chunk: serde_json::Value) -> Result<()> {
         tracing::debug!("Routing streaming chunk to workflow executor");
         
-        // For now, we'll just log the chunk
-        // In a full implementation, this would route the chunk to the appropriate streaming step
-        tracing::info!("Received streaming chunk: {:?}", chunk);
+        // Parse the chunk to extract request_id and chunk data
+        let chunk_data = match serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(chunk.clone()) {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::error!("Failed to parse streaming chunk: {}", e);
+                return Ok(());
+            }
+        };
         
-        // TODO: Implement proper chunk routing to streaming steps
-        // This would involve:
-        // 1. Finding which streaming step should receive this chunk
-        // 2. Sending it through the appropriate channel
-        // 3. Triggering the step to process the chunk
+        // Extract request_id and chunk content
+        let request_id = chunk_data.get("request_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        
+        let chunk_content = chunk_data.get("chunk")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        
+        tracing::debug!("Routing chunk for request {}: {:?}", request_id, chunk_content);
+        
+        // Find streaming steps that are currently active
+        let streaming_steps = self.find_active_streaming_steps().await?;
+        
+        if streaming_steps.is_empty() {
+            tracing::warn!("No active streaming steps found for chunk routing");
+            return Ok(());
+        }
+        
+        // Route the chunk to the first streaming step (source step)
+        // In a more sophisticated implementation, we'd route based on stream_id
+        if let Some(first_step_index) = streaming_steps.first() {
+            if let Some(coordinator) = &self.streaming_coordinator {
+                let mut coordinator = coordinator.lock().await;
+                coordinator.route_chunk_to_step(*first_step_index, chunk_content).await?;
+                tracing::debug!("Routed chunk to streaming step {}", first_step_index);
+            }
+        }
         
         Ok(())
+    }
+    
+    /// Find currently active streaming steps
+    async fn find_active_streaming_steps(&self) -> Result<Vec<usize>> {
+        let mut active_steps = Vec::new();
+        
+        for (step_index, step) in self.flow.steps.iter().enumerate() {
+            if step.streaming {
+                // Check if this step is currently running or ready to run
+                let step_status = self.state_store
+                    .get_step_status(self.execution_id(), step_index)
+                    .await
+                    .map_err(|e| error_stack::report!(ExecutionError::StateError).attach_printable(format!("State error: {e}")))?;
+                match step_status {
+                    stepflow_core::status::StepStatus::Running | 
+                    stepflow_core::status::StepStatus::Runnable => {
+                        active_steps.push(step_index);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        Ok(active_steps)
     }
 }
 
@@ -963,6 +1039,7 @@ pub struct StepInspection {
 /// Coordinates streaming execution between multiple steps in a pipeline
 struct StreamingPipelineCoordinator {
     executor: Arc<StepFlowExecutor>,
+    flow: Arc<Flow>,
     pipeline_steps: Vec<usize>,
     context: ExecutionContext,
     step_connections: std::collections::HashMap<usize, tokio::sync::mpsc::Sender<FlowResult>>,
@@ -972,6 +1049,7 @@ struct StreamingPipelineCoordinator {
 impl StreamingPipelineCoordinator {
     fn new(
         executor: Arc<StepFlowExecutor>,
+        flow: Arc<Flow>,
         pipeline_steps: Vec<usize>,
         context: ExecutionContext,
     ) -> Self {
@@ -987,6 +1065,7 @@ impl StreamingPipelineCoordinator {
 
         Self {
             executor,
+            flow,
             pipeline_steps,
             context,
             step_connections,
@@ -995,25 +1074,67 @@ impl StreamingPipelineCoordinator {
     }
 
     async fn execute_pipeline(&mut self) -> Result<()> {
-        // For now, we'll just log that we're executing a streaming pipeline
-        // In a full implementation, this would coordinate all the streaming steps
         tracing::info!("Executing streaming pipeline with {} steps", self.pipeline_steps.len());
         
-        // TODO: Implement full streaming pipeline coordination
-        // This would involve:
-        // 1. Starting all streaming steps in parallel
-        // 2. Setting up channels between steps
-        // 3. Routing chunks between steps
-        // 4. Handling backpressure and flow control
+        // Create tasks for each streaming step
+        let mut tasks = Vec::new();
+        let flow_arc = self.flow.clone();
+        
+        for &step_index in &self.pipeline_steps {
+            let flow_arc = flow_arc.clone();
+            let step_input = self.resolve_step_input(step_index).await?;
+            let downstream_senders = self.get_downstream_senders(step_index);
+            
+            if let Some(receiver) = self.step_receivers.remove(&step_index) {
+                let executor = self.executor.clone();
+                let context = self.context.clone();
+                let task = tokio::spawn(async move {
+                    let step = &flow_arc.steps[step_index];
+                    Self::run_streaming_step(
+                        executor,
+                        step,
+                        step_input,
+                        context,
+                        receiver,
+                        downstream_senders,
+                    ).await
+                });
+                tasks.push(task);
+            }
+        }
+        
+        // Wait for all streaming steps to complete
+        for task in tasks {
+            task.await.map_err(|_e| ExecutionError::StepFailed { 
+                step: "streaming_pipeline".to_string() 
+            })??;
+        }
         
         Ok(())
+    }
+    
+    async fn resolve_step_input(&self, step_index: usize) -> Result<stepflow_core::workflow::ValueRef> {
+        // Create a basic input for streaming steps
+        // In a full implementation, this would resolve dependencies from previous steps
+        let step = &self.flow.steps[step_index];
+        
+        // For streaming steps, we typically need some basic configuration
+        let input = serde_json::json!({
+            "step_id": step.id,
+            "step_index": step_index,
+            "streaming": true,
+            "component": step.component.to_string()
+        });
+        
+        Ok(stepflow_core::workflow::ValueRef::new(input))
     }
 
     fn get_downstream_senders(&self, step_index: usize) -> Vec<tokio::sync::mpsc::Sender<FlowResult>> {
         let mut senders = Vec::new();
         
+        // Find steps that come after this step in the pipeline
         for &other_step_index in &self.pipeline_steps {
-            if other_step_index != step_index {
+            if other_step_index > step_index {
                 if let Some(sender) = self.step_connections.get(&other_step_index) {
                     senders.push(sender.clone());
                 }
@@ -1021,6 +1142,29 @@ impl StreamingPipelineCoordinator {
         }
         
         senders
+    }
+    
+    async fn route_chunk_to_step(&mut self, step_index: usize, chunk: serde_json::Value) -> Result<()> {
+        if let Some(sender) = self.step_connections.get(&step_index) {
+            let flow_result = FlowResult::Streaming {
+                stream_id: "routed_chunk".to_string(),
+                metadata: stepflow_core::workflow::ValueRef::new(serde_json::json!({})),
+                chunk: chunk.to_string(),
+                chunk_index: 0,
+                is_final: false,
+            };
+            
+            sender.send(flow_result).await
+                .map_err(|e| ExecutionError::StepFailed { 
+                    step: format!("step_{}", step_index) 
+                })?;
+            
+            tracing::debug!("Successfully routed chunk to step {}", step_index);
+        } else {
+            tracing::warn!("No sender found for step {}", step_index);
+        }
+        
+        Ok(())
     }
 
     async fn run_streaming_step(
