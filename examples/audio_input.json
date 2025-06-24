@@ -1,0 +1,12 @@
+{
+  "operation": "amplify",
+  "sample_rate": 16000,
+  "channels": 1,
+  "chunk_size": 1024,
+  "frequency": 440.0,
+  "source": "microphone",
+  "duration": 3.0,
+  "output_file": "test_workflow_webcam.wav",
+  "device_name": "C922 Pro Stream Webcam",
+  "play_audio": true
+}

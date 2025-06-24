@@ -49,6 +49,19 @@ impl FlowError {
 pub enum FlowResult {
     /// The step execution was successful.
     Success { result: ValueRef },
+    /// The step is streaming data.
+    Streaming { 
+        /// Stream identifier
+        stream_id: String,
+        /// Metadata about the stream
+        metadata: ValueRef,
+        /// Base64 encoded chunk data
+        chunk: String,
+        /// Chunk index
+        chunk_index: usize,
+        /// Whether this is the final chunk
+        is_final: bool,
+    },
     /// The step was skipped.
     Skipped,
     /// The step failed with the given error.
@@ -66,6 +79,15 @@ impl FlowResult {
     pub fn success(&self) -> Option<ValueRef> {
         match self {
             Self::Success { result } => Some(result.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn streaming(&self) -> Option<(String, ValueRef, String, usize, bool)> {
+        match self {
+            Self::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                Some((stream_id.clone(), metadata.clone(), chunk.clone(), *chunk_index, *is_final))
+            }
             _ => None,
         }
     }

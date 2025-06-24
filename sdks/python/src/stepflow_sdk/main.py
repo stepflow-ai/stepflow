@@ -4,6 +4,7 @@ import inspect
 from typing import Any, List
 from stepflow_sdk.server import StepflowStdioServer
 from stepflow_sdk.context import StepflowContext
+from stepflow_sdk.audio_components import audio_stream_source, audio_chunk_processor, audio_sink
 
 # Create server instance
 server = StepflowStdioServer()
@@ -507,6 +508,11 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict, 
                 return wrapper
             except Exception as e:
                 raise ValueError(f"Code compilation failed: {e}")
+
+# Register audio components
+server.component(name="audio_stream_source")(audio_stream_source)
+server.component(name="audio_chunk_processor")(audio_chunk_processor)
+server.component(name="audio_sink")(audio_sink)
 
 def main():
     # Start the server

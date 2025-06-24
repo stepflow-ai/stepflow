@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::stdio::StdioError;
-use crate::{GetBlobHandler, PutBlobHandler};
+use crate::{GetBlobHandler, PutBlobHandler, StreamingChunkHandler};
 
 /// Trait for handling incoming method calls and notifications from component servers.
 ///
@@ -45,6 +45,7 @@ static INCOMING_HANDLERS: LazyLock<IncomingHandlerRegistry> = LazyLock::new(|| {
     let mut registry = IncomingHandlerRegistry::new();
     registry.register("put_blob", Box::new(PutBlobHandler));
     registry.register("get_blob", Box::new(GetBlobHandler));
+    registry.register("streaming_chunk", Box::new(StreamingChunkHandler));
     registry
 });
 

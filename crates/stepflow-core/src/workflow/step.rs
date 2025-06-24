@@ -28,6 +28,10 @@ pub struct Step {
     /// Arguments to pass to the component for this step
     #[serde(default, skip_serializing_if = "ValueRef::is_null")]
     pub input: ValueRef,
+
+    /// Whether this step is a streaming step (doesn't persist results)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub streaming: bool,
 }
 
 #[derive(
@@ -134,6 +138,7 @@ mod tests {
                 default_value: Some(ValueRef::from("fallback")),
             },
             input: serde_json::Value::Null.into(),
+            streaming: false,
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
@@ -152,6 +157,7 @@ mod tests {
             skip_if: None,
             on_error: ErrorAction::Fail,
             input: serde_json::Value::Null.into(),
+            streaming: false,
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();

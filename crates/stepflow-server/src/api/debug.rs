@@ -109,6 +109,7 @@ pub async fn debug_continue(
     let status = match &final_result {
         FlowResult::Success { .. } => ExecutionStatus::Completed,
         FlowResult::Failed { .. } | FlowResult::Skipped => ExecutionStatus::Failed,
+        FlowResult::Streaming { .. } => ExecutionStatus::Running,
     };
 
     state_store

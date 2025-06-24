@@ -1,0 +1,82 @@
+name: Audio Streaming Pipeline
+description: Real-time audio processing pipeline with microphone input and file output
+
+input:
+  operation:
+    type: string
+    description: Audio processing operation (amplify, passthrough)
+    default: "amplify"
+  sample_rate:
+    type: integer
+    description: Audio sample rate in Hz
+    default: 44100
+  channels:
+    type: integer
+    description: Number of audio channels
+    default: 1
+  chunk_size:
+    type: integer
+    description: Size of audio chunks in samples
+    default: 1024
+  frequency:
+    type: number
+    description: Frequency for test sine wave (Hz)
+    default: 440.0
+  source:
+    type: string
+    description: Audio source (microphone, system_audio, sine_wave)
+    default: "microphone"
+  duration:
+    type: number
+    description: Recording duration in seconds
+    default: 5.0
+  output_file:
+    type: string
+    description: Output WAV file path
+    default: "output_audio.wav"
+  device_name:
+    type: string
+    description: Name of audio device to use
+    default: "C922 Pro Stream Webcam"
+
+steps:
+  # Streaming audio source that generates PCM chunks
+  - id: audio_source
+    component: python://audio_stream_source
+    streaming: true
+    input:
+      sample_rate: { $from: { workflow: input }, path: sample_rate }
+      channels: { $from: { workflow: input }, path: channels }
+      chunk_size: { $from: { workflow: input }, path: chunk_size }
+      frequency: { $from: { workflow: input }, path: frequency }
+      source: { $from: { workflow: input }, path: source }
+      duration: { $from: { workflow: input }, path: duration }
+      output_file: { $from: { workflow: input }, path: output_file }
+      device_name: { $from: { workflow: input }, path: device_name }
+
+  # Process the audio chunks
+  - id: process_chunk
+    component: python://audio_chunk_processor
+    streaming: true
+    input:
+      chunk: { $from: { step: audio_source }, path: chunk }
+      chunk_index: { $from: { step: audio_source }, path: chunk_index }
+      stream_id: { $from: { step: audio_source }, path: stream_id }
+      sample_rate: { $from: { step: audio_source }, path: sample_rate }
+      channels: { $from: { step: audio_source }, path: channels }
+      operation: { $from: { workflow: input }, path: operation }
+
+  # Output the processed chunks
+  - id: output_chunk
+    component: python://audio_sink
+    streaming: true
+    input:
+      chunk: { $from: { step: process_chunk }, path: chunk }
+      chunk_index: { $from: { step: process_chunk }, path: chunk_index }
+      stream_id: { $from: { step: process_chunk }, path: stream_id }
+      output_file: { $from: { workflow: input }, path: output_file }
+
+output:
+  processed_chunks: { $from: { step: output_chunk }, path: result }
+  source_metadata: { $from: { step: audio_source }, path: sample_rate }
+  processing_metadata: { $from: { step: process_chunk }, path: sample_rate } 

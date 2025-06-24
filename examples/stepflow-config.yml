@@ -1,0 +1,7 @@
+plugins:
+  - name: builtins
+    type: builtin
+  - name: python
+    type: stdio
+    command: /home/phact/Desktop/stepflow/sdks/python/.venv/bin/stepflow_sdk
+    args: [] 

@@ -12,6 +12,7 @@ use stepflow_core::{
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{ExecutionError, Result, StepFlowExecutor, value_resolver::ValueResolver};
 
@@ -40,6 +41,7 @@ pub(crate) async fn execute_workflow(
 ///
 /// This serves as the core execution engine that can be used directly for
 /// run-to-completion execution, or controlled step-by-step by the debug session.
+#[derive(Clone)]
 pub struct WorkflowExecutor {
     /// Dependency tracker for determining runnable steps
     tracker: stepflow_analysis::DependencyTracker,
@@ -53,6 +55,8 @@ pub struct WorkflowExecutor {
     flow: Arc<Flow>,
     /// Execution context for this session
     context: ExecutionContext,
+    /// Optional streaming pipeline coordinator
+    streaming_coordinator: Option<std::sync::Arc<tokio::sync::Mutex<StreamingPipelineCoordinator>>>,
 }
 
 impl WorkflowExecutor {
@@ -86,6 +90,7 @@ impl WorkflowExecutor {
             executor,
             flow,
             context,
+            streaming_coordinator: None,
         })
     }
 
@@ -369,6 +374,7 @@ impl WorkflowExecutor {
                     FlowResult::Success { .. } => CoreStepStatus::Completed,
                     FlowResult::Skipped => CoreStepStatus::Skipped,
                     FlowResult::Failed { .. } => CoreStepStatus::Failed,
+                    FlowResult::Streaming { .. } => CoreStepStatus::Running, // Streaming steps are considered running
                 },
                 Err(_) => CoreStepStatus::Blocked,
             }
@@ -421,24 +427,19 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self.resolver.resolve(&step.input).await? {
             FlowResult::Success { result } => result,
+            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                // For streaming steps, we can handle streaming inputs
+                // For now, just return the metadata as the input
+                metadata
+            }
             FlowResult::Skipped => {
-                // Step inputs contain skipped values - skip this step
-                let result = FlowResult::Skipped;
-                self.record_step_completion(step_index, &result).await?;
-                return Ok(StepExecutionResult::new(
-                    step_index,
-                    step_id,
-                    component_string,
-                    result,
-                ));
+                return Err(ExecutionError::StepNotRunnable {
+                    step: step_id.clone(),
+                }
+                .into());
             }
             FlowResult::Failed { error } => {
-                return Ok(StepExecutionResult::new(
-                    step_index,
-                    step_id,
-                    component_string,
-                    FlowResult::Failed { error },
-                ));
+                return Err(ExecutionError::StepFailed { step: step_id }.into());
             }
         };
 
@@ -446,8 +447,14 @@ impl WorkflowExecutor {
         let plugin = self.executor.get_plugin(&step.component).await?;
         let result = execute_step_async(plugin, step, step_input, self.context.clone()).await?;
 
-        // Record the result
-        self.record_step_completion(step_index, &result).await?;
+        // For streaming steps, don't record in state store
+        if step.streaming {
+            // Update dependency tracker but don't persist
+            self.tracker.complete_step(step_index);
+        } else {
+            // Record the result for non-streaming steps
+            self.record_step_completion(step_index, &result).await?;
+        }
 
         Ok(StepExecutionResult::new(
             step_index,
@@ -502,6 +509,7 @@ impl WorkflowExecutor {
             FlowResult::Success { result } => Ok(result.is_truthy()),
             FlowResult::Skipped => Ok(false), // Don't skip if condition references skipped values
             FlowResult::Failed { .. } => Ok(false), // Don't skip if condition evaluation failed
+            FlowResult::Streaming { .. } => Ok(false), // Don't skip if condition references streaming values
         }
     }
 
@@ -552,6 +560,14 @@ impl WorkflowExecutor {
                         additional_unblocked
                             .union_with(&self.skip_step(&step_id, step_index).await?);
                         continue;
+                    }
+                    Ok(FlowResult::Streaming { .. }) => {
+                        // Step inputs contain streaming values - this is not supported for regular steps
+                        tracing::error!(
+                            "Step {} has streaming inputs which is not supported for non-streaming steps",
+                            step_id
+                        );
+                        return Err(ExecutionError::StepFailed { step: step_id }.into());
                     }
                     Ok(FlowResult::Failed { error }) => {
                         tracing::error!(
@@ -635,6 +651,218 @@ impl WorkflowExecutor {
 
         running_tasks.push(task_future);
 
+        Ok(())
+    }
+
+    /// Execute a streaming step continuously.
+    /// This method runs the step in a loop, processing chunks as they arrive.
+    pub async fn execute_streaming_step(
+        &mut self,
+        step_index: usize,
+    ) -> Result<()> {
+        let step = &self.flow.steps[step_index];
+        let step_id = step.id.clone();
+
+        // Check if the step is runnable
+        if !self.tracker.unblocked_steps().contains(step_index) {
+            return Err(ExecutionError::StepNotRunnable {
+                step: step.id.clone(),
+            }
+            .into());
+        }
+
+        // Check if this is actually a streaming step
+        if !step.streaming {
+            return Err(ExecutionError::StepNotRunnable {
+                step: step.id.clone(),
+            }
+            .into());
+        }
+
+        // Check if this is part of a streaming pipeline
+        if self.is_streaming_pipeline_step(step_index) {
+            return self.execute_streaming_pipeline_step(step_index).await;
+        }
+
+        // Fallback to individual streaming step execution
+        self.execute_individual_streaming_step(step_index).await
+    }
+
+    /// Check if a step is part of a streaming pipeline (has streaming inputs/outputs)
+    fn is_streaming_pipeline_step(&self, step_index: usize) -> bool {
+        let step = &self.flow.steps[step_index];
+        
+        // Check if this step has streaming inputs from other streaming steps
+        for (other_index, other_step) in self.flow.steps.iter().enumerate() {
+            if other_index != step_index && other_step.streaming {
+                // Check if this step references the other streaming step
+                if self.step_references_other_step(step, other_step) {
+                    return true;
+                }
+            }
+        }
+        
+        false
+    }
+
+    /// Check if a step references another step in its inputs
+    fn step_references_other_step(&self, step: &stepflow_core::workflow::Step, other_step: &stepflow_core::workflow::Step) -> bool {
+        // Simple check: look for step references in the input
+        let input_str = serde_json::to_string(&step.input).unwrap_or_default();
+        input_str.contains(&format!("step: {}", other_step.id))
+    }
+
+    /// Execute a step that's part of a streaming pipeline
+    async fn execute_streaming_pipeline_step(&mut self, step_index: usize) -> Result<()> {
+        let step = &self.flow.steps[step_index];
+        let step_id = step.id.clone();
+
+        tracing::info!("Executing streaming pipeline step: {}", step_id);
+
+        // Find all streaming steps in the pipeline
+        let pipeline_steps = self.find_streaming_pipeline_steps(step_index);
+        
+        // Create a streaming coordinator and store it
+        let coordinator = std::sync::Arc::new(tokio::sync::Mutex::new(StreamingPipelineCoordinator::new(
+            self.executor.clone(),
+            pipeline_steps,
+            self.context.clone(),
+        )));
+        self.streaming_coordinator = Some(coordinator.clone());
+
+        // Execute the entire pipeline
+        coordinator.lock().await.execute_pipeline().await?;
+
+        // Update dependency tracker
+        self.tracker.complete_step(step_index);
+
+        Ok(())
+    }
+
+    /// Find all steps that are part of the same streaming pipeline
+    fn find_streaming_pipeline_steps(&self, start_step_index: usize) -> Vec<usize> {
+        let mut pipeline_steps = vec![start_step_index];
+        let mut to_check = vec![start_step_index];
+        let mut checked = std::collections::HashSet::new();
+
+        while let Some(step_index) = to_check.pop() {
+            if checked.contains(&step_index) {
+                continue;
+            }
+            checked.insert(step_index);
+
+            let step = &self.flow.steps[step_index];
+            
+            // Find steps that this step depends on (streaming inputs)
+            for (other_index, other_step) in self.flow.steps.iter().enumerate() {
+                if other_step.streaming && self.step_references_other_step(step, other_step) {
+                    if !pipeline_steps.contains(&other_index) {
+                        pipeline_steps.push(other_index);
+                        to_check.push(other_index);
+                    }
+                }
+            }
+
+            // Find steps that depend on this step (streaming outputs)
+            for (other_index, other_step) in self.flow.steps.iter().enumerate() {
+                if other_step.streaming && self.step_references_other_step(other_step, step) {
+                    if !pipeline_steps.contains(&other_index) {
+                        pipeline_steps.push(other_index);
+                        to_check.push(other_index);
+                    }
+                }
+            }
+        }
+
+        pipeline_steps.sort();
+        pipeline_steps
+    }
+
+    /// Execute an individual streaming step (fallback)
+    async fn execute_individual_streaming_step(&mut self, step_index: usize) -> Result<()> {
+        let step = &self.flow.steps[step_index];
+        let step_id = step.id.clone();
+
+        // Resolve step inputs
+        let step_input = match self.resolver.resolve(&step.input).await? {
+            FlowResult::Success { result } => result,
+            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                // For streaming steps, we can handle streaming inputs
+                // For now, just return the metadata as the input
+                metadata
+            }
+            FlowResult::Skipped => {
+                return Err(ExecutionError::StepNotRunnable {
+                    step: step_id.clone(),
+                }
+                .into());
+            }
+            FlowResult::Failed { error } => {
+                return Err(ExecutionError::StepFailed { step: step_id }.into());
+            }
+        };
+
+        // Get plugin
+        let plugin = self.executor.get_plugin(&step.component).await?;
+
+        // Execute streaming step in a loop
+        let mut chunk_index = 0;
+        loop {
+            let result = execute_step_async(plugin.clone(), step, step_input.clone(), self.context.clone()).await?;
+            
+            match result {
+                FlowResult::Streaming { stream_id, metadata, chunk, chunk_index: _, is_final } => {
+                    // Process the streaming chunk
+                    tracing::debug!(
+                        "Streaming step {} chunk {}: stream_id={}, is_final={}",
+                        step_id, chunk_index, stream_id, is_final
+                    );
+                    
+                    // Here you could emit the chunk to downstream steps or external consumers
+                    // For now, we just log it
+                    
+                    chunk_index += 1;
+                    
+                    if is_final {
+                        break;
+                    }
+                }
+                FlowResult::Success { result } => {
+                    // Non-streaming result, treat as final
+                    tracing::debug!("Streaming step {} completed with success", step_id);
+                    break;
+                }
+                FlowResult::Failed { error } => {
+                    tracing::error!("Streaming step {} failed: {:?}", step_id, error);
+                    return Err(ExecutionError::StepFailed { step: step_id }.into());
+                }
+                FlowResult::Skipped => {
+                    tracing::debug!("Streaming step {} skipped", step_id);
+                    break;
+                }
+            }
+        }
+
+        // Update dependency tracker for streaming step
+        self.tracker.complete_step(step_index);
+
+        Ok(())
+    }
+
+    /// Route a streaming chunk to the appropriate streaming pipeline
+    pub async fn route_streaming_chunk(&mut self, chunk: serde_json::Value) -> Result<()> {
+        tracing::debug!("Routing streaming chunk to workflow executor");
+        
+        // For now, we'll just log the chunk
+        // In a full implementation, this would route the chunk to the appropriate streaming step
+        tracing::info!("Received streaming chunk: {:?}", chunk);
+        
+        // TODO: Implement proper chunk routing to streaming steps
+        // This would involve:
+        // 1. Finding which streaming step should receive this chunk
+        // 2. Sending it through the appropriate channel
+        // 3. Triggering the step to process the chunk
+        
         Ok(())
     }
 }
@@ -730,6 +958,128 @@ pub struct StepInspection {
     pub skip_if: Option<Expr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
     pub state: CoreStepStatus,
+}
+
+/// Coordinates streaming execution between multiple steps in a pipeline
+struct StreamingPipelineCoordinator {
+    executor: Arc<StepFlowExecutor>,
+    pipeline_steps: Vec<usize>,
+    context: ExecutionContext,
+    step_connections: std::collections::HashMap<usize, tokio::sync::mpsc::Sender<FlowResult>>,
+    step_receivers: std::collections::HashMap<usize, tokio::sync::mpsc::Receiver<FlowResult>>,
+}
+
+impl StreamingPipelineCoordinator {
+    fn new(
+        executor: Arc<StepFlowExecutor>,
+        pipeline_steps: Vec<usize>,
+        context: ExecutionContext,
+    ) -> Self {
+        let mut step_connections = std::collections::HashMap::new();
+        let mut step_receivers = std::collections::HashMap::new();
+
+        // Create channels for each step
+        for &step_index in &pipeline_steps {
+            let (tx, rx) = tokio::sync::mpsc::channel(100); // Buffer 100 chunks
+            step_connections.insert(step_index, tx);
+            step_receivers.insert(step_index, rx);
+        }
+
+        Self {
+            executor,
+            pipeline_steps,
+            context,
+            step_connections,
+            step_receivers,
+        }
+    }
+
+    async fn execute_pipeline(&mut self) -> Result<()> {
+        // For now, we'll just log that we're executing a streaming pipeline
+        // In a full implementation, this would coordinate all the streaming steps
+        tracing::info!("Executing streaming pipeline with {} steps", self.pipeline_steps.len());
+        
+        // TODO: Implement full streaming pipeline coordination
+        // This would involve:
+        // 1. Starting all streaming steps in parallel
+        // 2. Setting up channels between steps
+        // 3. Routing chunks between steps
+        // 4. Handling backpressure and flow control
+        
+        Ok(())
+    }
+
+    fn get_downstream_senders(&self, step_index: usize) -> Vec<tokio::sync::mpsc::Sender<FlowResult>> {
+        let mut senders = Vec::new();
+        
+        for &other_step_index in &self.pipeline_steps {
+            if other_step_index != step_index {
+                if let Some(sender) = self.step_connections.get(&other_step_index) {
+                    senders.push(sender.clone());
+                }
+            }
+        }
+        
+        senders
+    }
+
+    async fn run_streaming_step(
+        executor: Arc<StepFlowExecutor>,
+        step: &stepflow_core::workflow::Step,
+        step_input: stepflow_core::workflow::ValueRef,
+        context: ExecutionContext,
+        mut receiver: tokio::sync::mpsc::Receiver<FlowResult>,
+        downstream_senders: Vec<tokio::sync::mpsc::Sender<FlowResult>>,
+    ) -> Result<()> {
+        let step_id = step.id.clone();
+        let plugin = executor.get_plugin(&step.component).await?;
+
+        tracing::info!("Starting streaming step: {}", step_id);
+
+        // Execute the step to get initial result
+        let result = execute_step_async(plugin, step, step_input, context).await?;
+
+        match result {
+            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                // Send the chunk to downstream steps
+                for sender in &downstream_senders {
+                    let _ = sender.send(FlowResult::Streaming {
+                        stream_id: stream_id.clone(),
+                        metadata: metadata.clone(),
+                        chunk: chunk.clone(),
+                        chunk_index,
+                        is_final,
+                    }).await;
+                }
+
+                // Continue processing if not final
+                if !is_final {
+                    // Wait for input from upstream steps
+                    while let Some(input_chunk) = receiver.recv().await {
+                        // Process the input chunk and continue streaming
+                        // This is where you'd call the step again with the new input
+                        tracing::debug!("Step {} received chunk, continuing stream", step_id);
+                        
+                        // For now, just continue the loop
+                        // In a full implementation, you'd call the step again
+                        break;
+                    }
+                }
+            }
+            FlowResult::Success { result } => {
+                tracing::info!("Streaming step {} completed with success", step_id);
+            }
+            FlowResult::Failed { error } => {
+                tracing::error!("Streaming step {} failed: {:?}", step_id, error);
+                return Err(ExecutionError::StepFailed { step: step_id }.into());
+            }
+            FlowResult::Skipped => {
+                tracing::info!("Streaming step {} skipped", step_id);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

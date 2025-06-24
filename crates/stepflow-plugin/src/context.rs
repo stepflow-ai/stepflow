@@ -40,6 +40,20 @@ pub trait Context: Send + Sync {
 
     /// Get the state store for this executor.
     fn state_store(&self) -> &Arc<dyn StateStore>;
+
+    /// Get a reference to the executor for advanced operations.
+    fn executor(&self) -> Option<Arc<dyn Executor>> {
+        None
+    }
+}
+
+/// Trait for executor operations that require access to the StepFlowExecutor
+pub trait Executor: Send + Sync {
+    /// Get a workflow executor for debug sessions
+    fn get_workflow_executor(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, crate::Result<Option<Box<dyn std::any::Any + Send + Sync>>>>;
 }
 
 /// Execution context that combines a Context with an execution ID.

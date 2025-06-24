@@ -84,6 +84,16 @@ impl BuiltinComponent for EvalComponent {
         let result_value = match nested_result {
             FlowResult::Success { result } => result.as_ref().clone(),
             FlowResult::Skipped => serde_json::Value::Null,
+            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                // For streaming results, return the metadata and chunk info
+                serde_json::json!({
+                    "stream_id": stream_id,
+                    "metadata": metadata.as_ref(),
+                    "chunk": chunk,
+                    "chunk_index": chunk_index,
+                    "is_final": is_final
+                })
+            }
             FlowResult::Failed { error } => {
                 // Propagate the failure from the nested workflow
                 return Ok(FlowResult::Failed { error });

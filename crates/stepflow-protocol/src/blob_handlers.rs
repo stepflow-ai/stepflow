@@ -159,3 +159,60 @@ impl IncomingHandler for GetBlobHandler {
         .boxed()
     }
 }
+
+/// Handler for streaming_chunk notifications from component servers.
+pub struct StreamingChunkHandler;
+
+impl IncomingHandler for StreamingChunkHandler {
+    fn handle_incoming(
+        &self,
+        _method: String,
+        params: Box<RawValue>,
+        id: Option<Uuid>,
+        response_tx: mpsc::Sender<String>,
+        context: Arc<dyn Context>,
+    ) -> BoxFuture<'static, error_stack::Result<(), StdioError>> {
+        async move {
+            // This is a notification (no ID), so we don't send a response
+            // Instead, we need to handle the streaming chunk
+            match serde_json::from_str::<StreamingChunkNotification>(params.get()) {
+                Ok(notification) => {
+                    tracing::info!("Received streaming chunk for request {}: {:?}", 
+                                  notification.request_id, notification.chunk);
+                    
+                    // Route this chunk to the appropriate workflow executor
+                    if let Some(executor) = context.executor() {
+                        if let Ok(execution_id) = Uuid::parse_str(&notification.request_id) {
+                            // Try to find the workflow executor for this execution
+                            if let Ok(Some(_boxed_executor)) = executor.get_workflow_executor(execution_id).await {
+                                // For now, just log that we received the chunk
+                                // TODO: Implement proper chunk routing when the streaming pipeline is ready
+                                tracing::info!("Received streaming chunk for execution {}: {:?}", 
+                                              execution_id, notification.chunk);
+                            } else {
+                                tracing::warn!("No workflow executor found for execution ID: {}", execution_id);
+                            }
+                        } else {
+                            tracing::warn!("Invalid execution ID in streaming chunk: {}", notification.request_id);
+                        }
+                    } else {
+                        tracing::warn!("No executor available in context for streaming chunk routing");
+                    }
+                    
+                    Ok(())
+                }
+                Err(e) => {
+                    tracing::error!("Failed to parse streaming chunk notification: {}", e);
+                    Ok(())
+                }
+            }
+        }
+        .boxed()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamingChunkNotification {
+    request_id: String,
+    chunk: serde_json::Value,
+}

@@ -67,6 +67,9 @@ class StepflowStdioServer:
             # Extract description from parameter or docstring
             component_description = description or (f.__doc__.strip() if f.__doc__ else None)
             
+            # Check if this is a generator function
+            is_generator = inspect.isgeneratorfunction(f)
+            
             self._components[component_name] = ComponentEntry(
                 name=component_name,
                 function=f,
@@ -75,8 +78,9 @@ class StepflowStdioServer:
                 description=component_description
             )
             
-            # Store whether function expects context
+            # Store whether function expects context and is a generator
             f._expects_context = expects_context
+            f._is_generator = is_generator
 
             @wraps(f)
             def wrapper(*args, **kwargs):
@@ -130,8 +134,10 @@ class StepflowStdioServer:
                 )
             case "component_execute":
                 execute_request = msgspec.json.decode(request.params, type=ComponentExecuteRequest)
+                print(f"DEBUG: Executing component: {execute_request.component}", file=sys.stderr)
                 component = self.get_component(execute_request.component)
                 if not component:
+                    print(f"DEBUG: Component {execute_request.component} not found!", file=sys.stderr)
                     return Message(
                         id=id,
                         error={
@@ -140,29 +146,57 @@ class StepflowStdioServer:
                             "data": None
                         }
                     )
+                print(f"DEBUG: Component found, executing function", file=sys.stderr)
                 try:
                     # Parse input parameters into the expected type
                     input = msgspec.json.decode(execute_request.input, type=component.input_type)
+                    print(f"DEBUG: Input parsed successfully: {input}", file=sys.stderr)
                     
-                    # Execute component with or without context
-                    import asyncio
-                    import inspect
+                    # Execute the component function
+                    output = component.function(input)
+                    print(f"DEBUG: Component function executed, output type: {type(output)}", file=sys.stderr)
                     
-                    if hasattr(component.function, '_expects_context') and component.function._expects_context:
-                        if inspect.iscoroutinefunction(component.function):
-                            output = await component.function(input, self._context)
+                    # Check if this is a generator function
+                    if hasattr(component.function, '_is_generator') and component.function._is_generator:
+                        # For generators, we need to yield each result as streaming
+                        if inspect.isgenerator(output):
+                            results = []
+                            for result in output:
+                                results.append(result)
+                                # Send streaming notification
+                                await self._outgoing_queue.put({
+                                    "jsonrpc": "2.0",
+                                    "method": "streaming_chunk",
+                                    "params": {
+                                        "request_id": str(id),
+                                        "chunk": result
+                                    }
+                                })
+                            
+                            # Return the final result (last chunk)
+                            if results:
+                                return Message(
+                                    id=id,
+                                    result=ComponentExecuteResponse(output=results[-1]),
+                                )
+                            else:
+                                # Empty generator
+                                return Message(
+                                    id=id,
+                                    result=ComponentExecuteResponse(output={"outcome": "success", "result": None}),
+                                )
                         else:
-                            output = component.function(input, self._context)
+                            # Not actually a generator, treat as normal
+                            return Message(
+                                id=id,
+                                result=ComponentExecuteResponse(output=output),
+                            )
                     else:
-                        if inspect.iscoroutinefunction(component.function):
-                            output = await component.function(input)
-                        else:
-                            output = component.function(input)
-                        
-                    return Message(
-                        id=id,
-                        result=ComponentExecuteResponse(output=output),
-                    )
+                        # Normal non-generator function
+                        return Message(
+                            id=id,
+                            result=ComponentExecuteResponse(output=output),
+                        )
                 except Exception as e:
                     return Message(
                         id=id,

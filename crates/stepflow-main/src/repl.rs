@@ -674,6 +674,7 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
                                 stepflow_core::FlowResult::Success { .. } => "SUCCESS",
                                 stepflow_core::FlowResult::Skipped => "SKIPPED",
                                 stepflow_core::FlowResult::Failed { .. } => "FAILED",
+                                stepflow_core::FlowResult::Streaming { .. } => "RUNNING",
                             };
                             println!(
                                 "  [{}] {} ({}): {}",
@@ -754,6 +755,14 @@ fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
         }
         stepflow_core::FlowResult::Failed { error } => {
             println!("Result: FAILED - {}", error);
+        }
+        stepflow_core::FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+            println!("Result: STREAMING");
+            println!("  Stream ID: {}", stream_id);
+            println!("  Metadata: {}", serde_json::to_string_pretty(metadata).unwrap_or_else(|_| "<unserializable>".to_string()));
+            println!("  Chunk: {}... ({} bytes base64)", &chunk[..chunk.len().min(32)], chunk.len());
+            println!("  Chunk Index: {}", chunk_index);
+            println!("  Final: {}", is_final);
         }
     }
     Ok(())

@@ -4,5 +4,5 @@ mod incoming_handler;
 mod schema;
 pub mod stdio;
 
-pub use blob_handlers::{GetBlobHandler, PutBlobHandler};
+pub use blob_handlers::{GetBlobHandler, PutBlobHandler, StreamingChunkHandler};
 pub use incoming_handler::{IncomingHandler, IncomingHandlerRegistry};

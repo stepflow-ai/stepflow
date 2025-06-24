@@ -87,6 +87,16 @@ pub struct DependencyTracker {
     completed: BitSet,
 }
 
+impl Clone for DependencyTracker {
+    fn clone(&self) -> Self {
+        Self {
+            dependencies: self.dependencies.clone(),
+            blocking: self.blocking.clone(),
+            completed: self.completed.clone(),
+        }
+    }
+}
+
 impl DependencyTracker {
     pub fn new(dependencies: Arc<Dependencies>) -> Self {
         let blocking = dependencies

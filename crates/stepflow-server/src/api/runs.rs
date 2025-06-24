@@ -212,6 +212,19 @@ pub async fn create_run(
                 debug: debug_mode,
             }))
         }
+        FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+            // For streaming workflows, mark as running
+            state_store
+                .update_execution_status(run_id, ExecutionStatus::Running, None)
+                .await?;
+
+            Ok(Json(CreateRunResponse {
+                run_id,
+                result: Some(flow_result),
+                status: ExecutionStatus::Running,
+                debug: debug_mode,
+            }))
+        }
         FlowResult::Failed { .. } | FlowResult::Skipped => {
             // Update execution status to failed
             state_store

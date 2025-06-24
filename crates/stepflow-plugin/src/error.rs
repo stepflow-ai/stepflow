@@ -27,6 +27,14 @@ pub enum PluginError {
     InvalidInput,
     #[error("error creating plugin")]
     CreatePlugin,
+    #[error("generic error: {0}")]
+    Generic(String),
+}
+
+impl PluginError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self::Generic(message.into())
+    }
 }
 
 pub type Result<T, E = error_stack::Report<PluginError>> = std::result::Result<T, E>;

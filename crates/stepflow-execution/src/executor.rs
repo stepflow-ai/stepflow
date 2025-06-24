@@ -150,6 +150,31 @@ impl StepFlowExecutor {
 
         Ok(workflow_executor)
     }
+
+    /// Get a workflow executor for debug sessions
+    pub async fn get_workflow_executor(
+        &self,
+        execution_id: Uuid,
+    ) -> Result<Option<WorkflowExecutor>> {
+        let debug_sessions = self.debug_sessions.read().await;
+        Ok(debug_sessions.get(&execution_id).cloned())
+    }
+
+    /// Get a mutable workflow executor for debug sessions
+    pub async fn get_workflow_executor_mut(
+        &self,
+        execution_id: Uuid,
+    ) -> Result<Option<WorkflowExecutor>> {
+        let mut debug_sessions = self.debug_sessions.write().await;
+        Ok(debug_sessions.get_mut(&execution_id).cloned())
+    }
+
+    /// Get the flow for a specific execution (for streaming pipeline coordinator)
+    pub fn flow(&self) -> Option<Arc<Flow>> {
+        // This is a placeholder - in a real implementation, we'd need to store flows
+        // For now, return None since we don't have access to the flow
+        None
+    }
 }
 
 impl Context for StepFlowExecutor {
@@ -237,44 +262,56 @@ impl Context for StepFlowExecutor {
         &self,
         execution_id: Uuid,
     ) -> BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
-        async move {
-            // Remove and get the receiver for this execution
-            let receiver = {
-                let pending = self.pending.read().await;
-                pending.get(&execution_id).cloned()
-            };
+        let pending = self.pending.clone();
 
-            match receiver {
-                Some(rx) => {
-                    match rx.await {
-                        Ok(result) => Ok(result),
-                        Err(_) => {
-                            // The sender was dropped, indicating the execution was cancelled or failed
-                            Ok(FlowResult::Failed {
-                                error: stepflow_core::FlowError::new(
-                                    410,
-                                    "Nested flow execution was cancelled",
-                                ),
-                            })
-                        }
-                    }
-                }
-                None => {
-                    // Execution ID not found
-                    Ok(FlowResult::Failed {
-                        error: stepflow_core::FlowError::new(
-                            404,
-                            format!("No execution found for ID: {}", execution_id),
-                        ),
-                    })
-                }
-            }
+        async move {
+            let pending = pending.read().await;
+            let future = pending
+                .get(&execution_id)
+                .ok_or_else(|| stepflow_plugin::PluginError::new("Execution not found"))
+                .change_context(stepflow_plugin::PluginError::new("Execution not found"))?
+                .clone();
+
+            future.await.map_err(|_| stepflow_plugin::PluginError::new("Execution failed"))
+                .change_context(stepflow_plugin::PluginError::new("Execution failed"))
         }
         .boxed()
     }
 
     fn state_store(&self) -> &Arc<dyn StateStore> {
         &self.state_store
+    }
+
+    fn executor(&self) -> Option<Arc<dyn stepflow_plugin::Executor>> {
+        Some(Arc::new(StepFlowExecutorWrapper(self.self_weak.clone())))
+    }
+}
+
+/// Wrapper to provide Executor trait implementation for StepFlowExecutor
+struct StepFlowExecutorWrapper(std::sync::Weak<StepFlowExecutor>);
+
+impl stepflow_plugin::Executor for StepFlowExecutorWrapper {
+    fn get_workflow_executor(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, stepflow_plugin::Result<Option<Box<dyn std::any::Any + Send + Sync>>>> {
+        let weak = self.0.clone();
+        
+        async move {
+            if let Some(executor) = weak.upgrade() {
+                match executor.get_workflow_executor(execution_id).await {
+                    Ok(Some(workflow_executor)) => {
+                        Ok(Some(Box::new(workflow_executor) as Box<dyn std::any::Any + Send + Sync>))
+                    }
+                    Ok(None) => Ok(None),
+                    Err(e) => Err(stepflow_plugin::PluginError::new(format!("Failed to get workflow executor: {:?}", e)))
+                        .change_context(stepflow_plugin::PluginError::new("Failed to get workflow executor")),
+                }
+            } else {
+                Ok(None)
+            }
+        }
+        .boxed()
     }
 }
 

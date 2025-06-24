@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::{ExecutionError, Result};
 
 /// Value resolver for handling expression and JSON value resolution
+#[derive(Clone)]
 pub struct ValueResolver {
     /// Execution ID of the workflow we are resolving for.
     ///
@@ -97,6 +98,10 @@ impl ValueResolver {
         // NOTE: Skip actions are applied after path resolution.
         match path_result {
             FlowResult::Success { result } => Ok(FlowResult::Success { result }),
+            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                // For streaming results, we can't apply skip actions, so just pass through
+                Ok(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final })
+            }
             FlowResult::Skipped => {
                 match expr.on_skip() {
                     Some(SkipAction::UseDefault { default_value }) => {
@@ -151,6 +156,11 @@ impl ValueResolver {
                         FlowResult::Success { result } => {
                             result_map.insert(k.clone(), result.as_ref().clone());
                         }
+                        FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                            // For streaming results in objects, we can't handle them properly
+                            // Return the streaming result as-is
+                            return Ok(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final });
+                        }
                         FlowResult::Skipped => {
                             return Ok(FlowResult::Skipped);
                         }
@@ -170,6 +180,11 @@ impl ValueResolver {
                     match Box::pin(self.resolve_rec(v)).await? {
                         FlowResult::Success { result } => {
                             result_array.push(result.as_ref().clone());
+                        }
+                        FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                            // For streaming results in arrays, we can't handle them properly
+                            // Return the streaming result as-is
+                            return Ok(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final });
                         }
                         FlowResult::Skipped => {
                             return Ok(FlowResult::Skipped);
