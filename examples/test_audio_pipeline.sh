@@ -50,11 +50,21 @@ DURATION=${3:-"3.0"}
 OUTPUT_FILE=${4:-"test_workflow_webcam.wav"}
 DEVICE_NAME=${5:-"C922 Pro Stream Webcam"}
 
+# Determine the absolute path for the output file
+# The Python SDK runs from the examples directory, so it will create the file there
+if [[ "$CURRENT_DIR" == "$SCRIPT_DIR" ]]; then
+    # Running from examples directory
+    ABSOLUTE_OUTPUT_FILE="$CURRENT_DIR/$OUTPUT_FILE"
+else
+    # Running from root directory
+    ABSOLUTE_OUTPUT_FILE="$SCRIPT_DIR/$OUTPUT_FILE"
+fi
+
 echo "🎵 Testing Audio Streaming Pipeline"
 echo "Source: $SOURCE"
 echo "Operation: $OPERATION"
 echo "Duration: ${DURATION}s"
-echo "Output: $OUTPUT_FILE"
+echo "Output: $ABSOLUTE_OUTPUT_FILE"
 echo "Device: $DEVICE_NAME"
 echo ""
 
@@ -69,7 +79,7 @@ cat > "$TEMP_INPUT" << EOF
   "chunk_size": 1024,
   "frequency": 440.0,
   "duration": $DURATION,
-  "output_file": "$OUTPUT_FILE",
+  "output_file": "$ABSOLUTE_OUTPUT_FILE",
   "device_name": "$DEVICE_NAME"
 }
 EOF
@@ -90,16 +100,28 @@ fi
 
 echo ""
 echo "✅ Test completed!"
-echo "📁 Output file: $OUTPUT_FILE"
+echo "📁 Output file: $ABSOLUTE_OUTPUT_FILE"
 
 # Check if file was created
-if [ -f "$OUTPUT_FILE" ]; then
+if [ -f "$ABSOLUTE_OUTPUT_FILE" ]; then
     echo "📊 File info:"
-    file "$OUTPUT_FILE"
-    echo "📏 File size: $(ls -lh $OUTPUT_FILE | awk '{print $5}')"
-    echo "🎵 Duration: $(soxi -D $OUTPUT_FILE 2>/dev/null || echo 'Unknown') seconds"
+    file "$ABSOLUTE_OUTPUT_FILE"
+    echo "📏 File size: $(ls -lh $ABSOLUTE_OUTPUT_FILE | awk '{print $5}')"
+    echo "🎵 Duration: $(soxi -D $ABSOLUTE_OUTPUT_FILE 2>/dev/null || echo 'Unknown') seconds"
 else
-    echo "❌ Output file not found"
+    # Check if file was created in examples directory (where Python SDK runs from)
+    EXAMPLES_OUTPUT_FILE="examples/$OUTPUT_FILE"
+    if [ -f "$EXAMPLES_OUTPUT_FILE" ]; then
+        echo "📊 File found in examples directory:"
+        file "$EXAMPLES_OUTPUT_FILE"
+        echo "📏 File size: $(ls -lh $EXAMPLES_OUTPUT_FILE | awk '{print $5}')"
+        echo "🎵 Duration: $(soxi -D $EXAMPLES_OUTPUT_FILE 2>/dev/null || echo 'Unknown') seconds"
+        echo "💡 Note: File was created in examples/ directory by the Python SDK"
+    else
+        echo "❌ Output file not found in expected location: $ABSOLUTE_OUTPUT_FILE"
+        echo "🔍 Checking for any .wav files in examples/ directory:"
+        find examples/ -name "*.wav" -type f 2>/dev/null || echo "No .wav files found in examples/"
+    fi
 fi
 
 # Clean up temporary input file
