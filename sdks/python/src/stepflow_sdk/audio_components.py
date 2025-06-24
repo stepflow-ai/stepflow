@@ -34,311 +34,18 @@ class AudioChunk:
     timestamp: float
 
 
-class StreamingPipeline:
-    """Coordinates streaming audio processing between components."""
-    
-    def __init__(self):
-        self.source_queue = queue.Queue()
-        self.processor_queue = queue.Queue()
-        self.sink_queue = queue.Queue()
-        self.running = False
-        self.threads = []
-    
-    def start_pipeline(self, source_config, processor_config, sink_config):
-        """Start the streaming pipeline with all components."""
-        self.running = True
-        
-        # Start source thread
-        source_thread = threading.Thread(
-            target=self._run_source, 
-            args=(source_config,), 
-            daemon=True
-        )
-        source_thread.start()
-        self.threads.append(source_thread)
-        
-        # Start processor thread
-        processor_thread = threading.Thread(
-            target=self._run_processor, 
-            args=(processor_config,), 
-            daemon=True
-        )
-        processor_thread.start()
-        self.threads.append(processor_thread)
-        
-        # Start sink thread
-        sink_thread = threading.Thread(
-            target=self._run_sink, 
-            args=(sink_config,), 
-            daemon=True
-        )
-        sink_thread.start()
-        self.threads.append(sink_thread)
-        
-        print("TIMING: Started streaming pipeline with 3 threads", file=sys.stderr)
-    
-    def _run_source(self, config):
-        """Run the audio source component."""
-        try:
-            # Initialize audio source
-            source_type = config.get('source', 'microphone')
-            sample_rate = config.get('sample_rate', 16000)
-            channels = config.get('channels', 1)
-            chunk_size = config.get('chunk_size', 1024)
-            duration = config.get('duration', 5.0)
-            device_name = config.get('device_name', None)
-            
-            # Calculate total chunks
-            chunk_duration = chunk_size / sample_rate
-            total_chunks = int(duration / chunk_duration)
-            
-            print(f"TIMING: Source starting with {total_chunks} chunks", file=sys.stderr)
-            
-            if source_type == 'microphone':
-                # Set up continuous recording
-                audio = pyaudio.PyAudio()
-                
-                # Find device
-                device_index = None
-                if device_name:
-                    for i in range(audio.get_device_count()):
-                        info = audio.get_device_info_by_index(i)
-                        if device_name.lower() in info['name'].lower():
-                            device_index = i
-                            break
-                
-                # Auto-detect sample rate
-                if device_index is not None:
-                    sample_rates = [16000, 22050, 44100, 48000]
-                    for rate in sample_rates:
-                        try:
-                            test_stream = audio.open(
-                                format=pyaudio.paInt16,
-                                channels=channels,
-                                rate=rate,
-                                input=True,
-                                input_device_index=device_index,
-                                frames_per_buffer=chunk_size
-                            )
-                            test_stream.close()
-                            sample_rate = rate
-                            break
-                        except OSError:
-                            continue
-                
-                # Start recording
-                stream = audio.open(
-                    format=pyaudio.paInt16,
-                    channels=channels,
-                    rate=sample_rate,
-                    input=True,
-                    input_device_index=device_index,
-                    frames_per_buffer=chunk_size
-                )
-                
-                print(f"TIMING: Started continuous recording at {sample_rate}Hz", file=sys.stderr)
-                
-                # Record and emit chunks
-                for chunk_index in range(total_chunks):
-                    if not self.running:
-                        break
-                    
-                    chunk_start = time.time()
-                    data = stream.read(chunk_size, exception_on_overflow=False)
-                    chunk_time = time.time()
-                    
-                    print(f"TIMING: Source recorded chunk {chunk_index} in {chunk_time - chunk_start:.4f}s", file=sys.stderr)
-                    
-                    # Emit to processor
-                    chunk_data = {
-                        "outcome": "streaming",
-                        "stream_id": str(uuid.uuid4()),
-                        "sample_rate": sample_rate,
-                        "channels": channels,
-                        "chunk_size": len(data),
-                        "format": "pcm_16bit",
-                        "chunk": base64.b64encode(data).decode('utf-8'),
-                        "chunk_index": chunk_index,
-                        "is_final": chunk_index >= total_chunks - 1
-                    }
-                    
-                    self.source_queue.put(chunk_data)
-                
-                stream.stop_stream()
-                stream.close()
-                audio.terminate()
-                
-            else:
-                # Generate test data
-                for chunk_index in range(total_chunks):
-                    if not self.running:
-                        break
-                    
-                    # Generate sine wave
-                    import math
-                    samples = []
-                    for i in range(chunk_size):
-                        t = (i + chunk_index * chunk_size) / sample_rate
-                        sample = int(32767 * 0.3 * math.sin(2 * math.pi * 440.0 * t))
-                        samples.append(sample)
-                    
-                    data = b''.join(sample.to_bytes(2, 'little', signed=True) for sample in samples)
-                    
-                    chunk_data = {
-                        "outcome": "streaming",
-                        "stream_id": str(uuid.uuid4()),
-                        "sample_rate": sample_rate,
-                        "channels": channels,
-                        "chunk_size": len(data),
-                        "format": "pcm_16bit",
-                        "chunk": base64.b64encode(data).decode('utf-8'),
-                        "chunk_index": chunk_index,
-                        "is_final": chunk_index >= total_chunks - 1
-                    }
-                    
-                    self.source_queue.put(chunk_data)
-            
-            print("TIMING: Source completed", file=sys.stderr)
-            
-        except Exception as e:
-            print(f"ERROR: Source failed: {e}", file=sys.stderr)
-    
-    def _run_processor(self, config):
-        """Run the audio processor component."""
-        try:
-            operation = config.get('operation', 'passthrough')
-            print(f"TIMING: Processor starting with operation: {operation}", file=sys.stderr)
-            
-            while self.running:
-                try:
-                    # Get chunk from source (with timeout)
-                    source_chunk = self.source_queue.get(timeout=1.0)
-                    
-                    if source_chunk.get('is_final', False):
-                        # Pass through final chunk
-                        self.processor_queue.put(source_chunk)
-                        break
-                    
-                    chunk_start = time.time()
-                    
-                    # Process the chunk
-                    if operation == 'amplify':
-                        # Decode and amplify
-                        chunk_data = base64.b64decode(source_chunk['chunk'])
-                        samples = []
-                        for i in range(0, len(chunk_data), 2):
-                            sample = int.from_bytes(chunk_data[i:i+2], 'little', signed=True)
-                            samples.append(sample)
-                        
-                        # Amplify
-                        gain = config.get('gain', 2.0)
-                        amplified_samples = [int(sample * gain) for sample in samples]
-                        amplified_data = b''.join(sample.to_bytes(2, 'little', signed=True) for sample in amplified_samples)
-                        amplified_b64 = base64.b64encode(amplified_data).decode('utf-8')
-                        
-                        processed_chunk = {
-                            **source_chunk,
-                            "chunk": amplified_b64,
-                            "operation": "amplify",
-                            "gain": gain
-                        }
-                    else:
-                        # Passthrough
-                        processed_chunk = {**source_chunk, "operation": "passthrough"}
-                    
-                    chunk_time = time.time()
-                    print(f"TIMING: Processor processed chunk {source_chunk['chunk_index']} in {chunk_time - chunk_start:.4f}s", file=sys.stderr)
-                    
-                    # Emit to sink
-                    self.processor_queue.put(processed_chunk)
-                    
-                except queue.Empty:
-                    continue
-            
-            print("TIMING: Processor completed", file=sys.stderr)
-            
-        except Exception as e:
-            print(f"ERROR: Processor failed: {e}", file=sys.stderr)
-    
-    def _run_sink(self, config):
-        """Run the audio sink component."""
-        try:
-            output_file = config.get('output_file', 'output_audio.wav')
-            all_chunks = []
-            
-            print(f"TIMING: Sink starting, will write to {output_file}", file=sys.stderr)
-            
-            while self.running:
-                try:
-                    # Get chunk from processor (with timeout)
-                    processed_chunk = self.processor_queue.get(timeout=1.0)
-                    
-                    chunk_start = time.time()
-                    
-                    # Decode and store chunk
-                    chunk_data = base64.b64decode(processed_chunk['chunk'])
-                    all_chunks.append(chunk_data)
-                    
-                    chunk_time = time.time()
-                    print(f"TIMING: Sink received chunk {processed_chunk['chunk_index']} in {chunk_time - chunk_start:.4f}s", file=sys.stderr)
-                    
-                    if processed_chunk.get('is_final', False):
-                        break
-                        
-                except queue.Empty:
-                    continue
-            
-            # Write WAV file
-            if all_chunks:
-                try:
-                    all_audio_data = b''.join(all_chunks)
-                    sample_rate = processed_chunk.get('sample_rate', 16000)
-                    channels = processed_chunk.get('channels', 1)
-                    
-                    with wave.open(output_file, 'wb') as wav_file:
-                        wav_file.setnchannels(channels)
-                        wav_file.setsampwidth(2)  # 16-bit
-                        wav_file.setframerate(sample_rate)
-                        wav_file.writeframes(all_audio_data)
-                    
-                    print(f"TIMING: Sink wrote {len(all_audio_data)} bytes to {output_file}", file=sys.stderr)
-                    
-                except Exception as e:
-                    print(f"ERROR: Failed to write WAV file: {e}", file=sys.stderr)
-            
-            print("TIMING: Sink completed", file=sys.stderr)
-            
-        except Exception as e:
-            print(f"ERROR: Sink failed: {e}", file=sys.stderr)
-    
-    def stop_pipeline(self):
-        """Stop the streaming pipeline."""
-        self.running = False
-        for thread in self.threads:
-            thread.join(timeout=2.0)
-        print("TIMING: Pipeline stopped", file=sys.stderr)
-
-
-# Global pipeline instance
-_pipeline = None
-
-
 class AudioStreamSource:
-    """Component that generates PCM 16-bit audio chunks from a source."""
+    """Individual audio source component for generating audio chunks."""
     
     def __init__(self, sample_rate: int = 16000, channels: int = 1, chunk_size: int = 1024):
         self.sample_rate = sample_rate
         self.channels = channels
         self.chunk_size = chunk_size
         self.stream_id = str(uuid.uuid4())
-        self.chunk_index = 0
-        self.audio = pyaudio.PyAudio()
-        self.stream = None
-        self.is_recording = False
-        self.audio_queue = queue.Queue()
-        
+    
     def start_microphone_stream(self):
-        """Start recording from microphone."""
+        """Initialize microphone stream."""
+        self.audio = pyaudio.PyAudio()
         self.stream = self.audio.open(
             format=pyaudio.paInt16,
             channels=self.channels,
@@ -346,175 +53,105 @@ class AudioStreamSource:
             input=True,
             frames_per_buffer=self.chunk_size
         )
-        self.is_recording = True
-        
-        # Start recording thread
-        threading.Thread(target=self._record_audio, daemon=True).start()
-        
+    
     def _record_audio(self):
-        """Record audio in background thread."""
-        try:
-            while self.is_recording:
-                if self.stream:
-                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
-                    self.audio_queue.put(data)
-        except Exception as e:
-            print(f"Recording error: {e}")
-            
+        """Record a single chunk of audio."""
+        return self.stream.read(self.chunk_size, exception_on_overflow=False)
+    
     def stop_microphone_stream(self):
-        """Stop recording from microphone."""
-        self.is_recording = False
-        if self.stream:
+        """Stop and clean up microphone stream."""
+        if hasattr(self, 'stream'):
             self.stream.stop_stream()
             self.stream.close()
-        if self.audio:
+        if hasattr(self, 'audio'):
             self.audio.terminate()
-        
+    
     def get_microphone_chunk(self) -> AudioChunk:
-        """Get a chunk from microphone input."""
-        try:
-            data = self.audio_queue.get(timeout=1.0)  # 1 second timeout
-            chunk = AudioChunk(
-                data=data,
-                sample_rate=self.sample_rate,
-                channels=self.channels,
-                chunk_index=self.chunk_index,
-                timestamp=time.time()
-            )
-            self.chunk_index += 1
-            return chunk
-        except queue.Empty:
-            # Return silence if no audio available
-            silence_data = b'\x00' * (self.chunk_size * 2)  # 16-bit = 2 bytes per sample
-            chunk = AudioChunk(
-                data=silence_data,
-                sample_rate=self.sample_rate,
-                channels=self.channels,
-                chunk_index=self.chunk_index,
-                timestamp=time.time()
-            )
-            self.chunk_index += 1
-            return chunk
-        
+        """Get a single chunk of audio from microphone."""
+        data = self._record_audio()
+        return AudioChunk(
+            data=data,
+            sample_rate=self.sample_rate,
+            channels=self.channels,
+            chunk_index=0,
+            timestamp=time.time()
+        )
+    
     def generate_sine_wave_chunk(self, frequency: float = 440.0, duration: float = 0.1) -> AudioChunk:
         """Generate a sine wave chunk for testing."""
         import math
         
-        # Generate sine wave samples
         samples = []
         for i in range(self.chunk_size):
-            t = (i + self.chunk_index * self.chunk_size) / self.sample_rate
+            t = i / self.sample_rate
             sample = int(32767 * 0.3 * math.sin(2 * math.pi * frequency * t))
             samples.append(sample)
         
-        # Convert to bytes (16-bit little-endian)
         data = b''.join(sample.to_bytes(2, 'little', signed=True) for sample in samples)
         
-        chunk = AudioChunk(
+        return AudioChunk(
             data=data,
             sample_rate=self.sample_rate,
             channels=self.channels,
-            chunk_index=self.chunk_index,
+            chunk_index=0,
             timestamp=time.time()
         )
-        
-        self.chunk_index += 1
-        return chunk
-
+    
     def start_system_audio_stream(self):
-        """Start capturing system audio (speaker output)."""
-        try:
-            # Try to use PulseAudio loopback device first
-            self.stream = self.audio.open(
-                format=pyaudio.paInt16,
-                channels=self.channels,
-                rate=self.sample_rate,
-                input=True,
-                input_device_index=self._find_system_audio_device(),
-                frames_per_buffer=self.chunk_size
-            )
-            self.is_recording = True
-            print(f"Started system audio capture at {self.sample_rate}Hz")
-        except Exception as e:
-            print(f"Failed to start system audio capture: {e}")
-            # Fallback to default input device
-            self.stream = self.audio.open(
-                format=pyaudio.paInt16,
-                channels=self.channels,
-                rate=self.sample_rate,
-                input=True,
-                frames_per_buffer=self.chunk_size
-            )
-            self.is_recording = True
-            print(f"Fell back to default audio input at {self.sample_rate}Hz")
+        """Initialize system audio capture (if sounddevice is available)."""
+        if not SOUNDDEVICE_AVAILABLE:
+            raise ImportError("sounddevice not available for system audio capture")
+        
+        # Find system audio device
+        self.device_info = self._find_system_audio_device()
+        if not self.device_info:
+            raise RuntimeError("No suitable system audio device found")
+        
+        print(f"Using system audio device: {self.device_info['name']}", file=sys.stderr)
     
     def _find_system_audio_device(self):
-        """Find a suitable system audio capture device."""
-        try:
-            # List available devices
-            device_count = self.audio.get_device_count()
-            print(f"Found {device_count} audio devices:")
-            
-            for i in range(device_count):
-                device_info = self.audio.get_device_info_by_index(i)
-                name = device_info.get('name', 'Unknown')
-                max_inputs = device_info.get('maxInputChannels', 0)
-                print(f"  Device {i}: {name} (inputs: {max_inputs})")
-                
-                # Look for loopback, monitor, or system audio devices
-                if (max_inputs > 0 and 
-                    any(keyword in name.lower() for keyword in 
-                        ['loopback', 'monitor', 'system', 'speaker', 'output'])):
-                    print(f"  Selected system audio device: {name}")
-                    return i
-            
-            # If no specific system audio device found, try default
-            print("No specific system audio device found, using default")
-            return None
-            
-        except Exception as e:
-            print(f"Error finding system audio device: {e}")
-            return None
+        """Find a suitable system audio device."""
+        devices = sd.query_devices()
+        
+        # Look for output devices that can be used for loopback
+        for device in devices:
+            if device['max_inputs'] > 0 and device['max_outputs'] > 0:
+                # This device supports both input and output (potential loopback)
+                return device
+        
+        # Fallback to default device
+        return sd.query_devices(kind='input')
     
     def get_system_audio_chunk(self):
-        """Get a chunk of system audio data."""
-        if not self.is_recording or not self.stream:
-            raise RuntimeError("System audio stream not started")
+        """Get a single chunk of system audio."""
+        if not SOUNDDEVICE_AVAILABLE:
+            raise ImportError("sounddevice not available")
         
-        try:
-            # Read audio data
-            data = self.stream.read(self.chunk_size, exception_on_overflow=False)
-            
-            # Create audio chunk
-            chunk = AudioChunk(
-                data=data,
-                sample_rate=self.sample_rate,
-                channels=self.channels,
-                chunk_index=self.chunk_index,
-                timestamp=time.time()
-            )
-            
-            self.chunk_index += 1
-            return chunk
-            
-        except Exception as e:
-            print(f"Error reading system audio: {e}")
-            # Return silence on error
-            silence_data = b'\x00' * (self.chunk_size * 2)
-            chunk = AudioChunk(
-                data=silence_data,
-                sample_rate=self.sample_rate,
-                channels=self.channels,
-                chunk_index=self.chunk_index,
-                timestamp=time.time()
-            )
-            self.chunk_index += 1
-            return chunk
+        # Record a chunk of system audio
+        recording = sd.rec(
+            int(self.chunk_size),
+            samplerate=self.sample_rate,
+            channels=self.channels,
+            dtype='int16',
+            device=self.device_info['index']
+        )
+        sd.wait()
+        
+        # Convert to bytes
+        data = recording.tobytes()
+        
+        return AudioChunk(
+            data=data,
+            sample_rate=self.sample_rate,
+            channels=self.channels,
+            chunk_index=0,
+            timestamp=time.time()
+        )
 
 
 def audio_stream_source(data: Dict[str, Any], context=None):
     """
-    Component that generates audio stream chunks using continuous background recording.
+    Component that generates audio stream chunks.
     
     Input:
         source: str - audio source type ("sine_wave", "microphone", "system_audio")
@@ -529,48 +166,6 @@ def audio_stream_source(data: Dict[str, Any], context=None):
     Output:
         Streaming audio chunks with metadata
     """
-    global _pipeline
-    
-    # Check if we should use the streaming pipeline
-    use_pipeline = data.get('use_pipeline', False)
-    
-    if use_pipeline and _pipeline is None:
-        # Start the streaming pipeline
-        _pipeline = StreamingPipeline()
-        
-        # Extract configs for each component
-        source_config = {
-            'source': data.get('source', 'microphone'),
-            'sample_rate': data.get('sample_rate', 16000),
-            'channels': data.get('channels', 1),
-            'chunk_size': data.get('chunk_size', 1024),
-            'duration': data.get('duration', 5.0),
-            'device_name': data.get('device_name', None),
-            'frequency': data.get('frequency', 440.0)
-        }
-        
-        processor_config = {
-            'operation': data.get('operation', 'passthrough'),
-            'gain': data.get('gain', 2.0)
-        }
-        
-        sink_config = {
-            'output_file': data.get('output_file', 'output_audio.wav')
-        }
-        
-        # Start the pipeline
-        _pipeline.start_pipeline(source_config, processor_config, sink_config)
-        
-        # Return a simple success response since the pipeline is running
-        return {
-            "outcome": "success",
-            "result": {
-                "message": "Streaming pipeline started",
-                "pipeline_id": str(uuid.uuid4())
-            }
-        }
-    
-    # Fallback to the original implementation for non-pipeline mode
     import time
     start_time = time.time()
     
