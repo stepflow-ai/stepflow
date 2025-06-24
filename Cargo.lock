@@ -2913,6 +2913,7 @@ version = "0.1.0"
 dependencies = [
  "error-stack",
  "hex",
+ "indexmap",
  "insta",
  "safer_owning_ref",
  "schemars",
@@ -3061,6 +3062,7 @@ dependencies = [
 name = "stepflow-state"
 version = "0.1.0"
 dependencies = [
+ "bit-set",
  "chrono",
  "error-stack",
  "futures",
@@ -3076,6 +3078,7 @@ dependencies = [
 name = "stepflow-state-sql"
 version = "0.1.0"
 dependencies = [
+ "bit-set",
  "chrono",
  "error-stack",
  "futures",

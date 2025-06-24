@@ -1,5 +1,7 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
+use crate::dependencies::DependencyError;
 use owning_ref::ArcRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -174,6 +176,26 @@ impl ValueRef<serde_json::Value> {
     /// Check if the value is null
     pub fn is_null(&self) -> bool {
         matches!(self.0.as_ref(), serde_json::Value::Null)
+    }
+
+    /// Extract step dependencies from this value
+    ///
+    /// Recursively searches for `$from.step` references in the JSON structure
+    /// and returns a deduplicated list of step IDs that this value depends on.
+    pub fn step_dependencies(&self) -> error_stack::Result<HashSet<String>, DependencyError> {
+        let deps = crate::dependencies::extract_value_dependencies(self)?;
+        Ok(deps.step_dependency_set())
+    }
+
+    /// Extract detailed dependency information from this value
+    ///
+    /// This provides richer analysis than `step_dependencies()`, including
+    /// field-level dependency tracking and distinction between flow input
+    /// and step output dependencies.
+    pub fn value_dependencies(
+        &self,
+    ) -> error_stack::Result<crate::dependencies::ValueDependencies, DependencyError> {
+        crate::dependencies::extract_value_dependencies(self)
     }
 }
 
@@ -626,5 +648,78 @@ mod tests {
 
         // Verify the deep value is correct
         assert_eq!(deep_value.as_ref(), &json!("deep"));
+    }
+
+    #[test]
+    fn test_extract_step_dependencies() {
+        // Test simple step reference
+        let value = ValueRef::new(json!({
+            "$from": {"step": "step1"}
+        }));
+        let deps = value.step_dependencies().unwrap();
+        let expected: HashSet<String> = ["step1"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(deps, expected);
+
+        // Test nested step references
+        let value = ValueRef::new(json!({
+            "input": {
+                "data": {"$from": {"step": "step1"}},
+                "config": {"$from": {"step": "step2"}}
+            },
+            "other": "value"
+        }));
+        let deps = value.step_dependencies().unwrap();
+        let expected: HashSet<String> = ["step1", "step2"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(deps, expected);
+
+        // Test array with step references
+        let value = ValueRef::new(json!([
+            {"$from": {"step": "step1"}},
+            {"$from": {"step": "step2"}},
+            "literal_value"
+        ]));
+        let deps = value.step_dependencies().unwrap();
+        let expected: HashSet<String> = ["step1", "step2"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(deps, expected);
+
+        // Test duplicate step references (should be deduplicated)
+        let value = ValueRef::new(json!({
+            "input1": {"$from": {"step": "step1"}},
+            "input2": {"$from": {"step": "step1"}},
+            "input3": {"$from": {"step": "step2"}}
+        }));
+        let deps = value.step_dependencies().unwrap();
+        let expected: HashSet<String> = ["step1", "step2"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(deps, expected);
+
+        // Test no step references
+        let value = ValueRef::new(json!({
+            "literal": "value",
+            "number": 42,
+            "array": [1, 2, 3]
+        }));
+        let deps = value.step_dependencies().unwrap();
+        assert!(deps.is_empty());
+
+        // Test complex nested structure
+        let value = ValueRef::new(json!({
+            "workflow": {
+                "steps": [
+                    {
+                        "input": {"$from": {"step": "step1"}},
+                        "config": {
+                            "nested": {"$from": {"step": "step2"}}
+                        }
+                    }
+                ],
+                "output": {"$from": {"step": "step3"}}
+            }
+        }));
+        let deps = value.step_dependencies().unwrap();
+        let expected: HashSet<String> = ["step1", "step2", "step3"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(deps, expected);
     }
 }

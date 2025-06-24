@@ -1,8 +1,8 @@
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::sync::Arc;
+use stepflow_core::dependencies::{Dependency, ValueDependencies};
 use stepflow_core::workflow::{Flow, FlowHash};
 
 use crate::{
@@ -96,63 +96,4 @@ pub struct StepAnalysis {
     pub input_depends: ValueDependencies,
     /// Optional skip condition dependency
     pub skip_if_depend: Option<Dependency>,
-}
-
-/// How a step receives its input data
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, utoipa::ToSchema, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum ValueDependencies {
-    /// Step input is an object with named fields
-    Object(IndexMap<String, HashSet<Dependency>>),
-    /// Step input is not an object (single value, array, etc.)
-    Other(HashSet<Dependency>),
-}
-
-impl ValueDependencies {
-    /// Iterator over all dependencies of this value.
-    pub fn dependencies(&self) -> Box<dyn Iterator<Item = &Dependency> + '_> {
-        match self {
-            ValueDependencies::Object(map) => Box::new(map.values().flatten()),
-            ValueDependencies::Other(set) => Box::new(set.iter()),
-        }
-    }
-
-    /// Iterator over all steps this value depends on.
-    pub fn step_dependencies(&self) -> impl Iterator<Item = &str> {
-        self.dependencies().filter_map(Dependency::step_id)
-    }
-}
-
-/// Source of input data for a step
-#[derive(
-    Debug, Clone, Serialize, Deserialize, JsonSchema, utoipa::ToSchema, Hash, PartialEq, Eq,
-)]
-#[serde(rename_all = "camelCase")]
-pub enum Dependency {
-    /// Comes from workflow input
-    #[serde(rename_all = "camelCase")]
-    FlowInput {
-        /// Optional field path within workflow input
-        field: Option<String>,
-    },
-    /// Comes from another step's output
-    #[serde(rename_all = "camelCase")]
-    StepOutput {
-        /// Which step produces this data
-        step_id: String,
-        /// Optional field path within step output
-        field: Option<String>,
-        /// If true, the step_id may be skipped and this step still executed.
-        optional: bool,
-    },
-}
-
-impl Dependency {
-    /// Return the step this dependency is on, if any.
-    pub fn step_id(&self) -> Option<&str> {
-        match self {
-            Dependency::FlowInput { .. } => None,
-            Dependency::StepOutput { step_id, .. } => Some(step_id),
-        }
-    }
 }

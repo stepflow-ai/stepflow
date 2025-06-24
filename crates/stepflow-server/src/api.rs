@@ -69,13 +69,13 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         flows::StoreFlowResponse,
         flows::FlowResponse,
         stepflow_analysis::AnalysisResult,
-        stepflow_analysis::Dependency,
         stepflow_analysis::Diagnostic,
         stepflow_analysis::DiagnosticLevel,
         stepflow_analysis::DiagnosticMessage,
         stepflow_analysis::Diagnostics,
         stepflow_analysis::FlowAnalysis,
         stepflow_analysis::StepAnalysis,
+        stepflow_core::dependencies::Dependency,
     )),
 )]
 struct StepflowApi;

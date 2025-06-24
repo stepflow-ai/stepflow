@@ -1,18 +1,62 @@
-use std::borrow::Cow;
 use std::sync::Arc;
 
+use bit_set::BitSet;
 use futures::future::BoxFuture;
-use stepflow_core::status::ExecutionStatus;
-use stepflow_core::workflow::FlowHash;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
+use stepflow_core::workflow::{FlowHash, StepId};
 use stepflow_core::{
     FlowResult,
     blob::BlobId,
     workflow::{Component, Flow, ValueRef},
 };
-
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::StateError;
+
+/// Write operations for async queuing
+#[derive(Debug)]
+pub enum StateWriteOperation {
+    /// Record the result of a step execution.
+    ///
+    /// This operation may be queued and batched by the implementation for performance.
+    /// Use `flush_pending_writes()` if immediate persistence is required.
+    ///
+    /// # Fields
+    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `step_result` - The step result to store
+    RecordStepResult {
+        execution_id: Uuid,
+        step_result: StepResult,
+    },
+    /// Update multiple steps to the same status.
+    ///
+    /// This operation may be queued and batched by the implementation for performance.
+    /// Use `flush_pending_writes()` if immediate persistence is required.
+    ///
+    /// # Fields
+    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `status` - The new status to apply to all specified steps
+    /// * `step_indices` - Vector of step indices to update
+    UpdateStepStatuses {
+        execution_id: Uuid,
+        status: StepStatus,
+        step_indices: BitSet,
+    },
+    /// Flush any pending write operations to persistent storage.
+    ///
+    /// This operation ensures that all queued write operations are completed before returning.
+    /// The `execution_id` parameter is a hint to implementations about which writes to prioritize,
+    /// but implementations may choose to flush all pending writes regardless of the hint.
+    ///
+    /// # Fields
+    /// * `execution_id` - Hint about which execution's writes to flush (may be ignored by implementation)
+    /// * `completion_notify` - Channel to signal completion of the flush operation
+    Flush {
+        execution_id: Option<Uuid>,
+        completion_notify: oneshot::Sender<Result<(), StateError>>,
+    },
+}
 
 /// Trait for storing and retrieving state data including blobs.
 ///
@@ -43,25 +87,6 @@ pub trait StateStore: Send + Sync {
         blob_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<ValueRef, StateError>>;
 
-    /// Record the result of a step execution.
-    ///
-    /// This method stores the execution result for a specific step within a workflow
-    /// execution, enabling workflow recovery and debugging capabilities.
-    ///
-    /// # Arguments
-    /// * `execution_id` - The unique identifier for the workflow execution
-    /// * `step_idx` - The index of the step within the workflow (0-based)
-    /// * `step_id` - The identifier of the step within the workflow
-    /// * `result` - The execution result to store
-    ///
-    /// # Returns
-    /// Success if the result was stored, or an error if storage failed
-    fn record_step_result(
-        &self,
-        execution_id: Uuid,
-        step_result: StepResult<'_>,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
     /// Retrieve the result of a step execution by step index.
     ///
     /// # Arguments
@@ -87,7 +112,7 @@ pub trait StateStore: Send + Sync {
     fn get_step_result_by_id(
         &self,
         execution_id: Uuid,
-        step_id: &str,
+        step_id: StepId,
     ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>>;
 
     /// List all step results for a workflow execution, ordered by step index.
@@ -103,7 +128,7 @@ pub trait StateStore: Send + Sync {
     fn list_step_results(
         &self,
         execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult<'static>>, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>>;
 
     // Workflow Management Methods
 
@@ -275,6 +300,35 @@ pub trait StateStore: Send + Sync {
         filters: &ExecutionFilters,
     ) -> BoxFuture<'_, error_stack::Result<Vec<ExecutionSummary>, StateError>>;
 
+    /// Flush any pending write operations to persistent storage.
+    ///
+    /// This method ensures that all queued write operations are completed before returning.
+    /// The `execution_id` parameter is a hint to implementations about which writes to prioritize,
+    /// but implementations may choose to flush all pending writes regardless of the hint.
+    ///
+    /// # Arguments
+    /// * `execution_id` - Hint about which execution's writes to flush (may be ignored by implementation)
+    ///
+    /// # Returns
+    /// Success when all relevant pending writes have been persisted
+    fn flush_pending_writes(
+        &self,
+        execution_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Queue a write operation for async processing.
+    ///
+    /// This provides a generic interface for queueing write operations.
+    /// Implementations can choose whether to process operations immediately
+    /// (like InMemoryStateStore) or queue them for batching (like SqliteStateStore).
+    ///
+    /// # Arguments
+    /// * `operation` - The write operation to queue
+    ///
+    /// # Returns
+    /// Success if the operation was queued successfully
+    fn queue_write(&self, operation: StateWriteOperation) -> error_stack::Result<(), StateError>;
+
     // Step Status Management
 
     /// Initialize step info for an execution.
@@ -284,13 +338,22 @@ pub trait StateStore: Send + Sync {
         steps: &[StepInfo],
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Update the status of a step.
+    /// Update the status of a single step.
+    ///
+    /// This operation may be queued and batched by the implementation for performance.
+    /// Use `flush_pending_writes()` if immediate persistence is required.
+    /// For updating multiple steps efficiently, use `update_step_statuses()`.
+    ///
+    /// # Arguments
+    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `step_index` - The index of the step to update
+    /// * `status` - The new status for the step
     fn update_step_status(
         &self,
         execution_id: Uuid,
         step_index: usize,
         status: stepflow_core::status::StepStatus,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+    );
 
     /// Get all step info for an execution.
     fn get_step_info_for_execution(
@@ -309,28 +372,19 @@ pub trait StateStore: Send + Sync {
 
 /// The step result.
 #[derive(PartialEq, Debug, Clone)]
-pub struct StepResult<'a> {
+pub struct StepResult {
     step_idx: usize,
-    step_id: Cow<'a, str>,
+    step_id: String,
     result: FlowResult,
 }
 
-impl<'a> StepResult<'a> {
+impl StepResult {
     /// Create a new step result.
-    pub fn new(step_idx: usize, step_id: impl Into<Cow<'a, str>>, result: FlowResult) -> Self {
+    pub fn new(step_idx: usize, step_id: impl Into<String>, result: FlowResult) -> Self {
         Self {
             step_idx,
             step_id: step_id.into(),
             result,
-        }
-    }
-
-    /// Convert to an owned version of the step result.
-    pub fn to_owned(&self) -> StepResult<'static> {
-        StepResult {
-            step_idx: self.step_idx,
-            step_id: Cow::Owned(self.step_id.to_string()),
-            result: self.result.clone(),
         }
     }
 
@@ -355,7 +409,7 @@ impl<'a> StepResult<'a> {
     }
 }
 
-impl PartialOrd for StepResult<'_> {
+impl PartialOrd for StepResult {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.step_idx.partial_cmp(&other.step_idx)
     }
@@ -429,7 +483,7 @@ pub struct ExecutionWithBlobs {
 pub struct ExecutionStepDetails {
     pub execution: ExecutionDetails,
     pub workflow: Option<Arc<stepflow_core::workflow::Flow>>,
-    pub step_results: Vec<StepResult<'static>>,
+    pub step_results: Vec<StepResult>,
     pub input: Option<ValueRef>,
 }
 
@@ -439,7 +493,7 @@ pub struct DebugSessionData {
     pub execution: ExecutionDetails,
     pub workflow: Arc<stepflow_core::workflow::Flow>,
     pub input: ValueRef,
-    pub step_results: Vec<StepResult<'static>>,
+    pub step_results: Vec<StepResult>,
 }
 
 /// Step information for a workflow execution.

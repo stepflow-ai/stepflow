@@ -38,6 +38,42 @@ mod tests {
         let store = SqliteStateStore::in_memory().await.unwrap();
         let execution_id = Uuid::new_v4();
 
+        // First store a workflow
+        let workflow = stepflow_core::workflow::Flow {
+            name: None,
+            description: None,
+            input_schema: None,
+            output_schema: None,
+            output: ValueRef::new(json!({})),
+            steps: vec![stepflow_core::workflow::Step {
+                id: "test_step".to_string(),
+                component: stepflow_core::workflow::Component::from_string("test://mock"),
+                input: ValueRef::new(json!({})),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: stepflow_core::workflow::ErrorAction::Fail,
+            }],
+            version: None,
+            test: None,
+            examples: vec![],
+        };
+        let workflow_arc = std::sync::Arc::new(workflow);
+        let workflow_hash = store.store_workflow(workflow_arc.clone()).await.unwrap();
+
+        // Then create the execution
+        store
+            .create_execution(
+                execution_id,
+                workflow_hash,
+                None,                     // workflow_name
+                None,                     // workflow_label
+                false,                    // debug_mode
+                ValueRef::new(json!({})), // input
+            )
+            .await
+            .unwrap();
+
         // Create test step result
         let flow_result = FlowResult::Success {
             result: ValueRef::new(json!({"result": "success"})),
@@ -46,9 +82,14 @@ mod tests {
 
         // Store step result
         store
-            .record_step_result(execution_id, step_result)
-            .await
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result,
+            })
             .unwrap();
+
+        // Flush to ensure the write is persisted
+        store.flush_pending_writes(execution_id).await.unwrap();
 
         // Retrieve by index
         let retrieved_by_index = store
@@ -58,8 +99,12 @@ mod tests {
         assert_eq!(retrieved_by_index, flow_result);
 
         // Retrieve by ID
+        let test_step_id = stepflow_core::workflow::StepId {
+            index: 0,
+            flow: workflow_arc.clone(),
+        };
         let retrieved_by_id = store
-            .get_step_result_by_id(execution_id, "test_step")
+            .get_step_result_by_id(execution_id, test_step_id)
             .await
             .unwrap();
         assert_eq!(retrieved_by_id, flow_result);

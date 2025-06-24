@@ -16,7 +16,7 @@ steps:
 
 output: 
   input_message: {$from: { workflow: input }, path: message }
-  processed_result: { $from: { step: process_message }, path: result }
+  processed_result: { $from: { step: "process_message" }, path: result }
 
 test:
   cases:

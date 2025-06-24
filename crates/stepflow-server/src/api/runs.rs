@@ -374,7 +374,7 @@ pub async fn get_run_steps(
     // Get step results for completed steps
     let step_results = state_store.list_step_results(run_id).await?;
 
-    let mut completed_steps: HashMap<usize, stepflow_state::StepResult<'_>> = HashMap::new();
+    let mut completed_steps: HashMap<usize, stepflow_state::StepResult> = HashMap::new();
     for step_result in step_results {
         completed_steps.insert(step_result.step_idx(), step_result);
     }

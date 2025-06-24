@@ -1,37 +1,62 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use bit_set::BitSet;
 use error_stack::ResultExt as _;
 use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
+use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
-    status::{StepExecution, StepStatus as CoreStepStatus},
     workflow::{Expr, Flow, ValueRef},
 };
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
 
-use crate::{ExecutionError, Result, StepFlowExecutor, value_resolver::ValueResolver};
+use crate::{
+    ExecutionError, Result, StepFlowExecutor, value_resolver::ValueResolver,
+    write_cache::WriteCache,
+};
 
 /// Execute a workflow and return the result.
 pub(crate) async fn execute_workflow(
     executor: Arc<StepFlowExecutor>,
     flow: Arc<Flow>,
-    workflow_hash: FlowHash,
+    flow_hash: FlowHash,
     execution_id: Uuid,
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
 ) -> Result<FlowResult> {
-    let mut workflow_executor = WorkflowExecutor::new(
-        executor,
-        flow,
-        workflow_hash,
-        execution_id,
-        input,
-        state_store,
-    )?;
+    // Store workflow first (this is idempotent if workflow already exists)
+    let computed_hash = state_store
+        .store_workflow(flow.clone())
+        .await
+        .change_context(ExecutionError::StateError)?;
+
+    // Verify the hash matches (should be the same if workflow is deterministic)
+    if computed_hash != flow_hash {
+        tracing::warn!(
+            "Flow hash mismatch: expected {}, computed {}",
+            flow_hash,
+            computed_hash
+        );
+    }
+
+    // Create execution record in state store before starting workflow
+    state_store
+        .create_execution(
+            execution_id,
+            flow_hash.clone(),
+            flow.name.as_deref(),
+            None,  // No label for direct execution
+            false, // Not debug mode
+            input.clone(),
+        )
+        .await
+        .change_context(ExecutionError::StateError)?;
+
+    let mut workflow_executor =
+        WorkflowExecutor::new(executor, flow, flow_hash, execution_id, input, state_store)?;
 
     workflow_executor.execute_to_completion().await
 }
@@ -53,6 +78,8 @@ pub struct WorkflowExecutor {
     flow: Arc<Flow>,
     /// Execution context for this session
     context: ExecutionContext,
+    /// Write-through cache for avoiding unnecessary flushes
+    write_cache: WriteCache,
 }
 
 impl WorkflowExecutor {
@@ -60,14 +87,14 @@ impl WorkflowExecutor {
     pub fn new(
         executor: Arc<StepFlowExecutor>,
         flow: Arc<Flow>,
-        workflow_hash: FlowHash,
+        flow_hash: FlowHash,
         execution_id: Uuid,
         input: ValueRef,
         state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
         // Build dependencies for the workflow using the analysis crate
         let analysis_result =
-            stepflow_analysis::analyze_workflow_dependencies(flow.clone(), workflow_hash)
+            stepflow_analysis::analyze_workflow_dependencies(flow.clone(), flow_hash)
                 .change_context(ExecutionError::AnalysisError)?;
 
         let analysis = match analysis_result.analysis {
@@ -87,8 +114,17 @@ impl WorkflowExecutor {
         // Create tracker from analysis
         let tracker = analysis.new_dependency_tracker();
 
-        // Create value resolver
-        let resolver = ValueResolver::new(execution_id, input, state_store.clone());
+        // Create write cache and step ID mapping
+        let write_cache = WriteCache::new(flow.steps.len());
+
+        // Create value resolver with cache access
+        let resolver = ValueResolver::new(
+            execution_id,
+            input,
+            state_store.clone(),
+            write_cache.clone(),
+            flow.clone(),
+        );
 
         // Create execution context
         let context = executor.execution_context(execution_id);
@@ -98,6 +134,7 @@ impl WorkflowExecutor {
             resolver,
             state_store,
             executor,
+            write_cache,
             flow,
             context,
         })
@@ -116,6 +153,124 @@ impl WorkflowExecutor {
     /// Get currently runnable step indices.
     pub fn get_runnable_step_indices(&self) -> BitSet {
         self.tracker.unblocked_steps()
+    }
+
+    /// Recover execution state from the state store and fix any missed status transitions.
+    ///
+    /// This method should be called when resuming a workflow execution (e.g., debug sessions,
+    /// workflow restart) to ensure the dependency tracker accurately reflects completed steps
+    /// and that step statuses are correctly updated.
+    ///
+    /// Recovery process:
+    /// 1. Query all completed step results from the state store
+    /// 2. Mark completed steps in the dependency tracker
+    /// 3. Identify steps that should be runnable based on completed dependencies
+    /// 4. Update status for steps marked as blocked but should be runnable
+    ///
+    /// # Returns
+    /// The number of step status corrections made during recovery
+    pub async fn recover_from_state_store(&mut self) -> Result<usize> {
+        let execution_id = self.context.execution_id();
+
+        // Step 1: Get all completed step results from the state store
+        let step_results = self
+            .state_store
+            .list_step_results(execution_id)
+            .await
+            .change_context(ExecutionError::StateError)?;
+
+        // Step 2: Mark completed steps in the dependency tracker
+        let mut recovered_steps = BitSet::new();
+        for step_result in &step_results {
+            let step_index = step_result.step_idx();
+
+            // Mark the step as completed in the tracker
+            let newly_unblocked = self.tracker.complete_step(step_index);
+            recovered_steps.insert(step_index);
+
+            // Cache the step result to avoid unnecessary database queries
+            self.write_cache
+                .cache_step_result(step_index, step_result.result().clone())
+                .await;
+
+            tracing::debug!(
+                "Recovered step {} ({}), newly unblocked: [{}]",
+                step_index,
+                self.flow.steps[step_index].id,
+                newly_unblocked
+                    .iter()
+                    .map(|idx| self.flow.steps[idx].id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+
+        // Step 3: Get current step statuses from the state store
+        let step_info_list = self
+            .state_store
+            .get_step_info_for_execution(execution_id)
+            .await
+            .change_context(ExecutionError::StateError)?;
+
+        let mut current_statuses = std::collections::HashMap::new();
+        for step_info in step_info_list {
+            current_statuses.insert(step_info.step_index, step_info.status);
+        }
+
+        // Step 4: Identify steps that should be runnable but aren't
+        let should_be_runnable = self.tracker.unblocked_steps();
+        let mut steps_to_fix = BitSet::new();
+
+        for step_index in should_be_runnable.iter() {
+            // Only fix steps that are not already completed
+            if !recovered_steps.contains(step_index) {
+                let current_status = current_statuses
+                    .get(&step_index)
+                    .copied()
+                    .unwrap_or(StepStatus::Blocked);
+
+                if current_status != StepStatus::Runnable {
+                    steps_to_fix.insert(step_index);
+                    tracing::info!(
+                        "Recovery: fixing status for step {} ({}) from {:?} to Runnable",
+                        step_index,
+                        self.flow.steps[step_index].id,
+                        current_status
+                    );
+                }
+            }
+        }
+
+        // Step 5: Update status for steps that need fixing
+        let corrections_made = steps_to_fix.len();
+        if corrections_made > 0 {
+            // Cache the status updates
+            self.write_cache
+                .cache_step_statuses(StepStatus::Runnable, &steps_to_fix)
+                .await;
+
+            // Update in state store
+            self.state_store
+                .queue_write(stepflow_state::StateWriteOperation::UpdateStepStatuses {
+                    execution_id,
+                    status: StepStatus::Runnable,
+                    step_indices: steps_to_fix,
+                })
+                .change_context(ExecutionError::StateError)?;
+
+            tracing::info!(
+                "Recovery completed: recovered {} completed steps, fixed {} status mismatches",
+                recovered_steps.len(),
+                corrections_made
+            );
+        } else {
+            tracing::debug!(
+                "Recovery completed: recovered {} completed steps, no status corrections needed",
+                recovered_steps.len()
+            );
+        }
+
+        Ok(corrections_made)
     }
 
     /// Execute the workflow to completion using parallel execution.
@@ -146,7 +301,7 @@ impl WorkflowExecutor {
             // Update tracker and store result
             let newly_unblocked = self.tracker.complete_step(completed_step_index);
 
-            // Record the completed result in the state store
+            // Record the completed result in the state store (non-blocking)
             let step_id = &self.flow.steps[completed_step_index].id;
             tracing::debug!(
                 "Step {} completed, newly unblocked steps: [{}]",
@@ -157,13 +312,33 @@ impl WorkflowExecutor {
                     .collect::<Vec<_>>()
                     .join(", ")
             );
+            // Cache the step result before writing to state store
+            self.write_cache
+                .cache_step_result(completed_step_index, step_result.clone())
+                .await;
+
             self.state_store
-                .record_step_result(
-                    self.context.execution_id(),
-                    StepResult::new(completed_step_index, step_id, step_result),
-                )
-                .await
-                .change_context_lazy(|| ExecutionError::RecordResult(step_id.clone()))?;
+                .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                    execution_id: self.context.execution_id(),
+                    step_result: StepResult::new(completed_step_index, step_id, step_result),
+                })
+                .change_context(ExecutionError::StateError)?;
+
+            // Update status of newly unblocked steps (non-blocking)
+            if !newly_unblocked.is_empty() {
+                // Cache the status updates before writing to state store
+                self.write_cache
+                    .cache_step_statuses(StepStatus::Runnable, &newly_unblocked)
+                    .await;
+
+                self.state_store
+                    .queue_write(stepflow_state::StateWriteOperation::UpdateStepStatuses {
+                        execution_id: self.context.execution_id(),
+                        status: StepStatus::Runnable,
+                        step_indices: newly_unblocked.clone(),
+                    })
+                    .change_context(ExecutionError::StateError)?;
+            }
 
             // Start newly unblocked steps
             self.start_unblocked_steps(&newly_unblocked, &mut running_tasks)
@@ -199,10 +374,10 @@ impl WorkflowExecutor {
                 // Fallback: check if step is runnable using in-memory tracker
                 let runnable = self.tracker.unblocked_steps();
                 if runnable.contains(idx) {
-                    CoreStepStatus::Runnable
+                    StepStatus::Runnable
                 } else {
                     // Default to blocked for steps without persistent status
-                    CoreStepStatus::Blocked
+                    StepStatus::Blocked
                 }
             });
 
@@ -235,7 +410,7 @@ impl WorkflowExecutor {
                     step_info.step_index,
                     step.id.clone(),
                     step.component.to_string(),
-                    CoreStepStatus::Runnable,
+                    StepStatus::Runnable,
                 )
             })
             .collect()
@@ -347,13 +522,10 @@ impl WorkflowExecutor {
 
     /// Get the output/result of a specific step by ID.
     pub async fn get_step_output(&self, step_id: &str) -> Result<FlowResult> {
-        self.state_store
-            .get_step_result_by_id(self.context.execution_id(), step_id)
+        self.resolver
+            .resolve_step(step_id)
             .await
             .attach_printable_lazy(|| format!("Failed to get output for step '{}'", step_id))
-            .change_context(ExecutionError::StepNotFound {
-                step: step_id.to_string(),
-            })
     }
 
     /// Get the details of a specific step for inspection.
@@ -371,7 +543,7 @@ impl WorkflowExecutor {
         let runnable = self.tracker.unblocked_steps();
 
         let state = if runnable.contains(step_index) {
-            CoreStepStatus::Runnable
+            StepStatus::Runnable
         } else {
             // Check if step is completed by querying state store
             match self
@@ -380,11 +552,11 @@ impl WorkflowExecutor {
                 .await
             {
                 Ok(result) => match result {
-                    FlowResult::Success { .. } => CoreStepStatus::Completed,
-                    FlowResult::Skipped => CoreStepStatus::Skipped,
-                    FlowResult::Failed { .. } => CoreStepStatus::Failed,
+                    FlowResult::Success { .. } => StepStatus::Completed,
+                    FlowResult::Skipped => StepStatus::Skipped,
+                    FlowResult::Failed { .. } => StepStatus::Failed,
                 },
-                Err(_) => CoreStepStatus::Blocked,
+                Err(_) => StepStatus::Blocked,
             }
         };
 
@@ -480,22 +652,56 @@ impl WorkflowExecutor {
         // Update dependency tracker
         self.tracker.complete_step(step_index);
 
-        // Record in state store
+        // Cache the step result before writing to state store
+        self.write_cache
+            .cache_step_result(step_index, result.clone())
+            .await;
+
+        // Record in state store (non-blocking)
         let step_id = &self.flow.steps[step_index].id;
         self.state_store
-            .record_step_result(
-                self.context.execution_id(),
-                StepResult::new(step_index, step_id, result.clone()),
-            )
-            .await
-            .change_context_lazy(|| ExecutionError::RecordResult(step_id.clone()))?;
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id: self.context.execution_id(),
+                step_result: StepResult::new(step_index, step_id, result.clone()),
+            })
+            .change_context(ExecutionError::StateError)?;
 
         Ok(())
     }
 
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
+        // Check if we can resolve output using only cached results
+        let required_step_ids = self.extract_step_dependencies(&self.flow.output);
+        let can_resolve_from_cache = self.resolver.has_cached_step_ids(&required_step_ids).await;
+
+        if !can_resolve_from_cache {
+            // Need to flush pending writes before resolving output
+            tracing::debug!(
+                "Flushing pending writes - output depends on steps not in cache: {:?}",
+                required_step_ids
+            );
+            self.state_store
+                .flush_pending_writes(self.context.execution_id())
+                .await
+                .change_context(ExecutionError::StateError)?;
+        } else {
+            tracing::debug!(
+                "✅ Skipping flush - all output dependencies are cached: {:?}",
+                required_step_ids
+            );
+        }
+
         self.resolver.resolve(&self.flow.output).await
+    }
+
+    /// Extract step IDs that a ValueRef depends on
+    fn extract_step_dependencies(&self, value_ref: &ValueRef) -> Vec<String> {
+        value_ref
+            .step_dependencies()
+            .unwrap_or_else(|_| HashSet::new())
+            .into_iter()
+            .collect()
     }
 
     /// Get access to the state store for querying step results.
@@ -601,14 +807,21 @@ impl WorkflowExecutor {
         let newly_unblocked_from_skip = self.tracker.complete_step(step_index);
         let skip_result = FlowResult::Skipped;
 
-        // Record the skipped result in the state store
-        self.state_store
-            .record_step_result(
-                self.context.execution_id(),
-                StepResult::new(step_index, step_id, skip_result),
-            )
-            .await
-            .change_context_lazy(|| ExecutionError::RecordResult(step_id.to_owned()))?;
+        // Cache the skipped result before writing to state store
+        self.write_cache
+            .cache_step_result(step_index, skip_result.clone())
+            .await;
+
+        // Record the skipped result in the state store (non-blocking)
+        if let Err(e) =
+            self.state_store
+                .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                    execution_id: self.context.execution_id(),
+                    step_result: StepResult::new(step_index, step_id, skip_result),
+                })
+        {
+            tracing::error!("Failed to queue step result: {:?}", e);
+        }
 
         tracing::debug!(
             "Step {} skipped, newly unblocked steps: [{}]",
@@ -743,14 +956,14 @@ pub struct StepInspection {
     pub input: ValueRef,
     pub skip_if: Option<Expr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
-    pub state: CoreStepStatus,
+    pub state: StepStatus,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, Step};
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, StepId};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
@@ -807,7 +1020,7 @@ mod tests {
         input: serde_json::Value,
         mock_behaviors: Vec<(&str, FlowResult)>,
     ) -> Result<FlowResult> {
-        let (executor, flow, workflow_hash) =
+        let (executor, flow, flow_hash) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
         let execution_id = Uuid::new_v4();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
@@ -816,7 +1029,7 @@ mod tests {
         execute_workflow(
             executor,
             flow,
-            workflow_hash,
+            flow_hash,
             execution_id,
             input_ref,
             state_store,
@@ -830,7 +1043,7 @@ mod tests {
         input: serde_json::Value,
         mock_behaviors: Vec<(&str, FlowResult)>,
     ) -> Result<WorkflowExecutor> {
-        let (executor, flow, workflow_hash) =
+        let (executor, flow, flow_hash) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
         let execution_id = Uuid::new_v4();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
@@ -839,7 +1052,7 @@ mod tests {
         WorkflowExecutor::new(
             executor,
             flow,
-            workflow_hash,
+            flow_hash,
             execution_id,
             input_ref,
             state_store,
@@ -1067,6 +1280,327 @@ output:
             }
             _ => panic!("Expected successful final result"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_workflow_recovery_logic() {
+        let workflow_yaml = r#"
+steps:
+  - id: step1
+    component: mock://identity
+    input:
+      value: "step1_output"
+  - id: step2
+    component: mock://identity
+    input:
+      value: { $from: { step: step1 } }
+output:
+  final: { $from: { step: step2 } }
+"#;
+
+        let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
+        let flow_hash = Flow::hash(&workflow);
+        let executor = StepFlowExecutor::new_in_memory();
+        let execution_id = Uuid::new_v4();
+        let input = ValueRef::new(json!({}));
+
+        // Create a workflow executor
+        let mut workflow_executor = WorkflowExecutor::new(
+            executor.clone(),
+            workflow.clone(),
+            flow_hash.clone(),
+            execution_id,
+            input.clone(),
+            executor.state_store(),
+        )
+        .unwrap();
+
+        // Manually execute step1 to simulate partial execution
+        let step1_result = FlowResult::Success {
+            result: ValueRef::new(json!("step1_output")),
+        };
+
+        // Record step1 result directly to state store (bypassing normal execution)
+        let step_result = StepResult::new(0, "step1", step1_result);
+        workflow_executor
+            .state_store
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result,
+            })
+            .unwrap();
+
+        // Flush to ensure step1 result is persisted
+        workflow_executor
+            .state_store
+            .flush_pending_writes(execution_id)
+            .await
+            .unwrap();
+
+        // At this point, step2 should be runnable but the dependency tracker doesn't know about step1 completion
+        // and step2 status is not updated to "Runnable"
+
+        // Verify initial state: step2 should not be runnable in the tracker yet
+        let runnable_before = workflow_executor.get_runnable_step_indices();
+        assert_eq!(runnable_before.len(), 1);
+        assert!(runnable_before.contains(0)); // Only step1 should be runnable initially
+
+        // Now run recovery logic
+        let corrections_made = workflow_executor.recover_from_state_store().await.unwrap();
+
+        // Verify that recovery found step1 was completed and updated the tracker
+        let runnable_after = workflow_executor.get_runnable_step_indices();
+        assert_eq!(runnable_after.len(), 1);
+        assert!(runnable_after.contains(1)); // Now step2 should be runnable
+        assert!(!runnable_after.contains(0)); // step1 should no longer be runnable (completed)
+
+        // Recovery should have made status corrections (step2 should be marked as Runnable)
+        assert_eq!(corrections_made, 1);
+
+        // Verify that step1 result is cached
+        let cached_result = workflow_executor
+            .write_cache
+            .get_step_result(&StepId {
+                index: 0,
+                flow: workflow_executor.flow().clone(),
+            })
+            .await;
+        assert!(cached_result.is_some());
+        match cached_result.unwrap() {
+            FlowResult::Success { result } => {
+                assert_eq!(result.as_ref(), &json!("step1_output"));
+            }
+            _ => panic!("Expected successful result"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_async_write_behavior() {
+        let workflow_yaml = r#"
+steps:
+  - id: step1
+    component: mock://identity
+    input:
+      value: "step1_result"
+  - id: step2
+    component: mock://identity
+    input:
+      value: { $from: { step: step1 } }
+  - id: step3
+    component: mock://identity
+    input:
+      value: { $from: { step: step2 } }
+output:
+  final: { $from: { step: step3 } }
+"#;
+
+        let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
+        let flow_hash = Flow::hash(&workflow);
+        let executor = StepFlowExecutor::new_in_memory();
+        let execution_id = Uuid::new_v4();
+        let input = ValueRef::new(json!({}));
+
+        let workflow_executor = WorkflowExecutor::new(
+            executor.clone(),
+            workflow.clone(),
+            flow_hash.clone(),
+            execution_id,
+            input.clone(),
+            executor.state_store(),
+        )
+        .unwrap();
+
+        // Test that async writes are non-blocking
+        let step1_result = FlowResult::Success {
+            result: ValueRef::new(json!("step1_result")),
+        };
+        let step_result = StepResult::new(0, "step1", step1_result.clone());
+
+        // Record multiple step results rapidly (should be queued)
+        workflow_executor
+            .state_store
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result: step_result.clone(),
+            })
+            .unwrap();
+        workflow_executor
+            .state_store
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result: step_result.clone(),
+            })
+            .unwrap();
+        workflow_executor
+            .state_store
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result: step_result.clone(),
+            })
+            .unwrap();
+
+        // These should complete without blocking
+
+        // Test that flush ensures all writes are persisted
+        workflow_executor
+            .state_store
+            .flush_pending_writes(execution_id)
+            .await
+            .unwrap();
+
+        // After flush, we should be able to query the result
+        let retrieved_result = workflow_executor
+            .state_store
+            .get_step_result_by_index(execution_id, 0)
+            .await
+            .unwrap();
+
+        match retrieved_result {
+            FlowResult::Success { result } => {
+                assert_eq!(result.as_ref(), &json!("step1_result"));
+            }
+            _ => panic!("Expected successful result"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recovery_with_complex_dependencies() {
+        let workflow_yaml = r#"
+steps:
+  - id: step1
+    component: mock://identity
+    input:
+      value: "step1_result"
+  - id: step2
+    component: mock://identity
+    input:
+      value: "step2_result"
+  - id: step3
+    component: mock://identity
+    input:
+      value: { $from: { step: step1 } }
+  - id: step4
+    component: mock://identity
+    input:
+      value: { $from: { step: step2 } }
+  - id: step5
+    component: mock://identity
+    input:
+      deps: [{ $from: { step: step3 } }, { $from: { step: step4 } }]
+output:
+  final: { $from: { step: step5 } }
+"#;
+
+        let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
+        let flow_hash = Flow::hash(&workflow);
+        let executor = StepFlowExecutor::new_in_memory();
+        let execution_id = Uuid::new_v4();
+        let input = ValueRef::new(json!({}));
+
+        let mut workflow_executor = WorkflowExecutor::new(
+            executor.clone(),
+            workflow.clone(),
+            flow_hash.clone(),
+            execution_id,
+            input.clone(),
+            executor.state_store(),
+        )
+        .unwrap();
+
+        // Simulate completed step1 and step2
+        let step1_result = StepResult::new(
+            0,
+            "step1",
+            FlowResult::Success {
+                result: ValueRef::new(json!("step1_result")),
+            },
+        );
+        let step2_result = StepResult::new(
+            1,
+            "step2",
+            FlowResult::Success {
+                result: ValueRef::new(json!("step2_result")),
+            },
+        );
+
+        workflow_executor
+            .state_store
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result: step1_result,
+            })
+            .unwrap();
+        workflow_executor
+            .state_store
+            .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
+                execution_id,
+                step_result: step2_result,
+            })
+            .unwrap();
+        workflow_executor
+            .state_store
+            .flush_pending_writes(execution_id)
+            .await
+            .unwrap();
+
+        // Before recovery: only step1 and step2 should be runnable (fresh tracker)
+        let runnable_before = workflow_executor.get_runnable_step_indices();
+        assert_eq!(runnable_before.len(), 2);
+        assert!(runnable_before.contains(0)); // step1
+        assert!(runnable_before.contains(1)); // step2
+
+        // Run recovery
+        let corrections_made = workflow_executor.recover_from_state_store().await.unwrap();
+
+        // After recovery: step3 and step4 should be runnable (step1 and step2 completed)
+        let runnable_after = workflow_executor.get_runnable_step_indices();
+        assert_eq!(runnable_after.len(), 2);
+        assert!(runnable_after.contains(2)); // step3 (depends on step1)
+        assert!(runnable_after.contains(3)); // step4 (depends on step2)
+
+        // Should have made corrections for step3 and step4
+        assert_eq!(corrections_made, 2);
+    }
+
+    #[tokio::test]
+    async fn test_recovery_with_fresh_execution() {
+        let workflow_yaml = r#"
+steps:
+  - id: step1
+    component: mock://identity
+    input:
+      value: "step1_result"
+output:
+  final: { $from: { step: step1 } }
+"#;
+
+        let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
+        let flow_hash = Flow::hash(&workflow);
+        let executor = StepFlowExecutor::new_in_memory();
+        let execution_id = Uuid::new_v4();
+        let input = ValueRef::new(json!({}));
+
+        let mut workflow_executor = WorkflowExecutor::new(
+            executor.clone(),
+            workflow.clone(),
+            flow_hash.clone(),
+            execution_id,
+            input.clone(),
+            executor.state_store(),
+        )
+        .unwrap();
+
+        // Test with a fresh execution - since there are no completed steps and no step info
+        // in the database, recovery should mark the initially runnable step as Runnable
+        let corrections_made = workflow_executor.recover_from_state_store().await.unwrap();
+
+        // Since step1 should be runnable but there's no status info, recovery should fix it
+        assert_eq!(corrections_made, 1);
+
+        // step1 should still be runnable
+        let runnable = workflow_executor.get_runnable_step_indices();
+        assert_eq!(runnable.len(), 1);
+        assert!(runnable.contains(0));
     }
 
     #[tokio::test]
