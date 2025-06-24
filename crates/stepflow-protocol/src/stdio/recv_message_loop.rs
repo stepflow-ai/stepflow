@@ -33,6 +33,8 @@ impl ReceiveMessageLoop {
 
         let to_child = child.stdin.take().expect("stdin requested");
         let from_child_stdout = child.stdout.take().expect("stdout requested");
+        
+        // Use BufReader with default capacity - it will automatically handle large messages
         let from_child_stdout = LinesStream::new(BufReader::new(from_child_stdout).lines());
 
         let from_child_stderr = child.stderr.take().expect("stderr requested");
@@ -92,8 +94,47 @@ impl ReceiveMessageLoop {
             }
             Some(line) = self.from_child_stdout.next() => {
                 let line = line.change_context(StdioError::Recv)?;
+                
+                // Check if the line is suspiciously long (might indicate truncation)
+                if line.len() > 1024 * 1024 {
+                    tracing::warn!("Received very long message ({} chars), may be truncated", line.len());
+                }
+                
                 tracing::info!("Received line from child: {line:?}");
-                let msg = OwnedIncoming::try_new(line).change_context(StdioError::Recv)?;
+                
+                // Add better error handling for JSON parsing
+                let msg = match OwnedIncoming::try_new(line.clone()) {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        tracing::error!("Failed to parse JSON message: {}", e);
+                        tracing::error!("Message length: {} characters", line.len());
+                        
+                        // Check if the JSON appears to be truncated
+                        if !line.trim().ends_with('}') {
+                            tracing::error!("JSON appears to be truncated - doesn't end with '}}'");
+                        }
+                        
+                        // Check for common JSON syntax issues
+                        let open_braces = line.chars().filter(|&c| c == '{').count();
+                        let close_braces = line.chars().filter(|&c| c == '}').count();
+                        if open_braces != close_braces {
+                            tracing::error!("JSON brace mismatch: {} opening, {} closing", open_braces, close_braces);
+                        }
+                        
+                        if line.len() > 1000 {
+                            tracing::error!("Message preview (first 500 chars): {}", &line[..500]);
+                            tracing::error!("Message preview (last 500 chars): {}", &line[line.len()-500..]);
+                        } else {
+                            tracing::error!("Full message: {}", line);
+                        }
+                        
+                        // Instead of returning an error and terminating the loop,
+                        // log the error and continue processing other messages
+                        tracing::warn!("Skipping malformed message and continuing...");
+                        return Ok(true);
+                    }
+                };
+                
                 match (msg.method, msg.params, msg.id) {
                     (Some(method), Some(params), _) => {
                         // Incoming method call or notification.

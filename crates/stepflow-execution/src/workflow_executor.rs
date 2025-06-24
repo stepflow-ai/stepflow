@@ -1059,14 +1059,31 @@ impl WorkflowExecutor {
             return Ok(());
         }
         
-        // Route the chunk to the first streaming step (source step)
-        // In a more sophisticated implementation, we'd route based on stream_id
-        if let Some(first_step_index) = streaming_steps.first() {
-            if let Some(coordinator) = &self.streaming_coordinator {
-                let mut coordinator = coordinator.lock().await;
-                coordinator.route_chunk_to_step(*first_step_index, chunk_content).await?;
-                tracing::debug!("Routed chunk to streaming step {}", first_step_index);
+        // Route the chunk to the pipeline coordinator if it exists
+        if let Some(coordinator) = &self.streaming_coordinator {
+            let mut coordinator = coordinator.lock().await;
+            
+            // Convert the notification chunk to a FlowResult::Streaming
+            let flow_result = FlowResult::Streaming {
+                stream_id: request_id.to_string(),
+                metadata: stepflow_core::workflow::ValueRef::new(serde_json::json!({})),
+                chunk: chunk_content.to_string(),
+                chunk_index: 0, // We don't have chunk index from notifications
+                is_final: false, // We don't know if it's final from notifications
+            };
+            
+            // Route to all active streaming steps in the pipeline
+            for &step_index in &streaming_steps {
+                if let Some(sender) = coordinator.step_connections.get(&step_index) {
+                    if let Err(e) = sender.send(flow_result.clone()).await {
+                        tracing::warn!("Failed to send chunk to step {}: {:?}", step_index, e);
+                    } else {
+                        tracing::debug!("Successfully routed chunk to streaming step {}", step_index);
+                    }
+                }
             }
+        } else {
+            tracing::warn!("No streaming coordinator found for chunk routing");
         }
         
         Ok(())
@@ -1258,6 +1275,7 @@ impl StreamingPipelineCoordinator {
         }
         
         // Wait for all streaming steps to complete
+        // Since streaming steps don't wait for input chunks anymore, they should complete quickly
         for task in tasks {
             task.await.map_err(|_e| ExecutionError::StepFailed { 
                 step: "streaming_pipeline".to_string() 
@@ -1334,8 +1352,15 @@ impl StreamingPipelineCoordinator {
 
         tracing::info!("Starting streaming step: {}", step_id);
 
-        // Execute the step to get initial result
-        let result = execute_step_async(plugin, step, step_input, context).await?;
+        // Execute the step to get initial result with a timeout
+        let timeout_duration = std::time::Duration::from_secs(10);
+        let result = match tokio::time::timeout(timeout_duration, execute_step_async(plugin.clone(), step, step_input.clone(), context.clone())).await {
+            Ok(result) => result?,
+            Err(_) => {
+                tracing::error!("Streaming step {} timed out after {} seconds", step_id, timeout_duration.as_secs());
+                return Err(ExecutionError::StepFailed { step: step_id }.into());
+            }
+        };
 
         match result {
             FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
@@ -1350,29 +1375,71 @@ impl StreamingPipelineCoordinator {
                     }).await;
                 }
 
-                // Continue processing if not final
-                if !is_final {
-                    // Wait for input from upstream steps with a timeout
-                    // This prevents infinite hanging if no chunks are sent
-                    let timeout = tokio::time::Duration::from_secs(30); // 30 second timeout
-                    match tokio::time::timeout(timeout, receiver.recv()).await {
-                        Ok(Some(input_chunk)) => {
-                            // Process the input chunk and continue streaming
-                            tracing::debug!("Step {} received chunk, continuing stream", step_id);
+                tracing::info!("Streaming step {} processed initial chunk, waiting for additional chunks", step_id);
+                
+                // Now wait for additional chunks to come through the channel
+                // These chunks are routed from the notification system
+                let mut chunk_count = 1;
+                let max_chunks = 1000; // Safety limit
+                
+                while chunk_count < max_chunks {
+                    // Wait for chunks with a timeout
+                    match tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv()).await {
+                        Ok(Some(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final })) => {
+                            chunk_count += 1;
+                            tracing::debug!("Streaming step {} received chunk {}: stream_id={}, is_final={}", 
+                                step_id, chunk_count, stream_id, is_final);
                             
-                            // For now, just log the chunk and continue
-                            // In a full implementation, you'd call the step again with the new input
-                            tracing::debug!("Step {} processing chunk: {:?}", step_id, input_chunk);
+                            // Process the chunk by calling the step again
+                            let chunk_input = stepflow_core::workflow::ValueRef::new(serde_json::json!({
+                                "chunk": chunk,
+                                "stream_id": stream_id,
+                                "chunk_index": chunk_index,
+                                "is_final": is_final,
+                                "metadata": metadata.as_ref()
+                            }));
+                            
+                            let chunk_result = match tokio::time::timeout(
+                                std::time::Duration::from_secs(5), 
+                                execute_step_async(plugin.clone(), step, chunk_input, context.clone())
+                            ).await {
+                                Ok(result) => result?,
+                                Err(_) => {
+                                    tracing::warn!("Streaming step {} chunk processing timed out", step_id);
+                                    continue;
+                                }
+                            };
+                            
+                            // Send the processed chunk to downstream steps
+                            for sender in &downstream_senders {
+                                let _ = sender.send(chunk_result.clone()).await;
+                            }
+                            
+                            // If this is the final chunk, we're done
+                            if is_final {
+                                tracing::info!("Streaming step {} received final chunk, completing", step_id);
+                                break;
+                            }
+                        }
+                        Ok(Some(_)) => {
+                            // Received non-streaming result, ignore
+                            continue;
                         }
                         Ok(None) => {
-                            // Channel closed, no more input expected
-                            tracing::debug!("Step {} input channel closed", step_id);
+                            // Channel closed, we're done
+                            tracing::info!("Streaming step {} channel closed, completing", step_id);
+                            break;
                         }
                         Err(_) => {
-                            // Timeout reached, no input received
-                            tracing::warn!("Step {} timed out waiting for input chunks", step_id);
+                            // Timeout - no more chunks for now
+                            tracing::debug!("Streaming step {} no more chunks after timeout", step_id);
+                            break;
                         }
                     }
+                }
+                
+                if chunk_count >= max_chunks {
+                    tracing::warn!("Streaming step {} reached maximum chunk limit ({})", step_id, max_chunks);
                 }
             }
             FlowResult::Success { result } => {
