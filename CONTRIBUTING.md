@@ -27,8 +27,9 @@ Thank you for your interest in contributing to StepFlow! This guide will help yo
    cd stepflow
    ```
 
-2. **Build the project**
+2. **Build the stepflow-rs project**
    ```bash
+   cd stepflow-rs
    cargo build
    ```
 
@@ -47,7 +48,8 @@ Thank you for your interest in contributing to StepFlow! This guide will help yo
 ### Building
 
 ```bash
-# Build the entire project
+# Build the entire project (run from stepflow-rs directory)
+cd stepflow-rs
 cargo build
 
 # Build with release optimizations
@@ -57,7 +59,8 @@ cargo build --release
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (run from stepflow-rs directory)
+cd stepflow-rs
 cargo test
 
 # Run with snapshot testing (preferred for development)
@@ -73,7 +76,8 @@ cargo test -p stepflow-execution -- execute_flows
 ### Code Quality
 
 ```bash
-# Run clippy for linting
+# Run clippy for linting (run from stepflow-rs directory)
+cd stepflow-rs
 cargo clippy
 
 # Auto-fix linting issues where possible
@@ -90,7 +94,18 @@ cargo machete --fix --with-metadata
 
 ## Project Architecture
 
-StepFlow is organized as a Rust workspace with multiple crates:
+### Repository Structure
+
+This repository contains multiple components:
+
+- **`stepflow-rs/`** - Main Rust-based execution engine and runtime
+- **`stepflow-ui/`** - Web-based frontend for workflow management
+- **`sdks/python/`** (`stepflow-py`) - Python SDK for building components
+- **`sdks/typescript/`** (`stepflow-ts`) - TypeScript SDK for building components
+
+### Rust Workspace
+
+The main `stepflow-rs/` directory contains a Rust workspace with multiple crates:
 
 ### Core Crates
 
@@ -195,6 +210,7 @@ We welcome various types of contributions:
 
 3. **Test your changes**
    ```bash
+   cd stepflow-rs
    cargo test
    cargo clippy
    cargo fmt --check
@@ -270,7 +286,8 @@ cargo test            # Run tests
 cargo clippy          # Check for issues
 cargo fmt             # Format code
 
-# Working with examples
+# Working with examples (run from stepflow-rs directory)
+cd stepflow-rs
 cargo run -- run --flow=examples/python/basic.yaml --input=examples/python/input1.json
 
 # Debugging
