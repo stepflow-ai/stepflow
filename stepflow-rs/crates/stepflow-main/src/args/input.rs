@@ -45,7 +45,6 @@ impl InputArgs {
     ///
     /// # Arguments
     ///
-    /// * `working_directory` - Optional working directory for resolving relative file paths
     /// * `allow_stdin` - Whether to allow reading from stdin when no input is provided
     pub fn parse_input(&self, allow_stdin: bool) -> Result<ValueRef> {
         match (&self.input, &self.input_json, &self.input_yaml) {
