@@ -1,0 +1,441 @@
+name: Release Rust
+
+on:
+  push:
+    tags:
+      - stepflow-rs-v*
+
+# Limit concurrency to a single run per branch (ref).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ${{ github.repository }}
+
+jobs:
+  version:
+    name: Determine Version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from .release-please-manifest.json
+        id: version
+        uses: sergeysova/jq-action@v2
+        with:
+          cmd: 'jq ".\"stepflow-rs\"" .release-please-manifest.json -r'
+
+      - name: Show my version
+        run: 'echo "version ${{ steps.version.outputs.value }}"'
+
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux targets (glibc)
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, cross: false }
+          - { os: ubuntu-22.04, target: aarch64-unknown-linux-gnu, cross: true }
+
+          # Linux targets (musl - for Alpine)
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-musl, cross: true }
+          - { os: ubuntu-22.04, target: aarch64-unknown-linux-musl, cross: true }
+
+          # macOS targets
+          - { os: macos-14, target: x86_64-apple-darwin, cross: false }
+          - { os: macos-14, target: aarch64-apple-darwin, cross: false }
+
+          # Windows targets
+          - { os: windows-2022, target: x86_64-pc-windows-msvc, cross: false }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.cross
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Setup cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            stepflow-rs/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('stepflow-rs/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-release-
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Build binary (native)
+        if: ${{ !matrix.cross }}
+        working-directory: stepflow-rs
+        run: cargo build --release --target ${{ matrix.target }} --bin stepflow
+
+      - name: Build binary (cross)
+        if: matrix.cross
+        working-directory: stepflow-rs
+        run: cross build --release --target ${{ matrix.target }} --bin stepflow
+
+      - name: Package binary (Unix)
+        if: matrix.os != 'windows-2022'
+        working-directory: stepflow-rs
+        run: |
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/stepflow artifacts/stepflow-${{ matrix.target }}
+          chmod +x artifacts/stepflow-${{ matrix.target }}
+
+      - name: Package binary (Windows)
+        if: matrix.os == 'windows-2022'
+        working-directory: stepflow-rs
+        run: |
+          mkdir artifacts
+          copy target\${{ matrix.target }}\release\stepflow.exe artifacts\stepflow-${{ matrix.target }}.exe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stepflow-${{ matrix.target }}
+          path: stepflow-rs/artifacts/stepflow-${{ matrix.target }}*
+          retention-days: 7
+
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-22.04
+    needs: build-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - base: debian
+            platform: linux/amd64
+            tag-suffix: amd64
+            timeout: 10
+            binary-target: x86_64-unknown-linux-gnu
+          - base: debian
+            platform: linux/arm64
+            tag-suffix: arm64
+            timeout: 15
+            binary-target: aarch64-unknown-linux-gnu
+          - base: alpine
+            platform: linux/amd64
+            tag-suffix: amd64
+            timeout: 10
+            binary-target: x86_64-unknown-linux-musl
+          - base: alpine
+            platform: linux/arm64
+            tag-suffix: arm64
+            timeout: 15
+            binary-target: aarch64-unknown-linux-musl
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Download required binary
+        uses: actions/download-artifact@v4
+        with:
+          name: stepflow-${{ matrix.binary-target }}
+          path: ./binary/
+
+      - name: Prepare binary
+        run: |
+          chmod +x ./binary/stepflow-*
+
+      - name: Create Dockerfiles
+        run: |
+          pwd
+
+          cat > Dockerfile.debian << 'EOF'
+          # syntax=docker/dockerfile:1
+          FROM debian:bookworm-slim
+          RUN apt-get update && \
+              apt-get install -y ca-certificates && \
+              rm -rf /var/lib/apt/lists/* && \
+              useradd -r -s /bin/false stepflow
+          COPY binary/stepflow-* /usr/local/bin/stepflow
+          RUN chmod +x /usr/local/bin/stepflow
+          USER stepflow
+          ENTRYPOINT ["/usr/local/bin/stepflow"]
+          EOF
+
+          cat > Dockerfile.alpine << 'EOF'
+          # syntax=docker/dockerfile:1
+          FROM alpine:3.19
+          RUN apk --no-cache add ca-certificates && \
+              adduser -D -s /bin/sh stepflow
+          COPY binary/stepflow-* /usr/local/bin/stepflow
+          RUN chmod +x /usr/local/bin/stepflow
+          USER stepflow
+          ENTRYPOINT ["/usr/local/bin/stepflow"]
+          EOF
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          file: Dockerfile.${{ matrix.base }}
+          # Don't use other tags since we're pushing by digest.
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Test Docker image (${{ matrix.platform }})
+        timeout-minutes: 1
+        run: |
+          image_ref="${{ env.REGISTRY }}/${{ github.repository }}@${{ steps.build.outputs.digest }}"
+          echo "Testing image: $image_ref"
+          docker run --platform ${{ matrix.platform }} --rm "$image_ref" --version || true
+          docker run --platform ${{ matrix.platform }} --rm "$image_ref" --help
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.base }}-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-multiplatform:
+    name: Create Multi-platform Images
+    runs-on: ubuntu-22.04
+    needs: [build-docker, version]
+    strategy:
+      fail-fast: false
+      matrix:
+        base: [debian, alpine]
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.base }}-*
+          merge-multiple: true
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare Env
+        run: |
+          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}" >> $GITHUB_ENV
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          flavor:
+            prefix=${{ matrix.base }}-
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version}}
+            type=sha
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+
+
+  verify-artifacts:
+    name: Verify All Artifacts
+    runs-on: ubuntu-22.04
+    needs: [build-binaries, merge-multiplatform]
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./all-artifacts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: stepflow-*
+          merge-multiple: true
+
+      - name: List all artifacts
+        run: |
+          echo "Built artifacts:"
+          find ./all-artifacts -type f -exec ls -la {} \;
+
+      - name: Verify binary count
+        run: |
+          binary_count=$(find ./all-artifacts -name "stepflow-*" -type f | wc -l)
+          echo "Total binaries built: $binary_count"
+          if [ "$binary_count" -ne 7 ]; then
+            echo "Expected 7 binaries but found $binary_count"
+            exit 1
+          fi
+          echo "All expected binaries were built successfully"
+
+      - name: Test binaries (Linux only)
+        run: |
+          # Test the x86_64 Linux binary
+          chmod +x ./all-artifacts/stepflow-x86_64-unknown-linux-gnu
+          ./all-artifacts/stepflow-x86_64-unknown-linux-gnu --version || echo "Version command not available"
+          ./all-artifacts/stepflow-x86_64-unknown-linux-gnu --help | head -10
+
+  upload-release-assets:
+    name: Upload Release Assets
+    runs-on: ubuntu-22.04
+    needs: [build-binaries, verify-artifacts, version]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-artifacts
+          pattern: stepflow-*
+          merge-multiple: true
+
+      - name: Create release archives
+        run: |
+          mkdir -p ./archives
+          cd ./release-artifacts
+
+          # Create tar.gz archives for Unix binaries
+          for binary in stepflow-x86_64-unknown-linux-gnu stepflow-aarch64-unknown-linux-gnu stepflow-x86_64-unknown-linux-musl stepflow-aarch64-unknown-linux-musl stepflow-x86_64-apple-darwin stepflow-aarch64-apple-darwin; do
+            if [ -f "$binary" ]; then
+              tar -czf "../archives/${binary}.tar.gz" "$binary"
+              echo "Created archive for $binary"
+            fi
+          done
+
+          # Create zip archive for Windows binary
+          if [ -f "stepflow-x86_64-pc-windows-msvc.exe" ]; then
+            zip "../archives/stepflow-x86_64-pc-windows-msvc.zip" "stepflow-x86_64-pc-windows-msvc.exe"
+            echo "Created archive for Windows binary"
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./archives/stepflow-*.tar.gz
+            ./archives/stepflow-*.zip
+          tag_name: ${{ github.ref_name }}
+          name: StepFlow Rust v${{ needs.version.outputs.version }}
+          body: |
+            ## StepFlow Rust Binary Release v${{ needs.version.outputs.version }}
+
+            This release includes pre-built binaries for multiple platforms:
+
+            ### Available Binaries
+            - **Linux (glibc)**: `stepflow-x86_64-unknown-linux-gnu.tar.gz`, `stepflow-aarch64-unknown-linux-gnu.tar.gz`
+            - **Linux (musl/Alpine)**: `stepflow-x86_64-unknown-linux-musl.tar.gz`, `stepflow-aarch64-unknown-linux-musl.tar.gz`
+            - **macOS**: `stepflow-x86_64-apple-darwin.tar.gz`, `stepflow-aarch64-apple-darwin.tar.gz`
+            - **Windows**: `stepflow-x86_64-pc-windows-msvc.zip`
+
+            ### Docker Images
+            Docker images are also available at `ghcr.io/${{ github.repository }}`:
+            - `ghcr.io/${{ github.repository }}:debian-v${{ needs.version.outputs.version }}`
+            - `ghcr.io/${{ github.repository }}:alpine-v${{ needs.version.outputs.version }}`
+
+            ### Installation
+            1. Download the appropriate binary for your platform
+            2. Extract the archive
+            3. Make the binary executable (Unix): `chmod +x stepflow-*`
+            4. Move to a directory in your PATH or run directly
+          draft: false
+          prerelease: false
+
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-22.04
+    needs: [build-binaries, build-docker, merge-multiplatform, verify-artifacts, upload-release-assets, version]
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "## Build Summary ${{ needs.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.build-binaries.result }}" = "success" ]; then
+            echo "| Binary builds |  Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Binary builds | L Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.build-docker.result }}" = "success" ]; then
+            echo "| Docker builds |  Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Docker builds | L Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.merge-multiplatform.result }}" = "success" ]; then
+            echo "| Multi-platform |  Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Multi-platform | L Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.verify-artifacts.result }}" = "success" ]; then
+            echo "| Verification |  Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Verification | L Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Platforms Built" >> $GITHUB_STEP_SUMMARY
+          echo "- **Linux**: x86_64 (glibc + musl), ARM64 (glibc + musl)" >> $GITHUB_STEP_SUMMARY
+          echo "- **macOS**: x86_64, ARM64" >> $GITHUB_STEP_SUMMARY
+          echo "- **Windows**: x86_64" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker**: Debian + Alpine (multiplatform)" >> $GITHUB_STEP_SUMMARY
