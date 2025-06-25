@@ -254,6 +254,20 @@ async fn handle_command(command: ReplCommand, state: &mut ReplState) -> Result<(
     }
 }
 
+/// Resolve input file paths relative to the workflow directory
+fn resolve_input_paths(input_args: InputArgs, workflow_path: &std::path::Path) -> InputArgs {
+    if let Some(input_path) = &input_args.input {
+        if input_path.is_relative() {
+            if let Some(flow_dir) = workflow_path.parent() {
+                let mut new_args = input_args.clone();
+                new_args.input = Some(flow_dir.join(input_path));
+                return new_args;
+            }
+        }
+    }
+    input_args
+}
+
 /// Handle the run command
 async fn handle_run_command(
     workflow_path: PathBuf,
@@ -267,8 +281,9 @@ async fn handle_run_command(
     println!("Loaded workflow: {}", workflow_path.display());
 
     // Parse input with flow context
-    let flow_dir = workflow_path.parent();
-    let input_value = input_args.parse_input(flow_dir, true)?;
+    // Resolve relative input paths relative to the workflow directory
+    let input_args = resolve_input_paths(input_args, &workflow_path);
+    let input_value = input_args.parse_input(true)?;
 
     // Create LastRun structure
     let mut last_run = LastRun::new(workflow, workflow_hash, workflow_path, input_value);
@@ -304,8 +319,8 @@ async fn handle_rerun_command(
     // Use new input if provided, otherwise use stored input
     if input_args.has_input() {
         // Parse input with flow context from stored workflow path
-        let flow_dir = last_run.workflow_path.parent();
-        let input_value = input_args.parse_input(flow_dir, false)?;
+        let input_args = resolve_input_paths(input_args, &last_run.workflow_path);
+        let input_value = input_args.parse_input(false)?;
         last_run.update_input(input_value);
     }
 
@@ -901,5 +916,68 @@ mod tests {
             }
             _ => panic!("Expected run command, got: {:?}", result),
         }
+    }
+
+    // Helper function to create InputArgs for testing
+    fn create_input_args_with_file(file_path: &str) -> InputArgs {
+        use std::path::PathBuf;
+        InputArgs {
+            input: Some(PathBuf::from(file_path)),
+            input_json: None,
+            input_yaml: None,
+            stdin_format: crate::args::input::InputFormat::Json,
+        }
+    }
+
+    #[test]
+    fn test_resolve_input_paths_with_relative_path() {
+        use std::path::PathBuf;
+        
+        let input_args = create_input_args_with_file("input.json");
+        let workflow_path = PathBuf::from("/path/to/workflow/test.yaml");
+        let resolved = resolve_input_paths(input_args, &workflow_path);
+        
+        assert_eq!(
+            resolved.input,
+            Some(PathBuf::from("/path/to/workflow/input.json"))
+        );
+    }
+
+    #[test]
+    fn test_resolve_input_paths_with_absolute_path() {
+        use std::path::PathBuf;
+        
+        let input_args = create_input_args_with_file("/absolute/path/to/input.json");
+        let workflow_path = PathBuf::from("/path/to/workflow/test.yaml");
+        let resolved = resolve_input_paths(input_args.clone(), &workflow_path);
+        
+        // Absolute paths should remain unchanged
+        assert_eq!(resolved.input, input_args.input);
+    }
+
+    #[test]
+    fn test_resolve_input_paths_workflow_at_root() {
+        use std::path::PathBuf;
+        
+        let input_args = create_input_args_with_file("input.json");
+        let workflow_path = PathBuf::from("test.yaml");
+        let resolved = resolve_input_paths(input_args.clone(), &workflow_path);
+        
+        // Should return unchanged when workflow has no parent
+        assert_eq!(resolved.input, input_args.input);
+    }
+
+    #[test]
+    fn test_resolve_input_paths_with_nested_relative_path() {
+        use std::path::PathBuf;
+        
+        let input_args = create_input_args_with_file("data/input.json");
+        let workflow_path = PathBuf::from("/path/to/workflow/test.yaml");
+        let resolved = resolve_input_paths(input_args, &workflow_path);
+        
+        assert_eq!(
+            resolved.input,
+            Some(PathBuf::from("/path/to/workflow/data/input.json"))
+        );
     }
 }

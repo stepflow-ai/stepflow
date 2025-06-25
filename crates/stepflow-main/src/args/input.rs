@@ -45,26 +45,12 @@ impl InputArgs {
     ///
     /// # Arguments
     ///
-    /// * `working_directory` - Optional working directory for resolving relative file paths
     /// * `allow_stdin` - Whether to allow reading from stdin when no input is provided
-    pub fn parse_input(
-        &self,
-        working_directory: Option<&std::path::Path>,
-        allow_stdin: bool,
-    ) -> Result<ValueRef> {
+    pub fn parse_input(&self, allow_stdin: bool) -> Result<ValueRef> {
         match (&self.input, &self.input_json, &self.input_yaml) {
             (Some(path), None, None) => {
-                // Load from file, resolving relative paths against working_directory
-                let resolved_path = if path.is_relative() {
-                    if let Some(wd) = working_directory {
-                        wd.join(path)
-                    } else {
-                        path.clone()
-                    }
-                } else {
-                    path.clone()
-                };
-                load(&resolved_path)
+                // Load from file
+                load(path)
             }
             (None, Some(json), None) => {
                 // Parse JSON string
@@ -103,7 +89,7 @@ impl InputArgs {
 
     /// Convert to JSON value for serialization
     pub fn to_json_value(&self) -> Result<serde_json::Value> {
-        let value_ref = self.parse_input(None, true)?;
+        let value_ref = self.parse_input(true)?;
         Ok(serde_json::to_value(value_ref).unwrap())
     }
 
@@ -163,7 +149,7 @@ mod tests {
             input_json: Some(r#"{"number": 42, "text": "hello"}"#.to_string()),
             ..Default::default()
         };
-        let result = args.parse_input(None, false).unwrap();
+        let result = args.parse_input(false).unwrap();
         let json_value = serde_json::to_value(result).unwrap();
         assert_eq!(json_value["number"], 42);
         assert_eq!(json_value["text"], "hello");
@@ -175,7 +161,7 @@ mod tests {
             input_yaml: Some("number: 42\ntext: hello".to_string()),
             ..Default::default()
         };
-        let result = args.parse_input(None, false).unwrap();
+        let result = args.parse_input(false).unwrap();
         let json_value = serde_json::to_value(result).unwrap();
         assert_eq!(json_value["number"], 42);
         assert_eq!(json_value["text"], "hello");
@@ -187,7 +173,7 @@ mod tests {
             input_json: Some("invalid json".to_string()),
             ..Default::default()
         };
-        let result = args.parse_input(None, false);
+        let result = args.parse_input(false);
         assert!(result.is_err());
     }
 
@@ -197,14 +183,14 @@ mod tests {
             input_yaml: Some("invalid: yaml: content: :::".to_string()),
             ..Default::default()
         };
-        let result = args.parse_input(None, false);
+        let result = args.parse_input(false);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_input_no_input_no_stdin() {
         let args = InputArgs::default();
-        let result = args.parse_input(None, false);
+        let result = args.parse_input(false);
         assert!(result.is_err());
     }
 
