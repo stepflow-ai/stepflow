@@ -74,6 +74,15 @@ StepFlow is an open protocol and runtime for building, executing, and scaling Ge
 - Handle errors at both flow and step levels
 - Use as both a library and a service
 
+### Repository Structure
+
+This repository contains multiple components:
+
+- **`stepflow-rs/`** - Main Rust-based execution engine and runtime
+- **`stepflow-ui/`** - Web-based frontend for workflow management
+- **`sdks/python/`** (`stepflow-py`) - Python SDK for building components
+- **`sdks/typescript/`** (`stepflow-ts`) - TypeScript SDK for building components
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- GETTING STARTED -->
@@ -92,8 +101,9 @@ To get a local copy up and running quickly follow these simple steps.
    cd stepflow
    ```
 
-2. Build the project
+2. Build the stepflow-rs project
    ```sh
+   cd stepflow-rs
    cargo build --release
    ```
 
@@ -142,6 +152,7 @@ outputs:
 
 **Run the workflow:**
 ```sh
+cd stepflow-rs
 cargo run -- run --flow=workflow.yaml --input=input.json
 ```
 
@@ -156,7 +167,7 @@ plugins:
   - name: python
     type: stdio
     command: uv
-    args: ["--project", "sdks/python", "run", "stepflow_sdk"]
+    args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
 ```
 
 _For more examples, please refer to the [Documentation](https://fuzzy-journey-4j3y1we.pages.github.io/)_

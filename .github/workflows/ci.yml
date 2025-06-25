@@ -40,8 +40,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+            stepflow-rs/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('stepflow-rs/**/Cargo.lock') }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -59,9 +59,11 @@ jobs:
 
       - name: Run cargo-test
         run: cargo test
+        working-directory: stepflow-rs
 
       - name: Lint (clippy)
         run: cargo clippy
+        working-directory: stepflow-rs
 
   rustfmt:
     name: Rust Format
@@ -74,6 +76,7 @@ jobs:
         components: 'rustfmt'
     - name: Format
       run: cargo fmt --check
+      working-directory: stepflow-rs
 
   rust-unused-dependencies:
     name: Rust Unused Dependencies
@@ -91,6 +94,7 @@ jobs:
         with:
           command: machete
           args: --with-metadata
+          working-directory: stepflow-rs
 
   rust-cargo-deny:
     name: Rust Cargo Deny
@@ -98,3 +102,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: stepflow-rs/Cargo.toml

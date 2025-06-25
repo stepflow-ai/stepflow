@@ -9,6 +9,7 @@ repository = "https://github.com/riptano/stepflow"
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+default-members = ["crates/stepflow-main"]
 
 [workspace.dependencies]
 axum = "0.8"

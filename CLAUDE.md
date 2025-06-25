@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Building the Project
 ```bash
-# Build the entire project
+# Build the entire project (run from stepflow-rs directory)
+cd stepflow-rs
 cargo build
 
 # Build with release optimizations
@@ -15,7 +16,8 @@ cargo build --release
 
 ### Running Tests
 ```bash
-# Run all tests
+# Run all tests (run from stepflow-rs directory)
+cd stepflow-rs
 cargo test
 
 # Run with snapshot tests and automatic snapshot updates
@@ -30,7 +32,8 @@ cargo test -p stepflow-execution -- execute_flows
 
 ### Running the App
 ```bash
-# Run a workflow with input file
+# Run a workflow with input file (run from stepflow-rs directory)
+cd stepflow-rs
 cargo run -- run --flow=examples/python/basic.yaml --input=examples/python/input1.json
 
 # Run a workflow with inline JSON input
@@ -54,7 +57,8 @@ cargo run -- submit --url=http://localhost:7837/api/v1 --flow=<flow.yaml> --inpu
 
 ### Code Linting
 ```bash
-# Run clippy on all crates
+# Run clippy on all crates (run from stepflow-rs directory)
+cd stepflow-rs
 cargo clippy
 
 # Auto-fix linting issues where possible
@@ -325,7 +329,7 @@ plugins:
   - name: python   # Plugin identifier
     type: stdio    # Communication method (stdio or http)
     command: uv    # Command to execute
-    args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]  # Arguments
+    args: ["--project", "../sdks/python", "run", "stepflow_sdk"]  # Arguments
 ```
 
 ### Plugin Types
