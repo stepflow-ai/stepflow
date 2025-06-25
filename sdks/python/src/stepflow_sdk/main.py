@@ -21,10 +21,10 @@ class MathOutput(msgspec.Struct):
     
 
 class ArrayInput(msgspec.Struct):
-    data: List[dict]
+    input: List[dict]
 
 class FieldInput(msgspec.Struct):
-    data: List[dict]
+    input: List[dict]
     field: str
 
 class NumberResult(msgspec.Struct):
@@ -53,11 +53,11 @@ class UdfInput(msgspec.Struct):
 
 # Updated input type that can handle nested data
 class NestedDataInput(msgspec.Struct):
-    data: dict  # Can contain nested structure    
+    input: dict  # Can contain nested structure    
 
 # Filter data by field value
 class FilterInput(msgspec.Struct):
-    data: List[dict]
+    input: List[dict]
     field: str
     value: str
 
@@ -106,7 +106,7 @@ class ComprehensiveSummaryOutput(msgspec.Struct):
 # Filter data by field value
 @server.component
 def filter_by_field(input: FilterInput) -> FilterOutput:
-    filtered = [item for item in input.data if item.get(input.field) == input.value]
+    filtered = [item for item in input.input if item.get(input.field) == input.value]
     return FilterOutput(
         filtered_data=filtered,
         filtered_count=len(filtered)
@@ -217,8 +217,8 @@ def compare_all_regions(input: CompareAllRegionsInput) -> CompareAllRegionsOutpu
 @server.component
 def extract_sales_data(input: NestedDataInput) -> ArrayInput:
     # Extract sales_data from the nested structure
-    sales_data = input.data.get("sales_data", [])
-    return ArrayInput(data=sales_data)
+    sales_data = input.input.get("sales_data", [])
+    return ArrayInput(input=sales_data)
 
 # Register a simple addition component
 @server.component
@@ -228,18 +228,18 @@ def add(input: MathInput) -> MathOutput:
 # Sum a specific field across array items
 @server.component
 def sum_field(input: FieldInput) -> NumberResult:
-    total = sum(item.get(input.field, 0) for item in input.data)
+    total = sum(item.get(input.field, 0) for item in input.input)
     return NumberResult(result=total)
 
 # Count items in array
 @server.component  
 def count_items(input: ArrayInput) -> CountResult:
-    return CountResult(result=len(input.data))
+    return CountResult(result=len(input.input))
 
 # Calculate average of a field
 @server.component
 def average_field(input: FieldInput) -> NumberResult:
-    values = [item.get(input.field, 0) for item in input.data]
+    values = [item.get(input.field, 0) for item in input.input]
     avg = sum(values) / len(values) if values else 0
     return NumberResult(result=avg)
 
@@ -456,29 +456,29 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict, 
         params = list(sig.parameters)
         if len(params) == 2 and params[1] == "context":
             # Function expects context as second parameter
-            async def wrapper(data):
-                validate_input(data)
+            async def wrapper(input_data):
+                validate_input(input_data)
                 if inspect.iscoroutinefunction(func):
-                    return await func(data, context)
+                    return await func(input_data, context)
                 else:
-                    return func(data, context)
+                    return func(input_data, context)
             return wrapper
         else:
-            # Function only expects data
-            def wrapper(data):
-                validate_input(data)
-                return func(data)
+            # Function only expects input data
+            def wrapper(input_data):
+                validate_input(input_data)
+                return func(input_data)
             return wrapper
     else:
         # Code is a function body - wrap it appropriately
         try:
             # Try as expression first (for simple cases)
-            wrapped_code = f"lambda data: {code}"
+            wrapped_code = f"lambda input: {code}"
             func = eval(wrapped_code, safe_globals)
             
-            def wrapper(data):
-                validate_input(data)
-                return func(data)
+            def wrapper(input_data):
+                validate_input(input_data)
+                return func(input_data)
             return wrapper
         except:
             # If that fails, try as statements in a function body
@@ -491,19 +491,19 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict, 
                     else:
                         indented_lines.append('')  # Keep empty lines as-is
                 
-                func_code = f"""def _temp_func(data, context):
+                func_code = f"""def _temp_func(input, context):
 {chr(10).join(indented_lines)}"""
                 local_scope = {}
                 exec(func_code, safe_globals, local_scope)
                 temp_func = local_scope['_temp_func']
                 
                 # Wrap to always pass context and validate
-                async def wrapper(data):
-                    validate_input(data)
+                async def wrapper(input_data):
+                    validate_input(input_data)
                     if inspect.iscoroutinefunction(temp_func):
-                        return await temp_func(data, context)
+                        return await temp_func(input_data, context)
                     else:
-                        return temp_func(data, context)
+                        return temp_func(input_data, context)
                 return wrapper
             except Exception as e:
                 raise ValueError(f"Code compilation failed: {e}")

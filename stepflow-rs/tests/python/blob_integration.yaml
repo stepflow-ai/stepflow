@@ -33,14 +33,14 @@ steps:
             config: { type: object }
           required: [blob_id, config]
         code: |
-          async def process_data(data, context):
+          async def process_data(input, context):
               # Retrieve the original data from blob
-              original_data = await context.get_blob(data['blob_id'])
+              original_data = await context.get_blob(input['blob_id'])
 
               # Process the data (example: add multiply numbers)
               processed_data = {
                   'original': original_data,
-                  'config': data['config']
+                  'config': input['config']
               }
 
               # If original data has numeric values, transform them
@@ -53,7 +53,7 @@ steps:
               new_blob_id = await context.put_blob(processed_data)
 
               return {
-                  'original_blob_id': data['blob_id'],
+                  'original_blob_id': input['blob_id'],
                   'processed_blob_id': new_blob_id,
                   'summary': f'Processed {len(original_data)} fields'
               }

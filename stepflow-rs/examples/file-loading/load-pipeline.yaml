@@ -22,24 +22,24 @@ steps:
   - id: extract_sales_array
     component: python://extract_sales_data
     input:
-      data: { $from: "load_sales_data", path: "data" }
+      input: { $from: "load_sales_data", path: "data" }
 
   # Now process the sales data array
   - id: calculate_total_revenue
     component: python://sum_field
     input:
-      data: { $from: "extract_sales_array", path: "data" }
+      input: { $from: "extract_sales_array", path: "input" }
       field: "revenue"
 
   - id: count_sales
     component: python://count_items
     input:
-      data: { $from: "extract_sales_array", path: "data" }
+      input: { $from: "extract_sales_array", path: "input" }
 
   - id: calculate_average_sale
     component: python://average_field
     input:
-      data: { $from: "extract_sales_array", path: "data" }
+      input: { $from: "extract_sales_array", path: "input" }
       field: "revenue"
 
   - id: calculate_performance_ratio

@@ -48,11 +48,11 @@ steps:
         - message
         - number
       code: |
-        async def store_data(data, context):
+        async def store_data(input, context):
           # Create enhanced data
           enhanced_data = {
-            'original_message': data['message'],
-            'number_squared': data['number'] ** 2,
+            'original_message': input['message'],
+            'number_squared': input['number'] ** 2,
             'processed_by': 'python_udf'
           }
           # Store as blob using context

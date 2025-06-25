@@ -16,18 +16,18 @@ steps:
   - id: calculate_total_revenue
     component: python://sum_field
     input:
-      data: { $from: { workflow: input }, path: "sales_data" }
+      input: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   - id: count_sales
     component: python://count_items
     input:
-      data: { $from: { workflow: input }, path: "sales_data" }
+      input: { $from: { workflow: input }, path: "sales_data" }
 
   - id: calculate_average_sale
     component: python://average_field
     input:
-      data: { $from: { workflow: input }, path: "sales_data" }
+      input: { $from: { workflow: input }, path: "sales_data" }
       field: "revenue"
 
   # This step waits for total_revenue to complete
@@ -48,20 +48,20 @@ steps:
             - id: filter_region
               component: python://filter_by_field
               input:
-                data: { $from: { workflow: input }, path: "sales_data" }
+                input: { $from: { workflow: input }, path: "sales_data" }
                 field: "region"
                 value: "West"
 
             - id: region_revenue
               component: python://sum_field
               input:
-                data: { $from: { step: filter_region }, path: "filtered_data" }
+                input: { $from: { step: filter_region }, path: "filtered_data" }
                 field: "revenue"
 
             - id: region_count
               component: python://count_items
               input:
-                data: { $from: { step: filter_region }, path: "filtered_data" }
+                input: { $from: { step: filter_region }, path: "filtered_data" }
 
           output:
             revenue: { $from: { step: region_revenue }, path: "result" }
@@ -80,20 +80,20 @@ steps:
             - id: filter_region
               component: python://filter_by_field
               input:
-                data: { $from: { workflow: input }, path: "sales_data" }
+                input: { $from: { workflow: input }, path: "sales_data" }
                 field: "region"
                 value: "East"
 
             - id: region_revenue
               component: python://sum_field
               input:
-                data: { $from: { step: filter_region }, path: "filtered_data" }
+                input: { $from: { step: filter_region }, path: "filtered_data" }
                 field: "revenue"
 
             - id: region_count
               component: python://count_items
               input:
-                data: { $from: { step: filter_region }, path: "filtered_data" }
+                input: { $from: { step: filter_region }, path: "filtered_data" }
 
           output:
             revenue: { $from: { step: region_revenue }, path: "result" }
