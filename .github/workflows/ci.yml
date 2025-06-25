@@ -14,6 +14,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+# TODO: Split into per-language custom actions and use https://github.com/dorny/paths-filter
+# to run actions only for affected packages.
 jobs:
   test:
     strategy:
