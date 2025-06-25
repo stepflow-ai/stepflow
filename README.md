@@ -151,6 +151,7 @@ outputs:
 ```
 
 **Run the workflow:**
+This assumes `workflow.yaml` and `input.json` are in the current directory.
 ```sh
 cd stepflow-rs
 cargo run -- run --flow=workflow.yaml --input=input.json
