@@ -14,7 +14,7 @@
             "include-component-in-tag": true
         },
         "stepflow-ts": {
-            "path": "sdks/ts",
+            "path": "sdks/typescript",
             "release-type": "node",
             "include-component-in-tag": true
         }
