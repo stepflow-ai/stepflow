@@ -367,6 +367,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            ./stepflow-rs/CHANGELOG.md
             ./archives/stepflow-*.tar.gz
             ./archives/stepflow-*.zip
           tag_name: ${{ github.ref_name }}
