@@ -60,9 +60,9 @@ server.setComponentSchema(
 server.run();
 ```
 
-### Custom component names
+### User-defined function names
 
-You can provide a custom name for your component:
+You can provide a custom name for your user-defined function:
 
 ```typescript
 class TextOperations {

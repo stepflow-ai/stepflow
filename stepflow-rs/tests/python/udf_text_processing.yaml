@@ -30,7 +30,7 @@ steps:
         required:
         - text
       code: |
-        text = data['text'].lower()
+        text = input['text'].lower()
         words = text.split()
 
         word_count = len(words)
@@ -73,8 +73,8 @@ steps:
         - text
         - pattern
       code: |
-        text = data['text']
-        pattern = data['pattern']
+        text = input['text']
+        pattern = input['pattern']
 
         try:
             matches = re.findall(pattern, text)
@@ -99,7 +99,7 @@ steps:
         positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'joy']
         negative_words = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'sad', 'angry', 'upset', 'disappointed']
 
-        text = data['text'].lower()
+        text = input['text'].lower()
         words = text.split()
 
         positive_count = sum(1 for word in words if word in positive_words)
