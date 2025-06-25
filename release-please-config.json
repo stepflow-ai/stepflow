@@ -1,8 +1,8 @@
 {
+    "separate-pull-requests": true,
+    "draft-pull-request": true,
     "manifest": {
-        "include-v-in-tag": false,
-        "draft-pull-request": true,
-        "separate-pull-requests": true
+        "include-v-in-tag": false
     },
     "packages": {
         "stepflow-rs": {
