@@ -3,7 +3,7 @@ name: Release Rust
 on:
   push:
     tags:
-      - stepflow-rs-v*
+      - stepflow-rs-*
 
 # Limit concurrency to a single run per branch (ref).
 concurrency:

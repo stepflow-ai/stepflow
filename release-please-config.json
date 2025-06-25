@@ -1,20 +1,21 @@
 {
     "manifest": {
-        "include-v-in-tag": false
+        "include-v-in-tag": false,
+        "draft-pull-request": true
     },
     "packages": {
         "stepflow-rs": {
-            "path": "stepflow-rs",
+            "package-name": "stepflow-rs",
             "release-type": "rust",
             "include-component-in-tag": true
         },
-        "stepflow-py": {
-            "path": "sdks/python",
+        "sdks/python": {
+            "package-name": "stepflow-py",
             "release-type": "python",
             "include-component-in-tag": true
         },
-        "stepflow-ts": {
-            "path": "sdks/typescript",
+        "sdks/typescript": {
+            "package-name": "stepflow-ts",
             "release-type": "node",
             "include-component-in-tag": true
         }
