@@ -17,22 +17,15 @@ use crate::{
 pub struct LastRun {
     pub workflow: Arc<Flow>,
     pub workflow_hash: FlowHash,
-    pub workflow_path: PathBuf,
     pub input: ValueRef,
     pub last_execution: Option<WorkflowExecutor>,
 }
 
 impl LastRun {
-    pub fn new(
-        workflow: Arc<Flow>,
-        workflow_hash: FlowHash,
-        workflow_path: PathBuf,
-        input: ValueRef,
-    ) -> Self {
+    pub fn new(workflow: Arc<Flow>, workflow_hash: FlowHash, input: ValueRef) -> Self {
         Self {
             workflow,
             workflow_hash,
-            workflow_path,
             input,
             last_execution: None,
         }
@@ -267,11 +260,10 @@ async fn handle_run_command(
     println!("Loaded workflow: {}", workflow_path.display());
 
     // Parse input with flow context
-    let flow_dir = workflow_path.parent();
-    let input_value = input_args.parse_input(flow_dir, true)?;
+    let input_value = input_args.parse_input(true)?;
 
     // Create LastRun structure
-    let mut last_run = LastRun::new(workflow, workflow_hash, workflow_path, input_value);
+    let mut last_run = LastRun::new(workflow, workflow_hash, input_value);
     state.debug_mode = debug;
 
     if debug {
@@ -303,9 +295,7 @@ async fn handle_rerun_command(
 
     // Use new input if provided, otherwise use stored input
     if input_args.has_input() {
-        // Parse input with flow context from stored workflow path
-        let flow_dir = last_run.workflow_path.parent();
-        let input_value = input_args.parse_input(flow_dir, false)?;
+        let input_value = input_args.parse_input(false)?;
         last_run.update_input(input_value);
     }
 
