@@ -1,5 +1,7 @@
 {
     "stepflow-rs": "0.0.1",
     "stepflow-py": "0.0.1",
-    "stepflow-ts": "0.0.1"
+    "stepflow-ts": "0.0.1",
+    "sdks/python": "0.1.0",
+    "sdks/typescript": "1.0.0"
 }
