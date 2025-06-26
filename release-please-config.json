@@ -6,8 +6,19 @@
     "packages": {
         "stepflow-rs": {
             "package-name": "stepflow-rs",
-            "release-type": "rust",
-            "include-component-in-tag": true
+            "release-type": "simple",
+            "include-component-in-tag": true,
+            "extra-files": [
+                {
+                    "path": "stepflow-rs/Cargo.toml",
+                    "type": "toml",
+                    "jsonpath": "$[\"workspace.package\"]"
+                },
+                {
+                    "path": "stepflow-rs/Cargo.lock",
+                    "type": "cargo-lock"
+                }
+            ]
         },
         "sdks/python": {
             "package-name": "stepflow-py",
