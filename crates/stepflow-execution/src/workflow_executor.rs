@@ -1275,10 +1275,19 @@ impl StreamingPipelineCoordinator {
                 
                 // Spawn while still holding the pieces and the lock
                 let h = tokio::spawn(async move {
-                    tracing::info!("Step task {} about to call run_streaming_step_simple", step_id);
-                    let result = run_streaming_step_simple(plugin, step, input, context, rx, downstream, is_source).await;
-                    tracing::info!("Step task {} finished run_streaming_step_simple: {:?}", step_id, result.is_ok());
-                    result
+                    if is_source {
+                        tracing::info!("Step task {} is source - waiting for generator to complete", step_id);
+                        // For source steps, don't run the generator here (it's run separately)
+                        // Just wait a bit and then exit - the generator runs independently
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        tracing::info!("Step task {} source step exiting (generator runs separately)", step_id);
+                        Ok(())
+                    } else {
+                        tracing::info!("Step task {} about to call run_streaming_step_simple", step_id);
+                        let result = run_streaming_step_simple(plugin, step, input, context, rx, downstream, is_source).await;
+                        tracing::info!("Step task {} finished run_streaming_step_simple: {:?}", step_id, result.is_ok());
+                        result
+                    }
                 });
                 handles.push((step_idx, h));
             }
