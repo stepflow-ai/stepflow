@@ -114,6 +114,7 @@ impl WorkflowExecutor {
                     pipeline_steps.iter().map(|i| (*i, &flow.steps[*i].id, &flow.steps[*i].component)).collect::<Vec<_>>()
                 );
                 
+                tracing::info!("[DEBUG-INIT] Creating streaming coordinator in WorkflowExecutor::new");
                 let coordinator = StreamingPipelineCoordinator::new(
                     executor.clone(),
                     flow.clone(),
@@ -1477,13 +1478,18 @@ impl StreamingPipelineCoordinator {
             for &step_idx in &pipeline_steps {
                 let step_id = flow.steps[step_idx].id.clone();
                 
-                // Take sender & receiver out now, before spawning
+                // Take the receiver for this step - this is the correct approach
+                // The sender stays in the coordinator so route_chunk_to_running_pipeline can send to it
                 let rx = guard.step_receivers.remove(&step_id).ok_or_else(|| {
+                    tracing::error!("[DEBUG-CHANNEL] No receiver found for step {}", step_id);
                     ExecutionError::Internal
                 })?;
+                tracing::info!("[DEBUG-CHANNEL] Moved receiver for step {} to task", step_id);
                 let _sender = guard.step_senders.get(&step_id).unwrap().clone(); // Keep sender in map for handle_chunk
                 let downstream = guard.step_downstream_senders
                     .get(&step_id).cloned().unwrap_or_default();
+                
+                tracing::info!("[DEBUG-CHANNEL] Step {} spawning with {} downstream channels", step_id, downstream.len());
                 let input = step_inputs.remove(&step_idx).ok_or_else(|| {
                     ExecutionError::Internal
                 })?;
@@ -1708,6 +1714,9 @@ async fn run_streaming_step_simple(
                 
                 // Forward to downstream steps
                 stream_log!(info, &step_id, "forwarding chunk #{} to {} downstream", final_chunk_index, downstream.len());
+                if downstream.is_empty() {
+                    stream_log!(warn, &step_id, "no downstream channels to forward to!");
+                }
                 for (i, tx) in downstream.iter().enumerate() {
                     match tx.send(FlowResult::Streaming {
                         stream_id: final_stream_id.clone(),
