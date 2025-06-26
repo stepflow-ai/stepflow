@@ -140,7 +140,7 @@ impl Plugin for StdioPlugin {
     async fn execute(
         &self,
         component: &Component,
-        _context: ExecutionContext,
+        context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
         let client_handle = self.client_handle().await?;
@@ -148,10 +148,107 @@ impl Plugin for StdioPlugin {
             .request(&crate::schema::component_execute::Request {
                 component: component.clone(),
                 input,
+                execution_id: context.execution_id(),
+                step_id: context.step_id().unwrap_or("unknown").to_string(),
             })
             .await
             .change_context(PluginError::Execution)?;
 
+        tracing::debug!("StdioPlugin: Received response: {:?}", response.output);
+
+        // Check if the response contains a FlowResult by looking for the "outcome" field
+        if let Some(outcome_obj) = response.output.as_object() {
+            if let Some(outcome_value) = outcome_obj.get("outcome") {
+                if let Some(outcome_str) = outcome_value.as_str() {
+                    tracing::debug!("StdioPlugin: Found outcome field with value: {}", outcome_str);
+                    // If the response has an "outcome" field, try to deserialize it as a FlowResult
+                    match outcome_str {
+                        "streaming" => {
+                            // Try to deserialize as FlowResult::Streaming
+                            tracing::debug!("StdioPlugin: Attempting to deserialize streaming result");
+                            match serde_json::from_value::<stepflow_core::FlowResult>(response.output.as_ref().clone()) {
+                                Ok(flow_result) => {
+                                    tracing::info!("StdioPlugin: Successfully deserialized streaming result");
+                                    return Ok(flow_result);
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to deserialize streaming result: {}, attempting flexible construction", e);
+                                    // Try to flexibly construct FlowResult::Streaming by adapting the structure
+                                    if let Some(obj) = response.output.as_ref().as_object() {
+                                        // Try to extract core streaming fields with flexible typing
+                                        let stream_id = obj.get("stream_id")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("unknown");
+
+                                        let chunk = obj.get("chunk")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+
+                                        let chunk_index = obj.get("chunk_index")
+                                            .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|i| i as u64)))
+                                            .unwrap_or(0) as usize;
+
+                                        let is_final = obj.get("is_final")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false);
+
+                                        // If we have a metadata field, use it; otherwise create one from remaining fields
+                                        let metadata = if let Some(existing_metadata) = obj.get("metadata") {
+                                            stepflow_core::workflow::ValueRef::new(existing_metadata.clone())
+                                        } else {
+                                            // Create metadata from all fields except the core streaming ones
+                                            let mut metadata_obj = serde_json::Map::new();
+                                            for (key, value) in obj.iter() {
+                                                if !matches!(key.as_str(), "outcome" | "stream_id" | "chunk" | "chunk_index" | "is_final") {
+                                                    metadata_obj.insert(key.clone(), value.clone());
+                                                }
+                                            }
+                                            stepflow_core::workflow::ValueRef::new(serde_json::Value::Object(metadata_obj))
+                                        };
+
+                                        let flow_result = stepflow_core::FlowResult::Streaming {
+                                            stream_id: stream_id.to_string(),
+                                            metadata,
+                                            chunk: chunk.to_string(),
+                                            chunk_index,
+                                            is_final,
+                                        };
+
+                                        tracing::info!("StdioPlugin: Successfully constructed streaming result flexibly");
+                                        return Ok(flow_result);
+                                    }
+                                    tracing::warn!("Failed to flexibly construct streaming result, falling back to Success");
+                                }
+                            }
+                        }
+                        "success" | "failed" | "skipped" => {
+                            // Try to deserialize as any FlowResult variant
+                            match serde_json::from_value::<stepflow_core::FlowResult>(response.output.as_ref().clone()) {
+                                Ok(flow_result) => {
+                                    tracing::debug!("StdioPlugin: Successfully deserialized FlowResult: {:?}", flow_result);
+                                    return Ok(flow_result);
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to deserialize FlowResult: {}, falling back to Success", e);
+                                }
+                            }
+                        }
+                        _ => {
+                            // Unknown outcome, treat as regular success
+                            tracing::debug!("StdioPlugin: Unknown outcome '{}', treating as regular success", outcome_str);
+                        }
+                    }
+                } else {
+                    tracing::debug!("StdioPlugin: outcome field is not a string");
+                }
+            } else {
+                tracing::debug!("StdioPlugin: No outcome field found in response");
+            }
+        } else {
+            tracing::debug!("StdioPlugin: Response output is not an object");
+        }
+
+        // Default behavior: wrap in Success
         Ok(FlowResult::Success {
             result: response.output,
         })

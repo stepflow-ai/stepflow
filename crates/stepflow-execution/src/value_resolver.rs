@@ -35,6 +35,11 @@ impl ValueResolver {
         }
     }
 
+    /// Get the workflow input for this resolver.
+    pub fn workflow_input(&self) -> &ValueRef {
+        &self.input
+    }
+
     /// Resolve a ValueRef, returning a FlowResult.
     /// This is the main entry point for value resolution.
     pub async fn resolve(&self, value: &ValueRef) -> Result<FlowResult> {

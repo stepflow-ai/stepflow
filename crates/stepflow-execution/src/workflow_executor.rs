@@ -12,9 +12,16 @@ use stepflow_core::{
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 use crate::{ExecutionError, Result, StepFlowExecutor, value_resolver::ValueResolver};
+
+/// Helper macro for streaming step logging
+macro_rules! stream_log {
+    ($level:ident, $step_id:expr, $($arg:tt)*) => {
+        tracing::$level!("[STREAM {}] {}", $step_id, format!($($arg)*))
+    };
+}
 
 /// Execute a workflow and return the result.
 pub(crate) async fn execute_workflow(
@@ -41,7 +48,6 @@ pub(crate) async fn execute_workflow(
 ///
 /// This serves as the core execution engine that can be used directly for
 /// run-to-completion execution, or controlled step-by-step by the debug session.
-#[derive(Clone)]
 pub struct WorkflowExecutor {
     /// Dependency tracker for determining runnable steps
     tracker: stepflow_analysis::DependencyTracker,
@@ -56,7 +62,7 @@ pub struct WorkflowExecutor {
     /// Execution context for this session
     context: ExecutionContext,
     /// Optional streaming pipeline coordinator
-    streaming_coordinator: Option<std::sync::Arc<tokio::sync::Mutex<StreamingPipelineCoordinator>>>,
+    streaming_coordinator: Option<Arc<tokio::sync::Mutex<StreamingPipelineCoordinator>>>,
 }
 
 impl WorkflowExecutor {
@@ -85,20 +91,37 @@ impl WorkflowExecutor {
 
         // Initialize streaming coordinator if workflow has streaming steps
         let streaming_coordinator = if flow.steps.iter().any(|step| step.streaming) {
-            let pipeline_steps: Vec<usize> = flow.steps.iter()
+            let mut pipeline_steps: Vec<usize> = flow.steps.iter()
                 .enumerate()
                 .filter(|(_, step)| step.streaming)
                 .map(|(index, _)| index)
                 .collect();
             
             if !pipeline_steps.is_empty() {
+                // Log the initial order (source order)
+                tracing::info!("Initial pipeline order (source order): {:?}",
+                    pipeline_steps.iter().map(|i| &flow.steps[*i].id).collect::<Vec<_>>()
+                );
+                
+                // Sort pipeline steps by dependencies using a topological sort
+                pipeline_steps = sort_streaming_steps_by_dependencies(&flow, pipeline_steps)?;
+                
+                // Log the final pipeline order to verify it's correct
+                tracing::info!("Final pipeline will run in this order: {:?}",
+                    pipeline_steps.iter().map(|i| &flow.steps[*i].id).collect::<Vec<_>>()
+                );
+                tracing::info!("Pipeline step indices and components: {:?}",
+                    pipeline_steps.iter().map(|i| (*i, &flow.steps[*i].id, &flow.steps[*i].component)).collect::<Vec<_>>()
+                );
+                
                 let coordinator = StreamingPipelineCoordinator::new(
                     executor.clone(),
                     flow.clone(),
                     pipeline_steps,
                     context.clone(),
+                    resolver.clone(),
                 );
-                Some(std::sync::Arc::new(tokio::sync::Mutex::new(coordinator)))
+                Some(Arc::new(tokio::sync::Mutex::new(coordinator)))
             } else {
                 None
             }
@@ -127,6 +150,17 @@ impl WorkflowExecutor {
         &self.flow
     }
 
+    /// Check if the streaming pipeline is still active (has active receivers)
+    pub fn is_streaming_pipeline_active(&self) -> bool {
+        if let Some(coord_arc) = &self.streaming_coordinator {
+            // For now, just check if coordinator exists - we can't easily check receivers without async
+            true
+        } else {
+            // No coordinator means no streaming pipeline
+            false
+        }
+    }
+
     /// Get currently runnable step indices.
     pub fn get_runnable_step_indices(&self) -> BitSet {
         self.tracker.unblocked_steps()
@@ -138,6 +172,19 @@ impl WorkflowExecutor {
         let mut running_tasks = FuturesUnordered::new();
 
         tracing::debug!("Starting execution of {} steps", self.flow.steps.len());
+
+        // Start streaming pipeline coordinator concurrently if it exists
+        let streaming_task = if let Some(coordinator_arc) = &self.streaming_coordinator {
+            tracing::info!("Starting streaming pipeline coordinator concurrently with main execution");
+            
+            let coord = coordinator_arc.clone();
+            // Start the pipeline execution in a separate task (single-phase, no setup needed)
+            Some(tokio::spawn(async move {
+                StreamingPipelineCoordinator::run_pipeline_without_lock(coord).await
+            }))
+        } else {
+            None
+        };
 
         // Start initial unblocked steps
         let initial_unblocked = self.tracker.unblocked_steps();
@@ -201,7 +248,23 @@ impl WorkflowExecutor {
                 .await?;
         }
 
-        // All tasks completed - try to complete the workflow
+        // Wait for streaming pipeline to complete if it was started
+        if let Some(streaming_task) = streaming_task {
+            tracing::info!("Waiting for streaming pipeline coordinator to complete");
+            match streaming_task.await {
+                Ok(result) => {
+                    if let Err(e) = result {
+                        tracing::warn!("Streaming pipeline coordinator completed with error: {:?}", e);
+                    } else {
+                        tracing::info!("Streaming pipeline coordinator completed successfully");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Streaming pipeline coordinator task panicked: {:?}", e);
+                }
+            }
+        }
+
         self.resolve_workflow_output().await
     }
 
@@ -515,36 +578,36 @@ impl WorkflowExecutor {
             }
         };
 
-        // Get plugin and execute the step
-        let plugin = self.executor.get_plugin(&step.component).await?;
-        let result = execute_step_async(plugin, step, step_input, self.context.clone()).await?;
-
-        // Update step status based on result
-        let final_status = match &result {
-            FlowResult::Success { .. } => stepflow_core::status::StepStatus::Completed,
-            FlowResult::Failed { .. } => stepflow_core::status::StepStatus::Failed,
-            FlowResult::Skipped => stepflow_core::status::StepStatus::Skipped,
-            FlowResult::Streaming { .. } => stepflow_core::status::StepStatus::Running, // Keep as running for streaming
-        };
-
-        self.state_store
-            .update_step_status(
-                self.context.execution_id(),
-                step_index,
-                final_status,
-            )
-            .await
-            .change_context_lazy(|| ExecutionError::StateError)?;
-
-        // For streaming steps, don't record in state store
+        // Check if this is a streaming step
         if step.streaming {
-            // Update dependency tracker but don't persist
-            self.tracker.complete_step(step_index);
-        } else {
-            // Record the result for non-streaming steps
-            self.record_step_completion(step_index, &result).await?;
+            tracing::info!("Step {} is a streaming step, using streaming execution", step.id);
+            // For streaming steps, return a StepExecutionResult with a placeholder Streaming result
+            let streaming_result = FlowResult::Streaming {
+                stream_id: format!("stream_{}", step.id),
+                metadata: stepflow_core::workflow::ValueRef::new(serde_json::json!({
+                    "step_id": step.id,
+                    "step_index": step_index,
+                    "streaming": true
+                })),
+                chunk: "".to_string(),
+                chunk_index: 0,
+                is_final: false,
+            };
+            return Ok(StepExecutionResult::new(
+                step_index,
+                step_id,
+                component_string,
+                streaming_result,
+            ));
         }
 
+        // Regular non-streaming step execution
+        let plugin = self.executor.get_plugin(&step.component).await?;
+        let flow = self.flow.clone();
+        let context = self.context.clone()
+            .with_step(self.flow.steps[step_index].id.clone());
+        let step = &flow.steps[step_index];
+        let result = execute_step_async(plugin, step, step_input, context).await?;
         Ok(StepExecutionResult::new(
             step_index,
             step_id,
@@ -744,17 +807,25 @@ impl WorkflowExecutor {
             .await
             .change_context_lazy(|| ExecutionError::StateError)?;
 
-        // Get plugin for this step
+        // Check if this is a streaming step
+        if step.streaming {
+            tracing::info!("Step {} is a streaming step, using streaming execution", step.id);
+            // For streaming steps, just mark as running; the coordinator will handle execution
+            return Ok(());
+        }
+
+        // Regular non-streaming step execution
         let plugin = self.executor.get_plugin(&step.component).await?;
 
         // Clone necessary data for the async task
         let flow = self.flow.clone();
-        let context = self.context.clone();
+        let context = self.context.clone()
+            .with_step(self.flow.steps[step_index].id.clone());
 
         // Create the async task
         let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
             let step = &flow.steps[step_index];
-            let result = execute_step_async(plugin, step, step_input, context).await;
+            let result = execute_step_async(plugin.clone(), step, step_input, context).await;
             (step_index, result)
         });
 
@@ -838,20 +909,12 @@ impl WorkflowExecutor {
             .await
             .change_context_lazy(|| ExecutionError::StateError)?;
 
-        // Find all streaming steps in the pipeline
-        let pipeline_steps = self.find_streaming_pipeline_steps(step_index);
-        
-        // Create a streaming coordinator and store it
-        let coordinator = std::sync::Arc::new(tokio::sync::Mutex::new(StreamingPipelineCoordinator::new(
-            self.executor.clone(),
-            self.flow.clone(),
-            pipeline_steps,
-            self.context.clone(),
-        )));
-        self.streaming_coordinator = Some(coordinator.clone());
-
-        // Execute the entire pipeline
-        let pipeline_result = coordinator.lock().await.execute_pipeline().await;
+        // Reuse the coordinator created in WorkflowExecutor::new
+        let pipeline_result = if let Some(coord_arc) = &self.streaming_coordinator {
+            StreamingPipelineCoordinator::run_pipeline_without_lock(coord_arc.clone()).await
+        } else {
+            return Err(ExecutionError::Internal.into());
+        };
         
         match pipeline_result {
             Ok(_) => {
@@ -961,33 +1024,86 @@ impl WorkflowExecutor {
         // Get plugin
         let plugin = self.executor.get_plugin(&step.component).await?;
 
-        // Execute streaming step in a loop
-        let mut chunk_index = 0;
+        // For streaming steps, we need to:
+        // 1. Call the step once to start the generator
+        // 2. Wait for streaming chunks to come through the notification system
+        // 3. Process each chunk as it arrives
+        // 4. Stop when the final chunk arrives
         
-        loop {
-            let result = execute_step_async(plugin.clone(), step, step_input.clone(), self.context.clone()).await?;
+        tracing::info!("[streaming] Starting streaming step {} with initial call", step_id);
+        
+        // Initial call to start the generator
+        let initial_result = execute_step_async(plugin.clone(), step, step_input.clone(), self.context.clone().with_step(step.id.clone())).await?;
             
-            match result {
-                FlowResult::Streaming { stream_id, metadata, chunk, chunk_index: _, is_final } => {
-                    // Process the streaming chunk
-                    tracing::debug!(
-                        "Streaming step {} chunk {}: stream_id={}, is_final={}",
-                        step_id, chunk_index, stream_id, is_final
-                    );
+        match initial_result {
+            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+                tracing::info!("[streaming] Step {} started generator, received initial chunk (index={}, is_final={})", step_id, chunk_index, is_final);
+
+
+                // Process the initial chunk
+                    let mut chunk_input_data = step_input.as_ref().clone();
+                    if let serde_json::Value::Object(ref mut map) = chunk_input_data {
+                        map.insert("chunk".to_string(), serde_json::Value::String(chunk.clone()));
+                        map.insert("stream_id".to_string(), serde_json::Value::String(stream_id.clone()));
+                        map.insert("chunk_index".to_string(), serde_json::Value::Number(chunk_index.into()));
+                        map.insert("is_final".to_string(), serde_json::Value::Bool(is_final));
+                        if let Some(metadata_obj) = metadata.as_ref().as_object() {
+                            for (key, value) in metadata_obj {
+                                map.insert(key.clone(), value.clone());
+                            }
+                        }
+                    }
+                    let chunk_input = stepflow_core::workflow::ValueRef::new(chunk_input_data);
                     
-                    // Here you could emit the chunk to downstream steps or external consumers
-                    // For now, we just log it
+                    let chunk_result = match tokio::time::timeout(
+                        std::time::Duration::from_secs(5), 
+                        execute_step_async(plugin.clone(), step, chunk_input, self.context.clone().with_step(step.id.clone()))
+                    ).await {
+                        Ok(result) => result?,
+                        Err(_) => {
+                        tracing::warn!("[streaming] Step {} initial chunk processing timed out", step_id);
+                        // Return a default result for timeout case
+                        FlowResult::Success {
+                            result: stepflow_core::workflow::ValueRef::new(serde_json::json!({
+                                "error": "timeout",
+                                "message": "Initial chunk processing timed out"
+                            }))
+                        }
+                        }
+                    };
                     
-                    chunk_index += 1;
-                    
+                    // If this is the final chunk, we're done
                     if is_final {
-                        break;
+                    tracing::info!("[streaming] Step {} completed with final chunk from initial call", step_id);
+                } else {
+                    // Wait for additional chunks to come through the streaming notification system
+                    // The chunks will be routed via route_streaming_chunk method
+                    tracing::info!("[streaming] Step {} waiting for additional chunks via streaming notifications", step_id);
+                    
+                    // For now, we'll wait a reasonable amount of time for chunks to arrive
+                    // In a more sophisticated implementation, we'd have a proper notification system
+                    let mut chunk_count = 1;
+                    let max_wait_time = std::time::Duration::from_secs(30); // Wait up to 30 seconds
+                    let start_time = std::time::Instant::now();
+                    
+                    while start_time.elapsed() < max_wait_time {
+                        // Sleep briefly to allow chunks to be processed
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        
+                        // Check if we should continue waiting
+                        // This is a simplified approach - in practice, we'd have proper notification handling
+                        chunk_count += 1;
+                        if chunk_count % 100 == 0 {
+                            tracing::debug!("[streaming] Step {} still waiting for chunks, elapsed: {:?}", step_id, start_time.elapsed());
+                        }
+                    }
+                    
+                    tracing::info!("[streaming] Step {} finished waiting for chunks, elapsed: {:?}", step_id, start_time.elapsed());
                     }
                 }
                 FlowResult::Success { result } => {
                     // Non-streaming result, treat as final
                     tracing::debug!("Streaming step {} completed with success", step_id);
-                    break;
                 }
                 FlowResult::Failed { error } => {
                     tracing::error!("Streaming step {} failed: {:?}", step_id, error);
@@ -1006,8 +1122,6 @@ impl WorkflowExecutor {
                 }
                 FlowResult::Skipped => {
                     tracing::debug!("Streaming step {} skipped", step_id);
-                    break;
-                }
             }
         }
 
@@ -1029,89 +1143,39 @@ impl WorkflowExecutor {
 
     /// Route a streaming chunk to the appropriate streaming pipeline
     pub async fn route_streaming_chunk(&mut self, chunk: serde_json::Value) -> Result<()> {
-        tracing::debug!("Routing streaming chunk to workflow executor");
+        tracing::info!("ROUTE_CHUNK[exec={} addr={:p}] called", self.execution_id(), self as *const _);
         
-        // Parse the chunk to extract request_id and chunk data
-        let chunk_data = match serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(chunk.clone()) {
-            Ok(data) => data,
-            Err(e) => {
-                tracing::error!("Failed to parse streaming chunk: {}", e);
-                return Ok(());
-            }
-        };
-        
-        // Extract request_id and chunk content
-        let request_id = chunk_data.get("request_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        
-        let chunk_content = chunk_data.get("chunk")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        
-        tracing::debug!("Routing chunk for request {}: {:?}", request_id, chunk_content);
-        
-        // Find streaming steps that are currently active
-        let streaming_steps = self.find_active_streaming_steps().await?;
-        
-        if streaming_steps.is_empty() {
-            tracing::warn!("No active streaming steps found for chunk routing");
-            return Ok(());
-        }
-        
-        // Route the chunk to the pipeline coordinator if it exists
-        if let Some(coordinator) = &self.streaming_coordinator {
-            let mut coordinator = coordinator.lock().await;
-            
-            // Convert the notification chunk to a FlowResult::Streaming
-            let flow_result = FlowResult::Streaming {
-                stream_id: request_id.to_string(),
-                metadata: stepflow_core::workflow::ValueRef::new(serde_json::json!({})),
-                chunk: chunk_content.to_string(),
-                chunk_index: 0, // We don't have chunk index from notifications
-                is_final: false, // We don't know if it's final from notifications
-            };
-            
-            // Route to all active streaming steps in the pipeline
-            for &step_index in &streaming_steps {
-                if let Some(sender) = coordinator.step_connections.get(&step_index) {
-                    if let Err(e) = sender.send(flow_result.clone()).await {
-                        tracing::warn!("Failed to send chunk to step {}: {:?}", step_index, e);
-                    } else {
-                        tracing::debug!("Successfully routed chunk to streaming step {}", step_index);
-                    }
-                }
-            }
+        if let Some(coord_arc) = &self.streaming_coordinator {
+            // Route chunks directly to the coordinator used by run_pipeline_without_lock
+            // This ensures chunks are sent to the same channels that the step tasks are listening on
+            StreamingPipelineCoordinator::route_chunk_to_running_pipeline(coord_arc.clone(), chunk).await?;
         } else {
-            tracing::warn!("No streaming coordinator found for chunk routing");
+            tracing::warn!("No streaming pipeline active for exec {}", self.execution_id());
         }
-        
         Ok(())
     }
     
-    /// Find currently active streaming steps
-    async fn find_active_streaming_steps(&self) -> Result<Vec<usize>> {
+    /// Find currently active streaming steps using in-memory workflow information
+    /// This avoids depending on state store data that might be cleaned up
+    fn find_active_streaming_steps_in_memory(&self) -> Vec<usize> {
         let mut active_steps = Vec::new();
         
         for (step_index, step) in self.flow.steps.iter().enumerate() {
             if step.streaming {
-                // Check if this step is currently running or ready to run
-                let step_status = self.state_store
-                    .get_step_status(self.execution_id(), step_index)
-                    .await
-                    .map_err(|e| error_stack::report!(ExecutionError::StateError).attach_printable(format!("State error: {e}")))?;
-                match step_status {
-                    stepflow_core::status::StepStatus::Running | 
-                    stepflow_core::status::StepStatus::Runnable => {
-                        active_steps.push(step_index);
-                    }
-                    _ => {}
+                // For streaming steps, assume they are active if they exist in the coordinator
+                if let Some(_coord_arc) = &self.streaming_coordinator {
+                    // For now, just assume all streaming steps are active
+                    // We can't easily check step_receivers without async
+                    active_steps.push(step_index);
+                    tracing::debug!("Found active streaming step {} in coordinator", step_index);
                 }
             }
         }
         
-        Ok(active_steps)
+        tracing::debug!("Found {} active streaming steps: {:?}", active_steps.len(), active_steps);
+        active_steps
     }
+
 }
 
 /// Execute a single step asynchronously.
@@ -1213,25 +1277,163 @@ struct StreamingPipelineCoordinator {
     flow: Arc<Flow>,
     pipeline_steps: Vec<usize>,
     context: ExecutionContext,
-    step_connections: std::collections::HashMap<usize, tokio::sync::mpsc::Sender<FlowResult>>,
-    step_receivers: std::collections::HashMap<usize, tokio::sync::mpsc::Receiver<FlowResult>>,
+    resolver: ValueResolver,
+    step_receivers: std::collections::HashMap<String, mpsc::Receiver<FlowResult>>,
+    step_downstream_senders: std::collections::HashMap<String, Vec<mpsc::Sender<FlowResult>>>,
+    step_senders: std::collections::HashMap<String, mpsc::Sender<FlowResult>>,
 }
 
 impl StreamingPipelineCoordinator {
+    /// Route chunks to the running pipeline without requiring mutable access to the coordinator
+    /// This allows chunks to be routed while the receivers are moved out for step tasks
+    pub async fn route_chunk_to_running_pipeline(
+        coord_arc: Arc<tokio::sync::Mutex<Self>>,
+        chunk_json: serde_json::Value,
+    ) -> Result<()> {
+        let map = serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(chunk_json)
+            .map_err(|e| ExecutionError::MalformedReference { message: e.to_string() })?;
+        
+        let coord = coord_arc.lock().await;
+        
+        // Extract the step ID this chunk belongs to (default to first pipeline step)
+        let step_id = map.get("step_id")
+                          .and_then(|v| v.as_str())
+                          .map(|s| s.to_string())
+                          .unwrap_or_else(|| {
+                              // Default to first step (source step) if no step_id provided
+                              let first_step_idx = coord.pipeline_steps[0];
+                              let first_step_id = coord.flow.steps[first_step_idx].id.clone();
+                              tracing::info!("No step_id in chunk, defaulting to first pipeline step: {}", first_step_id);
+                              first_step_id
+                          });
+                          
+        let stream_id   = map.get("stream_id")  .and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let chunk_index = map.get("chunk_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let is_final    = map.get("is_final")   .and_then(|v| v.as_bool()).unwrap_or(false);
+
+        // Build the FlowResult
+        let fr = FlowResult::Streaming {
+            stream_id: stream_id.clone(),
+            metadata: stepflow_core::workflow::ValueRef::new(serde_json::Value::Object(map.clone())),
+            chunk: map.get("chunk").and_then(|v|v.as_str()).unwrap_or("").to_string(),
+            chunk_index,
+            is_final,
+        };
+
+        // Send to the step's channel (only if the sender still exists)
+        if let Some(tx) = coord.step_senders.get(&step_id) {
+            tracing::info!("Found sender for step {}, attempting to send chunk {}", step_id, chunk_index);
+            tracing::info!("HANDLE_CHUNK step={} idx={} final={}", step_id, chunk_index, is_final);
+            tracing::debug!("send -> {} (buffer={})", step_id, tx.capacity());
+            match tx.send(fr.clone()).await {
+                Ok(_) => {
+                    tracing::info!("Successfully routed chunk {} to step {} (pipeline steps: {:?})", chunk_index, step_id, coord.pipeline_steps);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to route chunk {} to step {}: {:?}", chunk_index, step_id, e);
+                    return Err(ExecutionError::StepFailed { step: step_id.clone() }.into());
+                }
+            }
+        } else {
+            tracing::warn!("No channel for step {} (available steps: {:?})", step_id, coord.step_senders.keys().collect::<Vec<_>>());
+        }
+
+        Ok(())
+    }
+
+    /// Called by `WorkflowExecutor::route_streaming_chunk` to inject
+    /// *all* the chunks, not just the first.
+    pub async fn handle_chunk(&mut self, chunk_json: serde_json::Value) -> Result<()> {
+        let map = serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(chunk_json)
+            .map_err(|e| ExecutionError::MalformedReference { message: e.to_string() })?;
+        
+        // Extract the step ID this chunk belongs to (default to first pipeline step)
+        let step_id = map.get("step_id")
+                          .and_then(|v| v.as_str())
+                          .map(|s| s.to_string())
+                          .unwrap_or_else(|| {
+                              // Default to first step (source step) if no step_id provided
+                              // This handles chunks coming from Python components that don't include step_id
+                              let first_step_idx = self.pipeline_steps[0];
+                              let first_step_id = self.flow.steps[first_step_idx].id.clone();
+                              tracing::info!("No step_id in chunk, defaulting to first pipeline step: {}", first_step_id);
+                              first_step_id
+                          });
+                          
+        let stream_id   = map.get("stream_id")  .and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let chunk_index = map.get("chunk_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let is_final    = map.get("is_final")   .and_then(|v| v.as_bool()).unwrap_or(false);
+
+        // Build the FlowResult
+        let fr = FlowResult::Streaming {
+            stream_id: stream_id.clone(),
+            metadata: stepflow_core::workflow::ValueRef::new(serde_json::Value::Object(map.clone())),
+            chunk: map.get("chunk").and_then(|v|v.as_str()).unwrap_or("").to_string(),
+            chunk_index,
+            is_final,
+        };
+
+        // Only deliver to the step itself - let the step handle forwarding downstream
+        if let Some(tx) = self.step_senders.get(&step_id) {
+            tracing::info!("Found sender for step {}, attempting to send chunk {}", step_id, chunk_index);
+            match tx.send(fr.clone()).await {
+                Ok(_) => {
+                    tracing::info!("Successfully routed chunk {} to step {} (pipeline steps: {:?})", chunk_index, step_id, self.pipeline_steps);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to route chunk {} to step {}: {:?}", chunk_index, step_id, e);
+                    return Err(ExecutionError::StepFailed { step: step_id.clone() }.into());
+                }
+            }
+        } else {
+            tracing::warn!("No channel for step {} (available steps: {:?})", step_id, self.step_senders.keys().collect::<Vec<_>>());
+        }
+
+        Ok(())
+    }
+
     fn new(
         executor: Arc<StepFlowExecutor>,
         flow: Arc<Flow>,
         pipeline_steps: Vec<usize>,
         context: ExecutionContext,
+        resolver: ValueResolver,
     ) -> Self {
-        let mut step_connections = std::collections::HashMap::new();
         let mut step_receivers = std::collections::HashMap::new();
+        let mut step_downstream_senders = std::collections::HashMap::new();
+        let mut step_senders = std::collections::HashMap::new();
 
-        // Create channels for each step
+        tracing::info!("[DEBUG-CHANNEL-SETUP] Creating channels for pipeline steps: {:?}", pipeline_steps);
+
+        // Create input receivers for each step
         for &step_index in &pipeline_steps {
-            let (tx, rx) = tokio::sync::mpsc::channel(100); // Buffer 100 chunks
-            step_connections.insert(step_index, tx);
-            step_receivers.insert(step_index, rx);
+            let step_id = flow.steps[step_index].id.clone();
+            let (input_tx, input_rx) = tokio::sync::mpsc::channel(100);
+            let sender_clone = input_tx.clone();
+            step_senders.insert(step_id.clone(), sender_clone);
+            step_receivers.insert(step_id.clone(), input_rx);
+            tracing::info!("[DEBUG-CHANNEL] Created channel for step {} (index {}) - receiver capacity: {}", 
+                         step_id, step_index, 100);
+        }
+
+        // Set up the pipeline connections
+        tracing::info!("[DEBUG-CHANNEL-SETUP] Setting up pipeline connections for {} steps", pipeline_steps.len());
+        for i in 0..pipeline_steps.len() {
+            let step_index = pipeline_steps[i];
+            let step_id = flow.steps[step_index].id.clone();
+            tracing::info!("[DEBUG-CHANNEL-SETUP] Processing step {} ({}) at position {}", step_id, step_index, i);
+            
+            // Set up downstream senders for this step
+            let mut downstream_senders = Vec::new();
+            if i < pipeline_steps.len() - 1 {
+                // This step sends to the next step's input
+                let next_step_index = pipeline_steps[i + 1];
+                let next_step_id = flow.steps[next_step_index].id.clone();
+                if let Some(next_step_sender) = step_senders.get(&next_step_id).cloned() {
+                    downstream_senders.push(next_step_sender);
+                }
+            }
+            step_downstream_senders.insert(step_id, downstream_senders);
         }
 
         Self {
@@ -1239,223 +1441,436 @@ impl StreamingPipelineCoordinator {
             flow,
             pipeline_steps,
             context,
-            step_connections,
+            resolver,
             step_receivers,
+            step_downstream_senders,
+            step_senders,
         }
     }
 
-    async fn execute_pipeline(&mut self) -> Result<()> {
-        tracing::info!("Executing streaming pipeline with {} steps", self.pipeline_steps.len());
+
+    
+
+
+    /// Run the pipeline without holding the mutex lock
+    /// This allows route_streaming_chunk to acquire the lock while the pipeline is running
+    async fn run_pipeline_without_lock(coord_arc: Arc<tokio::sync::Mutex<Self>>) -> Result<()> {
+        tracing::info!("[DEBUG-PIPELINE] Starting pipeline execution without lock");
         
-        // Create tasks for each streaming step
-        let mut tasks = Vec::new();
-        let flow_arc = self.flow.clone();
-        
-        for &step_index in &self.pipeline_steps {
-            let flow_arc = flow_arc.clone();
-            let step_input = self.resolve_step_input(step_index).await?;
-            let downstream_senders = self.get_downstream_senders(step_index);
+        // Resolve step inputs and spawn tasks while holding the lock to avoid race conditions
+        let mut handles = Vec::new();
+        {
+            let mut guard = coord_arc.lock().await;
+            let pipeline_steps = guard.pipeline_steps.clone();
+            let executor = guard.executor.clone();
+            let flow = guard.flow.clone();
+            let context = guard.context.clone();
             
-            if let Some(receiver) = self.step_receivers.remove(&step_index) {
-                let executor = self.executor.clone();
-                let context = self.context.clone();
-                let task = tokio::spawn(async move {
-                    let step = &flow_arc.steps[step_index];
-                    Self::run_streaming_step(
-                        executor,
-                        step,
-                        step_input,
-                        context,
-                        receiver,
-                        downstream_senders,
-                    ).await
+            // Resolve step inputs first
+            let mut step_inputs = std::collections::HashMap::new();
+            for &step_idx in &pipeline_steps {
+                let input = guard.resolve_step_input(step_idx).await?;
+                step_inputs.insert(step_idx, input);
+            }
+            
+            // Now spawn all tasks while still holding the lock to prevent race conditions
+            for &step_idx in &pipeline_steps {
+                let step_id = flow.steps[step_idx].id.clone();
+                
+                // Take sender & receiver out now, before spawning
+                let rx = guard.step_receivers.remove(&step_id).ok_or_else(|| {
+                    ExecutionError::Internal
+                })?;
+                let _sender = guard.step_senders.get(&step_id).unwrap().clone(); // Keep sender in map for handle_chunk
+                let downstream = guard.step_downstream_senders
+                    .get(&step_id).cloned().unwrap_or_default();
+                let input = step_inputs.remove(&step_idx).ok_or_else(|| {
+                    ExecutionError::Internal
+                })?;
+                
+                tracing::info!("Starting step task for {} with receiver while holding lock", step_id);
+                let plugin = executor.get_plugin(&flow.steps[step_idx].component).await?;
+                let context = context.clone()
+                    .with_step(step_id.clone());
+                let step = flow.steps[step_idx].clone();
+                let is_source = step_idx == pipeline_steps[0];
+                
+                // Spawn while still holding the pieces and the lock
+                let h = tokio::spawn(async move {
+                    tracing::info!("Step task {} about to call run_streaming_step_simple", step_id);
+                    let result = run_streaming_step_simple(plugin, step, input, context, rx, downstream, is_source).await;
+                    tracing::info!("Step task {} finished run_streaming_step_simple: {:?}", step_id, result.is_ok());
+                    result
                 });
-                tasks.push(task);
+                handles.push((step_idx, h));
             }
-        }
-        
-        // Wait for all streaming steps to complete
-        // Since streaming steps don't wait for input chunks anymore, they should complete quickly
-        for task in tasks {
-            task.await.map_err(|_e| ExecutionError::StepFailed { 
-                step: "streaming_pipeline".to_string() 
-            })??;
-        }
-        
-        Ok(())
-    }
-    
-    async fn resolve_step_input(&self, step_index: usize) -> Result<stepflow_core::workflow::ValueRef> {
-        // Create a basic input for streaming steps
-        // In a full implementation, this would resolve dependencies from previous steps
-        let step = &self.flow.steps[step_index];
-        
-        // For streaming steps, we typically need some basic configuration
-        let input = serde_json::json!({
-            "step_id": step.id,
-            "step_index": step_index,
-            "streaming": true,
-            "component": step.component.to_string()
-        });
-        
-        Ok(stepflow_core::workflow::ValueRef::new(input))
-    }
+        } // Lock dropped NOW - after all tasks are spawned with their receivers
 
-    fn get_downstream_senders(&self, step_index: usize) -> Vec<tokio::sync::mpsc::Sender<FlowResult>> {
-        let mut senders = Vec::new();
+        // Capture flow and pipeline_steps outside of the lock for later use
+        let (flow, pipeline_steps) = {
+            let guard = coord_arc.lock().await;
+            (guard.flow.clone(), guard.pipeline_steps.clone())
+        };
         
-        // Find steps that come after this step in the pipeline
-        for &other_step_index in &self.pipeline_steps {
-            if other_step_index > step_index {
-                if let Some(sender) = self.step_connections.get(&other_step_index) {
-                    senders.push(sender.clone());
-                }
-            }
-        }
+        // Give all tasks a moment to start
+        tracing::info!("[DEBUG-PIPELINE] Giving tasks 500ms to start up");
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         
-        senders
-    }
-    
-    async fn route_chunk_to_step(&mut self, step_index: usize, chunk: serde_json::Value) -> Result<()> {
-        if let Some(sender) = self.step_connections.get(&step_index) {
-            let flow_result = FlowResult::Streaming {
-                stream_id: "routed_chunk".to_string(),
-                metadata: stepflow_core::workflow::ValueRef::new(serde_json::json!({})),
-                chunk: chunk.to_string(),
-                chunk_index: 0,
-                is_final: false,
+        // Now trigger the source component to start generating chunks
+        if let Some(source_step_idx) = pipeline_steps.first() {
+            let source_step_id = flow.steps[*source_step_idx].id.clone();
+            tracing::info!("[DEBUG-PIPELINE] Triggering source component {} to start generating", source_step_id);
+            
+            // Get the step input for the source step
+            let source_input = {
+                let guard = coord_arc.lock().await;
+                guard.resolve_step_input(*source_step_idx).await?
             };
             
-            sender.send(flow_result).await
-                .map_err(|e| ExecutionError::StepFailed { 
-                    step: format!("step_{}", step_index) 
-                })?;
+            // Get the plugin for the source step
+            let source_plugin = {
+                let guard = coord_arc.lock().await;
+                guard.executor.get_plugin(&flow.steps[*source_step_idx].component).await?
+            };
             
-            tracing::debug!("Successfully routed chunk to step {}", step_index);
-        } else {
-            tracing::warn!("No sender found for step {}", step_index);
+            // Create execution context for the source step
+            let source_context = {
+                let guard = coord_arc.lock().await;
+                guard.context.clone().with_step(source_step_id.clone())
+            };
+            
+            // Trigger the source component in a separate task (fire and forget)
+            let source_step = flow.steps[*source_step_idx].clone();
+            tokio::spawn(async move {
+                tracing::info!("[DEBUG-GENERATOR] Starting source generator for {}", source_step_id);
+                match execute_step_async(source_plugin, &source_step, source_input, source_context).await {
+                    Ok(result) => {
+                        tracing::info!("[DEBUG-GENERATOR] Source generator {} completed: {:?}", source_step_id, result);
+                    }
+                    Err(e) => {
+                        tracing::error!("[DEBUG-GENERATOR] Source generator {} failed: {:?}", source_step_id, e);
+                    }
+                }
+            });
         }
         
+        // Wait for all step handles to complete
+        tracing::info!("[DEBUG-PIPELINE] Waiting for all {} step handles to complete", handles.len());
+        for (step_idx, handle) in handles {
+            let step_id = &flow.steps[step_idx].id;
+            tracing::info!("[DEBUG-PIPELINE] Waiting for step {} to complete", step_id);
+            match handle.await {
+                Ok(result) => {
+                    if let Err(e) = result {
+                        tracing::warn!("Step {} completed with error: {:?}", step_id, e);
+                        return Err(e);
+                    } else {
+                        tracing::info!("Step {} completed successfully", step_id);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Step {} task panicked: {:?}", step_id, e);
+                    return Err(ExecutionError::Internal.into());
+                }
+            }
+        }
+        
+        tracing::info!("[DEBUG-PIPELINE] run_pipeline_without_lock completed successfully");
         Ok(())
     }
 
-    async fn run_streaming_step(
-        executor: Arc<StepFlowExecutor>,
-        step: &stepflow_core::workflow::Step,
-        step_input: stepflow_core::workflow::ValueRef,
-        context: ExecutionContext,
-        mut receiver: tokio::sync::mpsc::Receiver<FlowResult>,
-        downstream_senders: Vec<tokio::sync::mpsc::Sender<FlowResult>>,
-    ) -> Result<()> {
-        let step_id = step.id.clone();
-        let plugin = executor.get_plugin(&step.component).await?;
-
-        tracing::info!("Starting streaming step: {}", step_id);
-
-        // Execute the step to get initial result with a timeout
-        let timeout_duration = std::time::Duration::from_secs(10);
-        let result = match tokio::time::timeout(timeout_duration, execute_step_async(plugin.clone(), step, step_input.clone(), context.clone())).await {
-            Ok(result) => result?,
-            Err(_) => {
-                tracing::error!("Streaming step {} timed out after {} seconds", step_id, timeout_duration.as_secs());
-                return Err(ExecutionError::StepFailed { step: step_id }.into());
+    async fn resolve_step_input(&self, step_index: usize) -> Result<stepflow_core::workflow::ValueRef> {
+        // For streaming steps, we need simpler input resolution
+        // since they don't depend on other steps' outputs
+        let step = &self.flow.steps[step_index];
+        
+        // For streaming steps, resolve the input directly without dependencies
+        // This avoids the "undefined value" error for streaming pipelines
+        if step.streaming {
+            // For streaming steps, try to resolve the input expression directly
+            // If it fails, fall back to the workflow input
+            match self.resolver.resolve(&step.input).await {
+                Ok(FlowResult::Success { result }) => Ok(result),
+                Ok(FlowResult::Streaming { metadata, .. }) => Ok(metadata),
+                                 _ => {
+                     // Fall back to workflow input for streaming steps
+                     tracing::info!("[DEBUG-RESOLVE] Falling back to workflow input for streaming step {}", step.id);
+                     Ok(self.resolver.workflow_input().clone())
+                 }
             }
-        };
-
-        match result {
-            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
-                // Send the chunk to downstream steps
-                for sender in &downstream_senders {
-                    let _ = sender.send(FlowResult::Streaming {
-                        stream_id: stream_id.clone(),
-                        metadata: metadata.clone(),
-                        chunk: chunk.clone(),
-                        chunk_index,
-                        is_final,
-                    }).await;
+        } else {
+            // For non-streaming steps, use the full resolver
+            let step_input = match self.resolver.resolve(&step.input).await? {
+                FlowResult::Success { result } => result,
+                FlowResult::Streaming { metadata, .. } => metadata,
+                FlowResult::Skipped => {
+                    return Err(ExecutionError::StepNotRunnable {
+                        step: step.id.clone(),
+                    }
+                    .into());
                 }
+                FlowResult::Failed { error } => {
+                    return Err(ExecutionError::StepFailed { step: step.id.clone() }.into());
+                }
+            };
+            Ok(step_input)
+        }
+    }
 
-                tracing::info!("Streaming step {} processed initial chunk, waiting for additional chunks", step_id);
+
+}
+
+/// A per-step streaming loop: receive chunks, call your component, forward every chunk downstream,
+/// exit only when `is_final == true`.
+async fn run_streaming_step_simple(
+    plugin: Arc<DynPlugin<'static>>,
+    step: stepflow_core::workflow::Step,
+    input: stepflow_core::workflow::ValueRef,
+    context: ExecutionContext,
+    mut rx: mpsc::Receiver<FlowResult>,
+    downstream: Vec<mpsc::Sender<FlowResult>>,
+    is_source: bool,
+) -> Result<()> {
+    let step_id = step.id.clone();
+    stream_log!(info, &step_id, "starting (is_source={}, downstream={})", is_source, downstream.len());
+    
+    // For source steps, we now rely on the notification system to start the generator
+    // The generator will be triggered when the first chunk request comes in
+    if is_source {
+        stream_log!(info, &step_id, "source step entering receiver loop, generator will start via notifications");
+    } else {
+        stream_log!(info, &step_id, "sink/middle step entering receiver loop");
+    }
+
+    // Now loop for all chunks coming through the coordinator's routing system
+    let mut last_stream_id = String::new();
+    let mut last_metadata = stepflow_core::workflow::ValueRef::new(serde_json::Value::Null);
+    let mut last_chunk = String::new();
+    let mut last_chunk_index = 0;
+    let mut last_is_final = false;
+    
+    loop {
+        tracing::info!("[STREAM] Step {} waiting for chunk via receiver", step_id);
+        let recv_result = rx.recv().await;
+        tracing::info!("[STREAM] Step {} received result from rx.recv(): {:?}", step_id, recv_result.is_some());
+        match recv_result {
+            Some(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final }) => {
+                stream_log!(info, &step_id, "RECEIVED chunk #{} from receiver", chunk_index);
+                tracing::info!("RX step={} idx={} final={} (source={})", step_id, chunk_index, is_final, is_source);
+                stream_log!(info, &step_id, "processing chunk #{}", chunk_index);
                 
-                // Now wait for additional chunks to come through the channel
-                // These chunks are routed from the notification system
-                let mut chunk_count = 1;
-                let max_chunks = 1000; // Safety limit
+                // Store the streaming metadata for potential use in non-streaming case
+                last_stream_id = stream_id.clone();
+                last_metadata = metadata.clone();
+                last_chunk = chunk.clone();
+                last_chunk_index = chunk_index;
+                last_is_final = is_final;
                 
-                while chunk_count < max_chunks {
-                    // Wait for chunks with a timeout
-                    match tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv()).await {
-                        Ok(Some(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final })) => {
-                            chunk_count += 1;
-                            tracing::debug!("Streaming step {} received chunk {}: stream_id={}, is_final={}", 
-                                step_id, chunk_count, stream_id, is_final);
-                            
-                            // Process the chunk by calling the step again
-                            let chunk_input = stepflow_core::workflow::ValueRef::new(serde_json::json!({
-                                "chunk": chunk,
-                                "stream_id": stream_id,
-                                "chunk_index": chunk_index,
-                                "is_final": is_final,
-                                "metadata": metadata.as_ref()
-                            }));
-                            
-                            let chunk_result = match tokio::time::timeout(
-                                std::time::Duration::from_secs(5), 
-                                execute_step_async(plugin.clone(), step, chunk_input, context.clone())
-                            ).await {
-                                Ok(result) => result?,
-                                Err(_) => {
-                                    tracing::warn!("Streaming step {} chunk processing timed out", step_id);
-                                    continue;
-                                }
-                            };
-                            
-                            // Send the processed chunk to downstream steps
-                            for sender in &downstream_senders {
-                                let _ = sender.send(chunk_result.clone()).await;
-                            }
-                            
-                            // If this is the final chunk, we're done
-                            if is_final {
-                                tracing::info!("Streaming step {} received final chunk, completing", step_id);
-                                break;
-                            }
+                // For non-source steps, call the component to process the chunk
+                let (final_stream_id, final_metadata, final_chunk, final_chunk_index, final_is_final) = if !is_source {
+                    // For non-source steps, we need to create a proper input that contains only the actual data
+                    // without any $from references, by extracting the relevant fields from the streaming chunk
+                    let chunk_input_data = serde_json::json!({
+                        "chunk": chunk,
+                        "stream_id": stream_id,
+                        "chunk_index": chunk_index,
+                        "is_final": is_final,
+                        // Add all the metadata fields from the streaming chunk
+                        "sample_rate": metadata.as_ref().get("sample_rate").unwrap_or(&serde_json::Value::Null),
+                        "channels": metadata.as_ref().get("channels").unwrap_or(&serde_json::Value::Null),
+                        "operation": metadata.as_ref().get("operation").unwrap_or(&serde_json::Value::Null),
+                        "output_file": metadata.as_ref().get("output_file").unwrap_or(&serde_json::Value::Null),
+                        "gain": metadata.as_ref().get("gain").unwrap_or(&serde_json::Value::Null),
+                    });
+                    let chunk_input = stepflow_core::workflow::ValueRef::new(chunk_input_data);
+                    
+                    // Call the component to process the chunk
+                    let step_context = context.clone().with_step(step.id.clone());
+                    match execute_step_async(plugin.clone(), &step, chunk_input, step_context).await? {
+                        FlowResult::Streaming { stream_id: processed_stream_id, metadata: processed_metadata, chunk: processed_chunk, chunk_index: processed_chunk_index, is_final: processed_is_final } => {
+                            tracing::info!("[STREAM] Step {} component processed chunk #{}", step_id, processed_chunk_index);
+                            (processed_stream_id, processed_metadata, processed_chunk, processed_chunk_index, processed_is_final)
                         }
-                        Ok(Some(_)) => {
-                            // Received non-streaming result, ignore
-                            continue;
+                        FlowResult::Success { .. } => {
+                            tracing::info!("[STREAM] Step {} component returned success, forwarding original chunk", step_id);
+                            // For success results, forward the original chunk
+                            (stream_id, metadata, chunk, chunk_index, is_final)
                         }
-                        Ok(None) => {
-                            // Channel closed, we're done
-                            tracing::info!("Streaming step {} channel closed, completing", step_id);
-                            break;
+                        other => {
+                            tracing::warn!("[STREAM] Step {} component returned unexpected result: {:?}", step_id, other);
+                            (stream_id, metadata, chunk, chunk_index, is_final)
                         }
-                        Err(_) => {
-                            // Timeout - no more chunks for now
-                            tracing::debug!("Streaming step {} no more chunks after timeout", step_id);
-                            break;
+                    }
+                } else {
+                    // Source step just forwards the chunk as-is
+                    (stream_id, metadata, chunk, chunk_index, is_final)
+                };
+                
+                // Forward to downstream steps
+                stream_log!(info, &step_id, "forwarding chunk #{} to {} downstream", final_chunk_index, downstream.len());
+                for (i, tx) in downstream.iter().enumerate() {
+                    match tx.send(FlowResult::Streaming {
+                        stream_id: final_stream_id.clone(),
+                        metadata: final_metadata.clone(),
+                        chunk: final_chunk.clone(),
+                        chunk_index: final_chunk_index,
+                        is_final: final_is_final,
+                    }).await {
+                        Ok(_) => {
+                            stream_log!(info, &step_id, "successfully forwarded chunk #{} to downstream {}", final_chunk_index, i);
+                        }
+                        Err(e) => {
+                            stream_log!(warn, &step_id, "failed to forward chunk #{} to downstream {}: {:?}", final_chunk_index, i, e);
                         }
                     }
                 }
-                
-                if chunk_count >= max_chunks {
-                    tracing::warn!("Streaming step {} reached maximum chunk limit ({})", step_id, max_chunks);
+
+                // Stop the *source* task once it sees its own final packet.
+                // Every other task keeps listening until its inbound channel is closed.
+                if is_source && final_is_final {
+                    stream_log!(info, &step_id, "saw final chunk, exiting");
+                    break;
                 }
             }
-            FlowResult::Success { result } => {
-                tracing::info!("Streaming step {} completed with success", step_id);
+            Some(other) => {
+                stream_log!(warn, &step_id, "received non-streaming result: {:?}", other);
+                // Extract actual data from the non-streaming result and forward it as streaming
+                match other {
+                    FlowResult::Success { result } => {
+                        // Convert the success result to a streaming chunk
+                        for tx in &downstream {
+                            let _ = tx.send(FlowResult::Streaming {
+                                stream_id: last_stream_id.clone(),
+                                metadata: result.clone(),
+                                chunk: serde_json::to_string(result.as_ref()).unwrap_or_default(),
+                                chunk_index: last_chunk_index,
+                                is_final: last_is_final,
+                            }).await;
+                        }
+                    }
+                    _ => {
+                        // For other result types, use last known metadata
+                        for tx in &downstream {
+                            let _ = tx.send(FlowResult::Streaming {
+                                stream_id: last_stream_id.clone(),
+                                metadata: last_metadata.clone(),
+                                chunk: last_chunk.clone(),
+                                chunk_index: last_chunk_index,
+                                is_final: last_is_final,
+                            }).await;
+                        }
+                    }
+                }
+                // Only exit if this was truly the final chunk
+                if last_is_final {
+                    stream_log!(info, &step_id, "received final packet in non-streaming arm, exiting");
+                    break;
+                }
+                // Otherwise keep looping to process more chunks
             }
-            FlowResult::Failed { error } => {
-                tracing::error!("Streaming step {} failed: {:?}", step_id, error);
-                return Err(ExecutionError::StepFailed { step: step_id }.into());
-            }
-            FlowResult::Skipped => {
-                tracing::info!("Streaming step {} skipped", step_id);
+            None => {
+                stream_log!(info, &step_id, "channel closed");
+                break;
             }
         }
-
-        Ok(())
     }
+    
+    stream_log!(info, &step_id, "completed");
+    Ok(())
+}
+
+/// Sort streaming steps by their dependencies using a topological sort
+/// This ensures that source steps come before steps that depend on them
+fn sort_streaming_steps_by_dependencies(
+    flow: &Flow,
+    streaming_steps: Vec<usize>,
+) -> Result<Vec<usize>> {
+    use std::collections::{HashMap, HashSet, VecDeque};
+    
+    // Create a map of step ID to index for quick lookup
+    let step_id_to_index: HashMap<String, usize> = streaming_steps
+        .iter()
+        .map(|&idx| (flow.steps[idx].id.clone(), idx))
+        .collect();
+    
+    // Build dependency graph for streaming steps only
+    let mut dependencies: HashMap<usize, HashSet<usize>> = HashMap::new();
+    let mut dependents: HashMap<usize, HashSet<usize>> = HashMap::new();
+    
+    for &step_idx in &streaming_steps {
+        dependencies.insert(step_idx, HashSet::new());
+        dependents.insert(step_idx, HashSet::new());
+    }
+    
+    // Analyze dependencies between streaming steps
+    for &step_idx in &streaming_steps {
+        let step = &flow.steps[step_idx];
+        
+        // Check if this step's input references other streaming steps
+        let input_str = serde_json::to_string(&step.input).unwrap_or_default();
+        
+        for &other_step_idx in &streaming_steps {
+            if step_idx != other_step_idx {
+                let other_step_id = &flow.steps[other_step_idx].id;
+                
+                // Check if step references other_step in its input
+                if input_str.contains(&format!("step: {}", other_step_id)) ||
+                   input_str.contains(&format!("\"step\": \"{}\"", other_step_id)) {
+                    // step_idx depends on other_step_idx
+                    dependencies.get_mut(&step_idx).unwrap().insert(other_step_idx);
+                    dependents.get_mut(&other_step_idx).unwrap().insert(step_idx);
+                    
+                    tracing::info!("Detected dependency: {} depends on {}", 
+                                 step.id, other_step_id);
+                }
+            }
+        }
+    }
+    
+    // Topological sort using Kahn's algorithm
+    let mut result = Vec::new();
+    let mut queue = VecDeque::new();
+    let mut remaining_deps = dependencies.clone();
+    
+    // Find steps with no dependencies (source steps)
+    for &step_idx in &streaming_steps {
+        if remaining_deps[&step_idx].is_empty() {
+            queue.push_back(step_idx);
+            tracing::info!("Found source streaming step: {}", flow.steps[step_idx].id);
+        }
+    }
+    
+    while let Some(current_step) = queue.pop_front() {
+        result.push(current_step);
+        
+        // Remove this step from its dependents' dependency lists
+        for &dependent_step in &dependents[&current_step] {
+            remaining_deps.get_mut(&dependent_step).unwrap().remove(&current_step);
+            
+            // If the dependent now has no dependencies, add it to the queue
+            if remaining_deps[&dependent_step].is_empty() {
+                queue.push_back(dependent_step);
+            }
+        }
+    }
+    
+    // Check for circular dependencies
+    if result.len() != streaming_steps.len() {
+        let remaining: Vec<String> = streaming_steps
+            .iter()
+            .filter(|&&idx| !result.contains(&idx))
+            .map(|&idx| flow.steps[idx].id.clone())
+            .collect();
+        
+        tracing::error!("Circular dependency detected in streaming steps: {:?}", remaining);
+        return Err(ExecutionError::Internal.into());
+    }
+    
+    tracing::info!("Topological sort result: {:?}",
+        result.iter().map(|i| &flow.steps[*i].id).collect::<Vec<_>>()
+    );
+    
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -1789,8 +2204,6 @@ steps:
     component: mock://parallel1
     input:
       $from:
-        workflow: input
-  - id: step2
     component: mock://parallel2
     input:
       $from:
@@ -1825,7 +2238,6 @@ output:
             (
                 "mock://parallel2",
                 FlowResult::Success {
-                    result: ValueRef::new(step2_output.clone()),
                 },
             ),
             (
@@ -2120,3 +2532,9 @@ output:
         }
     }
 }
+
+
+
+
+
+

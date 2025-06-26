@@ -30,6 +30,8 @@ class ComponentInfoResponse(Struct, kw_only=True):
 class ComponentExecuteRequest(Struct, kw_only=True):
     component: str
     input: msgspec.Raw
+    execution_id: str
+    step_id: str
 
 class ComponentExecuteResponse(Struct, kw_only=True):
     output: Any

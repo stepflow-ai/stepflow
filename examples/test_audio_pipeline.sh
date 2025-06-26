@@ -6,6 +6,11 @@
 
 set -e  # Exit on any error
 
+# Always reinstall the Python SDK in editable mode before running the test
+cd "$(dirname "$0")/../sdks/python"
+uv pip install -e .
+cd - > /dev/null
+
 # Get script directory and current working directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CURRENT_DIR="$(pwd)"
@@ -50,6 +55,12 @@ DURATION=${3:-"3.0"}
 OUTPUT_FILE=${4:-"test_workflow_webcam.wav"}
 DEVICE_NAME=${5:-"C922 Pro Stream Webcam"}
 
+# Set defaults for other parameters if not set
+SAMPLE_RATE=${SAMPLE_RATE:-44100}
+CHANNELS=${CHANNELS:-1}
+CHUNK_SIZE=${CHUNK_SIZE:-1024}
+FREQUENCY=${FREQUENCY:-440.0}
+
 # Determine the absolute path for the output file
 # The Python SDK runs from the examples directory, so it will create the file there
 if [[ "$CURRENT_DIR" == "$SCRIPT_DIR" ]]; then
@@ -68,24 +79,24 @@ echo "Output: $ABSOLUTE_OUTPUT_FILE"
 echo "Device: $DEVICE_NAME"
 echo ""
 
-# Create a temporary input file with the provided parameters
+# Create temporary input file
 TEMP_INPUT=$(mktemp --suffix=.json)
 cat > "$TEMP_INPUT" << EOF
 {
   "source": "$SOURCE",
-  "operation": "$OPERATION",
-  "sample_rate": 44100,
-  "channels": 1,
-  "chunk_size": 1024,
-  "frequency": 440.0,
   "duration": $DURATION,
-  "output_file": "$ABSOLUTE_OUTPUT_FILE",
-  "device_name": "$DEVICE_NAME"
+  "sample_rate": $SAMPLE_RATE,
+  "channels": $CHANNELS,
+  "chunk_size": $CHUNK_SIZE,
+  "frequency": $FREQUENCY,
+  "output_file": "$OUTPUT_FILE",
+  "device_name": "$DEVICE_NAME",
+  "operation": "$OPERATION"
 }
 EOF
 
 echo "📝 Using input configuration:"
-cat "$TEMP_INPUT"
+cat "$TEMP_INPUT" | jq '.'
 echo ""
 
 # Run the workflow

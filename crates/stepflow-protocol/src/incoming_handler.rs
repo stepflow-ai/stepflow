@@ -77,7 +77,9 @@ impl IncomingHandlerRegistry {
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
     ) {
+        tracing::debug!("Looking for handler for method: {}", method);
         if let Some(handler) = self.handlers.get(&method) {
+            tracing::debug!("Found handler for method: {}", method);
             // Now we can spawn the handler with owned values
             let future =
                 handler.handle_incoming(method.clone(), params, id, response_tx.clone(), context);
@@ -87,6 +89,7 @@ impl IncomingHandlerRegistry {
                 }
             });
         } else {
+            tracing::debug!("No handler found for method: {}", method);
             // Send error response for unknown method if it's a method call (has ID)
             if let Some(id) = id {
                 tracing::error!("Unknown method: {}", method);

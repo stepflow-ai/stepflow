@@ -6,6 +6,6 @@
   "chunk_size": 1024,
   "frequency": 440.0,
   "duration": 3.0,
-  "output_file": "test_workflow_webcam.wav",
+  "output_file": "output.wav",
   "device_name": "C922 Pro Stream Webcam"
 }

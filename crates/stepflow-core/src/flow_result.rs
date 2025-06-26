@@ -70,6 +70,12 @@ pub enum FlowResult {
 
 impl From<serde_json::Value> for FlowResult {
     fn from(value: serde_json::Value) -> Self {
+        // First try to deserialize as a proper FlowResult
+        if let Ok(flow_result) = serde_json::from_value::<FlowResult>(value.clone()) {
+            return flow_result;
+        }
+
+        // If that fails, wrap in Success as fallback
         let result = ValueRef::new(value);
         Self::Success { result }
     }

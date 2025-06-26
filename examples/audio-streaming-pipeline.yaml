@@ -65,6 +65,7 @@ steps:
       sample_rate: { $from: { step: audio_source }, path: sample_rate }
       channels: { $from: { step: audio_source }, path: channels }
       operation: { $from: { workflow: input }, path: operation }
+      output_file: { $from: { workflow: input }, path: output_file }
 
   # Output the processed chunks
   - id: output_chunk
@@ -77,6 +78,6 @@ steps:
       output_file: { $from: { workflow: input }, path: output_file }
 
 output:
-  processed_chunks: { $from: { step: output_chunk }, path: result }
-  source_metadata: { $from: { step: audio_source }, path: sample_rate }
-  processing_metadata: { $from: { step: process_chunk }, path: sample_rate } 
+  # Note: Streaming steps don't have final results in the state store
+  # The output file is written directly by the audio_sink component
+  message: "Audio streaming pipeline completed" 

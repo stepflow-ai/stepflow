@@ -11,6 +11,7 @@ use tokio::{
     },
 };
 use tokio_stream::{StreamExt as _, wrappers::LinesStream};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::stdio::{Result, StdioError};
@@ -90,6 +91,7 @@ impl ReceiveMessageLoop {
             Some(stderr_line) = self.from_child_stderr.next() => {
                 let stderr_line = stderr_line.change_context(StdioError::Recv)?;
                 tracing::info!("Component stderr: {stderr_line}");
+                eprintln!("[component stderr] {stderr_line}");
                 Ok(true)
             }
             Some(line) = self.from_child_stdout.next() => {
@@ -100,7 +102,7 @@ impl ReceiveMessageLoop {
                     tracing::warn!("Received very long message ({} chars), may be truncated", line.len());
                 }
                 
-                tracing::info!("Received line from child: {line:?}");
+                tracing::info!("Received line from child");
                 
                 // Add better error handling for JSON parsing
                 let msg = match OwnedIncoming::try_new(line.clone()) {
@@ -128,6 +130,143 @@ impl ReceiveMessageLoop {
                             tracing::error!("Full message: {}", line);
                         }
                         
+                        // Try to handle concatenated JSON messages
+                        if open_braces > 1 && close_braces > 1 {
+                            tracing::info!("Attempting to split concatenated JSON messages");
+                            let mut current_pos = 0;
+                            let mut brace_count = 0;
+                            let mut start_pos = 0;
+                            let mut messages_parsed = 0;
+                            
+                            for (i, ch) in line.chars().enumerate() {
+                                if ch == '{' {
+                                    if brace_count == 0 {
+                                        start_pos = i;
+                                    }
+                                    brace_count += 1;
+                                } else if ch == '}' {
+                                    brace_count -= 1;
+                                    if brace_count == 0 {
+                                        // We have a complete JSON object
+                                        let json_str = &line[start_pos..=i];
+                                        match OwnedIncoming::try_new(json_str.to_string()) {
+                                            Ok(msg) => {
+                                                tracing::info!("Successfully parsed concatenated message #{}", messages_parsed + 1);
+                                                messages_parsed += 1;
+                                                
+                                                // Process this message
+                                                match (msg.method, msg.params, msg.id) {
+                                                    (Some(method), Some(params), _) => {
+                                                        let method_owned = method.to_string();
+                                                        let params_owned: Box<serde_json::value::RawValue> = params.to_owned();
+                                                        
+                                                        if let Ok(v)=serde_json::from_str::<serde_json::Value>(params_owned.get()){info!(method=%method_owned,request_id=%v["request_id"].as_str().unwrap_or("<unknown>"),stream_id=%v["stream_id"].as_str().unwrap_or("<unknown>"),chunk_index=v["chunk_index"].as_u64().unwrap_or_default(),is_final=v["is_final"].as_bool().unwrap_or(false),output_file=%v["output_file"].as_str().unwrap_or("<unknown>"),"Received incoming method call");}
+                                                        IncomingHandlerRegistry::instance().spawn_handle_incoming(method_owned, params_owned, msg.id, self.outgoing_tx.clone(), context.clone());
+                                                    }
+                                                    (None, None, Some(id)) => {
+                                                        // Handle method response
+                                                        if let Some(pending) = self.pending_requests.remove(&id) {
+                                                            pending.send(msg).map_err(|_| StdioError::Send)?;
+                                                        }
+                                                    }
+                                                    _ => {
+                                                        tracing::warn!("Received invalid concatenated message: {:?}", msg);
+                                                    }
+                                                }
+                                            }
+                                            Err(parse_err) => {
+                                                tracing::warn!("Failed to parse concatenated JSON message: {}", parse_err);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if messages_parsed > 0 {
+                                tracing::info!("Successfully parsed {} concatenated messages", messages_parsed);
+                                return Ok(true);
+                            }
+                        }
+                        
+                        // Try more aggressive message recovery for edge cases
+                        tracing::info!("Attempting aggressive message recovery");
+                        let mut messages_parsed = 0;
+                        
+                        // Try to find valid JSON objects by looking for complete message patterns
+                        let mut pos = 0;
+                        while pos < line.len() {
+                            // Find the start of a potential JSON object
+                            if let Some(start) = line[pos..].find("{\"jsonrpc\":\"2.0\"") {
+                                let start_pos = pos + start;
+                                
+                                // Try to find the matching closing brace
+                                let mut brace_count = 0;
+                                let mut end_pos = start_pos;
+                                let mut found_end = false;
+                                
+                                for (i, ch) in line[start_pos..].chars().enumerate() {
+                                    if ch == '{' {
+                                        brace_count += 1;
+                                    } else if ch == '}' {
+                                        brace_count -= 1;
+                                        if brace_count == 0 {
+                                            end_pos = start_pos + i;
+                                            found_end = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if found_end {
+                                    let json_str = &line[start_pos..=end_pos];
+                                    match OwnedIncoming::try_new(json_str.to_string()) {
+                                        Ok(msg) => {
+                                            tracing::info!("Successfully recovered message #{}", messages_parsed + 1);
+                                            messages_parsed += 1;
+                                            
+                                            // Process this message
+                                            match (msg.method, msg.params, msg.id) {
+                                                (Some(method), Some(params), _) => {
+                                                    let method_owned = method.to_string();
+                                                    let params_owned: Box<serde_json::value::RawValue> = params.to_owned();
+                                                    
+                                                    if let Ok(v)=serde_json::from_str::<serde_json::Value>(params_owned.get()){info!(method=%method_owned,request_id=%v["request_id"].as_str().unwrap_or("<unknown>"),stream_id=%v["stream_id"].as_str().unwrap_or("<unknown>"),chunk_index=v["chunk_index"].as_u64().unwrap_or_default(),is_final=v["is_final"].as_bool().unwrap_or(false),output_file=%v["output_file"].as_str().unwrap_or("<unknown>"),"Received incoming method call");}
+                                                    IncomingHandlerRegistry::instance().spawn_handle_incoming(method_owned, params_owned, msg.id, self.outgoing_tx.clone(), context.clone());
+                                                }
+                                                (None, None, Some(id)) => {
+                                                    // Handle method response
+                                                    if let Some(pending) = self.pending_requests.remove(&id) {
+                                                        pending.send(msg).map_err(|_| StdioError::Send)?;
+                                                    }
+                                                }
+                                                _ => {
+                                                    tracing::warn!("Received invalid recovered message: {:?}", msg);
+                                                }
+                                            }
+                                            
+                                            // Move position to after this message
+                                            pos = end_pos + 1;
+                                        }
+                                        Err(parse_err) => {
+                                            tracing::warn!("Failed to parse recovered JSON message: {}", parse_err);
+                                            pos = start_pos + 1;
+                                        }
+                                    }
+                                } else {
+                                    // No matching end found, move to next potential start
+                                    pos = start_pos + 1;
+                                }
+                            } else {
+                                // No more JSON objects found
+                                break;
+                            }
+                        }
+                        
+                        if messages_parsed > 0 {
+                            tracing::info!("Successfully recovered {} messages", messages_parsed);
+                            return Ok(true);
+                        }
+                        
                         // Instead of returning an error and terminating the loop,
                         // log the error and continue processing other messages
                         tracing::warn!("Skipping malformed message and continuing...");
@@ -143,7 +282,7 @@ impl ReceiveMessageLoop {
                         let params_owned: Box<serde_json::value::RawValue> = params.to_owned();
 
                         // Handle the incoming method call
-                        tracing::info!("Received incoming method call: {} with params: {:?}", method_owned, params_owned);
+                        if let Ok(v)=serde_json::from_str::<serde_json::Value>(params_owned.get()){info!(method=%method_owned,request_id=%v["request_id"].as_str().unwrap_or("<unknown>"),stream_id=%v["stream_id"].as_str().unwrap_or("<unknown>"),chunk_index=v["chunk_index"].as_u64().unwrap_or_default(),is_final=v["is_final"].as_bool().unwrap_or(false),output_file=%v["output_file"].as_str().unwrap_or("<unknown>"),"Received incoming method call");}
                         IncomingHandlerRegistry::instance().spawn_handle_incoming(method_owned, params_owned, msg.id, self.outgoing_tx.clone(), context.clone());
                         Ok(true)
                     }

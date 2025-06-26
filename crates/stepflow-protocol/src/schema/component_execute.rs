@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{Component, ValueRef};
+use uuid::Uuid;
 
 use crate::schema::Method;
 
@@ -8,6 +9,8 @@ use crate::schema::Method;
 pub struct Request {
     pub component: Component,
     pub input: ValueRef,
+    pub execution_id: Uuid,
+    pub step_id: String,
 }
 
 /// Response to the initialization request.

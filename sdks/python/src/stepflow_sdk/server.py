@@ -161,29 +161,37 @@ class StepflowStdioServer:
                         # For generators, we need to yield each result as streaming
                         if inspect.isgenerator(output):
                             results = []
+                            chunk_index = 0
                             for result in output:
                                 results.append(result)
-                                # Send streaming notification
-                                await self._outgoing_queue.put({
+                                is_final = False  # We'll mark the last chunk as final later if needed
+                                
+                                # Send streaming notification immediately via stdout instead of queuing
+                                streaming_notification = {
                                     "jsonrpc": "2.0",
                                     "method": "streaming_chunk",
                                     "params": {
-                                        "request_id": str(id),
+                                        "request_id": str(execute_request.execution_id),
+                                        "stream_id": str(execute_request.execution_id),
+                                        "chunk_index": chunk_index,
+                                        "is_final": is_final,
+                                        "step_id": execute_request.step_id,
                                         "chunk": result
                                     }
-                                })
+                                }
+                                # Send immediately via stdout
+                                notification_bytes = msgspec.json.encode(streaming_notification) + b"\n"
+                                sys.stdout.buffer.write(notification_bytes)
+                                sys.stdout.buffer.flush()
+                                print(f"Sent outgoing message", file=sys.stderr)
+                                
+                                chunk_index += 1
                             
                             # Return the final result (last chunk)
                             if results:
                                 return Message(
                                     id=id,
                                     result=ComponentExecuteResponse(output=results[-1]),
-                                )
-                            else:
-                                # Empty generator
-                                return Message(
-                                    id=id,
-                                    result=ComponentExecuteResponse(output={"outcome": "success", "result": None}),
                                 )
                         else:
                             # Not actually a generator, treat as normal
@@ -366,7 +374,10 @@ class StepflowStdioServer:
             message_bytes = msgspec.json.encode(message_data) + b"\n"
             writer.write(message_bytes)
             await writer.drain()
-            print(f"Sent outgoing message: {message_data}", file=sys.stderr)
+            # Ensure the message is fully written and flushed
+            if hasattr(writer, '_transport') and hasattr(writer._transport, 'flush'):
+                writer._transport.flush()
+            print(f"Sent outgoing message", file=sys.stderr)
         except Exception as e:
             print(f"Error sending outgoing message: {e}", file=sys.stderr)
     

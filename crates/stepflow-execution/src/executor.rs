@@ -11,7 +11,7 @@ use stepflow_core::{
 };
 use stepflow_plugin::{Context, DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{InMemoryStateStore, StateStore};
-use tokio::sync::{RwLock, oneshot};
+use tokio::sync::{RwLock, oneshot, Mutex};
 use uuid::Uuid;
 
 type FutureFlowResult = futures::future::Shared<oneshot::Receiver<FlowResult>>;
@@ -25,7 +25,7 @@ pub struct StepFlowExecutor {
     // TODO: Should write execution state to the state store for persistence.
     pending: Arc<RwLock<HashMap<Uuid, FutureFlowResult>>>,
     /// Active debug sessions for step-by-step execution control
-    debug_sessions: Arc<RwLock<HashMap<Uuid, WorkflowExecutor>>>,
+    debug_sessions: Arc<RwLock<HashMap<Uuid, Arc<Mutex<WorkflowExecutor>>>>>,
     // Keep a weak reference to self for spawning tasks without circular references
     self_weak: std::sync::Weak<Self>,
 }
@@ -155,18 +155,9 @@ impl StepFlowExecutor {
     pub async fn get_workflow_executor(
         &self,
         execution_id: Uuid,
-    ) -> Result<Option<WorkflowExecutor>> {
+    ) -> Result<Option<Arc<Mutex<WorkflowExecutor>>>> {
         let debug_sessions = self.debug_sessions.read().await;
         Ok(debug_sessions.get(&execution_id).cloned())
-    }
-
-    /// Get a mutable workflow executor for debug sessions
-    pub async fn get_workflow_executor_mut(
-        &self,
-        execution_id: Uuid,
-    ) -> Result<Option<WorkflowExecutor>> {
-        let mut debug_sessions = self.debug_sessions.write().await;
-        Ok(debug_sessions.get_mut(&execution_id).cloned())
     }
 
     /// Get the flow for a specific execution (for streaming pipeline coordinator)
@@ -208,18 +199,38 @@ impl Context for StepFlowExecutor {
                 pending.insert(execution_id, rx.shared());
             }
 
+            // Create the WorkflowExecutor and store it in debug_sessions for streaming access
+            // TODO: Consider using a separate `active_executions` map instead of `debug_sessions` 
+            // for normal execution, to keep debug sessions separate from streaming access
+            let workflow_executor = WorkflowExecutor::new(
+                executor.clone(),
+                flow.clone(),
+                workflow_hash.clone(),
+                execution_id,
+                input.clone(),
+                executor.state_store().clone(),
+            ).map_err(|e| stepflow_plugin::PluginError::new(format!("Failed to create workflow executor: {:?}", e)))
+                .change_context(stepflow_plugin::PluginError::new("Failed to create workflow executor"))?;
+
+            // Store in debug_sessions for streaming chunk access
+            {
+                let mut debug_sessions = self.debug_sessions.write().await;
+                debug_sessions.insert(execution_id, Arc::new(Mutex::new(workflow_executor)));
+                tracing::info!("Stored WorkflowExecutor in debug_sessions for execution ID: {}", execution_id);
+            }
+
             // Spawn the execution
             tokio::spawn(async move {
                 tracing::info!("Executing workflow using tracker-based execution");
                 let state_store = executor.state_store.clone();
 
                 let result = execute_workflow(
-                    executor,
-                    flow,
+                    executor.clone(),
+                    flow.clone(),
                     workflow_hash,
                     execution_id,
                     input,
-                    state_store,
+                    state_store.clone(),
                 )
                 .await;
 
@@ -242,6 +253,14 @@ impl Context for StepFlowExecutor {
 
                 // Send the result back
                 let _ = tx.send(flow_result);
+
+                // Clean up the debug session immediately after execution completes
+                // This prevents unbounded growth of the debug_sessions map
+                {
+                    let mut debug_sessions = executor.debug_sessions.write().await;
+                    debug_sessions.remove(&execution_id);
+                    tracing::debug!("Cleaned up debug session for execution {}", execution_id);
+                }
             });
 
             Ok(execution_id)
@@ -265,15 +284,26 @@ impl Context for StepFlowExecutor {
         let pending = self.pending.clone();
 
         async move {
-            let pending = pending.read().await;
-            let future = pending
-                .get(&execution_id)
-                .ok_or_else(|| stepflow_plugin::PluginError::new("Execution not found"))
-                .change_context(stepflow_plugin::PluginError::new("Execution not found"))?
-                .clone();
+            let future = {
+                let pending = pending.read().await;
+                pending
+                    .get(&execution_id)
+                    .ok_or_else(|| stepflow_plugin::PluginError::new("Execution not found"))
+                    .change_context(stepflow_plugin::PluginError::new("Execution not found"))?
+                    .clone()
+            };
 
-            future.await.map_err(|_| stepflow_plugin::PluginError::new("Execution failed"))
-                .change_context(stepflow_plugin::PluginError::new("Execution failed"))
+            let result = future.await.map_err(|_| stepflow_plugin::PluginError::new("Execution failed"))
+                .change_context(stepflow_plugin::PluginError::new("Execution failed"));
+
+            // Clean up the pending entry after getting the result to prevent memory leaks
+            {
+                let mut pending_write = pending.write().await;
+                pending_write.remove(&execution_id);
+                tracing::debug!("Cleaned up pending execution {}", execution_id);
+            }
+
+            result
         }
         .boxed()
     }

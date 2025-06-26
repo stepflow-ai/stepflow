@@ -61,6 +61,8 @@ pub trait Executor: Send + Sync {
 pub struct ExecutionContext {
     context: Arc<dyn Context>,
     execution_id: Uuid,
+    /// Optional step ID for streaming pipelines  
+    step_id: Option<String>,
 }
 
 impl ExecutionContext {
@@ -69,12 +71,24 @@ impl ExecutionContext {
         Self {
             context,
             execution_id,
+            step_id: None,
         }
+    }
+
+    /// Add step ID to this context (builder pattern)
+    pub fn with_step(mut self, step_id: String) -> Self {
+        self.step_id = Some(step_id);
+        self
     }
 
     /// Get the execution ID for this context.
     pub fn execution_id(&self) -> Uuid {
         self.execution_id
+    }
+
+    /// Get the step ID for this context (if set).
+    pub fn step_id(&self) -> Option<&str> {
+        self.step_id.as_deref()
     }
 
     /// Get a reference to the state store.
