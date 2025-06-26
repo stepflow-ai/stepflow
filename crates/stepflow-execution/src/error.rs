@@ -42,6 +42,8 @@ pub enum ExecutionError {
     ExecutionNotFound(Uuid),
     #[error("workflow '{0}' not found")]
     WorkflowNotFound(FlowHash),
+    #[error("streaming operation failed")]
+    StreamingError,
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

@@ -1,6 +1,7 @@
 mod context;
 mod error;
 mod plugin;
+pub mod streaming;
 
 pub use context::{Context, ExecutionContext, Executor};
 pub use error::{PluginError, Result};

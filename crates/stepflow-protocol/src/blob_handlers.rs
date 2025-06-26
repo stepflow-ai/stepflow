@@ -4,7 +4,7 @@ use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::sync::Arc;
-use stepflow_execution::WorkflowExecutor;
+
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -176,70 +176,32 @@ impl IncomingHandler for StreamingChunkHandler {
     ) -> BoxFuture<'static, error_stack::Result<(), StdioError>> {
         async move {
             // This is a notification (no ID), so we don't send a response
-            // Instead, we need to handle the streaming chunk
-                            match serde_json::from_str::<StreamingChunkNotification>(params.get()) {
+            // Instead, we need to route the streaming chunk through the global registry
+            match serde_json::from_str::<StreamingChunkNotification>(params.get()) {
                 Ok(notification) => {
                     tracing::info!("Received streaming chunk for request {}: step_id={:?}, chunk_index={}", 
                                   notification.request_id, notification.step_id, notification.chunk_index);
                     
-                    // Route this chunk to the appropriate workflow executor
-                    if let Some(executor) = context.executor() {
-                        tracing::debug!("Executor available, attempting to parse execution ID: {}", notification.request_id);
+                    if let Ok(execution_id) = Uuid::parse_str(&notification.request_id) {
+                        let chunk = serde_json::json!({
+                            "request_id": notification.request_id,
+                            "stream_id": notification.stream_id,
+                            "chunk_index": notification.chunk_index,
+                            "is_final": notification.is_final,
+                            "step_id": notification.step_id,
+                            "chunk": notification.chunk
+                        });
                         
-                        if let Ok(execution_id) = Uuid::parse_str(&notification.request_id) {
-                            tracing::info!("Successfully parsed execution ID: {}", execution_id);
-                            tracing::info!("Looking up workflow executor for execution ID: {}", execution_id);
-                            
-                            // Try to find the workflow executor for this execution
-                            match executor.get_workflow_executor(execution_id).await {
-                                Ok(Some(workflow_executor_any)) => {
-                                    tracing::info!("Found workflow executor for execution ID: {}", execution_id);
-                                    
-                                    // Downcast to the concrete WorkflowExecutor type
-                                    match workflow_executor_any.downcast::<Arc<tokio::sync::Mutex<WorkflowExecutor>>>() {
-                                        Ok(workflow_executor_arc) => {
-                                            tracing::debug!("Successfully downcast to Arc<Mutex<WorkflowExecutor>>, routing chunk");
-                                            
-                                            // Lock the mutex to access the workflow executor
-                                            let mut workflow_executor = workflow_executor_arc.lock().await;
-                                            
-                                            // Route the chunk to the workflow executor with full metadata
-                                            let chunk_with_metadata = serde_json::json!({
-                                                "request_id": notification.request_id,
-                                                "stream_id": notification.stream_id,
-                                                "chunk_index": notification.chunk_index,
-                                                "is_final": notification.is_final,
-                                                "step_id": notification.step_id,
-                                                "chunk": notification.chunk
-                                            });
-                                            tracing::info!("Sending chunk to workflow executor with step_id={:?}", notification.step_id);
-                                            match workflow_executor.route_streaming_chunk(chunk_with_metadata).await {
-                                                Ok(_) => {
-                                                    tracing::debug!("Successfully routed streaming chunk to workflow executor");
-                                                }
-                                                Err(e) => {
-                                                    tracing::error!("Failed to route streaming chunk to workflow executor: {:?}", e);
-                                                }
-                                            }
-                                        }
-                                        Err(_) => {
-                                            tracing::warn!("Failed to downcast workflow executor to Arc<Mutex<WorkflowExecutor>> type for execution ID: {}", execution_id);
-                                        }
-                                    }
-                                }
-                                Ok(None) => {
-                                tracing::warn!("No workflow executor found for execution ID: {}", execution_id);
-                                    tracing::error!("Failed to route streaming chunk to workflow executor: no executor found for execution ID {}", execution_id);
-                                }
-                                Err(e) => {
-                                    tracing::error!("Error getting workflow executor for execution ID {}: {:?}", execution_id, e);
-                                }
+                        match stepflow_plugin::streaming::send_chunk(execution_id, chunk).await {
+                            Ok(_) => {
+                                tracing::info!("Successfully routed streaming chunk to execution {}", execution_id);
                             }
-                        } else {
-                            tracing::warn!("Invalid execution ID in streaming chunk: {}", notification.request_id);
+                            Err(e) => {
+                                tracing::error!("Failed to route streaming chunk: {}", e);
+                            }
                         }
                     } else {
-                        tracing::warn!("No executor available in context for streaming chunk routing");
+                        tracing::warn!("Invalid execution ID in streaming chunk: {}", notification.request_id);
                     }
                     
                     Ok(())

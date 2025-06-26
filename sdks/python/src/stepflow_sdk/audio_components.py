@@ -340,6 +340,9 @@ def audio_stream_source(data: Dict[str, Any], context=None):
                 
                 log_debug(f"DEBUG: Processing chunk {chunk_index}/{total_chunks}, processed={processed_chunks}, is_final={is_final}", "audio_stream_source")
                 
+                if is_final:
+                    log_debug(f"FINAL_CHUNK: Sending final chunk {chunk_index} with is_final=True", "audio_stream_source")
+                
                 # Yield the chunk
                 yield {
                     "outcome": "streaming",
@@ -485,11 +488,14 @@ def audio_chunk_processor(data: Dict[str, Any], context=None) -> Dict[str, Any]:
         output_file = data.get('output_file', 'output_audio.wav')
     
     log_debug(f"TIMING: audio_chunk_processor starting chunk {chunk_index} at {start_time}", "audio_chunk_processor")
+    log_debug(f"VALIDATION: audio_chunk_processor received chunk_b64 length: {len(chunk_b64)}", "audio_chunk_processor")
+    log_debug(f"VALIDATION: audio_chunk_processor operation: {operation}", "audio_chunk_processor")
     
     # Decode base64 chunk
     chunk_data = base64.b64decode(chunk_b64)
     decode_time = time.time()
     log_debug(f"TIMING: Base64 decode took {decode_time - start_time:.4f}s", "audio_chunk_processor")
+    log_debug(f"VALIDATION: decoded chunk_data length: {len(chunk_data)} bytes", "audio_chunk_processor")
     
     # Convert bytes to samples
     samples = []
@@ -619,6 +625,7 @@ def audio_sink(data: Dict[str, Any], context=None) -> Dict[str, Any]:
     log_debug(f"DEBUG: audio_sink output_file: {output_file}", "audio_sink")
     log_debug(f"DEBUG: audio_sink is_final: {is_final}", "audio_sink")
     log_debug(f"DEBUG: audio_sink stream_id: {stream_id}", "audio_sink")
+    log_debug(f"VALIDATION: audio_sink received chunk_b64 length: {len(chunk_b64)}", "audio_sink")
     
     # Decode the chunk
     if chunk_b64:
@@ -678,34 +685,50 @@ def audio_sink(data: Dict[str, Any], context=None) -> Dict[str, Any]:
                 log_debug(f"ERROR: Audio playback failed: {e}", "audio_sink")
         
         # Write WAV file if this is the final chunk
-        if is_final and stream_id in audio_sink._chunk_storage:
-            try:
-                log_debug(f"DEBUG: Writing final WAV file: {output_file}", "audio_sink")
-                storage = audio_sink._chunk_storage[stream_id]
-                all_audio_data = b''.join(storage['chunks'])
-                
-                # Ensure the output directory exists
-                output_dir = os.path.dirname(output_file)
-                if output_dir and not os.path.exists(output_dir):
-                    log_debug(f"DEBUG: Creating output directory: {output_dir}", "audio_sink")
-                    os.makedirs(output_dir, exist_ok=True)
-                
-                log_debug(f"DEBUG: Writing {len(all_audio_data)} bytes to {output_file}", "audio_sink")
-                with wave.open(output_file, 'wb') as wav_file:
-                    wav_file.setnchannels(storage['channels'])
-                    wav_file.setsampwidth(2)  # 16-bit
-                    wav_file.setframerate(storage['sample_rate'])
-                    wav_file.writeframes(all_audio_data)
-                
-                log_debug(f"DEBUG: WAV file written successfully: {output_file} ({len(all_audio_data)} bytes)", "audio_sink")
-                
-                # Clean up storage for this stream
-                del audio_sink._chunk_storage[stream_id]
-                
-            except Exception as e:
-                log_debug(f"ERROR: Failed to write WAV file {output_file}: {e}", "audio_sink")
-                import traceback
-                traceback.print_exc(file=sys.stderr)
+        if is_final:
+            log_debug(f"DEBUG: Final chunk received - checking storage for stream {stream_id}", "audio_sink")
+            log_debug(f"DEBUG: Available streams in storage: {list(audio_sink._chunk_storage.keys())}", "audio_sink")
+            
+            if stream_id in audio_sink._chunk_storage:
+                try:
+                    log_debug(f"DEBUG: Writing final WAV file: {output_file}", "audio_sink")
+                    storage = audio_sink._chunk_storage[stream_id]
+                    all_audio_data = b''.join(storage['chunks'])
+                    
+                    log_debug(f"DEBUG: Total chunks collected: {len(storage['chunks'])}", "audio_sink")
+                    log_debug(f"DEBUG: Total audio data size: {len(all_audio_data)} bytes", "audio_sink")
+                    
+                    # Ensure the output directory exists
+                    output_dir = os.path.dirname(output_file)
+                    if output_dir and not os.path.exists(output_dir):
+                        log_debug(f"DEBUG: Creating output directory: {output_dir}", "audio_sink")
+                        os.makedirs(output_dir, exist_ok=True)
+                    
+                    log_debug(f"DEBUG: Writing {len(all_audio_data)} bytes to {output_file}", "audio_sink")
+                    with wave.open(output_file, 'wb') as wav_file:
+                        wav_file.setnchannels(storage['channels'])
+                        wav_file.setsampwidth(2)  # 16-bit
+                        wav_file.setframerate(storage['sample_rate'])
+                        wav_file.writeframes(all_audio_data)
+                    
+                    log_debug(f"SUCCESS: WAV file written successfully: {output_file} ({len(all_audio_data)} bytes)", "audio_sink")
+                    
+                    # Verify file was created
+                    if os.path.exists(output_file):
+                        file_size = os.path.getsize(output_file)
+                        log_debug(f"SUCCESS: WAV file exists on disk: {output_file} ({file_size} bytes)", "audio_sink")
+                    else:
+                        log_debug(f"ERROR: WAV file not found on disk after writing: {output_file}", "audio_sink")
+                    
+                    # Clean up storage for this stream
+                    del audio_sink._chunk_storage[stream_id]
+                    
+                except Exception as e:
+                    log_debug(f"ERROR: Failed to write WAV file {output_file}: {e}", "audio_sink")
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+            else:
+                log_debug(f"ERROR: Stream {stream_id} not found in storage when final chunk received", "audio_sink")
         
         result = {
             "outcome": "success",

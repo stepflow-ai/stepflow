@@ -5,7 +5,7 @@
   "channels": 1,
   "chunk_size": 1024,
   "frequency": 440.0,
-  "duration": 3.0,
+  "duration": 5.0,
   "output_file": "output.wav",
   "device_name": "C922 Pro Stream Webcam"
 }

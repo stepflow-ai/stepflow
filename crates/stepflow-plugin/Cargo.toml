@@ -23,7 +23,12 @@ serde.workspace = true
 stepflow-core.workspace = true
 stepflow-state.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 trait-variant.workspace = true
+tracing.workspace = true
 uuid.workspace = true
+dashmap = "6.0"
+once_cell = "1.19"
+serde_json.workspace = true
 
 [dev-dependencies]
