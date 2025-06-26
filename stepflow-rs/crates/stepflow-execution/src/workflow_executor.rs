@@ -1934,9 +1934,7 @@ output:
             FlowResult::Skipped => {
                 // Expected - the downstream step should be skipped when its input is skipped
             }
-            _ => panic!(
-                "Expected skipped result for downstream step, got: {result:?}"
-            ),
+            _ => panic!("Expected skipped result for downstream step, got: {result:?}"),
         }
     }
 }

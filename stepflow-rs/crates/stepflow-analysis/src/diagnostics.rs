@@ -139,9 +139,7 @@ impl DiagnosticMessage {
             }
             DiagnosticMessage::EmptyStepId => "Step ID cannot be empty".to_string(),
             DiagnosticMessage::ForwardReference { from_step, to_step } => {
-                format!(
-                    "Step '{from_step}' references forward-declared step '{to_step}'"
-                )
+                format!("Step '{from_step}' references forward-declared step '{to_step}'")
             }
             DiagnosticMessage::SelfReference { step_id } => {
                 format!("Step '{step_id}' cannot reference itself")
@@ -150,9 +148,9 @@ impl DiagnosticMessage {
                 from_step,
                 referenced_step,
             } => match from_step {
-                Some(from) => format!(
-                    "Step '{from}' references undefined step '{referenced_step}'"
-                ),
+                Some(from) => {
+                    format!("Step '{from}' references undefined step '{referenced_step}'")
+                }
                 None => format!("Reference to undefined step '{referenced_step}'"),
             },
             DiagnosticMessage::InvalidReferenceExpression {
@@ -160,9 +158,9 @@ impl DiagnosticMessage {
                 field,
                 error,
             } => match (step_id, field) {
-                (Some(step), Some(field)) => format!(
-                    "Invalid reference in step '{step}' field '{field}': {error}"
-                ),
+                (Some(step), Some(field)) => {
+                    format!("Invalid reference in step '{step}' field '{field}': {error}")
+                }
                 (Some(step), None) => format!("Invalid reference in step '{step}': {error}"),
                 (None, Some(field)) => format!("Invalid reference in field '{field}': {error}"),
                 (None, None) => format!("Invalid reference: {error}"),
@@ -172,18 +170,14 @@ impl DiagnosticMessage {
                 field,
                 reason,
             } => {
-                format!(
-                    "Invalid field access '{field}' on step '{step_id}': {reason}"
-                )
+                format!("Invalid field access '{field}' on step '{step_id}': {reason}")
             }
             DiagnosticMessage::InvalidComponentUrl {
                 step_id,
                 url,
                 error,
             } => {
-                format!(
-                    "Invalid component URL '{url}' in step '{step_id}': {error}"
-                )
+                format!("Invalid component URL '{url}' in step '{step_id}': {error}")
             }
             DiagnosticMessage::EmptyComponentName { step_id } => {
                 format!("Empty component name in step '{step_id}'")
@@ -193,9 +187,7 @@ impl DiagnosticMessage {
                 field,
                 violation,
             } => {
-                format!(
-                    "Schema violation in step '{step_id}' field '{field}': {violation}"
-                )
+                format!("Schema violation in step '{step_id}' field '{field}': {violation}")
             }
             DiagnosticMessage::MockComponent { step_id } => {
                 format!(
@@ -203,9 +195,7 @@ impl DiagnosticMessage {
                 )
             }
             DiagnosticMessage::UnreachableStep { step_id } => {
-                format!(
-                    "Step '{step_id}' is not referenced by any other step or workflow output"
-                )
+                format!("Step '{step_id}' is not referenced by any other step or workflow output")
             }
             DiagnosticMessage::MissingWorkflowName => "Workflow has no name defined".to_string(),
             DiagnosticMessage::MissingWorkflowDescription => {
@@ -217,9 +207,7 @@ impl DiagnosticMessage {
                 field,
                 reason,
             } => {
-                format!(
-                    "Field access '{field}' on step '{step_id}' cannot be validated: {reason}"
-                )
+                format!("Field access '{field}' on step '{step_id}' cannot be validated: {reason}")
             }
         }
     }

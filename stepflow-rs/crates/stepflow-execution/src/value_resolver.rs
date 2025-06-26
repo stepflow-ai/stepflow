@@ -548,9 +548,7 @@ mod tests {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!("fallback"));
             }
-            _ => panic!(
-                "Expected successful result with default value, got: {resolved:?}"
-            ),
+            _ => panic!("Expected successful result with default value, got: {resolved:?}"),
         }
     }
 
