@@ -59,13 +59,16 @@ pub async fn debug_execute_step(
     Json(req): Json<DebugStepRequest>,
 ) -> Result<Json<DebugStepResponse>, ErrorResponse> {
     // Get the debug session for this run
-    let mut debug_session = executor
+    let debug_session = executor
         .debug_session(run_id)
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
+    // Lock the mutex to access the WorkflowExecutor
+    let mut workflow_executor = debug_session.lock().await;
+
     // Execute the requested steps
-    let step_results = debug_session.execute_steps(&req.step_ids).await?;
+    let step_results = workflow_executor.execute_steps(&req.step_ids).await?;
 
     // Convert results to the expected format
     let mut results = std::collections::HashMap::new();
@@ -96,13 +99,16 @@ pub async fn debug_continue(
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<super::runs::CreateRunResponse>, ErrorResponse> {
     // Get the debug session for this run
-    let mut debug_session = executor
+    let debug_session = executor
         .debug_session(run_id)
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
+    // Lock the mutex to access the WorkflowExecutor
+    let mut workflow_executor = debug_session.lock().await;
+
     // Continue run to completion
-    let final_result = debug_session.execute_to_completion().await?;
+    let final_result = workflow_executor.execute_to_completion().await?;
 
     // Update run status based on the result
     let state_store = executor.state_store();
@@ -149,8 +155,11 @@ pub async fn debug_get_runnable(
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
+    // Lock the mutex to access the WorkflowExecutor
+    let workflow_executor = debug_session.lock().await;
+
     // Get runnable steps
-    let runnable_steps = debug_session
+    let runnable_steps = workflow_executor
         .get_runnable_steps()
         .await
         .into_iter()

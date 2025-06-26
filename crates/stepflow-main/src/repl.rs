@@ -4,7 +4,7 @@ use error_stack::ResultExt as _;
 use rustyline::{DefaultEditor, error::ReadlineError};
 use std::{path::PathBuf, sync::Arc};
 use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
-use stepflow_execution::{StepFlowExecutor, WorkflowExecutor};
+use stepflow_execution::{StepExecutionResult, StepFlowExecutor, WorkflowExecutor};
 use stepflow_plugin::Context as _;
 
 use crate::{
@@ -19,7 +19,8 @@ pub struct LastRun {
     pub workflow_hash: FlowHash,
     pub workflow_path: PathBuf,
     pub input: ValueRef,
-    pub last_execution: Option<WorkflowExecutor>,
+    pub last_execution: Option<Arc<tokio::sync::Mutex<WorkflowExecutor>>>,
+    pub execution_id: Option<uuid::Uuid>,
 }
 
 impl LastRun {
@@ -35,6 +36,7 @@ impl LastRun {
             workflow_path,
             input,
             last_execution: None,
+            execution_id: None,
         }
     }
 
@@ -66,32 +68,46 @@ impl LastRun {
     pub async fn create_debug_execution(
         &mut self,
         executor: &Arc<StepFlowExecutor>,
-    ) -> Result<&mut WorkflowExecutor> {
-        let state_store = executor.state_store();
+    ) -> Result<()> {
         let execution_id = uuid::Uuid::new_v4();
-        let workflow_executor = WorkflowExecutor::new(
-            executor.clone(),
+        
+        // Submit the workflow to get it registered
+        executor.submit_flow(
             self.workflow.clone(),
             self.workflow_hash.clone(),
-            execution_id,
             self.input.clone(),
-            state_store.clone(),
-        )
-        .change_context(MainError::FlowExecution)?;
-
-        self.last_execution = Some(workflow_executor);
-        Ok(self.last_execution.as_mut().unwrap())
+        ).await.change_context(MainError::FlowExecution)?;
+        
+        // Get the debug session executor
+        let debug_executor = executor.debug_session(execution_id)
+            .await
+            .change_context(MainError::FlowExecution)?;
+        
+        // Store the execution ID for later reference
+        self.execution_id = Some(execution_id);
+        
+        // Store the executor
+        self.last_execution = Some(debug_executor);
+        
+        Ok(())
     }
 
     /// Get the current debug execution, if any
-    pub fn debug_execution(&mut self) -> Option<&mut WorkflowExecutor> {
-        self.last_execution.as_mut()
+    pub async fn execute_step(&mut self, step_id: &str) -> Result<StepExecutionResult> {
+        if let Some(executor) = &self.last_execution {
+            let mut workflow_executor = executor.lock().await;
+            workflow_executor.execute_step_by_id(step_id).await
+                .change_context(MainError::FlowExecution)
+        } else {
+            Err(error_stack::report!(MainError::NoDebugSession))
+        }
     }
 
     /// Update input and clear any existing execution
     pub fn update_input(&mut self, input: ValueRef) {
         self.input = input;
-        self.last_execution = None; // Clear execution since input changed
+        self.last_execution = None;
+        self.execution_id = None;
     }
 }
 
@@ -386,7 +402,10 @@ async fn handle_steps_command(state: &ReplState) -> Result<()> {
 
     if let Some(last_run) = &state.last_run {
         if let Some(debug_session) = &last_run.last_execution {
-            let all_steps = debug_session.list_all_steps().await;
+            // Lock the mutex to access the WorkflowExecutor
+            let workflow_executor = debug_session.lock().await;
+            
+            let all_steps = workflow_executor.list_all_steps().await;
             println!("Workflow steps ({} total):", all_steps.len());
             for step_status in &all_steps {
                 println!(
@@ -421,7 +440,10 @@ async fn handle_runnable_command(state: &ReplState) -> Result<()> {
 
     if let Some(last_run) = &state.last_run {
         if let Some(debug_session) = &last_run.last_execution {
-            let runnable_steps = debug_session.get_runnable_steps().await;
+            // Lock the mutex to access the WorkflowExecutor
+            let workflow_executor = debug_session.lock().await;
+            
+            let runnable_steps = workflow_executor.get_runnable_steps().await;
             if runnable_steps.is_empty() {
                 println!(
                     "No steps are currently runnable. All dependencies may be satisfied or workflow is complete."
@@ -458,8 +480,11 @@ async fn handle_run_step_command(step_id: String, state: &mut ReplState) -> Resu
     }
 
     if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
-            match debug_session.execute_step_by_id(&step_id).await {
+        if let Some(debug_session) = &last_run.last_execution {
+            // Lock the mutex to access the WorkflowExecutor
+            let mut workflow_executor = debug_session.lock().await;
+            
+            match workflow_executor.execute_step_by_id(&step_id).await {
                 Ok(result) => {
                     print_step_result(&step_id, &result.result)?;
                 }
@@ -490,8 +515,11 @@ async fn handle_run_steps_command(step_ids: Vec<String>, state: &mut ReplState) 
     }
 
     if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
-            match debug_session.execute_steps(&step_ids).await {
+        if let Some(debug_session) = &last_run.last_execution {
+            // Lock the mutex to access the WorkflowExecutor
+            let mut workflow_executor = debug_session.lock().await;
+            
+            match workflow_executor.execute_steps(&step_ids).await {
                 Ok(results) => {
                     println!("Executed {} steps:", results.len());
                     for result in results {
@@ -525,8 +553,11 @@ async fn handle_run_all_command(state: &mut ReplState) -> Result<()> {
     }
 
     if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
-            match debug_session.execute_all_runnable().await {
+        if let Some(debug_session) = &last_run.last_execution {
+            // Lock the mutex to access the WorkflowExecutor
+            let mut workflow_executor = debug_session.lock().await;
+            
+            match workflow_executor.execute_all_runnable().await {
                 Ok(results) => {
                     if results.is_empty() {
                         println!("No runnable steps to execute.");
@@ -564,9 +595,12 @@ async fn handle_continue_command(state: &mut ReplState) -> Result<()> {
     }
 
     if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
+        if let Some(debug_session) = &last_run.last_execution {
+            // Lock the mutex to access the WorkflowExecutor
+            let mut workflow_executor = debug_session.lock().await;
+            
             println!("Continuing workflow execution to completion...");
-            match debug_session.execute_to_completion().await {
+            match workflow_executor.execute_to_completion().await {
                 Ok(final_result) => {
                     // Print final result
                     let result_json = serde_json::to_string_pretty(&final_result)
@@ -616,7 +650,10 @@ async fn handle_inspect_command(step_id: String, state: &ReplState) -> Result<()
 
     if let Some(last_run) = &state.last_run {
         if let Some(debug_session) = &last_run.last_execution {
-            match debug_session.inspect_step(&step_id).await {
+            // Lock the mutex to access the WorkflowExecutor
+            let workflow_executor = debug_session.lock().await;
+            
+            match workflow_executor.inspect_step(&step_id).await {
                 Ok(inspection) => {
                     println!("Step '{}' inspection:", step_id);
                     println!("  Index: {}", inspection.metadata.step_index);
@@ -663,7 +700,10 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
 
     if let Some(last_run) = &state.last_run {
         if let Some(debug_session) = &last_run.last_execution {
-            match debug_session.get_completed_steps().await {
+            // Lock the mutex to access the WorkflowExecutor
+            let workflow_executor = debug_session.lock().await;
+            
+            match workflow_executor.get_completed_steps().await {
                 Ok(completed_steps) => {
                     if completed_steps.is_empty() {
                         println!("No steps have been completed yet.");
@@ -714,7 +754,10 @@ async fn handle_output_command(step_id: String, state: &ReplState) -> Result<()>
 
     if let Some(last_run) = &state.last_run {
         if let Some(debug_session) = &last_run.last_execution {
-            match debug_session.get_step_output(&step_id).await {
+            // Lock the mutex to access the WorkflowExecutor
+            let workflow_executor = debug_session.lock().await;
+            
+            match workflow_executor.get_step_output(&step_id).await {
                 Ok(result) => {
                     println!("Output of step '{}':", step_id);
                     print_flow_result(&result)?;

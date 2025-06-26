@@ -32,16 +32,28 @@ pub(crate) async fn execute_workflow(
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
 ) -> Result<FlowResult> {
-    let mut workflow_executor = WorkflowExecutor::new(
-        executor,
-        flow,
-        workflow_hash,
-        execution_id,
-        input,
-        state_store,
-    )?;
+    // Check if there's already a debug session for this execution ID
+    let existing_debug_session = executor.get_debug_session(execution_id).await;
+    
+    if let Some(debug_session) = existing_debug_session {
+        // Use the existing debug session
+        tracing::info!("Using existing debug session for execution ID: {}", execution_id);
+        let mut workflow_executor = debug_session.lock().await;
+        workflow_executor.execute_to_completion().await
+    } else {
+        // Create a new workflow executor
+        tracing::info!("Executing workflow using tracker-based execution");
+        let mut workflow_executor = WorkflowExecutor::new(
+            executor,
+            flow,
+            workflow_hash,
+            execution_id,
+            input,
+            state_store,
+        )?;
 
-    workflow_executor.execute_to_completion().await
+        workflow_executor.execute_to_completion().await
+    }
 }
 
 /// Workflow executor that manages the execution of a single workflow.
@@ -1288,55 +1300,100 @@ impl StreamingPipelineCoordinator {
     /// Route chunks to the running pipeline without requiring mutable access to the coordinator
     /// This allows chunks to be routed while the receivers are moved out for step tasks
     pub async fn route_chunk_to_running_pipeline(
-        coord_arc: Arc<tokio::sync::Mutex<Self>>,
+        coord_arc: Arc<tokio::sync::Mutex<StreamingPipelineCoordinator>>,
         chunk_json: serde_json::Value,
     ) -> Result<()> {
         let map = serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(chunk_json)
             .map_err(|e| ExecutionError::MalformedReference { message: e.to_string() })?;
         
+        // Extract chunk metadata
+        let chunk_index = map.get("chunk_index")
+                             .and_then(|v| v.as_u64())
+                             .unwrap_or(0) as usize;
+        
+        let is_final = map.get("is_final")
+                          .and_then(|v| v.as_bool())
+                          .unwrap_or(false);
+        
+        // Extract the step ID this chunk came FROM
+        let source_step_id = if let Some(step_id) = map.get("step_id").and_then(|v| v.as_str()) {
+            step_id.to_string()
+        } else {
+            // Default to first step if no step_id provided
+            let coord = coord_arc.lock().await;
+            let first_step_idx = coord.pipeline_steps[0];
+            let first_step_id = coord.flow.steps[first_step_idx].id.clone();
+            tracing::info!("No step_id in chunk, defaulting to first pipeline step: {}", first_step_id);
+            drop(coord); // Release the lock early
+            first_step_id
+        };
+        
         let coord = coord_arc.lock().await;
         
-        // Extract the step ID this chunk belongs to (default to first pipeline step)
-        let step_id = map.get("step_id")
-                          .and_then(|v| v.as_str())
-                          .map(|s| s.to_string())
-                          .unwrap_or_else(|| {
-                              // Default to first step (source step) if no step_id provided
-                              let first_step_idx = coord.pipeline_steps[0];
-                              let first_step_id = coord.flow.steps[first_step_idx].id.clone();
-                              tracing::info!("No step_id in chunk, defaulting to first pipeline step: {}", first_step_id);
-                              first_step_id
-                          });
-                          
-        let stream_id   = map.get("stream_id")  .and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let chunk_index = map.get("chunk_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-        let is_final    = map.get("is_final")   .and_then(|v| v.as_bool()).unwrap_or(false);
-
-        // Build the FlowResult
-        let fr = FlowResult::Streaming {
-            stream_id: stream_id.clone(),
-            metadata: stepflow_core::workflow::ValueRef::new(serde_json::Value::Object(map.clone())),
-            chunk: map.get("chunk").and_then(|v|v.as_str()).unwrap_or("").to_string(),
-            chunk_index,
-            is_final,
+        // Find the index of the source step in the pipeline
+        let source_step_pipeline_index = coord.pipeline_steps.iter()
+            .enumerate()
+            .find_map(|(i, &step_idx)| {
+                if coord.flow.steps[step_idx].id == source_step_id {
+                    Some(i)
+                } else {
+                    None
+                }
+            });
+        
+        // Find the next step in the pipeline (if any)
+        let target_step_id = if let Some(source_idx) = source_step_pipeline_index {
+            if source_idx + 1 < coord.pipeline_steps.len() {
+                // Get the next step in the pipeline
+                let next_step_idx = coord.pipeline_steps[source_idx + 1];
+                let next_step_id = coord.flow.steps[next_step_idx].id.clone();
+                tracing::info!("Routing chunk from step {} to next step {}", source_step_id, next_step_id);
+                next_step_id
+            } else {
+                // This is the last step in the pipeline, no forwarding needed
+                tracing::info!("Step {} is the last in pipeline, no forwarding needed", source_step_id);
+                return Ok(());
+            }
+        } else {
+            // Couldn't find the source step in the pipeline, use the source step ID as fallback
+            tracing::warn!("Could not find step {} in pipeline, using as target", source_step_id);
+            source_step_id.clone()
         };
-
-        // Send to the step's channel (only if the sender still exists)
-        if let Some(tx) = coord.step_senders.get(&step_id) {
-            tracing::info!("Found sender for step {}, attempting to send chunk {}", step_id, chunk_index);
-            tracing::info!("HANDLE_CHUNK step={} idx={} final={}", step_id, chunk_index, is_final);
-            tracing::debug!("send -> {} (buffer={})", step_id, tx.capacity());
+        
+        // Send to the target step's channel
+        if let Some(tx) = coord.step_senders.get(&target_step_id) {
+            tracing::info!("[SEND-DEBUG] Found sender for target step {}, attempting to send chunk {} (tx addr: {:p})", 
+                          target_step_id, chunk_index, tx);
+            
+            // Create a FlowResult from the chunk data
+            let fr = FlowResult::Streaming {
+                stream_id: map.get("stream_id")
+                             .and_then(|v| v.as_str())
+                             .unwrap_or("unknown")
+                             .to_string(),
+                metadata: stepflow_core::workflow::ValueRef::new(serde_json::json!(map)),
+                chunk: map.get("chunk")
+                         .and_then(|v| v.as_str())
+                         .unwrap_or("")
+                         .to_string(),
+                chunk_index,
+                is_final,
+            };
+            
             match tx.send(fr.clone()).await {
                 Ok(_) => {
-                    tracing::info!("Successfully routed chunk {} to step {} (pipeline steps: {:?})", chunk_index, step_id, coord.pipeline_steps);
+                    tracing::info!("[SEND-DEBUG] Successfully routed chunk {} from step {} to step {}", 
+                                  chunk_index, source_step_id, target_step_id);
                 }
                 Err(e) => {
-                    tracing::error!("Failed to route chunk {} to step {}: {:?}", chunk_index, step_id, e);
-                    return Err(ExecutionError::StepFailed { step: step_id.clone() }.into());
+                    tracing::error!("[SEND-DEBUG] Failed to send chunk {} to step {}: {:?}", 
+                                   chunk_index, target_step_id, e);
+                    return Err(ExecutionError::StepFailed { step: target_step_id.clone() }.into());
                 }
             }
         } else {
-            tracing::warn!("No channel for step {} (available steps: {:?})", step_id, coord.step_senders.keys().collect::<Vec<_>>());
+            tracing::warn!("[SEND-DEBUG] No channel for target step {} (available steps: {:?})", 
+                          target_step_id, coord.step_senders.keys().collect::<Vec<_>>());
         }
 
         Ok(())
@@ -1411,10 +1468,18 @@ impl StreamingPipelineCoordinator {
             let step_id = flow.steps[step_index].id.clone();
             let (input_tx, input_rx) = tokio::sync::mpsc::channel(100);
             let sender_clone = input_tx.clone();
+            
+            // Log channel creation with memory addresses
+            tracing::info!(
+                "[CHANNEL-DEBUG] Created channel for step {} (index {}): tx={:p}, rx={:p}", 
+                step_id, 
+                step_index, 
+                &sender_clone as *const _,
+                &input_rx as *const _
+            );
+            
             step_senders.insert(step_id.clone(), sender_clone);
             step_receivers.insert(step_id.clone(), input_rx);
-            tracing::info!("[DEBUG-CHANNEL] Created channel for step {} (index {}) - receiver capacity: {}", 
-                         step_id, step_index, 100);
         }
 
         // Set up the pipeline connections
@@ -1657,8 +1722,38 @@ async fn run_streaming_step_simple(
     
     loop {
         tracing::info!("[STREAM] Step {} waiting for chunk via receiver", step_id);
-        let recv_result = rx.recv().await;
-        tracing::info!("[STREAM] Step {} received result from rx.recv(): {:?}", step_id, recv_result.is_some());
+        // Before waiting for data, log channel details
+        tracing::info!(
+            "[STREAM-DEBUG] Step {} waiting for chunk via receiver (rx addr: {:p})", 
+            step_id, 
+            &rx as *const _
+        );
+
+        // Check if the channel has been closed already
+        if rx.is_closed() {
+            stream_log!(warn, &step_id, "channel is already closed before receiving any data");
+        }
+
+        // Add timeout to prevent indefinite blocking
+        let recv_result = match tokio::time::timeout(
+            std::time::Duration::from_secs(10), // 10 second timeout
+            rx.recv()
+        ).await {
+            Ok(result) => {
+                tracing::info!(
+                    "[STREAM-DEBUG] Step {} received data from channel: is_some={}", 
+                    step_id, 
+                    result.is_some()
+                );
+                result
+            },
+            Err(_) => {
+                stream_log!(warn, &step_id, "TIMEOUT waiting for chunk after 10 seconds");
+                // Continue with loop to try again or return None to exit
+                None
+            }
+        };
+
         match recv_result {
             Some(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final }) => {
                 stream_log!(info, &step_id, "RECEIVED chunk #{} from receiver", chunk_index);
@@ -1895,7 +1990,7 @@ mod tests {
     pub async fn create_workflow_from_yaml_simple(
         yaml_str: &str,
         mock_behaviors: Vec<(&str, FlowResult)>,
-    ) -> (Arc<crate::executor::StepFlowExecutor>, Arc<Flow>, FlowHash) {
+    ) {
         // Parse the YAML workflow
         let flow: Flow = serde_yaml_ng::from_str(yaml_str).expect("Failed to parse YAML workflow");
         let flow = Arc::new(flow);
@@ -2112,6 +2207,7 @@ output:
                 .await
                 .unwrap();
 
+        // Check the final result
         match result {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"final": 30}));
@@ -2232,7 +2328,6 @@ output:
 "#;
 
         let workflow_input = json!({"value": 42});
-        let step1_output = json!({"step1": "done"});
         let step2_output = json!({"step2": "done"});
         let final_output = json!({"both": "completed"});
 
@@ -2541,9 +2636,4 @@ output:
         }
     }
 }
-
-
-
-
-
 

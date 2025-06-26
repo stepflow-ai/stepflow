@@ -108,13 +108,13 @@ impl StepFlowExecutor {
     }
 
     /// Get or create a debug session for step-by-step execution control
-    pub async fn debug_session(&self, execution_id: Uuid) -> Result<WorkflowExecutor> {
+    pub async fn debug_session(&self, execution_id: Uuid) -> Result<Arc<tokio::sync::Mutex<WorkflowExecutor>>> {
         // Check if session already exists
         {
             let sessions = self.debug_sessions.read().await;
-            if let Some(_session) = sessions.get(&execution_id) {
-                // Return a clone of the session (WorkflowExecutor should implement Clone if needed)
-                // For now, we'll create a new session each time since WorkflowExecutor is not Clone
+            if let Some(session) = sessions.get(&execution_id) {
+                tracing::info!("Reusing existing WorkflowExecutor for debug session: {}", execution_id);
+                return Ok(session.clone());
             }
         }
 
@@ -148,7 +148,14 @@ impl StepFlowExecutor {
             self.state_store.clone(),
         )?;
 
-        Ok(workflow_executor)
+        // Store the executor for future reuse
+        let executor_arc = Arc::new(tokio::sync::Mutex::new(workflow_executor));
+        {
+            let mut sessions = self.debug_sessions.write().await;
+            sessions.insert(execution_id, executor_arc.clone());
+        }
+
+        Ok(executor_arc)
     }
 
     /// Get a workflow executor for debug sessions
@@ -165,6 +172,12 @@ impl StepFlowExecutor {
         // This is a placeholder - in a real implementation, we'd need to store flows
         // For now, return None since we don't have access to the flow
         None
+    }
+
+    /// Get an existing debug session without creating a new one
+    pub async fn get_debug_session(&self, execution_id: Uuid) -> Option<Arc<tokio::sync::Mutex<WorkflowExecutor>>> {
+        let sessions = self.debug_sessions.read().await;
+        sessions.get(&execution_id).cloned()
     }
 }
 
