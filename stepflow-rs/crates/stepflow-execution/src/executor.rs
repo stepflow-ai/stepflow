@@ -214,7 +214,7 @@ impl Context for StepFlowExecutor {
                             FlowResult::Failed {
                                 error: stepflow_core::FlowError::new(
                                     500,
-                                    format!("Flow execution failed: {}", e),
+                                    format!("Flow execution failed: {e}"),
                                 ),
                             }
                         }
@@ -270,7 +270,7 @@ impl Context for StepFlowExecutor {
                     Ok(FlowResult::Failed {
                         error: stepflow_core::FlowError::new(
                             404,
-                            format!("No execution found for ID: {}", execution_id),
+                            format!("No execution found for ID: {execution_id}"),
                         ),
                     })
                 }

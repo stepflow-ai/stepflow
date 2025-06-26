@@ -50,7 +50,7 @@ impl LastRun {
         // Display result
         let result_json =
             serde_json::to_string_pretty(&result).change_context(MainError::FlowExecution)?;
-        println!("Result:\n{}", result_json);
+        println!("Result:\n{result_json}");
 
         Ok(())
     }
@@ -327,7 +327,7 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     if let Some(last_run) = &state.last_run {
         println!("  Workflow: {} steps", last_run.workflow.steps.len());
         if let Some(name) = &last_run.workflow.name {
-            println!("    Name: {}", name);
+            println!("    Name: {name}");
         }
         println!("  Input: Loaded");
         if last_run.last_execution.is_some() {
@@ -346,7 +346,7 @@ async fn handle_workflow_command(state: &ReplState) -> Result<()> {
     if let Some(last_run) = &state.last_run {
         let workflow_json = serde_json::to_string_pretty(last_run.workflow.as_ref())
             .change_context(MainError::FlowExecution)?;
-        println!("Current workflow:\n{}", workflow_json);
+        println!("Current workflow:\n{workflow_json}");
     } else {
         println!("No workflow loaded. Use 'run --workflow=<file>' to load a workflow.");
     }
@@ -358,7 +358,7 @@ async fn handle_input_command(state: &ReplState) -> Result<()> {
     if let Some(last_run) = &state.last_run {
         let input_json = serde_json::to_string_pretty(last_run.input.as_ref())
             .change_context(MainError::FlowExecution)?;
-        println!("Current input:\n{}", input_json);
+        println!("Current input:\n{input_json}");
     } else {
         println!("No input loaded. Use 'run' or 'rerun' with input to load input.");
     }
@@ -454,7 +454,7 @@ async fn handle_run_step_command(step_id: String, state: &mut ReplState) -> Resu
                     print_step_result(&step_id, &result.result)?;
                 }
                 Err(e) => {
-                    println!("Failed to execute step '{}': {}", step_id, e);
+                    println!("Failed to execute step '{step_id}': {e}");
                 }
             }
         } else {
@@ -489,7 +489,7 @@ async fn handle_run_steps_command(step_ids: Vec<String>, state: &mut ReplState) 
                     }
                 }
                 Err(e) => {
-                    println!("Failed to execute steps: {}", e);
+                    println!("Failed to execute steps: {e}");
                 }
             }
         } else {
@@ -528,7 +528,7 @@ async fn handle_run_all_command(state: &mut ReplState) -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    println!("Failed to execute runnable steps: {}", e);
+                    println!("Failed to execute runnable steps: {e}");
                 }
             }
         } else {
@@ -562,10 +562,10 @@ async fn handle_continue_command(state: &mut ReplState) -> Result<()> {
                     let result_json = serde_json::to_string_pretty(&final_result)
                         .change_context(MainError::FlowExecution)?;
                     println!("Workflow completed successfully.");
-                    println!("Final result: {}", result_json);
+                    println!("Final result: {result_json}");
                 }
                 Err(e) => {
-                    println!("Workflow execution failed: {}", e);
+                    println!("Workflow execution failed: {e}");
                 }
             }
         } else {
@@ -608,25 +608,25 @@ async fn handle_inspect_command(step_id: String, state: &ReplState) -> Result<()
         if let Some(debug_session) = &last_run.last_execution {
             match debug_session.inspect_step(&step_id).await {
                 Ok(inspection) => {
-                    println!("Step '{}' inspection:", step_id);
+                    println!("Step '{step_id}' inspection:");
                     println!("  Index: {}", inspection.metadata.step_index);
                     println!("  Component: {}", inspection.metadata.component);
                     println!("  State: {:?}", inspection.state);
 
                     let input_json = serde_json::to_string_pretty(&inspection.input)
                         .change_context(MainError::FlowExecution)?;
-                    println!("  Input: {}", input_json);
+                    println!("  Input: {input_json}");
 
                     if let Some(skip_if) = &inspection.skip_if {
                         let skip_json = serde_json::to_string_pretty(skip_if)
                             .change_context(MainError::FlowExecution)?;
-                        println!("  Skip condition: {}", skip_json);
+                        println!("  Skip condition: {skip_json}");
                     }
 
                     println!("  Error handling: {:?}", inspection.on_error);
                 }
                 Err(e) => {
-                    println!("Failed to inspect step '{}': {}", step_id, e);
+                    println!("Failed to inspect step '{step_id}': {e}");
                 }
             }
         } else {
@@ -676,7 +676,7 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    println!("Failed to get completed steps: {}", e);
+                    println!("Failed to get completed steps: {e}");
                 }
             }
         } else {
@@ -705,11 +705,11 @@ async fn handle_output_command(step_id: String, state: &ReplState) -> Result<()>
         if let Some(debug_session) = &last_run.last_execution {
             match debug_session.get_step_output(&step_id).await {
                 Ok(result) => {
-                    println!("Output of step '{}':", step_id);
+                    println!("Output of step '{step_id}':");
                     print_flow_result(&result)?;
                 }
                 Err(e) => {
-                    println!("Failed to get output for step '{}': {}", step_id, e);
+                    println!("Failed to get output for step '{step_id}': {e}");
                 }
             }
         } else {
@@ -727,7 +727,7 @@ async fn handle_output_command(step_id: String, state: &ReplState) -> Result<()>
 
 /// Print the result of a step execution
 fn print_step_result(step_id: &str, result: &stepflow_core::FlowResult) -> Result<()> {
-    println!("Step '{}' executed successfully.", step_id);
+    println!("Step '{step_id}' executed successfully.");
     print_flow_result(result)
 }
 
@@ -737,13 +737,13 @@ fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
         stepflow_core::FlowResult::Success { result } => {
             let result_json = serde_json::to_string_pretty(result.as_ref())
                 .change_context(MainError::FlowExecution)?;
-            println!("Result: {}", result_json);
+            println!("Result: {result_json}");
         }
         stepflow_core::FlowResult::Skipped => {
             println!("Result: SKIPPED");
         }
         stepflow_core::FlowResult::Failed { error } => {
-            println!("Result: FAILED - {}", error);
+            println!("Result: FAILED - {error}");
         }
     }
     Ok(())
@@ -763,7 +763,7 @@ fn print_help() {
 
     // Use clap's help generation
     let help = cmd.render_help();
-    println!("{}", help);
+    println!("{help}");
 
     // Add some additional context
     println!();
@@ -798,7 +798,7 @@ pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
                     }
                     Ok(command) => {
                         if let Err(e) = handle_command(command, &mut state).await {
-                            eprintln!("Error: {}", e);
+                            eprintln!("Error: {e}");
                         }
                     }
                     Err(e) => {
@@ -807,7 +807,7 @@ pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
                         if error_msg.contains("help") || line.trim() == "help" {
                             print_help();
                         } else {
-                            eprintln!("Error: {}", error_msg);
+                            eprintln!("Error: {error_msg}");
                         }
                     }
                 }
@@ -821,7 +821,7 @@ pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
                 break;
             }
             Err(err) => {
-                eprintln!("Error reading line: {:?}", err);
+                eprintln!("Error reading line: {err:?}");
                 break;
             }
         }
@@ -849,16 +849,13 @@ mod tests {
             let result = parse_command(input);
             match result {
                 Ok(command) => {
-                    let debug_str = format!("{:?}", command);
+                    let debug_str = format!("{command:?}");
                     assert!(
                         debug_str.starts_with(expected_variant),
-                        "Expected {} to parse as {} variant, got: {:?}",
-                        input,
-                        expected_variant,
-                        command
+                        "Expected {input} to parse as {expected_variant} variant, got: {command:?}"
                     );
                 }
-                Err(e) => panic!("Failed to parse '{}': {}", input, e),
+                Err(e) => panic!("Failed to parse '{input}': {e}"),
             }
         }
     }
@@ -872,7 +869,7 @@ mod tests {
                 assert_eq!(input_args.input_json, Some("'{\"test\":123}'".to_string()));
                 assert!(!debug);
             }
-            _ => panic!("Expected rerun command, got: {:?}", result),
+            _ => panic!("Expected rerun command, got: {result:?}"),
         }
     }
 
@@ -889,7 +886,7 @@ mod tests {
                 assert!(debug);
                 assert!(!input_args.has_input());
             }
-            _ => panic!("Expected run command, got: {:?}", result),
+            _ => panic!("Expected run command, got: {result:?}"),
         }
     }
 }

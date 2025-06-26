@@ -75,7 +75,7 @@ pub fn list_components() -> Vec<Component> {
                     // This is a builtin component
                     Component::from_string(host)
                 } else {
-                    let url = format!("builtin://{}/{}", host, path);
+                    let url = format!("builtin://{host}/{path}");
                     Component::from_string(&url)
                 }
             } else {

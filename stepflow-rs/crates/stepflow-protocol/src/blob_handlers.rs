@@ -37,14 +37,14 @@ where
                     serde_json::to_string(&response).change_context(StdioError::Send)?
                 }
                 Err(e) => {
-                    let error_msg = format!("Serialization error: {}", e);
+                    let error_msg = format!("Serialization error: {e}");
                     create_error_response_json(id, -32000, &error_msg)?
                 }
             },
             Err(e) => create_error_response_json(id, -32000, &e)?,
         },
         Err(e) => {
-            let error_msg = format!("Invalid request: {}", e);
+            let error_msg = format!("Invalid request: {e}");
             create_error_response_json(id, -32602, &error_msg)?
         }
     };
@@ -107,7 +107,7 @@ impl IncomingHandler for PutBlobHandler {
                         let blob_id = state_store
                             .put_blob(request.data)
                             .await
-                            .map_err(|e| format!("Blob store error: {}", e))?;
+                            .map_err(|e| format!("Blob store error: {e}"))?;
                         Ok(schema::put_blob::Response { blob_id })
                     }
                 },
@@ -149,7 +149,7 @@ impl IncomingHandler for GetBlobHandler {
                         let data = state_store
                             .get_blob(&request.blob_id)
                             .await
-                            .map_err(|e| format!("Blob retrieve error: {}", e))?;
+                            .map_err(|e| format!("Blob retrieve error: {e}"))?;
                         Ok(schema::get_blob::Response { data })
                     }
                 },

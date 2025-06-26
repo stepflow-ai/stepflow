@@ -20,9 +20,9 @@ async fn main() {
     if let Err(e) = run(cli).await {
         #[allow(clippy::print_stderr)]
         if !omit_stack_trace {
-            eprintln!("{:?}", e);
+            eprintln!("{e:?}");
         } else {
-            eprintln!("{}", e);
+            eprintln!("{e}");
         }
         std::process::exit(1);
     }

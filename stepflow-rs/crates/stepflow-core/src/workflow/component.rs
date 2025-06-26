@@ -48,7 +48,7 @@ impl Component {
         // If no colon found, treat as builtin
         if delimiter.is_none() {
             Self {
-                url: format!("builtin://{}", input),
+                url: format!("builtin://{input}"),
                 delimiter: Some(7), // Position of the colon in "builtin:"
             }
         } else {

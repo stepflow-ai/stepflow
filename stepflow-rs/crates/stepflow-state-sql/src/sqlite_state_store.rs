@@ -388,7 +388,7 @@ impl StateStore for SqliteStateStore {
 
                 let step_result = StepResult::new(
                     step_index as usize,
-                    step_id.unwrap_or_else(|| format!("step_{}", step_index)),
+                    step_id.unwrap_or_else(|| format!("step_{step_index}")),
                     flow_result,
                 );
 

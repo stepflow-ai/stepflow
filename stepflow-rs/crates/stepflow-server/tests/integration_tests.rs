@@ -137,7 +137,7 @@ async fn test_flow_crud_operations() {
 
     // Get flow
     let get_request = Request::builder()
-        .uri(format!("/api/v1/flows/{}", flow_hash))
+        .uri(format!("/api/v1/flows/{flow_hash}"))
         .body(Body::empty())
         .unwrap();
 
@@ -268,7 +268,7 @@ async fn test_run_details() {
 
     // Get run details
     let details_request = Request::builder()
-        .uri(format!("/api/v1/runs/{}", run_id))
+        .uri(format!("/api/v1/runs/{run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -287,7 +287,7 @@ async fn test_run_details() {
 
     // Get run flow
     let flow_request = Request::builder()
-        .uri(format!("/api/v1/runs/{}/flow", run_id))
+        .uri(format!("/api/v1/runs/{run_id}/flow"))
         .body(Body::empty())
         .unwrap();
 
@@ -304,7 +304,7 @@ async fn test_run_details() {
 
     // Get run steps
     let steps_request = Request::builder()
-        .uri(format!("/api/v1/runs/{}/steps", run_id))
+        .uri(format!("/api/v1/runs/{run_id}/steps"))
         .body(Body::empty())
         .unwrap();
 

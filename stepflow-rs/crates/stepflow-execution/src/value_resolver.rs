@@ -299,7 +299,7 @@ mod tests {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"test": "hello", "number": 42}));
             }
-            _ => panic!("Expected successful result, got: {:?}", resolved),
+            _ => panic!("Expected successful result, got: {resolved:?}"),
         }
     }
 
@@ -321,7 +321,7 @@ mod tests {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!("Alice"));
             }
-            _ => panic!("Expected successful result, got: {:?}", resolved),
+            _ => panic!("Expected successful result, got: {resolved:?}"),
         }
     }
 
@@ -360,7 +360,7 @@ mod tests {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"output": "processed"}));
             }
-            _ => panic!("Expected successful result, got: {:?}", resolved),
+            _ => panic!("Expected successful result, got: {resolved:?}"),
         }
     }
 
@@ -399,7 +399,7 @@ mod tests {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!(123));
             }
-            _ => panic!("Expected successful result, got: {:?}", resolved),
+            _ => panic!("Expected successful result, got: {resolved:?}"),
         }
     }
 
@@ -421,7 +421,7 @@ mod tests {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"special": "value"}));
             }
-            _ => panic!("Expected successful result, got: {:?}", resolved),
+            _ => panic!("Expected successful result, got: {resolved:?}"),
         }
     }
 
@@ -478,7 +478,7 @@ mod tests {
                 });
                 assert_eq!(result.as_ref(), &expected);
             }
-            _ => panic!("Expected successful result, got: {:?}", resolved),
+            _ => panic!("Expected successful result, got: {resolved:?}"),
         }
     }
 
@@ -506,7 +506,7 @@ mod tests {
                 let expected = json!([["a", "b"], "static_item", ["literal", "array"]]);
                 assert_eq!(result.as_ref(), &expected);
             }
-            _ => panic!("Expected successful result, got: {:?}", resolved),
+            _ => panic!("Expected successful result, got: {resolved:?}"),
         }
     }
 
@@ -549,8 +549,7 @@ mod tests {
                 assert_eq!(result.as_ref(), &json!("fallback"));
             }
             _ => panic!(
-                "Expected successful result with default value, got: {:?}",
-                resolved
+                "Expected successful result with default value, got: {resolved:?}"
             ),
         }
     }
@@ -588,7 +587,7 @@ mod tests {
             FlowResult::Skipped => {
                 // Expected - should propagate the skip when no default is provided
             }
-            _ => panic!("Expected Skipped result, got: {:?}", resolved),
+            _ => panic!("Expected Skipped result, got: {resolved:?}"),
         }
     }
 
@@ -626,7 +625,7 @@ mod tests {
             FlowResult::Skipped => {
                 // Expected - workflow should be skipped
             }
-            _ => panic!("Expected workflow to be skipped, got: {:?}", output_result),
+            _ => panic!("Expected workflow to be skipped, got: {output_result:?}"),
         }
     }
 

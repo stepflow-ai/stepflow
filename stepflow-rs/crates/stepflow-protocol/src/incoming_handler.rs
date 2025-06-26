@@ -90,7 +90,7 @@ impl IncomingHandlerRegistry {
             if let Some(id) = id {
                 tracing::error!("Unknown method: {}", method);
                 tokio::spawn(async move {
-                    let error_message = format!("Unknown method: {}", method);
+                    let error_message = format!("Unknown method: {method}");
                     let error_response = crate::schema::ResponseMessage {
                         jsonrpc: "2.0",
                         id,
