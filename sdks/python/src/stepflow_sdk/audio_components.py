@@ -16,7 +16,6 @@ import threading
 import queue
 import sys
 import numpy as np
-import datetime
 
 
 try:
@@ -154,11 +153,6 @@ class AudioStreamSource:
         )
 
 
-def log_debug(message, component="unknown"):
-    """Write debug message to stderr so it shows up in StepFlow logs."""
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sys.stderr.write(f"[{timestamp}] [{component}] {message}\n")
-    sys.stderr.flush()  # Ensure it is written immediately
 
 
 def audio_stream_source(data: Dict[str, Any], context=None):
@@ -420,8 +414,6 @@ def audio_chunk_processor(data: Dict[str, Any], context=None) -> Dict[str, Any]:
     Output:
         Processed chunk or analysis results
     """
-    import time
-    start_time = time.time()
     
     # Handle streaming chunk format - extract the actual chunk data
     if 'outcome' in data and data['outcome'] == 'streaming':
@@ -465,7 +457,6 @@ def audio_chunk_processor(data: Dict[str, Any], context=None) -> Dict[str, Any]:
         amplified_data = b''.join(sample.to_bytes(2, 'little', signed=True) for sample in amplified_samples)
         amplified_b64 = base64.b64encode(amplified_data).decode('utf-8')
         
-        
         result = {
             "outcome": "streaming",
             "stream_id": stream_id,
@@ -487,7 +478,6 @@ def audio_chunk_processor(data: Dict[str, Any], context=None) -> Dict[str, Any]:
             rms = (sum(sample * sample for sample in samples) / len(samples)) ** 0.5
         else:
             max_amplitude = avg_amplitude = rms = 0
-        
         
         result = {
             "outcome": "success",
@@ -517,7 +507,6 @@ def audio_chunk_processor(data: Dict[str, Any], context=None) -> Dict[str, Any]:
             "output_file": output_file
         }
     
-    
     return result
 
 
@@ -535,8 +524,6 @@ def audio_sink(data: Dict[str, Any], context=None) -> Dict[str, Any]:
     Output:
         Confirmation of chunk received and file written
     """
-    import time
-    start_time = time.time()
     
     # Global storage for accumulating chunks across function calls
     if not hasattr(audio_sink, '_chunk_storage'):
@@ -612,7 +599,11 @@ def audio_sink(data: Dict[str, Any], context=None) -> Dict[str, Any]:
                 
                 
             except ImportError:
+                # sounddevice not available, skip audio playback
+                pass
             except Exception as e:
+                # Audio playback failed
+                pass
         
         # Write WAV file if this is the final chunk
         if is_final:
@@ -643,9 +634,12 @@ def audio_sink(data: Dict[str, Any], context=None) -> Dict[str, Any]:
                     del audio_sink._chunk_storage[stream_id]
                     
                 except Exception as e:
+                    # Error writing WAV file
                     import traceback
                     traceback.print_exc(file=sys.stderr)
             else:
+                # Stream not found in storage when final chunk received
+                pass
         
         result = {
             "outcome": "success",
@@ -671,6 +665,5 @@ def audio_sink(data: Dict[str, Any], context=None) -> Dict[str, Any]:
                 "message": "No audio data received"
             }
         }
-    
     
     return result 

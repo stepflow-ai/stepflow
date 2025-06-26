@@ -174,7 +174,7 @@ impl WorkflowExecutor {
 
     /// Check if the streaming pipeline is still active (has active receivers)
     pub fn is_streaming_pipeline_active(&self) -> bool {
-        if let Some(coord_arc) = &self.streaming_coordinator {
+        if let Some(_coord_arc) = &self.streaming_coordinator {
             // For now, just check if coordinator exists - we can't easily check receivers without async
             true
         } else {
@@ -584,7 +584,7 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self.resolver.resolve(&step.input).await? {
             FlowResult::Success { result } => result,
-            FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final } => {
+            FlowResult::Streaming { stream_id: _, metadata, chunk: _, chunk_index: _, is_final: _ } => {
                 // For streaming steps, we can handle streaming inputs
                 // For now, just return the metadata as the input
                 metadata
@@ -595,7 +595,7 @@ impl WorkflowExecutor {
                 }
                 .into());
             }
-            FlowResult::Failed { error } => {
+            FlowResult::Failed { error: _ } => {
                 return Err(ExecutionError::StepFailed { step: step_id }.into());
             }
         };
@@ -976,67 +976,6 @@ impl WorkflowExecutor {
         Ok(())
     }
 
-    /// Find all steps that are part of the same streaming pipeline
-    fn find_streaming_pipeline_steps(&self, start_step_index: usize) -> Vec<usize> {
-        let mut pipeline_steps = vec![start_step_index];
-        let mut to_check = vec![start_step_index];
-        let mut checked = std::collections::HashSet::new();
-
-        while let Some(step_index) = to_check.pop() {
-            if checked.contains(&step_index) {
-                continue;
-            }
-            checked.insert(step_index);
-
-            let step = &self.flow.steps[step_index];
-            
-            // Find steps that this step depends on (streaming inputs)
-            for (other_index, other_step) in self.flow.steps.iter().enumerate() {
-                if other_step.streaming && self.step_references_other_step(step, other_step) {
-                    if !pipeline_steps.contains(&other_index) {
-                        pipeline_steps.push(other_index);
-                        to_check.push(other_index);
-                    }
-                }
-            }
-
-            // Find steps that depend on this step (streaming outputs)
-            for (other_index, other_step) in self.flow.steps.iter().enumerate() {
-                if other_step.streaming && self.step_references_other_step(other_step, step) {
-                    if !pipeline_steps.contains(&other_index) {
-                        pipeline_steps.push(other_index);
-                        to_check.push(other_index);
-                    }
-                }
-            }
-        }
-
-        pipeline_steps.sort();
-        pipeline_steps
-    }
-
-
-    /// Find currently active streaming steps using in-memory workflow information
-    /// This avoids depending on state store data that might be cleaned up
-    fn find_active_streaming_steps_in_memory(&self) -> Vec<usize> {
-        let mut active_steps = Vec::new();
-        
-        for (step_index, step) in self.flow.steps.iter().enumerate() {
-            if step.streaming {
-                // For streaming steps, assume they are active if they exist in the coordinator
-                if let Some(_coord_arc) = &self.streaming_coordinator {
-                    // For now, just assume all streaming steps are active
-                    // We can't easily check step_receivers without async
-                    active_steps.push(step_index);
-                    tracing::debug!("Found active streaming step {} in coordinator", step_index);
-                }
-            }
-        }
-        
-        tracing::debug!("Found {} active streaming steps: {:?}", active_steps.len(), active_steps);
-        active_steps
-    }
-
 }
 
 impl Drop for WorkflowExecutor {
@@ -1349,7 +1288,7 @@ impl StreamingPipelineCoordinator {
         let mut incoming_chunks_rx = {
             let mut guard = coord_arc.lock().await;
             // Move the receiver out of the coordinator for the main loop
-            let (dummy_tx, dummy_rx) = mpsc::channel::<serde_json::Value>(1);
+            let (_dummy_tx, dummy_rx) = mpsc::channel::<serde_json::Value>(1);
             std::mem::replace(&mut guard.incoming_chunks, dummy_rx)
         };
 
@@ -1375,7 +1314,7 @@ impl StreamingPipelineCoordinator {
                     // Check if any handles are ready
                     let mut i = 0;
                     while i < remaining_handles.len() {
-                        let (step_idx, handle) = &mut remaining_handles[i];
+                        let (_step_idx, handle) = &mut remaining_handles[i];
                         if handle.is_finished() {
                             let (step_idx, handle) = remaining_handles.remove(i);
                             let step_id = &flow.steps[step_idx].id;
@@ -1557,7 +1496,7 @@ impl StreamingPipelineCoordinator {
                     }
                     .into());
                 }
-                FlowResult::Failed { error } => {
+                FlowResult::Failed { error: _ } => {
                     return Err(ExecutionError::StepFailed { step: step.id.clone() }.into());
                 }
             };
@@ -1573,7 +1512,7 @@ impl StreamingPipelineCoordinator {
 async fn run_streaming_step_simple(
     plugin: Arc<DynPlugin<'static>>,
     step: stepflow_core::workflow::Step,
-    input: stepflow_core::workflow::ValueRef,
+    _input: stepflow_core::workflow::ValueRef,
     context: ExecutionContext,
     mut rx: mpsc::Receiver<FlowResult>,
     downstream: Vec<(String, mpsc::Sender<FlowResult>)>,
@@ -1597,11 +1536,11 @@ async fn run_streaming_step_simple(
     }
 
     // Now loop for all chunks coming through the coordinator's routing system
-    let mut last_stream_id = String::new();
-    let mut last_metadata = stepflow_core::workflow::ValueRef::new(serde_json::Value::Null);
-    let mut last_chunk = String::new();
-    let mut last_chunk_index = 0;
-    let mut last_is_final = false;
+    let mut _last_stream_id = String::new();
+    let mut _last_metadata = stepflow_core::workflow::ValueRef::new(serde_json::Value::Null);
+    let mut _last_chunk = String::new();
+    let mut _last_chunk_index = 0;
+    let mut _last_is_final = false;
 
     loop {
         stream_log!(debug, &step_id, "waiting for chunk via receiver");
@@ -1633,11 +1572,11 @@ async fn run_streaming_step_simple(
                 stream_log!(info, &step_id, "processing chunk #{} (is_final={})", chunk_index, is_final);
 
                 // Store the streaming metadata for potential use in non-streaming case
-                last_stream_id = stream_id.clone();
-                last_metadata = metadata.clone();
-                last_chunk = chunk.clone();
-                last_chunk_index = chunk_index;
-                last_is_final = is_final;
+                _last_stream_id = stream_id.clone();
+                _last_metadata = metadata.clone();
+                _last_chunk = chunk.clone();
+                _last_chunk_index = chunk_index;
+                _last_is_final = is_final;
 
                 // Process the chunk with the component (for non-source steps)
                 let (final_stream_id, final_metadata, final_chunk, final_chunk_index, final_is_final) =
@@ -1663,7 +1602,7 @@ async fn run_streaming_step_simple(
                     ).await;
 
                     match component_result {
-                        Ok(FlowResult::Success { result }) => {
+                        Ok(FlowResult::Success { result: _ }) => {
                             // For success results, forward the original chunk
                             (stream_id, metadata, chunk, chunk_index, is_final)
                         }
@@ -1760,7 +1699,7 @@ fn sort_streaming_steps_by_dependencies(
     use std::collections::{HashMap, HashSet, VecDeque};
 
     // Create a map of step ID to index for quick lookup
-    let step_id_to_index: HashMap<String, usize> = streaming_steps
+    let _step_id_to_index: HashMap<String, usize> = streaming_steps
         .iter()
         .map(|&idx| (flow.steps[idx].id.clone(), idx))
         .collect();
