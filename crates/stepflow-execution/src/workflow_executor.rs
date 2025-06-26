@@ -1437,16 +1437,11 @@ impl StreamingPipelineCoordinator {
         // If we have a nested chunk object, also check its is_final flag (it takes precedence)
         if let Some(chunk_obj) = map.get("chunk").and_then(|v| v.as_object()) {
             if let Some(nested_is_final) = chunk_obj.get("is_final").and_then(|v| v.as_bool()) {
-                tracing::warn!("CHUNK_ROUTING_DEBUG: Using nested is_final={} instead of top-level is_final={}", nested_is_final, is_final);
                 is_final = nested_is_final;
             }
         }
 
         tracing::debug!("Routing chunk {} from step {:?} (is_final={})", chunk_index, source_step_id, is_final);
-        
-        if is_final {
-            tracing::warn!("FINAL_CHUNK_TRACKING: Routing final chunk {} from step {:?}", chunk_index, source_step_id);
-        }
 
         // Get the information we need from the coordinator briefly
         let (target_step_id, step_senders) = {
@@ -1486,37 +1481,24 @@ impl StreamingPipelineCoordinator {
 
         // Send to the target step's channel
         if let Some(tx) = step_senders.get(&target_step_id) {
-            // Debug the map structure
-            tracing::warn!("CHUNK_ROUTING_DEBUG: map keys: {:?}", map.keys().collect::<Vec<_>>());
-            
             // Extract chunk data - handle nested component response format
             let chunk_str = if let Some(chunk_value) = map.get("chunk") {
-                tracing::warn!("CHUNK_ROUTING_DEBUG: found chunk field, type: {:?}", std::mem::discriminant(chunk_value));
-                
                 if let Some(chunk_str) = chunk_value.as_str() {
                     // Direct string chunk
-                    tracing::warn!("CHUNK_ROUTING_DEBUG: chunk as string, len: {}", chunk_str.len());
                     chunk_str
                 } else if let Some(chunk_obj) = chunk_value.as_object() {
                     // Nested object - extract the inner "chunk" field
-                    tracing::warn!("CHUNK_ROUTING_DEBUG: chunk is nested object, extracting inner chunk");
                     if let Some(inner_chunk) = chunk_obj.get("chunk").and_then(|v| v.as_str()) {
-                        tracing::warn!("CHUNK_ROUTING_DEBUG: extracted inner chunk, len: {}", inner_chunk.len());
                         inner_chunk
                     } else {
-                        tracing::warn!("CHUNK_ROUTING_DEBUG: no inner chunk field found in nested object");
                         ""
                     }
                 } else {
-                    tracing::warn!("CHUNK_ROUTING_DEBUG: chunk field is not a string or object");
                     ""
                 }
             } else {
-                tracing::warn!("CHUNK_ROUTING_DEBUG: no chunk field found");
                 ""
             };
-            
-            tracing::warn!("CHUNK_ROUTING_DEBUG: final extracted chunk_str_len={}", chunk_str.len());
             
             // Create a FlowResult from the chunk data
             let fr = FlowResult::Streaming {
@@ -1622,7 +1604,7 @@ async fn run_streaming_step_simple(
     let mut last_is_final = false;
 
     loop {
-        stream_log!(info, &step_id, "waiting for chunk via receiver (is_closed: {})", rx.is_closed());
+        stream_log!(debug, &step_id, "waiting for chunk via receiver");
 
         // Check if the channel has been closed already
         if rx.is_closed() {
@@ -1648,12 +1630,7 @@ async fn run_streaming_step_simple(
 
         match recv_result {
             Some(FlowResult::Streaming { stream_id, metadata, chunk, chunk_index, is_final }) => {
-                stream_log!(info, &step_id, "RECEIVED chunk #{} from receiver (chunk len: {})", chunk_index, chunk.len());
-                stream_log!(info, &step_id, "processing chunk #{} (is_final={}) - VALIDATION: received chunk len={}", chunk_index, is_final, chunk.len());
-                
-                if is_final {
-                    stream_log!(warn, &step_id, "FINAL_CHUNK_TRACKING: Received final chunk #{} - will forward to downstream", chunk_index);
-                }
+                stream_log!(info, &step_id, "processing chunk #{} (is_final={})", chunk_index, is_final);
 
                 // Store the streaming metadata for potential use in non-streaming case
                 last_stream_id = stream_id.clone();
@@ -1666,8 +1643,6 @@ async fn run_streaming_step_simple(
                 let (final_stream_id, final_metadata, final_chunk, final_chunk_index, final_is_final) =
                 if !is_source {
                     // For non-source steps, process the chunk with the component
-                    stream_log!(info, &step_id, "calling component with chunk #{} (input chunk len: {})", chunk_index, chunk.len());
-
                     // Create input for the component from the chunk
                     let chunk_input_data = serde_json::json!({
                         "stream_id": stream_id,
@@ -1679,7 +1654,6 @@ async fn run_streaming_step_simple(
 
                     // Call the component with the chunk
                     let chunk_input = stepflow_core::workflow::ValueRef::new(chunk_input_data);
-                    stream_log!(info, &step_id, "sending input to component: chunk_len={}, stream_id={}", chunk.len(), stream_id);
                     
                     let component_result = execute_step_async(
                         plugin.clone(),
@@ -1690,13 +1664,10 @@ async fn run_streaming_step_simple(
 
                     match component_result {
                         Ok(FlowResult::Success { result }) => {
-                            stream_log!(info, &step_id, "component returned success for chunk #{}", chunk_index);
                             // For success results, forward the original chunk
                             (stream_id, metadata, chunk, chunk_index, is_final)
                         }
                         Ok(FlowResult::Streaming { stream_id: new_stream_id, metadata: new_metadata, chunk: new_chunk, chunk_index: new_chunk_index, is_final: new_is_final }) => {
-                            stream_log!(info, &step_id, "component returned streaming result for chunk #{} - OUTPUT chunk len: {}", chunk_index, new_chunk.len());
-                            stream_log!(warn, &step_id, "VALIDATION: input_chunk_len={}, output_chunk_len={}, input_stream_id={}, output_stream_id={}", chunk.len(), new_chunk.len(), stream_id, new_stream_id);
                             // Component returned a streaming result, use it
                             (new_stream_id, new_metadata, new_chunk, new_chunk_index, new_is_final)
                         }
@@ -1716,11 +1687,6 @@ async fn run_streaming_step_simple(
                 };
 
                 // Forward to downstream steps
-                stream_log!(info, &step_id, "forwarding chunk #{} to {} downstream steps (final_chunk len: {}) is_final={}", final_chunk_index, downstream.len(), final_chunk.len(), final_is_final);
-                
-                if final_is_final {
-                    stream_log!(warn, &step_id, "FINAL_CHUNK_TRACKING: Forwarding final chunk #{} to {} downstream steps", final_chunk_index, downstream.len());
-                }
 
                 if downstream.is_empty() {
                     stream_log!(warn, &step_id, "no downstream channels to forward to!");
@@ -1755,18 +1721,11 @@ async fn run_streaming_step_simple(
 
                     match tx.send(fr).await {
                         Ok(_) => {
-                            stream_log!(info, &step_id, "forwarded chunk #{} to downstream[{}] (step {}) is_final={}",
-                                final_chunk_index, i, downstream_id, final_is_final);
-                            if final_is_final {
-                                stream_log!(warn, &step_id, "FINAL_CHUNK_TRACKING: Successfully forwarded final chunk to step {}", downstream_id);
-                            }
+                            stream_log!(debug, &step_id, "forwarded chunk #{} to step {}", final_chunk_index, downstream_id);
                         }
                         Err(e) => {
-                            stream_log!(error, &step_id, "failed to forward chunk #{} to downstream[{}] (step {}): {:?}",
-                                final_chunk_index, i, downstream_id, e);
-                            if final_is_final {
-                                stream_log!(error, &step_id, "FINAL_CHUNK_TRACKING: FAILED to forward final chunk to step {}: {:?}", downstream_id, e);
-                            }
+                            stream_log!(error, &step_id, "failed to forward chunk #{} to step {}: {:?}",
+                                final_chunk_index, downstream_id, e);
                         }
                     }
                 }
