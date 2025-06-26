@@ -7,11 +7,6 @@ fn test_help() {
 }
 
 #[test]
-fn test_version() {
-    assert_cmd_snapshot!(stepflow().arg("--version"));
-}
-
-#[test]
 fn test_no_command() {
     assert_cmd_snapshot!(stepflow());
 }

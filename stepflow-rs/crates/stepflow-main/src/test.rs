@@ -67,7 +67,7 @@ fn show_diff(expected: &FlowResult, actual: &FlowResult, test_name: &str) {
 
     let diff = TextDiff::from_lines(&expected_yaml, &actual_yaml);
 
-    println!("Test Case {} failed:", test_name);
+    println!("Test Case {test_name} failed:");
     println!("--- Expected");
     println!("+++ Actual");
 
@@ -77,7 +77,7 @@ fn show_diff(expected: &FlowResult, actual: &FlowResult, test_name: &str) {
             ChangeTag::Insert => "+",
             ChangeTag::Equal => " ",
         };
-        print!("{}{}", sign, change);
+        print!("{sign}{change}");
     }
     println!();
 }
@@ -461,16 +461,16 @@ fn print_summary(results: &[WorkflowTestResult]) -> Result<usize> {
     println!("\n=== Test Summary ===");
     println!("Files tested: {}", results.len());
     if files_skip > 0 {
-        println!("Files skipped: {}", files_skip);
+        println!("Files skipped: {files_skip}");
     }
     if files_error > 0 {
-        println!("Files errored: {}", files_error);
+        println!("Files errored: {files_error}");
     }
-    println!("Total test cases: {}", cases_total);
-    println!("Passed: {}", cases_pass);
-    println!("Failed: {}", cases_fail);
+    println!("Total test cases: {cases_total}");
+    println!("Passed: {cases_pass}");
+    println!("Failed: {cases_fail}");
     if cases_error > 0 {
-        println!("Execution errors: {}", cases_error);
+        println!("Execution errors: {cases_error}");
     }
 
     Ok(cases_fail + cases_error)

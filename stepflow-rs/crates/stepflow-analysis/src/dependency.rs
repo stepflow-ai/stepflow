@@ -121,8 +121,7 @@ fn extract_value_deps(value_ref: &ValueRef) -> Result<ValueDependencies> {
             } else {
                 error_stack::bail!(AnalysisError::MalformedReference {
                     message: format!(
-                        "Found object with '$from' key that parsed as a literal expression, which is invalid: {:?}",
-                        value_ref
+                        "Found object with '$from' key that parsed as a literal expression, which is invalid: {value_ref:?}"
                     )
                 });
             }
@@ -166,8 +165,7 @@ impl<'a> TryFrom<&'a ValueRef> for ParseResult<'a> {
             } else if fields.contains_key("$from") {
                 let expr = serde_json::from_value::<Expr>(value.as_ref().clone()).change_context_lazy(||
                     AnalysisError::MalformedReference { message: format!(
-                        "Found object with '$from' key that couldn't be parsed as expression: {:?}",
-                        value
+                        "Found object with '$from' key that couldn't be parsed as expression: {value:?}"
                     ) })?;
                 Ok(ParseResult::Expr(expr))
             } else {
@@ -189,8 +187,7 @@ impl<'a> TryFrom<&'a serde_json::Value> for ParseResult<'a> {
             } else if fields.contains_key("$from") {
                 let expr = serde_json::from_value::<Expr>(value.clone()).change_context_lazy(||
                     AnalysisError::MalformedReference { message: format!(
-                        "Found object with '$from' key that couldn't be parsed as expression: {:?}",
-                        value
+                        "Found object with '$from' key that couldn't be parsed as expression: {value:?}"
                     ) })?;
                 Ok(ParseResult::Expr(expr))
             } else {
@@ -215,8 +212,7 @@ fn extract_deps_from_value(
             } else {
                 error_stack::bail!(AnalysisError::MalformedReference {
                     message: format!(
-                        "Found object with '$from' key that parsed as a literal expression, which is invalid: {:?}",
-                        value
+                        "Found object with '$from' key that parsed as a literal expression, which is invalid: {value:?}"
                     )
                 });
             }

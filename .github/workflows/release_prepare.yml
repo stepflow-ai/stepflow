@@ -1,0 +1,83 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to release'
+        required: true
+        type: choice
+        options:
+          - stepflow-rs
+        default: 'stepflow-rs'
+      bump_type:
+        description: 'Type of version bump'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+      message:
+        description: 'Custom message for the changelog entry (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-release:
+    name: Prepare Release PR
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install git-cliff
+        run: cargo install git-cliff
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare release
+        run: |
+          case "${{ inputs.package }}" in
+            stepflow-rs)
+              cd stepflow-rs
+              if [[ -n "${{ inputs.message }}" ]]; then
+                ./scripts/prepare-release.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
+              else
+                ./scripts/prepare-release.sh ${{ inputs.bump_type }} --pr
+              fi
+              ;;
+            *)
+              echo "❌ Unsupported package: ${{ inputs.package }}"
+              exit 1
+              ;;
+          esac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Release Preparation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Created release PR for **${{ inputs.package }}** with **${{ inputs.bump_type }}** version bump" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "${{ inputs.message }}" ]]; then
+            echo "📝 Custom message: \"${{ inputs.message }}\"" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review the generated PR" >> $GITHUB_STEP_SUMMARY
+          echo "2. Check the changelog entries" >> $GITHUB_STEP_SUMMARY
+          echo "3. Merge the PR when ready" >> $GITHUB_STEP_SUMMARY
+          echo "4. The release will be automatically tagged and built" >> $GITHUB_STEP_SUMMARY

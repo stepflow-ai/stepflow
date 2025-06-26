@@ -76,7 +76,7 @@ pub async fn start_server(
     // Create the app with default configuration (includes swagger and CORS)
     let app = AppConfig::default().create_app_router(executor, port);
 
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
     tracing::info!("🚀 StepFlow server starting on http://localhost:{}", port);
     tracing::info!(

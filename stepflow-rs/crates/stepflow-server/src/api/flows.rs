@@ -120,8 +120,7 @@ pub async fn get_flow(
             return Err(ErrorResponse {
                 code: axum::http::StatusCode::BAD_REQUEST,
                 message: format!(
-                    "Workflow validation failed with {} fatal and {} error diagnostics",
-                    fatal, error
+                    "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
                 ),
             });
         }

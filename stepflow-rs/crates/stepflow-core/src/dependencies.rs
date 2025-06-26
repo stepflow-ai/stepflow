@@ -88,7 +88,7 @@ impl<'a> TryFrom<&'a ValueRef> for ParseResult<'a> {
             } else if fields.contains_key("$from") {
                 let expr: Expr = serde_json::from_value(value.as_ref().clone()).map_err(|e| {
                     error_stack::report!(DependencyError::ParseError)
-                        .attach_printable(format!("Failed to parse expression: {}", e))
+                        .attach_printable(format!("Failed to parse expression: {e}"))
                 })?;
                 Ok(ParseResult::Expr(expr))
             } else {
@@ -110,7 +110,7 @@ impl<'a> TryFrom<&'a serde_json::Value> for ParseResult<'a> {
             } else if fields.contains_key("$from") {
                 let expr: Expr = serde_json::from_value(value.clone()).map_err(|e| {
                     error_stack::report!(DependencyError::ParseError)
-                        .attach_printable(format!("Failed to parse expression: {}", e))
+                        .attach_printable(format!("Failed to parse expression: {e}"))
                 })?;
                 Ok(ParseResult::Expr(expr))
             } else {
@@ -135,8 +135,7 @@ pub fn extract_value_dependencies(
             } else {
                 return Err(error_stack::report!(DependencyError::MalformedReference)
                     .attach_printable(format!(
-                        "Found object with '$from' key that parsed as a literal expression: {:?}",
-                        value_ref
+                        "Found object with '$from' key that parsed as a literal expression: {value_ref:?}"
                     )));
             }
             Ok(ValueDependencies::Other(deps))

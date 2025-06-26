@@ -96,12 +96,12 @@ pub async fn list_components(
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&component_list)
                 .change_context(MainError::SerializationError)?;
-            println!("{}", json);
+            println!("{json}");
         }
         OutputFormat::Yaml => {
             let yaml = serde_yaml_ng::to_string(&component_list)
                 .change_context(MainError::SerializationError)?;
-            println!("{}", yaml);
+            println!("{yaml}");
         }
     }
 
@@ -123,7 +123,7 @@ fn print_pretty(components: &[ComponentDetails]) {
 
         // Print description if present
         if let Some(ref description) = component.description {
-            println!("  Description: {}", description);
+            println!("  Description: {description}");
         }
 
         // Print input schema if present
@@ -132,7 +132,7 @@ fn print_pretty(components: &[ComponentDetails]) {
             let input_schema_str = serde_json::to_string_pretty(input_schema)
                 .unwrap_or_else(|_| "Error serializing schema".to_string());
             for line in input_schema_str.lines() {
-                println!("    {}", line);
+                println!("    {line}");
             }
         }
 
@@ -142,7 +142,7 @@ fn print_pretty(components: &[ComponentDetails]) {
             let output_schema_str = serde_json::to_string_pretty(output_schema)
                 .unwrap_or_else(|_| "Error serializing schema".to_string());
             for line in output_schema_str.lines() {
-                println!("    {}", line);
+                println!("    {line}");
             }
         }
     }

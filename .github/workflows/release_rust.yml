@@ -25,14 +25,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version from .release-please-manifest.json
+      - name: Extract version from git tag
         id: version
-        uses: sergeysova/jq-action@v2
-        with:
-          cmd: 'jq ".\"stepflow-rs\"" .release-please-manifest.json -r'
-
-      - name: Show my version
-        run: 'echo "version ${{ steps.version.outputs.value }}"'
+        run: |
+          # Extract version from tag (e.g., stepflow-rs-1.2.3 -> 1.2.3)
+          TAG_NAME="${{ github.ref_name }}"
+          VERSION="${TAG_NAME#stepflow-rs-}"
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION from tag: $TAG_NAME"
 
   build-binaries:
     name: Build ${{ matrix.target }}
@@ -363,11 +363,11 @@ jobs:
             echo "Created archive for Windows binary"
           fi
 
-      - name: Upload to GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ./stepflow-rs/CHANGELOG.md
+            stepflow-rs/CHANGELOG.md
             ./archives/stepflow-*.tar.gz
             ./archives/stepflow-*.zip
           tag_name: ${{ github.ref_name }}
@@ -375,24 +375,46 @@ jobs:
           body: |
             ## StepFlow Rust Binary Release v${{ needs.version.outputs.version }}
 
+            📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md#${{ needs.version.outputs.version }})** | **[Full Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md)**
+
             This release includes pre-built binaries for multiple platforms:
 
-            ### Available Binaries
-            - **Linux (glibc)**: `stepflow-x86_64-unknown-linux-gnu.tar.gz`, `stepflow-aarch64-unknown-linux-gnu.tar.gz`
-            - **Linux (musl/Alpine)**: `stepflow-x86_64-unknown-linux-musl.tar.gz`, `stepflow-aarch64-unknown-linux-musl.tar.gz`
-            - **macOS**: `stepflow-x86_64-apple-darwin.tar.gz`, `stepflow-aarch64-apple-darwin.tar.gz`
-            - **Windows**: `stepflow-x86_64-pc-windows-msvc.zip`
+            ### 📥 Download Binaries
 
-            ### Docker Images
+            **Linux (glibc)**
+            - [stepflow-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-unknown-linux-gnu.tar.gz)
+            - [stepflow-aarch64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-aarch64-unknown-linux-gnu.tar.gz)
+
+            **Linux (musl/Alpine)**
+            - [stepflow-x86_64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-unknown-linux-musl.tar.gz)
+            - [stepflow-aarch64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-aarch64-unknown-linux-musl.tar.gz)
+
+            **macOS**
+            - [stepflow-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-apple-darwin.tar.gz)
+            - [stepflow-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-aarch64-apple-darwin.tar.gz)
+
+            **Windows**
+            - [stepflow-x86_64-pc-windows-msvc.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-pc-windows-msvc.zip)
+
+            ### 🐳 Docker Images
             Docker images are also available at `ghcr.io/${{ github.repository }}`:
             - `ghcr.io/${{ github.repository }}:debian-v${{ needs.version.outputs.version }}`
             - `ghcr.io/${{ github.repository }}:alpine-v${{ needs.version.outputs.version }}`
 
-            ### Installation
-            1. Download the appropriate binary for your platform
-            2. Extract the archive
+            ### 📦 Installation
+            1. Download the appropriate binary for your platform using the links above
+            2. Extract the archive: `tar -xzf stepflow-*.tar.gz` (or unzip for Windows)
             3. Make the binary executable (Unix): `chmod +x stepflow-*`
             4. Move to a directory in your PATH or run directly
+
+            ### 🚀 Quick Start
+            ```bash
+            # Example: Download and run on Linux
+            curl -L -o stepflow.tar.gz https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-unknown-linux-gnu.tar.gz
+            tar -xzf stepflow.tar.gz
+            chmod +x stepflow-x86_64-unknown-linux-gnu
+            ./stepflow-x86_64-unknown-linux-gnu --help
+            ```
           draft: false
           prerelease: false
 

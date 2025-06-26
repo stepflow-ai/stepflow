@@ -23,7 +23,7 @@ impl std::fmt::Display for LogLevel {
             LogLevel::Warn => "warn",
             LogLevel::Error => "error",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -33,7 +33,7 @@ pub fn init_tracing(
     other_log_level: &LogLevel,
     log_file: Option<&Path>,
 ) -> Result<()> {
-    let filter_str = format!("stepflow_={},{}", log_level, other_log_level);
+    let filter_str = format!("stepflow_={log_level},{other_log_level}");
     let filter = EnvFilter::new(filter_str);
 
     let fmt_layer = tracing_subscriber::fmt::layer()

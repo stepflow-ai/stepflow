@@ -123,7 +123,7 @@ impl BuiltinComponent for GetBlobComponent {
         // Parse the blob ID
         let blob_id = BlobId::new(input.blob_id).map_err(|e| {
             error_stack::report!(BuiltinError::InvalidInput)
-                .attach_printable(format!("Invalid blob ID: {}", e))
+                .attach_printable(format!("Invalid blob ID: {e}"))
         })?;
 
         // Retrieve the blob through the execution context

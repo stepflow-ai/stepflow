@@ -135,85 +135,67 @@ impl DiagnosticMessage {
     pub fn message(&self) -> String {
         match self {
             DiagnosticMessage::DuplicateStepId { step_id } => {
-                format!("Duplicate step ID: '{}'", step_id)
+                format!("Duplicate step ID: '{step_id}'")
             }
             DiagnosticMessage::EmptyStepId => "Step ID cannot be empty".to_string(),
             DiagnosticMessage::ForwardReference { from_step, to_step } => {
-                format!(
-                    "Step '{}' references forward-declared step '{}'",
-                    from_step, to_step
-                )
+                format!("Step '{from_step}' references forward-declared step '{to_step}'")
             }
             DiagnosticMessage::SelfReference { step_id } => {
-                format!("Step '{}' cannot reference itself", step_id)
+                format!("Step '{step_id}' cannot reference itself")
             }
             DiagnosticMessage::UndefinedStepReference {
                 from_step,
                 referenced_step,
             } => match from_step {
-                Some(from) => format!(
-                    "Step '{}' references undefined step '{}'",
-                    from, referenced_step
-                ),
-                None => format!("Reference to undefined step '{}'", referenced_step),
+                Some(from) => {
+                    format!("Step '{from}' references undefined step '{referenced_step}'")
+                }
+                None => format!("Reference to undefined step '{referenced_step}'"),
             },
             DiagnosticMessage::InvalidReferenceExpression {
                 step_id,
                 field,
                 error,
             } => match (step_id, field) {
-                (Some(step), Some(field)) => format!(
-                    "Invalid reference in step '{}' field '{}': {}",
-                    step, field, error
-                ),
-                (Some(step), None) => format!("Invalid reference in step '{}': {}", step, error),
-                (None, Some(field)) => format!("Invalid reference in field '{}': {}", field, error),
-                (None, None) => format!("Invalid reference: {}", error),
+                (Some(step), Some(field)) => {
+                    format!("Invalid reference in step '{step}' field '{field}': {error}")
+                }
+                (Some(step), None) => format!("Invalid reference in step '{step}': {error}"),
+                (None, Some(field)) => format!("Invalid reference in field '{field}': {error}"),
+                (None, None) => format!("Invalid reference: {error}"),
             },
             DiagnosticMessage::InvalidFieldAccess {
                 step_id,
                 field,
                 reason,
             } => {
-                format!(
-                    "Invalid field access '{}' on step '{}': {}",
-                    field, step_id, reason
-                )
+                format!("Invalid field access '{field}' on step '{step_id}': {reason}")
             }
             DiagnosticMessage::InvalidComponentUrl {
                 step_id,
                 url,
                 error,
             } => {
-                format!(
-                    "Invalid component URL '{}' in step '{}': {}",
-                    url, step_id, error
-                )
+                format!("Invalid component URL '{url}' in step '{step_id}': {error}")
             }
             DiagnosticMessage::EmptyComponentName { step_id } => {
-                format!("Empty component name in step '{}'", step_id)
+                format!("Empty component name in step '{step_id}'")
             }
             DiagnosticMessage::SchemaViolation {
                 step_id,
                 field,
                 violation,
             } => {
-                format!(
-                    "Schema violation in step '{}' field '{}': {}",
-                    step_id, field, violation
-                )
+                format!("Schema violation in step '{step_id}' field '{field}': {violation}")
             }
             DiagnosticMessage::MockComponent { step_id } => {
                 format!(
-                    "Step '{}' uses mock component - ensure this is intentional for testing",
-                    step_id
+                    "Step '{step_id}' uses mock component - ensure this is intentional for testing"
                 )
             }
             DiagnosticMessage::UnreachableStep { step_id } => {
-                format!(
-                    "Step '{}' is not referenced by any other step or workflow output",
-                    step_id
-                )
+                format!("Step '{step_id}' is not referenced by any other step or workflow output")
             }
             DiagnosticMessage::MissingWorkflowName => "Workflow has no name defined".to_string(),
             DiagnosticMessage::MissingWorkflowDescription => {
@@ -225,10 +207,7 @@ impl DiagnosticMessage {
                 field,
                 reason,
             } => {
-                format!(
-                    "Field access '{}' on step '{}' cannot be validated: {}",
-                    field, step_id, reason
-                )
+                format!("Field access '{field}' on step '{step_id}' cannot be validated: {reason}")
             }
         }
     }

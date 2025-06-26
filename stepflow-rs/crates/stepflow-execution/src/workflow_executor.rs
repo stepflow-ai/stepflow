@@ -104,8 +104,7 @@ impl WorkflowExecutor {
                 let (fatal, error, _warning) = analysis_result.diagnostic_counts();
                 return Err(
                     error_stack::report!(ExecutionError::AnalysisError).attach_printable(format!(
-                        "Workflow validation failed with {} fatal and {} error diagnostics",
-                        fatal, error
+                        "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
                     )),
                 );
             }
@@ -525,7 +524,7 @@ impl WorkflowExecutor {
         self.resolver
             .resolve_step(step_id)
             .await
-            .attach_printable_lazy(|| format!("Failed to get output for step '{}'", step_id))
+            .attach_printable_lazy(|| format!("Failed to get output for step '{step_id}'"))
     }
 
     /// Get the details of a specific step for inspection.
@@ -1143,7 +1142,7 @@ output:
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"output": "processed"}));
             }
-            _ => panic!("Expected successful result, got: {:?}", result),
+            _ => panic!("Expected successful result, got: {result:?}"),
         }
     }
 
@@ -1193,7 +1192,7 @@ output:
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"final": 30}));
             }
-            _ => panic!("Expected successful result, got: {:?}", result),
+            _ => panic!("Expected successful result, got: {result:?}"),
         }
     }
 
@@ -1749,7 +1748,7 @@ output:
             FlowResult::Skipped => {
                 // Expected - the step failed but was configured to skip
             }
-            _ => panic!("Expected skipped result, got: {:?}", result),
+            _ => panic!("Expected skipped result, got: {result:?}"),
         }
     }
 
@@ -1784,7 +1783,7 @@ output:
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"fallback": "value"}));
             }
-            _ => panic!("Expected success with default value, got: {:?}", result),
+            _ => panic!("Expected success with default value, got: {result:?}"),
         }
     }
 
@@ -1818,7 +1817,7 @@ output:
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &serde_json::Value::Null);
             }
-            _ => panic!("Expected success with null value, got: {:?}", result),
+            _ => panic!("Expected success with null value, got: {result:?}"),
         }
     }
 
@@ -1853,7 +1852,7 @@ output:
                 assert_eq!(error.code, 500);
                 assert_eq!(error.message, "Test error");
             }
-            _ => panic!("Expected failed result, got: {:?}", result),
+            _ => panic!("Expected failed result, got: {result:?}"),
         }
     }
 
@@ -1886,7 +1885,7 @@ output:
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!({"result": "success"}));
             }
-            _ => panic!("Expected success result, got: {:?}", result),
+            _ => panic!("Expected success result, got: {result:?}"),
         }
     }
 
@@ -1935,10 +1934,7 @@ output:
             FlowResult::Skipped => {
                 // Expected - the downstream step should be skipped when its input is skipped
             }
-            _ => panic!(
-                "Expected skipped result for downstream step, got: {:?}",
-                result
-            ),
+            _ => panic!("Expected skipped result for downstream step, got: {result:?}"),
         }
     }
 }
