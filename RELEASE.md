@@ -34,11 +34,16 @@ This document describes how to perform releases and how the release machinery wo
 ### Architecture Overview
 
 ```
-┌─────────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ GitHub Actions      │    │ Release PR       │    │ Auto Tag +      │
-│ Manual Trigger      │───▶│ Creation         │───▶│ Release Build   │
-│ (workflow_dispatch) │    │ (labeled PR)     │    │ (on tag push)   │
-└─────────────────────┘    └──────────────────┘    └─────────────────┘
+    ┌─────────┐     ┌──────────────────┐     ┌───────────┐     ┌─────────┐
+(1) │ Prepare │ (2) │ Release PR       │ (3) │ Release   │ (4) │ Build + │
+───▶│ Manual  │────▶│ Creation         │────▶│ Dispatch  │────▶│ Tag +   │
+    │ trigger │     │ (labeled PR)     │     │           │     │ Release │
+    └─────────┘     └──────────────────┘     └───────────┘     └─────────┘
+
+(1) "Release - Prepare" workflow (release_prepare.yml) is manually triggered.
+(2) "Release - Prepare" pushes a Release PR with labels.
+(3) "Release - Dispatch" workflow (release_dispatch.yml) is triggered when PR merges.
+(4) "Release - Dispatch" triggers "Release - Rust" workflow (release_rust.yml).
 ```
 
 ### Workflow and Script Integration
@@ -58,21 +63,25 @@ This document describes how to perform releases and how the release machinery wo
 
 **`release_prepare.yml`** - Release PR Creation
 - **Trigger**: Manual `workflow_dispatch`
-- **Process**: 
+- **Process**:
   1. Installs dependencies (`git-cliff`)
   2. Runs `prepare-release.sh` with `--pr` flag
   3. Script creates labeled PR (`release`, `release:stepflow-rs`)
 
-**`release_tag.yml`** - Automatic Tagging
+**`release_dispatch.yml`** - Release Detection and Dispatch
 - **Trigger**: PR merge to `main` with `release:stepflow-rs` label
 - **Process**:
-  1. Detects package type from PR labels
-  2. Extracts version from merged `stepflow-rs/Cargo.toml`
-  3. Creates and pushes git tag `stepflow-rs-X.Y.Z`
+  1. Extracts version from merged `stepflow-rs/Cargo.toml`
+  2. Dispatches repository event to trigger release build
+  3. Uses default `GITHUB_TOKEN` (no secrets needed)
 
-**`release_rust.yml`** - Release Build (Existing)
-- **Trigger**: Git tags matching `stepflow-rs-*`
-- **Process**: Builds binaries, Docker images, and GitHub release
+**`release_rust.yml`** - Complete Release Process
+- **Trigger**: Repository dispatch event `build-release` OR manual `workflow_dispatch`
+- **Process**:
+  1. Builds binaries and Docker images
+  2. Verifies all artifacts
+  3. Creates git tag and GitHub release atomically (only after successful build)
+- **Manual Testing**: Can be run with `skip_tag_creation=true` for testing
 
 #### 3. Changelog Generation
 **Configuration**: `stepflow-rs/cliff.toml`
@@ -82,7 +91,7 @@ This document describes how to perform releases and how the release machinery wo
 include_path = [
     "stepflow-rs/**",           # Main package
     "CLAUDE.md",                # Project docs
-    "CONTRIBUTING.md", 
+    "CONTRIBUTING.md",
     "README.md",
     ".github/workflows/release_rust.yml",  # Release-related workflows
     ".github/workflows/ci.yml"
@@ -126,7 +135,7 @@ git checkout -- Cargo.toml Cargo.lock CHANGELOG.md
 git diff
 git checkout -- Cargo.toml Cargo.lock CHANGELOG.md
 
-# Test major version bump  
+# Test major version bump
 ./scripts/prepare-release.sh major
 git diff
 git checkout -- Cargo.toml Cargo.lock CHANGELOG.md
@@ -156,7 +165,7 @@ git checkout -b test-release-script
 
 # This will:
 # 1. Create release branch
-# 2. Commit changes  
+# 2. Commit changes
 # 3. Push branch
 # 4. Create GitHub PR with labels
 
@@ -164,6 +173,21 @@ git checkout -b test-release-script
 git checkout main
 git branch -D test-release-script
 # Delete the remote branch and PR manually
+```
+
+#### Testing Complete Release Flow
+
+```bash
+# Test the entire release process without creating tags/releases
+# Go to Actions → Release Rust → Run workflow
+# Inputs:
+#   version: 1.2.3-test
+#   skip_tag_creation: true
+
+# This will:
+# 1. Build all binaries and Docker images
+# 2. Verify artifacts work correctly
+# 3. Skip tag and release creation
 ```
 
 #### Validating Path Filtering
