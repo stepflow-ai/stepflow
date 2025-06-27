@@ -1,9 +1,19 @@
 name: Release - Rust
 
 on:
-  push:
-    tags:
-      - stepflow-rs-*
+  repository_dispatch:
+    types: [build-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3)'
+        required: true
+        type: string
+      skip_tag_creation:
+        description: 'Skip creating git tag (for testing)'
+        required: false
+        type: boolean
+        default: false
 
 # Limit concurrency to a single run per branch (ref).
 concurrency:
@@ -16,23 +26,34 @@ env:
   REGISTRY_IMAGE: ${{ github.repository }}
 
 jobs:
-  version:
+  determine-version:
     name: Determine Version
     runs-on: ubuntu-22.04
     outputs:
-      version: ${{ steps.version.outputs.value }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      skip_tag: ${{ steps.version.outputs.skip_tag }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract version from git tag
+      - name: Set version info
         id: version
         run: |
-          # Extract version from tag (e.g., stepflow-rs-1.2.3 -> 1.2.3)
-          TAG_NAME="${{ github.ref_name }}"
-          VERSION="${TAG_NAME#stepflow-rs-}"
-          echo "value=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION from tag: $TAG_NAME"
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.client_payload.tag }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=false" >> $GITHUB_OUTPUT
+            echo "Source: repository dispatch"
+            echo "Version: ${{ github.event.client_payload.version }}"
+            echo "Tag: ${{ github.event.client_payload.tag }}"
+          else
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=stepflow-rs-${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=${{ inputs.skip_tag_creation }}" >> $GITHUB_OUTPUT
+            echo "Source: manual workflow dispatch"
+            echo "Version: ${{ inputs.version }}"
+            echo "Tag: stepflow-rs-${{ inputs.version }}"
+            echo "Skip tag: ${{ inputs.skip_tag_creation }}"
+          fi
 
   build-binaries:
     name: Build ${{ matrix.target }}
@@ -242,7 +263,7 @@ jobs:
   merge-multiplatform:
     name: Create Multi-platform Images
     runs-on: ubuntu-22.04
-    needs: [build-docker, version]
+    needs: [build-docker, determine-version]
     strategy:
       fail-fast: false
       matrix:
@@ -279,8 +300,8 @@ jobs:
           flavor:
             prefix=${{ matrix.base }}-
           tags: |
-            type=semver,pattern={{version}},value=${{ needs.version.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version}}
+            type=semver,pattern={{version}},value=${{ needs.determine-version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.determine-version.outputs.version }}
             type=sha
 
       - name: Create manifest list and push
@@ -329,14 +350,18 @@ jobs:
           ./all-artifacts/stepflow-x86_64-unknown-linux-gnu --version || echo "Version command not available"
           ./all-artifacts/stepflow-x86_64-unknown-linux-gnu --help | head -10
 
-  upload-release-assets:
-    name: Upload Release Assets
+  create-tag-and-release:
+    name: Create Tag and Release
     runs-on: ubuntu-22.04
-    needs: [build-binaries, verify-artifacts, version]
+    needs: [determine-version, verify-artifacts]
+    if: needs.determine-version.outputs.skip_tag == 'false'
     permissions:
       contents: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download all binary artifacts
         uses: actions/download-artifact@v4
         with:
@@ -363,71 +388,65 @@ jobs:
             echo "Created archive for Windows binary"
           fi
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            stepflow-rs/CHANGELOG.md
-            ./archives/stepflow-*.tar.gz
+      - name: Create release notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## StepFlow Rust Binary Release v${{ needs.determine-version.outputs.version }}
+
+          📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[Full Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md)**
+
+          This release includes pre-built binaries for multiple platforms:
+
+          ### 📥 Download Binaries
+
+          **Linux (glibc)**
+          - [stepflow-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-unknown-linux-gnu.tar.gz)
+          - [stepflow-aarch64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-aarch64-unknown-linux-gnu.tar.gz)
+
+          **Linux (musl/Alpine)**
+          - [stepflow-x86_64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-unknown-linux-musl.tar.gz)
+          - [stepflow-aarch64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-aarch64-unknown-linux-musl.tar.gz)
+
+          **macOS**
+          - [stepflow-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-apple-darwin.tar.gz)
+          - [stepflow-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-aarch64-apple-darwin.tar.gz)
+
+          **Windows**
+          - [stepflow-x86_64-pc-windows-msvc.zip](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-pc-windows-msvc.zip)
+
+          ### 🐳 Docker Images
+          Docker images are also available at `ghcr.io/${{ github.repository }}`:
+          - `ghcr.io/${{ github.repository }}:debian-v${{ needs.determine-version.outputs.version }}`
+          - `ghcr.io/${{ github.repository }}:alpine-v${{ needs.determine-version.outputs.version }}`
+
+          ### 📦 Installation
+          1. Download the appropriate binary for your platform using the links above
+          2. Extract the archive: `tar -xzf stepflow-*.tar.gz` (or unzip for Windows)
+          3. Make the binary executable (Unix): `chmod +x stepflow-*`
+          4. Move to a directory in your PATH or run directly
+          EOF
+
+      - name: Create GitHub release with tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.determine-version.outputs.tag }}" \
+            --title "StepFlow Rust v${{ needs.determine-version.outputs.version }}" \
+            --notes-file release-notes.md \
+            stepflow-rs/CHANGELOG.md \
+            ./archives/stepflow-*.tar.gz \
             ./archives/stepflow-*.zip
-          tag_name: ${{ github.ref_name }}
-          name: StepFlow Rust v${{ needs.version.outputs.version }}
-          body: |
-            ## StepFlow Rust Binary Release v${{ needs.version.outputs.version }}
-
-            📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md#${{ needs.version.outputs.version }})** | **[Full Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md)**
-
-            This release includes pre-built binaries for multiple platforms:
-
-            ### 📥 Download Binaries
-
-            **Linux (glibc)**
-            - [stepflow-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-unknown-linux-gnu.tar.gz)
-            - [stepflow-aarch64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-aarch64-unknown-linux-gnu.tar.gz)
-
-            **Linux (musl/Alpine)**
-            - [stepflow-x86_64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-unknown-linux-musl.tar.gz)
-            - [stepflow-aarch64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-aarch64-unknown-linux-musl.tar.gz)
-
-            **macOS**
-            - [stepflow-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-apple-darwin.tar.gz)
-            - [stepflow-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-aarch64-apple-darwin.tar.gz)
-
-            **Windows**
-            - [stepflow-x86_64-pc-windows-msvc.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-pc-windows-msvc.zip)
-
-            ### 🐳 Docker Images
-            Docker images are also available at `ghcr.io/${{ github.repository }}`:
-            - `ghcr.io/${{ github.repository }}:debian-v${{ needs.version.outputs.version }}`
-            - `ghcr.io/${{ github.repository }}:alpine-v${{ needs.version.outputs.version }}`
-
-            ### 📦 Installation
-            1. Download the appropriate binary for your platform using the links above
-            2. Extract the archive: `tar -xzf stepflow-*.tar.gz` (or unzip for Windows)
-            3. Make the binary executable (Unix): `chmod +x stepflow-*`
-            4. Move to a directory in your PATH or run directly
-
-            ### 🚀 Quick Start
-            ```bash
-            # Example: Download and run on Linux
-            curl -L -o stepflow.tar.gz https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stepflow-x86_64-unknown-linux-gnu.tar.gz
-            tar -xzf stepflow.tar.gz
-            chmod +x stepflow-x86_64-unknown-linux-gnu
-            ./stepflow-x86_64-unknown-linux-gnu --help
-            ```
-          draft: false
-          prerelease: false
 
   summary:
     name: Build Summary
     runs-on: ubuntu-22.04
-    needs: [build-binaries, build-docker, merge-multiplatform, verify-artifacts, upload-release-assets, version]
+    needs: [determine-version, build-binaries, build-docker, merge-multiplatform, verify-artifacts, create-tag-and-release]
     if: always()
 
     steps:
       - name: Check job results
         run: |
-          echo "## Build Summary ${{ needs.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Summary ${{ needs.determine-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
@@ -456,9 +475,28 @@ jobs:
             echo "| Verification | L Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ]; then
+            if [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+              echo "| Release Creation |  Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.create-tag-and-release.result }}" = "skipped" ]; then
+              echo "| Release Creation |  Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Release Creation | L Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Release Creation |  Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Platforms Built" >> $GITHUB_STEP_SUMMARY
           echo "- **Linux**: x86_64 (glibc + musl), ARM64 (glibc + musl)" >> $GITHUB_STEP_SUMMARY
           echo "- **macOS**: x86_64, ARM64" >> $GITHUB_STEP_SUMMARY
           echo "- **Windows**: x86_64" >> $GITHUB_STEP_SUMMARY
           echo "- **Docker**: Debian + Alpine (multiplatform)" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
+            echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Release:** [StepFlow Rust v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+          fi
