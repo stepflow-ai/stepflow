@@ -11,14 +11,6 @@ pub enum Format {
     Json,
 }
 
-/// Output format for command line display
-#[derive(clap::ValueEnum, Clone, Debug)]
-pub enum OutputFormat {
-    Pretty,
-    Json,
-    Yaml,
-}
-
 impl Format {
     /// Determine format from file extension
     pub fn from_path(path: &Path) -> Result<Self> {

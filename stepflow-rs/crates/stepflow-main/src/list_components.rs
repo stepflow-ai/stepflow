@@ -1,5 +1,5 @@
 #![allow(clippy::print_stdout)]
-use crate::args::{ConfigArgs, OutputFormat, WorkflowLoader};
+use crate::args::{ConfigArgs, WorkflowLoader};
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
@@ -7,6 +7,14 @@ use std::path::PathBuf;
 use stepflow_core::schema::SchemaRef;
 use stepflow_core::workflow::Component;
 use stepflow_plugin::Plugin as _;
+
+/// Output format for command line display
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum OutputFormat {
+    Pretty,
+    Json,
+    Yaml,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComponentDetails {
