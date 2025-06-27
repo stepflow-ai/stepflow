@@ -3,8 +3,9 @@ use stepflow_core::workflow::Flow;
 use url::Url;
 
 use crate::{
-    args::{ConfigArgs, InputArgs, LogLevel, OutputArgs, OutputFormat, WorkflowLoader, load},
+    args::{ConfigArgs, InputArgs, LogLevel, OutputArgs, WorkflowLoader, load},
     error::Result,
+    list_components::OutputFormat,
     repl::run_repl,
     run::run,
     serve::serve,
