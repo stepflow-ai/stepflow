@@ -2970,7 +2970,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stepflow-analysis"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "bit-set",
  "error-stack",
@@ -2985,7 +2985,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-builtins"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "dynosaur",
  "error-stack",
@@ -3008,11 +3008,11 @@ dependencies = [
 
 [[package]]
 name = "stepflow-components-mcp"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "stepflow-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "error-stack",
  "hex",
@@ -3032,7 +3032,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-execution"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "bit-set",
  "error-stack",
@@ -3053,7 +3053,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-main"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "clap",
  "error-stack",
@@ -3087,7 +3087,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-mock"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "error-stack",
  "serde",
@@ -3099,7 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-plugin"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "dynosaur",
  "error-stack",
@@ -3114,7 +3114,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-protocol"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "erased-serde",
  "error-stack",
@@ -3134,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-server"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
@@ -3163,7 +3163,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "bit-set",
  "chrono",
@@ -3179,7 +3179,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state-sql"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "bit-set",
  "chrono",
