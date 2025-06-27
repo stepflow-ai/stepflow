@@ -1,4 +1,4 @@
-name: Create Release Tag
+name: Release - Tag
 
 on:
   pull_request:
@@ -71,10 +71,10 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git tag -a "${{ steps.version.outputs.tag }}" -m "Release stepflow-rs v${{ steps.version.outputs.version }}"
           git push origin "${{ steps.version.outputs.tag }}"
-          
+
           echo "✅ Created and pushed tag: ${{ steps.version.outputs.tag }}"
 
       - name: Tag already exists
@@ -91,7 +91,7 @@ jobs:
           echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "${{ steps.check_tag.outputs.exists }}" == "false" ]; then
             echo "✅ **Result:** Tag created successfully" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
