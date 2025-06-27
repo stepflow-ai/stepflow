@@ -27,6 +27,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # To create labels if needed.
+  issues: write
 
 jobs:
   prepare-release:
