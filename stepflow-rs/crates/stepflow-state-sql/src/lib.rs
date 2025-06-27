@@ -92,22 +92,8 @@ mod tests {
         store.flush_pending_writes(execution_id).await.unwrap();
 
         // Retrieve by index
-        let retrieved_by_index = store
-            .get_step_result_by_index(execution_id, 0)
-            .await
-            .unwrap();
+        let retrieved_by_index = store.get_step_result(execution_id, 0).await.unwrap();
         assert_eq!(retrieved_by_index, flow_result);
-
-        // Retrieve by ID
-        let test_step_id = stepflow_core::workflow::StepId {
-            index: 0,
-            flow: workflow_arc.clone(),
-        };
-        let retrieved_by_id = store
-            .get_step_result_by_id(execution_id, test_step_id)
-            .await
-            .unwrap();
-        assert_eq!(retrieved_by_id, flow_result);
 
         // List all results
         let all_results = store.list_step_results(execution_id).await.unwrap();

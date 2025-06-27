@@ -9,7 +9,7 @@ use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     blob::BlobId,
-    workflow::{Component, Flow, StepId, ValueRef},
+    workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
     ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore,
@@ -301,7 +301,7 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn get_step_result_by_index(
+    fn get_step_result(
         &self,
         execution_id: Uuid,
         step_idx: usize,
@@ -320,38 +320,6 @@ impl StateStore for SqliteStateStore {
                 error_stack::report!(StateError::StepResultNotFoundByIndex {
                     execution_id: execution_id.to_string(),
                     step_idx,
-                })
-            })?;
-
-            let result_json: String = row.get("result");
-            let flow_result: FlowResult =
-                serde_json::from_str(&result_json).change_context(StateError::Serialization)?;
-
-            Ok(flow_result)
-        }
-        .boxed()
-    }
-
-    fn get_step_result_by_id(
-        &self,
-        execution_id: Uuid,
-        step_id: StepId,
-    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
-        let step_id = step_id.to_string();
-        async move {
-            let sql = "SELECT result FROM step_results WHERE execution_id = ? AND step_id = ?";
-
-            let row = sqlx::query(sql)
-                .bind(execution_id.to_string())
-                .bind(&step_id)
-                .fetch_optional(&self.pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            let row = row.ok_or_else(|| {
-                error_stack::report!(StateError::StepResultNotFoundById {
-                    execution_id,
-                    step_id: step_id.clone(),
                 })
             })?;
 
