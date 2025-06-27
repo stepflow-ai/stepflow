@@ -2,7 +2,7 @@ use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
 use stepflow_core::status::ExecutionStatus;
-use stepflow_core::workflow::{FlowHash, StepId};
+use stepflow_core::workflow::FlowHash;
 
 use crate::{
     StateStore,
@@ -191,7 +191,7 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn get_step_result_by_index(
+    fn get_step_result(
         &self,
         execution_id: Uuid,
         step_idx: usize,
@@ -219,45 +219,6 @@ impl StateStore for InMemoryStateStore {
                         step_idx,
                     })
                 })
-        }
-        .boxed()
-    }
-
-    fn get_step_result_by_id(
-        &self,
-        execution_id: Uuid,
-        step_id: StepId,
-    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
-        let executions = self.executions.clone();
-        let step_id_owned = step_id.to_string();
-
-        async move {
-            let executions = executions.read().await;
-            let execution_state = executions.get(&execution_id).ok_or_else(|| {
-                error_stack::report!(StateError::StepResultNotFoundById {
-                    execution_id,
-                    step_id: step_id_owned.clone(),
-                })
-            })?;
-
-            // Use O(1) HashMap lookup to find the step by ID
-            match execution_state.step_id_to_index.get(&step_id_owned) {
-                Some(&step_idx) => execution_state
-                    .step_results
-                    .get(step_idx)
-                    .and_then(|opt| opt.as_ref())
-                    .map(|step_result| step_result.result().clone())
-                    .ok_or_else(|| {
-                        error_stack::report!(StateError::StepResultNotFoundById {
-                            execution_id,
-                            step_id: step_id_owned,
-                        })
-                    }),
-                None => Err(error_stack::report!(StateError::StepResultNotFoundById {
-                    execution_id,
-                    step_id: step_id_owned,
-                })),
-            }
         }
         .boxed()
     }
@@ -840,43 +801,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_step_result_storage() {
-        use serde_json::json;
-        use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, ValueRef};
+        use stepflow_core::workflow::ValueRef;
 
         let store = InMemoryStateStore::new();
         let execution_id = Uuid::new_v4();
-
-        // Create a test workflow with the steps we want to test
-        let flow = Arc::new(Flow {
-            name: None,
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![
-                Step {
-                    id: "step1".to_string(),
-                    component: Component::from_string("test://mock"),
-                    input: ValueRef::new(json!({})),
-                    input_schema: None,
-                    output_schema: None,
-                    skip_if: None,
-                    on_error: ErrorAction::Fail,
-                },
-                Step {
-                    id: "step2".to_string(),
-                    component: Component::from_string("test://mock"),
-                    input: ValueRef::new(json!({})),
-                    input_schema: None,
-                    output_schema: None,
-                    skip_if: None,
-                    on_error: ErrorAction::Fail,
-                },
-            ],
-            output: ValueRef::new(json!(null)),
-            test: None,
-            examples: vec![],
-        });
 
         // Test data
         let step1_result = FlowResult::Success {
@@ -896,36 +824,15 @@ mod tests {
 
         // Retrieve by index
         let retrieved_by_idx_0 = store
-            .get_step_result_by_index(execution_id, 0)
+            .get_step_result(execution_id, 0)
             .await
             .unwrap();
         let retrieved_by_idx_1 = store
-            .get_step_result_by_index(execution_id, 1)
+            .get_step_result(execution_id, 1)
             .await
             .unwrap();
         assert_eq!(retrieved_by_idx_0, step1_result);
         assert_eq!(retrieved_by_idx_1, step2_result);
-
-        // Retrieve by ID using proper StepId instances
-        let step1_id = StepId {
-            index: 0,
-            flow: flow.clone(),
-        };
-        let step2_id = StepId {
-            index: 1,
-            flow: flow.clone(),
-        };
-
-        let retrieved_by_id_1 = store
-            .get_step_result_by_id(execution_id, step1_id)
-            .await
-            .unwrap();
-        let retrieved_by_id_2 = store
-            .get_step_result_by_id(execution_id, step2_id)
-            .await
-            .unwrap();
-        assert_eq!(retrieved_by_id_1, step1_result);
-        assert_eq!(retrieved_by_id_2, step2_result);
 
         // List all step results (should be ordered by index)
         let all_results = store.list_step_results(execution_id).await.unwrap();
@@ -934,38 +841,8 @@ mod tests {
         assert_eq!(all_results[1], StepResult::new(1, "step2", step2_result));
 
         // Non-existent step should return error
-        let result_by_idx = store.get_step_result_by_index(execution_id, 99).await;
+        let result_by_idx = store.get_step_result(execution_id, 99).await;
         assert!(result_by_idx.is_err());
-
-        // Create a StepId for a step that wasn't recorded
-        let nonexistent_flow = Arc::new(Flow {
-            name: None,
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![Step {
-                id: "nonexistent".to_string(),
-                component: Component::from_string("test://mock"),
-                input: ValueRef::new(json!({})),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-            }],
-            output: ValueRef::new(json!(null)),
-            test: None,
-            examples: vec![],
-        });
-        let nonexistent_step_id = StepId {
-            index: 0,
-            flow: nonexistent_flow,
-        };
-
-        let result_by_id = store
-            .get_step_result_by_id(execution_id, nonexistent_step_id)
-            .await;
-        assert!(result_by_id.is_err());
 
         // Different execution ID should return empty list
         let other_execution_id = Uuid::new_v4();
@@ -975,32 +852,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_step_result_overwrite() {
-        use serde_json::json;
-        use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, ValueRef};
+        use stepflow_core::workflow::ValueRef;
 
         let store = InMemoryStateStore::new();
         let execution_id = Uuid::new_v4();
-
-        // Create a test workflow
-        let flow = Arc::new(Flow {
-            name: None,
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![Step {
-                id: "step1".to_string(),
-                component: Component::from_string("test://mock"),
-                input: ValueRef::new(json!({})),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-            }],
-            output: ValueRef::new(json!(null)),
-            test: None,
-            examples: vec![],
-        });
 
         // Record initial result
         let initial_result = FlowResult::Success {
@@ -1019,19 +874,11 @@ mod tests {
 
         // Should retrieve the new result by both index and ID
         let retrieved_by_idx = store
-            .get_step_result_by_index(execution_id, 0)
+            .get_step_result(execution_id, 0)
             .await
             .unwrap();
-        let step1_id = StepId {
-            index: 0,
-            flow: flow.clone(),
-        };
-        let retrieved_by_id = store
-            .get_step_result_by_id(execution_id, step1_id)
-            .await
-            .unwrap();
+
         assert_eq!(retrieved_by_idx, new_result);
-        assert_eq!(retrieved_by_id, new_result);
 
         // Should still only have one entry for this step
         let all_results = store.list_step_results(execution_id).await.unwrap();
@@ -1091,7 +938,7 @@ mod tests {
 
         // Verify the result exists
         let retrieved = store
-            .get_step_result_by_index(execution_id, 0)
+            .get_step_result(execution_id, 0)
             .await
             .unwrap();
         assert_eq!(retrieved, step_result);
@@ -1100,7 +947,7 @@ mod tests {
         store.evict_execution(execution_id).await;
 
         // Verify the result no longer exists
-        let result = store.get_step_result_by_index(execution_id, 0).await;
+        let result = store.get_step_result(execution_id, 0).await;
         assert!(result.is_err());
 
         // Verify list returns empty

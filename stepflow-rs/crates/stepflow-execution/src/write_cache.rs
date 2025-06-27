@@ -61,18 +61,18 @@ impl WriteCache {
     /// This encapsulates the read-through pattern within the cache itself.
     pub async fn get_step_result_with_fallback(
         &self,
-        step_id: StepId,
+        step_id: &StepId,
         execution_id: Uuid,
         state_store: &Arc<dyn StateStore>,
     ) -> Result<FlowResult, error_stack::Report<StateError>> {
         // First check cache
-        if let Some(cached_result) = self.get_step_result(&step_id).await {
+        if let Some(cached_result) = self.get_step_result(step_id).await {
             return Ok(cached_result);
         }
 
         // Not in cache, fetch from state store
         state_store
-            .get_step_result_by_id(execution_id, step_id)
+            .get_step_result(execution_id, step_id.index)
             .await
     }
 }

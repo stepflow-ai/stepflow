@@ -547,7 +547,7 @@ impl WorkflowExecutor {
             // Check if step is completed by querying state store
             match self
                 .state_store
-                .get_step_result_by_index(self.context.execution_id(), step_index)
+                .get_step_result(self.context.execution_id(), step_index)
                 .await
             {
                 Ok(result) => match result {
@@ -1450,7 +1450,7 @@ output:
         // After flush, we should be able to query the result
         let retrieved_result = workflow_executor
             .state_store
-            .get_step_result_by_index(execution_id, 0)
+            .get_step_result(execution_id, 0)
             .await
             .unwrap();
 

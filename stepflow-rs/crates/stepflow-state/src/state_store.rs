@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bit_set::BitSet;
 use futures::future::BoxFuture;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
-use stepflow_core::workflow::{FlowHash, StepId};
+use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     blob::BlobId,
@@ -95,24 +95,10 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// The execution result if found, or an error if not found
-    fn get_step_result_by_index(
+    fn get_step_result(
         &self,
         execution_id: Uuid,
         step_idx: usize,
-    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>>;
-
-    /// Retrieve the result of a step execution by step ID.
-    ///
-    /// # Arguments
-    /// * `execution_id` - The unique identifier for the workflow execution
-    /// * `step_id` - The identifier of the step within the workflow
-    ///
-    /// # Returns
-    /// The execution result if found, or an error if not found
-    fn get_step_result_by_id(
-        &self,
-        execution_id: Uuid,
-        step_id: StepId,
     ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>>;
 
     /// List all step results for a workflow execution, ordered by step index.

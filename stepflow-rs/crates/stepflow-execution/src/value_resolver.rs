@@ -79,7 +79,10 @@ impl ValueResolver {
         self.resolve_rec(value.as_ref()).await
     }
 
+    /// Retrieve the StepId (index and ID) for a given step_id string.
     fn get_step_id(&self, step_id: &str) -> Result<StepId> {
+        // TODO: Ideally, the step index would be put into the workflow during
+        // analysis, so this wouldn't need to be looked up.
         if let Some(&step_index) = self.step_id_to_index.get(step_id) {
             Ok(StepId {
                 index: step_index,
@@ -96,7 +99,7 @@ impl ValueResolver {
     pub async fn resolve_step(&self, step: &str) -> Result<FlowResult> {
         let step_id = self.get_step_id(step)?;
         self.write_cache
-            .get_step_result_with_fallback(step_id, self.execution_id, &self.state_store)
+            .get_step_result_with_fallback(&step_id, self.execution_id, &self.state_store)
             .await
             .change_context(ExecutionError::StateError)
     }
