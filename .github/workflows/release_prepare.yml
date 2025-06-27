@@ -41,7 +41,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install git-cliff
-        run: cargo install git-cliff
+        uses: kenji-miyake/setup-git-cliff@v1
 
       - name: Configure git
         run: |
