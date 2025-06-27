@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## <a id="0.1.1"></a> [StepFlow 0.1.1](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.1.1) - 2025-06-26
+## <a id="0.1.1"></a> [StepFlow 0.1.1](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.1.1) - 2025-06-27
 ### Bug Fixes
 
 - Input search path and remove unneeded flow_dir variable ([#74](https://github.com/riptano/stepflow/pull/74))
@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 
 ### Miscellaneous Tasks
 
-- Setup release scripts and documentation
+- Setup release scripts and documentation ([#95](https://github.com/riptano/stepflow/pull/95))
 
 ### Refactoring
 
