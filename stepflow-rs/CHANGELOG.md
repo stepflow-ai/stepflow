@@ -14,7 +14,6 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Setup release scripts and documentation ([#95](https://github.com/riptano/stepflow/pull/95))
-- Release stepflow-rs v0.1.1 ([#106](https://github.com/riptano/stepflow/pull/106))
 
 ### Refactoring
 
