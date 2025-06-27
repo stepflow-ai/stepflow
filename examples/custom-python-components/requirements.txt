@@ -1,0 +1,7 @@
+# Requirements for the custom Python component server
+# 
+# Note: In a real project, you might pin specific versions
+# and include additional dependencies for your business logic
+
+msgspec>=0.18.0
+asyncio

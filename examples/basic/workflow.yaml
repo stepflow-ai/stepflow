@@ -1,0 +1,109 @@
+name: "Basic Math Operations"
+description: "Demonstrates basic mathematical operations using UDFs"
+
+input_schema:
+  type: object
+  properties:
+    m:
+      type: integer
+      description: "First number"
+    n:
+      type: integer
+      description: "Second number"
+
+output_schema:
+  type: object
+  properties:
+    m_plus_n:
+      type: integer
+      description: "Sum of m and n"
+    m_times_n:
+      type: integer
+      description: "Product of m and n"
+    m_plus_n_times_n:
+      type: integer
+      description: "Sum of m and n, multiplied by n"
+
+steps:
+  # Create UDF for addition
+  - id: create_addition_udf
+    component: builtin://put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            a: { type: integer }
+            b: { type: integer }
+          required: [a, b]
+        code: "input['a'] + input['b']"
+
+  # Create UDF for multiplication  
+  - id: create_multiplication_udf
+    component: builtin://put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            a: { type: integer }
+            b: { type: integer }
+          required: [a, b]
+        code: "input['a'] * input['b']"
+
+  # Calculate m + n using UDF
+  - id: m_plus_n
+    component: python://udf
+    input:
+      blob_id: { $from: { step: create_addition_udf }, path: "blob_id" }
+      input:
+        a: { $from: { workflow: input }, path: "m" }
+        b: { $from: { workflow: input }, path: "n" }
+
+  # Calculate m * n using UDF
+  - id: m_times_n
+    component: python://udf
+    input:
+      blob_id: { $from: { step: create_multiplication_udf }, path: "blob_id" }
+      input:
+        a: { $from: { workflow: input }, path: "m" }
+        b: { $from: { workflow: input }, path: "n" }
+
+  # Calculate (m + n) * n using UDF
+  - id: m_plus_n_times_n
+    component: python://udf
+    input:
+      blob_id: { $from: { step: create_multiplication_udf }, path: "blob_id" }
+      input:
+        a: { $from: { step: m_plus_n } }
+        b: { $from: { workflow: input }, path: "n" }
+
+output:
+  m_plus_n: { $from: { step: m_plus_n } }
+  m_times_n: { $from: { step: m_times_n } }
+  m_plus_n_times_n: { $from: { step: m_plus_n_times_n } }
+
+test:
+  cases:
+  - name: calculate_with_8_and_5
+    description: Test calculation with m=8, n=5
+    input:
+      m: 8
+      n: 5
+    output:
+      outcome: success
+      result:
+        m_plus_n: 13
+        m_plus_n_times_n: 65
+        m_times_n: 40
+  - name: calculate_with_3_and_4
+    description: Test calculation with m=3, n=4 (from docs example)
+    input:
+      m: 3
+      n: 4
+    output:
+      outcome: success
+      result:
+        m_plus_n: 7
+        m_plus_n_times_n: 28
+        m_times_n: 12
