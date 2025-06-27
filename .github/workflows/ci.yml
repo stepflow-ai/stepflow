@@ -37,13 +37,10 @@ jobs:
           components: 'clippy'
 
       - name: cargo cache
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            stepflow-rs/target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('stepflow-rs/**/Cargo.lock') }}
+          workspaces: |
+            stepflow-rs
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
