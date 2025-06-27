@@ -823,14 +823,8 @@ mod tests {
         );
 
         // Retrieve by index
-        let retrieved_by_idx_0 = store
-            .get_step_result(execution_id, 0)
-            .await
-            .unwrap();
-        let retrieved_by_idx_1 = store
-            .get_step_result(execution_id, 1)
-            .await
-            .unwrap();
+        let retrieved_by_idx_0 = store.get_step_result(execution_id, 0).await.unwrap();
+        let retrieved_by_idx_1 = store.get_step_result(execution_id, 1).await.unwrap();
         assert_eq!(retrieved_by_idx_0, step1_result);
         assert_eq!(retrieved_by_idx_1, step2_result);
 
@@ -873,10 +867,7 @@ mod tests {
         );
 
         // Should retrieve the new result by both index and ID
-        let retrieved_by_idx = store
-            .get_step_result(execution_id, 0)
-            .await
-            .unwrap();
+        let retrieved_by_idx = store.get_step_result(execution_id, 0).await.unwrap();
 
         assert_eq!(retrieved_by_idx, new_result);
 
@@ -937,10 +928,7 @@ mod tests {
         );
 
         // Verify the result exists
-        let retrieved = store
-            .get_step_result(execution_id, 0)
-            .await
-            .unwrap();
+        let retrieved = store.get_step_result(execution_id, 0).await.unwrap();
         assert_eq!(retrieved, step_result);
 
         // Evict the execution
