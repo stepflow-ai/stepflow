@@ -165,7 +165,7 @@ fi
 
 # Update Cargo.lock
 echo -e "${BLUE}Updating Cargo.lock...${NC}"
-cargo check > /dev/null
+cargo update > /dev/null
 
 # Generate changelog
 echo -e "${BLUE}Generating changelog...${NC}"
