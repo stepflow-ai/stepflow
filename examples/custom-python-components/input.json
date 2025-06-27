@@ -1,0 +1,76 @@
+{
+  "customers": [
+    {
+      "id": "cust_001",
+      "name": "Alice Johnson",
+      "email": "alice@example.com",
+      "tier": "gold"
+    },
+    {
+      "id": "cust_002",
+      "name": "Bob Smith",
+      "email": "bob@example.com",
+      "tier": "silver"
+    },
+    {
+      "id": "cust_003",
+      "name": "Carol Davis",
+      "email": "carol@example.com",
+      "tier": "bronze"
+    },
+    {
+      "id": "cust_004",
+      "name": "David Wilson",
+      "email": "david@example.com",
+      "tier": "gold"
+    },
+    {
+      "id": "cust_005",
+      "name": "Eve Brown",
+      "email": "eve@example.com",
+      "tier": "bronze"
+    }
+  ],
+  "orders": [
+    {
+      "customer_id": "cust_001",
+      "amount": 1250.00,
+      "product": "Premium Widget"
+    },
+    {
+      "customer_id": "cust_002",
+      "amount": 450.00,
+      "product": "Standard Widget"
+    },
+    {
+      "customer_id": "cust_001",
+      "amount": 800.00,
+      "product": "Premium Service"
+    },
+    {
+      "customer_id": "cust_003",
+      "amount": 150.00,
+      "product": "Basic Widget"
+    },
+    {
+      "customer_id": "cust_004",
+      "amount": 2200.00,
+      "product": "Enterprise Solution"
+    },
+    {
+      "customer_id": "cust_005",
+      "amount": 85.00,
+      "product": "Starter Kit"
+    },
+    {
+      "customer_id": "cust_002",
+      "amount": 320.00,
+      "product": "Add-on Package"
+    },
+    {
+      "customer_id": "cust_004",
+      "amount": 500.00,
+      "product": "Support Package"
+    }
+  ]
+}

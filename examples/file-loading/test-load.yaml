@@ -23,6 +23,6 @@ test:
           test: "data"
           value: 42
         file_metadata:
-          resolved_path: "../../examples/file-loading/test-data.json"
+          resolved_path: "../../../examples/file-loading/test-data.json"
           size_bytes: 29
           format: "json"

@@ -1,0 +1,57 @@
+name: "Math Eval Test"
+description: "Test eval with actual computation"
+
+input_schema:
+  type: object
+  properties:
+    numbers:
+      type: array
+
+steps:
+  - id: nested_math
+    component: "builtin://eval"
+    input:
+      workflow:
+        $literal:
+          name: "Nested Math Workflow"
+          steps:
+            - id: add_udf
+              component: "builtin://put_blob"
+              input:
+                data:
+                  $literal:
+                    input_schema:
+                      type: object
+                      properties:
+                        a: { type: integer }
+                        b: { type: integer }
+                      required: [a, b]
+                    code: "input['a'] + input['b']"
+            
+            - id: compute_sum
+              component: python://udf
+              input:
+                blob_id: { $from: { step: add_udf }, path: "blob_id" }
+                input:
+                  a: { $from: { workflow: input }, path: "x" }
+                  b: { $from: { workflow: input }, path: "y" }
+          output:
+            sum_result: { $from: { step: compute_sum } }
+      input:
+        x: 5
+        y: 3
+
+output:
+  math_result: { $from: { step: nested_math }, path: "result" }
+
+test:
+  cases:
+  - name: nested_math_calculation
+    description: Test nested workflow evaluation with math
+    input:
+      numbers: [5, 3]
+    output:
+      outcome: success
+      result:
+        math_result:
+          sum_result: 8

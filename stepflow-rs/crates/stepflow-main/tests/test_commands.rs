@@ -44,7 +44,7 @@ async fn test_run_example_workflows() {
     init_test_logging();
 
     // Test the stepflow test command on our examples directory
-    let test_path = std::path::Path::new("../../examples");
+    let test_path = std::path::Path::new("../../../examples");
     let test_options = stepflow_main::test::TestOptions {
         cases: vec![],
         update: false,
