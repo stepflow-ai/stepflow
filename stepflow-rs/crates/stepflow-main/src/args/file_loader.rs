@@ -11,7 +11,6 @@ pub enum Format {
     Json,
 }
 
-
 impl Format {
     /// Determine format from file extension
     pub fn from_path(path: &Path) -> Result<Self> {
