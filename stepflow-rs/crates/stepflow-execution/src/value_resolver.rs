@@ -17,7 +17,7 @@ pub struct ValueResolver {
     /// Execution ID of the workflow we are resolving for.
     ///
     /// This is used to scope the state store interactions.
-    execution_id: Uuid,
+    run_id: Uuid,
     /// Input value for the workflow.
     ///
     /// This is used to resolve references to the workflow input.
@@ -37,7 +37,7 @@ pub struct ValueResolver {
 
 impl ValueResolver {
     pub fn new(
-        execution_id: Uuid,
+        run_id: Uuid,
         input: ValueRef,
         state_store: Arc<dyn StateStore>,
         write_cache: WriteCache,
@@ -50,7 +50,7 @@ impl ValueResolver {
             .map(|(index, step)| (step.id.clone(), index))
             .collect();
         Self {
-            execution_id,
+            run_id,
             input,
             state_store,
             write_cache,
@@ -99,7 +99,7 @@ impl ValueResolver {
     pub async fn resolve_step(&self, step: &str) -> Result<FlowResult> {
         let step_id = self.get_step_id(step)?;
         self.write_cache
-            .get_step_result_with_fallback(&step_id, self.execution_id, &self.state_store)
+            .get_step_result_with_fallback(&step_id, self.run_id, &self.state_store)
             .await
             .change_context(ExecutionError::StateError)
     }
@@ -283,12 +283,12 @@ mod tests {
     async fn test_resolve_workflow_input() {
         let workflow_input = ValueRef::new(json!({"test": "hello", "number": 42}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
         let resolver = ValueResolver::new(
-            execution_id,
+            run_id,
             workflow_input.clone(),
             state_store,
             write_cache,
@@ -310,12 +310,12 @@ mod tests {
     async fn test_resolve_workflow_input_with_path() {
         let workflow_input = ValueRef::new(json!({"name": "Alice", "age": 30}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving workflow input with path
         let input_template = ValueRef::new(json!({"$from": {"workflow": "input"}, "path": "name"}));
@@ -332,7 +332,7 @@ mod tests {
     async fn test_resolve_step_result() {
         let workflow_input = ValueRef::new(json!({}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         // Store a step result
         let step_result = FlowResult::Success {
@@ -340,21 +340,21 @@ mod tests {
         };
         state_store
             .queue_write(StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: StepResult::new(0, "step1", step_result),
             })
             .unwrap();
 
         // Ensure the write completes before proceeding
         state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving step result
         let input_template = ValueRef::new(json!({"$from": {"step": "step1"}}));
@@ -371,7 +371,7 @@ mod tests {
     async fn test_resolve_step_result_with_path() {
         let workflow_input = ValueRef::new(json!({}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         // Store a step result
         let step_result = FlowResult::Success {
@@ -379,21 +379,21 @@ mod tests {
         };
         state_store
             .queue_write(StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: StepResult::new(0, "step1", step_result),
             })
             .unwrap();
 
         // Ensure the write completes before proceeding
         state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving step result with path
         let input_template = ValueRef::new(json!({"$from": {"step": "step1"}, "path": "value"}));
@@ -410,12 +410,12 @@ mod tests {
     async fn test_resolve_literal_wrapper() {
         let workflow_input = ValueRef::new(json!({}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving literal wrapper
         let input_template = ValueRef::new(json!({"$literal": {"special": "value"}}));
@@ -432,7 +432,7 @@ mod tests {
     async fn test_resolve_complex_object() {
         let workflow_input = ValueRef::new(json!({"user": "Alice"}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         // Store a step result
         let step_result = FlowResult::Success {
@@ -440,21 +440,21 @@ mod tests {
         };
         state_store
             .queue_write(StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: StepResult::new(0, "step1", step_result),
             })
             .unwrap();
 
         // Ensure the write completes before proceeding
         state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving complex object with multiple references
         let complex_input = ValueRef::new(json!({
@@ -489,12 +489,12 @@ mod tests {
     async fn test_resolve_array() {
         let workflow_input = ValueRef::new(json!({"items": ["a", "b"]}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving array with references
         let array_input = ValueRef::new(json!([
@@ -517,27 +517,27 @@ mod tests {
     async fn test_resolve_skipped_step_with_default() {
         let workflow_input = ValueRef::new(json!({}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         // Store a skipped step result
         let step_result = FlowResult::Skipped;
         state_store
             .queue_write(StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: StepResult::new(0, "step1", step_result),
             })
             .unwrap();
 
         // Ensure the write completes before proceeding
         state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving with skip and default value using resolve_expr
         let expr = serde_json::from_value(json!({
@@ -559,27 +559,27 @@ mod tests {
     async fn test_resolve_skipped_step_without_default() {
         let workflow_input = ValueRef::new(json!({}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         // Store a skipped step result
         let step_result = FlowResult::Skipped;
         state_store
             .queue_write(StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: StepResult::new(0, "step1", step_result),
             })
             .unwrap();
 
         // Ensure the write completes before proceeding
         state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving with skip but no default - should propagate the skip
         let expr = serde_json::from_value(json!({"$from": {"step": "step1"}})).unwrap();
@@ -596,27 +596,27 @@ mod tests {
     async fn test_workflow_output_skip_detection() {
         let workflow_input = ValueRef::new(json!({}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         // Store a skipped step result
         let step_result = FlowResult::Skipped;
         state_store
             .queue_write(StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: StepResult::new(0, "step1", step_result),
             })
             .unwrap();
 
         // Ensure the write completes before proceeding
         state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test that workflow output is skipped when any dependency is skipped
         let output_template = ValueRef::new(json!({"result": {"$from": {"step": "step1"}}}));
@@ -634,12 +634,12 @@ mod tests {
     async fn test_resolve_primitive_values() {
         let workflow_input = ValueRef::new(json!({}));
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
         let resolver =
-            ValueResolver::new(execution_id, workflow_input, state_store, write_cache, flow);
+            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving primitive values - they should be returned as-is
         let number_template = ValueRef::new(json!(42));

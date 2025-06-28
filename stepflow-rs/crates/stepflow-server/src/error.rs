@@ -24,9 +24,9 @@ pub enum ServerError {
     ExecutionNotFound(Uuid),
     #[error("Workflow '{0}' not found")]
     WorkflowNotFound(FlowHash),
-    #[error("Execution '{execution_id}' cannot be cancelled (status: {status:?})")]
+    #[error("Run '{run_id}' cannot be cancelled (status: {status:?})")]
     ExecutionNotCancellable {
-        execution_id: Uuid,
+        run_id: Uuid,
         status: ExecutionStatus,
     },
     #[error("Execution '{0}' is still running and cannot be deleted")]

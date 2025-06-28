@@ -62,7 +62,7 @@ impl WriteCache {
     pub async fn get_step_result_with_fallback(
         &self,
         step_id: &StepId,
-        execution_id: Uuid,
+        run_id: Uuid,
         state_store: &Arc<dyn StateStore>,
     ) -> Result<FlowResult, error_stack::Report<StateError>> {
         // First check cache
@@ -72,7 +72,7 @@ impl WriteCache {
 
         // Not in cache, fetch from state store
         state_store
-            .get_step_result(execution_id, step_id.index)
+            .get_step_result(run_id, step_id.index)
             .await
     }
 }

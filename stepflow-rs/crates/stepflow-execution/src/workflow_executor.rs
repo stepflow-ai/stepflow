@@ -23,7 +23,7 @@ pub(crate) async fn execute_workflow(
     executor: Arc<StepFlowExecutor>,
     flow: Arc<Flow>,
     flow_hash: FlowHash,
-    execution_id: Uuid,
+    run_id: Uuid,
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
 ) -> Result<FlowResult> {
@@ -42,10 +42,10 @@ pub(crate) async fn execute_workflow(
         );
     }
 
-    // Create execution record in state store before starting workflow
+    // Create run record in state store before starting workflow
     state_store
-        .create_execution(
-            execution_id,
+        .create_run(
+            run_id,
             flow_hash.clone(),
             flow.name.as_deref(),
             None,  // No label for direct execution
@@ -56,7 +56,7 @@ pub(crate) async fn execute_workflow(
         .change_context(ExecutionError::StateError)?;
 
     let mut workflow_executor =
-        WorkflowExecutor::new(executor, flow, flow_hash, execution_id, input, state_store)?;
+        WorkflowExecutor::new(executor, flow, flow_hash, run_id, input, state_store)?;
 
     workflow_executor.execute_to_completion().await
 }
@@ -88,7 +88,7 @@ impl WorkflowExecutor {
         executor: Arc<StepFlowExecutor>,
         flow: Arc<Flow>,
         flow_hash: FlowHash,
-        execution_id: Uuid,
+        run_id: Uuid,
         input: ValueRef,
         state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
@@ -118,7 +118,7 @@ impl WorkflowExecutor {
 
         // Create value resolver with cache access
         let resolver = ValueResolver::new(
-            execution_id,
+            run_id,
             input,
             state_store.clone(),
             write_cache.clone(),
@@ -126,7 +126,7 @@ impl WorkflowExecutor {
         );
 
         // Create execution context
-        let context = executor.execution_context(execution_id);
+        let context = executor.execution_context(run_id);
 
         Ok(Self {
             tracker,
@@ -140,8 +140,8 @@ impl WorkflowExecutor {
     }
 
     /// Get the execution ID for this executor.
-    pub fn execution_id(&self) -> Uuid {
-        self.context.execution_id()
+    pub fn run_id(&self) -> Uuid {
+        self.context.run_id()
     }
 
     /// Get a reference to the flow being executed.
@@ -169,12 +169,12 @@ impl WorkflowExecutor {
     /// # Returns
     /// The number of step status corrections made during recovery
     pub async fn recover_from_state_store(&mut self) -> Result<usize> {
-        let execution_id = self.context.execution_id();
+        let run_id = self.context.run_id();
 
         // Step 1: Get all completed step results from the state store
         let step_results = self
             .state_store
-            .list_step_results(execution_id)
+            .list_step_results(run_id)
             .await
             .change_context(ExecutionError::StateError)?;
 
@@ -207,7 +207,7 @@ impl WorkflowExecutor {
         // Step 3: Get current step statuses from the state store
         let step_info_list = self
             .state_store
-            .get_step_info_for_execution(execution_id)
+            .get_step_info_for_execution(run_id)
             .await
             .change_context(ExecutionError::StateError)?;
 
@@ -251,7 +251,7 @@ impl WorkflowExecutor {
             // Update in state store
             self.state_store
                 .queue_write(stepflow_state::StateWriteOperation::UpdateStepStatuses {
-                    execution_id,
+                    run_id,
                     status: StepStatus::Runnable,
                     step_indices: steps_to_fix,
                 })
@@ -318,7 +318,7 @@ impl WorkflowExecutor {
 
             self.state_store
                 .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                    execution_id: self.context.execution_id(),
+                    run_id: self.context.run_id(),
                     step_result: StepResult::new(completed_step_index, step_id, step_result),
                 })
                 .change_context(ExecutionError::StateError)?;
@@ -332,7 +332,7 @@ impl WorkflowExecutor {
 
                 self.state_store
                     .queue_write(stepflow_state::StateWriteOperation::UpdateStepStatuses {
-                        execution_id: self.context.execution_id(),
+                        run_id: self.context.run_id(),
                         status: StepStatus::Runnable,
                         step_indices: newly_unblocked.clone(),
                     })
@@ -353,7 +353,7 @@ impl WorkflowExecutor {
         // Get step info from persistent storage (single query for all steps)
         let step_infos = self
             .state_store
-            .get_step_info_for_execution(self.context.execution_id())
+            .get_step_info_for_execution(self.context.run_id())
             .await
             .unwrap_or_default();
 
@@ -396,7 +396,7 @@ impl WorkflowExecutor {
         // Query state store for runnable steps (based on status only)
         let runnable_step_infos = self
             .state_store
-            .get_runnable_steps(self.context.execution_id())
+            .get_runnable_steps(self.context.run_id())
             .await
             .unwrap_or_default();
 
@@ -498,7 +498,7 @@ impl WorkflowExecutor {
     pub async fn get_completed_steps(&self) -> Result<Vec<StepExecutionResult>> {
         let step_results = self
             .state_store
-            .list_step_results(self.context.execution_id())
+            .list_step_results(self.context.run_id())
             .await
             .change_context(ExecutionError::StateError)?;
 
@@ -547,7 +547,7 @@ impl WorkflowExecutor {
             // Check if step is completed by querying state store
             match self
                 .state_store
-                .get_step_result(self.context.execution_id(), step_index)
+                .get_step_result(self.context.run_id(), step_index)
                 .await
             {
                 Ok(result) => match result {
@@ -660,7 +660,7 @@ impl WorkflowExecutor {
         let step_id = &self.flow.steps[step_index].id;
         self.state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id: self.context.execution_id(),
+                run_id: self.context.run_id(),
                 step_result: StepResult::new(step_index, step_id, result.clone()),
             })
             .change_context(ExecutionError::StateError)?;
@@ -681,7 +681,7 @@ impl WorkflowExecutor {
                 required_step_ids
             );
             self.state_store
-                .flush_pending_writes(self.context.execution_id())
+                .flush_pending_writes(self.context.run_id())
                 .await
                 .change_context(ExecutionError::StateError)?;
         } else {
@@ -815,7 +815,7 @@ impl WorkflowExecutor {
         if let Err(e) =
             self.state_store
                 .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                    execution_id: self.context.execution_id(),
+                    run_id: self.context.run_id(),
                     step_result: StepResult::new(step_index, step_id, skip_result),
                 })
         {
@@ -1021,7 +1021,7 @@ mod tests {
     ) -> Result<FlowResult> {
         let (executor, flow, flow_hash) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
@@ -1029,7 +1029,7 @@ mod tests {
             executor,
             flow,
             flow_hash,
-            execution_id,
+            run_id,
             input_ref,
             state_store,
         )
@@ -1044,7 +1044,7 @@ mod tests {
     ) -> Result<WorkflowExecutor> {
         let (executor, flow, flow_hash) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
@@ -1052,7 +1052,7 @@ mod tests {
             executor,
             flow,
             flow_hash,
-            execution_id,
+            run_id,
             input_ref,
             state_store,
         )
@@ -1300,7 +1300,7 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_hash = Flow::hash(&workflow);
         let executor = StepFlowExecutor::new_in_memory();
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 
         // Create a workflow executor
@@ -1308,7 +1308,7 @@ output:
             executor.clone(),
             workflow.clone(),
             flow_hash.clone(),
-            execution_id,
+            run_id,
             input.clone(),
             executor.state_store(),
         )
@@ -1324,7 +1324,7 @@ output:
         workflow_executor
             .state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result,
             })
             .unwrap();
@@ -1332,7 +1332,7 @@ output:
         // Flush to ensure step1 result is persisted
         workflow_executor
             .state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
@@ -1396,14 +1396,14 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_hash = Flow::hash(&workflow);
         let executor = StepFlowExecutor::new_in_memory();
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 
         let workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
             flow_hash.clone(),
-            execution_id,
+            run_id,
             input.clone(),
             executor.state_store(),
         )
@@ -1419,21 +1419,21 @@ output:
         workflow_executor
             .state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: step_result.clone(),
             })
             .unwrap();
         workflow_executor
             .state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: step_result.clone(),
             })
             .unwrap();
         workflow_executor
             .state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: step_result.clone(),
             })
             .unwrap();
@@ -1443,14 +1443,14 @@ output:
         // Test that flush ensures all writes are persisted
         workflow_executor
             .state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
         // After flush, we should be able to query the result
         let retrieved_result = workflow_executor
             .state_store
-            .get_step_result(execution_id, 0)
+            .get_step_result(run_id, 0)
             .await
             .unwrap();
 
@@ -1493,14 +1493,14 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_hash = Flow::hash(&workflow);
         let executor = StepFlowExecutor::new_in_memory();
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 
         let mut workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
             flow_hash.clone(),
-            execution_id,
+            run_id,
             input.clone(),
             executor.state_store(),
         )
@@ -1525,20 +1525,20 @@ output:
         workflow_executor
             .state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: step1_result,
             })
             .unwrap();
         workflow_executor
             .state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result: step2_result,
             })
             .unwrap();
         workflow_executor
             .state_store
-            .flush_pending_writes(execution_id)
+            .flush_pending_writes(run_id)
             .await
             .unwrap();
 
@@ -1576,14 +1576,14 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_hash = Flow::hash(&workflow);
         let executor = StepFlowExecutor::new_in_memory();
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 
         let mut workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
             flow_hash.clone(),
-            execution_id,
+            run_id,
             input.clone(),
             executor.state_store(),
         )

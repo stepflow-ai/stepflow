@@ -112,7 +112,7 @@ pub async fn debug_continue(
     };
 
     state_store
-        .update_execution_status(run_id, status, None)
+        .update_run_status(run_id, status, None)
         .await?;
 
     Ok(Json(super::runs::CreateRunResponse {

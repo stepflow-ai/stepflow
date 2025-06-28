@@ -64,15 +64,15 @@ components:
       The output is simply the result of the nested workflow execution
     type: object
     required:
-    - execution_id
     - result
+    - run_id
     properties:
-      execution_id:
-        description: The execution ID of the nested workflow
-        type: string
       result:
         description: The result from executing the nested workflow
         $ref: '#/definitions/ValueRef'
+      run_id:
+        description: The run ID of the nested workflow
+        type: string
   description: Execute a nested workflow with given input and return the result
 - component: get_blob
   input_schema:

@@ -3174,6 +3174,7 @@ dependencies = [
  "stepflow-core",
  "thiserror 2.0.12",
  "tokio",
+ "utoipa",
  "uuid",
 ]
 

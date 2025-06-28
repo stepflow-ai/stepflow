@@ -91,17 +91,17 @@ Component: builtin://eval
       "description": "Output from the eval component\n\nThe output is simply the result of the nested workflow execution",
       "type": "object",
       "required": [
-        "execution_id",
-        "result"
+        "result",
+        "run_id"
       ],
       "properties": {
-        "execution_id": {
-          "description": "The execution ID of the nested workflow",
-          "type": "string"
-        },
         "result": {
           "description": "The result from executing the nested workflow",
           "$ref": "#/definitions/ValueRef"
+        },
+        "run_id": {
+          "description": "The run ID of the nested workflow",
+          "type": "string"
         }
       }
     }

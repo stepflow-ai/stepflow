@@ -23,10 +23,10 @@ pub enum StateWriteOperation {
     /// Use `flush_pending_writes()` if immediate persistence is required.
     ///
     /// # Fields
-    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `run_id` - The unique identifier for the workflow execution
     /// * `step_result` - The step result to store
     RecordStepResult {
-        execution_id: Uuid,
+        run_id: Uuid,
         step_result: StepResult,
     },
     /// Update multiple steps to the same status.
@@ -35,25 +35,25 @@ pub enum StateWriteOperation {
     /// Use `flush_pending_writes()` if immediate persistence is required.
     ///
     /// # Fields
-    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `run_id` - The unique identifier for the workflow execution
     /// * `status` - The new status to apply to all specified steps
     /// * `step_indices` - Vector of step indices to update
     UpdateStepStatuses {
-        execution_id: Uuid,
+        run_id: Uuid,
         status: StepStatus,
         step_indices: BitSet,
     },
     /// Flush any pending write operations to persistent storage.
     ///
     /// This operation ensures that all queued write operations are completed before returning.
-    /// The `execution_id` parameter is a hint to implementations about which writes to prioritize,
+    /// The `run_id` parameter is a hint to implementations about which writes to prioritize,
     /// but implementations may choose to flush all pending writes regardless of the hint.
     ///
     /// # Fields
-    /// * `execution_id` - Hint about which execution's writes to flush (may be ignored by implementation)
+    /// * `run_id` - Hint about which run's writes to flush (may be ignored by implementation)
     /// * `completion_notify` - Channel to signal completion of the flush operation
     Flush {
-        execution_id: Option<Uuid>,
+        run_id: Option<Uuid>,
         completion_notify: oneshot::Sender<Result<(), StateError>>,
     },
 }
@@ -90,14 +90,14 @@ pub trait StateStore: Send + Sync {
     /// Retrieve the result of a step execution by step index.
     ///
     /// # Arguments
-    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `run_id` - The unique identifier for the workflow execution
     /// * `step_idx` - The index of the step within the workflow (0-based)
     ///
     /// # Returns
     /// The execution result if found, or an error if not found
     fn get_step_result(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         step_idx: usize,
     ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>>;
 
@@ -107,13 +107,13 @@ pub trait StateStore: Send + Sync {
     /// have completed and their results in workflow order.
     ///
     /// # Arguments
-    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `run_id` - The unique identifier for the workflow execution
     ///
     /// # Returns
     /// A vector of (step_index, step_id, result) tuples, ordered by step_index
     fn list_step_results(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>>;
 
     // Workflow Management Methods
@@ -224,21 +224,21 @@ pub trait StateStore: Send + Sync {
         label: &str,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Create a new execution record.
+    /// Create a new run record.
     ///
     /// # Arguments
-    /// * `execution_id` - The unique identifier for the execution
+    /// * `run_id` - The unique identifier for the run
     /// * `workflow_hash` - Workflow hash
     /// * `workflow_name` - Optional workflow name (from workflow.name field)
     /// * `workflow_label` - Optional workflow label used for execution
-    /// * `debug_mode` - Whether execution is in debug mode
+    /// * `debug_mode` - Whether run is in debug mode
     /// * `input` - Input data as JSON
     ///
     /// # Returns
-    /// Success if the execution was created
-    fn create_execution(
+    /// Success if the run was created
+    fn create_run(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         workflow_hash: FlowHash,
         workflow_name: Option<&str>,
         workflow_label: Option<&str>,
@@ -246,60 +246,60 @@ pub trait StateStore: Send + Sync {
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Update execution status.
+    /// Update run status.
     ///
     /// # Arguments
-    /// * `execution_id` - The execution identifier
+    /// * `run_id` - The run identifier
     /// * `status` - The new status
     /// * `result` - Optional result data as JSON
     ///
     /// # Returns
-    /// Success if the execution was updated
-    fn update_execution_status(
+    /// Success if the run was updated
+    fn update_run_status(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         status: ExecutionStatus,
         result: Option<ValueRef>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Get execution details.
+    /// Get run details.
     ///
     /// # Arguments
-    /// * `execution_id` - The execution identifier
+    /// * `run_id` - The run identifier
     ///
     /// # Returns
-    /// The execution details if found
-    fn get_execution(
+    /// The run details if found
+    fn get_run(
         &self,
-        execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<ExecutionDetails>, StateError>>;
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>>;
 
-    /// List executions with optional filtering.
+    /// List runs with optional filtering.
     ///
     /// # Arguments
     /// * `filters` - Optional filters for the query
     ///
     /// # Returns
-    /// A vector of execution summaries
-    fn list_executions(
+    /// A vector of run summaries
+    fn list_runs(
         &self,
-        filters: &ExecutionFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<ExecutionSummary>, StateError>>;
+        filters: &RunFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>>;
 
     /// Flush any pending write operations to persistent storage.
     ///
     /// This method ensures that all queued write operations are completed before returning.
-    /// The `execution_id` parameter is a hint to implementations about which writes to prioritize,
+    /// The `run_id` parameter is a hint to implementations about which writes to prioritize,
     /// but implementations may choose to flush all pending writes regardless of the hint.
     ///
     /// # Arguments
-    /// * `execution_id` - Hint about which execution's writes to flush (may be ignored by implementation)
+    /// * `run_id` - Hint about which run's writes to flush (may be ignored by implementation)
     ///
     /// # Returns
     /// Success when all relevant pending writes have been persisted
     fn flush_pending_writes(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Queue a write operation for async processing.
@@ -320,7 +320,7 @@ pub trait StateStore: Send + Sync {
     /// Initialize step info for an execution.
     fn initialize_step_info(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         steps: &[StepInfo],
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
@@ -331,12 +331,12 @@ pub trait StateStore: Send + Sync {
     /// For updating multiple steps efficiently, use `update_step_statuses()`.
     ///
     /// # Arguments
-    /// * `execution_id` - The unique identifier for the workflow execution
+    /// * `run_id` - The unique identifier for the workflow execution
     /// * `step_index` - The index of the step to update
     /// * `status` - The new status for the step
     fn update_step_status(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         step_index: usize,
         status: stepflow_core::status::StepStatus,
     );
@@ -344,7 +344,7 @@ pub trait StateStore: Send + Sync {
     /// Get all step info for an execution.
     fn get_step_info_for_execution(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
 
     /// Get runnable steps for an execution based on current status.
@@ -352,7 +352,7 @@ pub trait StateStore: Send + Sync {
     /// Dependency checking should be done by the caller using workflow analysis.
     fn get_runnable_steps(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
 }
 
@@ -424,31 +424,33 @@ pub struct WorkflowLabelMetadata {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Summary information about a workflow execution.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExecutionSummary {
-    pub execution_id: Uuid,
-    pub workflow_hash: FlowHash,
-    pub workflow_name: Option<String>,
-    pub workflow_label: Option<String>,
+/// Summary information about a flow run.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSummary {
+    pub run_id: Uuid,
+    pub flow_hash: FlowHash,
+    pub flow_name: Option<String>,
+    pub flow_label: Option<String>,
     pub status: ExecutionStatus,
     pub debug_mode: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-/// Detailed execution information including input and result.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExecutionDetails {
+/// Detailed flow run information including input and result.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RunDetails {
     #[serde(flatten)]
-    pub summary: ExecutionSummary,
+    pub summary: RunSummary,
     pub input: ValueRef,
-    pub result: Option<ValueRef>,
+    pub result: Option<FlowResult>,
 }
 
-/// Filters for listing executions.
+/// Filters for listing runs.
 #[derive(Debug, Clone, Default)]
-pub struct ExecutionFilters {
+pub struct RunFilters {
     pub status: Option<ExecutionStatus>,
     pub workflow_name: Option<String>,
     pub workflow_label: Option<String>,
@@ -456,18 +458,18 @@ pub struct ExecutionFilters {
     pub offset: Option<usize>,
 }
 
-/// Execution details with resolved input and result blobs.
+/// Run details with resolved input and result blobs.
 #[derive(Debug)]
-pub struct ExecutionWithBlobs {
-    pub execution: ExecutionDetails,
+pub struct RunWithBlobs {
+    pub run: RunDetails,
     pub input: Option<ValueRef>,
     pub result: Option<ValueRef>,
 }
 
-/// Comprehensive execution step details for server inspection.
+/// Comprehensive run step details for server inspection.
 #[derive(Debug)]
-pub struct ExecutionStepDetails {
-    pub execution: ExecutionDetails,
+pub struct RunStepDetails {
+    pub run: RunDetails,
     pub workflow: Option<Arc<stepflow_core::workflow::Flow>>,
     pub step_results: Vec<StepResult>,
     pub input: Option<ValueRef>,
@@ -476,17 +478,17 @@ pub struct ExecutionStepDetails {
 /// Complete data needed for debug session creation.
 #[derive(Debug)]
 pub struct DebugSessionData {
-    pub execution: ExecutionDetails,
+    pub run: RunDetails,
     pub workflow: Arc<stepflow_core::workflow::Flow>,
     pub input: ValueRef,
     pub step_results: Vec<StepResult>,
 }
 
-/// Step information for a workflow execution.
+/// Step information for a flow run.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StepInfo {
-    /// Execution ID this step belongs to
-    pub execution_id: Uuid,
+    /// Run ID this step belongs to
+    pub run_id: Uuid,
     /// Index of the step in the workflow
     pub step_index: usize,
     /// Step ID
@@ -510,50 +512,50 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn test_execution_details_serde_flatten() {
+    fn test_run_details_serde_flatten() {
         let now = chrono::Utc::now();
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
         let workflow_hash = FlowHash::from("test-hash");
 
-        let details = ExecutionDetails {
-            summary: ExecutionSummary {
-                execution_id,
-                workflow_hash,
-                workflow_name: Some("test-workflow".to_string()),
-                workflow_label: Some("production".to_string()),
+        let details = RunDetails {
+            summary: RunSummary {
+                run_id: run_id,
+                flow_hash: workflow_hash,
+                flow_name: Some("test-workflow".to_string()),
+                flow_label: Some("production".to_string()),
                 status: ExecutionStatus::Completed,
                 debug_mode: false,
                 created_at: now,
                 completed_at: Some(now),
             },
             input: stepflow_core::workflow::ValueRef::new(json!({"test": "input"})),
-            result: Some(stepflow_core::workflow::ValueRef::new(
-                json!({"test": "output"}),
-            )),
+            result: Some(FlowResult::Success {
+                result: stepflow_core::workflow::ValueRef::new(json!({"test": "output"})),
+            }),
         };
 
-        // Serialize the ExecutionDetails
+        // Serialize the RunDetails
         let serialized = serde_json::to_string(&details).unwrap();
 
         // Parse as a generic JSON value to verify flattening
         let value: serde_json::Value = serde_json::from_str(&serialized).unwrap();
 
         // Verify that summary fields are flattened to the top level
-        assert_eq!(value["execution_id"], json!(execution_id));
-        assert_eq!(value["workflow_name"], json!("test-workflow"));
-        assert_eq!(value["workflow_label"], json!("production"));
+        assert_eq!(value["runId"], json!(run_id));
+        assert_eq!(value["flowName"], json!("test-workflow"));
+        assert_eq!(value["flowLabel"], json!("production"));
         assert_eq!(value["status"], json!("completed"));
-        assert_eq!(value["debug_mode"], json!(false));
+        assert_eq!(value["debugMode"], json!(false));
 
         // Verify that detail-specific fields are also present
         assert_eq!(value["input"], json!({"test": "input"}));
-        assert_eq!(value["result"], json!({"test": "output"}));
+        assert_eq!(value["result"], json!({"success": {"result": {"test": "output"}}}));
 
         // Verify there's no nested "summary" object
         assert!(value.get("summary").is_none());
 
         // Verify it deserializes back correctly
-        let deserialized: ExecutionDetails = serde_json::from_str(&serialized).unwrap();
+        let deserialized: RunDetails = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized, details);
     }
 }

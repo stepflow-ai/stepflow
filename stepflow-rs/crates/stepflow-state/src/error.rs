@@ -14,20 +14,20 @@ pub enum StateError {
     #[error("Blob not found: {blob_id}")]
     BlobNotFound { blob_id: String },
 
-    #[error("Step result not found for execution {execution_id}, step index {step_idx}")]
+    #[error("Step result not found for run {run_id}, step index {step_idx}")]
     StepResultNotFoundByIndex {
-        execution_id: String,
+        run_id: String,
         step_idx: usize,
     },
 
-    #[error("Step result not found for execution {execution_id}, step id '{step_id}'")]
-    StepResultNotFoundById { execution_id: Uuid, step_id: String },
+    #[error("Step result not found for run {run_id}, step id '{step_id}'")]
+    StepResultNotFoundById { run_id: Uuid, step_id: String },
 
     #[error("Workflow not found: {workflow_hash}")]
     WorkflowNotFound { workflow_hash: String },
 
-    #[error("Execution not found: {execution_id}")]
-    ExecutionNotFound { execution_id: Uuid },
+    #[error("Run not found: {run_id}")]
+    RunNotFound { run_id: Uuid },
 
     #[error("Serialization error")]
     Serialization,

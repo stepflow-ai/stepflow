@@ -33,7 +33,7 @@ impl LastRun {
 
     /// Execute this workflow normally (non-debug mode)
     pub async fn execute_normal(&self, executor: &StepFlowExecutor) -> Result<()> {
-        let execution_id = executor
+        let run_id = executor
             .submit_flow(
                 self.workflow.clone(),
                 self.workflow_hash.clone(),
@@ -43,7 +43,7 @@ impl LastRun {
             .change_context(MainError::FlowExecution)?;
 
         let result = executor
-            .flow_result(execution_id)
+            .flow_result(run_id)
             .await
             .change_context(MainError::FlowExecution)?;
 
@@ -61,12 +61,12 @@ impl LastRun {
         executor: &Arc<StepFlowExecutor>,
     ) -> Result<&mut WorkflowExecutor> {
         let state_store = executor.state_store();
-        let execution_id = uuid::Uuid::new_v4();
+        let run_id = uuid::Uuid::new_v4();
         let workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             self.workflow.clone(),
             self.workflow_hash.clone(),
-            execution_id,
+            run_id,
             self.input.clone(),
             state_store.clone(),
         )

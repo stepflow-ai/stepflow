@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
@@ -11,7 +10,7 @@ use stepflow_core::{
     workflow::{Flow, FlowHash, ValueRef},
 };
 use stepflow_execution::StepFlowExecutor;
-use stepflow_state::{ExecutionDetails, ExecutionSummary};
+use stepflow_state::{RunDetails, RunSummary};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -45,51 +44,13 @@ pub struct CreateRunResponse {
     pub debug: bool,
 }
 
-/// Run summary for API responses
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RunSummaryResponse {
-    /// The run ID
-    pub run_id: Uuid,
-    /// The flow name (from flow.name field)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_name: Option<String>,
-    /// The flow label (if executed via labeled flow route)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_label: Option<String>,
-    /// The flow hash
-    pub flow_hash: FlowHash,
-    /// Current status of the run
-    pub status: ExecutionStatus,
-    /// Whether run is in debug mode
-    pub debug_mode: bool,
-    /// When the run was created
-    pub created_at: DateTime<Utc>,
-    /// When the run was completed (if applicable)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub completed_at: Option<DateTime<Utc>>,
-}
-
-/// Detailed run information for API responses
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RunDetailsResponse {
-    /// Run summary information (same as list response)
-    #[serde(flatten)]
-    pub summary: RunSummaryResponse,
-    /// Input data for the run
-    pub input: ValueRef,
-    /// Result data (if completed and available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<FlowResult>,
-}
 
 /// Response for listing runs
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListRunsResponse {
     /// List of run summaries
-    pub runs: Vec<RunSummaryResponse>,
+    pub runs: Vec<RunSummary>,
 }
 
 /// Response for step run details
@@ -159,7 +120,7 @@ pub async fn create_run(
 
     // Create execution record
     state_store
-        .create_execution(
+        .create_run(
             run_id,
             req.flow_hash.clone(),
             flow.name.as_deref(), // Use flow name if available
@@ -177,7 +138,7 @@ pub async fn create_run(
         // In debug mode, return immediately without executing
         // The execution will be controlled via debug endpoints
         state_store
-            .update_execution_status(run_id, ExecutionStatus::Running, None)
+            .update_run_status(run_id, ExecutionStatus::Running, None)
             .await?;
 
         return Ok(Json(CreateRunResponse {
@@ -202,7 +163,7 @@ pub async fn create_run(
         FlowResult::Success { result } => {
             // Update execution status to completed
             state_store
-                .update_execution_status(run_id, ExecutionStatus::Completed, Some(result.clone()))
+                .update_run_status(run_id, ExecutionStatus::Completed, Some(result.clone()))
                 .await?;
 
             Ok(Json(CreateRunResponse {
@@ -215,7 +176,7 @@ pub async fn create_run(
         FlowResult::Failed { .. } | FlowResult::Skipped => {
             // Update execution status to failed
             state_store
-                .update_execution_status(run_id, ExecutionStatus::Failed, None)
+                .update_run_status(run_id, ExecutionStatus::Failed, None)
                 .await?;
 
             Ok(Json(CreateRunResponse {
@@ -233,12 +194,12 @@ pub async fn create_run(
     get,
     path = "/runs/{run_id}",
     params(
-        ("run_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Execution details retrieved successfully", body = RunDetailsResponse),
-        (status = 400, description = "Invalid execution ID format"),
-        (status = 404, description = "Execution not found"),
+        (status = 200, description = "Run details retrieved successfully", body = RunDetails),
+        (status = 400, description = "Invalid run ID format"),
+        (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::RUN_TAG,
@@ -246,18 +207,16 @@ pub async fn create_run(
 pub async fn get_run(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(run_id): Path<Uuid>,
-) -> Result<Json<RunDetailsResponse>, ErrorResponse> {
+) -> Result<Json<RunDetails>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // Get execution details
     let details = state_store
-        .get_execution(run_id)
+        .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
-    let response = RunDetailsResponse::from(details);
-
-    Ok(Json(response))
+    Ok(Json(details))
 }
 
 /// Get the workflow definition for an execution
@@ -265,12 +224,12 @@ pub async fn get_run(
     get,
     path = "/runs/{run_id}/flow",
     params(
-        ("run_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Execution workflow retrieved successfully", body = RunFlowResponse),
-        (status = 400, description = "Invalid execution ID format"),
-        (status = 404, description = "Execution or workflow not found"),
+        (status = 200, description = "Run workflow retrieved successfully", body = RunFlowResponse),
+        (status = 400, description = "Invalid run ID format"),
+        (status = 404, description = "Run or workflow not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::RUN_TAG,
@@ -283,11 +242,11 @@ pub async fn get_run_flow(
 
     // Get execution details to retrieve the workflow hash
     let execution = state_store
-        .get_execution(run_id)
+        .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
-    let workflow_hash = execution.summary.workflow_hash;
+    let workflow_hash = execution.summary.flow_hash;
     // Get the workflow from the state store
     let workflow = state_store
         .get_workflow(&workflow_hash)
@@ -307,7 +266,7 @@ pub async fn get_run_flow(
     get,
     path = "/runs",
     responses(
-        (status = 200, description = "Executions listed successfully", body = ListRunsResponse),
+        (status = 200, description = "Runs listed successfully", body = ListRunsResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::RUN_TAG,
@@ -318,17 +277,12 @@ pub async fn list_runs(
     let state_store = executor.state_store();
 
     // TODO: Add query parameters for filtering (status, workflow_name, workflow_label, limit, offset)
-    let filters = stepflow_state::ExecutionFilters::default();
+    let filters = stepflow_state::RunFilters::default();
 
-    let executions = state_store.list_executions(&filters).await?;
-
-    let execution_responses: Vec<RunSummaryResponse> = executions
-        .into_iter()
-        .map(RunSummaryResponse::from)
-        .collect();
+    let executions = state_store.list_runs(&filters).await?;
 
     Ok(Json(ListRunsResponse {
-        runs: execution_responses,
+        runs: executions,
     }))
 }
 
@@ -337,12 +291,12 @@ pub async fn list_runs(
     get,
     path = "/runs/{run_id}/steps",
     params(
-        ("run_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Execution step details retrieved successfully", body = ListStepRunsResponse),
-        (status = 400, description = "Invalid execution ID format"),
-        (status = 404, description = "Execution not found"),
+        (status = 200, description = "Run step details retrieved successfully", body = ListStepRunsResponse),
+        (status = 400, description = "Invalid run ID format"),
+        (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::RUN_TAG,
@@ -357,11 +311,11 @@ pub async fn get_run_steps(
 
     // Get execution details to retrieve the workflow hash
     let execution = state_store
-        .get_execution(run_id)
+        .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
-    let workflow_hash = execution.summary.workflow_hash;
+    let workflow_hash = execution.summary.flow_hash;
 
     // Get the workflow from the state store
     let workflow = state_store
@@ -423,13 +377,13 @@ pub async fn get_run_steps(
     post,
     path = "/runs/{run_id}/cancel",
     params(
-        ("run_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Execution cancelled successfully", body = RunSummaryResponse),
-        (status = 400, description = "Invalid execution ID format"),
-        (status = 404, description = "Execution not found"),
-        (status = 409, description = "Execution already completed"),
+        (status = 200, description = "Run cancelled successfully", body = RunSummary),
+        (status = 400, description = "Invalid run ID format"),
+        (status = 404, description = "Run not found"),
+        (status = 409, description = "Run already completed"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::RUN_TAG,
@@ -437,12 +391,12 @@ pub async fn get_run_steps(
 pub async fn cancel_run(
     State(executor): State<Arc<StepFlowExecutor>>,
     Path(run_id): Path<Uuid>,
-) -> Result<Json<RunSummaryResponse>, ErrorResponse> {
+) -> Result<Json<RunSummary>, ErrorResponse> {
     let state_store = executor.state_store();
 
     // Get execution to check current status
     let execution = state_store
-        .get_execution(run_id)
+        .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
@@ -450,7 +404,7 @@ pub async fn cancel_run(
     match execution.summary.status {
         ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled => {
             return Err(error_stack::report!(ServerError::ExecutionNotCancellable {
-                execution_id: run_id,
+                run_id,
                 status: execution.summary.status
             })
             .into());
@@ -459,18 +413,18 @@ pub async fn cancel_run(
             // TODO: Implement actual execution cancellation logic
             // For now, just update the status in the database
             state_store
-                .update_execution_status(run_id, ExecutionStatus::Cancelled, None)
+                .update_run_status(run_id, ExecutionStatus::Cancelled, None)
                 .await?;
         }
     }
 
     // Return updated execution summary
     let updated_execution = state_store
-        .get_execution(run_id)
+        .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
-    Ok(Json(RunSummaryResponse::from(updated_execution.summary)))
+    Ok(Json(updated_execution.summary))
 }
 
 /// Delete a completed execution
@@ -478,13 +432,13 @@ pub async fn cancel_run(
     delete,
     path = "/runs/{run_id}",
     params(
-        ("run_id" = Uuid, Path, description = "Execution ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
-        (status = 204, description = "Execution deleted successfully"),
-        (status = 400, description = "Invalid execution ID format"),
-        (status = 404, description = "Execution not found"),
-        (status = 409, description = "Execution still running"),
+        (status = 204, description = "Run deleted successfully"),
+        (status = 400, description = "Invalid run ID format"),
+        (status = 404, description = "Run not found"),
+        (status = 409, description = "Run still running"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::RUN_TAG,
@@ -497,7 +451,7 @@ pub async fn delete_run(
 
     // Get execution to check current status
     let execution = state_store
-        .get_execution(run_id)
+        .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
@@ -516,28 +470,3 @@ pub async fn delete_run(
     Ok(())
 }
 
-// Conversion implementations
-impl From<ExecutionSummary> for RunSummaryResponse {
-    fn from(summary: ExecutionSummary) -> Self {
-        Self {
-            run_id: summary.execution_id,
-            flow_name: summary.workflow_name,
-            flow_label: summary.workflow_label,
-            flow_hash: summary.workflow_hash,
-            status: summary.status,
-            debug_mode: summary.debug_mode,
-            created_at: summary.created_at,
-            completed_at: summary.completed_at,
-        }
-    }
-}
-
-impl From<ExecutionDetails> for RunDetailsResponse {
-    fn from(details: ExecutionDetails) -> Self {
-        Self {
-            summary: RunSummaryResponse::from(details.summary),
-            input: details.input,
-            result: details.result.map(|r| FlowResult::Success { result: r }),
-        }
-    }
-}

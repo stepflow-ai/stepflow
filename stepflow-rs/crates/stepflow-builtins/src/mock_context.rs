@@ -56,7 +56,7 @@ impl stepflow_plugin::Context for MockExecutor {
 
     fn flow_result(
         &self,
-        _execution_id: Uuid,
+        _run_id: Uuid,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<FlowResult>> + Send + '_>>
     {
         Box::pin(async {

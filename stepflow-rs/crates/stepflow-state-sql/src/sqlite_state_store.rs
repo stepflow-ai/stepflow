@@ -12,7 +12,7 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
-    ExecutionDetails, ExecutionFilters, ExecutionSummary, StateError, StateStore,
+    RunDetails, RunFilters, RunSummary, StateError, StateStore,
     StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -89,29 +89,29 @@ impl SqliteStateStore {
         while let Some(operation) = receiver.recv().await {
             match operation {
                 StateWriteOperation::RecordStepResult {
-                    execution_id,
+                    run_id,
                     step_result,
                 } => {
                     if let Err(e) =
-                        Self::record_step_result_sync(&pool, execution_id, step_result).await
+                        Self::record_step_result_sync(&pool, run_id, step_result).await
                     {
                         tracing::error!("Failed to record step result: {:?}", e);
                     }
                 }
                 StateWriteOperation::UpdateStepStatuses {
-                    execution_id,
+                    run_id,
                     status,
                     step_indices,
                 } => {
                     if let Err(e) =
-                        Self::update_step_statuses_sync(&pool, execution_id, status, step_indices)
+                        Self::update_step_statuses_sync(&pool, run_id, status, step_indices)
                             .await
                     {
                         tracing::error!("Failed to update step statuses: {:?}", e);
                     }
                 }
                 StateWriteOperation::Flush {
-                    execution_id: _,
+                    run_id: _,
                     completion_notify,
                 } => {
                     // All previous operations are already processed at this point
@@ -124,7 +124,7 @@ impl SqliteStateStore {
     /// Synchronous version of create_execution for background worker
     async fn create_execution_sync(
         pool: &SqlitePool,
-        execution_id: Uuid,
+        run_id: Uuid,
         workflow_hash: FlowHash,
         workflow_name: Option<String>,
         workflow_label: Option<String>,
@@ -136,7 +136,7 @@ impl SqliteStateStore {
         let sql = "INSERT INTO executions (id, workflow_hash, workflow_name, workflow_label, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
 
         sqlx::query(sql)
-            .bind(execution_id.to_string())
+            .bind(run_id.to_string())
             .bind(workflow_hash.to_string())
             .bind(workflow_name)
             .bind(workflow_label)
@@ -152,11 +152,11 @@ impl SqliteStateStore {
     /// Synchronous version of record_step_result for background worker
     async fn record_step_result_sync(
         pool: &SqlitePool,
-        execution_id: Uuid,
+        run_id: Uuid,
         step_result: StepResult,
     ) -> Result<(), StateError> {
         // Ensure execution exists
-        Self::ensure_execution_exists_static(pool, execution_id)
+        Self::ensure_execution_exists_static(pool, run_id)
             .await
             .change_context(StateError::Internal)?;
 
@@ -166,10 +166,10 @@ impl SqliteStateStore {
             .change_context(StateError::Internal)?;
 
         // Insert or replace step result
-        let sql = "INSERT OR REPLACE INTO step_results (execution_id, step_index, step_id, result) VALUES (?, ?, ?, ?)";
+        let sql = "INSERT OR REPLACE INTO step_results (run_id, step_index, step_id, result) VALUES (?, ?, ?, ?)";
 
         sqlx::query(sql)
-            .bind(execution_id.to_string())
+            .bind(run_id.to_string())
             .bind(step_result.step_idx() as i64)
             .bind(step_result.step_id())
             .bind(&result_json)
@@ -183,7 +183,7 @@ impl SqliteStateStore {
     /// Synchronous version of update_step_statuses for background worker
     async fn update_step_statuses_sync(
         pool: &SqlitePool,
-        execution_id: Uuid,
+        run_id: Uuid,
         status: StepStatus,
         step_indices: BitSet,
     ) -> Result<(), StateError> {
@@ -203,12 +203,12 @@ impl SqliteStateStore {
             StepStatus::Skipped => "skipped",
         };
 
-        let sql = "UPDATE step_info SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE execution_id = ? AND step_index = ?";
+        let sql = "UPDATE step_info SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE run_id = ? AND step_index = ?";
 
         for step_index in step_indices.iter() {
             sqlx::query(sql)
                 .bind(status_str)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .bind(step_index as i64)
                 .execute(&mut *tx)
                 .await
@@ -222,19 +222,19 @@ impl SqliteStateStore {
     /// Static version of ensure_execution_exists for background worker
     async fn ensure_execution_exists_static(
         pool: &SqlitePool,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> Result<(), StateError> {
         let sql = "SELECT 1 FROM executions WHERE id = ? LIMIT 1";
         let exists = sqlx::query(sql)
-            .bind(execution_id.to_string())
+            .bind(run_id.to_string())
             .fetch_optional(pool)
             .await
             .change_context(StateError::Internal)?
             .is_some();
 
         if !exists {
-            return Err(error_stack::report!(StateError::ExecutionNotFound {
-                execution_id
+            return Err(error_stack::report!(StateError::RunNotFound {
+                run_id
             }));
         }
 
@@ -303,14 +303,14 @@ impl StateStore for SqliteStateStore {
 
     fn get_step_result(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         step_idx: usize,
     ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
         async move {
-            let sql = "SELECT result FROM step_results WHERE execution_id = ? AND step_index = ?";
+            let sql = "SELECT result FROM step_results WHERE run_id = ? AND step_index = ?";
 
             let row = sqlx::query(sql)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .bind(step_idx as i64)
                 .fetch_optional(&self.pool)
                 .await
@@ -318,7 +318,7 @@ impl StateStore for SqliteStateStore {
 
             let row = row.ok_or_else(|| {
                 error_stack::report!(StateError::StepResultNotFoundByIndex {
-                    execution_id: execution_id.to_string(),
+                    run_id: run_id.to_string(),
                     step_idx,
                 })
             })?;
@@ -334,13 +334,13 @@ impl StateStore for SqliteStateStore {
 
     fn list_step_results(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>> {
         async move {
-            let sql = "SELECT step_index, step_id, result FROM step_results WHERE execution_id = ? ORDER BY step_index";
+            let sql = "SELECT step_index, step_id, result FROM step_results WHERE run_id = ? ORDER BY step_index";
 
             let rows = sqlx::query(sql)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .fetch_all(&self.pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -660,9 +660,9 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn create_execution(
+    fn create_run(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         workflow_hash: FlowHash,
         workflow_name: Option<&str>,
         workflow_label: Option<&str>,
@@ -677,7 +677,7 @@ impl StateStore for SqliteStateStore {
         async move {
             Self::create_execution_sync(
                 &pool,
-                execution_id,
+                run_id,
                 workflow_hash,
                 workflow_name,
                 workflow_label,
@@ -689,9 +689,9 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn update_execution_status(
+    fn update_run_status(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         status: ExecutionStatus,
         result: Option<ValueRef>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
@@ -714,7 +714,7 @@ impl StateStore for SqliteStateStore {
             sqlx::query(sql)
                 .bind(status.as_str())
                 .bind(&result_json)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -723,17 +723,17 @@ impl StateStore for SqliteStateStore {
         }.boxed()
     }
 
-    fn get_execution(
+    fn get_run(
         &self,
-        execution_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<ExecutionDetails>, StateError>> {
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
         let pool = self.pool.clone();
 
         async move {
             let sql = "SELECT id, workflow_name, workflow_label, workflow_hash, status, debug_mode, input_json, result_json, created_at, completed_at FROM executions WHERE id = ?";
 
             let row = sqlx::query(sql)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .fetch_optional(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -785,19 +785,19 @@ impl StateStore for SqliteStateStore {
                         })
                         .transpose()?;
 
-                    let details = ExecutionDetails {
-                        summary: ExecutionSummary {
-                            execution_id,
-                            workflow_name,
-                            workflow_label,
-                            workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
+                    let details = RunDetails {
+                        summary: RunSummary {
+                            run_id,
+                            flow_name: workflow_name,
+                            flow_label: workflow_label,
+                            flow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
                             status,
                             debug_mode: row.get("debug_mode"),
                             created_at,
                             completed_at,
                         },
                         input,
-                        result,
+                        result: result.map(|r| FlowResult::Success { result: r }),
                     };
 
                     Ok(Some(details))
@@ -807,10 +807,10 @@ impl StateStore for SqliteStateStore {
         }.boxed()
     }
 
-    fn list_executions(
+    fn list_runs(
         &self,
-        filters: &ExecutionFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<ExecutionSummary>, StateError>> {
+        filters: &RunFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
         let pool = self.pool.clone();
         let filters = filters.clone();
 
@@ -865,9 +865,9 @@ impl StateStore for SqliteStateStore {
 
             let mut summaries = Vec::new();
             for row in rows {
-                let execution_id_str: String = row.get("id");
-                let execution_id =
-                    Uuid::parse_str(&execution_id_str).change_context(StateError::Internal)?;
+                let run_id_str: String = row.get("id");
+                let run_id =
+                    Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
 
                 let status_str: String = row.get("status");
                 let status = match status_str.as_str() {
@@ -881,11 +881,11 @@ impl StateStore for SqliteStateStore {
                 let workflow_name = row.get::<Option<String>, _>("workflow_name");
                 let workflow_label = row.get::<Option<String>, _>("workflow_label");
 
-                let summary = ExecutionSummary {
-                    execution_id,
-                    workflow_name,
-                    workflow_label,
-                    workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
+                let summary = RunSummary {
+                    run_id,
+                    flow_name: workflow_name,
+                    flow_label: workflow_label,
+                    flow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
                     status,
                     debug_mode: row.get("debug_mode"),
                     created_at: chrono::DateTime::parse_from_rfc3339(
@@ -914,7 +914,7 @@ impl StateStore for SqliteStateStore {
 
     fn initialize_step_info(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         steps: &[StepInfo],
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let steps = steps.to_vec();
@@ -922,16 +922,16 @@ impl StateStore for SqliteStateStore {
 
         async move {
             // Delete existing step info for this execution
-            let delete_sql = "DELETE FROM step_info WHERE execution_id = ?";
+            let delete_sql = "DELETE FROM step_info WHERE run_id = ?";
             sqlx::query(delete_sql)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
 
             // Insert new step info
             if !steps.is_empty() {
-                let insert_sql = "INSERT INTO step_info (execution_id, step_index, step_id, component, status) VALUES (?, ?, ?, ?, ?)";
+                let insert_sql = "INSERT INTO step_info (run_id, step_index, step_id, component, status) VALUES (?, ?, ?, ?, ?)";
 
                 for step in steps {
                     let status_str = match step.status {
@@ -944,7 +944,7 @@ impl StateStore for SqliteStateStore {
                     };
 
                     sqlx::query(insert_sql)
-                        .bind(execution_id.to_string())
+                        .bind(run_id.to_string())
                         .bind(step.step_index as i64)
                         .bind(&step.step_id)
                         .bind(step.component.to_string())
@@ -961,7 +961,7 @@ impl StateStore for SqliteStateStore {
 
     fn update_step_status(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
         step_index: usize,
         status: stepflow_core::status::StepStatus,
     ) {
@@ -972,7 +972,7 @@ impl StateStore for SqliteStateStore {
         if let Err(e) = self
             .write_queue
             .send(StateWriteOperation::UpdateStepStatuses {
-                execution_id,
+                run_id,
                 status,
                 step_indices,
             })
@@ -983,12 +983,12 @@ impl StateStore for SqliteStateStore {
 
     fn flush_pending_writes(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let (tx, rx) = oneshot::channel();
 
         if let Err(e) = self.write_queue.send(StateWriteOperation::Flush {
-            execution_id: Some(execution_id),
+            run_id: Some(run_id),
             completion_notify: tx,
         }) {
             tracing::error!("Failed to queue flush operation: {:?}", e);
@@ -1012,15 +1012,15 @@ impl StateStore for SqliteStateStore {
 
     fn get_step_info_for_execution(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>> {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT step_index, step_id, component, status, created_at, updated_at FROM step_info WHERE execution_id = ? ORDER BY step_index";
+            let sql = "SELECT step_index, step_id, component, status, created_at, updated_at FROM step_info WHERE run_id = ? ORDER BY step_index";
 
             let rows = sqlx::query(sql)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -1043,7 +1043,7 @@ impl StateStore for SqliteStateStore {
                     Component::parse(&component_str).change_context(StateError::Internal)?;
 
                 let step_info = StepInfo {
-                    execution_id,
+                    run_id,
                     step_index: row.get::<i64, _>("step_index") as usize,
                     step_id: row.get("step_id"),
                     component,
@@ -1069,7 +1069,7 @@ impl StateStore for SqliteStateStore {
 
     fn get_runnable_steps(
         &self,
-        execution_id: Uuid,
+        run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>> {
         let pool = self.pool.clone();
 
@@ -1078,12 +1078,12 @@ impl StateStore for SqliteStateStore {
             let sql = r#"
                 SELECT step_index, step_id, component, status, created_at, updated_at
                 FROM step_info
-                WHERE execution_id = ? AND status = 'runnable'
+                WHERE run_id = ? AND status = 'runnable'
                 ORDER BY step_index
             "#;
 
             let rows = sqlx::query(sql)
-                .bind(execution_id.to_string())
+                .bind(run_id.to_string())
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -1095,7 +1095,7 @@ impl StateStore for SqliteStateStore {
                     Component::parse(&component_str).change_context(StateError::Internal)?;
 
                 let step_info = StepInfo {
-                    execution_id,
+                    run_id,
                     step_index: row.get::<i64, _>("step_index") as usize,
                     step_id: row.get("step_id"),
                     component,
