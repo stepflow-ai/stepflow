@@ -56,10 +56,7 @@ pub struct ExecutionContext {
 impl ExecutionContext {
     /// Create a new ExecutionContext.
     pub fn new(context: Arc<dyn Context>, run_id: Uuid) -> Self {
-        Self {
-            context,
-            run_id,
-        }
+        Self { context, run_id }
     }
 
     /// Get the execution ID for this context.

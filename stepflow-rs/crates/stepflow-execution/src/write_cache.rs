@@ -71,8 +71,6 @@ impl WriteCache {
         }
 
         // Not in cache, fetch from state store
-        state_store
-            .get_step_result(run_id, step_id.index)
-            .await
+        state_store.get_step_result(run_id, step_id.index).await
     }
 }

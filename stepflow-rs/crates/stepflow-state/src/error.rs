@@ -15,10 +15,7 @@ pub enum StateError {
     BlobNotFound { blob_id: String },
 
     #[error("Step result not found for run {run_id}, step index {step_idx}")]
-    StepResultNotFoundByIndex {
-        run_id: String,
-        step_idx: usize,
-    },
+    StepResultNotFoundByIndex { run_id: String, step_idx: usize },
 
     #[error("Step result not found for run {run_id}, step id '{step_id}'")]
     StepResultNotFoundById { run_id: Uuid, step_id: String },

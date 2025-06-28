@@ -1025,15 +1025,7 @@ mod tests {
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
-        execute_workflow(
-            executor,
-            flow,
-            flow_hash,
-            run_id,
-            input_ref,
-            state_store,
-        )
-        .await
+        execute_workflow(executor, flow, flow_hash, run_id, input_ref, state_store).await
     }
 
     /// Create a WorkflowExecutor from YAML string for step-by-step testing
@@ -1048,14 +1040,7 @@ mod tests {
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
-        WorkflowExecutor::new(
-            executor,
-            flow,
-            flow_hash,
-            run_id,
-            input_ref,
-            state_store,
-        )
+        WorkflowExecutor::new(executor, flow, flow_hash, run_id, input_ref, state_store)
     }
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {

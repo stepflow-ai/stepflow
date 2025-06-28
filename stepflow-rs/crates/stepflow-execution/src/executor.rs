@@ -201,8 +201,7 @@ impl Context for StepFlowExecutor {
                 let state_store = executor.state_store.clone();
 
                 let result =
-                    execute_workflow(executor, flow, flow_hash, run_id, input, state_store)
-                        .await;
+                    execute_workflow(executor, flow, flow_hash, run_id, input, state_store).await;
 
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,
@@ -239,10 +238,7 @@ impl Context for StepFlowExecutor {
     ///
     /// # Returns
     /// The result of the workflow execution
-    fn flow_result(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
+    fn flow_result(&self, run_id: Uuid) -> BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
         async move {
             // Remove and get the receiver for this execution
             let receiver = {

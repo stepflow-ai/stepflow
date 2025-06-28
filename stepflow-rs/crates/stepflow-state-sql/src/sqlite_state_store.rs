@@ -12,8 +12,8 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
-    RunDetails, RunFilters, RunSummary, StateError, StateStore,
-    StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
+    RunDetails, RunFilters, RunSummary, StateError, StateStore, StateWriteOperation, StepInfo,
+    StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -92,8 +92,7 @@ impl SqliteStateStore {
                     run_id,
                     step_result,
                 } => {
-                    if let Err(e) =
-                        Self::record_step_result_sync(&pool, run_id, step_result).await
+                    if let Err(e) = Self::record_step_result_sync(&pool, run_id, step_result).await
                     {
                         tracing::error!("Failed to record step result: {:?}", e);
                     }
@@ -104,8 +103,7 @@ impl SqliteStateStore {
                     step_indices,
                 } => {
                     if let Err(e) =
-                        Self::update_step_statuses_sync(&pool, run_id, status, step_indices)
-                            .await
+                        Self::update_step_statuses_sync(&pool, run_id, status, step_indices).await
                     {
                         tracing::error!("Failed to update step statuses: {:?}", e);
                     }
@@ -233,9 +231,7 @@ impl SqliteStateStore {
             .is_some();
 
         if !exists {
-            return Err(error_stack::report!(StateError::RunNotFound {
-                run_id
-            }));
+            return Err(error_stack::report!(StateError::RunNotFound { run_id }));
         }
 
         Ok(())

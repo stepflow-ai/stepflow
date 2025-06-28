@@ -7,8 +7,8 @@ use stepflow_core::workflow::FlowHash;
 use crate::{
     StateStore,
     state_store::{
-        RunDetails, RunFilters, RunSummary, StepInfo, StepResult,
-        WorkflowLabelMetadata, WorkflowWithMetadata,
+        RunDetails, RunFilters, RunSummary, StepInfo, StepResult, WorkflowLabelMetadata,
+        WorkflowWithMetadata,
     },
 };
 use stepflow_core::{
@@ -706,10 +706,7 @@ impl StateStore for InMemoryStateStore {
             let step_info_guard = step_info_map.read().await;
 
             // Get all step info for this execution
-            let execution_steps = step_info_guard
-                .get(&run_id)
-                .cloned()
-                .unwrap_or_default();
+            let execution_steps = step_info_guard.get(&run_id).cloned().unwrap_or_default();
 
             // Find steps that are marked as runnable
             let mut runnable_steps = Vec::new();
@@ -813,14 +810,8 @@ mod tests {
         let step2_result = FlowResult::Skipped;
 
         // Record step results with both index and ID
-        store.record_step_result(
-            run_id,
-            StepResult::new(0, "step1", step1_result.clone()),
-        );
-        store.record_step_result(
-            run_id,
-            StepResult::new(1, "step2", step2_result.clone()),
-        );
+        store.record_step_result(run_id, StepResult::new(0, "step1", step1_result.clone()));
+        store.record_step_result(run_id, StepResult::new(1, "step2", step2_result.clone()));
 
         // Retrieve by index
         let retrieved_by_idx_0 = store.get_step_result(run_id, 0).await.unwrap();
@@ -861,10 +852,7 @@ mod tests {
         let new_result = FlowResult::Success {
             result: ValueRef::new(serde_json::json!({"attempt": 2})),
         };
-        store.record_step_result(
-            run_id,
-            StepResult::new(0, "step1", new_result.clone()),
-        );
+        store.record_step_result(run_id, StepResult::new(0, "step1", new_result.clone()));
 
         // Should retrieve the new result by both index and ID
         let retrieved_by_idx = store.get_step_result(run_id, 0).await.unwrap();
@@ -892,18 +880,9 @@ mod tests {
         let step1_result = FlowResult::Skipped;
 
         // Record in non-sequential order
-        store.record_step_result(
-            run_id,
-            StepResult::new(2, "step2", step2_result.clone()),
-        );
-        store.record_step_result(
-            run_id,
-            StepResult::new(0, "step0", step0_result.clone()),
-        );
-        store.record_step_result(
-            run_id,
-            StepResult::new(1, "step1", step1_result.clone()),
-        );
+        store.record_step_result(run_id, StepResult::new(2, "step2", step2_result.clone()));
+        store.record_step_result(run_id, StepResult::new(0, "step0", step0_result.clone()));
+        store.record_step_result(run_id, StepResult::new(1, "step1", step1_result.clone()));
 
         // List should return results ordered by step index
         let all_results = store.list_step_results(run_id).await.unwrap();
@@ -922,10 +901,7 @@ mod tests {
         let step_result = FlowResult::Success {
             result: ValueRef::new(serde_json::json!({"output": "test"})),
         };
-        store.record_step_result(
-            run_id,
-            StepResult::new(0, "step1", step_result.clone()),
-        );
+        store.record_step_result(run_id, StepResult::new(0, "step1", step_result.clone()));
 
         // Verify the result exists
         let retrieved = store.get_step_result(run_id, 0).await.unwrap();

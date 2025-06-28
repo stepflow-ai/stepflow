@@ -44,7 +44,6 @@ pub struct CreateRunResponse {
     pub debug: bool,
 }
 
-
 /// Response for listing runs
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -281,9 +280,7 @@ pub async fn list_runs(
 
     let executions = state_store.list_runs(&filters).await?;
 
-    Ok(Json(ListRunsResponse {
-        runs: executions,
-    }))
+    Ok(Json(ListRunsResponse { runs: executions }))
 }
 
 /// Get step-level execution details for a specific execution
@@ -469,4 +466,3 @@ pub async fn delete_run(
 
     Ok(())
 }
-

@@ -549,7 +549,10 @@ mod tests {
 
         // Verify that detail-specific fields are also present
         assert_eq!(value["input"], json!({"test": "input"}));
-        assert_eq!(value["result"], json!({"success": {"result": {"test": "output"}}}));
+        assert_eq!(
+            value["result"],
+            json!({"success": {"result": {"test": "output"}}})
+        );
 
         // Verify there's no nested "summary" object
         assert!(value.get("summary").is_none());

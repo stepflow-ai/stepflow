@@ -314,8 +314,7 @@ mod tests {
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving workflow input with path
         let input_template = ValueRef::new(json!({"$from": {"workflow": "input"}, "path": "name"}));
@@ -346,15 +345,11 @@ mod tests {
             .unwrap();
 
         // Ensure the write completes before proceeding
-        state_store
-            .flush_pending_writes(run_id)
-            .await
-            .unwrap();
+        state_store.flush_pending_writes(run_id).await.unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving step result
         let input_template = ValueRef::new(json!({"$from": {"step": "step1"}}));
@@ -385,15 +380,11 @@ mod tests {
             .unwrap();
 
         // Ensure the write completes before proceeding
-        state_store
-            .flush_pending_writes(run_id)
-            .await
-            .unwrap();
+        state_store.flush_pending_writes(run_id).await.unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving step result with path
         let input_template = ValueRef::new(json!({"$from": {"step": "step1"}, "path": "value"}));
@@ -414,8 +405,7 @@ mod tests {
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving literal wrapper
         let input_template = ValueRef::new(json!({"$literal": {"special": "value"}}));
@@ -446,15 +436,11 @@ mod tests {
             .unwrap();
 
         // Ensure the write completes before proceeding
-        state_store
-            .flush_pending_writes(run_id)
-            .await
-            .unwrap();
+        state_store.flush_pending_writes(run_id).await.unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving complex object with multiple references
         let complex_input = ValueRef::new(json!({
@@ -493,8 +479,7 @@ mod tests {
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving array with references
         let array_input = ValueRef::new(json!([
@@ -529,15 +514,11 @@ mod tests {
             .unwrap();
 
         // Ensure the write completes before proceeding
-        state_store
-            .flush_pending_writes(run_id)
-            .await
-            .unwrap();
+        state_store.flush_pending_writes(run_id).await.unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving with skip and default value using resolve_expr
         let expr = serde_json::from_value(json!({
@@ -571,15 +552,11 @@ mod tests {
             .unwrap();
 
         // Ensure the write completes before proceeding
-        state_store
-            .flush_pending_writes(run_id)
-            .await
-            .unwrap();
+        state_store.flush_pending_writes(run_id).await.unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving with skip but no default - should propagate the skip
         let expr = serde_json::from_value(json!({"$from": {"step": "step1"}})).unwrap();
@@ -608,15 +585,11 @@ mod tests {
             .unwrap();
 
         // Ensure the write completes before proceeding
-        state_store
-            .flush_pending_writes(run_id)
-            .await
-            .unwrap();
+        state_store.flush_pending_writes(run_id).await.unwrap();
 
         let write_cache = WriteCache::new(1);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test that workflow output is skipped when any dependency is skipped
         let output_template = ValueRef::new(json!({"result": {"$from": {"step": "step1"}}}));
@@ -638,8 +611,7 @@ mod tests {
 
         let write_cache = WriteCache::new(0);
         let flow = create_test_flow();
-        let resolver =
-            ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
+        let resolver = ValueResolver::new(run_id, workflow_input, state_store, write_cache, flow);
 
         // Test resolving primitive values - they should be returned as-is
         let number_template = ValueRef::new(json!(42));
