@@ -108,7 +108,7 @@ impl Plugin for McpPlugin {
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
         let tool_name = component_url_to_tool_name(component.url_string())
-            .ok_or_else(|| PluginError::ComponentInfo)
+            .ok_or(PluginError::ComponentInfo)
             .attach_printable("Invalid MCP component URL format")?;
 
         let state = self.state.read().await;
@@ -116,7 +116,7 @@ impl Plugin for McpPlugin {
             .available_tools
             .iter()
             .find(|tool| tool.get("name").and_then(|n| n.as_str()) == Some(&tool_name))
-            .ok_or_else(|| PluginError::ComponentInfo)
+            .ok_or(PluginError::ComponentInfo)
             .attach_printable("MCP tool not found")?;
 
         mcp_tool_to_component_info(&tool_name, tool_schema)
@@ -130,7 +130,7 @@ impl Plugin for McpPlugin {
         input: ValueRef,
     ) -> Result<FlowResult> {
         let tool_name = component_url_to_tool_name(component.url_string())
-            .ok_or_else(|| PluginError::Execution)
+            .ok_or(PluginError::Execution)
             .attach_printable("Invalid MCP component URL format")?;
 
         // For now, return a placeholder success result
