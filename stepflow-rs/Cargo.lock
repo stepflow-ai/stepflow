@@ -3009,6 +3009,19 @@ dependencies = [
 [[package]]
 name = "stepflow-components-mcp"
 version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "futures",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "stepflow-core",
+ "stepflow-plugin",
+ "stepflow-protocol",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "stepflow-core"
@@ -3066,6 +3079,7 @@ dependencies = [
  "serde_yaml_ng",
  "similar",
  "stepflow-builtins",
+ "stepflow-components-mcp",
  "stepflow-core",
  "stepflow-execution",
  "stepflow-mock",
