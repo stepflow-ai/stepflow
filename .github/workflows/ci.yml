@@ -103,3 +103,17 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: stepflow-rs/Cargo.toml
+
+  licensure:
+    name: Licensure
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install licensure
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: install
+          args: licensure
+      - name: Run licensure
+        run: licensure -c -p
