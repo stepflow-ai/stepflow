@@ -2327,6 +2327,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-mcp-schema"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69c8c97bf79c576f8dc582be9f6c9825ed91bd921aac65bd7990992257727e39"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rust_decimal"
 version = "1.37.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3009,6 +3019,17 @@ dependencies = [
 [[package]]
 name = "stepflow-components-mcp"
 version = "0.1.0"
+dependencies = [
+ "error-stack",
+ "indexmap",
+ "rust-mcp-schema",
+ "serde",
+ "serde_json",
+ "stepflow-core",
+ "stepflow-plugin",
+ "stepflow-protocol",
+ "thiserror 2.0.12",
+]
 
 [[package]]
 name = "stepflow-core"
@@ -3066,6 +3087,7 @@ dependencies = [
  "serde_yaml_ng",
  "similar",
  "stepflow-builtins",
+ "stepflow-components-mcp",
  "stepflow-core",
  "stepflow-execution",
  "stepflow-mock",

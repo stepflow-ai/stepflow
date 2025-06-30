@@ -5,6 +5,7 @@ use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_builtins::BuiltinPluginConfig;
+use stepflow_components_mcp::McpPluginConfig;
 use stepflow_mock::MockPlugin;
 use stepflow_plugin::{DynPlugin, PluginConfig};
 use stepflow_protocol::stdio::StdioPluginConfig;
@@ -72,6 +73,7 @@ enum SupportedPlugin {
     Stdio(StdioPluginConfig),
     Builtin(BuiltinPluginConfig),
     Mock(MockPlugin),
+    Mcp(McpPluginConfig),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -105,6 +107,9 @@ impl SupportedPluginConfig {
                 create_plugin(plugin, working_directory, &self.name).await
             }
             SupportedPlugin::Mock(plugin) => {
+                create_plugin(plugin, working_directory, &self.name).await
+            }
+            SupportedPlugin::Mcp(plugin) => {
                 create_plugin(plugin, working_directory, &self.name).await
             }
         };

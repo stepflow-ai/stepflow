@@ -16,3 +16,21 @@ workspace = true
 doctest = false
 
 [dependencies]
+# Core StepFlow dependencies
+stepflow-core.workspace = true
+stepflow-plugin.workspace = true
+stepflow-protocol.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+error-stack.workspace = true
+thiserror.workspace = true
+
+# MCP Protocol
+rust-mcp-schema = "0.1.0"
+
+# Utilities
+indexmap.workspace = true
