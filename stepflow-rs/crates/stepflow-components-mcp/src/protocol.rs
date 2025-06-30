@@ -7,7 +7,9 @@ pub use rust_mcp_schema::{
     JsonrpcMessage,
     schema_utils::{
         // Access specific message types through schema_utils
-        ClientMessage, ServerMessage, MessageTypes
+        ClientMessage,
+        MessageTypes,
+        ServerMessage,
     },
 };
 
