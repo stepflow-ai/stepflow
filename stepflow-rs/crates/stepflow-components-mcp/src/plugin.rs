@@ -98,7 +98,7 @@ impl Plugin for McpPlugin {
         for tool in &state.available_tools {
             if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
                 // Create component URL in format: mcp+stdio://server_name/tool_name
-                let component_url = format!("mcp+stdio://server/{}", name);
+                let component_url = format!("mcp+stdio://server/{name}");
                 components.push(Component::from_string(&component_url));
             }
         }
