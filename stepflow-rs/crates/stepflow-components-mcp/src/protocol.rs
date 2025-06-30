@@ -1,45 +1,20 @@
-// MCP protocol message definitions
-// This module will contain the MCP-specific JSON-RPC method definitions
-// following the Model Context Protocol specification
+// MCP protocol message definitions using the official rust-mcp-schema crate
+// This provides proper type definitions following the Model Context Protocol specification
 
-use serde::{Deserialize, Serialize};
+// Import the main types from rust-mcp-schema
+#[allow(unused_imports)]
+pub use rust_mcp_schema::{
+    JsonrpcMessage,
+    schema_utils::{
+        // Access specific message types through schema_utils
+        ClientMessage, ServerMessage, MessageTypes
+    },
+};
 
-// Placeholder for MCP protocol methods
-// These will be implemented in the next phase
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct InitializeRequest {
-    pub protocol_version: String,
-    pub client_info: ClientInfo,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ClientInfo {
-    pub name: String,
-    pub version: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct InitializeResponse {
-    pub protocol_version: String,
-    pub server_info: ServerInfo,
-    pub capabilities: ServerCapabilities,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ServerInfo {
-    pub name: String,
-    pub version: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ServerCapabilities {
-    pub tools: Option<ToolsCapability>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ToolsCapability {
-    pub list_changed: Option<bool>,
-}
-
-// TODO: Add more MCP protocol types as needed
+// Define MCP method constants for our implementation
+#[allow(dead_code)]
+pub const INITIALIZE_METHOD: &str = "initialize";
+#[allow(dead_code)]
+pub const TOOLS_LIST_METHOD: &str = "tools/list";
+#[allow(dead_code)]
+pub const TOOLS_CALL_METHOD: &str = "tools/call";

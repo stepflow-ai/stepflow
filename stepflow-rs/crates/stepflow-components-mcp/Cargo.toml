@@ -29,5 +29,8 @@ serde_json.workspace = true
 error-stack.workspace = true
 thiserror.workspace = true
 
+# MCP Protocol
+rust-mcp-schema = "0.1.0"
+
 # Utilities
 indexmap.workspace = true
