@@ -84,10 +84,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install cargo-machete
-        uses: clechasseur/rs-cargo@v2
+        uses: taiki-e/install-action@v2
         with:
-          command: install
-          args: cargo-machete@0.8.0
+          tool: cargo-machete
       - name: Run cargo-machete
         uses: clechasseur/rs-cargo@v2
         with:
@@ -111,9 +110,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install licensure
-        uses: clechasseur/rs-cargo@v2
+        uses: taiki-e/install-action@v2
         with:
-          command: install
-          args: licensure
+          tool: licensure
       - name: Run licensure
         run: licensure -c -p
