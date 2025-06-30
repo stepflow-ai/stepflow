@@ -88,11 +88,14 @@ jobs:
         with:
           tool: cargo-machete
       - name: Run cargo-machete
-        uses: clechasseur/rs-cargo@v2
-        with:
-          command: machete
-          args: --with-metadata
-          working-directory: stepflow-rs
+        working-directory: stepflow-rs
+        run: |
+          cargo machete --with-metadata
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::Unused deps check failed. Run \`cargo machete --fix --with-metadata\` to fix."
+            exit $exit_code
+          fi
 
   rust-cargo-deny:
     name: Rust Cargo Deny
@@ -114,4 +117,10 @@ jobs:
         with:
           tool: licensure
       - name: Run licensure
-        run: licensure -c -p
+        run: |
+          licensure -c -p
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::License check failed. Run \`licensure -p --in-place\` to fix."
+            exit $exit_code
+          fi
