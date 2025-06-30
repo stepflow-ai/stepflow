@@ -519,7 +519,7 @@ mod tests {
 
         let details = RunDetails {
             summary: RunSummary {
-                run_id: run_id,
+                run_id,
                 flow_hash: workflow_hash,
                 flow_name: Some("test-workflow".to_string()),
                 flow_label: Some("production".to_string()),

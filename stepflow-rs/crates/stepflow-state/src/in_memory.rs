@@ -469,7 +469,7 @@ impl StateStore for InMemoryStateStore {
         let now = chrono::Utc::now();
         let execution_details = RunDetails {
             summary: RunSummary {
-                run_id: run_id,
+                run_id,
                 flow_hash: workflow_hash,
                 flow_name: workflow_name.map(|s| s.to_string()),
                 flow_label: workflow_label.map(|s| s.to_string()),
