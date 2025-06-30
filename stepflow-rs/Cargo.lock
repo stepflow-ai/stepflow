@@ -3011,7 +3011,6 @@ name = "stepflow-components-mcp"
 version = "0.1.0"
 dependencies = [
  "error-stack",
- "futures",
  "indexmap",
  "serde",
  "serde_json",
@@ -3019,8 +3018,6 @@ dependencies = [
  "stepflow-plugin",
  "stepflow-protocol",
  "thiserror 2.0.12",
- "tokio",
- "tracing",
 ]
 
 [[package]]

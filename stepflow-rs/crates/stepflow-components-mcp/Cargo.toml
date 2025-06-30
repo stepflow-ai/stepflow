@@ -21,10 +21,6 @@ stepflow-core.workspace = true
 stepflow-plugin.workspace = true
 stepflow-protocol.workspace = true
 
-# Async runtime and utilities
-tokio.workspace = true
-futures.workspace = true
-
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
@@ -35,4 +31,3 @@ thiserror.workspace = true
 
 # Utilities
 indexmap.workspace = true
-tracing.workspace = true
