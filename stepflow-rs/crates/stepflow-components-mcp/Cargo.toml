@@ -32,5 +32,8 @@ thiserror.workspace = true
 # MCP Protocol
 rust-mcp-schema = "0.1.0"
 
+# Async runtime
+tokio.workspace = true
+
 # Utilities
 indexmap.workspace = true

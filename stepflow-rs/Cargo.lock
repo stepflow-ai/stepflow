@@ -3029,6 +3029,7 @@ dependencies = [
  "stepflow-plugin",
  "stepflow-protocol",
  "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
