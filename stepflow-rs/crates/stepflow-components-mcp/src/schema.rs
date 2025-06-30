@@ -5,6 +5,7 @@ use crate::error::{McpError, Result};
 use stepflow_core::component::ComponentInfo;
 
 /// Convert MCP tool schema to StepFlow ComponentInfo
+#[allow(dead_code)]
 pub fn mcp_tool_to_component_info(
     _tool_name: &str,
     _tool_schema: &serde_json::Value,
@@ -17,6 +18,7 @@ pub fn mcp_tool_to_component_info(
 }
 
 /// Convert StepFlow Component URL to MCP tool name
+#[allow(dead_code)]
 pub fn component_url_to_tool_name(component_url: &str) -> Option<String> {
     // Expected format: mcp+stdio://server_name/tool_name
     if let Some(url_part) = component_url.strip_prefix("mcp+stdio://") {

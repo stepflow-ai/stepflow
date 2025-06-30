@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum McpError {
     #[error("MCP server initialization failed")]
     Initialization,
@@ -21,4 +22,5 @@ pub enum McpError {
     InvalidResponse,
 }
 
+#[allow(dead_code)]
 pub type Result<T, E = error_stack::Report<McpError>> = std::result::Result<T, E>;
