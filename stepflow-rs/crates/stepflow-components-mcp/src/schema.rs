@@ -7,7 +7,7 @@ use stepflow_core::{component::ComponentInfo, schema::SchemaRef};
 
 /// Convert MCP tool schema to StepFlow ComponentInfo
 pub fn mcp_tool_to_component_info(
-    tool_name: &str,
+    _tool_name: &str,
     tool_schema: &JsonValue,
 ) -> Result<ComponentInfo> {
     // Extract description from MCP tool schema
