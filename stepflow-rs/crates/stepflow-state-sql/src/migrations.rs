@@ -114,13 +114,13 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
         // Step results table for workflow step execution results
         r#"
             CREATE TABLE IF NOT EXISTS step_results (
-                execution_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
                 step_index INTEGER NOT NULL,
                 step_id TEXT,
                 result TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (execution_id, step_index),
-                FOREIGN KEY (execution_id) REFERENCES executions(id)
+                PRIMARY KEY (run_id, step_index),
+                FOREIGN KEY (run_id) REFERENCES executions(id)
             )
         "#,
         // Workflow labels table for named workflow versions
@@ -148,7 +148,7 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
     // Create all indexes for optimal performance
     let index_commands = vec![
         // Step results indexes
-        "CREATE INDEX IF NOT EXISTS idx_step_results_step_id ON step_results(execution_id, step_id)",
+        "CREATE INDEX IF NOT EXISTS idx_step_results_step_id ON step_results(run_id, step_id)",
         // Executions indexes
         "CREATE INDEX IF NOT EXISTS idx_executions_workflow_hash ON executions(workflow_hash)",
         "CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status)",
@@ -175,15 +175,15 @@ async fn add_step_info_table(pool: &SqlitePool) -> Result<(), StateError> {
     // Create step info table
     let step_info_sql = r#"
         CREATE TABLE IF NOT EXISTS step_info (
-            execution_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
             step_index INTEGER NOT NULL,
             step_id TEXT NOT NULL,
             component TEXT NOT NULL,
             status TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (execution_id, step_index),
-            FOREIGN KEY (execution_id) REFERENCES executions(id)
+            PRIMARY KEY (run_id, step_index),
+            FOREIGN KEY (run_id) REFERENCES executions(id)
         )
     "#;
 
@@ -194,8 +194,8 @@ async fn add_step_info_table(pool: &SqlitePool) -> Result<(), StateError> {
 
     // Create indexes for performance
     let index_commands = vec![
-        "CREATE INDEX IF NOT EXISTS idx_step_info_execution_id ON step_info(execution_id)",
-        "CREATE INDEX IF NOT EXISTS idx_step_info_status ON step_info(execution_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_step_info_run_id ON step_info(run_id)",
+        "CREATE INDEX IF NOT EXISTS idx_step_info_status ON step_info(run_id, status)",
     ];
 
     for sql in index_commands {

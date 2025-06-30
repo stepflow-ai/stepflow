@@ -60,8 +60,8 @@ impl StepFlowExecutor {
         }
     }
 
-    pub fn execution_context(&self, execution_id: Uuid) -> ExecutionContext {
-        ExecutionContext::new(self.executor(), execution_id)
+    pub fn execution_context(&self, run_id: Uuid) -> ExecutionContext {
+        ExecutionContext::new(self.executor(), run_id)
     }
 
     /// Get a reference to the state store.
@@ -110,11 +110,11 @@ impl StepFlowExecutor {
     }
 
     /// Get or create a debug session for step-by-step execution control
-    pub async fn debug_session(&self, execution_id: Uuid) -> Result<WorkflowExecutor> {
+    pub async fn debug_session(&self, run_id: Uuid) -> Result<WorkflowExecutor> {
         // Check if session already exists
         {
             let sessions = self.debug_sessions.read().await;
-            if let Some(_session) = sessions.get(&execution_id) {
+            if let Some(_session) = sessions.get(&run_id) {
                 // Return a clone of the session (WorkflowExecutor should implement Clone if needed)
                 // For now, we'll create a new session each time since WorkflowExecutor is not Clone
             }
@@ -123,13 +123,13 @@ impl StepFlowExecutor {
         // Session doesn't exist, create a new one from state store data
         let execution = self
             .state_store
-            .get_execution(execution_id)
+            .get_run(run_id)
             .await
             .change_context(ExecutionError::StateError)?
-            .ok_or_else(|| error_stack::report!(ExecutionError::ExecutionNotFound(execution_id)))?;
+            .ok_or_else(|| error_stack::report!(ExecutionError::ExecutionNotFound(run_id)))?;
 
         // Extract workflow hash from execution details
-        let flow_hash = execution.summary.workflow_hash;
+        let flow_hash = execution.summary.flow_hash;
 
         let workflow = self
             .state_store
@@ -145,17 +145,17 @@ impl StepFlowExecutor {
             self.executor(),
             workflow,
             flow_hash,
-            execution_id,
+            run_id,
             execution.input,
             self.state_store.clone(),
         )?;
 
-        // Recover execution state from the state store to ensure consistency
+        // Recover state from the state store to ensure consistency
         let corrections_made = workflow_executor.recover_from_state_store().await?;
         if corrections_made > 0 {
             tracing::info!(
-                "Execution recovery completed for execution {}: fixed {} status mismatches",
-                execution_id,
+                "Recovery completed for run {}: fixed {} status mismatches",
+                run_id,
                 corrections_made
             );
         }
@@ -186,13 +186,13 @@ impl Context for StepFlowExecutor {
         let executor = self.executor();
 
         async move {
-            let execution_id = Uuid::new_v4();
+            let run_id = Uuid::new_v4();
             let (tx, rx) = oneshot::channel();
 
             // Store the receiver for later retrieval
             {
                 let mut pending = self.pending.write().await;
-                pending.insert(execution_id, rx.shared());
+                pending.insert(run_id, rx.shared());
             }
 
             // Spawn the execution
@@ -201,8 +201,7 @@ impl Context for StepFlowExecutor {
                 let state_store = executor.state_store.clone();
 
                 let result =
-                    execute_workflow(executor, flow, flow_hash, execution_id, input, state_store)
-                        .await;
+                    execute_workflow(executor, flow, flow_hash, run_id, input, state_store).await;
 
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,
@@ -225,7 +224,7 @@ impl Context for StepFlowExecutor {
                 let _ = tx.send(flow_result);
             });
 
-            Ok(execution_id)
+            Ok(run_id)
         }
         .boxed()
     }
@@ -235,19 +234,16 @@ impl Context for StepFlowExecutor {
     /// This method will wait for the workflow to complete if it's still running.
     ///
     /// # Arguments
-    /// * `execution_id` - The execution ID returned by `submit_flow`
+    /// * `run_id` - The run ID returned by `submit_flow`
     ///
     /// # Returns
     /// The result of the workflow execution
-    fn flow_result(
-        &self,
-        execution_id: Uuid,
-    ) -> BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
+    fn flow_result(&self, run_id: Uuid) -> BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
         async move {
             // Remove and get the receiver for this execution
             let receiver = {
                 let pending = self.pending.read().await;
-                pending.get(&execution_id).cloned()
+                pending.get(&run_id).cloned()
             };
 
             match receiver {
@@ -270,7 +266,7 @@ impl Context for StepFlowExecutor {
                     Ok(FlowResult::Failed {
                         error: stepflow_core::FlowError::new(
                             404,
-                            format!("No execution found for ID: {execution_id}"),
+                            format!("No run found for ID: {run_id}"),
                         ),
                     })
                 }

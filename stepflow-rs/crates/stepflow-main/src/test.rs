@@ -12,7 +12,7 @@ use stepflow_core::FlowResult;
 use stepflow_core::workflow::Flow;
 use walkdir::WalkDir;
 
-/// Normalize execution_id fields in FlowResult for consistent testing
+/// Normalize run_id fields in FlowResult for consistent testing
 fn normalize_flow_result(result: FlowResult) -> FlowResult {
     match result {
         FlowResult::Success { result } => {
@@ -25,7 +25,7 @@ fn normalize_flow_result(result: FlowResult) -> FlowResult {
     }
 }
 
-/// Recursively normalize execution_id fields in JSON values
+/// Recursively normalize run_id fields in JSON values
 fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
     use serde_json::{Map, Value};
 
@@ -38,8 +38,8 @@ fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
             for key in keys {
                 let mut val = map.remove(&key).unwrap();
 
-                // Normalize execution_id fields to a fixed value for testing
-                if key == "execution_id" && val.is_string() {
+                // Normalize run_id fields to a fixed value for testing
+                if key == "run_id" && val.is_string() {
                     val = Value::String("00000000-0000-0000-0000-000000000000".to_string());
                 } else {
                     val = normalize_json_value(val);

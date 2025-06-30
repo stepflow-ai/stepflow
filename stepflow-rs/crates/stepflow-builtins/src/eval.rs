@@ -48,8 +48,8 @@ struct EvalOutput {
     /// The result from executing the nested workflow
     result: ValueRef,
 
-    /// The execution ID of the nested workflow
-    execution_id: String,
+    /// The run ID of the nested workflow
+    run_id: String,
 }
 
 impl BuiltinComponent for EvalComponent {
@@ -92,7 +92,7 @@ impl BuiltinComponent for EvalComponent {
 
         let output = EvalOutput {
             result: result_value.into(),
-            execution_id: context.execution_id().to_string(),
+            run_id: context.run_id().to_string(),
         };
 
         let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;

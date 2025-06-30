@@ -12,12 +12,12 @@ pub async fn run(
     workflow_hash: FlowHash,
     input: stepflow_core::workflow::ValueRef,
 ) -> Result<FlowResult> {
-    let execution_id = executor
+    let run_id = executor
         .submit_flow(flow, workflow_hash, input)
         .await
         .change_context(MainError::FlowExecution)?;
     let output = executor
-        .flow_result(execution_id)
+        .flow_result(run_id)
         .await
         .change_context(MainError::FlowExecution)?;
     Ok(output)

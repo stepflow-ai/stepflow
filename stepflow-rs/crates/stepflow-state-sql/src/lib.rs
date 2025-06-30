@@ -36,7 +36,7 @@ mod tests {
     #[tokio::test]
     async fn test_step_result_storage() {
         let store = SqliteStateStore::in_memory().await.unwrap();
-        let execution_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
 
         // First store a workflow
         let workflow = stepflow_core::workflow::Flow {
@@ -63,8 +63,8 @@ mod tests {
 
         // Then create the execution
         store
-            .create_execution(
-                execution_id,
+            .create_run(
+                run_id,
                 workflow_hash,
                 None,                     // workflow_name
                 None,                     // workflow_label
@@ -83,20 +83,20 @@ mod tests {
         // Store step result
         store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                execution_id,
+                run_id,
                 step_result,
             })
             .unwrap();
 
         // Flush to ensure the write is persisted
-        store.flush_pending_writes(execution_id).await.unwrap();
+        store.flush_pending_writes(run_id).await.unwrap();
 
         // Retrieve by index
-        let retrieved_by_index = store.get_step_result(execution_id, 0).await.unwrap();
+        let retrieved_by_index = store.get_step_result(run_id, 0).await.unwrap();
         assert_eq!(retrieved_by_index, flow_result);
 
         // List all results
-        let all_results = store.list_step_results(execution_id).await.unwrap();
+        let all_results = store.list_step_results(run_id).await.unwrap();
         assert_eq!(all_results.len(), 1);
         assert_eq!(all_results[0].step_idx(), 0);
         assert_eq!(all_results[0].step_id(), "test_step");

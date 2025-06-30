@@ -111,9 +111,7 @@ pub async fn debug_continue(
         FlowResult::Failed { .. } | FlowResult::Skipped => ExecutionStatus::Failed,
     };
 
-    state_store
-        .update_execution_status(run_id, status, None)
-        .await?;
+    state_store.update_run_status(run_id, status, None).await?;
 
     Ok(Json(super::runs::CreateRunResponse {
         run_id,

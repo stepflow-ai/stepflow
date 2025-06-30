@@ -107,15 +107,15 @@ use stepflow_execution::StepFlowExecutor;
 ///   -d '{"workflow": {...}, "input": {"key": "value"}, "debug": true}'
 ///
 /// # List runnable steps
-/// curl http://localhost:7837/api/v1/executions/{execution_id}/debug/runnable
+/// curl http://localhost:7837/api/v1/runs/{run_id}/debug/runnable
 ///
 /// # Execute specific steps
-/// curl -X POST http://localhost:7837/api/v1/executions/{execution_id}/debug/step \
+/// curl -X POST http://localhost:7837/api/v1/runs/{run_id}/debug/step \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"step_ids": ["step1", "step2"]}'
 ///
 /// # Continue to completion
-/// curl -X POST http://localhost:7837/api/v1/executions/{execution_id}/debug/continue
+/// curl -X POST http://localhost:7837/api/v1/runs/{run_id}/debug/continue
 /// ```
 ///
 /// ## Additional Features

@@ -25,4 +25,5 @@ serde_json.workspace = true
 stepflow-core.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+utoipa.workspace = true
 uuid.workspace = true
