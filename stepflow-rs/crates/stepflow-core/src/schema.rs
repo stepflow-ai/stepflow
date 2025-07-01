@@ -13,26 +13,23 @@
 
 //! Schema manipulation and validation types.
 
-use schemars::{
-    JsonSchema,
-    schema::{Schema, SchemaObject},
-};
+use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Type alias for a shared schema reference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(transparent)]
-pub struct SchemaRef(Arc<SchemaObject>);
+pub struct SchemaRef(Arc<Schema>);
 
 impl From<Schema> for SchemaRef {
     fn from(schema: Schema) -> Self {
-        SchemaRef(Arc::new(schema.into_object()))
+        SchemaRef(Arc::new(schema))
     }
 }
 
-impl AsRef<SchemaObject> for SchemaRef {
-    fn as_ref(&self) -> &SchemaObject {
+impl AsRef<Schema> for SchemaRef {
+    fn as_ref(&self) -> &Schema {
         &self.0
     }
 }

@@ -21,9 +21,6 @@ Component: builtin://create_messages
   Input Schema:
     {
       "type": "object",
-      "required": [
-        "user_prompt"
-      ],
       "properties": {
         "system_instructions": {
           "description": "The system instructions to include in the message list.",
@@ -36,22 +33,25 @@ Component: builtin://create_messages
           "description": "The user prompt to include in the message list.",
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "user_prompt"
+      ]
     }
   Output Schema:
     {
       "type": "object",
-      "required": [
-        "messages"
-      ],
       "properties": {
         "messages": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ChatMessage"
+            "$ref": "#/$defs/ChatMessage"
           }
         }
-      }
+      },
+      "required": [
+        "messages"
+      ]
     }
 
 Component: builtin://eval
@@ -60,50 +60,50 @@ Component: builtin://eval
     {
       "description": "Input for the eval component",
       "type": "object",
-      "required": [
-        "input",
-        "workflow"
-      ],
       "properties": {
-        "input": {
-          "description": "The input to pass to the workflow",
-          "$ref": "#/definitions/ValueRef"
-        },
         "workflow": {
           "description": "The workflow to execute",
-          "$ref": "#/definitions/Flow"
+          "$ref": "#/$defs/Flow"
         },
         "workflow_hash": {
           "description": "Precomputed hash of the workflow.",
           "anyOf": [
             {
-              "$ref": "#/definitions/FlowHash"
+              "$ref": "#/$defs/FlowHash"
             },
             {
               "type": "null"
             }
           ]
+        },
+        "input": {
+          "description": "The input to pass to the workflow",
+          "$ref": "#/$defs/ValueRef"
         }
-      }
+      },
+      "required": [
+        "workflow",
+        "input"
+      ]
     }
   Output Schema:
     {
       "description": "Output from the eval component\n\nThe output is simply the result of the nested workflow execution",
       "type": "object",
-      "required": [
-        "result",
-        "run_id"
-      ],
       "properties": {
         "result": {
           "description": "The result from executing the nested workflow",
-          "$ref": "#/definitions/ValueRef"
+          "$ref": "#/$defs/ValueRef"
         },
         "run_id": {
           "description": "The run ID of the nested workflow",
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "result",
+        "run_id"
+      ]
     }
 
 Component: builtin://get_blob
@@ -112,28 +112,28 @@ Component: builtin://get_blob
     {
       "description": "Input for the get_blob component",
       "type": "object",
-      "required": [
-        "blob_id"
-      ],
       "properties": {
         "blob_id": {
           "description": "The blob ID to retrieve",
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "blob_id"
+      ]
     }
   Output Schema:
     {
       "description": "Output from the get_blob component",
       "type": "object",
-      "required": [
-        "data"
-      ],
       "properties": {
         "data": {
           "description": "The JSON data stored in the blob"
         }
-      }
+      },
+      "required": [
+        "data"
+      ]
     }
 
 Component: builtin://load_file
@@ -141,43 +141,43 @@ Component: builtin://load_file
   Input Schema:
     {
       "type": "object",
-      "required": [
-        "path"
-      ],
       "properties": {
+        "path": {
+          "description": "Path to the file to load",
+          "type": "string"
+        },
         "format": {
           "description": "Format of the file (json, yaml, text). If not specified, inferred from extension",
           "anyOf": [
             {
-              "$ref": "#/definitions/FileFormat"
+              "$ref": "#/$defs/FileFormat"
             },
             {
               "type": "null"
             }
           ]
-        },
-        "path": {
-          "description": "Path to the file to load",
-          "type": "string"
         }
-      }
+      },
+      "required": [
+        "path"
+      ]
     }
   Output Schema:
     {
       "type": "object",
-      "required": [
-        "data",
-        "metadata"
-      ],
       "properties": {
         "data": {
           "description": "The loaded data (parsed JSON/YAML or raw text)"
         },
         "metadata": {
           "description": "Metadata about the loaded file",
-          "$ref": "#/definitions/FileMetadata"
+          "$ref": "#/$defs/FileMetadata"
         }
-      }
+      },
+      "required": [
+        "data",
+        "metadata"
+      ]
     }
 
 Component: builtin://openai
@@ -186,16 +186,13 @@ Component: builtin://openai
     {
       "description": "Input for the OpenAI component",
       "type": "object",
-      "required": [
-        "messages"
-      ],
       "properties": {
-        "api_key": {
-          "description": "API key override (optional - uses environment variable if not provided)",
-          "type": [
-            "string",
-            "null"
-          ]
+        "messages": {
+          "description": "The messages to send to the API",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChatMessage"
+          }
         },
         "max_tokens": {
           "description": "Max tokens to generate (optional)",
@@ -204,14 +201,8 @@ Component: builtin://openai
             "null"
           ],
           "format": "uint16",
-          "minimum": 0.0
-        },
-        "messages": {
-          "description": "The messages to send to the API",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ChatMessage"
-          }
+          "minimum": 0,
+          "maximum": 65535
         },
         "temperature": {
           "description": "Temperature setting (optional)",
@@ -220,22 +211,32 @@ Component: builtin://openai
             "null"
           ],
           "format": "float"
+        },
+        "api_key": {
+          "description": "API key override (optional - uses environment variable if not provided)",
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      }
+      },
+      "required": [
+        "messages"
+      ]
     }
   Output Schema:
     {
       "description": "Output from the OpenAI component",
       "type": "object",
-      "required": [
-        "response"
-      ],
       "properties": {
         "response": {
           "description": "The generated response text",
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "response"
+      ]
     }
 
 Component: builtin://put_blob
@@ -244,28 +245,28 @@ Component: builtin://put_blob
     {
       "description": "Input for the put_blob component",
       "type": "object",
-      "required": [
-        "data"
-      ],
       "properties": {
         "data": {
           "description": "The JSON data to store as a blob"
         }
-      }
+      },
+      "required": [
+        "data"
+      ]
     }
   Output Schema:
     {
       "description": "Output from the put_blob component",
       "type": "object",
-      "required": [
-        "blob_id"
-      ],
       "properties": {
         "blob_id": {
           "description": "The blob ID for the stored data",
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "blob_id"
+      ]
     }
 
 Total components: 6
