@@ -40,7 +40,6 @@ uuid.workspace = true
 [dev-dependencies]
 stepflow-builtins.workspace = true
 stepflow-mock.workspace = true
-serde_yaml_ng.workspace = true
 tracing-error.workspace = true
 tracing-subscriber.workspace = true
 tower.workspace = true

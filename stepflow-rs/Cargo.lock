@@ -3165,7 +3165,6 @@ dependencies = [
  "indexmap",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "stepflow-analysis",
  "stepflow-builtins",
  "stepflow-core",
