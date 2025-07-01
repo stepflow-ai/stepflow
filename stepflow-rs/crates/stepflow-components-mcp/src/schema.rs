@@ -39,7 +39,6 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
     })
 }
 
-
 /// Convert StepFlow Component URL to MCP tool name
 pub fn component_url_to_tool_name(component_url: &str) -> Option<String> {
     // Expected format: mcp+stdio://server_name/tool_name
