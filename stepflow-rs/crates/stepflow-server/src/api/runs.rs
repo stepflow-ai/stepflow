@@ -15,6 +15,7 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
@@ -71,14 +72,13 @@ pub struct ListRunsResponse {
 pub struct StepRunResponse {
     /// Step index in the flow
     pub step_index: usize,
-    /// Step ID (if provided)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub step_id: Option<String>,
+    /// Step ID
+    pub step_id: String,
     /// Component name/URL that this step executes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub component: Option<String>,
     /// Current status of the step
-    pub state: StepStatus,
+    pub status: StepStatus,
     /// The result of the step execution (if completed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<FlowResult>,
@@ -88,8 +88,8 @@ pub struct StepRunResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListStepRunsResponse {
-    /// List of step run results
-    pub steps: Vec<StepRunResponse>,
+    /// Dictionary of step run results keyed by step ID
+    pub steps: IndexMap<String, StepRunResponse>,
 }
 
 /// Response containing a flow definition and its hash for run endpoints
@@ -147,16 +147,16 @@ pub async fn create_run(
     let flow_hash = req.flow_hash;
 
     if debug_mode {
-        // In debug mode, return immediately without executing
+        // In debug mode, pause execution by default
         // The execution will be controlled via debug endpoints
         state_store
-            .update_run_status(run_id, ExecutionStatus::Running, None)
+            .update_run_status(run_id, ExecutionStatus::Paused, None)
             .await?;
 
         return Ok(Json(CreateRunResponse {
             run_id,
             result: None,
-            status: ExecutionStatus::Running,
+            status: ExecutionStatus::Paused,
             debug: debug_mode,
         }));
     }
@@ -344,7 +344,7 @@ pub async fn get_run_steps(
     }
 
     // Create unified response with both status and results
-    let mut step_responses = Vec::new();
+    let mut step_responses = IndexMap::new();
 
     // Get step status from state store
     let step_statuses = {
@@ -358,23 +358,21 @@ pub async fn get_run_steps(
 
     // Build unified responses
     for (idx, step) in workflow.steps.iter().enumerate() {
-        let state = step_statuses
+        let status = step_statuses
             .get(&idx)
             .copied()
             .unwrap_or(StepStatus::Blocked);
         let result = completed_steps.get(&idx).map(|sr| sr.result().clone());
 
-        step_responses.push(StepRunResponse {
+        let step_response = StepRunResponse {
             step_index: idx,
-            step_id: if step.id.is_empty() {
-                None
-            } else {
-                Some(step.id.clone())
-            },
+            step_id: step.id.clone(),
             component: Some(step.component.to_string()),
-            state,
+            status,
             result,
-        });
+        };
+
+        step_responses.insert(step.id.clone(), step_response);
     }
 
     Ok(Json(ListStepRunsResponse {

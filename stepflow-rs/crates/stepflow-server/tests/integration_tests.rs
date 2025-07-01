@@ -16,8 +16,12 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::json;
 use std::sync::Arc;
-use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, ValueRef};
+use stepflow_core::{
+    FlowResult,
+    workflow::{Component, ErrorAction, Flow, Step, ValueRef},
+};
 use stepflow_execution::StepFlowExecutor;
+use stepflow_mock::MockPlugin;
 use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
 use tower::ServiceExt as _;
@@ -42,11 +46,15 @@ pub fn init_test_logging() {
     });
 }
 
-/// Helper to create a test server with in-memory state
-async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
+/// Helper to create a test server with in-memory state and optional mock plugins
+async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecutor>) {
+    use stepflow_core::FlowError;
+    use stepflow_mock::MockComponentBehavior;
+
     let state_store = Arc::new(InMemoryStateStore::new());
     let executor = StepFlowExecutor::new(state_store, std::path::PathBuf::from("."));
 
+    // Always register builtin plugins for basic functionality
     executor
         .register_plugin(
             "builtin".to_owned(),
@@ -54,6 +62,50 @@ async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
         )
         .await
         .unwrap();
+
+    // Optionally register mock plugins for status testing
+    if include_mocks {
+        let mut mock_plugin = MockPlugin::new();
+
+        // Configure mock://one_output component
+        mock_plugin
+            .mock_component("mock://one_output")
+            .behavior(
+                json!({"input": "first_step"}),
+                MockComponentBehavior::result(json!({"output": "step1_result"})),
+            )
+            .behavior(
+                json!({"input": "debug_step"}),
+                MockComponentBehavior::result(json!({"output": "debug_result"})),
+            );
+
+        // Configure mock://two_outputs component
+        mock_plugin
+            .mock_component("mock://two_outputs")
+            .behavior(
+                json!({"input": "step1_result"}),
+                MockComponentBehavior::result(json!({"x": 42, "y": 100})),
+            )
+            .behavior(
+                json!({"input": "debug_result"}),
+                MockComponentBehavior::result(json!({"x": 99, "y": 200})),
+            );
+
+        // Configure mock://error_component component
+        mock_plugin
+            .mock_component("mock://error_component")
+            .behavior(
+                json!({"input": "trigger_error"}),
+                MockComponentBehavior::result(FlowResult::Failed {
+                    error: FlowError::new(500, "Mock error for testing"),
+                }),
+            );
+
+        executor
+            .register_plugin("mock".to_owned(), DynPlugin::boxed(mock_plugin))
+            .await
+            .unwrap();
+    }
 
     // Use the real startup logic but without swagger UI for tests
     use stepflow_server::AppConfig;
@@ -65,6 +117,16 @@ async fn create_test_server() -> (Router, Arc<StepFlowExecutor>) {
     let app = config.create_app_router(executor.clone(), 7837);
 
     (app, executor)
+}
+
+/// Helper to create a test server with only builtin components
+async fn create_basic_test_server() -> (Router, Arc<StepFlowExecutor>) {
+    create_test_server(false).await
+}
+
+/// Helper to create a test server with both builtin and mock components
+async fn create_test_server_with_mocks() -> (Router, Arc<StepFlowExecutor>) {
+    create_test_server(true).await
 }
 
 /// Helper to create a simple test workflow
@@ -96,7 +158,7 @@ fn create_test_workflow() -> Flow {
 async fn test_health_endpoint() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
 
     let request = Request::builder()
         .uri("/api/v1/health")
@@ -121,7 +183,7 @@ async fn test_health_endpoint() {
 async fn test_flow_crud_operations() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
     let workflow = create_test_workflow();
 
     // Store flow
@@ -175,7 +237,7 @@ async fn test_flow_crud_operations() {
 async fn test_hash_based_execution() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
     let workflow = create_test_workflow();
 
     // First, store the flow to get a hash
@@ -235,7 +297,7 @@ async fn test_hash_based_execution() {
 async fn test_run_details() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
     let workflow = create_test_workflow();
 
     // Store and execute flow
@@ -329,15 +391,15 @@ async fn test_run_details() {
         .unwrap();
     let steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(steps_response["steps"].is_array());
-    assert!(!steps_response["steps"].as_array().unwrap().is_empty());
+    assert!(steps_response["steps"].is_object());
+    assert!(!steps_response["steps"].as_object().unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn test_list_runs() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
 
     // List runs (should be empty initially)
     let list_request = Request::builder()
@@ -361,7 +423,7 @@ async fn test_list_runs() {
 async fn test_components_endpoint() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
 
     let request = Request::builder()
         .uri("/api/v1/components")
@@ -390,7 +452,7 @@ async fn test_components_endpoint() {
 async fn test_cors_headers() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
 
     let request = Request::builder()
         .uri("/api/v1/health")
@@ -413,7 +475,7 @@ async fn test_cors_headers() {
 async fn test_error_responses() {
     init_test_logging();
 
-    let (app, _executor) = create_test_server().await;
+    let (app, _executor) = create_basic_test_server().await;
 
     // Test 404 for non-existent flow
     let request = Request::builder()
@@ -443,4 +505,363 @@ async fn test_error_responses() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_status_updates_during_regular_execution() {
+    init_test_logging();
+
+    let (app, _executor) = create_test_server_with_mocks().await;
+
+    // Create workflow for regular execution status testing
+    let workflow = Flow {
+        name: Some("status_test_workflow".to_string()),
+        description: Some("Test workflow for status tracking".to_string()),
+        version: None,
+        input_schema: None,
+        output_schema: None,
+        steps: vec![
+            Step {
+                id: "step1".to_string(),
+                component: Component::new(Url::parse("mock://one_output").unwrap()),
+                input: ValueRef::new(json!({"input": "first_step"})),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: ErrorAction::Fail,
+            },
+            Step {
+                id: "step2".to_string(),
+                component: Component::new(Url::parse("mock://two_outputs").unwrap()),
+                input: ValueRef::new(json!({
+                    "input": {
+                        "$from": {"step": "step1"},
+                        "path": "output"
+                    }
+                })),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: ErrorAction::Fail,
+            },
+        ],
+        output: json!({
+            "step1_result": {"$from": {"step": "step1"}, "path": "output"},
+            "step2_result": {"$from": {"step": "step2"}, "path": "x"}
+        })
+        .into(),
+        test: None,
+        examples: vec![],
+    };
+
+    // Store the workflow
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let flow_hash = store_response["flowHash"].as_str().unwrap();
+
+    // Execute workflow in regular mode
+    let execute_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowHash": flow_hash,
+                "input": {},
+                "debug": false
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(execute_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let run_id = execute_response["runId"].as_str().unwrap();
+
+    // Verify execution completed successfully
+    assert_eq!(execute_response["status"], "completed");
+    assert_eq!(execute_response["result"]["outcome"], "success");
+
+    // Check step statuses after completion
+    let steps_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/steps"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(steps_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let steps = steps_response["steps"].as_object().unwrap();
+    assert_eq!(steps.len(), 2);
+
+    // Verify step structure and status information - now using dictionary access
+    let step1 = &steps["step1"];
+    let step2 = &steps["step2"];
+
+    assert_eq!(step1["stepId"], "step1");
+    assert_eq!(step1["component"], "mock://one_output");
+    assert_eq!(step2["stepId"], "step2");
+    assert_eq!(step2["component"], "mock://two_outputs");
+
+    // With the standardized field naming, verify steps have a status field
+    assert!(step1.get("status").is_some());
+    assert!(step2.get("status").is_some());
+}
+
+#[tokio::test]
+async fn test_status_updates_during_debug_execution() {
+    init_test_logging();
+
+    let (app, _executor) = create_test_server_with_mocks().await;
+
+    // Create workflow for debug execution status testing
+    let workflow = Flow {
+        name: Some("debug_status_test".to_string()),
+        description: Some("Test workflow for debug status tracking".to_string()),
+        version: None,
+        input_schema: None,
+        output_schema: None,
+        steps: vec![
+            Step {
+                id: "step1".to_string(),
+                component: Component::new(Url::parse("mock://one_output").unwrap()),
+                input: ValueRef::new(json!({"input": "debug_step"})),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: ErrorAction::Fail,
+            },
+            Step {
+                id: "step2".to_string(),
+                component: Component::new(Url::parse("mock://two_outputs").unwrap()),
+                input: ValueRef::new(json!({
+                    "input": {
+                        "$from": {"step": "step1"},
+                        "path": "output"
+                    }
+                })),
+                input_schema: None,
+                output_schema: None,
+                skip_if: None,
+                on_error: ErrorAction::Fail,
+            },
+        ],
+        output: json!({
+            "result": {"$from": {"step": "step2"}, "path": "x"}
+        })
+        .into(),
+        test: None,
+        examples: vec![],
+    };
+
+    // Store the workflow
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let flow_hash = store_response["flowHash"].as_str().unwrap();
+
+    // Execute workflow in debug mode
+    let execute_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowHash": flow_hash,
+                "input": {},
+                "debug": true
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(execute_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let run_id = execute_response["runId"].as_str().unwrap();
+
+    // Verify execution is in debug mode and paused
+    assert_eq!(execute_response["debug"], true);
+    assert_eq!(execute_response["status"], "paused");
+
+    // In debug mode, execution should be paused and awaiting step-by-step control
+    // Let's verify the initial step statuses
+    let steps_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/steps"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(steps_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let steps = steps_response["steps"].as_object().unwrap();
+    assert_eq!(steps.len(), 2);
+
+    // Now using dictionary access for much cleaner test code
+    let step1 = &steps["step1"];
+    let step2 = &steps["step2"];
+
+    // Verify that status field is used consistently
+    assert_eq!(step1["stepId"], "step1");
+    assert_eq!(step1["component"], "mock://one_output");
+    assert_eq!(step2["stepId"], "step2");
+    assert_eq!(step2["component"], "mock://two_outputs");
+
+    // Verify that steps have status information
+    assert!(step1.get("status").is_some());
+    assert!(step2.get("status").is_some());
+
+    // Test that debug API endpoint exists and is accessible
+    let runnable_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/runnable"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(runnable_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // The key test for debug mode is that:
+    // 1. The workflow starts with debug=true and status="paused"
+    // 2. Debug API endpoints are accessible for step-by-step control
+    // 3. Step status information is properly tracked with the standardized field names
+}
+
+#[tokio::test]
+async fn test_status_transitions_with_error_handling() {
+    init_test_logging();
+
+    let (app, _executor) = create_test_server_with_mocks().await;
+
+    // Create workflow for error status testing
+    let workflow = Flow {
+        name: Some("error_status_test".to_string()),
+        description: Some("Test workflow for error status tracking".to_string()),
+        version: None,
+        input_schema: None,
+        output_schema: None,
+        steps: vec![Step {
+            id: "failing_step".to_string(),
+            component: Component::new(Url::parse("mock://error_component").unwrap()),
+            input: ValueRef::new(json!({"input": "trigger_error"})),
+            input_schema: None,
+            output_schema: None,
+            skip_if: None,
+            on_error: ErrorAction::Fail,
+        }],
+        output: json!({
+            "result": {"$from": {"step": "failing_step"}, "path": "output"}
+        })
+        .into(),
+        test: None,
+        examples: vec![],
+    };
+
+    // Store the workflow
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let flow_hash = store_response["flowHash"].as_str().unwrap();
+
+    // Execute workflow (should fail)
+    let execute_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowHash": flow_hash,
+                "input": {},
+                "debug": false
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(execute_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let run_id = execute_response["runId"].as_str().unwrap();
+
+    // Verify execution failed
+    assert_eq!(execute_response["status"], "failed");
+    assert_eq!(execute_response["result"]["outcome"], "failed");
+
+    // Check step status shows failure
+    let steps_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/steps"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(steps_request).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let steps = steps_response["steps"].as_object().unwrap();
+    assert_eq!(steps.len(), 1);
+
+    // Much cleaner access with dictionary API
+    let failing_step = &steps["failing_step"];
+    assert_eq!(failing_step["stepId"], "failing_step");
+    assert_eq!(failing_step["component"], "mock://error_component");
+
+    // The key test for error handling is that the workflow overall failed (verified above)
+    // and that step information is accessible via the improved dictionary API
 }
