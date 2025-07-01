@@ -3,7 +3,7 @@ use std::sync::Arc;
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value as JsonValue, json};
+use serde_json::json;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
@@ -16,7 +16,10 @@ use stepflow_protocol::stdio::{StdioError, StdioPluginConfig};
 use tokio::sync::RwLock;
 
 #[allow(unused_imports)]
-use crate::protocol::{INITIALIZE_METHOD, TOOLS_CALL_METHOD, TOOLS_LIST_METHOD};
+use crate::protocol::{
+    INITIALIZE_METHOD, Implementation, ServerCapabilities, TOOLS_CALL_METHOD, TOOLS_LIST_METHOD,
+    Tool,
+};
 use crate::schema::{component_url_to_tool_name, mcp_tool_to_component_info};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -60,8 +63,9 @@ pub struct McpPlugin {
 
 #[derive(Debug)]
 struct McpPluginState {
-    server_info: Option<JsonValue>,
-    available_tools: Vec<JsonValue>,
+    server_info: Option<Implementation>,
+    server_capabilities: Option<ServerCapabilities>,
+    available_tools: Vec<Tool>,
 }
 
 impl McpPlugin {
@@ -70,6 +74,7 @@ impl McpPlugin {
             stdio_plugin,
             state: RwLock::new(McpPluginState {
                 server_info: None,
+                server_capabilities: None,
                 available_tools: Vec::new(),
             }),
         }
@@ -96,11 +101,9 @@ impl Plugin for McpPlugin {
 
         // Convert MCP tools to StepFlow components
         for tool in &state.available_tools {
-            if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
-                // Create component URL in format: mcp+stdio://server_name/tool_name
-                let component_url = format!("mcp+stdio://server/{name}");
-                components.push(Component::from_string(&component_url));
-            }
+            // Create component URL in format: mcp+stdio://server_name/tool_name
+            let component_url = format!("mcp+stdio://server/{}", tool.name);
+            components.push(Component::from_string(&component_url));
         }
 
         Ok(components)
@@ -112,15 +115,14 @@ impl Plugin for McpPlugin {
             .attach_printable("Invalid MCP component URL format")?;
 
         let state = self.state.read().await;
-        let tool_schema = state
+        let tool = state
             .available_tools
             .iter()
-            .find(|tool| tool.get("name").and_then(|n| n.as_str()) == Some(&tool_name))
+            .find(|tool| tool.name == tool_name)
             .ok_or(PluginError::ComponentInfo)
             .attach_printable("MCP tool not found")?;
 
-        mcp_tool_to_component_info(&tool_name, tool_schema)
-            .change_context(PluginError::ComponentInfo)
+        mcp_tool_to_component_info(tool).change_context(PluginError::ComponentInfo)
     }
 
     async fn execute(
@@ -158,13 +160,20 @@ impl McpPlugin {
         // 3. Sending initialized notification
 
         let mut state = self.state.write().await;
-        state.server_info = Some(json!({
-            "name": "MCP Server",
-            "version": "1.0.0",
-            "capabilities": {
-                "tools": {}
-            }
-        }));
+        state.server_info = Some(Implementation {
+            name: "MCP Server".to_string(),
+            version: "1.0.0".to_string(),
+            title: None,
+        });
+
+        state.server_capabilities = Some(ServerCapabilities {
+            completions: None,
+            experimental: None,
+            logging: None,
+            prompts: None,
+            resources: None,
+            tools: Some(Default::default()),
+        });
 
         Ok(())
     }
@@ -176,10 +185,10 @@ impl McpPlugin {
         // and parsing the response to extract available tools
 
         let mut state = self.state.write().await;
-        state.available_tools = vec![json!({
-            "name": "example_tool",
-            "description": "An example MCP tool",
-            "inputSchema": {
+        state.available_tools = vec![Tool {
+            name: "example_tool".to_string(),
+            description: Some("An example MCP tool".to_string()),
+            input_schema: serde_json::from_value(json!({
                 "type": "object",
                 "properties": {
                     "input": {
@@ -188,8 +197,13 @@ impl McpPlugin {
                     }
                 },
                 "required": ["input"]
-            }
-        })];
+            }))
+            .unwrap(),
+            annotations: None,
+            meta: None,
+            output_schema: None,
+            title: None,
+        }];
 
         Ok(())
     }
