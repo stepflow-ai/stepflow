@@ -14,6 +14,7 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use stepflow_core::workflow::Component;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 use stepflow_plugin::{Context as _, ExecutionContext};
 use tokio::fs;
@@ -89,13 +90,14 @@ impl LoadFileComponent {
 }
 
 impl BuiltinComponent for LoadFileComponent {
-    fn component_info(&self) -> Result<ComponentInfo> {
+    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<LoadFileInput>();
         let output_schema = SchemaRef::for_type::<LoadFileOutput>();
 
         Ok(ComponentInfo {
-            input_schema,
-            output_schema,
+            component: Component::for_plugin(plugin, "load_file"),
+            input_schema: Some(input_schema),
+            output_schema: Some(output_schema),
             description: Some(
                 "Load and parse a file (JSON, YAML, or text) from the filesystem".to_string(),
             ),

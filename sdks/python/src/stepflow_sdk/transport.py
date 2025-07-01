@@ -13,9 +13,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+from re import U
 from typing import Any
-from msgspec import Struct, Raw
-from uuid import UUID
+from msgspec import Struct, Raw, UnsetType, UNSET
+
+# Type alias for request IDs to match Rust RequestId enum
+type RequestId = str | int
 
 
 class RemoteError(Struct, kw_only=True):
@@ -38,6 +41,7 @@ class RemoteError(Struct, kw_only=True):
     The error data.
     """
 
+
 class Message(Struct, kw_only=True):
     """
     Message sent to request a method execution.
@@ -48,27 +52,27 @@ class Message(Struct, kw_only=True):
     The JSON-RPC version (must be "2.0")
     """
 
-    id: UUID | None = None
+    id: str | UnsetType = UNSET
     """
     The request id. If not set, this is a notification.
     """
 
-    method: str | None = None
+    method: str | UnsetType = UNSET
     """
     The method to execute.
     """
 
-    params: Raw = Raw(b"null")
+    params: Raw | UnsetType = UNSET
     """
     The parameters to pass to the method.
     """
 
-    result: Raw = Raw(b"null")
+    result: Raw | UnsetType = UNSET
     """
     The result of the method execution.
     """
 
-    error: RemoteError | None = None
+    error: RemoteError | UnsetType = UNSET
     """
     The error that occurred during the method execution.
     """

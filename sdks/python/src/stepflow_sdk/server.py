@@ -20,10 +20,10 @@ import json
 import sys
 import asyncio
 from dataclasses import dataclass
-from uuid import UUID
 from urllib.parse import urlparse
 
 import msgspec
+from msgspec import UNSET
 from stepflow_sdk.exceptions import (
     ComponentNotFoundError,
     InputValidationError,
@@ -32,7 +32,7 @@ from stepflow_sdk.exceptions import (
     StepflowExecutionError,
     StepflowProtocolError,
 )
-from stepflow_sdk.transport import Message
+from stepflow_sdk.transport import Message, RequestId
 from stepflow_sdk.protocol import (
     InitializeRequest,
     ComponentInfoRequest,
@@ -58,7 +58,7 @@ class ComponentEntry:
         return msgspec.json.schema(self.output_type)
 
 
-def _handle_exception(e: Exception, id: UUID | None) -> Message:
+def _handle_exception(e: Exception, id: RequestId | None) -> Message:
     """Convert any exception to a proper JSON-RPC error response."""
     if not isinstance(e, StepflowError):
         e = StepflowExecutionError(f"Unexpected error: {str(e)}")
@@ -73,7 +73,7 @@ class StepflowStdioServer:
         self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
-        self._pending_requests: Dict[UUID, asyncio.Future] = {}
+        self._pending_requests: Dict[RequestId, asyncio.Future] = {}
         self._context: StepflowContext = StepflowContext(
             self._outgoing_queue, self._pending_requests
         )
@@ -157,7 +157,7 @@ class StepflowStdioServer:
                 )
                 self._protocol_prefix = init_request.protocol_prefix
                 return Message(id=id, result={"server_protocol_version": 1})
-            case "component_info":
+            case "components/info":
                 component_request = msgspec.json.decode(
                     request.params, type=ComponentInfoRequest
                 )
@@ -172,7 +172,7 @@ class StepflowStdioServer:
                         description=component.description,
                     ),
                 )
-            case "component_execute":
+            case "components/execute":
                 execute_request = msgspec.json.decode(
                     request.params, type=ComponentExecuteRequest
                 )
@@ -212,7 +212,7 @@ class StepflowStdioServer:
                     id=id,
                     result=ComponentExecuteResponse(output=output),
                 )
-            case "list_components":
+            case "components/list":
                 # Return component URLs that match the expected Component format
                 component_urls = [
                     f"{self._protocol_prefix}://{name}"
@@ -241,7 +241,9 @@ class StepflowStdioServer:
             # Decode the request
             request = msgspec.json.decode(request_bytes, type=Message)
             print(f"Received request: {request}", file=sys.stderr)
-            request_id = getattr(request, "id", None)
+            request_id = getattr(request, "id", UNSET)
+            if request_id == UNSET:
+                request_id = None
 
             # Handle the request and get response (reusing existing logic)
             response = await self._handle_message(request)
@@ -263,21 +265,21 @@ class StepflowStdioServer:
 
     async def _handle_message(self, request: Message) -> Message | None:
         """Handle an incoming method request and return a response."""
-        if request.id is None and request.method == "initialized":
+        if request.id is UNSET and request.method == "initialized":
             self._initialized = True
             return None
 
         if not self._initialized and request.method != "initialize":
             raise ServerNotInitializedError()
 
-        if request.id is not None and request.method is not None:
+        if request.id is not UNSET and request.method is not UNSET:
             # Handle a method request.
             return await self._handle_method_request(request)
-        elif request.id is not None:
+        elif request.id is not UNSET:
             # Handle a method response.
             self._handle_response(request)
             return None
-        elif request.method is not None:
+        elif request.method is not UNSET:
             return await self._handle_notification(request)
         else:
             # Handle a request with no id or method.

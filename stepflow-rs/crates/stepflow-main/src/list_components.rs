@@ -17,8 +17,7 @@ use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use stepflow_core::schema::SchemaRef;
-use stepflow_core::workflow::Component;
+use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::Plugin as _;
 
 /// Output format for command line display
@@ -30,23 +29,8 @@ pub enum OutputFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ComponentDetails {
-    /// The component identifier (URL)
-    pub component: Component,
-    /// Input schema (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_schema: Option<SchemaRef>,
-    /// Output schema (optional)  
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_schema: Option<SchemaRef>,
-    /// Component description (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComponentList {
-    pub components: Vec<ComponentDetails>,
+    pub components: Vec<ComponentInfo>,
 }
 
 /// List all available components from a stepflow config.
@@ -71,36 +55,20 @@ pub async fn list_components(
     let mut all_components = Vec::new();
 
     // Get the list of plugins from the executor
-    for (_protocol, plugin) in executor.list_plugins().await {
+    for plugin in executor.list_plugins().await {
         // List components available from this plugin
         let components = plugin
             .list_components()
             .await
             .change_context(MainError::PluginCommunication)?;
 
-        // For each component, get detailed information
-        for component in components {
-            let info = plugin
-                .component_info(&component)
-                .await
-                .change_context(MainError::PluginCommunication)?;
-
-            let details = ComponentDetails {
-                component,
-                input_schema: if include_schemas {
-                    Some(info.input_schema)
-                } else {
-                    None
-                },
-                output_schema: if include_schemas {
-                    Some(info.output_schema)
-                } else {
-                    None
-                },
-                description: info.description,
-            };
-
-            all_components.push(details);
+        // Components are already ComponentInfo structs, just filter schemas if needed
+        for mut info in components {
+            if !include_schemas {
+                info.input_schema = None;
+                info.output_schema = None;
+            }
+            all_components.push(info);
         }
     }
 
@@ -129,7 +97,7 @@ pub async fn list_components(
     Ok(())
 }
 
-fn print_pretty(components: &[ComponentDetails]) {
+fn print_pretty(components: &[ComponentInfo]) {
     if components.is_empty() {
         println!("No components found.");
         return;

@@ -108,15 +108,15 @@ impl Plugin for McpPlugin {
         Ok(())
     }
 
-    async fn list_components(&self) -> Result<Vec<Component>> {
+    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
         let state = self.state.read().await;
         let mut components = Vec::new();
 
         // Convert MCP tools to StepFlow components
         for tool in &state.available_tools {
-            // Create component URL in format: mcp+stdio://server_name/tool_name
-            let component_url = format!("mcp+stdio://server/{}", tool.name);
-            components.push(Component::from_string(&component_url));
+            let info = crate::schema::mcp_tool_to_component_info(tool)
+                .change_context(PluginError::ComponentInfo)?;
+            components.push(info);
         }
 
         Ok(components)

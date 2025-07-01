@@ -14,6 +14,7 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_core::FlowResult;
+use stepflow_core::workflow::Component;
 use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 use stepflow_plugin::ExecutionContext;
 
@@ -39,13 +40,14 @@ struct CreateMessagesOutput {
 }
 
 impl BuiltinComponent for CreateMessagesComponent {
-    fn component_info(&self) -> Result<ComponentInfo> {
+    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<CreateMessagesInput>();
         let output_schema = SchemaRef::for_type::<CreateMessagesOutput>();
 
         Ok(ComponentInfo {
-            input_schema,
-            output_schema,
+            component: Component::for_plugin(plugin, "create_messages"),
+            input_schema: Some(input_schema),
+            output_schema: Some(output_schema),
             description: Some(
                 "Create a chat message list from system instructions and user prompt".to_string(),
             ),

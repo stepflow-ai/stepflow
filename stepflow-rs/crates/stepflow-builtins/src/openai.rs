@@ -14,6 +14,7 @@
 use error_stack::ResultExt as _;
 use openai_api_rs::v1::{api::OpenAIClient, chat_completion};
 use serde::{Deserialize, Serialize};
+use stepflow_core::workflow::Component;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
 use stepflow_plugin::ExecutionContext;
 
@@ -87,13 +88,14 @@ struct OpenAIOutput {
 }
 
 impl BuiltinComponent for OpenAIComponent {
-    fn component_info(&self) -> Result<ComponentInfo> {
+    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<OpenAIInput>();
         let output_schema = SchemaRef::for_type::<OpenAIOutput>();
 
         Ok(ComponentInfo {
-            input_schema,
-            output_schema,
+            component: Component::for_plugin(plugin, "openai"),
+            input_schema: Some(input_schema),
+            output_schema: Some(output_schema),
             description: Some(
                 "Send messages to OpenAI's chat completion API and get a response".to_string(),
             ),

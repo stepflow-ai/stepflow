@@ -15,7 +15,7 @@
 // This module handles converting MCP tool schemas to StepFlow ComponentInfo
 
 use crate::error::{McpError, Result};
-use stepflow_core::{component::ComponentInfo, schema::SchemaRef};
+use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::Component};
 
 // Import the official Tool struct from rust-mcp-schema
 use crate::protocol::Tool;
@@ -45,10 +45,15 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
             .attach_printable("Failed to create output schema")
     })?;
 
+    // Create component URL in format: mcp+stdio://server_name/tool_name
+    let component_url = format!("mcp+stdio://server/{}", tool.name);
+    let component = Component::from_string(&component_url);
+
     Ok(ComponentInfo {
+        component,
         description: Some(description),
-        input_schema,
-        output_schema,
+        input_schema: Some(input_schema),
+        output_schema: Some(output_schema),
     })
 }
 

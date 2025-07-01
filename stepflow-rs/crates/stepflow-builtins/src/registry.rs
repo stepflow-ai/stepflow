@@ -78,23 +78,6 @@ pub fn get_component(component: &Component) -> Result<Arc<DynBuiltinComponent<'_
     Ok(builtin_component.clone())
 }
 
-pub fn list_components() -> Vec<Component> {
-    REGISTRY
-        .components
-        .keys()
-        .map(|(host, path)| {
-            if let Some(host) = host {
-                if path.is_empty() {
-                    // This is a builtin component
-                    Component::from_string(host)
-                } else {
-                    let url = format!("builtin://{host}/{path}");
-                    Component::from_string(&url)
-                }
-            } else {
-                // Fallback case
-                Component::from_string(path)
-            }
-        })
-        .collect()
+pub fn components() -> impl Iterator<Item = Arc<DynBuiltinComponent<'static>>> {
+    REGISTRY.components.values().cloned()
 }

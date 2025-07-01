@@ -35,6 +35,18 @@ pub struct Component {
     delimiter: Option<usize>,
 }
 
+impl PartialOrd for Component {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Component {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.url.cmp(&other.url)
+    }
+}
+
 impl std::fmt::Display for Component {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.url)
@@ -51,6 +63,13 @@ impl Component {
         Self {
             url: url_str.to_string(),
             delimiter,
+        }
+    }
+
+    pub fn for_plugin(plugin: &str, path: &str) -> Self {
+        Self {
+            url: format!("{plugin}://{path}"),
+            delimiter: Some(plugin.len() + 1), // Position of the colon after "plugin
         }
     }
 
@@ -320,5 +339,14 @@ mod tests {
                 assert_eq!(component.url_string(), deserialized.url_string());
             }
         }
+    }
+
+    #[test]
+    fn test_for_plugin() {
+        let component = Component::for_plugin("mcp", "tool/component");
+        assert_eq!(component.url_string(), "mcp://tool/component");
+        assert_eq!(component.protocol(), "mcp");
+        assert_eq!(component.transport(), None);
+        assert!(!component.is_builtin());
     }
 }

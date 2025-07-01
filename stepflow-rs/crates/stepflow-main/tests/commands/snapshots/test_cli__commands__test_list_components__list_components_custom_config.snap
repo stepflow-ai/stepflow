@@ -7,7 +7,7 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpBR6YqE/custom-config.yml"
+    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpMg4nG6/custom-config.yml"
 ---
 success: true
 exit_code: 0
@@ -15,22 +15,22 @@ exit_code: 0
 Available Components:
 ====================
 
-Component: builtin://create_messages
+Component: test-builtins://create_messages
   Description: Create a chat message list from system instructions and user prompt
 
-Component: builtin://eval
+Component: test-builtins://eval
   Description: Execute a nested workflow with given input and return the result
 
-Component: builtin://get_blob
+Component: test-builtins://get_blob
   Description: Retrieve JSON data from a blob using its ID
 
-Component: builtin://load_file
+Component: test-builtins://load_file
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
 
-Component: builtin://openai
+Component: test-builtins://openai
   Description: Send messages to OpenAI's chat completion API and get a response
 
-Component: builtin://put_blob
+Component: test-builtins://put_blob
   Description: Store JSON data as a blob and return its content-addressable ID
 
 Total components: 6

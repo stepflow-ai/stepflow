@@ -93,9 +93,9 @@ impl StepFlowExecutor {
     }
 
     /// List all registered plugins and their protocols
-    pub async fn list_plugins(&self) -> Vec<(String, Arc<DynPlugin<'static>>)> {
+    pub async fn list_plugins(&self) -> Vec<Arc<DynPlugin<'static>>> {
         let guard = self.plugins.read().await;
-        guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        guard.values().cloned().collect()
     }
 
     /// Register a plugin for the given protocol.

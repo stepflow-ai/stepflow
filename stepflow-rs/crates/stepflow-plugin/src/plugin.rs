@@ -27,7 +27,7 @@ pub trait Plugin: Send + Sync {
     async fn init(&self, context: &Arc<dyn Context>) -> Result<()>;
 
     /// List all components available in this plugin.
-    async fn list_components(&self) -> Result<Vec<Component>>;
+    async fn list_components(&self) -> Result<Vec<ComponentInfo>>;
 
     /// Return the outputs for the given component.
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo>;
