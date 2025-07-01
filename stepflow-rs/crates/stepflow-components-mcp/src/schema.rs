@@ -15,23 +15,44 @@
 // This module handles converting MCP tool schemas to StepFlow ComponentInfo
 
 use crate::error::{McpError, Result};
-use stepflow_core::component::ComponentInfo;
+use stepflow_core::{component::ComponentInfo, schema::SchemaRef};
 
-/// Convert MCP tool schema to StepFlow ComponentInfo
-#[allow(dead_code)]
-pub fn mcp_tool_to_component_info(
-    _tool_name: &str,
-    _tool_schema: &serde_json::Value,
-) -> Result<ComponentInfo> {
-    // TODO: Implement actual conversion from MCP tool schema to ComponentInfo
-    // This will parse MCP tool definitions and create appropriate ComponentInfo with schemas
+// Import the official Tool struct from rust-mcp-schema
+use crate::protocol::Tool;
 
-    Err(error_stack::Report::new(McpError::SchemaConversion)
-        .attach_printable("Schema conversion not yet implemented"))
+/// Convert MCP tool to StepFlow ComponentInfo
+pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
+    // Use the description from the tool, or default
+    let description = tool
+        .description
+        .clone()
+        .unwrap_or_else(|| "MCP tool".to_string());
+
+    // Convert the input schema from the tool
+    let input_schema =
+        SchemaRef::parse_json(&serde_json::to_string(&tool.input_schema).map_err(|_| {
+            error_stack::Report::new(McpError::SchemaConversion)
+                .attach_printable("Failed to serialize MCP input schema")
+        })?)
+        .map_err(|_| {
+            error_stack::Report::new(McpError::SchemaConversion)
+                .attach_printable("Failed to parse MCP input schema")
+        })?;
+
+    // MCP tools typically return unstructured results, so use a flexible output schema
+    let output_schema = SchemaRef::parse_json(r#"{"type": "object"}"#).map_err(|_| {
+        error_stack::Report::new(McpError::SchemaConversion)
+            .attach_printable("Failed to create output schema")
+    })?;
+
+    Ok(ComponentInfo {
+        description: Some(description),
+        input_schema,
+        output_schema,
+    })
 }
 
 /// Convert StepFlow Component URL to MCP tool name
-#[allow(dead_code)]
 pub fn component_url_to_tool_name(component_url: &str) -> Option<String> {
     // Expected format: mcp+stdio://server_name/tool_name
     if let Some(url_part) = component_url.strip_prefix("mcp+stdio://") {

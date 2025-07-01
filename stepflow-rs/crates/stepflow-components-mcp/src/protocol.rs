@@ -17,13 +17,24 @@
 // Import the main types from rust-mcp-schema
 #[allow(unused_imports)]
 pub use rust_mcp_schema::{
-    JsonrpcMessage,
-    schema_utils::{
-        // Access specific message types through schema_utils
-        ClientMessage,
-        MessageTypes,
-        ServerMessage,
-    },
+    // Core types
+    Implementation,
+    // Initialization types
+    InitializeRequest,
+    InitializeRequestParams,
+    InitializeResult,
+    InitializedNotification,
+
+    // Tool-related types
+    ListToolsRequest,
+    ListToolsResult,
+    ServerCapabilities,
+    Tool,
+
+    ToolInputSchema,
+
+    // Message types (if available through schema_utils)
+    schema_utils::*,
 };
 
 // Define MCP method constants for our implementation
