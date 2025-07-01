@@ -19,7 +19,7 @@ use schemars::JsonSchema;
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
-    /// Optional identifier for the step
+    /// Identifier for the step
     pub id: String,
 
     /// The component to execute in this step
