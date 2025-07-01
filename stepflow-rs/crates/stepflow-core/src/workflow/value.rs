@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -46,11 +47,11 @@ impl Default for ValueRef {
 }
 
 impl JsonSchema for ValueRef {
-    fn schema_name() -> String {
-        "ValueRef".to_string()
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("ValueRef")
     }
 
-    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         serde_json::Value::json_schema(generator)
     }
 }

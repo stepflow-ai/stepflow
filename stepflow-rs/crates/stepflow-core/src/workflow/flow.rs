@@ -11,6 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
+
 use super::{Step, ValueRef};
 use crate::{FlowResult, schema::SchemaRef};
 use schemars::JsonSchema;
@@ -239,16 +241,20 @@ impl<'de> serde::Deserialize<'de> for FlowRef {
 }
 
 impl JsonSchema for FlowRef {
-    fn schema_name() -> String {
+    fn schema_name() -> Cow<'static, str> {
         Flow::schema_name()
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+    fn schema_id() -> Cow<'static, str> {
+        Flow::schema_id()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         Flow::json_schema(generator)
     }
 
-    fn is_referenceable() -> bool {
-        Flow::is_referenceable()
+    fn inline_schema() -> bool {
+        Flow::inline_schema()
     }
 }
 
