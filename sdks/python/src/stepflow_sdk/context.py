@@ -22,7 +22,7 @@ import asyncio
 from typing import Any, Dict
 from uuid import uuid4
 import msgspec
-from stepflow_sdk.transport import RequestId
+from stepflow_sdk.generated_protocol import RequestId
 
 
 class StepflowContext:

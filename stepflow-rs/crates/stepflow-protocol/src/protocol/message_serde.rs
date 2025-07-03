@@ -16,9 +16,7 @@ use serde::de::Visitor;
 use serde::{Deserialize, Deserializer};
 
 use super::json_rpc::JsonRpc;
-use super::{
-    Error, Message, Method, MethodRequest, MethodResponse, MethodResult, Notification, RequestId,
-};
+use super::{Error, Message, Method, MethodRequest, MethodResponse, Notification, RequestId};
 
 /// Intermediate message type for custom deserialization
 #[derive(Debug, Deserialize)]
@@ -106,8 +104,8 @@ impl<'de> Visitor<'de> for MessageVisitor<'de> {
                     (None, None) => {
                         return Err(A::Error::custom("missing 'result' or 'error' in response"));
                     }
-                    (Some(result), None) => MethodResult::Result(result),
-                    (None, Some(error)) => MethodResult::Error(error),
+                    (Some(result), None) => MethodResponse::success(id, result),
+                    (None, Some(error)) => MethodResponse::error(id, error),
                     (Some(_), Some(_)) => {
                         return Err(A::Error::custom(
                             "both 'result' and 'error' present in response",
@@ -115,11 +113,7 @@ impl<'de> Visitor<'de> for MessageVisitor<'de> {
                     }
                 };
 
-                Ok(Message::Response(MethodResponse {
-                    jsonrpc,
-                    id,
-                    response,
-                }))
+                Ok(Message::Response(response))
             }
             (None, None) => Err(A::Error::custom("missing 'id' or 'method'")),
         }
@@ -137,7 +131,7 @@ impl<'de> Deserialize<'de> for Message<'de> {
 
 #[cfg(test)]
 mod tests {
-    use crate::Error;
+    use crate::{Error, MethodResponse};
 
     use super::*;
     use serde_json::json;
@@ -156,11 +150,7 @@ mod tests {
             panic!("Expected request message, got {request:?}");
         };
         assert_eq!(request.method, Method::Initialize);
-        if let RequestId::String(id) = &request.id {
-            assert_eq!(id, "test-id");
-        } else {
-            panic!("Expected string ID");
-        }
+        assert_eq!(request.id, RequestId::String("test-id".to_string()));
         assert!(request.params.is_some());
     }
 
@@ -189,16 +179,12 @@ mod tests {
             panic!("Expected response message");
         };
 
-        if let RequestId::Integer(id) = &response.id {
-            assert_eq!(*id, 123);
-        } else {
-            panic!("Expected integer ID");
-        }
+        assert_eq!(response.id(), &RequestId::Integer(123));
 
-        match &response.response {
-            crate::MethodResult::Result(result) => {
+        match &response {
+            MethodResponse::Success(success) => {
                 // LazyValue from deserialization should be Read variant, so deserialize_to should work
-                let value: serde_json::Value = result.deserialize_to().unwrap();
+                let value: serde_json::Value = success.result.deserialize_to().unwrap();
                 assert_eq!(value["success"], true);
             }
             _ => panic!("Expected result response"),
@@ -224,8 +210,9 @@ mod tests {
             panic!("Expected response message, got {response:?}");
         };
 
-        match &response.response {
-            crate::MethodResult::Error(error) => {
+        match &response {
+            MethodResponse::Error(error) => {
+                let error = &error.error;
                 assert_eq!(error.code, -32600);
                 assert_eq!(error.message.as_ref(), "Invalid Request");
                 assert!(error.data.is_none());
@@ -283,11 +270,7 @@ mod tests {
         match message {
             Message::Request(req) => {
                 assert_eq!(req.method, Method::ComponentsExecute);
-                if let RequestId::String(id) = &req.id {
-                    assert_eq!(id, "test");
-                } else {
-                    panic!("Expected string ID");
-                }
+                assert_eq!(req.id, RequestId::String("test".to_string()));
             }
             _ => panic!("Expected request message"),
         }
@@ -314,14 +297,10 @@ mod tests {
 
         match message {
             Message::Response(resp) => {
-                if let RequestId::Integer(id) = &resp.id {
-                    assert_eq!(*id, 1);
-                } else {
-                    panic!("Expected integer ID");
-                }
-                match &resp.response {
-                    MethodResult::Result(lazy_result) => {
-                        let result: serde_json::Value = lazy_result.deserialize_to().unwrap();
+                assert_eq!(resp.id(), &RequestId::Integer(1));
+                match &resp {
+                    MethodResponse::Success(success) => {
+                        let result: serde_json::Value = success.result.deserialize_to().unwrap();
                         assert_eq!(result.as_i64().unwrap(), 19);
                     }
                     _ => panic!("Expected result response"),
@@ -338,13 +317,11 @@ mod tests {
         let message: Message<'_> = serde_json::from_str(error_json).unwrap();
 
         match message {
-            Message::Response(resp) => match &resp.response {
-                MethodResult::Error(error) => {
-                    assert_eq!(error.code, -32601);
-                    assert_eq!(error.message.as_ref(), "Method not found");
-                }
-                _ => panic!("Expected error response"),
-            },
+            Message::Response(MethodResponse::Error(error)) => {
+                let error = &error.error;
+                assert_eq!(error.code, -32601);
+                assert_eq!(error.message.as_ref(), "Method not found");
+            }
             _ => panic!("Expected response message"),
         }
     }

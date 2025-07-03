@@ -32,7 +32,32 @@ pub struct Component {
     /// The component URL as a string
     url: String,
     /// Position of the first colon in the URL, if any (for efficient parsing)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "optional_positive_int")]
     delimiter: Option<usize>,
+}
+
+/// Generate a custom schema for `Option<usize>` since the default
+/// attempts to constrain the `Option<int>`:
+///
+/// ```json
+/// {
+///   "description": "Position of the first colon in the URL, if any (for efficient parsing)",
+///   "type": [
+///     "integer",
+///     "null"
+///   ],
+///   "format": "uint",
+///   "minimum": 0
+/// }
+/// ```
+fn optional_positive_int(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0 }
+        ]
+    })
 }
 
 impl PartialOrd for Component {

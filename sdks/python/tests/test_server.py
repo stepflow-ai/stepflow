@@ -27,10 +27,19 @@ from stepflow_sdk.exceptions import (
     StepflowProtocolError,
 )
 from stepflow_sdk.server import StepflowStdioServer, ComponentEntry
-from stepflow_sdk.transport import Message
-from stepflow_sdk.protocol import (
-    ComponentInfoRequest,
-    ComponentExecuteRequest,
+from stepflow_sdk.generated_protocol import (
+    Message,
+    MethodRequest,
+    MethodSuccess,
+    Notification,
+    ComponentInfoParams,
+    ComponentListParams,
+    ComponentExecuteParams,
+    Component,
+    Method,
+    InitializeParams,
+    InitializeResult,
+    Initialized,
 )
 
 
@@ -127,22 +136,25 @@ def test_list_components(server):
 @pytest.mark.asyncio
 async def test_handle_initialize(server):
     # Runtime -> Server: Initialize method request.
-    request = Message(
+    request = MethodRequest(
         id=UUID(int=1),
-        method="initialize",
-        params=msgspec.json.encode(
-            {"runtime_protocol_version": 1, "protocol_prefix": "python"}
-        ),
+        method=Method.initialize,
+        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python")
     )
     # Runtime <- Server. Initialize method response.
     response = await server._handle_message(request)
     assert response.id == request.id
-    assert response.result == {"server_protocol_version": 1}
+    assert isinstance(response, MethodSuccess)
+    assert isinstance(response.result, InitializeResult)
+    assert response.result.server_protocol_version == 1
 
     assert server._initialized == False
 
     # Runtime -> Server: Initialized notification.
-    notification = Message(method="initialized", params=msgspec.json.encode({}))
+    notification = Notification(
+        method=Method.initialized,
+        params=Initialized()
+    )
     response = await server._handle_message(notification)
     assert response is None
 
@@ -157,30 +169,27 @@ async def test_handle_component_info(server):
 
     server._initialized = True
 
-    request = Message(
+    request = MethodRequest(
         id=UUID(int=1),
-        method="components/info",
-        params=msgspec.json.encode(
-            ComponentInfoRequest(component="python://test_component")
-        ),
+        method=Method.components_info,
+        params=ComponentInfoParams(component=Component(url="python://test_component"))
     )
     response = await server._handle_message(request)
     assert response.id == request.id
+    assert isinstance(response, MethodSuccess)
     assert response.result is not None
-    assert response.result.input_schema == msgspec.json.schema(ValidInput)
-    assert response.result.output_schema == msgspec.json.schema(ValidOutput)
+    assert response.result.info.input_schema == msgspec.json.schema(ValidInput)
+    assert response.result.info.output_schema == msgspec.json.schema(ValidOutput)
 
 
 @pytest.mark.asyncio
 async def test_handle_component_info_not_found(server):
     server._initialized = True
 
-    request = Message(
+    request = MethodRequest(
         id=UUID(int=1),
-        method="components/info",
-        params=msgspec.json.encode(
-            ComponentInfoRequest(component="python://non_existent")
-        ),
+        method=Method.components_info,
+        params=ComponentInfoParams(component=Component(url="python://non_existent"))
     )
     with pytest.raises(ComponentNotFoundError):
         await server._handle_message(request)
@@ -196,14 +205,13 @@ async def test_handle_component_execute(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    request = Message(
+    request = MethodRequest(
         id=UUID(int=1),
-        method="components/execute",
-        params=msgspec.json.encode(
-            ComponentExecuteRequest(
-                component="python://test_component", input={"name": "Alice", "age": 25}
-            )
-        ),
+        method=Method.components_execute,
+        params=ComponentExecuteParams(
+            component=Component(url="python://test_component"), 
+            input={"name": "Alice", "age": 25}
+        )
     )
     response = await server._handle_message(request)
     assert response.id == request.id
@@ -220,14 +228,13 @@ async def test_handle_component_execute_invalid_input(server):
     def test_component(input_data: ValidInput) -> ValidOutput:
         return ValidOutput(greeting="", age_next_year=0)
 
-    request = Message(
+    request = MethodRequest(
         id=UUID(int=1),
-        method="components/execute",
-        params=msgspec.json.encode(
-            ComponentExecuteRequest(
-                component="python://test_component", input={"invalid": "input"}
-            )
-        ),
+        method=Method.components_execute,
+        params=ComponentExecuteParams(
+            component=Component(url="python://test_component"), 
+            input={"invalid": "input"}
+        )
     )
 
     with pytest.raises(InputValidationError) as e:
@@ -247,23 +254,29 @@ async def test_handle_list_components(server):
     def test_component2(input_data: ValidInput) -> ValidOutput:
         return ValidOutput(greeting="", age_next_year=0)
 
-    request = Message(
-        id=UUID(int=1), method="components/list", params=msgspec.json.encode({})
+    request = MethodRequest(
+        id=UUID(int=1), 
+        method=Method.components_list, 
+        params=ComponentListParams()
     )
     response = await server._handle_message(request)
     assert response.id == request.id
-    assert "components" in response.result
-    assert len(response.result["components"]) == 2
-    assert "python://component1" in response.result["components"]
-    assert "python://component2" in response.result["components"]
+    assert len(response.result.components) == 2
+    component_urls = [comp.component.url for comp in response.result.components]
+    assert "python://component1" in component_urls
+    assert "python://component2" in component_urls
 
 
 @pytest.mark.asyncio
 async def test_handle_unknown_method(server):
     server._initialized = True
 
-    request = Message(
-        id=UUID(int=1), method="unknown_method", params=msgspec.json.encode({})
+    # NOTE: This test creates an invalid method that shouldn't exist
+    # We'll simulate this by creating a raw message directly
+    request = MethodRequest(
+        id=UUID(int=1), 
+        method="unknown_method",  # type: ignore - intentionally invalid
+        params=ComponentListParams()
     )
 
     with pytest.raises(StepflowProtocolError, match="Unknown method 'unknown_method'"):
@@ -272,9 +285,41 @@ async def test_handle_unknown_method(server):
 
 @pytest.mark.asyncio
 async def test_uninitialized_server(server):
-    request = Message(
-        id=UUID(int=1), method="components/list", params=msgspec.json.encode({})
+    request = MethodRequest(
+        id=UUID(int=1), 
+        method=Method.components_list, 
+        params=ComponentListParams()
     )
 
     with pytest.raises(ServerNotInitializedError):
         await server._handle_message(request)
+
+
+@pytest.mark.asyncio
+async def test_server_responses_include_jsonrpc(server):
+    """Test that server responses include jsonrpc field in JSON encoding."""
+    server._initialized = True
+    
+    @server.component(name="test_component")
+    def test_component(input_data: ValidInput) -> ValidOutput:
+        return ValidOutput(greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1)
+
+    request = MethodRequest(
+        id="jsonrpc-test",
+        method=Method.components_execute,
+        params=ComponentExecuteParams(
+            component=Component(url="python://test_component"), 
+            input={"name": "Test", "age": 30}
+        )
+    )
+    
+    response = await server._handle_message(request)
+    
+    # Encode the response to JSON and verify jsonrpc field is present
+    import json
+    response_json = json.loads(msgspec.json.encode(response))
+    
+    assert "jsonrpc" in response_json
+    assert response_json["jsonrpc"] == "2.0"
+    assert response_json["id"] == "jsonrpc-test"
+    assert "result" in response_json

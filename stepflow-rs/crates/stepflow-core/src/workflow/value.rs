@@ -48,11 +48,13 @@ impl Default for ValueRef {
 
 impl JsonSchema for ValueRef {
     fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("ValueRef")
+        Cow::Borrowed("Value")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        serde_json::Value::json_schema(generator)
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "Any JSON value (object, array, string, number, boolean, or null)",
+        })
     }
 }
 

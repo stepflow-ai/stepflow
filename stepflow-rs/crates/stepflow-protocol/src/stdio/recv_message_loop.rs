@@ -156,10 +156,10 @@ impl ReceiveMessageLoop {
                         Ok(true)
                     }
                     Message::Response(response) => {
-                        tracing::info!("Received response with id '{}'", response.id);
-                        if let Some(pending) = self.get_pending(pending_rx, &response.id) {
+                        tracing::info!("Received response with id '{}'", response.id());
+                        if let Some(pending) = self.get_pending(pending_rx, response.id()) {
                             // Send the response to the pending request.
-                            tracing::info!("Sending response to pending request with id '{}'", response.id);
+                            tracing::info!("Sending response to pending request with id '{}'", response.id());
                             pending.send(msg).map_err(|_| StdioError::Send)?;
                         }
                         Ok(true)

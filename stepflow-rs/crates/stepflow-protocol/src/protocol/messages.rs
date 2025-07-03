@@ -23,7 +23,6 @@ use crate::protocol::{Method, method_params, method_result, notification_params}
 
 #[derive(Serialize, Debug, JsonSchema)]
 #[serde(untagged)]
-/// # StepFlow Protocol
 /// The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.
 ///
 /// Note that this defines a superset containing both client-sent and server-sent messages.
@@ -144,8 +143,7 @@ impl<'a> Error<'a> {
 /// Request to execute a method.
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct MethodRequest<'a> {
-    /// # JSON-RPC version
-    /// The version of the JSON-RPC protocol.
+    #[serde(default)]
     pub jsonrpc: JsonRpc,
     pub id: RequestId,
     /// # Method
@@ -168,51 +166,66 @@ impl<'a> MethodRequest<'a> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum MethodResult<'a> {
-    /// # Result value
+/// The result of a successful method execution.
+pub struct MethodSuccess<'a> {
+    #[serde(default)]
+    pub jsonrpc: JsonRpc,
+    pub id: RequestId,
     /// The result of a successful method execution.
     #[serde(borrow)]
     #[schemars(schema_with = "method_result")]
-    Result(LazyValue<'a>),
-    /// # Error result
+    pub result: LazyValue<'a>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct MethodError<'a> {
+    #[serde(default)]
+    pub jsonrpc: JsonRpc,
+    pub id: RequestId,
     /// An error that occurred during method execution.
-    Error(Error<'a>),
+    #[serde(borrow)]
+    pub error: Error<'a>,
 }
 
 /// Response to a method request.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct MethodResponse<'a> {
-    /// # JSON-RPC version
-    /// The version of the JSON-RPC protocol.
-    pub jsonrpc: JsonRpc,
-    pub id: RequestId,
-    #[serde(flatten, borrow)]
-    pub response: MethodResult<'a>,
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum MethodResponse<'a> {
+    Success(MethodSuccess<'a>),
+    Error(MethodError<'a>),
 }
 
 impl<'a> MethodResponse<'a> {
     pub fn success(id: impl Into<RequestId>, result: LazyValue<'a>) -> Self {
-        MethodResponse {
+        MethodResponse::Success(MethodSuccess {
             jsonrpc: JsonRpc,
             id: id.into(),
-            response: MethodResult::Result(result),
-        }
+            result,
+        })
     }
 
     pub fn error(id: impl Into<RequestId>, error: Error<'a>) -> Self {
-        MethodResponse {
+        MethodResponse::Error(MethodError {
             jsonrpc: JsonRpc,
             id: id.into(),
-            response: MethodResult::Error(error),
+            error,
+        })
+    }
+
+    pub fn id(&self) -> &RequestId {
+        match self {
+            MethodResponse::Success(s) => &s.id,
+            MethodResponse::Error(e) => &e.id,
         }
     }
 
     pub fn into_success(self) -> Option<LazyValue<'a>> {
-        match self.response {
-            MethodResult::Result(r) => Some(r),
-            MethodResult::Error(_) => None,
+        match self {
+            MethodResponse::Success(s) => Some(s.result),
+            _ => None,
         }
     }
 }
@@ -220,8 +233,7 @@ impl<'a> MethodResponse<'a> {
 /// Notification.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Notification<'a> {
-    /// # JSON-RPC version
-    /// The version of the JSON-RPC protocol.
+    #[serde(default)]
     pub jsonrpc: JsonRpc,
     /// # Method
     /// The notification method being called.
@@ -262,17 +274,8 @@ mod tests {
         let parsed_string: RequestId = serde_json::from_str(r#""test""#).unwrap();
         let parsed_int: RequestId = serde_json::from_str("42").unwrap();
 
-        if let RequestId::String(s) = parsed_string {
-            assert_eq!(s, "test");
-        } else {
-            panic!("Expected string ID");
-        }
-
-        if let RequestId::Integer(i) = parsed_int {
-            assert_eq!(i, 42);
-        } else {
-            panic!("Expected integer ID");
-        }
+        assert_eq!(parsed_string, string_id);
+        assert_eq!(parsed_int, int_id);
     }
 
     #[test]

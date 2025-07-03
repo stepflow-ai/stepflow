@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 /// # JSON-RPC
 /// The JSON-RPC protocol version.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct JsonRpc;
 
 impl JsonSchema for JsonRpc {
@@ -31,12 +31,13 @@ impl JsonSchema for JsonRpc {
             "title": "JSON-RPC Version",
             "description": "The version of the JSON-RPC protocol.",
             "type": "string",
-            "const": "2.0"
+            "const": "2.0",
+            "default": "2.0",
         })
     }
 
     fn inline_schema() -> bool {
-        true
+        false
     }
 }
 
