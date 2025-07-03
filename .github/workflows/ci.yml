@@ -52,6 +52,18 @@ jobs:
         run: uv python install
         working-directory: sdks/python
 
+      - name: Check Python protocol is up-to-date
+        run: |
+          uv run python src/stepflow_sdk/generate.py
+          if ! git diff --exit-code src/stepflow_sdk/generated_protocol.py; then
+            echo "❌ ERROR: Python protocol is not up-to-date!"
+            echo "The generated_protocol.py file is out of sync with the JSON schema."
+            echo "Please run 'cd sdks/python && uv run generate-protocol' and commit the changes."
+            exit 1
+          fi
+          echo "✅ Python protocol is up-to-date!"
+        working-directory: sdks/python
+
       - name: Run pytests
         run: uv run pytest tests
         working-directory: sdks/python

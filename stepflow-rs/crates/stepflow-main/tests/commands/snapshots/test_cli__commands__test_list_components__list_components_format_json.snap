@@ -76,7 +76,7 @@ exit_code: 0
           },
           "input": {
             "description": "The input to pass to the workflow",
-            "$ref": "#/$defs/ValueRef"
+            "$ref": "#/$defs/Value"
           }
         },
         "required": [
@@ -90,7 +90,7 @@ exit_code: 0
         "properties": {
           "result": {
             "description": "The result from executing the nested workflow",
-            "$ref": "#/$defs/ValueRef"
+            "$ref": "#/$defs/Value"
           },
           "run_id": {
             "description": "The run ID of the nested workflow",

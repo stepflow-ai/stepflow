@@ -19,8 +19,8 @@ use stepflow_plugin::Context;
 
 use crate::OwnedJson;
 use crate::lazy_value::LazyValue;
-use crate::protocol::{Method, ProtocolMethod, ProtocolNotification};
-use crate::{Message, MethodRequest, MethodResult, Notification, RequestId};
+use crate::protocol::{Method, MethodResponse, ProtocolMethod, ProtocolNotification};
+use crate::{Message, MethodRequest, Notification, RequestId};
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
@@ -143,24 +143,25 @@ impl ClientHandle {
 
         // This is an assertion since the routing should only send the response for the
         // registered ID to the pending one-shot channel.
-        debug_assert_eq!(method_response.id, id);
-        match &method_response.response {
-            MethodResult::Result(_) => Ok(response.map(|m| {
+        debug_assert_eq!(method_response.id(), &id);
+        match &method_response {
+            MethodResponse::Success(_) => Ok(response.map(|m| {
                 m.into_response()
                     .expect("already checked to be a method response")
                     .into_success()
                     .expect("already checked to be a successful result")
             })),
-            MethodResult::Error(e) => {
-                let data: Option<serde_json::Value> = e
+            MethodResponse::Error(e) => {
+                let error = &e.error;
+                let data: Option<serde_json::Value> = error
                     .data
                     .as_ref()
                     .map(|v| v.deserialize_to())
                     .transpose()
                     .expect("all values should be decodable as serde_json::Value");
                 error_stack::bail!(StdioError::ServerError {
-                    code: e.code,
-                    message: e.message.as_ref().to_owned(),
+                    code: error.code,
+                    message: error.message.as_ref().to_owned(),
                     data,
                 })
             }

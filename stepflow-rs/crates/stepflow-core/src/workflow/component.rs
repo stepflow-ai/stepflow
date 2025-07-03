@@ -27,12 +27,28 @@ use url::Url;
 /// Components can be specified as:
 /// - Full URLs: "mock://test", "mcp+stdio://my-tool/component"
 /// - Builtin names: "eval", "load_file" (treated as builtin components)
-#[derive(Debug, Eq, PartialEq, Clone, Hash, JsonSchema, utoipa::ToSchema)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash, utoipa::ToSchema)]
 pub struct Component {
     /// The component URL as a string
     url: String,
     /// Position of the first colon in the URL, if any (for efficient parsing)
     delimiter: Option<usize>,
+}
+
+impl JsonSchema for Component {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Component".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "Identifies a specific plugin and atomic functionality to execute.",
+            "oneOf": [
+                { "type": "string" },
+                { "type": "string", "format": "uri" }
+            ]
+        })
+    }
 }
 
 impl PartialOrd for Component {

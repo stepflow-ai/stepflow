@@ -13,6 +13,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+from __future__ import annotations
+
 from typing import Any, Callable, Dict, Optional, Type, TypeVar, Union
 from functools import wraps
 import inspect
@@ -32,14 +34,26 @@ from stepflow_sdk.exceptions import (
     StepflowExecutionError,
     StepflowProtocolError,
 )
-from stepflow_sdk.transport import Message, RequestId
-from stepflow_sdk.protocol import (
-    InitializeRequest,
-    ComponentInfoRequest,
-    ComponentInfoResponse,
-    ComponentExecuteRequest,
-    ComponentExecuteResponse,
+from stepflow_sdk.generated_protocol import (
+    RequestId,
+    Message,
+    MethodRequest,
+    MethodResponse,
+    MethodSuccess,
+    MethodError,
+    Notification,
+    InitializeParams,
+    InitializeResult,
+    ComponentInfoParams,
+    ComponentInfoResult,
+    ComponentExecuteParams,
+    ComponentExecuteResult,
+    ComponentInfo,
+    Component,
+    ListComponentsResult,
+    Method,
 )
+from stepflow_sdk.message_decoder import MessageDecoder
 from stepflow_sdk.context import StepflowContext
 
 
@@ -58,12 +72,12 @@ class ComponentEntry:
         return msgspec.json.schema(self.output_type)
 
 
-def _handle_exception(e: Exception, id: RequestId | None) -> Message:
+def _handle_exception(e: Exception, id: RequestId | None) -> MethodError:
     """Convert any exception to a proper JSON-RPC error response."""
     if not isinstance(e, StepflowError):
         e = StepflowExecutionError(f"Unexpected error: {str(e)}")
 
-    return Message(id=id, error=e.to_json_rpc_error())
+    return MethodError(id=id, error=e.to_json_rpc_error())
 
 
 class StepflowStdioServer:
@@ -73,9 +87,9 @@ class StepflowStdioServer:
         self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
-        self._pending_requests: Dict[RequestId, asyncio.Future] = {}
+        self._message_decoder: MessageDecoder[asyncio.Future] = MessageDecoder()
         self._context: StepflowContext = StepflowContext(
-            self._outgoing_queue, self._pending_requests
+            self._outgoing_queue, self._message_decoder
         )
 
     def component(
@@ -146,48 +160,55 @@ class StepflowStdioServer:
             component_name += "/" + parse_result.path
         return self._components.get(component_name)
 
-    async def _handle_method_request(self, request: Message) -> Message | None:
+    async def _handle_method_request(self, request: MethodRequest) -> MethodResponse:
         """Handle a method request and return a response."""
 
         id = request.id
         match request.method:
-            case "initialize":
+            case Method.initialize:
                 init_request = msgspec.json.decode(
-                    request.params, type=InitializeRequest
+                    msgspec.json.encode(request.params), type=InitializeParams
                 )
                 self._protocol_prefix = init_request.protocol_prefix
-                return Message(id=id, result={"server_protocol_version": 1})
-            case "components/info":
+                return MethodSuccess(
+                    id=id,
+                    result=InitializeResult(server_protocol_version=1),
+                )
+            case Method.components_info:
                 component_request = msgspec.json.decode(
-                    request.params, type=ComponentInfoRequest
+                    msgspec.json.encode(request.params), type=ComponentInfoParams
                 )
                 component = self.get_component(component_request.component)
                 if not component:
                     raise ComponentNotFoundError(component_request.component)
-                return Message(
+                return MethodSuccess(
                     id=id,
-                    result=ComponentInfoResponse(
-                        input_schema=component.input_schema(),
-                        output_schema=component.output_schema(),
-                        description=component.description,
+                    result=ComponentInfoResult(
+                        info=ComponentInfo(
+                            component=component_request.component,
+                            input_schema=component.input_schema(),
+                            output_schema=component.output_schema(),
+                            description=component.description,
+                        )
                     ),
                 )
-            case "components/execute":
+            case Method.components_execute:
                 execute_request = msgspec.json.decode(
-                    request.params, type=ComponentExecuteRequest
+                    msgspec.json.encode(request.params), type=ComponentExecuteParams
                 )
                 component = self.get_component(execute_request.component)
                 if not component:
                     raise ComponentNotFoundError(execute_request.component)
                 # Parse input parameters into the expected type
                 try:
-                    input = msgspec.json.decode(
+                    # execute_request.input is a Value, decode to the expected component type
+                    input = msgspec.convert(
                         execute_request.input, type=component.input_type
                     )
-                except msgspec.DecodeError as e:
+                except (msgspec.DecodeError, msgspec.ValidationError) as e:
                     raise InputValidationError(
                         f"Input validation failed: {str(e)}",
-                        input_data=bytes(execute_request.input),
+                        input_data=msgspec.json.encode(execute_request.input),
                     )
 
                 # Execute component with or without context
@@ -208,54 +229,71 @@ class StepflowStdioServer:
                     else:
                         output = component.function(input)
 
-                return Message(
+                return MethodSuccess(
                     id=id,
-                    result=ComponentExecuteResponse(output=output),
+                    result=ComponentExecuteResult(output=output),
                 )
-            case "components/list":
-                # Return component URLs that match the expected Component format
-                component_urls = [
-                    f"{self._protocol_prefix}://{name}"
-                    for name in self._components.keys()
-                ]
-                return Message(id=id, result={"components": component_urls})
+            case Method.components_list:
+                # Return component info objects
+                component_infos = []
+                for name, component in self._components.items():
+                    component_url = f"{self._protocol_prefix}://{name}"
+                    component_infos.append(
+                        ComponentInfo(
+                            component=component_url,
+                            input_schema=component.input_schema(),
+                            output_schema=component.output_schema(),
+                            description=component.description,
+                        )
+                    )
+                return MethodSuccess(
+                    id=id,
+                    result=ListComponentsResult(components=component_infos),
+                )
             case _:
                 raise StepflowProtocolError(f"Unknown method '{request.method}'")
 
-    async def _handle_notification(self, request: Message):
+    async def _handle_notification(self, notification: Notification):
         """Handle a notification and return a response."""
-        match request.method:
-            case "initialized":
+        match notification.method:
+            case Method.initialized:
                 self._initialized = True
             case _:
                 print(
-                    f"Received unknown notification {request.method}", file=sys.stderr
+                    f"Received unknown notification {notification.method}",
+                    file=sys.stderr,
                 )
 
     async def _handle_incoming_message(self, request_bytes: bytes):
         """Handle an incoming message in a separate task."""
 
-        request = None
         request_id = None
         try:
-            # Decode the request
-            request = msgspec.json.decode(request_bytes, type=Message)
-            print(f"Received request: {request}", file=sys.stderr)
-            request_id = getattr(request, "id", UNSET)
-            if request_id == UNSET:
-                request_id = None
+            # Decode message using message decoder
+            message, future = self._message_decoder.decode(request_bytes)
+            print(f"Received message: {message}", file=sys.stderr)
 
-            # Handle the request and get response (reusing existing logic)
-            response = await self._handle_message(request)
+            # Extract request ID for error handling
+            request_id = getattr(message, "id", None)
+
+            # If this was a response to one of our outgoing requests, the future
+            # has already been resolved by the MessageDecoder, so we're done
+            if future is not None:
+                future.set_result(message)
+                print(f"Resolved pending request {request_id}", file=sys.stderr)
+                return
+
+            # Otherwise, this is an incoming request that we need to handle
+            response = await self._handle_message(message)
 
             # Encode and write response
             if response is not None:
-                print(f"Sending response: {response} to {request}", file=sys.stderr)
+                print(f"Sending response: {response} to {message}", file=sys.stderr)
                 response_bytes = msgspec.json.encode(response) + b"\n"
                 sys.stdout.buffer.write(response_bytes)
                 sys.stdout.buffer.flush()
             else:
-                print(f"No response for request: {request}", file=sys.stderr)
+                print(f"No response for message: {message}", file=sys.stderr)
         except Exception as e:
             print(f"Error in _handle_incoming_message: {e}", file=sys.stderr)
             error_response = _handle_exception(e, id=request_id)
@@ -263,27 +301,23 @@ class StepflowStdioServer:
             sys.stdout.buffer.flush()
             return
 
-    async def _handle_message(self, request: Message) -> Message | None:
-        """Handle an incoming method request and return a response."""
-        if request.id is UNSET and request.method == "initialized":
-            self._initialized = True
+    async def _handle_message(self, message: Message) -> MethodResponse | None:
+        """Handle an incoming message and return a response."""
+        if isinstance(message, MethodRequest):
+            if not self._initialized and message.method != Method.initialize:
+                raise ServerNotInitializedError()
+            return await self._handle_method_request(message)
+        elif isinstance(message, (MethodSuccess, MethodError)):
+            # Response messages should be handled by the MessageDecoder in _handle_incoming_message
+            # and should not reach this point
+            raise StepflowProtocolError("Unexpected response message in _handle_message")
+        elif isinstance(message, Notification):
+            if message.method == Method.initialized:
+                self._initialized = True
+            await self._handle_notification(message)
             return None
-
-        if not self._initialized and request.method != "initialize":
-            raise ServerNotInitializedError()
-
-        if request.id is not UNSET and request.method is not UNSET:
-            # Handle a method request.
-            return await self._handle_method_request(request)
-        elif request.id is not UNSET:
-            # Handle a method response.
-            self._handle_response(request)
-            return None
-        elif request.method is not UNSET:
-            return await self._handle_notification(request)
         else:
-            # Handle a request with no id or method.
-            print(f"Received request with no id or method {request}", file=sys.stderr)
+            print(f"Received unknown message type: {message}", file=sys.stderr)
             return None
 
     async def _process_messages(self, writer: asyncio.StreamWriter):
@@ -330,26 +364,7 @@ class StepflowStdioServer:
         except Exception as e:
             print(f"Error sending outgoing message: {e}", file=sys.stderr)
 
-    def _handle_response(self, message: Message):
-        """Handle a response message from the runtime."""
-        if message.id and message.id in self._pending_requests:
-            print(f"Handling response to {message.id}: {message}", file=sys.stderr)
-            future = self._pending_requests.pop(message.id)
-
-            if message.error:
-                # Create exception from error
-                error_msg = (
-                    f"Runtime error ({message.error.code}): {message.error.message}"
-                )
-                future.set_exception(RuntimeError(error_msg))
-            elif message.result:
-                # Decode result
-                result = msgspec.json.decode(message.result)
-                future.set_result(result)
-            else:
-                future.set_exception(
-                    RuntimeError("Invalid response: no result or error")
-                )
+    # _handle_response method removed - MessageDecoder now handles response processing
 
     async def start(self):
         """Start the server and begin processing messages."""

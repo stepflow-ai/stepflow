@@ -54,7 +54,7 @@ components:
         - type: 'null'
       input:
         description: The input to pass to the workflow
-        $ref: '#/$defs/ValueRef'
+        $ref: '#/$defs/Value'
     required:
     - workflow
     - input
@@ -67,7 +67,7 @@ components:
     properties:
       result:
         description: The result from executing the nested workflow
-        $ref: '#/$defs/ValueRef'
+        $ref: '#/$defs/Value'
       run_id:
         description: The run ID of the nested workflow
         type: string

@@ -16,6 +16,7 @@ use std::borrow::Cow;
 use error_stack::ResultExt as _;
 use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Deserializer, Serialize};
+use stepflow_core::workflow::ValueRef;
 
 pub(crate) trait ErasedSerializeDebug: erased_serde::Serialize + std::fmt::Debug {}
 impl<T: erased_serde::Serialize + std::fmt::Debug> ErasedSerializeDebug for T {}
@@ -30,15 +31,15 @@ pub enum LazyValue<'a> {
 
 impl<'a> JsonSchema for LazyValue<'a> {
     fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("Value")
+        ValueRef::schema_name()
     }
 
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> Schema {
-        schemars::Schema::from(true)
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> Schema {
+        ValueRef::json_schema(generator)
     }
 
     fn inline_schema() -> bool {
-        true
+        ValueRef::inline_schema()
     }
 }
 
