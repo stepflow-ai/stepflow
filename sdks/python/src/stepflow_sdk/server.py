@@ -13,6 +13,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+from __future__ import annotations
+
 from typing import Any, Callable, Dict, Optional, Type, TypeVar, Union
 from functools import wraps
 import inspect
@@ -51,7 +53,7 @@ from stepflow_sdk.generated_protocol import (
     ListComponentsResult,
     Method,
 )
-from stepflow_sdk.message_reader import decode_message
+from stepflow_sdk.message_decoder import MessageDecoder
 from stepflow_sdk.context import StepflowContext
 
 
@@ -85,9 +87,9 @@ class StepflowStdioServer:
         self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
-        self._pending_requests: Dict[RequestId, asyncio.Future] = {}
+        self._message_decoder: MessageDecoder[asyncio.Future] = MessageDecoder()
         self._context: StepflowContext = StepflowContext(
-            self._outgoing_queue, self._pending_requests
+            self._outgoing_queue, self._message_decoder
         )
 
     def component(
@@ -176,9 +178,9 @@ class StepflowStdioServer:
                 component_request = msgspec.json.decode(
                     msgspec.json.encode(request.params), type=ComponentInfoParams
                 )
-                component = self.get_component(component_request.component.url)
+                component = self.get_component(component_request.component)
                 if not component:
-                    raise ComponentNotFoundError(component_request.component.url)
+                    raise ComponentNotFoundError(component_request.component)
                 return MethodSuccess(
                     id=id,
                     result=ComponentInfoResult(
@@ -194,9 +196,9 @@ class StepflowStdioServer:
                 execute_request = msgspec.json.decode(
                     msgspec.json.encode(request.params), type=ComponentExecuteParams
                 )
-                component = self.get_component(execute_request.component.url)
+                component = self.get_component(execute_request.component)
                 if not component:
-                    raise ComponentNotFoundError(execute_request.component.url)
+                    raise ComponentNotFoundError(execute_request.component)
                 # Parse input parameters into the expected type
                 try:
                     # execute_request.input is a Value, decode to the expected component type
@@ -238,7 +240,7 @@ class StepflowStdioServer:
                     component_url = f"{self._protocol_prefix}://{name}"
                     component_infos.append(
                         ComponentInfo(
-                            component=Component(url=component_url),
+                            component=component_url,
                             input_schema=component.input_schema(),
                             output_schema=component.output_schema(),
                             description=component.description,
@@ -267,14 +269,21 @@ class StepflowStdioServer:
 
         request_id = None
         try:
-            # Decode message using message reader
-            message = decode_message(request_bytes)
+            # Decode message using message decoder
+            message, future = self._message_decoder.decode(request_bytes)
             print(f"Received message: {message}", file=sys.stderr)
 
             # Extract request ID for error handling
             request_id = getattr(message, "id", None)
 
-            # Handle the message and get response
+            # If this was a response to one of our outgoing requests, the future
+            # has already been resolved by the MessageDecoder, so we're done
+            if future is not None:
+                future.set_result(message)
+                print(f"Resolved pending request {request_id}", file=sys.stderr)
+                return
+
+            # Otherwise, this is an incoming request that we need to handle
             response = await self._handle_message(message)
 
             # Encode and write response
@@ -299,8 +308,9 @@ class StepflowStdioServer:
                 raise ServerNotInitializedError()
             return await self._handle_method_request(message)
         elif isinstance(message, (MethodSuccess, MethodError)):
-            self._handle_response(message)
-            return None
+            # Response messages should be handled by the MessageDecoder in _handle_incoming_message
+            # and should not reach this point
+            raise StepflowProtocolError("Unexpected response message in _handle_message")
         elif isinstance(message, Notification):
             if message.method == Method.initialized:
                 self._initialized = True
@@ -354,25 +364,7 @@ class StepflowStdioServer:
         except Exception as e:
             print(f"Error sending outgoing message: {e}", file=sys.stderr)
 
-    def _handle_response(self, response: MethodResponse):
-        """Handle a response message from the runtime."""
-        if response.id and response.id in self._pending_requests:
-            print(f"Handling response to {response.id}: {response}", file=sys.stderr)
-            future = self._pending_requests.pop(response.id)
-
-            if isinstance(response, MethodError):
-                # Create exception from error
-                error_msg = (
-                    f"Runtime error ({response.error.code}): {response.error.message}"
-                )
-                future.set_exception(RuntimeError(error_msg))
-            elif isinstance(response, MethodSuccess):
-                # Return result directly
-                future.set_result(response.result)
-            else:
-                future.set_exception(
-                    RuntimeError("Invalid response: unknown response type")
-                )
+    # _handle_response method removed - MessageDecoder now handles response processing
 
     async def start(self):
         """Start the server and begin processing messages."""

@@ -134,28 +134,15 @@
       ]
     },
     "Component": {
-      "description": "Identifies a specific plugin and atomic functionality to execute.\n\nA component is identified by a URL that specifies:\n- The protocol (e.g., \"langflow\", \"mcp\")\n- The transport (e.g., \"http\", \"stdio\")\n- The path to the specific functionality\n\nComponents can be specified as:\n- Full URLs: \"mock://test\", \"mcp+stdio://my-tool/component\"\n- Builtin names: \"eval\", \"load_file\" (treated as builtin components)",
-      "type": "object",
-      "properties": {
-        "url": {
-          "description": "The component URL as a string",
+      "description": "Identifies a specific plugin and atomic functionality to execute.",
+      "oneOf": [
+        {
           "type": "string"
         },
-        "delimiter": {
-          "description": "Position of the first colon in the URL, if any (for efficient parsing)",
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "integer",
-              "minimum": 0
-            }
-          ]
+        {
+          "type": "string",
+          "format": "uri"
         }
-      },
-      "required": [
-        "url"
       ]
     },
     "Value": {

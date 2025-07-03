@@ -13,6 +13,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+from __future__ import annotations
+
 """
 Context API for stepflow components to interact with the runtime.
 """
@@ -22,7 +24,8 @@ import asyncio
 from typing import Any, Dict
 from uuid import uuid4
 import msgspec
-from stepflow_sdk.generated_protocol import RequestId
+from stepflow_sdk.generated_protocol import RequestId, Method, GetBlobResult, PutBlobResult
+from stepflow_sdk.message_decoder import MessageDecoder
 
 
 class StepflowContext:
@@ -33,11 +36,11 @@ class StepflowContext:
     runtime operations through bidirectional communication.
     """
     
-    def __init__(self, outgoing_queue: asyncio.Queue, pending_requests: Dict[RequestId, asyncio.Future]):
+    def __init__(self, outgoing_queue: asyncio.Queue, message_decoder: MessageDecoder[asyncio.Future]):
         self._outgoing_queue = outgoing_queue
-        self._pending_requests = pending_requests
+        self._message_decoder = message_decoder
         
-    async def _send_request(self, method: str, params: Any) -> Any:
+    async def _send_request(self, method: str, params: Any, result_type: type) -> Any:
         """Send a request to the stepflow runtime and wait for response."""
         request_id = str(uuid4())
         request = {
@@ -49,18 +52,24 @@ class StepflowContext:
         
         # Create future for response
         future = asyncio.Future()
-        self._pending_requests[request_id] = future
+        
+        # Register the pending request with the message decoder
+        self._message_decoder.register_request(request_id, result_type, future)
         
         # Send request via queue
         await self._outgoing_queue.put(request)
         
-        # Wait for response
-        try:
-            response = await future
-            return response
-        finally:
-            # Clean up
-            self._pending_requests.pop(request_id, None)
+        # Wait for response - the MessageDecoder will resolve this future
+        # when the response is received
+        response_message = await future
+        
+        # Extract the result from the response message
+        if hasattr(response_message, 'result'):
+            return response_message.result
+        else:
+            # Handle error case
+            raise Exception(f"Request failed: {response_message.error}")
+        
     
     
     async def put_blob(self, data: Any) -> str:
@@ -74,8 +83,8 @@ class StepflowContext:
             The blob ID (SHA-256 hash) for the stored data
         """
         params = {"data": data}
-        response = await self._send_request("blobs/put", params)
-        return response["blob_id"]
+        response = await self._send_request("blobs/put", params, PutBlobResult)
+        return response.blob_id
     
     async def get_blob(self, blob_id: str) -> Any:
         """
@@ -88,8 +97,8 @@ class StepflowContext:
             The JSON data associated with the blob ID
         """
         params = {"blob_id": blob_id}
-        response = await self._send_request("blobs/get", params)
-        return response["data"]
+        response = await self._send_request("blobs/get", params, GetBlobResult)
+        return response.data
     
     def get_sync_proxy(self):
         """

@@ -172,7 +172,7 @@ async def test_handle_component_info(server):
     request = MethodRequest(
         id=UUID(int=1),
         method=Method.components_info,
-        params=ComponentInfoParams(component=Component(url="python://test_component"))
+        params=ComponentInfoParams(component="python://test_component")
     )
     response = await server._handle_message(request)
     assert response.id == request.id
@@ -189,7 +189,7 @@ async def test_handle_component_info_not_found(server):
     request = MethodRequest(
         id=UUID(int=1),
         method=Method.components_info,
-        params=ComponentInfoParams(component=Component(url="python://non_existent"))
+        params=ComponentInfoParams(component="python://non_existent")
     )
     with pytest.raises(ComponentNotFoundError):
         await server._handle_message(request)
@@ -209,7 +209,7 @@ async def test_handle_component_execute(server):
         id=UUID(int=1),
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component=Component(url="python://test_component"), 
+            component="python://test_component", 
             input={"name": "Alice", "age": 25}
         )
     )
@@ -232,7 +232,7 @@ async def test_handle_component_execute_invalid_input(server):
         id=UUID(int=1),
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component=Component(url="python://test_component"), 
+            component="python://test_component", 
             input={"invalid": "input"}
         )
     )
@@ -262,7 +262,7 @@ async def test_handle_list_components(server):
     response = await server._handle_message(request)
     assert response.id == request.id
     assert len(response.result.components) == 2
-    component_urls = [comp.component.url for comp in response.result.components]
+    component_urls = [comp.component for comp in response.result.components]
     assert "python://component1" in component_urls
     assert "python://component2" in component_urls
 
@@ -308,7 +308,7 @@ async def test_server_responses_include_jsonrpc(server):
         id="jsonrpc-test",
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component=Component(url="python://test_component"), 
+            component="python://test_component", 
             input={"name": "Test", "age": 30}
         )
     )

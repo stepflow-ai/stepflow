@@ -65,26 +65,12 @@ class InitializeParams(Struct):
     ]
 
 
-Delimiter = Annotated[
-    int,
+Component = Annotated[
+    str,
     Meta(
-        description='Position of the first colon in the URL, if any (for efficient parsing)',
-        ge=0,
+        description='Identifies a specific plugin and atomic functionality to execute.'
     ),
 ]
-
-
-class Component(Struct):
-    url: Annotated[str, Meta(description='The component URL as a string')]
-    delimiter: (
-        Annotated[
-            Delimiter | None,
-            Meta(
-                description='Position of the first colon in the URL, if any (for efficient parsing)'
-            ),
-        ]
-        | None
-    ) = None
 
 
 Value = Annotated[
