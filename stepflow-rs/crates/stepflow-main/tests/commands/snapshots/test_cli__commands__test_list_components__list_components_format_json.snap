@@ -17,6 +17,7 @@ exit_code: 0
   "components": [
     {
       "component": "create_messages",
+      "description": "Create a chat message list from system instructions and user prompt",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -49,11 +50,11 @@ exit_code: 0
         "required": [
           "messages"
         ]
-      },
-      "description": "Create a chat message list from system instructions and user prompt"
+      }
     },
     {
       "component": "eval",
+      "description": "Execute a nested workflow with given input and return the result",
       "input_schema": {
         "description": "Input for the eval component",
         "type": "object",
@@ -100,11 +101,11 @@ exit_code: 0
           "result",
           "run_id"
         ]
-      },
-      "description": "Execute a nested workflow with given input and return the result"
+      }
     },
     {
       "component": "get_blob",
+      "description": "Retrieve JSON data from a blob using its ID",
       "input_schema": {
         "description": "Input for the get_blob component",
         "type": "object",
@@ -129,11 +130,11 @@ exit_code: 0
         "required": [
           "data"
         ]
-      },
-      "description": "Retrieve JSON data from a blob using its ID"
+      }
     },
     {
       "component": "load_file",
+      "description": "Load and parse a file (JSON, YAML, or text) from the filesystem",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -172,11 +173,11 @@ exit_code: 0
           "data",
           "metadata"
         ]
-      },
-      "description": "Load and parse a file (JSON, YAML, or text) from the filesystem"
+      }
     },
     {
       "component": "openai",
+      "description": "Send messages to OpenAI's chat completion API and get a response",
       "input_schema": {
         "description": "Input for the OpenAI component",
         "type": "object",
@@ -230,11 +231,11 @@ exit_code: 0
         "required": [
           "response"
         ]
-      },
-      "description": "Send messages to OpenAI's chat completion API and get a response"
+      }
     },
     {
       "component": "put_blob",
+      "description": "Store JSON data as a blob and return its content-addressable ID",
       "input_schema": {
         "description": "Input for the put_blob component",
         "type": "object",
@@ -259,8 +260,7 @@ exit_code: 0
         "required": [
           "blob_id"
         ]
-      },
-      "description": "Store JSON data as a blob and return its content-addressable ID"
+      }
     }
   ]
 }

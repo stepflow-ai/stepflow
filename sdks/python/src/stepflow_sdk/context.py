@@ -20,8 +20,9 @@ import json
 import sys
 import asyncio
 from typing import Any, Dict
-from uuid import uuid4, UUID
+from uuid import uuid4
 import msgspec
+from stepflow_sdk.transport import RequestId
 
 
 class StepflowContext:
@@ -32,13 +33,13 @@ class StepflowContext:
     runtime operations through bidirectional communication.
     """
     
-    def __init__(self, outgoing_queue: asyncio.Queue, pending_requests: Dict[UUID, asyncio.Future]):
+    def __init__(self, outgoing_queue: asyncio.Queue, pending_requests: Dict[RequestId, asyncio.Future]):
         self._outgoing_queue = outgoing_queue
         self._pending_requests = pending_requests
         
     async def _send_request(self, method: str, params: Any) -> Any:
         """Send a request to the stepflow runtime and wait for response."""
-        request_id = uuid4()
+        request_id = str(uuid4())
         request = {
             "jsonrpc": "2.0",
             "id": request_id,
@@ -73,7 +74,7 @@ class StepflowContext:
             The blob ID (SHA-256 hash) for the stored data
         """
         params = {"data": data}
-        response = await self._send_request("put_blob", params)
+        response = await self._send_request("blobs/put", params)
         return response["blob_id"]
     
     async def get_blob(self, blob_id: str) -> Any:
@@ -87,7 +88,7 @@ class StepflowContext:
             The JSON data associated with the blob ID
         """
         params = {"blob_id": blob_id}
-        response = await self._send_request("get_blob", params)
+        response = await self._send_request("blobs/get", params)
         return response["data"]
     
     def get_sync_proxy(self):

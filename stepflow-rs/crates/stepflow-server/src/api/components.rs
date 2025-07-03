@@ -17,38 +17,19 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::schema::SchemaRef;
+use stepflow_core::component::ComponentInfo;
 use stepflow_execution::StepFlowExecutor;
 use stepflow_plugin::Plugin as _;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ErrorResponse;
 
-/// Component information for API responses
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ComponentInfoResponse {
-    /// The component name/URL
-    pub name: String,
-    /// The plugin name that provides this component
-    pub plugin_name: String,
-    /// Component description (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Input schema (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_schema: Option<SchemaRef>,
-    /// Output schema (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_schema: Option<SchemaRef>,
-}
-
 /// Response for listing components
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListComponentsResponse {
     /// List of available components
-    pub components: Vec<ComponentInfoResponse>,
+    pub components: Vec<ComponentInfo>,
 }
 
 /// Query parameters for listing components
@@ -85,36 +66,20 @@ pub async fn list_components(
     let mut all_components = Vec::new();
 
     // Get the list of plugins from the executor
-    for (plugin_name, plugin) in executor.list_plugins().await {
+    for plugin in executor.list_plugins().await {
         // List components available from this plugin
-        let components = plugin.list_components().await?;
-
-        // For each component, get detailed information
-        for component in components {
-            let info = plugin.component_info(&component).await?;
-
-            let component_response = ComponentInfoResponse {
-                name: component.to_string(),
-                plugin_name: plugin_name.clone(),
-                description: info.description,
-                input_schema: if include_schemas {
-                    Some(info.input_schema)
-                } else {
-                    None
-                },
-                output_schema: if include_schemas {
-                    Some(info.output_schema)
-                } else {
-                    None
-                },
-            };
-
-            all_components.push(component_response);
+        let mut components = plugin.list_components().await?;
+        if !include_schemas {
+            for component in components.iter_mut() {
+                component.input_schema = None;
+                component.output_schema = None;
+            }
         }
+        all_components.extend(components);
     }
 
     // Sort components by their name for consistent output
-    all_components.sort_by(|a, b| a.name.cmp(&b.name));
+    all_components.sort_by(|a, b| a.component.cmp(&b.component));
 
     Ok(Json(ListComponentsResponse {
         components: all_components,

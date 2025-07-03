@@ -11,9 +11,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use thiserror::Error;
+
+use crate::protocol::Method;
 
 #[derive(Error, Debug)]
 pub enum StdioError {
@@ -23,17 +26,21 @@ pub enum StdioError {
     Send,
     #[error("error receiving message")]
     Recv,
-    #[error("received invalid message")]
-    InvalidMessage,
-    #[error("received invalid response")]
-    InvalidResponse,
-    #[error("components server error({code}): {message}")]
+    #[error("expecting response, but got {0:?}")]
+    NotResponse(String),
+    #[error("invalid response for {0}")]
+    InvalidResponse(Method),
+    #[error("invalid message: {0}")]
+    InvalidMessage(String),
+    #[error("invalid parameters")]
+    InvalidParams,
+    #[error("component server error({code}): {message}")]
     ServerError {
         code: i64,
         message: String,
         data: Option<serde_json::Value>,
     },
-    #[error("components server failed with exit code {exit_code:?}")]
+    #[error("component server failed with exit code {exit_code:?}")]
     ServerFailure { exit_code: Option<i32> },
     #[error("error closing stepflow component process")]
     Close,
@@ -43,8 +50,10 @@ pub enum StdioError {
     RecvLoop,
     #[error("command not found: {0}")]
     MissingCommand(String),
-    #[error("unknown method: {method}")]
+    #[error("unknown method: {method:?}")]
     UnknownMethod { method: String },
+    #[error("method requested without ID: {method:?}")]
+    MethodMissingId { method: Cow<'static, str> },
 }
 
 pub type Result<T, E = error_stack::Report<StdioError>> = std::result::Result<T, E>;

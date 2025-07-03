@@ -27,7 +27,9 @@ use stepflow_plugin::{
 
 /// The struct that implements the `Plugin` trait.
 #[derive(Default)]
-pub struct Builtins;
+pub struct Builtins {
+    plugin: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BuiltinPluginConfig;
@@ -38,16 +40,16 @@ impl PluginConfig for BuiltinPluginConfig {
     async fn create_plugin(
         self,
         _working_directory: &std::path::Path,
-        _protocol_prefix: &str,
+        protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
-        Ok(DynPlugin::boxed(Builtins::new()))
+        Ok(DynPlugin::boxed(Builtins::new(protocol_prefix.to_owned())))
     }
 }
 
 impl Builtins {
     /// Create a new instance with default components registered
-    pub fn new() -> Self {
-        Self
+    pub fn new(plugin: String) -> Self {
+        Self { plugin }
     }
 }
 
@@ -56,14 +58,20 @@ impl Plugin for Builtins {
         Ok(())
     }
 
-    async fn list_components(&self) -> Result<Vec<Component>> {
-        Ok(registry::list_components())
+    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
+        // TODO: Cache?
+        registry::components()
+            .map(|c| {
+                c.component_info(&self.plugin)
+                    .change_context(PluginError::ComponentInfo)
+            })
+            .collect()
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
         let component = registry::get_component(component)?;
         component
-            .component_info()
+            .component_info(&self.plugin)
             .change_context(PluginError::ComponentInfo)
     }
 

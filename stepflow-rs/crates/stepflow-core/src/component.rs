@@ -14,21 +14,29 @@
 //! Component information and metadata types.
 
 use crate::schema::SchemaRef;
+use crate::workflow::Component;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ToSchema)]
 pub struct ComponentInfo {
+    /// The component ID.
+    pub component: Component,
+
+    /// Optional description of the component.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
     /// The input schema for the component.
     ///
     /// Can be any valid JSON schema (object, primitive, array, etc.).
-    pub input_schema: SchemaRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<SchemaRef>,
 
     /// The output schema for the component.
     ///
     /// Can be any valid JSON schema (object, primitive, array, etc.).
-    pub output_schema: SchemaRef,
-
-    /// Optional description of what the component does.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<SchemaRef>,
 }

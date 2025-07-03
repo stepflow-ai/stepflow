@@ -14,7 +14,7 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::workflow::FlowHash;
+use stepflow_core::workflow::{Component, FlowHash};
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
@@ -66,13 +66,14 @@ struct EvalOutput {
 }
 
 impl BuiltinComponent for EvalComponent {
-    fn component_info(&self) -> Result<ComponentInfo> {
+    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<EvalInput>();
         let output_schema = SchemaRef::for_type::<EvalOutput>();
 
         Ok(ComponentInfo {
-            input_schema,
-            output_schema,
+            component: Component::for_plugin(plugin, "eval"),
+            input_schema: Some(input_schema),
+            output_schema: Some(output_schema),
             description: Some(
                 "Execute a nested workflow with given input and return the result".to_string(),
             ),

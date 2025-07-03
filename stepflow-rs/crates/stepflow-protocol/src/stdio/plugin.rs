@@ -112,7 +112,7 @@ impl Plugin for StdioPlugin {
         let client = self.create_client(context.clone()).await?;
 
         client
-            .request(&crate::schema::initialization::Request {
+            .method(&crate::protocol::InitializeParams {
                 runtime_protocol_version: 1,
                 protocol_prefix: self.protocol_prefix.clone(),
             })
@@ -120,17 +120,17 @@ impl Plugin for StdioPlugin {
             .change_context(PluginError::Initializing)?;
 
         client
-            .notify(&crate::schema::initialization::Complete {})
+            .notify(&crate::protocol::Initialized {})
             .await
             .change_context(PluginError::Initializing)?;
 
         Ok(())
     }
 
-    async fn list_components(&self) -> Result<Vec<Component>> {
+    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
         let client_handle = self.client_handle().await?;
         let response = client_handle
-            .request(&crate::schema::list_components::Request {})
+            .method(&crate::protocol::ComponentListParams {})
             .await
             .change_context(PluginError::ComponentInfo)?;
 
@@ -141,7 +141,7 @@ impl Plugin for StdioPlugin {
         // TODO: Enrich this? Component not found, etc. based on the protocol error code?
         let client_handle = self.client_handle().await?;
         let response = client_handle
-            .request(&crate::schema::component_info::Request {
+            .method(&crate::protocol::ComponentInfoParams {
                 component: component.clone(),
             })
             .await
@@ -158,7 +158,7 @@ impl Plugin for StdioPlugin {
     ) -> Result<FlowResult> {
         let client_handle = self.client_handle().await?;
         let response = client_handle
-            .request(&crate::schema::component_execute::Request {
+            .method(&crate::protocol::ComponentExecuteParams {
                 component: component.clone(),
                 input,
             })

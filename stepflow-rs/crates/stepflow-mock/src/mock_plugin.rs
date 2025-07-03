@@ -122,18 +122,28 @@ impl Plugin for MockPlugin {
         Ok(())
     }
 
-    async fn list_components(&self) -> Result<Vec<Component>> {
-        Ok(self.components.keys().cloned().collect())
+    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
+        Ok(self
+            .components
+            .iter()
+            .map(|(component, mock_component)| ComponentInfo {
+                component: component.clone(),
+                input_schema: Some(mock_component.input_schema.clone()),
+                output_schema: Some(mock_component.output_schema.clone()),
+                description: None,
+            })
+            .collect())
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        let component = self
+        let (component, mock_component) = self
             .components
-            .get(component)
+            .get_key_value(component)
             .ok_or(PluginError::UdfImport)?;
         Ok(ComponentInfo {
-            input_schema: component.input_schema.clone(),
-            output_schema: component.output_schema.clone(),
+            component: component.clone(),
+            input_schema: Some(mock_component.input_schema.clone()),
+            output_schema: Some(mock_component.output_schema.clone()),
             description: None,
         })
     }

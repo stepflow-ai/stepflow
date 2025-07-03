@@ -13,6 +13,7 @@
 
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
+use stepflow_core::workflow::Component;
 use stepflow_core::{
     FlowResult, blob::BlobId, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef,
 };
@@ -50,13 +51,14 @@ struct PutBlobOutput {
 }
 
 impl BuiltinComponent for PutBlobComponent {
-    fn component_info(&self) -> Result<ComponentInfo> {
+    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<PutBlobInput>();
         let output_schema = SchemaRef::for_type::<PutBlobOutput>();
 
         Ok(ComponentInfo {
-            input_schema,
-            output_schema,
+            component: Component::for_plugin(plugin, "put_blob"),
+            input_schema: Some(input_schema),
+            output_schema: Some(output_schema),
             description: Some(
                 "Store JSON data as a blob and return its content-addressable ID".to_string(),
             ),
@@ -118,13 +120,14 @@ struct GetBlobOutput {
 }
 
 impl BuiltinComponent for GetBlobComponent {
-    fn component_info(&self) -> Result<ComponentInfo> {
+    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<GetBlobInput>();
         let output_schema = SchemaRef::for_type::<GetBlobOutput>();
 
         Ok(ComponentInfo {
-            input_schema,
-            output_schema,
+            component: Component::for_plugin(plugin, "get_blob"),
+            input_schema: Some(input_schema),
+            output_schema: Some(output_schema),
             description: Some("Retrieve JSON data from a blob using its ID".to_string()),
         })
     }

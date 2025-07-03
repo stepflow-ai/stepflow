@@ -11,14 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! The schema for protocol messages.
+mod blob_handlers;
+mod message_handler;
 
-pub mod component_execute;
-pub mod component_info;
-pub mod get_blob;
-pub mod initialization;
-pub mod list_components;
-mod messages;
-pub mod put_blob;
-
-pub use messages::*;
+pub(crate) use message_handler::*;

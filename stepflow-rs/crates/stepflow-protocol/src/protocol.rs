@@ -11,26 +11,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use serde::{Deserialize, Serialize};
-use stepflow_core::workflow::{Component, ValueRef};
+mod blobs;
+mod components;
+mod initialization;
+mod json_rpc;
+mod message_serde;
+mod messages;
+mod methods;
 
-use crate::schema::Method;
-
-/// Request from the runtime to initialize the component server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Request {
-    pub component: Component,
-    pub input: ValueRef,
-}
-
-/// Response to the initialization request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Response {
-    pub output: ValueRef,
-}
-
-impl Method for Request {
-    const METHOD_NAME: &'static str = "component_execute";
-
-    type Response = Response;
-}
+// Re-export core protocol types
+pub(crate) use blobs::*;
+pub(crate) use components::*;
+pub(crate) use initialization::*;
+pub(crate) use messages::*;
+pub(crate) use methods::*;

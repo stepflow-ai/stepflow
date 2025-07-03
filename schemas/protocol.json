@@ -1,0 +1,475 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StepFlow Protocol",
+  "description": "The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/MethodRequest"
+    },
+    {
+      "$ref": "#/$defs/MethodResponse"
+    },
+    {
+      "$ref": "#/$defs/Notification"
+    }
+  ],
+  "$defs": {
+    "MethodRequest": {
+      "description": "Request to execute a method.",
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "title": "JSON-RPC version",
+          "description": "The version of the JSON-RPC protocol.",
+          "type": "string",
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/RequestId"
+        },
+        "method": {
+          "title": "Method",
+          "description": "The method being called.",
+          "$ref": "#/$defs/Method"
+        },
+        "params": {
+          "title": "Parameters",
+          "description": "The parameters for the method call. Set on method requests.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/InitializeParams"
+            },
+            {
+              "$ref": "#/$defs/ComponentExecuteParams"
+            },
+            {
+              "$ref": "#/$defs/ComponentInfoParams"
+            },
+            {
+              "$ref": "#/$defs/ComponentListParams"
+            },
+            {
+              "$ref": "#/$defs/GetBlobParams"
+            },
+            {
+              "$ref": "#/$defs/PutBlobParams"
+            }
+          ]
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "RequestId": {
+      "title": "JSON-RPC Request ID.",
+      "description": "The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        }
+      ]
+    },
+    "Method": {
+      "type": "string",
+      "enum": [
+        "initialize",
+        "initialized",
+        "components/list",
+        "components/info",
+        "components/execute",
+        "blobs/put",
+        "blobs/get"
+      ]
+    },
+    "InitializeParams": {
+      "title": "Parameters for initialize method.",
+      "description": "Sent from StepFlow to the component server to begin the initialization process.",
+      "type": "object",
+      "properties": {
+        "runtime_protocol_version": {
+          "description": "Maximum version of the protocol being used by the StepFlow runtime.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "protocol_prefix": {
+          "description": "The protocol prefix for components served by this plugin (e.g., \"python\", \"typescript\")",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime_protocol_version",
+        "protocol_prefix"
+      ]
+    },
+    "ComponentExecuteParams": {
+      "title": "Parameters for components/execute method.",
+      "description": "Sent from StepFlow to the component server to execute a specific component with the provided input.",
+      "type": "object",
+      "properties": {
+        "component": {
+          "description": "The component to execute.",
+          "$ref": "#/$defs/Component"
+        },
+        "input": {
+          "description": "The input to the component.",
+          "$ref": "#/$defs/ValueRef"
+        }
+      },
+      "required": [
+        "component",
+        "input"
+      ]
+    },
+    "Component": {
+      "description": "Identifies a specific plugin and atomic functionality to execute.\n\nA component is identified by a URL that specifies:\n- The protocol (e.g., \"langflow\", \"mcp\")\n- The transport (e.g., \"http\", \"stdio\")\n- The path to the specific functionality\n\nComponents can be specified as:\n- Full URLs: \"mock://test\", \"mcp+stdio://my-tool/component\"\n- Builtin names: \"eval\", \"load_file\" (treated as builtin components)",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The component URL as a string",
+          "type": "string"
+        },
+        "delimiter": {
+          "description": "Position of the first colon in the URL, if any (for efficient parsing)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "ValueRef": true,
+    "ComponentInfoParams": {
+      "title": "Parameters for components/info method.",
+      "description": "Sent from StepFlow to the component server to request information about a specific component.",
+      "type": "object",
+      "properties": {
+        "component": {
+          "description": "The component to get information about.",
+          "$ref": "#/$defs/Component"
+        }
+      },
+      "required": [
+        "component"
+      ]
+    },
+    "ComponentListParams": {
+      "title": "Parameters for components/list method.",
+      "description": "Sent from StepFlow to the component server to request a list of all available components.",
+      "type": "object"
+    },
+    "GetBlobParams": {
+      "title": "Parameters for blobs/get method.",
+      "description": "Sent from the component server to the StepFlow to retrieve the content of a specific blob.",
+      "type": "object",
+      "properties": {
+        "blob_id": {
+          "description": "The ID of the blob to retrieve.",
+          "$ref": "#/$defs/BlobId"
+        }
+      },
+      "required": [
+        "blob_id"
+      ]
+    },
+    "BlobId": {
+      "title": "Blob ID",
+      "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+      "type": "string"
+    },
+    "PutBlobParams": {
+      "title": "Parameters for blobs/put method.",
+      "description": "Sent from the component server to the StepFlow to store a blob with the provided content.",
+      "type": "object",
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ValueRef"
+        }
+      },
+      "required": [
+        "data"
+      ]
+    },
+    "MethodResponse": {
+      "description": "Response to a method request.",
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "title": "JSON-RPC version",
+          "description": "The version of the JSON-RPC protocol.",
+          "type": "string",
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/RequestId"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id"
+      ],
+      "oneOf": [
+        {
+          "title": "Result value",
+          "description": "The result of a successful method execution.",
+          "type": "object",
+          "properties": {
+            "result": {
+              "title": "Method Result",
+              "description": "Result of the method call.",
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/InitializeResult"
+                },
+                {
+                  "$ref": "#/$defs/ComponentExecuteResult"
+                },
+                {
+                  "$ref": "#/$defs/ComponentInfoResult"
+                },
+                {
+                  "$ref": "#/$defs/ListComponentsResult"
+                },
+                {
+                  "$ref": "#/$defs/GetBlobResult"
+                },
+                {
+                  "$ref": "#/$defs/PutBlobResult"
+                }
+              ]
+            }
+          },
+          "required": [
+            "result"
+          ]
+        },
+        {
+          "title": "Error result",
+          "description": "An error that occurred during method execution.",
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/Error"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ]
+    },
+    "InitializeResult": {
+      "title": "Response for initialize method.",
+      "description": "Sent from the component server back to StepFlow with the result of initialization.\nThe component server will not be initialized until it receives the `initialized` notification.",
+      "type": "object",
+      "properties": {
+        "server_protocol_version": {
+          "description": "Version of the protocol being used by the component server.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "server_protocol_version"
+      ]
+    },
+    "ComponentExecuteResult": {
+      "title": "Response for components/execute method.",
+      "description": "Sent from the component server back to StepFlow with the result of the component execution.",
+      "type": "object",
+      "properties": {
+        "output": {
+          "description": "The result of the component execution.",
+          "$ref": "#/$defs/ValueRef"
+        }
+      },
+      "required": [
+        "output"
+      ]
+    },
+    "ComponentInfoResult": {
+      "title": "Response for components/info method.",
+      "description": "Sent from the component server back to StepFlow with information about the requested component.",
+      "type": "object",
+      "properties": {
+        "info": {
+          "description": "Information about the component.",
+          "$ref": "#/$defs/ComponentInfo"
+        }
+      },
+      "required": [
+        "info"
+      ]
+    },
+    "ComponentInfo": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "description": "The component ID.",
+          "$ref": "#/$defs/Component"
+        },
+        "description": {
+          "description": "Optional description of the component.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_schema": {
+          "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SchemaRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_schema": {
+          "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SchemaRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "component"
+      ]
+    },
+    "SchemaRef": {
+      "description": "Type alias for a shared schema reference.",
+      "$ref": "#/$defs/Schema"
+    },
+    "Schema": {
+      "type": [
+        "object",
+        "boolean"
+      ]
+    },
+    "ListComponentsResult": {
+      "title": "Response for components/list method.",
+      "description": "Sent from the component server back to StepFlow with a list of all available components.",
+      "type": "object",
+      "properties": {
+        "components": {
+          "description": "A list of all available components.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ComponentInfo"
+          }
+        }
+      },
+      "required": [
+        "components"
+      ]
+    },
+    "GetBlobResult": {
+      "title": "Response for blobs/get method.",
+      "description": "Sent from the StepFlow back to the component server with the content of the requested blob.",
+      "type": "object",
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ValueRef"
+        }
+      },
+      "required": [
+        "data"
+      ]
+    },
+    "PutBlobResult": {
+      "title": "Response for blobs/put method.",
+      "description": "Sent from the StepFlow back to the component server with the ID of the stored blob.",
+      "type": "object",
+      "properties": {
+        "blob_id": {
+          "$ref": "#/$defs/BlobId"
+        }
+      },
+      "required": [
+        "blob_id"
+      ]
+    },
+    "Error": {
+      "title": "Error object",
+      "description": "An error returned from a method execution.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "title": "Error code",
+          "description": "A numeric code indicating the error type.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "message": {
+          "title": "Error message",
+          "description": "Concise, single-sentence description of the error.",
+          "type": "string"
+        },
+        "data": {
+          "title": "Error data",
+          "description": "Primitive or structured value that contains additional information about the error."
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "Notification": {
+      "description": "Notification.",
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "title": "JSON-RPC version",
+          "description": "The version of the JSON-RPC protocol.",
+          "type": "string",
+          "const": "2.0"
+        },
+        "method": {
+          "title": "Method",
+          "description": "The notification method being called.",
+          "$ref": "#/$defs/Method"
+        },
+        "params": {
+          "title": "Parameters",
+          "description": "The parameters for the notification.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Initialized"
+            }
+          ]
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ]
+    },
+    "Initialized": {
+      "title": "Parameters for initialized notification.",
+      "description": "Sent from StepFlow to the component server after initialization is complete.",
+      "type": "object"
+    }
+  }
+}

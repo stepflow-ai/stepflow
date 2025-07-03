@@ -11,11 +11,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-mod blob_handlers;
-mod incoming;
-mod incoming_handler;
-mod schema;
+mod handlers;
+mod lazy_value;
+mod owned_json;
+mod protocol;
 pub mod stdio;
 
-pub use blob_handlers::{GetBlobHandler, PutBlobHandler};
-pub use incoming_handler::{IncomingHandler, IncomingHandlerRegistry};
+// Re-export internal types for crate-wide access
+use handlers::*;
+use lazy_value::*;
+use owned_json::OwnedJson;
+use protocol::*;

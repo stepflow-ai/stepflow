@@ -63,7 +63,6 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         flows::delete_flow,
     ),
     components(schemas(
-        components::ComponentInfoResponse,
         components::ListComponentsResponse,
         components::ListComponentsQuery,
         debug::DebugStepRequest,

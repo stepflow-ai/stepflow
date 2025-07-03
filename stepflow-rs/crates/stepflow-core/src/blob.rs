@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use error_stack::ResultExt as _;
@@ -41,6 +42,20 @@ pub enum BlobIdError {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct BlobId(String);
+
+impl schemars::JsonSchema for BlobId {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("BlobId")
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "title": "Blob ID",
+            "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+            "type": "string",
+        })
+    }
+}
 
 impl BlobId {
     /// Create a new BlobId from a hex-encoded hash string.

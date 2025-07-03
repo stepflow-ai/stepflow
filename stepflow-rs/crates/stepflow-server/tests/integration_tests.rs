@@ -58,7 +58,7 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
     executor
         .register_plugin(
             "builtin".to_owned(),
-            DynPlugin::boxed(stepflow_builtins::Builtins),
+            DynPlugin::boxed(stepflow_builtins::Builtins::new("builtin".to_owned())),
         )
         .await
         .unwrap();
