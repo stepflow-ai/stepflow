@@ -159,7 +159,7 @@ async def test_handle_component_info(server):
 
     request = Message(
         id=UUID(int=1),
-        method="component_info",
+        method="components/info",
         params=msgspec.json.encode(
             ComponentInfoRequest(component="python://test_component")
         ),
@@ -177,7 +177,7 @@ async def test_handle_component_info_not_found(server):
 
     request = Message(
         id=UUID(int=1),
-        method="component_info",
+        method="components/info",
         params=msgspec.json.encode(
             ComponentInfoRequest(component="python://non_existent")
         ),
@@ -198,7 +198,7 @@ async def test_handle_component_execute(server):
 
     request = Message(
         id=UUID(int=1),
-        method="component_execute",
+        method="components/execute",
         params=msgspec.json.encode(
             ComponentExecuteRequest(
                 component="python://test_component", input={"name": "Alice", "age": 25}
@@ -222,7 +222,7 @@ async def test_handle_component_execute_invalid_input(server):
 
     request = Message(
         id=UUID(int=1),
-        method="component_execute",
+        method="components/execute",
         params=msgspec.json.encode(
             ComponentExecuteRequest(
                 component="python://test_component", input={"invalid": "input"}
@@ -248,7 +248,7 @@ async def test_handle_list_components(server):
         return ValidOutput(greeting="", age_next_year=0)
 
     request = Message(
-        id=UUID(int=1), method="list_components", params=msgspec.json.encode({})
+        id=UUID(int=1), method="components/list", params=msgspec.json.encode({})
     )
     response = await server._handle_message(request)
     assert response.id == request.id
@@ -273,7 +273,7 @@ async def test_handle_unknown_method(server):
 @pytest.mark.asyncio
 async def test_uninitialized_server(server):
     request = Message(
-        id=UUID(int=1), method="list_components", params=msgspec.json.encode({})
+        id=UUID(int=1), method="components/list", params=msgspec.json.encode({})
     )
 
     with pytest.raises(ServerNotInitializedError):
