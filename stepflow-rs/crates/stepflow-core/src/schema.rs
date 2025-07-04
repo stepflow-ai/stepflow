@@ -18,9 +18,21 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Type alias for a shared schema reference.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct SchemaRef(Arc<Schema>);
+
+impl JsonSchema for SchemaRef {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Schema".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+             "$ref": _generator.settings().meta_schema,
+        })
+    }
+}
 
 impl From<Schema> for SchemaRef {
     fn from(schema: Schema) -> Self {

@@ -485,3 +485,57 @@ impl Flow {
         examples
     }
 }
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+    use schemars::schema_for;
+    use std::env;
+
+    #[test]
+    fn test_schema_comparison_with_flow_json() {
+        let generated_schema = schema_for!(Flow);
+        let generated_json = serde_json::to_value(&generated_schema)
+            .expect("Failed to convert generated schema to JSON");
+
+        let flow_schema_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../schemas/flow.json"
+        );
+
+        if env::var("STEPFLOW_OVERWRITE_SCHEMA").is_ok() {
+            // Create directory and write schema
+            if let Some(parent) = std::path::Path::new(flow_schema_path).parent() {
+                std::fs::create_dir_all(parent).expect("Failed to create schema directory");
+            }
+            std::fs::write(
+                flow_schema_path,
+                serde_json::to_string_pretty(&generated_json).unwrap(),
+            )
+            .expect("Failed to write updated schema");
+        } else {
+            // Compare with existing schema
+            match std::fs::read_to_string(flow_schema_path) {
+                Ok(flow_schema_str) => {
+                    let flow_schema: serde_json::Value = 
+                        serde_json::from_str(&flow_schema_str)
+                            .expect("Failed to parse flow schema JSON");
+                    
+                    let generated_schema_str = serde_json::to_string_pretty(&generated_json)
+                        .expect("Failed to serialize generated schema");
+                    let expected_schema_str = serde_json::to_string_pretty(&flow_schema)
+                        .expect("Failed to serialize expected schema");
+
+                    similar_asserts::assert_eq!(generated_schema_str, expected_schema_str, 
+                        "Generated schema does not match the reference schema at {}. \
+                         Run with STEPFLOW_OVERWRITE_SCHEMA=1 to update the reference schema.",
+                        flow_schema_path);
+                }
+                Err(_) => {
+                    panic!("Flow schema file not found at {flow_schema_path}. \
+                           Run with STEPFLOW_OVERWRITE_SCHEMA=1 to create it.");
+                }
+            }
+        }
+    }
+}
