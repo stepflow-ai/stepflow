@@ -85,10 +85,25 @@ impl StepFlowExecutor {
     pub async fn get_plugin(&self, component: &Component) -> Result<Arc<DynPlugin<'static>>> {
         let protocol = component.protocol();
         let guard = self.plugins.read().await;
+        
+        // Special handling for MCP protocol: extract server name from URL
+        let lookup_key = if protocol == "mcp" {
+            // For mcp://server-name/tool-name, extract server-name
+            if let Some(host) = component.host() {
+                host
+            } else {
+                return Err(error_stack::report!(ExecutionError::UnregisteredProtocol(
+                    format!("Invalid MCP URL format: {}", component.url_string())
+                )));
+            }
+        } else {
+            protocol.to_string()
+        };
+        
         let plugin = guard
-            .get(protocol)
+            .get(&lookup_key)
             .cloned()
-            .ok_or_else(|| ExecutionError::UnregisteredProtocol(protocol.to_owned()))?;
+            .ok_or_else(|| ExecutionError::UnregisteredProtocol(lookup_key.clone()))?;
         Ok(plugin)
     }
 

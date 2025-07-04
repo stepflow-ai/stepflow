@@ -1,0 +1,33 @@
+# Example StepFlow configuration with MCP plugin
+# This shows how to configure an MCP server as a plugin
+
+plugins:
+  # Built-in StepFlow components
+  - name: builtin
+    type: builtin
+
+  # MCP server for filesystem operations
+  - name: filesystem
+    type: mcp
+    command: npx
+    args: 
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "/tmp"
+    env:
+      # Optional environment variables for the MCP server
+      DEBUG: "false"
+
+  # Another MCP server for brave search (example)
+  # - name: brave-search
+  #   type: mcp
+  #   command: npx
+  #   args:
+  #     - "-y" 
+  #     - "@modelcontextprotocol/server-brave-search"
+  #   env:
+  #     BRAVE_API_KEY: "your-api-key-here"
+
+# Optional: Configure state storage
+state_store:
+  type: inMemory

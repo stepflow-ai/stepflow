@@ -3042,15 +3042,19 @@ name = "stepflow-components-mcp"
 version = "0.1.0"
 dependencies = [
  "error-stack",
+ "futures",
  "indexmap",
  "rust-mcp-schema",
  "serde",
  "serde_json",
+ "stepflow-builtins",
  "stepflow-core",
  "stepflow-plugin",
  "stepflow-protocol",
+ "stepflow-state",
  "thiserror 2.0.12",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

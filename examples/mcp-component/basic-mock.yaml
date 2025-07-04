@@ -1,0 +1,38 @@
+# Example workflow using mock MCP server
+# This workflow demonstrates how to use MCP tools within StepFlow
+
+name: "Mock MCP Example"
+description: "Demonstrates using mock MCP tools to test StepFlow MCP integration"
+
+input:
+  type: object
+  properties:
+    message:
+      type: string
+      description: "Message to echo"
+    a:
+      type: number
+      description: "First number to add"
+    b:
+      type: number
+      description: "Second number to add"
+  required: ["message", "a", "b"]
+
+steps:
+  # Step 1: Echo a message using mock MCP tool
+  - id: echo_message
+    component: "mcp://mock-server/echo"
+    input:
+      message: { $from: { workflow: input }, path: "message" }
+
+  # Step 2: Add two numbers using mock MCP tool
+  - id: add_numbers
+    component: "mcp://mock-server/add"
+    input:
+      a: { $from: { workflow: input }, path: "a" }
+      b: { $from: { workflow: input }, path: "b" }
+
+output:
+  echo_result: { $from: { step: echo_message } }
+  add_result: { $from: { step: add_numbers } }
+  original_input: { $from: { workflow: input } }

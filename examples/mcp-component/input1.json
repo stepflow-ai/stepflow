@@ -1,0 +1,4 @@
+{
+  "filename": "/tmp/stepflow-mcp-example.txt",
+  "content": "Hello from StepFlow using MCP tools!\n\nThis file was created by a StepFlow workflow using the Model Context Protocol (MCP) to interact with filesystem tools."
+}

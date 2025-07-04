@@ -1,0 +1,41 @@
+# Example workflow using MCP filesystem tools
+# This workflow demonstrates how to use MCP tools within StepFlow
+
+name: "MCP Filesystem Example"
+description: "Demonstrates using MCP filesystem tools to read and write files"
+
+input:
+  type: object
+  properties:
+    filename:
+      type: string
+      description: "Name of the file to create"
+    content:
+      type: string  
+      description: "Content to write to the file"
+  required: ["filename", "content"]
+
+steps:
+  # Step 1: Create a file using MCP filesystem tool
+  - id: create_file
+    component: "mcp://filesystem/write_file"
+    input:
+      path: { $from: { workflow: input }, path: "filename" }
+      content: { $from: { workflow: input }, path: "content" }
+
+  # Step 2: Read the file back to verify it was created
+  - id: read_file
+    component: "mcp://filesystem/read_file"
+    input:
+      path: { $from: { workflow: input }, path: "filename" }
+
+  # Step 3: List files in the directory to show the created file
+  - id: list_directory
+    component: "mcp://filesystem/list_directory"
+    input:
+      path: "/tmp"
+
+output:
+  created_file_content: { $from: { step: read_file } }
+  directory_listing: { $from: { step: list_directory } }
+  original_input: { $from: { workflow: input } }
