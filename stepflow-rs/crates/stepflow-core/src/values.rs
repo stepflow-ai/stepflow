@@ -11,17 +11,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-mod component;
-mod expr;
-mod flow;
-mod step;
-mod step_id;
+//! Value handling and resolution for StepFlow workflows.
+//!
+//! This module contains all value-related functionality including:
+//! - `ValueRef`: References to concrete JSON values
+//! - `ValueTemplate`: Pre-parsed templates that may contain expressions
+//! - `ValueResolver`: Resolution engine for templates and expressions
+//! - `ValueLoader`: Trait for loading values from external sources
 
-pub use component::*;
-pub use expr::*;
-pub use flow::*;
-pub use step::*;
-pub use step_id::*;
+pub mod value_ref;
+pub mod value_resolver;
+pub mod value_template;
 
-// Re-export values from the values module
-pub use crate::values::{ValueRef, ValueTemplate, ValueTemplateRepr};
+pub use value_ref::*;
+pub use value_resolver::*;
+pub use value_template::*;

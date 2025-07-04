@@ -85,7 +85,7 @@ impl Component {
     pub fn for_plugin(plugin: &str, path: &str) -> Self {
         Self {
             url: format!("{plugin}://{path}"),
-            delimiter: Some(plugin.len() + 1), // Position of the colon after "plugin
+            delimiter: Some(plugin.len()), // Position of the colon in "plugin:"
         }
     }
 

@@ -11,16 +11,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use error_stack::ResultExt as _;
 use indexmap::IndexMap;
-use std::collections::HashSet;
 use std::sync::Arc;
-use stepflow_core::dependencies::{Dependency, ValueDependencies};
-use stepflow_core::workflow::{BaseRef, Expr, Flow, FlowHash, Step, ValueRef, WorkflowRef};
+use crate::dependencies::Dependency;
+use stepflow_core::workflow::{BaseRef, Expr, Flow, FlowHash, Step, ValueTemplate, WorkflowRef};
 
 use crate::{
     Result,
-    error::AnalysisError,
     tracker::DependenciesBuilder,
     types::{AnalysisResult, FlowAnalysis, StepAnalysis},
     validation::validate_workflow,
@@ -72,7 +69,7 @@ fn analyze_dependencies_internal(flow: Arc<Flow>, workflow_hash: FlowHash) -> Re
         .collect::<Result<IndexMap<_, _>>>()?;
 
     // Analyze workflow output dependencies
-    let output_depends = extract_value_deps(&flow.output)?;
+    let output_depends = analyze_template_dependencies(&flow.output)?;
 
     // Build dependency graph for execution
     let mut builder = DependenciesBuilder::new(steps.len());
@@ -105,10 +102,7 @@ fn extract_step_dependencies(step_analysis: &StepAnalysis) -> impl Iterator<Item
 }
 
 fn analyze_step(step: &Step) -> Result<StepAnalysis> {
-    let input_depends = step
-        .input
-        .value_dependencies()
-        .change_context(AnalysisError::DependencyAnalysis)?;
+    let input_depends = analyze_template_dependencies(&step.input)?;
 
     // Extract dependencies from skip condition
     let skip_if_depend = if let Some(skip_if) = &step.skip_if {
@@ -123,129 +117,54 @@ fn analyze_step(step: &Step) -> Result<StepAnalysis> {
     })
 }
 
-/// Extract dependencies from a ValueRef
-fn extract_value_deps(value_ref: &ValueRef) -> Result<ValueDependencies> {
-    match ParseResult::try_from(value_ref)? {
-        ParseResult::Literal => Ok(ValueDependencies::Other(HashSet::new())),
-        ParseResult::Expr(expr) => {
-            let mut deps = HashSet::new();
-            if let Some(dep) = extract_dep_from_expr(&expr)? {
-                deps.insert(dep);
-            } else {
-                error_stack::bail!(AnalysisError::MalformedReference {
-                    message: format!(
-                        "Found object with '$from' key that parsed as a literal expression, which is invalid: {value_ref:?}"
-                    )
-                });
-            }
-            Ok(ValueDependencies::Other(deps))
-        }
-        ParseResult::Value(serde_json::Value::Object(fields)) => {
-            let fields = fields
-                .iter()
-                .map(|(f, v)| {
-                    let mut deps = HashSet::new();
-                    extract_deps_from_value(v, &mut deps)?;
+/// Error types for dependency analysis
+#[derive(Debug, thiserror::Error)]
+pub enum DependencyError {
+    #[error("Failed to parse expression")]
+    ParseError,
+    #[error("Malformed reference")]
+    MalformedReference,
+}
 
-                    Ok((f.to_owned(), deps))
+/// Analyze dependencies within a ValueTemplate using the expression iterator.
+///
+/// This handles both structured (object) and unstructured dependency analysis
+/// by examining the template structure and iterating over contained expressions.
+pub(crate) fn analyze_template_dependencies(
+    template: &ValueTemplate,
+) -> Result<crate::dependencies::ValueDependencies> {
+    use std::collections::HashSet;
+    use crate::dependencies::ValueDependencies;
+    use stepflow_core::values::ValueTemplateRepr;
+
+    match template.as_ref() {
+        ValueTemplateRepr::Object(obj) => {
+            // For objects, analyze each field separately to maintain structure
+            let fields = obj
+                .iter()
+                .map(|(field, field_template)| {
+                    let mut deps = HashSet::new();
+                    for expr in field_template.expressions() {
+                        if let Some(dep) = extract_dep_from_expr(expr)? {
+                            deps.insert(dep);
+                        }
+                    }
+                    Ok((field.clone(), deps))
                 })
-                .collect::<Result<IndexMap<_, _>>>()?;
+                .collect::<Result<indexmap::IndexMap<_, _>>>()?;
             Ok(ValueDependencies::Object(fields))
         }
-        ParseResult::Value(v) => {
+        _ => {
+            // For non-objects, collect all dependencies into a single set
             let mut deps = HashSet::new();
-            extract_deps_from_value(v, &mut deps)?;
+            for expr in template.expressions() {
+                if let Some(dep) = extract_dep_from_expr(expr)? {
+                    deps.insert(dep);
+                }
+            }
             Ok(ValueDependencies::Other(deps))
         }
     }
-}
-
-enum ParseResult<'a> {
-    /// A literal. Dependencies inside the value should be ignored.
-    Literal,
-    /// An expression.
-    Expr(Expr),
-    /// A value. Dependencies inside the value should be extracted.
-    Value(&'a serde_json::Value),
-}
-
-impl<'a> TryFrom<&'a ValueRef> for ParseResult<'a> {
-    type Error = error_stack::Report<AnalysisError>;
-    fn try_from(value: &'a ValueRef) -> Result<Self> {
-        if let Some(fields) = value.as_object() {
-            if fields.contains_key("$literal") {
-                Ok(ParseResult::Literal)
-            } else if fields.contains_key("$from") {
-                let expr = serde_json::from_value::<Expr>(value.as_ref().clone()).change_context_lazy(||
-                    AnalysisError::MalformedReference { message: format!(
-                        "Found object with '$from' key that couldn't be parsed as expression: {value:?}"
-                    ) })?;
-                Ok(ParseResult::Expr(expr))
-            } else {
-                Ok(ParseResult::Value(value.as_ref()))
-            }
-        } else {
-            Ok(ParseResult::Value(value.as_ref()))
-        }
-    }
-}
-
-impl<'a> TryFrom<&'a serde_json::Value> for ParseResult<'a> {
-    type Error = error_stack::Report<AnalysisError>;
-
-    fn try_from(value: &'a serde_json::Value) -> Result<Self> {
-        if let Some(fields) = value.as_object() {
-            if fields.contains_key("$literal") {
-                Ok(ParseResult::Literal)
-            } else if fields.contains_key("$from") {
-                let expr = serde_json::from_value::<Expr>(value.clone()).change_context_lazy(||
-                    AnalysisError::MalformedReference { message: format!(
-                        "Found object with '$from' key that couldn't be parsed as expression: {value:?}"
-                    ) })?;
-                Ok(ParseResult::Expr(expr))
-            } else {
-                Ok(ParseResult::Value(value))
-            }
-        } else {
-            Ok(ParseResult::Value(value))
-        }
-    }
-}
-
-/// Recursively extract dependencies from a JSON value
-fn extract_deps_from_value(
-    value: &serde_json::Value,
-    deps: &mut HashSet<Dependency>,
-) -> Result<()> {
-    match ParseResult::try_from(value)? {
-        ParseResult::Literal => return Ok(()),
-        ParseResult::Expr(expr) => {
-            if let Some(dep) = extract_dep_from_expr(&expr)? {
-                deps.insert(dep);
-            } else {
-                error_stack::bail!(AnalysisError::MalformedReference {
-                    message: format!(
-                        "Found object with '$from' key that parsed as a literal expression, which is invalid: {value:?}"
-                    )
-                });
-            }
-        }
-        ParseResult::Value(serde_json::Value::Object(fields)) => {
-            for v in fields.values() {
-                extract_deps_from_value(v, deps)?;
-            }
-        }
-        ParseResult::Value(serde_json::Value::Array(arr)) => {
-            for v in arr.iter() {
-                extract_deps_from_value(v, deps)?;
-            }
-        }
-        ParseResult::Value(_) => {
-            // Primitive values cannot contain references
-        }
-    }
-
-    Ok(())
 }
 
 /// Extract dependencies from an expression
@@ -266,21 +185,24 @@ fn extract_dep_from_expr(expr: &Expr) -> Result<Option<Dependency>> {
                 BaseRef::Workflow(WorkflowRef::Input) => Ok(Some(Dependency::FlowInput { field })),
             }
         }
-        Expr::Literal(_) => Ok(None),
+        Expr::EscapedLiteral { .. } | Expr::Literal(_) => Ok(None),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use serde_json::json;
+    use crate::dependencies::ValueDependencies;
     use stepflow_core::workflow::{Component, ErrorAction, Flow, Step};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
             id: id.to_string(),
             component: Component::from_string("mock://test"),
-            input: ValueRef::new(input),
+            input: ValueTemplate::parse_value(input).unwrap(),
             input_schema: None,
             output_schema: None,
             skip_if: None,
@@ -299,7 +221,7 @@ mod tests {
                 Step {
                     id: "step1".to_string(),
                     component: Component::from_string("mock://test"),
-                    input: ValueRef::new(json!({"$from": {"workflow": "input"}})),
+                    input: ValueTemplate::workflow_input(None),
                     input_schema: None,
                     output_schema: None,
                     skip_if: None,
@@ -308,14 +230,14 @@ mod tests {
                 Step {
                     id: "step2".to_string(),
                     component: Component::from_string("mock://test"),
-                    input: ValueRef::new(json!({"$from": {"step": "step1"}})),
+                    input: ValueTemplate::step_ref("step1", None),
                     input_schema: None,
                     output_schema: None,
                     skip_if: None,
                     on_error: ErrorAction::Fail,
                 },
             ],
-            output: json!({"$from": {"step": "step2"}}).into(),
+            output: ValueTemplate::step_ref("step2", None),
             test: None,
             examples: vec![],
         }
@@ -408,11 +330,12 @@ mod tests {
     fn test_analyze_complex_input_object() {
         let mut flow = create_test_flow();
         // Give step2 a complex input object with multiple dependencies
-        flow.steps[1].input = ValueRef::new(json!({
+        flow.steps[1].input = ValueTemplate::parse_value(json!({
             "data": {"$from": {"step": "step1"}},
             "config": {"$from": {"workflow": "input"}, "path": "config"},
             "literal_value": 42
-        }));
+        }))
+        .unwrap();
 
         let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
         let analysis = result.analysis.unwrap(); // Should succeed without validation errors
@@ -484,7 +407,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
             ],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };

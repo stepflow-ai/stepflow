@@ -25,6 +25,7 @@ pub use sqlite_state_store::{SqliteStateStore, SqliteStateStoreConfig};
 mod tests {
     use super::*;
     use serde_json::json;
+    use stepflow_core::values::ValueTemplate;
     use stepflow_core::{FlowResult, workflow::ValueRef};
     use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
@@ -57,11 +58,11 @@ mod tests {
             description: None,
             input_schema: None,
             output_schema: None,
-            output: ValueRef::new(json!({})),
+            output: ValueTemplate::empty_object(),
             steps: vec![stepflow_core::workflow::Step {
                 id: "test_step".to_string(),
                 component: stepflow_core::workflow::Component::from_string("test://mock"),
-                input: ValueRef::new(json!({})),
+                input: ValueTemplate::empty_object(),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,

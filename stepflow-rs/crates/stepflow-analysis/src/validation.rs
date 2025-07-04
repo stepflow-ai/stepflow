@@ -11,12 +11,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use error_stack::ResultExt as _;
 use std::collections::HashSet;
-use stepflow_core::workflow::{BaseRef, Component, Expr, Flow, Step, ValueRef, WorkflowRef};
+use stepflow_core::workflow::{BaseRef, Component, Expr, Flow, Step, ValueTemplate, WorkflowRef};
 
+use crate::Result;
 use crate::diagnostics::{DiagnosticMessage, Diagnostics};
-use crate::{AnalysisError, Result};
 
 /// Validates a workflow and collects all diagnostics
 pub fn validate_workflow(flow: &Flow) -> Result<Diagnostics> {
@@ -30,7 +29,7 @@ pub fn validate_workflow(flow: &Flow) -> Result<Diagnostics> {
 
     // Validate workflow output
     let all_step_ids: HashSet<String> = flow.steps.iter().map(|s| s.id.clone()).collect();
-    validate_value_references(
+    validate_references(
         &flow.output,
         &["output".to_string()],
         &all_step_ids,
@@ -116,7 +115,7 @@ fn validate_step_references(
     // Validate step input references
     let mut input_path = step_path.clone();
     input_path.push("input".to_string());
-    validate_value_references(
+    validate_references(
         &step.input,
         &input_path,
         available_steps,
@@ -154,91 +153,6 @@ fn validate_step_references(
                 },
                 component_path,
             );
-        }
-    }
-}
-
-/// Validate all references within a ValueRef
-fn validate_value_references(
-    value: &ValueRef,
-    path: &[String],
-    available_steps: &HashSet<String>,
-    current_step_id: &str,
-    diagnostics: &mut Diagnostics,
-) {
-    validate_value_references_recursive(
-        value.as_ref(),
-        path,
-        available_steps,
-        current_step_id,
-        diagnostics,
-    );
-}
-
-/// Recursively validate references in a JSON value
-fn validate_value_references_recursive(
-    value: &serde_json::Value,
-    path: &[String],
-    available_steps: &HashSet<String>,
-    current_step_id: &str,
-    diagnostics: &mut Diagnostics,
-) {
-    match value {
-        serde_json::Value::Object(obj) => {
-            if obj.contains_key("$from") {
-                // Parse and validate expression
-                match serde_json::from_value::<Expr>(value.clone()) {
-                    Ok(expr) => validate_expression_references(
-                        &expr,
-                        path,
-                        available_steps,
-                        current_step_id,
-                        diagnostics,
-                    ),
-                    Err(e) => {
-                        diagnostics.add(
-                            DiagnosticMessage::InvalidReferenceExpression {
-                                step_id: None,
-                                field: None,
-                                error: e.to_string(),
-                            },
-                            path.to_vec(),
-                        );
-                    }
-                }
-            } else if obj.contains_key("$literal") {
-                // $literal is valid, no further validation needed
-            } else {
-                // Recursively validate object fields
-                for (key, val) in obj.iter() {
-                    let mut field_path = path.to_vec();
-                    field_path.push(key.clone());
-                    validate_value_references_recursive(
-                        val,
-                        &field_path,
-                        available_steps,
-                        current_step_id,
-                        diagnostics,
-                    );
-                }
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            // Validate each array element
-            for (index, val) in arr.iter().enumerate() {
-                let mut element_path = path.to_vec();
-                element_path.push(index.to_string());
-                validate_value_references_recursive(
-                    val,
-                    &element_path,
-                    available_steps,
-                    current_step_id,
-                    diagnostics,
-                );
-            }
-        }
-        _ => {
-            // Primitive values don't contain references
         }
     }
 }
@@ -308,7 +222,7 @@ fn validate_expression_references(
                 }
             }
         },
-        Expr::Literal(_) => {
+        Expr::EscapedLiteral { .. } | Expr::Literal(_) => {
             // Literals are always valid
         }
     }
@@ -344,17 +258,6 @@ fn detect_unreachable_steps(flow: &Flow, diagnostics: &mut Diagnostics) -> Resul
     Ok(())
 }
 
-/// Collect step dependencies from a ValueRef
-fn collect_step_dependencies(value: &ValueRef, dependencies: &mut HashSet<String>) -> Result<()> {
-    // Use the ValueRef's built-in step_dependencies method
-    let step_deps = value
-        .step_dependencies()
-        .change_context(AnalysisError::DependencyAnalysis)?;
-    dependencies.extend(step_deps);
-
-    Ok(())
-}
-
 /// Collect step dependencies from an expression
 fn collect_expression_dependencies(expr: &Expr, dependencies: &mut HashSet<String>) {
     match expr {
@@ -363,7 +266,7 @@ fn collect_expression_dependencies(expr: &Expr, dependencies: &mut HashSet<Strin
                 dependencies.insert(step.clone());
             }
         }
-        Expr::Literal(_) => {}
+        Expr::EscapedLiteral { .. } | Expr::Literal(_) => {}
     }
 }
 
@@ -406,6 +309,79 @@ fn validate_component(component: &Component, path: &[String], diagnostics: &mut 
     }
 }
 
+/// Validate all references within a ValueTemplate
+fn validate_references(
+    template: &ValueTemplate,
+    path: &[String],
+    available_steps: &HashSet<String>,
+    current_step_id: &str,
+    diagnostics: &mut Diagnostics,
+) {
+    use stepflow_core::values::ValueTemplateRepr;
+
+    match template.as_ref() {
+        ValueTemplateRepr::Expression(expr) => {
+            validate_expression_references(
+                expr,
+                path,
+                available_steps,
+                current_step_id,
+                diagnostics,
+            );
+        }
+        ValueTemplateRepr::Object(obj) => {
+            // Recursively validate object fields
+            for (key, template) in obj {
+                let mut field_path = path.to_vec();
+                field_path.push(key.clone());
+                validate_references(
+                    template,
+                    &field_path,
+                    available_steps,
+                    current_step_id,
+                    diagnostics,
+                );
+            }
+        }
+        ValueTemplateRepr::Array(arr) => {
+            // Validate each array element
+            for (index, template) in arr.iter().enumerate() {
+                let mut element_path = path.to_vec();
+                element_path.push(index.to_string());
+                validate_references(
+                    template,
+                    &element_path,
+                    available_steps,
+                    current_step_id,
+                    diagnostics,
+                );
+            }
+        }
+        // Primitive values (Null, Bool, Number, String) don't contain references
+        ValueTemplateRepr::Null
+        | ValueTemplateRepr::Bool(_)
+        | ValueTemplateRepr::Number(_)
+        | ValueTemplateRepr::String(_) => {}
+    }
+}
+
+/// Collect step dependencies from ValueTemplate
+fn collect_step_dependencies(
+    template: &ValueTemplate,
+    dependencies: &mut HashSet<String>,
+) -> Result<()> {
+    // Extract dependencies using ValueTemplate's method
+    let deps = crate::dependency::analyze_template_dependencies(template)?;
+
+    for dep in deps.dependencies() {
+        if let Some(step_id) = dep.step_id() {
+            dependencies.insert(step_id.to_string());
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,7 +393,7 @@ mod tests {
         Step {
             id: id.to_string(),
             component: Component::from_string("mock://test"),
-            input: ValueRef::new(input),
+            input: serde_json::from_value(input).unwrap(),
             input_schema: None,
             output_schema: None,
             skip_if: None,
@@ -437,7 +413,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step2", json!({"$from": {"step": "step1"}})),
             ],
-            output: ValueRef::new(json!({"$from": {"step": "step2"}})),
+            output: ValueTemplate::step_ref("step2", None),
             test: None,
             examples: vec![],
         };
@@ -461,7 +437,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
                 create_test_step("step2", json!({"$from": {"workflow": "input"}})),
             ],
-            output: ValueRef::new(json!({"$from": {"step": "step2"}})),
+            output: ValueTemplate::step_ref("step2", None),
             test: None,
             examples: vec![],
         };
@@ -489,7 +465,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
             ],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };
@@ -517,7 +493,7 @@ mod tests {
                 "step1",
                 json!({"$from": {"step": "step1"}}),
             )],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };
@@ -545,7 +521,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step2", json!({"$from": {"workflow": "input"}})), // Not referenced
             ],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };
@@ -573,7 +549,7 @@ mod tests {
                 "step1",
                 json!({"$from": {"workflow": "input"}}),
             )],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };
@@ -607,13 +583,13 @@ mod tests {
             steps: vec![Step {
                 id: "step1".to_string(),
                 component: Component::from_string("http://[invalid-url"),
-                input: ValueRef::new(json!({"$from": {"workflow": "input"}})),
+                input: ValueTemplate::workflow_input(None),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
             }],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };
@@ -641,13 +617,13 @@ mod tests {
             steps: vec![Step {
                 id: "step1".to_string(),
                 component: Component::from_string(""), // Empty builtin name
-                input: ValueRef::new(json!({"$from": {"workflow": "input"}})),
+                input: ValueTemplate::workflow_input(None),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
             }],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };
@@ -675,13 +651,13 @@ mod tests {
             steps: vec![Step {
                 id: "step1".to_string(),
                 component: Component::from_string("eval"), // Valid builtin
-                input: ValueRef::new(json!({"$from": {"workflow": "input"}})),
+                input: ValueTemplate::workflow_input(None),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
             }],
-            output: ValueRef::new(json!({"$from": {"step": "step1"}})),
+            output: ValueTemplate::step_ref("step1", None),
             test: None,
             examples: vec![],
         };

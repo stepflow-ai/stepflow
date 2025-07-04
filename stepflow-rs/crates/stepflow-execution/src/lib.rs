@@ -13,10 +13,11 @@
 
 mod error;
 mod executor;
-mod value_resolver;
+mod state_value_loader;
 mod workflow_executor;
 mod write_cache;
 
 pub use error::{ExecutionError, Result};
 pub use executor::StepFlowExecutor;
+pub use state_value_loader::StateValueLoader;
 pub use workflow_executor::{StepExecutionResult, StepInspection, StepMetadata, WorkflowExecutor};

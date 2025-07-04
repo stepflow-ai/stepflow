@@ -12,6 +12,7 @@ members = ["crates/*"]
 default-members = ["crates/stepflow-main"]
 
 [workspace.dependencies]
+async-trait = "0.1"
 axum = "0.8"
 bit-set = "0.8.0"
 chrono = { version = "0.4", features = ["serde"] }

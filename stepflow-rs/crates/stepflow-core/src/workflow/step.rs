@@ -11,7 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use super::{Component, Expr, ValueRef};
+use super::{Component, Expr, ValueTemplate};
 use crate::schema::SchemaRef;
 use schemars::JsonSchema;
 
@@ -39,8 +39,8 @@ pub struct Step {
     pub on_error: ErrorAction,
 
     /// Arguments to pass to the component for this step
-    #[serde(default, skip_serializing_if = "ValueRef::is_null")]
-    pub input: ValueRef,
+    #[serde(default)]
+    pub input: ValueTemplate,
 }
 
 #[derive(
@@ -56,7 +56,7 @@ pub enum ErrorAction {
     #[serde(rename_all = "camelCase")]
     UseDefault {
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        default_value: Option<ValueRef>,
+        default_value: Option<ValueTemplate>,
     },
     /// If the step fails, retry it.
     Retry,
@@ -92,7 +92,7 @@ mod tests {
         assert_eq!(serde_yaml_ng::to_string(&retry).unwrap(), "action: retry\n");
 
         let use_default = ErrorAction::UseDefault {
-            default_value: Some(ValueRef::from("test_default")),
+            default_value: Some(ValueRef::from("test_default").into()),
         };
         assert_eq!(
             serde_yaml_ng::to_string(&use_default).unwrap(),
@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(
             use_default,
             ErrorAction::UseDefault {
-                default_value: Some(ValueRef::from("test_default"))
+                default_value: Some(ValueRef::from("test_default").into())
             }
         );
     }
@@ -129,7 +129,7 @@ mod tests {
         assert!(!ErrorAction::Retry.is_default());
         assert!(
             !ErrorAction::UseDefault {
-                default_value: Some(ValueRef::from("test"))
+                default_value: Some(ValueRef::from("test").into())
             }
             .is_default()
         );
@@ -144,9 +144,9 @@ mod tests {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::UseDefault {
-                default_value: Some(ValueRef::from("fallback")),
+                default_value: Some(ValueRef::from("fallback").into()),
             },
-            input: serde_json::Value::Null.into(),
+            input: ValueTemplate::null(),
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
@@ -164,7 +164,7 @@ mod tests {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
-            input: serde_json::Value::Null.into(),
+            input: ValueTemplate::null(),
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();

@@ -29,8 +29,8 @@ pub enum ExecutionError {
     RecvInput,
     #[error("error recording result for step '{0}'")]
     RecordResult(String),
-    #[error("internal error")]
-    Internal,
+    #[error("internal error: {0}")]
+    Internal(String),
     #[error("step panic")]
     StepPanic,
     #[error("step {step:?} failed")]
@@ -55,6 +55,14 @@ pub enum ExecutionError {
     ExecutionNotFound(Uuid),
     #[error("workflow '{0}' not found")]
     WorkflowNotFound(FlowHash),
+    #[error("failed to resolve value")]
+    ValueResolverFailure,
+}
+
+impl ExecutionError {
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::Internal(message.into())
+    }
 }
 
 pub type Result<T, E = error_stack::Report<ExecutionError>> = std::result::Result<T, E>;

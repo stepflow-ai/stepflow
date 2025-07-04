@@ -16,9 +16,10 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::json;
 use std::sync::Arc;
+use stepflow_core::values::ValueTemplate;
 use stepflow_core::{
     FlowResult,
-    workflow::{Component, ErrorAction, Flow, Step, ValueRef},
+    workflow::{Component, ErrorAction, Flow, Step},
 };
 use stepflow_execution::StepFlowExecutor;
 use stepflow_mock::MockPlugin;
@@ -140,7 +141,7 @@ fn create_test_workflow() -> Flow {
         steps: vec![Step {
             id: "test_step".to_string(),
             component: Component::new(Url::parse("builtin://create_messages").unwrap()),
-            input: ValueRef::new(json!({
+            input: ValueTemplate::literal(json!({
                 "user_prompt": "Hello from test"
             })),
             input_schema: None,
@@ -148,7 +149,7 @@ fn create_test_workflow() -> Flow {
             skip_if: None,
             on_error: ErrorAction::Fail,
         }],
-        output: json!(null).into(),
+        output: ValueTemplate::default(),
         test: None,
         examples: vec![],
     }
@@ -524,7 +525,7 @@ async fn test_status_updates_during_regular_execution() {
             Step {
                 id: "step1".to_string(),
                 component: Component::new(Url::parse("mock://one_output").unwrap()),
-                input: ValueRef::new(json!({"input": "first_step"})),
+                input: ValueTemplate::workflow_input(Some("first_step")),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
@@ -533,23 +534,24 @@ async fn test_status_updates_during_regular_execution() {
             Step {
                 id: "step2".to_string(),
                 component: Component::new(Url::parse("mock://two_outputs").unwrap()),
-                input: ValueRef::new(json!({
+                input: ValueTemplate::parse_value(json!({
                     "input": {
                         "$from": {"step": "step1"},
                         "path": "output"
                     }
-                })),
+                }))
+                .unwrap(),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
             },
         ],
-        output: json!({
+        output: ValueTemplate::parse_value(json!({
             "step1_result": {"$from": {"step": "step1"}, "path": "output"},
             "step2_result": {"$from": {"step": "step2"}, "path": "x"}
-        })
-        .into(),
+        }))
+        .unwrap(),
         test: None,
         examples: vec![],
     };
@@ -646,7 +648,7 @@ async fn test_status_updates_during_debug_execution() {
             Step {
                 id: "step1".to_string(),
                 component: Component::new(Url::parse("mock://one_output").unwrap()),
-                input: ValueRef::new(json!({"input": "debug_step"})),
+                input: ValueTemplate::workflow_input(Some("debug_step")),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
@@ -655,22 +657,23 @@ async fn test_status_updates_during_debug_execution() {
             Step {
                 id: "step2".to_string(),
                 component: Component::new(Url::parse("mock://two_outputs").unwrap()),
-                input: ValueRef::new(json!({
+                input: ValueTemplate::parse_value(json!({
                     "input": {
                         "$from": {"step": "step1"},
                         "path": "output"
                     }
-                })),
+                }))
+                .unwrap(),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
             },
         ],
-        output: json!({
+        output: ValueTemplate::parse_value(json!({
             "result": {"$from": {"step": "step2"}, "path": "x"}
-        })
-        .into(),
+        }))
+        .unwrap(),
         test: None,
         examples: vec![],
     };
@@ -782,16 +785,16 @@ async fn test_status_transitions_with_error_handling() {
         steps: vec![Step {
             id: "failing_step".to_string(),
             component: Component::new(Url::parse("mock://error_component").unwrap()),
-            input: ValueRef::new(json!({"input": "trigger_error"})),
+            input: ValueTemplate::literal(json!({"input": "trigger_error"})),
             input_schema: None,
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
         }],
-        output: json!({
+        output: ValueTemplate::parse_value(json!({
             "result": {"$from": {"step": "failing_step"}, "path": "output"}
-        })
-        .into(),
+        }))
+        .unwrap(),
         test: None,
         examples: vec![],
     };

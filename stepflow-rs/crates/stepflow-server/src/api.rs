@@ -87,7 +87,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         stepflow_analysis::Diagnostics,
         stepflow_analysis::FlowAnalysis,
         stepflow_analysis::StepAnalysis,
-        stepflow_core::dependencies::Dependency,
+        stepflow_analysis::Dependency,
     )),
 )]
 struct StepflowApi;

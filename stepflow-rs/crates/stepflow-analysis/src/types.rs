@@ -15,7 +15,7 @@ use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::dependencies::{Dependency, ValueDependencies};
+use crate::dependencies::{Dependency, ValueDependencies};
 use stepflow_core::workflow::{Flow, FlowHash};
 
 use crate::{
