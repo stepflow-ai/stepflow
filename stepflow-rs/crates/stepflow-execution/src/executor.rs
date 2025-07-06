@@ -85,7 +85,7 @@ impl StepFlowExecutor {
     pub async fn get_plugin(&self, component: &Component) -> Result<Arc<DynPlugin<'static>>> {
         let protocol = component.protocol();
         let guard = self.plugins.read().await;
-        
+
         // Special handling for MCP protocol: extract server name from URL
         let lookup_key = if protocol == "mcp" {
             // For mcp://server-name/tool-name, extract server-name
@@ -99,7 +99,7 @@ impl StepFlowExecutor {
         } else {
             protocol.to_string()
         };
-        
+
         let plugin = guard
             .get(&lookup_key)
             .cloned()

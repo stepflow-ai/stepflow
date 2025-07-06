@@ -3047,7 +3047,6 @@ dependencies = [
  "rust-mcp-schema",
  "serde",
  "serde_json",
- "stepflow-builtins",
  "stepflow-core",
  "stepflow-plugin",
  "stepflow-protocol",

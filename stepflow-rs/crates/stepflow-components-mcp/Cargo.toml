@@ -41,6 +41,5 @@ indexmap.workspace = true
 [dev-dependencies]
 # Testing dependencies
 stepflow-state.workspace = true
-stepflow-builtins.workspace = true
 futures.workspace = true
 uuid.workspace = true

@@ -17,9 +17,6 @@ use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tokio::time::{timeout, Duration};
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
@@ -29,7 +26,10 @@ use stepflow_plugin::{
     Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
 };
 use stepflow_protocol::stdio::StdioError;
+use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::RwLock;
+use tokio::time::{Duration, timeout};
 
 #[allow(unused_imports)]
 use crate::protocol::{
@@ -56,7 +56,11 @@ impl PluginConfig for McpPluginConfig {
         protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         // Create MCP plugin directly without StdioPlugin delegation
-        Ok(DynPlugin::boxed(McpPlugin::new(self, working_directory.to_owned(), protocol_prefix.to_string())))
+        Ok(DynPlugin::boxed(McpPlugin::new(
+            self,
+            working_directory.to_owned(),
+            protocol_prefix.to_string(),
+        )))
     }
 }
 
@@ -84,27 +88,27 @@ impl McpClient {
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
-        
+
         // Set environment variables
         for (key, value) in &config.env {
             cmd.env(key, value);
         }
-        
+
         let mut process = cmd.spawn().map_err(|e| {
             error_stack::Report::new(PluginError::Initializing)
                 .attach_printable(format!("Failed to spawn MCP server process: {e}"))
         })?;
-        
+
         let stdin = process.stdin.take().ok_or_else(|| {
             error_stack::Report::new(PluginError::Initializing)
                 .attach_printable("Failed to capture stdin for MCP server")
         })?;
-        
+
         let stdout = process.stdout.take().ok_or_else(|| {
             error_stack::Report::new(PluginError::Initializing)
                 .attach_printable("Failed to capture stdout for MCP server")
         })?;
-        
+
         Ok(Self {
             process,
             stdin,
@@ -112,64 +116,81 @@ impl McpClient {
             next_id: 1,
         })
     }
-    
-    async fn send_request(&mut self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+
+    async fn send_request(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         let id = self.next_id;
         self.next_id += 1;
-        
+
         let request = json!({
             "jsonrpc": "2.0",
             "method": method,
             "params": params,
             "id": id
         });
-        
+
         let msg = serde_json::to_string(&request).map_err(|e| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("Failed to serialize MCP request for method '{method}': {e}"))
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "Failed to serialize MCP request for method '{method}': {e}"
+            ))
         })?;
-        
+
         // Send the request with timeout
         let send_timeout = Duration::from_secs(5);
         timeout(send_timeout, async {
             self.stdin.write_all(msg.as_bytes()).await?;
             self.stdin.write_all(b"\n").await?;
             self.stdin.flush().await
-        }).await
+        })
+        .await
         .map_err(|_| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("Timeout sending request to MCP server for method '{method}'"))
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "Timeout sending request to MCP server for method '{method}'"
+            ))
         })?
         .map_err(|e| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("Failed to write to MCP server for method '{method}': {e}"))
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "Failed to write to MCP server for method '{method}': {e}"
+            ))
         })?;
-        
+
         // Read the response with timeout
         let read_timeout = Duration::from_secs(30); // Longer timeout for tool execution
         let mut line = String::new();
-        let bytes_read = timeout(read_timeout, self.stdout.read_line(&mut line)).await
+        let bytes_read = timeout(read_timeout, self.stdout.read_line(&mut line))
+            .await
             .map_err(|_| {
-                error_stack::Report::new(PluginError::Execution)
-                    .attach_printable(format!("Timeout waiting for MCP server response for method '{method}'"))
+                error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                    "Timeout waiting for MCP server response for method '{method}'"
+                ))
             })?
             .map_err(|e| {
-                error_stack::Report::new(PluginError::Execution)
-                    .attach_printable(format!("Failed to read from MCP server for method '{method}': {e}"))
+                error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                    "Failed to read from MCP server for method '{method}': {e}"
+                ))
             })?;
-        
+
         if bytes_read == 0 {
-            return Err(error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("MCP server closed connection while waiting for response to method '{method}'")));
+            return Err(
+                error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                    "MCP server closed connection while waiting for response to method '{method}'"
+                )),
+            );
         }
-        
+
         // Parse the response
         let response: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("Failed to parse MCP server response for method '{}': {}. Raw response: '{}'", 
-                    method, e, line.trim()))
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "Failed to parse MCP server response for method '{}': {}. Raw response: '{}'",
+                method,
+                e,
+                line.trim()
+            ))
         })?;
-        
+
         // Validate response ID matches request
         if let Some(response_id) = response.get("id") {
             if response_id.as_u64() != Some(id) {
@@ -177,52 +198,62 @@ impl McpClient {
                     .attach_printable(format!("Response ID mismatch for method '{method}': expected {id}, got {response_id}")));
             }
         }
-        
+
         // Check for JSON-RPC errors
         if let Some(error) = response.get("error") {
             let error_code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
-            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            let error_data = error.get("data").map(|d| format!(", data: {d}")).unwrap_or_default();
-            
+            let error_message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+            let error_data = error
+                .get("data")
+                .map(|d| format!(", data: {d}"))
+                .unwrap_or_default();
+
             return Err(error_stack::Report::new(PluginError::Execution)
                 .attach_printable(format!("MCP server error for method '{method}': [{error_code}] {error_message}{error_data}")));
         }
-        
+
         // Return the result field
         response.get("result").cloned().ok_or_else(|| {
             error_stack::Report::new(PluginError::Execution)
                 .attach_printable(format!("MCP server response for method '{method}' missing result field. Response: {response}"))
         })
     }
-    
+
     async fn send_notification(&mut self, method: &str, params: serde_json::Value) -> Result<()> {
         let request = json!({
             "jsonrpc": "2.0",
             "method": method,
             "params": params
         });
-        
+
         let msg = serde_json::to_string(&request).map_err(|e| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("Failed to serialize MCP notification for method '{method}': {e}"))
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "Failed to serialize MCP notification for method '{method}': {e}"
+            ))
         })?;
-        
+
         // Send the notification with timeout
         let send_timeout = Duration::from_secs(5);
         timeout(send_timeout, async {
             self.stdin.write_all(msg.as_bytes()).await?;
             self.stdin.write_all(b"\n").await?;
             self.stdin.flush().await
-        }).await
+        })
+        .await
         .map_err(|_| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("Timeout sending notification to MCP server for method '{method}'"))
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "Timeout sending notification to MCP server for method '{method}'"
+            ))
         })?
         .map_err(|e| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("Failed to write notification to MCP server for method '{method}': {e}"))
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "Failed to write notification to MCP server for method '{method}': {e}"
+            ))
         })?;
-        
+
         Ok(())
     }
 }
@@ -244,7 +275,11 @@ struct McpPluginState {
 }
 
 impl McpPlugin {
-    pub fn new(config: McpPluginConfig, working_directory: std::path::PathBuf, plugin_name: String) -> Self {
+    pub fn new(
+        config: McpPluginConfig,
+        working_directory: std::path::PathBuf,
+        plugin_name: String,
+    ) -> Self {
         Self {
             state: RwLock::new(McpPluginState {
                 server_info: None,
@@ -265,7 +300,7 @@ impl Plugin for McpPlugin {
 
         // Create the MCP client
         let mcp_client = McpClient::new(&self.config, &self.working_directory).await?;
-        
+
         // Store the client in state
         {
             let mut state = self.state.write().await;
@@ -289,11 +324,11 @@ impl Plugin for McpPlugin {
         for tool in &state.available_tools {
             let mut info = crate::schema::mcp_tool_to_component_info(tool)
                 .change_context(PluginError::ComponentInfo)?;
-            
+
             // Update the component URL to use MCP-compliant format
             let component_url = format!("mcp://{}/{}", self.plugin_name, tool.name);
             info.component = Component::from_string(&component_url);
-            
+
             components.push(info);
         }
 
@@ -339,7 +374,7 @@ impl Plugin for McpPlugin {
         });
 
         let call_result = mcp_client.send_request("tools/call", call_params).await?;
-        
+
         // The result should be in the "content" field according to MCP spec
         let content = call_result.get("content").cloned().unwrap_or_else(|| {
             // Fallback to the entire result if content field is missing
@@ -376,26 +411,30 @@ impl McpPlugin {
                 error_stack::Report::new(PluginError::Initializing)
                     .attach_printable("MCP client not initialized")
             })?;
-            mcp_client.send_request("initialize", initialize_params).await?
+            mcp_client
+                .send_request("initialize", initialize_params)
+                .await?
         };
-        
+
         // Parse and store the server capabilities and info from the response
         {
             let mut state = self.state.write().await;
-            
+
             if let Some(capabilities) = initialize_result.get("capabilities") {
-                let server_capabilities: ServerCapabilities = serde_json::from_value(capabilities.clone()).map_err(|e| {
-                    error_stack::Report::new(PluginError::Initializing)
-                        .attach_printable(format!("Failed to parse server capabilities: {e}"))
-                })?;
+                let server_capabilities: ServerCapabilities =
+                    serde_json::from_value(capabilities.clone()).map_err(|e| {
+                        error_stack::Report::new(PluginError::Initializing)
+                            .attach_printable(format!("Failed to parse server capabilities: {e}"))
+                    })?;
                 state.server_capabilities = Some(server_capabilities);
             }
 
             if let Some(server_info) = initialize_result.get("serverInfo") {
-                let implementation: Implementation = serde_json::from_value(server_info.clone()).map_err(|e| {
-                    error_stack::Report::new(PluginError::Initializing)
-                        .attach_printable(format!("Failed to parse server info: {e}"))
-                })?;
+                let implementation: Implementation = serde_json::from_value(server_info.clone())
+                    .map_err(|e| {
+                        error_stack::Report::new(PluginError::Initializing)
+                            .attach_printable(format!("Failed to parse server info: {e}"))
+                    })?;
                 state.server_info = Some(implementation);
             }
         }
@@ -407,7 +446,9 @@ impl McpPlugin {
                 error_stack::Report::new(PluginError::Initializing)
                     .attach_printable("MCP client not initialized")
             })?;
-            mcp_client.send_notification("notifications/initialized", json!({})).await?;
+            mcp_client
+                .send_notification("notifications/initialized", json!({}))
+                .await?;
         }
 
         Ok(())
@@ -423,13 +464,14 @@ impl McpPlugin {
             })?;
             mcp_client.send_request("tools/list", json!({})).await?
         };
-        
+
         // Parse the tools from the response
         let tools = if let Some(tools_array) = tools_result.get("tools") {
-            let tools_vec: Vec<Tool> = serde_json::from_value(tools_array.clone()).map_err(|e| {
-                error_stack::Report::new(PluginError::Initializing)
-                    .attach_printable(format!("Failed to parse tools list: {e}"))
-            })?;
+            let tools_vec: Vec<Tool> =
+                serde_json::from_value(tools_array.clone()).map_err(|e| {
+                    error_stack::Report::new(PluginError::Initializing)
+                        .attach_printable(format!("Failed to parse tools list: {e}"))
+                })?;
             tools_vec
         } else {
             Vec::new()
