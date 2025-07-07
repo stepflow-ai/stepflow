@@ -558,7 +558,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_empty_component_name() {
         let flow = Flow {

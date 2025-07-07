@@ -322,7 +322,7 @@ mod tests {
             step_index: usize,
         ) -> std::result::Result<FlowResult, Self::Error> {
             self.step_results.get(&step_index).cloned().ok_or_else(|| {
-                MockError::Generic(format!("Step result not found for index {}", step_index))
+                MockError::Generic(format!("Step result not found for index {step_index}"))
             })
         }
 

@@ -384,17 +384,17 @@ mod tests {
 
     #[test]
     fn test_literal_constructors() {
-        assert_eq!(ValueTemplate::null().is_literal(), true);
-        assert_eq!(ValueTemplate::bool(true).is_literal(), true);
-        assert_eq!(ValueTemplate::string("hello").is_literal(), true);
-        assert_eq!(ValueTemplate::number(42).is_literal(), true);
+        assert!(ValueTemplate::null().is_literal());
+        assert!(ValueTemplate::bool(true).is_literal());
+        assert!(ValueTemplate::string("hello").is_literal());
+        assert!(ValueTemplate::number(42).is_literal());
     }
 
     #[test]
     fn test_expression_constructor() {
         let expr = Expr::literal(serde_json::json!("test"));
         let template = ValueTemplate::expression(expr);
-        assert_eq!(template.is_literal(), false);
+        assert!(!template.is_literal());
     }
 
     #[test]
@@ -403,14 +403,14 @@ mod tests {
             ValueTemplate::string("hello"),
             ValueTemplate::number(42),
         ]);
-        assert_eq!(literal_array.is_literal(), true);
+        assert!(literal_array.is_literal());
 
         let expr = Expr::literal(serde_json::json!("test"));
         let template_array = ValueTemplate::array(vec![
             ValueTemplate::string("hello"),
             ValueTemplate::expression(expr),
         ]);
-        assert_eq!(template_array.is_literal(), false);
+        assert!(!template_array.is_literal());
     }
 
     #[test]
@@ -419,14 +419,14 @@ mod tests {
         obj.insert("key1".to_string(), ValueTemplate::string("value1"));
         obj.insert("key2".to_string(), ValueTemplate::number(42));
         let literal_object = ValueTemplate::object(obj);
-        assert_eq!(literal_object.is_literal(), true);
+        assert!(literal_object.is_literal());
 
         let mut obj_with_expr = IndexMap::new();
         obj_with_expr.insert("key1".to_string(), ValueTemplate::string("value1"));
         let expr = Expr::literal(serde_json::json!("test"));
         obj_with_expr.insert("key2".to_string(), ValueTemplate::expression(expr));
         let template_object = ValueTemplate::object(obj_with_expr);
-        assert_eq!(template_object.is_literal(), false);
+        assert!(!template_object.is_literal());
     }
 
     #[test]
@@ -441,29 +441,29 @@ mod tests {
         });
 
         let template = ValueTemplate::literal(json_val);
-        assert_eq!(template.is_literal(), true);
+        assert!(template.is_literal());
     }
 
     #[test]
     fn test_conversions() {
         // Test basic type conversions
         let bool_template: ValueTemplate = true.into();
-        assert_eq!(bool_template.is_literal(), true);
+        assert!(bool_template.is_literal());
 
         let int_template: ValueTemplate = 42i32.into();
-        assert_eq!(int_template.is_literal(), true);
+        assert!(int_template.is_literal());
 
         let string_template: ValueTemplate = "hello".into();
-        assert_eq!(string_template.is_literal(), true);
+        assert!(string_template.is_literal());
 
         // Test array conversion
         let arr_template: ValueTemplate = vec![1, 2, 3].into();
-        assert_eq!(arr_template.is_literal(), true);
+        assert!(arr_template.is_literal());
 
         // Test expression conversion
         let expr = Expr::literal(serde_json::json!("test"));
         let expr_template: ValueTemplate = expr.into();
-        assert_eq!(expr_template.is_literal(), false);
+        assert!(!expr_template.is_literal());
     }
 
     #[test]
@@ -690,7 +690,7 @@ mod tests {
         // Test that parse() can fail with malformed JSON string
         let malformed_json = r#"{"$from": {"step": "step1""#; // Missing closing braces
         let invalid_result = serde_json::from_str::<serde_json::Value>(malformed_json)
-            .and_then(|v| ValueTemplate::parse_value(v));
+            .and_then(ValueTemplate::parse_value);
         assert!(invalid_result.is_err()); // Should fail to parse malformed JSON
 
         // But literal() always succeeds by treating any valid JSON as literal data
