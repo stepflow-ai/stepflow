@@ -55,7 +55,6 @@ impl PluginConfig for McpPluginConfig {
         working_directory: &std::path::Path,
         protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
-        // Create MCP plugin directly without StdioPlugin delegation
         Ok(DynPlugin::boxed(McpPlugin::new(
             self,
             working_directory.to_owned(),
@@ -94,10 +93,10 @@ impl McpClient {
             cmd.env(key, value);
         }
 
-        let mut process = cmd.spawn().map_err(|e| {
-            error_stack::Report::new(PluginError::Initializing)
-                .attach_printable(format!("Failed to spawn MCP server process: {e}"))
-        })?;
+        let mut process = cmd
+            .spawn()
+            .change_context(PluginError::Initializing)
+            .attach_printable("Failed to spawn MCP server process")?;
 
         let stdin = process.stdin.take().ok_or_else(|| {
             error_stack::Report::new(PluginError::Initializing)
@@ -132,11 +131,11 @@ impl McpClient {
             "id": id
         });
 
-        let msg = serde_json::to_string(&request).map_err(|e| {
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                "Failed to serialize MCP request for method '{method}': {e}"
-            ))
-        })?;
+        let msg = serde_json::to_string(&request)
+            .change_context(PluginError::Execution)
+            .attach_printable_lazy(|| {
+                format!("Failed to serialize MCP request for method '{method}'")
+            })?;
 
         // Send the request with timeout
         let send_timeout = Duration::from_secs(5);
@@ -146,31 +145,25 @@ impl McpClient {
             self.stdin.flush().await
         })
         .await
-        .map_err(|_| {
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                "Timeout sending request to MCP server for method '{method}'"
-            ))
+        .change_context(PluginError::Execution)
+        .attach_printable_lazy(|| {
+            format!("Timeout sending request to MCP server for method '{method}'")
         })?
-        .map_err(|e| {
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                "Failed to write to MCP server for method '{method}': {e}"
-            ))
-        })?;
+        .change_context(PluginError::Execution)
+        .attach_printable_lazy(|| format!("Failed to write to MCP server for method '{method}'"))?;
 
         // Read the response with timeout
         let read_timeout = Duration::from_secs(30); // Longer timeout for tool execution
         let mut line = String::new();
         let bytes_read = timeout(read_timeout, self.stdout.read_line(&mut line))
             .await
-            .map_err(|_| {
-                error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                    "Timeout waiting for MCP server response for method '{method}'"
-                ))
+            .change_context(PluginError::Execution)
+            .attach_printable_lazy(|| {
+                format!("Timeout waiting for MCP server response for method '{method}'")
             })?
-            .map_err(|e| {
-                error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                    "Failed to read from MCP server for method '{method}': {e}"
-                ))
+            .change_context(PluginError::Execution)
+            .attach_printable_lazy(|| {
+                format!("Failed to read from MCP server for method '{method}'")
             })?;
 
         if bytes_read == 0 {
@@ -182,14 +175,15 @@ impl McpClient {
         }
 
         // Parse the response
-        let response: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| {
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                "Failed to parse MCP server response for method '{}': {}. Raw response: '{}'",
-                method,
-                e,
-                line.trim()
-            ))
-        })?;
+        let response: serde_json::Value = serde_json::from_str(line.trim())
+            .change_context(PluginError::Execution)
+            .attach_printable_lazy(|| {
+                format!(
+                    "Failed to parse MCP server response for method '{}'. Raw response: '{}'",
+                    method,
+                    line.trim()
+                )
+            })?;
 
         // Validate response ID matches request
         if let Some(response_id) = response.get("id") {
@@ -229,11 +223,11 @@ impl McpClient {
             "params": params
         });
 
-        let msg = serde_json::to_string(&request).map_err(|e| {
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                "Failed to serialize MCP notification for method '{method}': {e}"
-            ))
-        })?;
+        let msg = serde_json::to_string(&request)
+            .change_context(PluginError::Execution)
+            .attach_printable_lazy(|| {
+                format!("Failed to serialize MCP notification for method '{method}'")
+            })?;
 
         // Send the notification with timeout
         let send_timeout = Duration::from_secs(5);
@@ -243,15 +237,13 @@ impl McpClient {
             self.stdin.flush().await
         })
         .await
-        .map_err(|_| {
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                "Timeout sending notification to MCP server for method '{method}'"
-            ))
+        .change_context(PluginError::Execution)
+        .attach_printable_lazy(|| {
+            format!("Timeout sending notification to MCP server for method '{method}'")
         })?
-        .map_err(|e| {
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                "Failed to write notification to MCP server for method '{method}': {e}"
-            ))
+        .change_context(PluginError::Execution)
+        .attach_printable_lazy(|| {
+            format!("Failed to write notification to MCP server for method '{method}'")
         })?;
 
         Ok(())
@@ -422,19 +414,16 @@ impl McpPlugin {
 
             if let Some(capabilities) = initialize_result.get("capabilities") {
                 let server_capabilities: ServerCapabilities =
-                    serde_json::from_value(capabilities.clone()).map_err(|e| {
-                        error_stack::Report::new(PluginError::Initializing)
-                            .attach_printable(format!("Failed to parse server capabilities: {e}"))
-                    })?;
+                    serde_json::from_value(capabilities.clone())
+                        .change_context(PluginError::Initializing)
+                        .attach_printable("Failed to parse server capabilities")?;
                 state.server_capabilities = Some(server_capabilities);
             }
 
             if let Some(server_info) = initialize_result.get("serverInfo") {
                 let implementation: Implementation = serde_json::from_value(server_info.clone())
-                    .map_err(|e| {
-                        error_stack::Report::new(PluginError::Initializing)
-                            .attach_printable(format!("Failed to parse server info: {e}"))
-                    })?;
+                    .change_context(PluginError::Initializing)
+                    .attach_printable("Failed to parse server info")?;
                 state.server_info = Some(implementation);
             }
         }
@@ -467,11 +456,9 @@ impl McpPlugin {
 
         // Parse the tools from the response
         let tools = if let Some(tools_array) = tools_result.get("tools") {
-            let tools_vec: Vec<Tool> =
-                serde_json::from_value(tools_array.clone()).map_err(|e| {
-                    error_stack::Report::new(PluginError::Initializing)
-                        .attach_printable(format!("Failed to parse tools list: {e}"))
-                })?;
+            let tools_vec: Vec<Tool> = serde_json::from_value(tools_array.clone())
+                .change_context(PluginError::Initializing)
+                .attach_printable("Failed to parse tools list")?;
             tools_vec
         } else {
             Vec::new()
