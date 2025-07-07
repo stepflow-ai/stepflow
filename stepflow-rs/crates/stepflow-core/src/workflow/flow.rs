@@ -13,7 +13,7 @@
 
 use std::borrow::Cow;
 
-use super::{Step, ValueRef};
+use super::{Step, ValueRef, ValueTemplate};
 use crate::{FlowResult, schema::SchemaRef};
 use schemars::JsonSchema;
 
@@ -55,8 +55,8 @@ pub struct Flow {
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(default, skip_serializing_if = "ValueRef::is_null")]
-    pub output: ValueRef,
+    #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
+    pub output: ValueTemplate,
 
     /// Test configuration for the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -117,7 +117,7 @@ impl Flow {
     }
 
     /// Returns a reference to the flow's output value.
-    pub fn output(&self) -> &ValueRef {
+    pub fn output(&self) -> &ValueTemplate {
         &self.output
     }
 
@@ -260,7 +260,7 @@ impl JsonSchema for FlowRef {
 
 #[cfg(test)]
 mod tests {
-    use crate::workflow::{Component, ErrorAction};
+    use crate::workflow::{Component, ErrorAction, Step};
 
     use super::*;
 
@@ -304,49 +304,72 @@ mod tests {
             r#"{"type":"object","properties":{"s1a":{"type":"string"},"s2b":{"type":"string"}}}"#,
         )
         .unwrap();
-        similar_asserts::assert_serde_eq!(
-            flow,
-            Flow {
-                name: Some("test".to_owned()),
-                description: Some("test".to_owned()),
-                version: Some("1.0.0".to_owned()),
-                input_schema: Some(input_schema),
-                steps: vec![
-                    Step {
-                        id: "s1".to_owned(),
-                        component: Component::parse("langflow://echo").unwrap(),
-                        input: serde_json::json!({
-                            "a": "hello world"
-                        })
-                        .into(),
-                        input_schema: None,
-                        output_schema: None,
-                        skip_if: None,
-                        on_error: ErrorAction::default(),
-                    },
-                    Step {
-                        id: "s2".to_owned(),
-                        component: Component::parse("mcp+http://foo/bar").unwrap(),
-                        input: serde_json::json!({
-                            "a": "hello world 2"
-                        })
-                        .into(),
-                        input_schema: None,
-                        output_schema: None,
-                        skip_if: None,
-                        on_error: ErrorAction::default(),
-                    }
-                ],
-                output: serde_json::json!({
-                    "s1a": { "$from": { "step": "s1" }, "path": "a" },
-                    "s2b": { "$from": { "step": "s2" }, "path": "a" }
-                })
-                .into(),
-                output_schema: Some(output_schema),
-                test: None,
-                examples: vec![],
-            }
-        );
+        // Verify basic flow properties
+        assert_eq!(flow.name, Some("test".to_owned()));
+        assert_eq!(flow.description, Some("test".to_owned()));
+        assert_eq!(flow.version, Some("1.0.0".to_owned()));
+        assert_eq!(flow.input_schema, Some(input_schema.clone()));
+        assert_eq!(flow.output_schema, Some(output_schema.clone()));
+        assert_eq!(flow.steps.len(), 2);
+
+        // Verify step details
+        assert_eq!(flow.steps[0].id, "s1");
+        assert_eq!(flow.steps[0].component.url_string(), "langflow://echo");
+        assert_eq!(flow.steps[1].id, "s2");
+        assert_eq!(flow.steps[1].component.url_string(), "mcp+http://foo/bar");
+
+        // Test round-trip serialization to ensure expressions are preserved
+        let serialized = serde_json::to_string(&flow).unwrap();
+        let deserialized: Flow = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(flow.name, deserialized.name);
+        assert_eq!(flow.steps.len(), deserialized.steps.len());
+        assert_eq!(flow.output, deserialized.output);
+
+        // Verify that the output contains proper expression structures
+        // The output should not be literal but should contain parsed expressions
+        assert!(!flow.output.is_literal());
+
+        // Test full structural equality
+        let expected_flow = Flow {
+            name: Some("test".to_owned()),
+            description: Some("test".to_owned()),
+            version: Some("1.0.0".to_owned()),
+            input_schema: Some(input_schema),
+            output_schema: Some(output_schema),
+            steps: vec![
+                Step {
+                    id: "s1".to_owned(),
+                    component: Component::parse("langflow://echo").unwrap(),
+                    input: ValueTemplate::literal(serde_json::json!({
+                        "a": "hello world"
+                    })),
+                    input_schema: None,
+                    output_schema: None,
+                    skip_if: None,
+                    on_error: ErrorAction::default(),
+                },
+                Step {
+                    id: "s2".to_owned(),
+                    component: Component::parse("mcp+http://foo/bar").unwrap(),
+                    input: ValueTemplate::literal(serde_json::json!({
+                        "a": "hello world 2"
+                    })),
+                    input_schema: None,
+                    output_schema: None,
+                    skip_if: None,
+                    on_error: ErrorAction::default(),
+                },
+            ],
+            output: ValueTemplate::parse_value(serde_json::json!({
+                "s1a": { "$from": { "step": "s1" }, "path": "a" },
+                "s2b": { "$from": { "step": "s2" }, "path": "a" }
+            }))
+            .unwrap(),
+            test: None,
+            examples: vec![],
+        };
+
+        similar_asserts::assert_serde_eq!(flow, expected_flow);
     }
 
     #[test]
@@ -362,7 +385,7 @@ mod tests {
             input_schema: None,
             output_schema: None,
             steps: vec![],
-            output: json!({}).into(),
+            output: ValueTemplate::literal(json!({})),
             examples: vec![ExampleInput {
                 name: "example1".to_string(),
                 description: Some("Direct example".to_string()),

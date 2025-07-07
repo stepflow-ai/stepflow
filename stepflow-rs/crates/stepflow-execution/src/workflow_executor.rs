@@ -11,7 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use bit_set::BitSet;
 use error_stack::ResultExt as _;
@@ -20,16 +20,14 @@ use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
-    workflow::{Expr, Flow, ValueRef},
+    values::{ValueRef, ValueResolver, ValueTemplate},
+    workflow::{Expr, Flow},
 };
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
 
-use crate::{
-    ExecutionError, Result, StepFlowExecutor, value_resolver::ValueResolver,
-    write_cache::WriteCache,
-};
+use crate::{ExecutionError, Result, StateValueLoader, StepFlowExecutor, write_cache::WriteCache};
 
 /// Execute a workflow and return the result.
 pub(crate) async fn execute_workflow(
@@ -82,7 +80,7 @@ pub struct WorkflowExecutor {
     /// Dependency tracker for determining runnable steps
     tracker: stepflow_analysis::DependencyTracker,
     /// Value resolver for resolving step inputs
-    resolver: ValueResolver,
+    resolver: ValueResolver<StateValueLoader>,
     /// State store for step results
     state_store: Arc<dyn StateStore>,
     /// Executor for getting plugins and execution context
@@ -129,14 +127,14 @@ impl WorkflowExecutor {
         // Create write cache and step ID mapping
         let write_cache = WriteCache::new(flow.steps.len());
 
-        // Create value resolver with cache access
-        let resolver = ValueResolver::new(
-            run_id,
-            input,
+        // Create state value loader and value resolver
+        let state_loader = StateValueLoader::new(
+            input.clone(),
             state_store.clone(),
             write_cache.clone(),
             flow.clone(),
         );
+        let resolver = ValueResolver::new(run_id, input, state_loader, flow.clone());
 
         // Create execution context
         let context = executor.execution_context(run_id);
@@ -537,6 +535,7 @@ impl WorkflowExecutor {
         self.resolver
             .resolve_step(step_id)
             .await
+            .change_context(ExecutionError::ValueResolverFailure)
             .attach_printable_lazy(|| format!("Failed to get output for step '{step_id}'"))
     }
 
@@ -617,7 +616,12 @@ impl WorkflowExecutor {
         }
 
         // Resolve step inputs
-        let step_input = match self.resolver.resolve(&step.input).await? {
+        let step_input = match self
+            .resolver
+            .resolve_template(&step.input)
+            .await
+            .change_context(ExecutionError::ValueResolverFailure)?
+        {
             FlowResult::Success { result } => result,
             FlowResult::Skipped => {
                 // Step inputs contain skipped values - skip this step
@@ -642,7 +646,14 @@ impl WorkflowExecutor {
 
         // Get plugin and execute the step
         let plugin = self.executor.get_plugin(&step.component).await?;
-        let result = execute_step_async(plugin, step, step_input, self.context.clone()).await?;
+        let result = execute_step_async(
+            plugin,
+            step,
+            step_input,
+            self.context.clone(),
+            &self.resolver,
+        )
+        .await?;
 
         // Record the result
         self.record_step_completion(step_index, &result).await?;
@@ -683,37 +694,10 @@ impl WorkflowExecutor {
 
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
-        // Check if we can resolve output using only cached results
-        let required_step_ids = self.extract_step_dependencies(&self.flow.output);
-        let can_resolve_from_cache = self.resolver.has_cached_step_ids(&required_step_ids).await;
-
-        if !can_resolve_from_cache {
-            // Need to flush pending writes before resolving output
-            tracing::debug!(
-                "Flushing pending writes - output depends on steps not in cache: {:?}",
-                required_step_ids
-            );
-            self.state_store
-                .flush_pending_writes(self.context.run_id())
-                .await
-                .change_context(ExecutionError::StateError)?;
-        } else {
-            tracing::debug!(
-                "✅ Skipping flush - all output dependencies are cached: {:?}",
-                required_step_ids
-            );
-        }
-
-        self.resolver.resolve(&self.flow.output).await
-    }
-
-    /// Extract step IDs that a ValueRef depends on
-    fn extract_step_dependencies(&self, value_ref: &ValueRef) -> Vec<String> {
-        value_ref
-            .step_dependencies()
-            .unwrap_or_else(|_| HashSet::new())
-            .into_iter()
-            .collect()
+        self.resolver
+            .resolve_template(&self.flow.output)
+            .await
+            .change_context(ExecutionError::ValueResolverFailure)
     }
 
     /// Get access to the state store for querying step results.
@@ -728,7 +712,11 @@ impl WorkflowExecutor {
     /// - If the expression references skipped steps or fails, the step is NOT skipped
     ///   (allowing the step to potentially handle the skip/error via on_skip logic)
     async fn should_skip_step(&self, skip_if: &Expr) -> Result<bool> {
-        let resolved_value = self.resolver.resolve_expr(skip_if).await?;
+        let resolved_value = self
+            .resolver
+            .resolve_expr(skip_if)
+            .await
+            .change_context(ExecutionError::ValueResolverFailure)?;
 
         match resolved_value {
             FlowResult::Success { result } => Ok(result.is_truthy()),
@@ -777,25 +765,26 @@ impl WorkflowExecutor {
 
                 // Check for input-based skips: if any input references a skipped step,
                 // this step should also be skipped (unless using on_skip with use_default)
-                let step_input = match self.resolver.resolve(&step_input).await {
-                    Ok(FlowResult::Success { result }) => result,
-                    Ok(FlowResult::Skipped) => {
+                let step_input = self
+                    .resolver
+                    .resolve_template(&step_input)
+                    .await
+                    .change_context(ExecutionError::ValueResolverFailure)?;
+                let step_input = match step_input {
+                    FlowResult::Success { result } => result,
+                    FlowResult::Skipped => {
                         // Step inputs contain skipped values - propagate the skip
                         additional_unblocked
                             .union_with(&self.skip_step(&step_id, step_index).await?);
                         continue;
                     }
-                    Ok(FlowResult::Failed { error }) => {
+                    FlowResult::Failed { error } => {
                         tracing::error!(
                             "Failed to resolve inputs for step {} - input resolution failed: {:?}",
                             step_id,
                             error
                         );
                         return Err(ExecutionError::StepFailed { step: step_id }.into());
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to resolve inputs for step {}: {:?}", step_id, e);
-                        return Err(e);
                     }
                 };
 
@@ -864,11 +853,12 @@ impl WorkflowExecutor {
         // Clone necessary data for the async task
         let flow = self.flow.clone();
         let context = self.context.clone();
+        let resolver = self.resolver.clone();
 
         // Create the async task
         let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
             let step = &flow.steps[step_index];
-            let result = execute_step_async(plugin, step, step_input, context).await;
+            let result = execute_step_async(plugin, step, step_input, context, &resolver).await;
             (step_index, result)
         });
 
@@ -884,6 +874,7 @@ pub(crate) async fn execute_step_async(
     step: &stepflow_core::workflow::Step,
     input: ValueRef,
     context: ExecutionContext,
+    resolver: &ValueResolver<StateValueLoader>,
 ) -> Result<FlowResult> {
     // Execute the component
     let result = plugin
@@ -910,11 +901,30 @@ pub(crate) async fn execute_step_async(
                         step.id,
                         error
                     );
-                    let result = match default_value {
+                    let template = match default_value {
                         Some(default) => default.clone(),
-                        None => ValueRef::new(serde_json::Value::Null),
+                        None => ValueTemplate::null(),
                     };
-                    Ok(FlowResult::Success { result })
+                    // Resolve the ValueTemplate to get the actual value
+                    let default_value = resolver
+                        .resolve_template(&template)
+                        .await
+                        .change_context(ExecutionError::ValueResolverFailure)?;
+                    match default_value {
+                        FlowResult::Success { result } => Ok(FlowResult::Success { result }),
+                        FlowResult::Skipped => {
+                            // Default value resolved to skipped - treat as null
+                            Ok(FlowResult::Success {
+                                result: ValueRef::new(serde_json::Value::Null),
+                            })
+                        }
+                        FlowResult::Failed { error } => {
+                            error_stack::bail!(ExecutionError::internal(format!(
+                                "Default value resolution failed for step {}: {:?}",
+                                step.id, error
+                            )))
+                        }
+                    }
                 }
                 stepflow_core::workflow::ErrorAction::Fail => Ok(result),
                 stepflow_core::workflow::ErrorAction::Retry => {
@@ -965,7 +975,7 @@ impl StepExecutionResult {
 pub struct StepInspection {
     #[serde(flatten)]
     pub metadata: StepMetadata,
-    pub input: ValueRef,
+    pub input: ValueTemplate,
     pub skip_if: Option<Expr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
     pub state: StepStatus,
@@ -973,6 +983,8 @@ pub struct StepInspection {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use serde_json::json;
     use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, StepId};
@@ -1064,11 +1076,11 @@ mod tests {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
-            input: ValueRef::new(input),
+            input: ValueTemplate::parse_value(input).unwrap(),
         }
     }
 
-    fn create_test_flow(steps: Vec<Step>, output: ValueRef) -> Flow {
+    fn create_test_flow(steps: Vec<Step>, output: ValueTemplate) -> Flow {
         Flow {
             name: None,
             description: None,
@@ -1090,17 +1102,19 @@ mod tests {
             create_test_step("step2", json!({"$from": {"step": "step1"}})),
         ];
 
-        let flow = create_test_flow(steps, json!({"$from": {"step": "step2"}}).into());
+        let flow = Arc::new(create_test_flow(
+            steps,
+            ValueTemplate::parse_value(json!({"$from": {"step": "step2"}})).unwrap(),
+        ));
 
         // Build dependencies using analysis crate
-        let analysis_result = stepflow_analysis::analyze_workflow_dependencies(
-            std::sync::Arc::new(flow),
-            "test_hash".into(),
-        )
-        .unwrap();
+        let analysis_result =
+            stepflow_analysis::analyze_workflow_dependencies(flow.clone(), "test_hash".into())
+                .unwrap();
 
         // Create tracker from analysis
-        let tracker = analysis_result.analysis.unwrap().new_dependency_tracker();
+        let analysis = analysis_result.analysis.unwrap();
+        let tracker = analysis.new_dependency_tracker();
 
         // Only step1 should be runnable initially
         let unblocked = tracker.unblocked_steps();

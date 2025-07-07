@@ -20,7 +20,7 @@ pub enum AnalysisError {
     MalformedReference { message: String },
     #[error("Step not found: {step_id}")]
     StepNotFound { step_id: String },
-    #[error("Error getting dependencies")]
+    #[error("Error extracting dependencies")]
     DependencyAnalysis,
 }
 

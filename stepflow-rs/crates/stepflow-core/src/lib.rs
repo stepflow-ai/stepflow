@@ -13,9 +13,9 @@
 
 pub mod blob;
 pub mod component;
-pub mod dependencies;
 pub mod schema;
 pub mod status;
+pub mod values;
 pub mod workflow;
 
 mod flow_result;

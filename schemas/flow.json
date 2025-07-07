@@ -56,7 +56,8 @@
     },
     "output": {
       "description": "The outputs of the flow, mapping output names to their values.",
-      "$ref": "#/$defs/Value"
+      "$ref": "#/$defs/ValueTemplate",
+      "default": null
     },
     "test": {
       "description": "Test configuration for the flow.",
@@ -131,7 +132,8 @@
         },
         "input": {
           "description": "Arguments to pass to the component for this step",
-          "$ref": "#/$defs/Value"
+          "$ref": "#/$defs/ValueTemplate",
+          "default": null
         }
       },
       "required": [
@@ -177,6 +179,20 @@
           ]
         },
         {
+          "description": "A literal value that was escaped.\n\nNo template expansion is performed within the value, allowing\nfor raw JSON values that include `$from` or other special characters.",
+          "type": "object",
+          "properties": {
+            "$literal": {
+              "description": "A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion.",
+              "$ref": "#/$defs/Value"
+            }
+          },
+          "required": [
+            "$literal"
+          ]
+        },
+        {
+          "description": "A direct literal value that serializes naturally without special syntax",
           "$ref": "#/$defs/Value"
         }
       ]
@@ -293,7 +309,7 @@
             "defaultValue": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/Value"
+                  "$ref": "#/$defs/ValueTemplate"
                 },
                 {
                   "type": "null"
@@ -321,6 +337,49 @@
           "required": [
             "action"
           ]
+        }
+      ]
+    },
+    "ValueTemplate": {
+      "description": "A value that can contain literal JSON data or template expressions.\n\nThis type represents JSON values that may contain `$from` expressions for\nreferencing other values in a workflow. It provides efficient reference\nsemantics through an Arc wrapper to avoid excessive cloning.\n\nUnlike `ValueRef` which is purely for literal JSON values, `ValueTemplate`\nexplicitly supports templating with expressions.",
+      "$ref": "#/$defs/ValueTemplateRepr"
+    },
+    "ValueTemplateRepr": {
+      "description": "A value that can be either a literal JSON value or an expression that references other values using the $from syntax",
+      "anyOf": [
+        {
+          "description": "An expression with `$from` syntax for referencing other values",
+          "$ref": "#/$defs/Expr"
+        },
+        {
+          "description": "JSON null value",
+          "type": "null"
+        },
+        {
+          "description": "JSON boolean value",
+          "type": "boolean"
+        },
+        {
+          "description": "JSON numeric value",
+          "type": "number"
+        },
+        {
+          "description": "JSON string value",
+          "type": "string"
+        },
+        {
+          "description": "JSON array where each element can be a template",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValueTemplate"
+          }
+        },
+        {
+          "description": "JSON object where each value can be a template",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ValueTemplate"
+          }
         }
       ]
     },

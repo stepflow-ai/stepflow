@@ -65,12 +65,32 @@ pub enum Expr {
         #[serde(default, skip_serializing_if = "SkipAction::is_default")]
         on_skip: SkipAction,
     },
+    /// A literal value that was escaped.
+    ///
+    /// No template expansion is performed within the value, allowing
+    /// for raw JSON values that include `$from` or other special characters.
+    EscapedLiteral {
+        /// A literal value that should not be expanded for expressions.
+        /// This allows creating JSON values that contain `$from` without expansion.
+        #[serde(rename = "$literal")]
+        literal: ValueRef,
+    },
+    /// A direct literal value that serializes naturally without special syntax
     Literal(ValueRef),
 }
 
 impl Expr {
+    /// Create a direct literal expression that serializes naturally (like `"foo"`)
     pub fn literal(literal: impl Into<ValueRef>) -> Self {
         Self::Literal(literal.into())
+    }
+
+    /// Create an escaped literal expression with `$literal` syntax
+    /// This prevents template expansion within the value
+    pub fn escaped_literal(literal: impl Into<ValueRef>) -> Self {
+        Self::EscapedLiteral {
+            literal: literal.into(),
+        }
     }
 
     fn new_ref(from: BaseRef, path: String, on_skip: SkipAction) -> Self {
@@ -94,23 +114,50 @@ impl Expr {
         Self::new_ref(BaseRef::WORKFLOW_INPUT, path.into(), on_skip)
     }
 
+    // Convenience constructors with default skip behavior
+
+    /// Create a step reference
+    /// - `step_ref("step1", None)` creates `{"$from": {"step": "step1"}}`
+    /// - `step_ref("step1", Some("field"))` creates `{"$from": {"step": "step1"}, "path": "field"}`
+    pub fn step_ref(step_id: impl Into<String>, path: Option<&str>) -> Self {
+        Self::Ref {
+            from: BaseRef::step_output(step_id),
+            path: path.map(|p| p.to_string()),
+            on_skip: SkipAction::default(),
+        }
+    }
+
+    /// Create a workflow input reference
+    /// - `workflow_input(None)` creates `{"$from": {"workflow": "input"}}`
+    /// - `workflow_input(Some("field"))` creates `{"$from": {"workflow": "input"}, "path": "field"}`
+    pub fn workflow_input(path: Option<&str>) -> Self {
+        Self::Ref {
+            from: BaseRef::WORKFLOW_INPUT,
+            path: path.map(|p| p.to_string()),
+            on_skip: SkipAction::default(),
+        }
+    }
+
     pub fn base_ref(&self) -> Option<&BaseRef> {
         match self {
-            Self::Literal { .. } => None,
+            Self::EscapedLiteral { .. } => None,
+            Self::Literal(_) => None,
             Self::Ref { from, .. } => Some(from),
         }
     }
 
     pub fn path(&self) -> Option<&str> {
         match self {
-            Self::Literal { .. } => None,
+            Self::EscapedLiteral { .. } => None,
+            Self::Literal(_) => None,
             Self::Ref { path, .. } => path.as_deref(),
         }
     }
 
     pub fn on_skip(&self) -> Option<&SkipAction> {
         match self {
-            Self::Literal { .. } => None,
+            Self::EscapedLiteral { .. } => None,
+            Self::Literal(_) => None,
             Self::Ref { on_skip, .. } => Some(on_skip),
         }
     }
