@@ -166,13 +166,12 @@ impl McpClient {
                 format!("Failed to read from MCP server for method '{method}'")
             })?;
 
-        if bytes_read == 0 {
-            return Err(
-                error_stack::Report::new(PluginError::Execution).attach_printable(format!(
-                    "MCP server closed connection while waiting for response to method '{method}'"
-                )),
-            );
-        }
+        error_stack::ensure!(
+            bytes_read > 0,
+            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+                "MCP server closed connection while waiting for response to method '{method}'"
+            ))
+        );
 
         // Parse the response
         let response: serde_json::Value = serde_json::from_str(line.trim())
