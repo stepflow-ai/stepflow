@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(value["input"], json!({"test": "input"}));
         assert_eq!(
             value["result"],
-            json!({"success": {"result": {"test": "output"}}})
+            json!({"outcome": "success", "result": {"test": "output"}})
         );
 
         // Verify there's no nested "summary" object

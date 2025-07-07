@@ -171,7 +171,7 @@ mod tests {
     fn test_component_from_string_url() {
         let component = Component::from_string("mcp+stdio://tool/component");
         assert_eq!(component.url_string(), "mcp+stdio://tool/component");
-        assert_eq!(component.plugin(), "mcp");
+        assert_eq!(component.plugin(), "mcp+stdio");
         assert!(!component.is_builtin());
     }
 

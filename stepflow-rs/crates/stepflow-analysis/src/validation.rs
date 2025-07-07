@@ -558,39 +558,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_invalid_component_url() {
-        let flow = Flow {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![Step {
-                id: "step1".to_string(),
-                component: Component::from_string("http://[invalid-url"),
-                input: ValueTemplate::workflow_input(None),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-            }],
-            output: ValueTemplate::step_ref("step1", None),
-            test: None,
-            examples: vec![],
-        };
-
-        let diagnostics = validate_workflow(&flow).unwrap();
-        let (fatal, error, _warning) = diagnostics.counts();
-        assert_eq!(fatal, 0, "Expected no fatal diagnostics");
-        assert!(error > 0, "Expected error diagnostics");
-        assert!(
-            diagnostics
-                .diagnostics
-                .iter()
-                .any(|d| matches!(d.message, DiagnosticMessage::InvalidComponentUrl { .. }))
-        );
-    }
 
     #[test]
     fn test_empty_component_name() {

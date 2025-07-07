@@ -56,8 +56,7 @@
     },
     "output": {
       "description": "The outputs of the flow, mapping output names to their values.",
-      "$ref": "#/$defs/ValueTemplate",
-      "default": null
+      "$ref": "#/$defs/ValueTemplate"
     },
     "test": {
       "description": "Test configuration for the flow.",
@@ -132,8 +131,7 @@
         },
         "input": {
           "description": "Arguments to pass to the component for this step",
-          "$ref": "#/$defs/ValueTemplate",
-          "default": null
+          "$ref": "#/$defs/ValueTemplate"
         }
       },
       "required": [

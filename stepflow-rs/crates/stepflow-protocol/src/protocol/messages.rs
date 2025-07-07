@@ -26,10 +26,28 @@ use crate::protocol::{Method, method_params, method_result, notification_params}
 /// The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.
 ///
 /// Note that this defines a superset containing both client-sent and server-sent messages.
+#[schemars(schema_with = "message_schema")]
 pub enum Message<'a> {
     Request(MethodRequest<'a>),
     Response(MethodResponse<'a>),
     Notification(Notification<'a>),
+}
+
+fn message_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    // We want to flatten the two cases for `MethodResponse`, while still generating
+    // the schema for method response.
+
+    let request = generator.subschema_for::<MethodRequest<'_>>();
+    let _response = generator.subschema_for::<MethodResponse<'_>>();
+    let success = generator.subschema_for::<MethodSuccess<'_>>();
+    let error = generator.subschema_for::<MethodError<'_>>();
+    let notifification = generator.subschema_for::<Notification<'_>>();
+
+    schemars::json_schema!({
+        "oneOf": [
+            request, success, error, notifification
+        ]
+    })
 }
 
 impl<'a> Message<'a> {

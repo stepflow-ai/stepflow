@@ -257,10 +257,89 @@ impl JsonSchema for FlowRef {
         Flow::inline_schema()
     }
 }
+/// Configuration for testing a workflow.
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TestConfig {
+    /// Stepflow configuration specific to tests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stepflow_config: Option<serde_json::Value>,
+
+    /// Test cases for the workflow.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cases: Vec<TestCase>,
+}
+
+/// A single test case for a workflow.
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCase {
+    /// Unique identifier for the test case.
+    pub name: String,
+
+    /// Optional description of what this test case verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// Input data for the workflow in this test case.
+    pub input: ValueRef,
+
+    /// Expected output from the workflow for this test case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<FlowResult>,
+}
+
+/// An example input for a workflow that can be used in UI dropdowns.
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ExampleInput {
+    /// Name of the example input for display purposes.
+    pub name: String,
+
+    /// Optional description of what this example demonstrates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// The input data for this example.
+    pub input: ValueRef,
+}
+
+impl From<&TestCase> for ExampleInput {
+    fn from(test_case: &TestCase) -> Self {
+        Self {
+            name: test_case.name.clone(),
+            description: test_case.description.clone(),
+            input: test_case.input.clone(),
+        }
+    }
+}
+
+impl Flow {
+    /// Get all example inputs, including those derived from test cases.
+    pub fn get_all_examples(&self) -> Vec<ExampleInput> {
+        let mut examples = self.examples.clone();
+
+        // Add examples from test cases if they exist
+        if let Some(test_config) = &self.test {
+            for test_case in &test_config.cases {
+                // Only add if there isn't already an example with the same name
+                if !examples.iter().any(|ex| ex.name == test_case.name) {
+                    examples.push(ExampleInput::from(test_case));
+                }
+            }
+        }
+
+        examples
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use crate::workflow::{Component, ErrorAction, Step};
+    use schemars::schema_for;
+    use std::env;
 
     use super::*;
 
@@ -429,91 +508,6 @@ mod tests {
             Some("Test case as example".to_string())
         );
     }
-}
-
-/// Configuration for testing a workflow.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct TestConfig {
-    /// Stepflow configuration specific to tests.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stepflow_config: Option<serde_json::Value>,
-
-    /// Test cases for the workflow.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub cases: Vec<TestCase>,
-}
-
-/// A single test case for a workflow.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct TestCase {
-    /// Unique identifier for the test case.
-    pub name: String,
-
-    /// Optional description of what this test case verifies.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    /// Input data for the workflow in this test case.
-    pub input: ValueRef,
-
-    /// Expected output from the workflow for this test case.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output: Option<FlowResult>,
-}
-
-/// An example input for a workflow that can be used in UI dropdowns.
-#[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
-)]
-#[serde(rename_all = "camelCase")]
-pub struct ExampleInput {
-    /// Name of the example input for display purposes.
-    pub name: String,
-
-    /// Optional description of what this example demonstrates.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    /// The input data for this example.
-    pub input: ValueRef,
-}
-
-impl From<&TestCase> for ExampleInput {
-    fn from(test_case: &TestCase) -> Self {
-        Self {
-            name: test_case.name.clone(),
-            description: test_case.description.clone(),
-            input: test_case.input.clone(),
-        }
-    }
-}
-
-impl Flow {
-    /// Get all example inputs, including those derived from test cases.
-    pub fn get_all_examples(&self) -> Vec<ExampleInput> {
-        let mut examples = self.examples.clone();
-
-        // Add examples from test cases if they exist
-        if let Some(test_config) = &self.test {
-            for test_case in &test_config.cases {
-                // Only add if there isn't already an example with the same name
-                if !examples.iter().any(|ex| ex.name == test_case.name) {
-                    examples.push(ExampleInput::from(test_case));
-                }
-            }
-        }
-
-        examples
-    }
-}
-
-#[cfg(test)]
-mod schema_tests {
-    use super::*;
-    use schemars::schema_for;
-    use std::env;
 
     #[test]
     fn test_schema_comparison_with_flow_json() {
