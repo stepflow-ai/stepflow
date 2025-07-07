@@ -182,8 +182,17 @@ async fn test_mcp_error_handling() {
     let input = ValueRef::new(json!({}));
 
     let result = plugin.execute(&bad_component, exec_context, input).await;
-    assert!(result.is_err());
+    assert!(
+        result.is_ok(),
+        "Expected Ok(FlowResult::Failed), got Err: {:?}",
+        result
+    );
 
-    let error_message = format!("{:?}", result.unwrap_err());
-    assert!(error_message.contains("Unknown tool"));
+    match result.unwrap() {
+        FlowResult::Failed { error } => {
+            let error_message = format!("{}", error);
+            assert!(error_message.contains("nonexistent"));
+        }
+        other => panic!("Expected FlowResult::Failed, got: {:?}", other),
+    }
 }

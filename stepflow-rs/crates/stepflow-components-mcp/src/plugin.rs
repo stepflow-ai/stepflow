@@ -18,7 +18,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use stepflow_core::{
-    FlowResult,
+    FlowError, FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
@@ -204,8 +204,17 @@ impl McpClient {
                 .map(|d| format!(", data: {d}"))
                 .unwrap_or_default();
 
-            return Err(error_stack::Report::new(PluginError::Execution)
-                .attach_printable(format!("MCP server error for method '{method}': [{error_code}] {error_message}{error_data}")));
+            // For tools/call method, this is a tool execution error that should be treated as business logic failure
+            if method == "tools/call" {
+                return Err(error_stack::Report::new(PluginError::Execution)
+                    .attach_printable("MCP_TOOL_ERROR") // Special marker for tool execution errors
+                    .attach_printable(format!(
+                        "Tool execution error [{error_code}]: {error_message}{error_data}"
+                    )));
+            } else {
+                return Err(error_stack::Report::new(PluginError::Execution)
+                    .attach_printable(format!("MCP server error for method '{method}': [{error_code}] {error_message}{error_data}")));
+            }
         }
 
         // Return the result field
@@ -364,7 +373,32 @@ impl Plugin for McpPlugin {
             "arguments": input.clone_value()
         });
 
-        let call_result = mcp_client.send_request("tools/call", call_params).await?;
+        let call_result = match mcp_client.send_request("tools/call", call_params).await {
+            Ok(result) => result,
+            Err(err) => {
+                // Check if this is an MCP tool execution error that should be treated as a business logic failure
+                let error_message = format!("{err:?}");
+                if error_message.contains("MCP_TOOL_ERROR") {
+                    // This is a tool execution failure, not an implementation failure
+                    // Extract the actual error message after the marker
+                    let tool_error_msg =
+                        if let Some(msg) = error_message.split("Tool execution error").nth(1) {
+                            msg.trim_start_matches(':').trim()
+                        } else {
+                            "execution failed"
+                        };
+
+                    return Ok(FlowResult::Failed {
+                        error: FlowError::new(
+                            500,
+                            format!("Tool '{tool_name}' failed: {tool_error_msg}"),
+                        ),
+                    });
+                }
+                // For other errors (timeouts, connection issues, etc.), propagate as implementation errors
+                return Err(err);
+            }
+        };
 
         // The result should be in the "content" field according to MCP spec
         let content = call_result.get("content").cloned().unwrap_or_else(|| {
