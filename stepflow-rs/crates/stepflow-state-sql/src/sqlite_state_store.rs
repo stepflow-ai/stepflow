@@ -1048,8 +1048,7 @@ impl StateStore for SqliteStateStore {
                 };
 
                 let component_str: String = row.get("component");
-                let component =
-                    Component::parse(&component_str).change_context(StateError::Internal)?;
+                let component = Component::from_string(&component_str);
 
                 let step_info = StepInfo {
                     run_id,
@@ -1100,8 +1099,7 @@ impl StateStore for SqliteStateStore {
             let mut runnable_steps = Vec::new();
             for row in rows {
                 let component_str: String = row.get("component");
-                let component =
-                    Component::parse(&component_str).change_context(StateError::Internal)?;
+                let component = Component::from_string(&component_str);
 
                 let step_info = StepInfo {
                     run_id,

@@ -3082,7 +3082,6 @@ dependencies = [
  "similar-asserts",
  "thiserror 2.0.12",
  "tokio",
- "url",
  "utoipa",
  "uuid",
 ]

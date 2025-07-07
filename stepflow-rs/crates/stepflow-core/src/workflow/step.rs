@@ -139,7 +139,7 @@ mod tests {
     fn test_step_serialization_with_error_action() {
         let step = Step {
             id: "test_step".to_string(),
-            component: Component::parse("mock://test_component").unwrap(),
+            component: Component::from_string("mock://test_component"),
             input_schema: None,
             output_schema: None,
             skip_if: None,
@@ -159,7 +159,7 @@ mod tests {
     fn test_step_default_error_action_not_serialized() {
         let step = Step {
             id: "test_step".to_string(),
-            component: Component::parse("mock://test_component").unwrap(),
+            component: Component::from_string("mock://test_component"),
             input_schema: None,
             output_schema: None,
             skip_if: None,

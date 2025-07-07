@@ -83,7 +83,7 @@ impl StepFlowExecutor {
     }
 
     pub async fn get_plugin(&self, component: &Component) -> Result<Arc<DynPlugin<'static>>> {
-        let protocol = component.protocol();
+        let protocol = component.plugin();
         let guard = self.plugins.read().await;
         let plugin = guard
             .get(protocol)

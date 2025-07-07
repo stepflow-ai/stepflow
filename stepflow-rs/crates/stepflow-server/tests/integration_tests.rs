@@ -29,7 +29,6 @@ use tower::ServiceExt as _;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
-use url::Url;
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
 
@@ -140,7 +139,7 @@ fn create_test_workflow() -> Flow {
         output_schema: None,
         steps: vec![Step {
             id: "test_step".to_string(),
-            component: Component::new(Url::parse("builtin://create_messages").unwrap()),
+            component: Component::from_string("builtin://create_messages"),
             input: ValueTemplate::literal(json!({
                 "user_prompt": "Hello from test"
             })),
@@ -524,8 +523,8 @@ async fn test_status_updates_during_regular_execution() {
         steps: vec![
             Step {
                 id: "step1".to_string(),
-                component: Component::new(Url::parse("mock://one_output").unwrap()),
-                input: ValueTemplate::workflow_input(Some("first_step")),
+                component: Component::from_string("mock://one_output"),
+                input: ValueTemplate::step_ref("first_step", None),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
@@ -533,7 +532,7 @@ async fn test_status_updates_during_regular_execution() {
             },
             Step {
                 id: "step2".to_string(),
-                component: Component::new(Url::parse("mock://two_outputs").unwrap()),
+                component: Component::from_string("mock://two_outputs"),
                 input: ValueTemplate::parse_value(json!({
                     "input": {
                         "$from": {"step": "step1"},
@@ -647,8 +646,8 @@ async fn test_status_updates_during_debug_execution() {
         steps: vec![
             Step {
                 id: "step1".to_string(),
-                component: Component::new(Url::parse("mock://one_output").unwrap()),
-                input: ValueTemplate::workflow_input(Some("debug_step")),
+                component: Component::from_string("mock://one_output"),
+                input: ValueTemplate::parse_value(json!({"input": "debug_step"})).unwrap(),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
@@ -656,7 +655,7 @@ async fn test_status_updates_during_debug_execution() {
             },
             Step {
                 id: "step2".to_string(),
-                component: Component::new(Url::parse("mock://two_outputs").unwrap()),
+                component: Component::from_string("mock://two_outputs"),
                 input: ValueTemplate::parse_value(json!({
                     "input": {
                         "$from": {"step": "step1"},
@@ -784,7 +783,7 @@ async fn test_status_transitions_with_error_handling() {
         output_schema: None,
         steps: vec![Step {
             id: "failing_step".to_string(),
-            component: Component::new(Url::parse("mock://error_component").unwrap()),
+            component: Component::from_string("mock://error_component"),
             input: ValueTemplate::literal(json!({"input": "trigger_error"})),
             input_schema: None,
             output_schema: None,

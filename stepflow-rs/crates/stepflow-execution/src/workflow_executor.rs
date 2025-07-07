@@ -1071,7 +1071,7 @@ mod tests {
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
             id: id.to_string(),
-            component: Component::parse("mock://test").unwrap(),
+            component: Component::from_string("mock://test"),
             input_schema: None,
             output_schema: None,
             skip_if: None,
