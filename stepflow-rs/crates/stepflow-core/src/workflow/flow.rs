@@ -55,7 +55,7 @@ pub struct Flow {
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
     pub output: ValueTemplate,
 
     /// Test configuration for the flow.

@@ -39,7 +39,7 @@ pub struct Step {
     pub on_error: ErrorAction,
 
     /// Arguments to pass to the component for this step
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
     pub input: ValueTemplate,
 }
 

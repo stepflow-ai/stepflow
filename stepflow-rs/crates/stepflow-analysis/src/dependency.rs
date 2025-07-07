@@ -11,9 +11,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use crate::dependencies::Dependency;
 use indexmap::IndexMap;
 use std::sync::Arc;
-use crate::dependencies::Dependency;
 use stepflow_core::workflow::{BaseRef, Expr, Flow, FlowHash, Step, ValueTemplate, WorkflowRef};
 
 use crate::{
@@ -133,8 +133,8 @@ pub enum DependencyError {
 pub(crate) fn analyze_template_dependencies(
     template: &ValueTemplate,
 ) -> Result<crate::dependencies::ValueDependencies> {
-    use std::collections::HashSet;
     use crate::dependencies::ValueDependencies;
+    use std::collections::HashSet;
     use stepflow_core::values::ValueTemplateRepr;
 
     match template.as_ref() {
@@ -194,8 +194,8 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use serde_json::json;
     use crate::dependencies::ValueDependencies;
+    use serde_json::json;
     use stepflow_core::workflow::{Component, ErrorAction, Flow, Step};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {

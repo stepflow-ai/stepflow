@@ -149,6 +149,10 @@ impl ValueTemplate {
         serde_json::from_value(value)
     }
 
+    pub fn is_null(&self) -> bool {
+        matches!(self.as_ref(), ValueTemplateRepr::Null)
+    }
+
     /// Check if this template contains only literal values (no expressions)
     pub fn is_literal(&self) -> bool {
         self.expressions().next().is_none() // If there are no expressions, it's literal
@@ -223,7 +227,7 @@ impl<'de> Deserialize<'de> for ValueTemplateRepr {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::Error;
+        use serde::de::Error as _;
 
         // Deserialize to a raw serde_json::Value first
         let value = serde_json::Value::deserialize(deserializer)?;

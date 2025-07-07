@@ -11,11 +11,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use crate::dependencies::{Dependency, ValueDependencies};
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::dependencies::{Dependency, ValueDependencies};
 use stepflow_core::workflow::{Flow, FlowHash};
 
 use crate::{
