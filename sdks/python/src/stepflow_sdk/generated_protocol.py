@@ -15,12 +15,12 @@
 
 # Auto-generated protocol types from schemas/protocol.json
 # To regenerate this file, run:
-#   uv run generate-protocol
+#   uv run python generate.py
 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Literal
+from typing import Annotated, Any, List, Literal
 
 from msgspec import Meta, Struct
 
@@ -49,7 +49,7 @@ class Method(Enum):
     blobs_get = 'blobs/get'
 
 
-class InitializeParams(Struct):
+class InitializeParams(Struct, kw_only=True):
     runtime_protocol_version: Annotated[
         int,
         Meta(
@@ -81,13 +81,13 @@ Value = Annotated[
 ]
 
 
-class ComponentInfoParams(Struct):
+class ComponentInfoParams(Struct, kw_only=True):
     component: Annotated[
         Component, Meta(description='The component to get information about.')
     ]
 
 
-class ComponentListParams(Struct):
+class ComponentListParams(Struct, kw_only=True):
     pass
 
 
@@ -100,11 +100,11 @@ BlobId = Annotated[
 ]
 
 
-class PutBlobParams(Struct):
+class PutBlobParams(Struct, kw_only=True):
     data: Value
 
 
-class InitializeResult(Struct):
+class InitializeResult(Struct, kw_only=True):
     server_protocol_version: Annotated[
         int,
         Meta(
@@ -114,22 +114,23 @@ class InitializeResult(Struct):
     ]
 
 
-class ComponentExecuteResult(Struct):
+class ComponentExecuteResult(Struct, kw_only=True):
     output: Annotated[Value, Meta(description='The result of the component execution.')]
 
 
-Schema = Dict[str, Any] | bool
+class Schema(Struct, kw_only=True):
+    pass
 
 
-class GetBlobResult(Struct):
+class GetBlobResult(Struct, kw_only=True):
     data: Value
 
 
-class PutBlobResult(Struct):
+class PutBlobResult(Struct, kw_only=True):
     blob_id: BlobId
 
 
-class Error(Struct):
+class Error(Struct, kw_only=True):
     code: Annotated[
         int,
         Meta(
@@ -155,25 +156,54 @@ class Error(Struct):
     ) = None
 
 
-class Initialized(Struct):
+class Initialized(Struct, kw_only=True):
     pass
 
 
-class ComponentExecuteParams(Struct):
+class ComponentExecuteParams(Struct, kw_only=True):
     component: Annotated[Component, Meta(description='The component to execute.')]
     input: Annotated[Value, Meta(description='The input to the component.')]
 
 
-class GetBlobParams(Struct):
+class GetBlobParams(Struct, kw_only=True):
     blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
 
 
-SchemaRef = Annotated[
-    Schema, Meta(description='Type alias for a shared schema reference.')
-]
+class ComponentInfo(Struct, kw_only=True):
+    component: Annotated[Component, Meta(description='The component ID.')]
+    description: (
+        Annotated[
+            str | None, Meta(description='Optional description of the component.')
+        ]
+        | None
+    ) = None
+    input_schema: (
+        Annotated[
+            Schema | None,
+            Meta(
+                description='The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+            ),
+        ]
+        | None
+    ) = None
+    output_schema: (
+        Annotated[
+            Schema | None,
+            Meta(
+                description='The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+            ),
+        ]
+        | None
+    ) = None
 
 
-class MethodError(Struct):
+class ListComponentsResult(Struct, kw_only=True):
+    components: Annotated[
+        List[ComponentInfo], Meta(description='A list of all available components.')
+    ]
+
+
+class MethodError(Struct, kw_only=True):
     id: RequestId
     error: Annotated[
         Error, Meta(description='An error that occurred during method execution.')
@@ -181,7 +211,7 @@ class MethodError(Struct):
     jsonrpc: JsonRpc | None = '2.0'
 
 
-class Notification(Struct):
+class Notification(Struct, kw_only=True):
     method: Annotated[
         Method,
         Meta(description='The notification method being called.', title='Method'),
@@ -193,7 +223,7 @@ class Notification(Struct):
     jsonrpc: JsonRpc | None = '2.0'
 
 
-class MethodRequest(Struct):
+class MethodRequest(Struct, kw_only=True):
     id: RequestId
     method: Annotated[
         Method, Meta(description='The method being called.', title='Method')
@@ -213,45 +243,11 @@ class MethodRequest(Struct):
     jsonrpc: JsonRpc | None = '2.0'
 
 
-class ComponentInfo(Struct):
-    component: Annotated[Component, Meta(description='The component ID.')]
-    description: (
-        Annotated[
-            str | None, Meta(description='Optional description of the component.')
-        ]
-        | None
-    ) = None
-    input_schema: (
-        Annotated[
-            SchemaRef | None,
-            Meta(
-                description='The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
-            ),
-        ]
-        | None
-    ) = None
-    output_schema: (
-        Annotated[
-            SchemaRef | None,
-            Meta(
-                description='The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
-            ),
-        ]
-        | None
-    ) = None
-
-
-class ListComponentsResult(Struct):
-    components: Annotated[
-        List[ComponentInfo], Meta(description='A list of all available components.')
-    ]
-
-
-class ComponentInfoResult(Struct):
+class ComponentInfoResult(Struct, kw_only=True):
     info: Annotated[ComponentInfo, Meta(description='Information about the component.')]
 
 
-class MethodSuccess(Struct):
+class MethodSuccess(Struct, kw_only=True):
     id: RequestId
     result: Annotated[
         InitializeResult
@@ -268,15 +264,15 @@ class MethodSuccess(Struct):
     jsonrpc: JsonRpc | None = '2.0'
 
 
-MethodResponse = Annotated[
-    MethodSuccess | MethodError, Meta(description='Response to a method request.')
-]
-
-
 Message = Annotated[
-    MethodRequest | MethodResponse | Notification,
+    MethodRequest | MethodSuccess | MethodError | Notification,
     Meta(
         description='The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.',
         title='Message',
     ),
+]
+
+
+MethodResponse = Annotated[
+    MethodSuccess | MethodError, Meta(description='Response to a method request.')
 ]

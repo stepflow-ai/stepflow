@@ -38,6 +38,9 @@ fn message_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema
     // the schema for method response.
 
     let request = generator.subschema_for::<MethodRequest<'_>>();
+
+    // Generate the MethodResponse schema even though we don't need it for messages.
+    // This ensures a type is generated to represent method responses.
     let _response = generator.subschema_for::<MethodResponse<'_>>();
     let success = generator.subschema_for::<MethodSuccess<'_>>();
     let error = generator.subschema_for::<MethodError<'_>>();
@@ -276,7 +279,6 @@ impl<'a> Notification<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use schemars::schema_for;
     use serde_json::json;
     use similar_asserts::assert_eq;
     use std::env;
@@ -316,7 +318,8 @@ mod tests {
 
     #[test]
     fn test_schema_comparison_with_protocol_json() {
-        let generated_schema = schema_for!(Message<'static>);
+        let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
+        let generated_schema = generator.root_schema_for::<Message<'static>>();
         let generated_json = serde_json::to_value(&generated_schema)
             .expect("Failed to convert generated schema to JSON");
 

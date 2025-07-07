@@ -12,7 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "datamodel-code-generator>=0.31.2",
+    "datamodel-code-generator[http,ruff]>=0.31.2",
     "pytest>=7.4.0",
     "pytest-asyncio>=0.26.0",
     "pytest-cov>=4.1.0",
@@ -20,7 +20,6 @@ dev = [
 
 [project.scripts]
 stepflow_sdk = "stepflow_sdk.main:main"
-generate-protocol = "stepflow_sdk.generate:main"
 
 [build-system]
 requires = ["hatchling"]

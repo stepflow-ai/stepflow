@@ -338,7 +338,6 @@ impl Flow {
 #[cfg(test)]
 mod tests {
     use crate::workflow::{Component, ErrorAction, Step};
-    use schemars::schema_for;
     use std::env;
 
     use super::*;
@@ -511,7 +510,8 @@ mod tests {
 
     #[test]
     fn test_schema_comparison_with_flow_json() {
-        let generated_schema = schema_for!(Flow);
+        let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
+        let generated_schema = generator.root_schema_for::<Flow>();
         let generated_json = serde_json::to_value(&generated_schema)
             .expect("Failed to convert generated schema to JSON");
 

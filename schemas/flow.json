@@ -79,7 +79,10 @@
   },
   "$defs": {
     "Schema": {
-      "$ref": "https://json-schema.org/draft/2020-12/schema"
+      "description": "A JSON schema describing allowed JSON values.",
+      "type": "object",
+      "additionalProperties": true,
+      "example": "\n                {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"item\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                        \"label\": {\"type\": \"string\"},\n                    },\n                    \"required\": [\"label\"]\n                    }\n                },\n                \"required\": [\"item\"]\n                }\n            "
     },
     "Step": {
       "description": "A step in a workflow that executes a component with specific arguments.",
