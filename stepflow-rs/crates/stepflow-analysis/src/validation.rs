@@ -135,25 +135,14 @@ fn validate_step_references(
     component_path.push("component".to_string());
     validate_component(&step.component, &component_path, diagnostics);
 
-    // Warn about mock components (only if component is valid)
-    if step.component.is_valid() {
-        if let Ok(url) = step.component.url() {
-            if url.scheme() == "mock" {
-                diagnostics.add(
-                    DiagnosticMessage::MockComponent {
-                        step_id: step.id.clone(),
-                    },
-                    component_path.clone(),
-                );
-            }
-        } else if step.component.protocol() == "mock" {
-            diagnostics.add(
-                DiagnosticMessage::MockComponent {
-                    step_id: step.id.clone(),
-                },
-                component_path,
-            );
-        }
+    // Warn about mock components
+    if step.component.plugin() == "mock" {
+        diagnostics.add(
+            DiagnosticMessage::MockComponent {
+                step_id: step.id.clone(),
+            },
+            component_path,
+        );
     }
 }
 
@@ -272,28 +261,25 @@ fn collect_expression_dependencies(expr: &Expr, dependencies: &mut HashSet<Strin
 
 /// Validate a component URL
 fn validate_component(component: &Component, path: &[String], diagnostics: &mut Diagnostics) {
-    // Check if component is valid
-    if !component.is_valid() {
-        if component.is_builtin() {
-            // Empty builtin name
-            if component
-                .builtin_name()
-                .is_none_or(|name| name.trim().is_empty())
-            {
-                // Extract step_id from path for backwards compatibility with DiagnosticMessage
-                let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();
-                diagnostics.add(
-                    DiagnosticMessage::EmptyComponentName { step_id },
-                    path.to_vec(),
-                );
-            }
-        } else {
-            // Invalid URL
-            let url_str = component.url_string();
-            let error = match component.url() {
-                Err(e) => e.to_string(),
-                Ok(_) => "URL is valid but component reports invalid".to_string(), // Shouldn't happen
-            };
+    // Check if component has valid builtin name
+    if component.is_builtin() {
+        // Empty builtin name
+        if component
+            .builtin_name()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            // Extract step_id from path for backwards compatibility with DiagnosticMessage
+            let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();
+            diagnostics.add(
+                DiagnosticMessage::EmptyComponentName { step_id },
+                path.to_vec(),
+            );
+        }
+    } else {
+        // For non-builtin components, check basic format
+        let url_str = component.url_string();
+        if !url_str.contains("://") {
+            let error = "Component URL must contain '://' for non-builtin components".to_string();
 
             // Extract step_id from path for backwards compatibility with DiagnosticMessage
             let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();

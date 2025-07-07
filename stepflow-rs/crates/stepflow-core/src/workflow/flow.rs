@@ -339,7 +339,7 @@ mod tests {
             steps: vec![
                 Step {
                     id: "s1".to_owned(),
-                    component: Component::parse("langflow://echo").unwrap(),
+                    component: Component::from_string("langflow://echo"),
                     input: ValueTemplate::literal(serde_json::json!({
                         "a": "hello world"
                     })),
@@ -350,7 +350,7 @@ mod tests {
                 },
                 Step {
                     id: "s2".to_owned(),
-                    component: Component::parse("mcp+http://foo/bar").unwrap(),
+                    component: Component::from_string("mcp+http://foo/bar"),
                     input: ValueTemplate::literal(serde_json::json!({
                         "a": "hello world 2"
                     })),

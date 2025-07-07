@@ -112,7 +112,7 @@ impl MockPlugin {
     }
 
     pub fn mock_component(&mut self, path: &str) -> &mut MockComponent {
-        let component = Component::parse(path).unwrap();
+        let component = Component::from_string(path);
         self.components.entry(component).or_default()
     }
 }
