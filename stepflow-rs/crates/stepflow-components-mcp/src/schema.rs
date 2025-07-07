@@ -60,11 +60,9 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
 
 /// Convert StepFlow Component URL to MCP tool name
 pub fn component_url_to_tool_name(component_url: &str) -> Option<String> {
-    // Expected format: mcp://plugin_name/tool_name
-    if let Some(url_part) = component_url.strip_prefix("mcp://") {
-        if let Some(slash_pos) = url_part.find('/') {
-            return Some(url_part[slash_pos + 1..].to_string());
-        }
+    // Expected format: plugin_name://tool_name
+    if let Some(start) = component_url.find("://") {
+        return Some(component_url[start + 3..].to_string());
     }
     None
 }
@@ -76,16 +74,15 @@ mod tests {
     #[test]
     fn test_component_url_to_tool_name() {
         assert_eq!(
-            component_url_to_tool_name("mcp://filesystem/read_file"),
+            component_url_to_tool_name("filesystem://read_file"),
             Some("read_file".to_string())
         );
 
         assert_eq!(
-            component_url_to_tool_name("mcp://mock-server/tool_name"),
+            component_url_to_tool_name("mock-server://tool_name"),
             Some("tool_name".to_string())
         );
 
         assert_eq!(component_url_to_tool_name("invalidurl"), None);
-        assert_eq!(component_url_to_tool_name("mcp://no-slash"), None);
     }
 }

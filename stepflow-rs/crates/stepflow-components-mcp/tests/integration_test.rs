@@ -74,7 +74,10 @@ async fn test_mcp_plugin_initialization() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config.create_plugin(&working_dir, "mcp").await.unwrap();
+    let plugin = config
+        .create_plugin(&working_dir, "mock-server")
+        .await
+        .unwrap();
 
     let (test_context, _exec_context) = create_test_context();
     plugin.init(&test_context).await.unwrap();
@@ -88,8 +91,8 @@ async fn test_mcp_plugin_initialization() {
         .iter()
         .map(|c| c.component.url_string().to_string())
         .collect();
-    assert!(urls.contains(&"mcp+stdio://server/echo".to_string()));
-    assert!(urls.contains(&"mcp+stdio://server/add".to_string()));
+    assert!(urls.contains(&"mock-server://echo".to_string()));
+    assert!(urls.contains(&"mock-server://add".to_string()));
 }
 
 #[tokio::test]
@@ -101,13 +104,16 @@ async fn test_mcp_tool_execution() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config.create_plugin(&working_dir, "mcp").await.unwrap();
+    let plugin = config
+        .create_plugin(&working_dir, "mock-server")
+        .await
+        .unwrap();
 
     let (test_context, exec_context) = create_test_context();
     plugin.init(&test_context).await.unwrap();
 
     // Test echo tool
-    let echo_component = Component::from_string("mcp+stdio://server/echo");
+    let echo_component = Component::from_string("mock-server://echo");
     let echo_input = ValueRef::new(json!({
         "message": "Hello, MCP!"
     }));
@@ -130,7 +136,7 @@ async fn test_mcp_tool_execution() {
     }
 
     // Test add tool
-    let add_component = Component::from_string("mcp+stdio://server/add");
+    let add_component = Component::from_string("mock-server://add");
     let add_input = ValueRef::new(json!({
         "a": 5,
         "b": 3
@@ -163,13 +169,16 @@ async fn test_mcp_error_handling() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config.create_plugin(&working_dir, "mcp").await.unwrap();
+    let plugin = config
+        .create_plugin(&working_dir, "mock-server")
+        .await
+        .unwrap();
 
     let (test_context, exec_context) = create_test_context();
     plugin.init(&test_context).await.unwrap();
 
     // Test calling a non-existent tool
-    let bad_component = Component::from_string("mcp+stdio://server/nonexistent");
+    let bad_component = Component::from_string("mock-server://nonexistent");
     let input = ValueRef::new(json!({}));
 
     let result = plugin.execute(&bad_component, exec_context, input).await;

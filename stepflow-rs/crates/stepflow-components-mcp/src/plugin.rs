@@ -325,8 +325,8 @@ impl Plugin for McpPlugin {
             let mut info = crate::schema::mcp_tool_to_component_info(tool)
                 .change_context(PluginError::ComponentInfo)?;
 
-            // Update the component URL to use MCP-compliant format
-            let component_url = format!("mcp://{}/{}", self.plugin_name, tool.name);
+            // Update the component URL to use plugin name as protocol
+            let component_url = format!("{}://{}", self.plugin_name, tool.name);
             info.component = Component::from_string(&component_url);
 
             components.push(info);

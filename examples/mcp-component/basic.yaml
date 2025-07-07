@@ -18,20 +18,20 @@ input:
 steps:
   # Step 1: Create a file using MCP filesystem tool
   - id: create_file
-    component: "mcp://filesystem/write_file"
+    component: "filesystem://write_file"
     input:
       path: { $from: { workflow: input }, path: "filename" }
       content: { $from: { workflow: input }, path: "content" }
 
   # Step 2: Read the file back to verify it was created
   - id: read_file
-    component: "mcp://filesystem/read_file"
+    component: "filesystem://read_file"
     input:
       path: { $from: { workflow: input }, path: "filename" }
 
   # Step 3: List files in the directory to show the created file
   - id: list_directory
-    component: "mcp://filesystem/list_directory"
+    component: "filesystem://list_directory"
     input:
       path: "/tmp"
 

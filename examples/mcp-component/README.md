@@ -30,16 +30,16 @@ cargo run -- run --flow=../examples/mcp-component/basic.yaml --input=../examples
 
 ## Understanding MCP Component URLs
 
-MCP tools are referenced using the MCP-compliant URL format:
+MCP tools are referenced using StepFlow's plugin-based URL format:
 ```
-mcp://server_name/tool_name
+plugin_name://tool_name
 ```
 
-Where `server_name` corresponds to the plugin name configured in the StepFlow config file, following the Model Context Protocol specification.
+Where `plugin_name` corresponds to the name configured in the StepFlow config file. This follows StepFlow's standard plugin architecture where each plugin registers with a name that becomes the protocol.
 
 For example:
-- `mcp://filesystem/write_file` - The `write_file` tool from the `filesystem` MCP server
-- `mcp://filesystem/read_file` - The `read_file` tool from the `filesystem` MCP server
+- `filesystem://write_file` - The `write_file` tool from the `filesystem` MCP server
+- `filesystem://read_file` - The `read_file` tool from the `filesystem` MCP server
 
 ## Expected Output
 
@@ -66,7 +66,7 @@ You can add additional MCP servers to the configuration. For example, to add a B
 Then use it in workflows like:
 ```yaml
 search_step:
-  component: "mcp://brave-search/brave_web_search"
+  component: "brave-search://brave_web_search"
   input:
     query: "StepFlow workflow engine"
 ```
