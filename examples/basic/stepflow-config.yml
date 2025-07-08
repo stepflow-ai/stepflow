@@ -3,5 +3,5 @@ plugins:
     type: builtin
   - name: python
     type: stdio
-    command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
+    command: /Users/jordan.frazier/.cargo/bin/uv
+    args: ["--project", "/Users/jordan.frazier/Documents/StepFlow/stepflow/sdks/python", "run", "stepflow_sdk"]

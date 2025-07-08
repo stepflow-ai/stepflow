@@ -76,12 +76,23 @@ cargo check -p stepflow-protocol
 
 ### Python SDK Development
 ```bash
-# Test Python SDK
+# Test Python SDK (run from project root)
 uv run --project sdks/python pytest
+
+# Install Python SDK dependencies
+cd sdks/python
+uv sync
+
+# Run Python component server standalone
+cd sdks/python
+uv run stepflow_sdk
 ```
 
 ### UI Development (stepflow-ui)
 ```bash
+# Navigate to UI directory first
+cd stepflow-ui
+
 # Run development server
 pnpm dev
 
@@ -99,6 +110,9 @@ pnpm lint
 
 # Run type checking
 pnpm type-check
+
+# Database setup (required for UI)
+pnpm db:setup
 ```
 
 ## Project Architecture
@@ -250,6 +264,14 @@ fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>> {
 - Include examples in documentation where appropriate
 - Document all public types, functions, and traits
 - Use markdown in documentation comments
+
+### Documentation Development
+```bash
+# Run documentation site locally (Docusaurus)
+cd docs
+pnpm install
+pnpm start
+```
 
 ### Testing
 

@@ -1,0 +1,32 @@
+name: ExampleFlow
+description: Perform basic prompting with an OpenAI model.
+input_schema:
+  type: object
+  properties:
+    message:
+      type: string
+      description: User input message
+      default: Hello
+  required:
+  - message
+steps:
+- id: llm_call_TsLa4
+  component: builtin://openai
+  input:
+    model: gpt-4o-mini
+    temperature: 0.1
+    api_key: OPENAI_API_KEY
+    messages:
+    - role: system
+      content: Answer the user as if you were a GenAI expert, enthusiastic about helping
+        them get started building something fresh.
+    - role: user
+      content:
+        $from:
+          workflow: input
+        path: message
+output:
+  response:
+    $from:
+      step: llm_call_TsLa4
+    path: content
