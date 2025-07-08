@@ -3216,7 +3216,6 @@ dependencies = [
  "tracing",
  "tracing-error",
  "tracing-subscriber",
- "url",
  "utoipa",
  "utoipa-axum",
  "utoipa-swagger-ui",

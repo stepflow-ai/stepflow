@@ -28,8 +28,29 @@ impl JsonSchema for SchemaRef {
     }
 
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        // Technically, this should be `{ "$ref": _generator.settings().meta_schema }`, but
+        // most code generators seem to struggle with the use of `allOf` and the meta schema.
+        // In practice, we don't anticipate users generating JSON schema using the types
+        // generated our JSON schemas, so we instead just allow *any* JSON scheam.
         schemars::json_schema!({
-             "$ref": _generator.settings().meta_schema,
+            "type": "object",
+            "description": "A JSON schema describing allowed JSON values.",
+            "additionalProperties": true,
+            "example": r#"
+                {
+                "type": "object",
+                "properties": {
+                    "item": {
+                    "type": "object",
+                    "properties": {
+                        "label": {"type": "string"},
+                    },
+                    "required": ["label"]
+                    }
+                },
+                "required": ["item"]
+                }
+            "#,
         })
     }
 }

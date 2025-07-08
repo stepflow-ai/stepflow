@@ -1,13 +1,12 @@
 import type { ReactNode } from 'react';
 import CodeBlock from '@theme/CodeBlock';
-import Schema from "@site/static/schemas/protocolSchema.json";
 import JSONSchemaViewer from "@theme/JSONSchemaViewer";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 const references = {
-    "https://stepflow.org/schemas/protocolSchema.json": require("@site/static/schemas/protocolSchema.json"),
-    "https://stepflow.org/schemas/workflowSchema.json": require("@site/static/schemas/workflowSchema.json"),
+    "https://stepflow.org/schemas/protocol.json": require("@site/static/schemas/protocol.json"),
+    "https://stepflow.org/schemas/flow.json": require("@site/static/schemas/flow.json"),
     "https://json-schema.org/draft/2020-12/schema": require("@site/static/schemas/jsonSchema.json")
 }
 

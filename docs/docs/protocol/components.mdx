@@ -22,11 +22,11 @@ sequenceDiagram
 
 ### Request Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocolSchema.json" path="defs/ComponentInfoRequest"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentInfoParams"/>
 
 ### Response Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocolSchema.json" path="defs/ComponentInfoResponse"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentInfoResult"/>
 
 :::note
 Components should also have fields for describing the UI aspects of providing their input.
@@ -49,7 +49,7 @@ sequenceDiagram
 
 ### Request Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocolSchema.json" path="defs/ComponentExecuteRequest"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentExecuteParams"/>
 
 :::note
 The `workflow_id` and `step_id` parameter likely won't be needed by all components.
@@ -64,7 +64,7 @@ An alternative could be allowing these to be inputs to the component, configured
 
 ### Response Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocolSchema.json" path="defs/ComponentExecuteResponse"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentExecuteResult"/>
 
 
 ### Error Handling
@@ -118,8 +118,10 @@ This means that the URL for the dynamically created component should also includ
 It is most often used by dynamic components when the component server has been restarted or evicted the state for a dynamically created component.
 The workflow runtime sends the arguments used for the given step -- typically the one previously used for creating the component -- allowing the component server to recreate it.
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocolSchema.json" path="defs/StepArgumentsRequest"/>
+{/* <SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="defs/StepArgumentsRequest"/> */}
+TODO: StepArgumentsRequest schema definition needs to be updated
 
 ### Step Arguments Response
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocolSchema.json" path="defs/StepArgumentsResponse"/>
+{/* <SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="defs/StepArgumentsResponse"/> */}
+TODO: StepArgumentsResponse schema definition needs to be updated

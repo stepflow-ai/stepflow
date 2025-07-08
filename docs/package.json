@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "start": "docusaurus start",
-    "build": "docusaurus build",
+    "start": "npm run copy-schemas && docusaurus start",
+    "build": "npm run copy-schemas && docusaurus build",
+    "copy-schemas": "node scripts/copy-schemas.js",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",

@@ -524,7 +524,7 @@ async fn test_status_updates_during_regular_execution() {
             Step {
                 id: "step1".to_string(),
                 component: Component::from_string("mock://one_output"),
-                input: ValueTemplate::step_ref("first_step", None),
+                input: ValueTemplate::parse_value(json!({"input": "first_step"})).unwrap(),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,

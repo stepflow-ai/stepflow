@@ -79,10 +79,10 @@ uv run mypy src/
 This SDK uses auto-generated protocol types from the JSON schema. To regenerate the protocol types when the schema changes:
 
 ```bash
-uv run generate-protocol
+uv run python generate.py
 ```
 
-The `generate-protocol` command automatically handles the generation and applies necessary fixes for msgspec compatibility.
+The generation script automatically handles the generation and applies necessary fixes for msgspec compatibility.
 
 ### Project Structure
 
