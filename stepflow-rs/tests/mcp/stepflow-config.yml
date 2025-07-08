@@ -1,0 +1,9 @@
+plugins:
+  - name: builtin
+    type: builtin
+  - name: test-mcp
+    type: mcp
+    command: echo
+    args: ["Testing MCP server"]
+    env:
+      TEST_VAR: "mcp_test"

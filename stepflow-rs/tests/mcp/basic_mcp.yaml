@@ -1,0 +1,14 @@
+input:
+  message: 
+    type: string
+
+output:
+  result:
+    type: string
+
+steps:
+  - id: test_step
+    component: builtin://stepflow-builtins/eval
+    input:
+      expr: '"Testing MCP integration: " + $.input.message'
+    output: result

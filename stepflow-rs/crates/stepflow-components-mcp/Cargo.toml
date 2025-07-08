@@ -37,3 +37,9 @@ tokio.workspace = true
 
 # Utilities
 indexmap.workspace = true
+
+[dev-dependencies]
+# Testing dependencies
+stepflow-state.workspace = true
+futures.workspace = true
+uuid.workspace = true
