@@ -6,7 +6,7 @@ sidebar_position: 1
 
 StepFlow is an open protocol and runtime for building, executing, and scaling GenAI workflows across local and cloud environments.
 Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production.
-With durability, fault-tolerance, and an open specification, StepFlow empowers anyone to create, share, and 
+With durability, fault-tolerance, and an open specification, StepFlow empowers anyone to create, share, and run AI workflows across platforms and tools.
 
 ## Local Architecture
 
