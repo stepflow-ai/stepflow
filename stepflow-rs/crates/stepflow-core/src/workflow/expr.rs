@@ -14,8 +14,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::workflow::{json_path::JsonPath, ValueRef};
-
+use crate::workflow::{ValueRef, json_path::JsonPath};
 
 /// An expression that can be either a literal value or a template expression.
 #[derive(
@@ -319,7 +318,6 @@ mod tests {
             }
         );
     }
-
 
     #[test]
     fn test_expr_with_skip_action_from_yaml() {
