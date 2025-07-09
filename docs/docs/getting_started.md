@@ -79,19 +79,26 @@ steps:
         context: { $from: { workflow: input }, path: "context" }
         question: { $from: { workflow: input }, path: "question" }
 
+    # Format the context and question into a clear prompt
+  - id: format_prompt
+    component: builtin://put_blob
+    input:
+      data:
+        context: { $from: { workflow: input }, path: "context" }
+        question: { $from: { workflow: input }, path: "question" }
+
+  # Get the formatted prompt from the blob
+  - id: get_prompt
+    component: builtin://get_blob
+    input:
+      blob_id: { $from: { step: format_prompt }, path: "blob_id" }
+
   # Create messages for OpenAI
   - id: create_messages
     component: builtin://create_messages
     input:
       system_instructions: "You are a helpful assistant. Answer the user's question based on the provided context. If the context doesn't contain enough information, say so and provide your best general answer."
-      user_prompt: { $from: { step: format_prompt }, path: "formatted_text" }
-
-  # Format the context and question into a clear prompt
-  - id: format_prompt
-    component: builtin://put_blob
-    input:
-      data:
-        formatted_text: "Context: Paris is the capital and largest city of France, located in northern France on the river Seine. It's known for landmarks like the Eiffel Tower and Louvre Museum.\n\nQuestion: What is the capital of France?\n\nPlease provide a clear, concise answer."
+      user_prompt: { $from: { workflow: input }, path: "question" }
 
   # Generate AI response using OpenAI  
   - id: generate_answer
