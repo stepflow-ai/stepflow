@@ -20,8 +20,6 @@ use crate::protocol::Method;
 
 use super::ProtocolMethod;
 
-/// # Parameters for blobs/get method.
-///
 /// Sent from the component server to the StepFlow to retrieve the content of a specific blob.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetBlobParams {
@@ -29,8 +27,6 @@ pub struct GetBlobParams {
     pub blob_id: BlobId,
 }
 
-/// # Response for blobs/get method.
-///
 /// Sent from the StepFlow back to the component server with the content of the requested blob.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetBlobResult {
@@ -42,16 +38,12 @@ impl ProtocolMethod for GetBlobParams {
     type Response = GetBlobResult;
 }
 
-/// # Parameters for blobs/put method.
-///
 /// Sent from the component server to the StepFlow to store a blob with the provided content.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct PutBlobParams {
     pub data: ValueRef,
 }
 
-/// # Response for blobs/put method.
-///
 /// Sent from the StepFlow back to the component server with the ID of the stored blob.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct PutBlobResult {

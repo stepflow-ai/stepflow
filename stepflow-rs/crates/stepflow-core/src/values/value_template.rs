@@ -63,9 +63,19 @@ pub enum ValueTemplateRepr {
 ///
 /// Unlike `ValueRef` which is purely for literal JSON values, `ValueTemplate`
 /// explicitly supports templating with expressions.
-#[derive(Debug, Clone, PartialEq, JsonSchema, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ValueTemplate(Arc<ValueTemplateRepr>);
+
+impl JsonSchema for ValueTemplate {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ValueTemplate".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        ValueTemplateRepr::json_schema(generator)
+    }
+}
 
 impl ValueTemplate {
     /// Create a null value template

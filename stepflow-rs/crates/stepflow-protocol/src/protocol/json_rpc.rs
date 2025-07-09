@@ -16,7 +16,6 @@ use std::borrow::Cow;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// # JSON-RPC
 /// The JSON-RPC protocol version.
 #[derive(Debug, Default)]
 pub struct JsonRpc;
@@ -28,7 +27,6 @@ impl JsonSchema for JsonRpc {
 
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
-            "title": "JSON-RPC Version",
             "description": "The version of the JSON-RPC protocol.",
             "type": "string",
             "const": "2.0",

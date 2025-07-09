@@ -25,16 +25,14 @@ from typing import Annotated, Any, List, Literal
 from msgspec import Meta, Struct
 
 JsonRpc = Annotated[
-    Literal['2.0'],
-    Meta(description='The version of the JSON-RPC protocol.', title='JSON-RPC Version'),
+    Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')
 ]
 
 
 RequestId = Annotated[
     str | int,
     Meta(
-        description='The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.',
-        title='JSON-RPC Request ID.',
+        description='The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.'
     ),
 ]
 
@@ -94,8 +92,7 @@ class ComponentListParams(Struct, kw_only=True):
 BlobId = Annotated[
     str,
     Meta(
-        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.',
-        title='Blob ID',
+        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
     ),
 ]
 
@@ -131,25 +128,15 @@ class PutBlobResult(Struct, kw_only=True):
 
 
 class Error(Struct, kw_only=True):
-    code: Annotated[
-        int,
-        Meta(
-            description='A numeric code indicating the error type.', title='Error code'
-        ),
-    ]
+    code: Annotated[int, Meta(description='A numeric code indicating the error type.')]
     message: Annotated[
-        str,
-        Meta(
-            description='Concise, single-sentence description of the error.',
-            title='Error message',
-        ),
+        str, Meta(description='Concise, single-sentence description of the error.')
     ]
     data: (
         Annotated[
             Value | None,
             Meta(
-                description='Primitive or structured value that contains additional information about the error.',
-                title='Error data',
+                description='Primitive or structured value that contains additional information about the error.'
             ),
         ]
         | None
@@ -212,22 +199,20 @@ class MethodError(Struct, kw_only=True):
 
 
 class Notification(Struct, kw_only=True):
-    method: Annotated[
-        Method,
-        Meta(description='The notification method being called.', title='Method'),
-    ]
+    method: Annotated[Method, Meta(description='The notification method being called.')]
     params: Annotated[
         Initialized,
-        Meta(description='The parameters for the notification.', title='Parameters'),
+        Meta(
+            description='The parameters for the notification.',
+            title='NotificationParams',
+        ),
     ]
     jsonrpc: JsonRpc | None = '2.0'
 
 
 class MethodRequest(Struct, kw_only=True):
     id: RequestId
-    method: Annotated[
-        Method, Meta(description='The method being called.', title='Method')
-    ]
+    method: Annotated[Method, Meta(description='The method being called.')]
     params: Annotated[
         InitializeParams
         | ComponentExecuteParams
@@ -237,7 +222,7 @@ class MethodRequest(Struct, kw_only=True):
         | PutBlobParams,
         Meta(
             description='The parameters for the method call. Set on method requests.',
-            title='Parameters',
+            title='MethodParams',
         ),
     ]
     jsonrpc: JsonRpc | None = '2.0'
@@ -258,7 +243,7 @@ class MethodSuccess(Struct, kw_only=True):
         | PutBlobResult,
         Meta(
             description='The result of a successful method execution.',
-            title='Method Result',
+            title='MethodResult',
         ),
     ]
     jsonrpc: JsonRpc | None = '2.0'

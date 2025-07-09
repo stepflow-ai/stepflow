@@ -158,6 +158,8 @@
       "description": "An expression that can be either a literal value or a template expression.",
       "anyOf": [
         {
+          "title": "Reference",
+          "description": "Reference a value from a step, workflow, or other source.",
           "type": "object",
           "properties": {
             "$from": {
@@ -180,6 +182,7 @@
           ]
         },
         {
+          "title": "EscapedLiteral",
           "description": "A literal value that was escaped.\n\nNo template expansion is performed within the value, allowing\nfor raw JSON values that include `$from` or other special characters.",
           "type": "object",
           "properties": {
@@ -193,6 +196,7 @@
           ]
         },
         {
+          "title": "Literal",
           "description": "A direct literal value that serializes naturally without special syntax",
           "$ref": "#/$defs/Value"
         }
@@ -202,6 +206,7 @@
       "description": "An expression that can be either a literal value or a template expression.",
       "anyOf": [
         {
+          "title": "WorkflowReference",
           "description": "Reference properties of the workflow.",
           "type": "object",
           "properties": {
@@ -215,6 +220,7 @@
           "additionalProperties": false
         },
         {
+          "title": "StepReference",
           "description": "Reference the output of a step.",
           "type": "object",
           "properties": {
@@ -237,6 +243,7 @@
     "SkipAction": {
       "oneOf": [
         {
+          "title": "OnSkipSkip",
           "type": "object",
           "properties": {
             "action": {
@@ -249,6 +256,7 @@
           ]
         },
         {
+          "title": "OnSkipDefault",
           "type": "object",
           "properties": {
             "defaultValue": {
@@ -278,6 +286,7 @@
     "ErrorAction": {
       "oneOf": [
         {
+          "title": "OnErrorFail",
           "description": "If the step fails, the flow will fail.",
           "type": "object",
           "properties": {
@@ -291,6 +300,7 @@
           ]
         },
         {
+          "title": "OnErrorSkip",
           "description": "If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.",
           "type": "object",
           "properties": {
@@ -304,6 +314,7 @@
           ]
         },
         {
+          "title": "OnErrorDefault",
           "description": "If the step fails, use the `defaultValue` instead.",
           "type": "object",
           "properties": {
@@ -327,6 +338,7 @@
           ]
         },
         {
+          "title": "OnErrorRetry",
           "description": "If the step fails, retry it.",
           "type": "object",
           "properties": {
@@ -342,10 +354,6 @@
       ]
     },
     "ValueTemplate": {
-      "description": "A value that can contain literal JSON data or template expressions.\n\nThis type represents JSON values that may contain `$from` expressions for\nreferencing other values in a workflow. It provides efficient reference\nsemantics through an Arc wrapper to avoid excessive cloning.\n\nUnlike `ValueRef` which is purely for literal JSON values, `ValueTemplate`\nexplicitly supports templating with expressions.",
-      "$ref": "#/$defs/ValueTemplateRepr"
-    },
-    "ValueTemplateRepr": {
       "description": "A value that can be either a literal JSON value or an expression that references other values using the $from syntax",
       "anyOf": [
         {
@@ -440,6 +448,7 @@
       "description": "The results of a step execution.",
       "oneOf": [
         {
+          "title": "Success",
           "description": "The step execution was successful.",
           "type": "object",
           "properties": {
@@ -457,6 +466,7 @@
           ]
         },
         {
+          "title": "Skipped",
           "description": "The step was skipped.",
           "type": "object",
           "properties": {
@@ -470,6 +480,7 @@
           ]
         },
         {
+          "title": "Failed",
           "description": "The step failed with the given error.",
           "type": "object",
           "properties": {

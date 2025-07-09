@@ -60,10 +60,13 @@ impl FlowError {
 )]
 #[serde(rename_all = "camelCase", tag = "outcome")]
 pub enum FlowResult {
+    /// # Success
     /// The step execution was successful.
     Success { result: ValueRef },
+    /// # Skipped
     /// The step was skipped.
     Skipped,
+    /// # Failed
     /// The step failed with the given error.
     Failed { error: FlowError },
 }

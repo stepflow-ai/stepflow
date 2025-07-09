@@ -29,12 +29,11 @@
           "$ref": "#/$defs/RequestId"
         },
         "method": {
-          "title": "Method",
           "description": "The method being called.",
           "$ref": "#/$defs/Method"
         },
         "params": {
-          "title": "Parameters",
+          "title": "MethodParams",
           "description": "The parameters for the method call. Set on method requests.",
           "oneOf": [
             {
@@ -65,14 +64,12 @@
       ]
     },
     "JsonRpc": {
-      "title": "JSON-RPC Version",
       "description": "The version of the JSON-RPC protocol.",
       "type": "string",
       "const": "2.0",
       "default": "2.0"
     },
     "RequestId": {
-      "title": "JSON-RPC Request ID.",
       "description": "The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.",
       "anyOf": [
         {
@@ -97,7 +94,6 @@
       ]
     },
     "InitializeParams": {
-      "title": "Parameters for initialize method.",
       "description": "Sent from StepFlow to the component server to begin the initialization process.",
       "type": "object",
       "properties": {
@@ -118,7 +114,6 @@
       ]
     },
     "ComponentExecuteParams": {
-      "title": "Parameters for components/execute method.",
       "description": "Sent from StepFlow to the component server to execute a specific component with the provided input.",
       "type": "object",
       "properties": {
@@ -152,7 +147,6 @@
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "ComponentInfoParams": {
-      "title": "Parameters for components/info method.",
       "description": "Sent from StepFlow to the component server to request information about a specific component.",
       "type": "object",
       "properties": {
@@ -166,12 +160,10 @@
       ]
     },
     "ComponentListParams": {
-      "title": "Parameters for components/list method.",
       "description": "Sent from StepFlow to the component server to request a list of all available components.",
       "type": "object"
     },
     "GetBlobParams": {
-      "title": "Parameters for blobs/get method.",
       "description": "Sent from the component server to the StepFlow to retrieve the content of a specific blob.",
       "type": "object",
       "properties": {
@@ -185,12 +177,10 @@
       ]
     },
     "BlobId": {
-      "title": "Blob ID",
       "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
       "type": "string"
     },
     "PutBlobParams": {
-      "title": "Parameters for blobs/put method.",
       "description": "Sent from the component server to the StepFlow to store a blob with the provided content.",
       "type": "object",
       "properties": {
@@ -225,7 +215,7 @@
           "$ref": "#/$defs/RequestId"
         },
         "result": {
-          "title": "Method Result",
+          "title": "MethodResult",
           "description": "The result of a successful method execution.",
           "oneOf": [
             {
@@ -255,7 +245,6 @@
       ]
     },
     "InitializeResult": {
-      "title": "Response for initialize method.",
       "description": "Sent from the component server back to StepFlow with the result of initialization.\nThe component server will not be initialized until it receives the `initialized` notification.",
       "type": "object",
       "properties": {
@@ -271,7 +260,6 @@
       ]
     },
     "ComponentExecuteResult": {
-      "title": "Response for components/execute method.",
       "description": "Sent from the component server back to StepFlow with the result of the component execution.",
       "type": "object",
       "properties": {
@@ -285,7 +273,6 @@
       ]
     },
     "ComponentInfoResult": {
-      "title": "Response for components/info method.",
       "description": "Sent from the component server back to StepFlow with information about the requested component.",
       "type": "object",
       "properties": {
@@ -346,7 +333,6 @@
       "example": "\n                {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"item\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                        \"label\": {\"type\": \"string\"},\n                    },\n                    \"required\": [\"label\"]\n                    }\n                },\n                \"required\": [\"item\"]\n                }\n            "
     },
     "ListComponentsResult": {
-      "title": "Response for components/list method.",
       "description": "Sent from the component server back to StepFlow with a list of all available components.",
       "type": "object",
       "properties": {
@@ -363,7 +349,6 @@
       ]
     },
     "GetBlobResult": {
-      "title": "Response for blobs/get method.",
       "description": "Sent from the StepFlow back to the component server with the content of the requested blob.",
       "type": "object",
       "properties": {
@@ -376,7 +361,6 @@
       ]
     },
     "PutBlobResult": {
-      "title": "Response for blobs/put method.",
       "description": "Sent from the StepFlow back to the component server with the ID of the stored blob.",
       "type": "object",
       "properties": {
@@ -409,23 +393,19 @@
       ]
     },
     "Error": {
-      "title": "Error object",
       "description": "An error returned from a method execution.",
       "type": "object",
       "properties": {
         "code": {
-          "title": "Error code",
           "description": "A numeric code indicating the error type.",
           "type": "integer",
           "format": "int64"
         },
         "message": {
-          "title": "Error message",
           "description": "Concise, single-sentence description of the error.",
           "type": "string"
         },
         "data": {
-          "title": "Error data",
           "description": "Primitive or structured value that contains additional information about the error.",
           "anyOf": [
             {
@@ -451,12 +431,11 @@
           "default": "2.0"
         },
         "method": {
-          "title": "Method",
           "description": "The notification method being called.",
           "$ref": "#/$defs/Method"
         },
         "params": {
-          "title": "Parameters",
+          "title": "NotificationParams",
           "description": "The parameters for the notification.",
           "oneOf": [
             {
@@ -471,7 +450,6 @@
       ]
     },
     "Initialized": {
-      "title": "Parameters for initialized notification.",
       "description": "Sent from StepFlow to the component server after initialization is complete.",
       "type": "object"
     }

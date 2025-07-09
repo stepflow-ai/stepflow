@@ -508,12 +508,84 @@ mod tests {
         );
     }
 
+    /// Helper function to validate that all titles in a schema are valid Python class names
+    fn validate_python_class_names(schema: &serde_json::Value) -> Vec<String> {
+        let mut invalid_titles = Vec::new();
+
+        fn is_valid_python_class_name(name: &str) -> bool {
+            // Python class names must:
+            // - Start with a letter or underscore
+            // - Contain only letters, numbers, and underscores
+            // - Not be a Python keyword
+
+            // Check basic pattern
+            if !name
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+            {
+                return false;
+            }
+
+            if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return false;
+            }
+
+            // Check if it's not a Python keyword
+            let python_keywords = [
+                "False", "None", "True", "and", "as", "assert", "break", "class", "continue",
+                "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if",
+                "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
+                "try", "while", "with", "yield", "async", "await",
+            ];
+
+            !python_keywords.contains(&name)
+        }
+
+        fn extract_titles_recursive(obj: &serde_json::Value, invalid_titles: &mut Vec<String>) {
+            match obj {
+                serde_json::Value::Object(map) => {
+                    // Check if this object has a title
+                    if let Some(serde_json::Value::String(title)) = map.get("title") {
+                        if !is_valid_python_class_name(title) {
+                            invalid_titles.push(title.clone());
+                        }
+                    }
+
+                    // Recursively search in all values
+                    for value in map.values() {
+                        extract_titles_recursive(value, invalid_titles);
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    // Recursively search in all array items
+                    for item in arr {
+                        extract_titles_recursive(item, invalid_titles);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        extract_titles_recursive(schema, &mut invalid_titles);
+        invalid_titles
+    }
+
     #[test]
     fn test_schema_comparison_with_flow_json() {
         let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
         let generated_schema = generator.root_schema_for::<Flow>();
         let generated_json = serde_json::to_value(&generated_schema)
             .expect("Failed to convert generated schema to JSON");
+
+        // Validate that all titles are valid Python class names
+        let invalid_titles = validate_python_class_names(&generated_json);
+        assert!(
+            invalid_titles.is_empty(),
+            "Found invalid Python class names in flow schema titles: {:?}. \
+             All titles must be valid Python class names for --use-title-as-name to work.",
+            invalid_titles
+        );
 
         let flow_schema_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../schemas/flow.json");
 
