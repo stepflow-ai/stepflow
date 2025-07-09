@@ -7,6 +7,7 @@ plugins:
     type: builtin
 
   # MCP server for filesystem operations
+  # Note: On macOS, use "/private/tmp" instead of "/tmp" due to symlink resolution
   - name: filesystem
     type: mcp
     command: npx
