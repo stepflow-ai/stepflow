@@ -71,12 +71,17 @@ impl BuiltinComponent for PutBlobComponent {
 
         let data_ref = ValueRef::new(input.data);
 
+        // DEBUG: Log what's being stored
+        tracing::debug!("put_blob storing data: {:?}", data_ref.as_ref());
+
         // Create the blob through the execution context
         let blob_id = context
             .state_store()
             .put_blob(data_ref)
             .await
             .change_context(BuiltinError::Internal)?;
+
+        tracing::debug!("put_blob created blob with ID: {}", blob_id.as_str());
 
         let output = PutBlobOutput {
             blob_id: blob_id.as_str().to_string(),
@@ -113,7 +118,7 @@ struct GetBlobInput {
 }
 
 /// Output from the get_blob component
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 struct GetBlobOutput {
     /// The JSON data stored in the blob
     data: serde_json::Value,
@@ -149,9 +154,13 @@ impl BuiltinComponent for GetBlobComponent {
             .await
             .change_context(BuiltinError::Internal)?;
 
+        tracing::debug!("get_blob retrieved data: {:?}", data_ref.as_ref());
+
         let output = GetBlobOutput {
             data: data_ref.as_ref().clone(),
         };
+
+        tracing::debug!("get_blob output structure: {:?}", output);
 
         let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
 
