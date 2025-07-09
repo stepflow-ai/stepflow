@@ -65,7 +65,7 @@ pub(crate) fn method_params(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::blobs::PutBlobParams>(),
     ];
     json_schema!({
-        "title": "Method Parameters",
+        "title": "MethodParams",
         "description": "Parameters for the method call.",
         "oneOf": params
     })
@@ -81,7 +81,7 @@ pub(crate) fn method_result(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::blobs::PutBlobResult>(),
     ];
     json_schema!({
-        "title": "Method Result",
+        "title": "MethodResult",
         "description": "Result of the method call.",
         "oneOf": params
     })
@@ -90,7 +90,7 @@ pub(crate) fn method_result(generator: &mut schemars::SchemaGenerator) -> Schema
 pub(crate) fn notification_params(generator: &mut schemars::SchemaGenerator) -> Schema {
     let params = vec![generator.subschema_for::<super::initialization::Initialized>()];
     json_schema!({
-        "title": "Notification Parameters",
+        "title": "NotificationParams",
         "description": "Parameters for the notification.",
         "oneOf": params
     })

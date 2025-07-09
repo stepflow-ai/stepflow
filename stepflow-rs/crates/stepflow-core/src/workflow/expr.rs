@@ -22,8 +22,10 @@ use crate::workflow::ValueRef;
 )]
 #[serde(rename_all = "camelCase")]
 pub enum BaseRef {
+    /// # WorkflowReference
     /// Reference properties of the workflow.
     Workflow(WorkflowRef),
+    /// # StepReference
     /// Reference the output of a step.
     #[serde(untagged)]
     Step { step: String },
@@ -49,6 +51,8 @@ pub enum WorkflowRef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(untagged, rename_all = "camelCase")]
 pub enum Expr {
+    /// # Reference
+    /// Reference a value from a step, workflow, or other source.
     #[serde(rename_all = "camelCase")]
     Ref {
         /// The source of the reference.
@@ -65,6 +69,7 @@ pub enum Expr {
         #[serde(default, skip_serializing_if = "SkipAction::is_default")]
         on_skip: SkipAction,
     },
+    /// # EscapedLiteral
     /// A literal value that was escaped.
     ///
     /// No template expansion is performed within the value, allowing
@@ -75,6 +80,7 @@ pub enum Expr {
         #[serde(rename = "$literal")]
         literal: ValueRef,
     },
+    /// # Literal
     /// A direct literal value that serializes naturally without special syntax
     Literal(ValueRef),
 }
@@ -166,8 +172,10 @@ impl Expr {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", tag = "action")]
 pub enum SkipAction {
+    /// # OnSkipSkip
     Skip,
     #[serde(rename_all = "camelCase")]
+    /// # OnSkipDefault
     UseDefault {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<ValueRef>,

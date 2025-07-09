@@ -15,8 +15,48 @@
 
 from .server import StepflowStdioServer
 from .context import StepflowContext
+from .flow_builder import FlowBuilder, StepHandle
+from .value import (
+    Value,
+    Valuable,
+    JsonPath,
+    StepReference, 
+    WorkflowInput
+)
+from .generated_flow import (
+    ErrorAction,
+    OnErrorFail,
+    OnErrorSkip,
+    OnErrorRetry,
+    OnErrorDefault,
+    SkipAction,
+    OnSkipSkip,
+    OnSkipDefault,
+)
 
-__all__ = ["StepflowStdioServer", "StepflowContext"]
+__all__ = [
+    # Core classes
+    "StepflowStdioServer", 
+    "StepflowContext", 
+    "FlowBuilder",
+    # Value API for cleaner workflow definitions
+    "Value",
+    "Valuable",
+    # Helper classes for type hints and intermediate objects
+    "JsonPath",
+    "StepHandle", 
+    "StepReference", 
+    "WorkflowInput",
+    # Error and Skip Action types
+    "ErrorAction",
+    "OnErrorFail",
+    "OnErrorSkip", 
+    "OnErrorRetry",
+    "OnErrorDefault",
+    "SkipAction",
+    "OnSkipSkip",
+    "OnSkipDefault",
+]
 
 if __name__ == "__main__":
     from . import main

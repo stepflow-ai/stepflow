@@ -62,7 +62,6 @@ impl<'a> Message<'a> {
     }
 }
 
-/// # JSON-RPC Request ID.
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Eq, PartialEq, Clone, Hash)]
 #[serde(untagged)]
 /// The identifier for a JSON-RPC request. Can be either a string or an integer.
@@ -119,17 +118,13 @@ impl From<&'_ Uuid> for RequestId {
     }
 }
 
-/// # Error object
 /// An error returned from a method execution.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct Error<'a> {
-    /// # Error code
     /// A numeric code indicating the error type.
     pub code: i64,
-    /// # Error message
     /// Concise, single-sentence description of the error.
     pub message: Cow<'a, str>,
-    /// # Error data
     /// Primitive or structured value that contains additional information about the error.
     #[serde(borrow)]
     pub data: Option<LazyValue<'a>>,
@@ -167,10 +162,8 @@ pub struct MethodRequest<'a> {
     #[serde(default)]
     pub jsonrpc: JsonRpc,
     pub id: RequestId,
-    /// # Method
     /// The method being called.
     pub method: Method,
-    /// # Parameters
     /// The parameters for the method call. Set on method requests.
     #[schemars(schema_with = "method_params")]
     pub params: Option<LazyValue<'a>>,
@@ -256,10 +249,8 @@ impl<'a> MethodResponse<'a> {
 pub struct Notification<'a> {
     #[serde(default)]
     pub jsonrpc: JsonRpc,
-    /// # Method
     /// The notification method being called.
     pub method: Method,
-    /// # Parameters
     /// The parameters for the notification.
     #[serde(borrow)]
     #[schemars(schema_with = "notification_params")]
@@ -316,12 +307,84 @@ mod tests {
         assert!(parsed.data.is_some());
     }
 
+    /// Helper function to validate that all titles in a schema are valid Python class names
+    fn validate_python_class_names(schema: &serde_json::Value) -> Vec<String> {
+        let mut invalid_titles = Vec::new();
+
+        fn is_valid_python_class_name(name: &str) -> bool {
+            // Python class names must:
+            // - Start with a letter or underscore
+            // - Contain only letters, numbers, and underscores
+            // - Not be a Python keyword
+
+            // Check basic pattern
+            if !name
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+            {
+                return false;
+            }
+
+            if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return false;
+            }
+
+            // Check if it's not a Python keyword
+            let python_keywords = [
+                "False", "None", "True", "and", "as", "assert", "break", "class", "continue",
+                "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if",
+                "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
+                "try", "while", "with", "yield", "async", "await",
+            ];
+
+            !python_keywords.contains(&name)
+        }
+
+        fn extract_titles_recursive(obj: &serde_json::Value, invalid_titles: &mut Vec<String>) {
+            match obj {
+                serde_json::Value::Object(map) => {
+                    // Check if this object has a title
+                    if let Some(serde_json::Value::String(title)) = map.get("title") {
+                        if !is_valid_python_class_name(title) {
+                            invalid_titles.push(title.clone());
+                        }
+                    }
+
+                    // Recursively search in all values
+                    for value in map.values() {
+                        extract_titles_recursive(value, invalid_titles);
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    // Recursively search in all array items
+                    for item in arr {
+                        extract_titles_recursive(item, invalid_titles);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        extract_titles_recursive(schema, &mut invalid_titles);
+        invalid_titles
+    }
+
     #[test]
     fn test_schema_comparison_with_protocol_json() {
         let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
         let generated_schema = generator.root_schema_for::<Message<'static>>();
         let generated_json = serde_json::to_value(&generated_schema)
             .expect("Failed to convert generated schema to JSON");
+
+        // Validate that all titles are valid Python class names
+        let invalid_titles = validate_python_class_names(&generated_json);
+        assert!(
+            invalid_titles.is_empty(),
+            "Found invalid Python class names in protocol schema titles: {:?}. \
+             All titles must be valid Python class names for --use-title-as-name to work.",
+            invalid_titles
+        );
 
         // Read the reference schema
         let protocol_schema_path = concat!(

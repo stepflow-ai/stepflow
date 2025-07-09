@@ -50,7 +50,6 @@ impl schemars::JsonSchema for BlobId {
 
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
-            "title": "Blob ID",
             "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
             "type": "string",
         })

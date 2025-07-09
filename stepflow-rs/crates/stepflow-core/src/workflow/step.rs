@@ -48,16 +48,20 @@ pub struct Step {
 )]
 #[serde(rename_all = "camelCase", tag = "action")]
 pub enum ErrorAction {
+    /// # OnErrorFail
     /// If the step fails, the flow will fail.
     Fail,
+    /// # OnErrorSkip
     /// If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.
     Skip,
+    /// # OnErrorDefault
     /// If the step fails, use the `defaultValue` instead.
     #[serde(rename_all = "camelCase")]
     UseDefault {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<ValueTemplate>,
     },
+    /// # OnErrorRetry
     /// If the step fails, retry it.
     Retry,
 }

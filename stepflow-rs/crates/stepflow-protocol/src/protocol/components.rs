@@ -20,8 +20,6 @@ use crate::protocol::Method;
 
 use super::ProtocolMethod;
 
-/// # Parameters for components/execute method.
-///
 /// Sent from StepFlow to the component server to execute a specific component with the provided input.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentExecuteParams {
@@ -31,8 +29,6 @@ pub struct ComponentExecuteParams {
     pub input: ValueRef,
 }
 
-/// # Response for components/execute method.
-///
 /// Sent from the component server back to StepFlow with the result of the component execution.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentExecuteResult {
@@ -45,8 +41,6 @@ impl ProtocolMethod for ComponentExecuteParams {
     type Response = ComponentExecuteResult;
 }
 
-/// # Parameters for components/info method.
-///
 /// Sent from StepFlow to the component server to request information about a specific component.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentInfoParams {
@@ -54,8 +48,6 @@ pub struct ComponentInfoParams {
     pub component: Component,
 }
 
-/// # Response for components/info method.
-///
 /// Sent from the component server back to StepFlow with information about the requested component.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentInfoResult {
@@ -68,14 +60,10 @@ impl ProtocolMethod for ComponentInfoParams {
     type Response = ComponentInfoResult;
 }
 
-/// # Parameters for components/list method.
-///
 /// Sent from StepFlow to the component server to request a list of all available components.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentListParams {}
 
-/// # Response for components/list method.
-///
 /// Sent from the component server back to StepFlow with a list of all available components.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ListComponentsResult {
