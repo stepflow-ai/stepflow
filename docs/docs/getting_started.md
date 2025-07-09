@@ -119,7 +119,7 @@ output:
 
 ### 2. Create an Input File
 
-Similarly, create `input.json` with the properties defined in the input schema of the YAML file:
+Similarly, create `input.json` with the `question` and `context` properties defined in the `input_schema` of the YAML file:
 
 ```json
 {
@@ -145,7 +145,7 @@ cd stepflow-rs
 cargo run -- run --flow=ai_qa_workflow.yaml --input=input.json
 ```
 
-You should see output like:
+You should see output with the `answer` and `metadata` properties as defined in the `output_schema` of the YAML file:
 
 ```json
 {
