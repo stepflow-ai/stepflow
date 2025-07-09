@@ -14,7 +14,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::workflow::ValueRef;
+use crate::workflow::{json_path::JsonPath, ValueRef};
+
 
 /// An expression that can be either a literal value or a template expression.
 #[derive(
@@ -58,13 +59,13 @@ pub enum Expr {
         /// The source of the reference.
         #[serde(rename = "$from")]
         from: BaseRef,
-        /// JSON pointer expression to apply to the referenced value.
+        /// JSON path expression to apply to the referenced value.
         ///
-        /// May be omitted to use the entire value.
-        /// May also be a bare field name (without the leading `/`) if
+        /// Defaults to `$` (the whole referenced value).
+        /// May also be a bare field name (without the leading $) if
         /// the referenced value is an object.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        path: Option<String>,
+        #[serde(default, skip_serializing_if = "JsonPath::is_empty")]
+        path: JsonPath,
 
         #[serde(default, skip_serializing_if = "SkipAction::is_default")]
         on_skip: SkipAction,
@@ -99,47 +100,46 @@ impl Expr {
         }
     }
 
-    fn new_ref(from: BaseRef, path: String, on_skip: SkipAction) -> Self {
-        let path = Some(path).filter(|s| !s.is_empty());
+    fn new_ref(from: BaseRef, path: impl Into<JsonPath>, on_skip: SkipAction) -> Self {
         Self::Ref {
             from,
-            path,
+            path: path.into(),
             on_skip,
         }
     }
 
     pub fn step_path(
         step: impl Into<String>,
-        path: impl Into<String>,
+        path: impl Into<JsonPath>,
         on_skip: SkipAction,
     ) -> Self {
-        Self::new_ref(BaseRef::step_output(step), path.into(), on_skip)
+        Self::new_ref(BaseRef::step_output(step), path, on_skip)
     }
 
-    pub fn input_path(path: impl Into<String>, on_skip: SkipAction) -> Self {
-        Self::new_ref(BaseRef::WORKFLOW_INPUT, path.into(), on_skip)
+    pub fn input_path(path: impl Into<JsonPath>, on_skip: SkipAction) -> Self {
+        Self::new_ref(BaseRef::WORKFLOW_INPUT, path, on_skip)
     }
 
     // Convenience constructors with default skip behavior
 
     /// Create a step reference
-    /// - `step_ref("step1", None)` creates `{"$from": {"step": "step1"}}`
-    /// - `step_ref("step1", Some("field"))` creates `{"$from": {"step": "step1"}, "path": "field"}`
-    pub fn step_ref(step_id: impl Into<String>, path: Option<&str>) -> Self {
+    /// - `step_ref("step1", JsonPath::default())` creates `{"$from": {"step": "step1"}}`
+    /// - `step_ref("step1", JsonPath::from("field"))` creates `{"$from": {"step": "step1"}, "path": "field"}`
+    pub fn step_ref(step_id: impl Into<String>, path: JsonPath) -> Self {
         Self::Ref {
             from: BaseRef::step_output(step_id),
-            path: path.map(|p| p.to_string()),
+            path,
             on_skip: SkipAction::default(),
         }
     }
 
     /// Create a workflow input reference
-    /// - `workflow_input(None)` creates `{"$from": {"workflow": "input"}}`
-    /// - `workflow_input(Some("field"))` creates `{"$from": {"workflow": "input"}, "path": "field"}`
-    pub fn workflow_input(path: Option<&str>) -> Self {
+    /// - `workflow_input(JsonPath::default())` creates `{"$from": {"workflow": "input"}}`
+    /// - `workflow_input(JsonPath::from("field"))` creates `{"$from": {"workflow": "input"}, "path": "field"}`
+    pub fn workflow_input(path: JsonPath) -> Self {
         Self::Ref {
             from: BaseRef::WORKFLOW_INPUT,
-            path: path.map(|p| p.to_string()),
+            path,
             on_skip: SkipAction::default(),
         }
     }
@@ -152,11 +152,17 @@ impl Expr {
         }
     }
 
-    pub fn path(&self) -> Option<&str> {
+    pub fn path(&self) -> Option<&JsonPath> {
         match self {
             Self::EscapedLiteral { .. } => None,
             Self::Literal(_) => None,
-            Self::Ref { path, .. } => path.as_deref(),
+            Self::Ref { path, .. } => {
+                if path.is_empty() {
+                    None
+                } else {
+                    Some(path)
+                }
+            }
         }
     }
 
@@ -217,7 +223,7 @@ mod tests {
             @r###"
         $from:
           workflow: input
-        path: out
+        path: $.out
         "###);
 
         // We don't test input references with skip actions, since they don't make sense.
@@ -233,7 +239,7 @@ mod tests {
             @r###"
         $from:
           step: step1
-        path: out
+        path: $.out
         "###);
 
         // Step reference with and without path, with use_default skip action (use default).
@@ -248,7 +254,7 @@ mod tests {
             @r###"
         $from:
           step: step1
-        path: out
+        path: $.out
         onSkip:
           action: useDefault
         "###);
@@ -259,7 +265,7 @@ mod tests {
             @r###"
         $from:
           step: step1
-        path: out
+        path: $.out
         onSkip:
           action: useDefault
           defaultValue: test_default
@@ -313,6 +319,7 @@ mod tests {
             }
         );
     }
+
 
     #[test]
     fn test_expr_with_skip_action_from_yaml() {

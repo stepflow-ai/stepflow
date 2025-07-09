@@ -185,11 +185,11 @@ fn validate_expression_references(
                 }
 
                 // Generate ignored diagnostic about potential field access issues (when we don't have schema info)
-                if let Some(field_name) = field_path {
+                if !field_path.is_empty() {
                     diagnostics.add(
                         DiagnosticMessage::UnvalidatedFieldAccess {
                             step_id: step.clone(),
-                            field: field_name.clone(),
+                            field: field_path.to_string(),
                             reason: "no output schema available".to_string(),
                         },
                         path.to_vec(),
@@ -199,11 +199,11 @@ fn validate_expression_references(
             BaseRef::Workflow(WorkflowRef::Input) => {
                 // Workflow input reference is always valid
                 // Generate ignored diagnostic about unvalidated field access on workflow input
-                if let Some(field_name) = field_path {
+                if !field_path.is_empty() {
                     diagnostics.add(
                         DiagnosticMessage::UnvalidatedFieldAccess {
                             step_id: "workflow_input".to_string(),
-                            field: field_name.clone(),
+                            field: field_path.to_string(),
                             reason: "no input schema available".to_string(),
                         },
                         path.to_vec(),
@@ -373,7 +373,7 @@ mod tests {
     use super::*;
     use crate::diagnostics::DiagnosticMessage;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, Step};
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, JsonPath, Step};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
@@ -399,7 +399,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step2", json!({"$from": {"step": "step1"}})),
             ],
-            output: ValueTemplate::step_ref("step2", None),
+            output: ValueTemplate::step_ref("step2", JsonPath::default()),
             test: None,
             examples: vec![],
         };
@@ -423,7 +423,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
                 create_test_step("step2", json!({"$from": {"workflow": "input"}})),
             ],
-            output: ValueTemplate::step_ref("step2", None),
+            output: ValueTemplate::step_ref("step2", JsonPath::default()),
             test: None,
             examples: vec![],
         };
@@ -451,7 +451,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
             ],
-            output: ValueTemplate::step_ref("step1", None),
+            output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: vec![],
         };
@@ -479,7 +479,7 @@ mod tests {
                 "step1",
                 json!({"$from": {"step": "step1"}}),
             )],
-            output: ValueTemplate::step_ref("step1", None),
+            output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: vec![],
         };
@@ -507,7 +507,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step2", json!({"$from": {"workflow": "input"}})), // Not referenced
             ],
-            output: ValueTemplate::step_ref("step1", None),
+            output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: vec![],
         };
@@ -535,7 +535,7 @@ mod tests {
                 "step1",
                 json!({"$from": {"workflow": "input"}}),
             )],
-            output: ValueTemplate::step_ref("step1", None),
+            output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: vec![],
         };
@@ -569,13 +569,13 @@ mod tests {
             steps: vec![Step {
                 id: "step1".to_string(),
                 component: Component::from_string(""), // Empty builtin name
-                input: ValueTemplate::workflow_input(None),
+                input: ValueTemplate::workflow_input(JsonPath::default()),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
             }],
-            output: ValueTemplate::step_ref("step1", None),
+            output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: vec![],
         };
@@ -603,13 +603,13 @@ mod tests {
             steps: vec![Step {
                 id: "step1".to_string(),
                 component: Component::from_string("eval"), // Valid builtin
-                input: ValueTemplate::workflow_input(None),
+                input: ValueTemplate::workflow_input(JsonPath::default()),
                 input_schema: None,
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
             }],
-            output: ValueTemplate::step_ref("step1", None),
+            output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: vec![],
         };

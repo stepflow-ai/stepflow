@@ -101,6 +101,28 @@ pnpm lint
 pnpm type-check
 ```
 
+### Schema Generation
+When making changes to core types, you may need to regenerate schemas and derived code:
+
+```bash
+# Regenerate JSON schemas from Rust types (run from stepflow-rs directory)
+cd stepflow-rs
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test
+
+# Regenerate Python types from updated schemas
+cd sdks/python
+uv run python generate.py
+
+# Check if Python types are up to date without regenerating
+cd sdks/python
+uv run python generate.py --check
+```
+
+**Important**: Always regenerate schemas after modifying the workflow and protocol types (in `stepflow-core` and `stepflow-protocol`, respectively). The schema files are used by:
+- Python SDK type generation
+- Documentation and examples
+- API validation in server components
+
 ## Project Architecture
 
 Step Flow is an execution engine for AI workflows, built in Rust. The project is structured as a workspace with multiple crates, each serving a specific purpose.

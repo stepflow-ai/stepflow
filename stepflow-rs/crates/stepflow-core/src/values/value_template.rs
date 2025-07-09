@@ -18,7 +18,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::ValueRef;
-use crate::workflow::Expr;
+use crate::workflow::{Expr, JsonPath};
 
 /// Internal representation of a value template that can contain expressions or literal JSON values.
 ///
@@ -139,16 +139,16 @@ impl ValueTemplate {
     }
 
     /// Create a step reference template
-    /// - `step_ref("step1", None)` creates `{"$from": {"step": "step1"}}`
-    /// - `step_ref("step1", Some("field"))` creates `{"$from": {"step": "step1"}, "path": "field"}`
-    pub fn step_ref(step_id: impl Into<String>, path: Option<&str>) -> Self {
+    /// - `step_ref("step1", JsonPath::default())` creates `{"$from": {"step": "step1"}}`
+    /// - `step_ref("step1", JsonPath::from("field"))` creates `{"$from": {"step": "step1"}, "path": "field"}`
+    pub fn step_ref(step_id: impl Into<String>, path: JsonPath) -> Self {
         Self::expression(Expr::step_ref(step_id, path))
     }
 
     /// Create a workflow input reference template
-    /// - `workflow_input(None)` creates `{"$from": {"workflow": "input"}}`
-    /// - `workflow_input(Some("field"))` creates `{"$from": {"workflow": "input"}, "path": "field"}`
-    pub fn workflow_input(path: Option<&str>) -> Self {
+    /// - `workflow_input(JsonPath::default())` creates `{"$from": {"workflow": "input"}}`
+    /// - `workflow_input(JsonPath::from("field"))` creates `{"$from": {"workflow": "input"}, "path": "field"}`
+    pub fn workflow_input(path: JsonPath) -> Self {
         Self::expression(Expr::workflow_input(path))
     }
 
@@ -503,7 +503,7 @@ mod tests {
         // Create an expression template
         let expr = Expr::Ref {
             from: BaseRef::Workflow(WorkflowRef::Input),
-            path: Some("name".to_string()),
+            path: "name".into(),
             on_skip: Default::default(),
         };
         let expr_template = ValueTemplate::expression(expr);
@@ -522,7 +522,7 @@ mod tests {
         // Create a template with both literals and expressions
         let expr = Expr::Ref {
             from: BaseRef::Workflow(WorkflowRef::Input),
-            path: Some("name".to_string()),
+            path: "name".into(),
             on_skip: Default::default(),
         };
 
@@ -593,58 +593,6 @@ mod tests {
             "path": "name"
         }));
         assert!(from_like.is_literal()); // literal doesn't parse expressions, creates literals
-    }
-
-    #[test]
-    fn test_convenience_constructors() {
-        // Test step reference without path
-        let step_ref = ValueTemplate::step_ref("step1", None);
-        let serialized = serde_json::to_string(&step_ref).unwrap();
-        assert!(serialized.contains(r#""$from":{"step":"step1"}"#));
-        assert!(!serialized.contains("path"));
-
-        // Test step reference with path
-        let step_ref_path = ValueTemplate::step_ref("step1", Some("field"));
-        let serialized = serde_json::to_string(&step_ref_path).unwrap();
-        assert!(serialized.contains(r#""$from":{"step":"step1"}"#));
-        assert!(serialized.contains(r#""path":"field""#));
-
-        // Test workflow input reference without path
-        let workflow_input = ValueTemplate::workflow_input(None);
-        let serialized = serde_json::to_string(&workflow_input).unwrap();
-        assert!(serialized.contains(r#""$from":{"workflow":"input"}"#));
-        assert!(!serialized.contains("path"));
-
-        // Test workflow input with path
-        let workflow_input_path = ValueTemplate::workflow_input(Some("name"));
-        let serialized = serde_json::to_string(&workflow_input_path).unwrap();
-        assert!(serialized.contains(r#""$from":{"workflow":"input"}"#));
-        assert!(serialized.contains(r#""path":"name""#));
-
-        // Test From<Expr> trait
-        let expr = Expr::step_ref("step2", None);
-        let template: ValueTemplate = expr.into();
-        let serialized = serde_json::to_string(&template).unwrap();
-        assert!(serialized.contains(r#""$from":{"step":"step2"}"#));
-
-        // Demonstrate the improvement: Before vs After
-
-        // BEFORE (verbose and error-prone):
-        // let verbose = serde_json::from_value(json!({"$from": {"step": "step1"}})).unwrap();
-
-        // AFTER (clean and readable):
-        let clean = ValueTemplate::step_ref("step1", None);
-
-        // Both produce the same result
-        let verbose =
-            serde_json::from_value(serde_json::json!({"$from": {"step": "step1"}})).unwrap();
-        assert_eq!(clean, verbose);
-
-        // The clean version is much more readable and less error-prone:
-        // - No JSON string literals to get wrong
-        // - No unwrap() calls that could panic
-        // - Clear intent from the method name
-        // - IDE autocompletion and type checking
     }
 
     #[test]
@@ -733,7 +681,7 @@ mod tests {
     #[test]
     fn test_expression_iterator() {
         // Test simple expression
-        let simple_expr = ValueTemplate::step_ref("step1", None);
+        let simple_expr = ValueTemplate::step_ref("step1", JsonPath::default());
         let expressions: Vec<_> = simple_expr.expressions().collect();
         assert_eq!(expressions.len(), 1);
 
@@ -741,11 +689,11 @@ mod tests {
         let mut obj = IndexMap::new();
         obj.insert(
             "step1_ref".to_string(),
-            ValueTemplate::step_ref("step1", None),
+            ValueTemplate::step_ref("step1", JsonPath::default()),
         );
         obj.insert(
             "input_ref".to_string(),
-            ValueTemplate::workflow_input(Some("field")),
+            ValueTemplate::workflow_input(JsonPath::from("field")),
         );
         obj.insert(
             "literal".to_string(),
@@ -760,12 +708,15 @@ mod tests {
         let mut nested_obj = IndexMap::new();
         nested_obj.insert(
             "inner_expr".to_string(),
-            ValueTemplate::step_ref("step2", None),
+            ValueTemplate::step_ref("step2", JsonPath::default()),
         );
 
         let mut outer_obj = IndexMap::new();
         outer_obj.insert("nested".to_string(), ValueTemplate::object(nested_obj));
-        outer_obj.insert("top_level".to_string(), ValueTemplate::workflow_input(None));
+        outer_obj.insert(
+            "top_level".to_string(),
+            ValueTemplate::workflow_input(JsonPath::default()),
+        );
 
         let complex_template = ValueTemplate::object(outer_obj);
         let expressions: Vec<_> = complex_template.expressions().collect();
@@ -773,9 +724,9 @@ mod tests {
 
         // Test array with expressions
         let array_template = ValueTemplate::array(vec![
-            ValueTemplate::step_ref("step1", None),
+            ValueTemplate::step_ref("step1", JsonPath::default()),
             ValueTemplate::string("literal"),
-            ValueTemplate::workflow_input(Some("field")),
+            ValueTemplate::workflow_input(JsonPath::from("field")),
         ]);
         let expressions: Vec<_> = array_template.expressions().collect();
         assert_eq!(expressions.len(), 2); // Only expressions, not literal string

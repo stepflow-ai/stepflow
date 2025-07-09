@@ -113,18 +113,47 @@ impl ValueRef<serde_json::Value> {
         }
     }
 
-    /// Access a field or array element by path string (e.g., "field" or "0")
+    /// Access an object field by name.
     pub fn path(&self, path: &str) -> Option<ValueRef> {
         match self.0.as_ref() {
             serde_json::Value::Object(obj) => obj
                 .get(path)
                 .map(|v| ValueRef(project_to_subfield(self.0.clone(), v))),
-            serde_json::Value::Array(arr) => path.parse::<usize>().ok().and_then(|index| {
-                arr.get(index)
-                    .map(|v| ValueRef(project_to_subfield(self.0.clone(), v)))
-            }),
             _ => None,
         }
+    }
+
+    /// Access an array element by index.
+    pub fn index(&self, index: usize) -> Option<ValueRef> {
+        match self.0.as_ref() {
+            serde_json::Value::Array(arr) => arr
+                .get(index)
+                .map(|v| ValueRef(project_to_subfield(self.0.clone(), v))),
+            _ => None,
+        }
+    }
+
+    /// Access value using a JSON path
+    pub fn resolve_json_path(&self, json_path: &crate::workflow::JsonPath) -> Option<ValueRef> {
+        use crate::workflow::PathPart;
+
+        let mut current = self.clone();
+
+        for part in json_path.parts() {
+            match part {
+                PathPart::Field(field_name) => {
+                    current = current.path(field_name)?;
+                }
+                PathPart::Index(index) => {
+                    current = current.index(*index)?;
+                }
+                PathPart::IndexStr(index_str) => {
+                    current = current.path(index_str)?;
+                }
+            }
+        }
+
+        Some(current)
     }
 
     /// Cast to an object if this value is an object
@@ -311,13 +340,13 @@ mod tests {
         let value_ref = ValueRef::new(value);
 
         // Test accessing array elements by index
-        let first = value_ref.path("0").unwrap();
+        let first = value_ref.index(0).unwrap();
         assert_eq!(first.as_ref(), &json!("first"));
 
-        let second = value_ref.path("1").unwrap();
+        let second = value_ref.index(1).unwrap();
         assert_eq!(second.as_ref(), &json!("second"));
 
-        let third = value_ref.path("2").unwrap();
+        let third = value_ref.index(2).unwrap();
         assert_eq!(third.as_ref(), &json!({"nested": "value"}));
 
         // Test accessing nested field in array element
@@ -325,10 +354,7 @@ mod tests {
         assert_eq!(nested.as_ref(), &json!("value"));
 
         // Test out of bounds
-        assert!(value_ref.path("10").is_none());
-
-        // Test invalid index
-        assert!(value_ref.path("invalid").is_none());
+        assert!(value_ref.index(10).is_none());
     }
 
     #[test]
@@ -498,7 +524,7 @@ mod tests {
     }
 
     #[test]
-    fn test_array_path_access_no_cloning() {
+    fn test_array_index_access_no_cloning() {
         let value = json!([
             {"name": "first"},
             {"name": "second"},
@@ -506,10 +532,10 @@ mod tests {
         ]);
 
         let root = ValueRef::new(value);
-        let first_item = root.path("0").unwrap();
-        let second_item = root.path("1").unwrap();
-        let third_item = root.path("2").unwrap();
-        let nested_array_item = third_item.path("1").unwrap();
+        let first_item = root.index(0).unwrap();
+        let second_item = root.index(1).unwrap();
+        let third_item = root.index(2).unwrap();
+        let nested_array_item = third_item.index(1).unwrap();
 
         // Verify all array path access shares the same root Arc
         assert_same_base(&root, &first_item);
