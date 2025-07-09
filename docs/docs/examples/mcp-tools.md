@@ -318,9 +318,3 @@ steps:
         path: /tmp/workspace/${{ file.name }}
         content: ${{ file.content }}
 ```
-
-## Next Steps
-
-- [MCP Protocol Specification](https://github.com/anthropics/mcp)
-- [Building MCP Servers](https://github.com/anthropics/mcp/docs)
-- [StepFlow MCP Integration Details](../components/mcp-tools.md)
