@@ -167,11 +167,8 @@
               "$ref": "#/$defs/BaseRef"
             },
             "path": {
-              "description": "JSON pointer expression to apply to the referenced value.\n\nMay be omitted to use the entire value.\nMay also be a bare field name (without the leading `/`) if\nthe referenced value is an object.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "description": "JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.",
+              "$ref": "#/$defs/JsonPath"
             },
             "onSkip": {
               "$ref": "#/$defs/SkipAction"
@@ -238,6 +235,17 @@
       "type": "string",
       "enum": [
         "input"
+      ]
+    },
+    "JsonPath": {
+      "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
+      "type": "string",
+      "examples": [
+        "field",
+        "$.field",
+        "$[\"field\"]",
+        "$[0]",
+        "$.field[0].nested"
       ]
     },
     "SkipAction": {

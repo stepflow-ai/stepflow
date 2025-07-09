@@ -175,7 +175,7 @@ fn extract_dep_from_expr(expr: &Expr) -> Result<Option<Dependency>> {
             path,
             on_skip,
         } => {
-            let field = path.clone();
+            let field = path.outer_field().map(|f| f.to_string());
             match from {
                 BaseRef::Step { step } => Ok(Some(Dependency::StepOutput {
                     step_id: step.clone(),
@@ -196,7 +196,7 @@ mod tests {
     use super::*;
     use crate::dependencies::ValueDependencies;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, Step};
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, JsonPath, Step};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
@@ -221,7 +221,7 @@ mod tests {
                 Step {
                     id: "step1".to_string(),
                     component: Component::from_string("mock://test"),
-                    input: ValueTemplate::workflow_input(None),
+                    input: ValueTemplate::workflow_input(JsonPath::default()),
                     input_schema: None,
                     output_schema: None,
                     skip_if: None,
@@ -230,14 +230,14 @@ mod tests {
                 Step {
                     id: "step2".to_string(),
                     component: Component::from_string("mock://test"),
-                    input: ValueTemplate::step_ref("step1", None),
+                    input: ValueTemplate::step_ref("step1", JsonPath::default()),
                     input_schema: None,
                     output_schema: None,
                     skip_if: None,
                     on_error: ErrorAction::Fail,
                 },
             ],
-            output: ValueTemplate::step_ref("step2", None),
+            output: ValueTemplate::step_ref("step2", JsonPath::default()),
             test: None,
             examples: vec![],
         }
@@ -283,7 +283,7 @@ mod tests {
             from: BaseRef::Step {
                 step: "step1".to_string(),
             },
-            path: Some("should_skip".to_string()),
+            path: "should_skip".into(),
             on_skip: stepflow_core::workflow::SkipAction::UseDefault {
                 default_value: None,
             },
@@ -407,7 +407,7 @@ mod tests {
                 create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
             ],
-            output: ValueTemplate::step_ref("step1", None),
+            output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: vec![],
         };

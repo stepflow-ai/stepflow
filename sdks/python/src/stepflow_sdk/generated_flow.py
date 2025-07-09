@@ -45,6 +45,15 @@ class WorkflowRef(Enum):
     input = 'input'
 
 
+JsonPath = Annotated[
+    str,
+    Meta(
+        description='JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.',
+        examples=['field', '$.field', '$["field"]', '$[0]', '$.field[0].nested'],
+    ),
+]
+
+
 class OnSkipSkip(Struct, kw_only=True):
     action: Literal['skip']
 
@@ -143,9 +152,9 @@ class Reference(Struct, kw_only=True):
     )
     path: (
         Annotated[
-            str | None,
+            JsonPath,
             Meta(
-                description='JSON pointer expression to apply to the referenced value.\n\nMay be omitted to use the entire value.\nMay also be a bare field name (without the leading `/`) if\nthe referenced value is an object.'
+                description='JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.'
             ),
         ]
         | None

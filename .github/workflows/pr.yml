@@ -13,7 +13,8 @@ jobs:
     name: Validate PR
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
+      pull-requests: write
+      issues: write # Required for adding labels
     steps:
       - uses: amannn/action-semantic-pull-request@v5
         id: lint_pr_title
@@ -75,9 +76,10 @@ jobs:
 
       - name: Add labels
         if: steps.determine_labels.outputs.labels != ''
-        uses: actions-ecosystem/action-add-labels@v1
-        with:
-          labels: ${{ steps.determine_labels.outputs.labels }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "${{ steps.determine_labels.outputs.labels }}"
 
       - uses: marocchino/sticky-pull-request-comment@v2
         # When any previous step fails, the workflow would stop. By adding this

@@ -173,7 +173,7 @@ impl<L: ValueLoader> ValueResolver<L> {
             match base_result {
                 FlowResult::Success { result } => {
                     tracing::debug!("Resolving path '{}' on value: {:?}", path, result.as_ref());
-                    if let Some(sub_value) = result.path(path) {
+                    if let Some(sub_value) = result.resolve_json_path(path) {
                         tracing::debug!("Path '{}' resolved to: {:?}", path, sub_value.as_ref());
                         FlowResult::Success { result: sub_value }
                     } else {
@@ -287,7 +287,7 @@ impl<L: ValueLoader> ValueResolver<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::{Component, ErrorAction, Step};
+    use crate::workflow::{Component, ErrorAction, JsonPath, Step};
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -414,7 +414,7 @@ mod tests {
         let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
 
         // Test resolving ValueTemplate - create a template with an expression by deserializing from JSON
-        let template = ValueTemplate::workflow_input(Some("name"));
+        let template = ValueTemplate::workflow_input(JsonPath::from("name"));
         let resolved = resolver.resolve_template(&template).await.unwrap();
         match resolved {
             FlowResult::Success { result } => {
