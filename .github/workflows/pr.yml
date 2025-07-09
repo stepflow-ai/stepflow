@@ -10,19 +10,97 @@ on:
 
 jobs:
   main:
-    name: Validate PR title
+    name: Validate PR
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
     steps:
       - uses: amannn/action-semantic-pull-request@v5
+        id: lint_pr_title
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           scopes: |
             core
             py
             ts
+            docs
             ui
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # TODO: Label PRs based on affected components.
+      - uses: actions/checkout@v4
+
+      - name: Check changed paths
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            core:
+              - 'stepflow-rs/**'
+            py:
+              - 'sdks/python/**'
+            ts:
+              - 'sdks/typescript/**'
+            docs:
+              - 'docs/**'
+            ui:
+              - 'stepflow-ui/**'
+
+      - name: Determine labels
+        id: determine_labels
+        run: |
+          labels=""
+          scope="${{ steps.lint_pr_title.outputs.scope }}"
+
+          # Add scope as label if set
+          if [[ -n "$scope" ]]; then
+            labels="$scope"
+          fi
+
+          # Add labels for changed areas
+          for area in core py ts docs ui; do
+            case $area in
+              core) changed="${{ steps.changes.outputs.core }}" ;;
+              py) changed="${{ steps.changes.outputs.py }}" ;;
+              ts) changed="${{ steps.changes.outputs.ts }}" ;;
+              docs) changed="${{ steps.changes.outputs.docs }}" ;;
+              ui) changed="${{ steps.changes.outputs.ui }}" ;;
+            esac
+
+            if [[ "$changed" == "true" ]] && [[ "$labels" != *"$area"* ]]; then
+              [[ -n "$labels" ]] && labels="$labels,$area" || labels="$area"
+            fi
+          done
+
+          echo "labels=$labels" >> $GITHUB_OUTPUT
+
+      - name: Add labels
+        if: steps.determine_labels.outputs.labels != ''
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          labels: ${{ steps.determine_labels.outputs.labels }}
+
+      - uses: marocchino/sticky-pull-request-comment@v2
+        # When any previous step fails, the workflow would stop. By adding this
+        # condition you can continue the execution with the populated error message.
+        # NOTE: the `always() && ` is significant.
+        if: always() && (steps.lint_pr_title.outputs.error_message != null)
+        with:
+          header: pr-title-lint-error
+          message: |
+            Hey there and thank you for opening this pull request! 👋🏼
+
+            We require pull request titles to follow the [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/) and it looks like your proposed title needs to be adjusted.
+
+            Details:
+
+            ```
+            ${{ steps.lint_pr_title.outputs.error_message }}
+            ```
+
+      # Delete a previous comment when the issue has been resolved
+      - if: ${{ steps.lint_pr_title.outputs.error_message == null }}
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-title-lint-error
+          delete: true
+
