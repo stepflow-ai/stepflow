@@ -323,4 +323,4 @@ steps:
 
 - [MCP Protocol Specification](https://github.com/anthropics/mcp)
 - [Building MCP Servers](https://github.com/anthropics/mcp/docs)
-- [StepFlow MCP Integration Details](../components/mcp.md)
+- [StepFlow MCP Integration Details](../components/mcp-tools.md)
