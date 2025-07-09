@@ -47,8 +47,7 @@ pub fn init_tracing(
     log_file: Option<&Path>,
 ) -> Result<()> {
     let filter_str = format!("stepflow_={log_level},{other_log_level}");
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(filter_str));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(filter_str));
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339());
