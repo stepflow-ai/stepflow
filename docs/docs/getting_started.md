@@ -39,11 +39,11 @@ The Python SDK is not required for basic StepFlow usage.
 
 ## Your First Workflow
 
-Let's create a simple AI-powered question answering application that demonstrates how StepFlow can orchestrate AI workflows using builtin components.
+Let's create a simple AI-powered question answering application that demonstrates how StepFlow can orchestrate AI workflows using simple schema definitions and builtin components.
 
 ### 1. Create a Workflow File
 
-Create a file called `ai_qa_workflow.yaml`:
+From the `stepflow` project directory, create a file called `ai_qa_workflow.yaml`:
 
 ```yaml
 name: "AI Question Answering"
@@ -119,7 +119,7 @@ output:
 
 ### 2. Create an Input File
 
-Create `input.json`:
+Similarly, create `input.json` with the properties defined in the input schema of the YAML file:
 
 ```json
 {
@@ -138,9 +138,10 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ### 4. Run the Workflow
 
-From the `stepflow-rs` directory, run:
+Now we call `cargo run -- run` from the `stepflow-rs` directory with the path to the workflow and input file:
 
 ```bash
+cd stepflow-rs
 cargo run -- run --flow=ai_qa_workflow.yaml --input=input.json
 ```
 
@@ -160,9 +161,9 @@ You should see output like:
 This AI Q&A workflow demonstrates several key StepFlow concepts:
 
 - **Input/Output Schemas**: Define the structure of questions, context, and answers
-- **AI Integration**: Use `builtin://openai` and `builtin://create_messages` for natural language processing
-- **Data References**: Use `$from` to pass data between steps
-- **Blob Storage**: Store context and metadata for reuse with `builtin://put_blob`
+- **AI Integration**: Use [`builtin://openai`](./components/builtins.md#builtinopenai) and [`builtin://create_messages`](./components/builtins.md#builtincreate_messages) for natural language processing
+- **Data References**: Use [`$from`](./workflows/expressions.md#data-references-from) to pass data between steps
+- **Blob Storage**: Store context and metadata for reuse with [`builtin://put_blob`](./components/builtins.md#builtinput_blob)
 - **Multi-step Processing**: Orchestrate data storage, prompt formatting, and AI generation
 
 The workflow follows this pattern:
