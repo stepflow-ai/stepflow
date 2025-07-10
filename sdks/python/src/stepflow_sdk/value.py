@@ -195,7 +195,7 @@ class Value:
         if isinstance(data, Value):
             return Value._convert_to_value_template(data._value)
 
-        if isinstance(data, (StepReference, WorkflowInput)):
+        if isinstance(data, StepReference | WorkflowInput):
             return Value._convert_reference_to_expr(data)
 
         if isinstance(data, EscapedLiteral):
@@ -231,14 +231,14 @@ class Value:
 
     def __getitem__(self, key: str) -> Value:
         """Create a nested reference if this is a reference, otherwise raise an error."""
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(self._value[key])
         else:
             raise TypeError(f"Cannot index into {type(self._value).__name__}")
 
     def __getattr__(self, name: str) -> Value:
         """Create a nested reference if this is a reference, otherwise raise an error."""
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(getattr(self._value, name))
         else:
             raise AttributeError(
@@ -247,7 +247,7 @@ class Value:
 
     def with_on_skip(self, on_skip: SkipAction) -> Value:
         """Create a copy of this Value with the specified onSkip action (only for references)."""
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(self._value.with_on_skip(on_skip))
         else:
             raise TypeError(f"Cannot set onSkip on {type(self._value).__name__}")

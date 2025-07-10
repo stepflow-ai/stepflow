@@ -301,7 +301,7 @@ class StepflowStdioServer:
             if not self._initialized and message.method != Method.initialize:
                 raise ServerNotInitializedError()
             return await self._handle_method_request(message)
-        elif isinstance(message, (MethodSuccess, MethodError)):
+        elif isinstance(message, MethodSuccess | MethodError):
             # Response messages should be handled by the MessageDecoder in _handle_incoming_message
             # and should not reach this point
             raise StepflowProtocolError(

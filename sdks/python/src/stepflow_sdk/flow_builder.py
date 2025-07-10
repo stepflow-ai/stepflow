@@ -226,7 +226,7 @@ class FlowBuilder:
         if skip_if is not None:
             if isinstance(skip_if, Value):
                 skip_if_ref = skip_if._value
-                if isinstance(skip_if_ref, (StepReference, WorkflowInput)):
+                if isinstance(skip_if_ref, StepReference | WorkflowInput):
                     skip_if_expr = self._convert_reference_to_expr(skip_if_ref)
                 else:
                     raise ValueError(
@@ -338,7 +338,7 @@ class FlowBuilder:
             references.extend(self.get_expr_references(value_template))
         elif isinstance(value_template, EscapedLiteral):
             # This is a $literal expression - check if it contains nested references
-            if isinstance(value_template.field_literal, (dict, list)):
+            if isinstance(value_template.field_literal, dict | list):
                 references.extend(
                     self.get_value_template_references(value_template.field_literal)
                 )
@@ -380,7 +380,7 @@ class FlowBuilder:
                 references.append(ref)
         elif isinstance(expr, EscapedLiteral):
             # This is a $literal expression - check if it contains nested references
-            if isinstance(expr.field_literal, (dict, list)):
+            if isinstance(expr.field_literal, dict | list):
                 references.extend(
                     self.get_value_template_references(expr.field_literal)
                 )
