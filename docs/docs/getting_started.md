@@ -98,7 +98,7 @@ steps:
     component: builtin://create_messages
     input:
       system_instructions: "You are a helpful assistant. Answer the user's question based on the provided context. If the context doesn't contain enough information, say so and provide your best general answer."
-      user_prompt: { $from: { workflow: input }, path: "question" }
+      user_prompt: { $from: { step: get_prompt }, path: "$.data.question" }
 
   # Generate AI response using OpenAI  
   - id: generate_answer
