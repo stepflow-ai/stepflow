@@ -19,7 +19,7 @@ This module handles the two-stage deserialization of JSON-RPC messages,
 using RawMessage as an implementation detail for efficient parsing.
 """
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import msgspec
 from msgspec import Raw, Struct
@@ -176,6 +176,7 @@ class MessageDecoder(Generic[T]):
 
                 # Decode result with the correct type if available, otherwise try all
                 # types
+                result: Any
                 if result_type:
                     result = msgspec.json.decode(raw_message.result, type=result_type)
                 else:

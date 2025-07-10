@@ -22,6 +22,9 @@ from uuid import uuid4
 
 from stepflow_sdk.generated_protocol import (
     GetBlobResult,
+    Message,
+    MethodError,
+    MethodSuccess,
     PutBlobResult,
 )
 from stepflow_sdk.message_decoder import MessageDecoder
@@ -41,12 +44,14 @@ class StepflowContext:
     def __init__(
         self,
         outgoing_queue: asyncio.Queue,
-        message_decoder: MessageDecoder[asyncio.Future],
+        message_decoder: MessageDecoder[asyncio.Future[Message]],
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
 
-    async def _send_request(self, method: str, params: Any, result_type: type) -> Any:
+    async def _send_request[T](
+        self, method: str, params: Any, result_type: type[T]
+    ) -> T:
         """Send a request to the stepflow runtime and wait for response."""
         request_id = str(uuid4())
         request = {
@@ -57,7 +62,7 @@ class StepflowContext:
         }
 
         # Create future for response
-        future = asyncio.Future()
+        future: asyncio.Future[Message] = asyncio.Future()
 
         # Register the pending request with the message decoder
         self._message_decoder.register_request(request_id, result_type, future)
@@ -70,11 +75,19 @@ class StepflowContext:
         response_message = await future
 
         # Extract the result from the response message
-        if hasattr(response_message, "result"):
-            return response_message.result
-        else:
+        if isinstance(response_message, MethodSuccess):
+            result = response_message.result
+            assert isinstance(
+                result, result_type
+            ), f"Expected {result_type}, got {type(result)}"
+            return result
+        elif isinstance(response_message, MethodError):
             # Handle error case
             raise Exception(f"Request failed: {response_message.error}")
+        else:
+            raise Exception(
+                f"Unexpected response type: {type(response_message)} {response_message}"
+            )
 
     async def put_blob(self, data: Any) -> str:
         """Store JSON data as a blob and return its content-based ID.

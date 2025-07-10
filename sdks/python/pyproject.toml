@@ -135,5 +135,9 @@ module = "tests.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_sdk.generated_*"
+module = "stepflow_sdk.generated_flow"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "stepflow_sdk.generated_protocol"
 ignore_errors = true

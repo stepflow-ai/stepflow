@@ -21,6 +21,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
+from typing import Any
 from urllib.parse import urlparse
 
 import msgspec
@@ -85,7 +86,9 @@ class StepflowStdioServer:
         self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
-        self._message_decoder: MessageDecoder[asyncio.Future] = MessageDecoder()
+        self._message_decoder: MessageDecoder[asyncio.Future[Message]] = (
+            MessageDecoder()
+        )
         self._context: StepflowContext = StepflowContext(
             self._outgoing_queue, self._message_decoder
         )
@@ -201,7 +204,7 @@ class StepflowStdioServer:
                 try:
                     # execute_request.input is a Value, decode to the expected component
                     # type
-                    input = msgspec.convert(
+                    input: Any = msgspec.convert(
                         execute_request.input, type=component.input_type
                     )
                 except (msgspec.DecodeError, msgspec.ValidationError) as e:

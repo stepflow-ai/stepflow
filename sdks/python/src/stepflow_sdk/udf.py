@@ -22,7 +22,7 @@ import msgspec
 from stepflow_sdk.context import StepflowContext
 
 # Global cache for compiled functions by blob_id
-_function_cache = {}
+_function_cache: dict[str, Any] = {}
 
 
 class UdfInput(msgspec.Struct):
@@ -145,7 +145,7 @@ def _compile_function(
 
     if function_name is not None:
         # Code contains function definition(s)
-        local_scope = {}
+        local_scope: dict[str, Any] = {}
         try:
             exec(code, safe_globals, local_scope)
         except Exception as e:
