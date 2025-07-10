@@ -15,9 +15,6 @@
 
 from __future__ import annotations
 
-"""
-Context API for stepflow components to interact with the runtime.
-"""
 import asyncio
 import sys
 from typing import Any
@@ -28,6 +25,10 @@ from stepflow_sdk.generated_protocol import (
     PutBlobResult,
 )
 from stepflow_sdk.message_decoder import MessageDecoder
+
+"""
+Context API for stepflow components to interact with the runtime.
+"""
 
 
 class StepflowContext:
