@@ -39,11 +39,11 @@ DEPTRY = "deptry@0.22.0"
 
 [tool.poe.tasks.fmt-check]
 help = "Runs `ruff format --check` to check for formatting issues (fix with `fmt-fix`)"
-cmd = "uvx ${RUFF} format --check ."
+cmd = "uvx ${RUFF} format --check --exclude='**/generated_*.py' ."
 
 [tool.poe.tasks.fmt-fix]
 help = "Runs `ruff format` to fix formatting issues"
-cmd = "uvx ${RUFF} format ."
+cmd = "uvx ${RUFF} format --exclude='**/generated_*.py' ."
 
 [tool.poe.tasks.lint-check]
 help = "Runs `ruff check` to check for lint issues (fix with `lint-fix`)"
@@ -69,7 +69,6 @@ cmd = "uv run python generate.py --check"
 help = "Regenerate types from schemas"
 sequence = [
     {cmd = "uv run python generate.py"},
-    {cmd = "uvx ${RUFF} format src/stepflow_sdk/generated_*.py"},
     {cmd = "uvx ${RUFF} check --fix src/stepflow_sdk/generated_*.py"}
 ]
 
@@ -97,6 +96,7 @@ sequence = ["lint", "test"]
 [tool.ruff]
 target-version = "py313"
 line-length = 88
+extend-exclude = ["**/generated_*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4"]
@@ -111,6 +111,7 @@ ignore = []
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
+exclude = ["**/generated_*.py"]
 
 [tool.mypy]
 python_version = "3.13"

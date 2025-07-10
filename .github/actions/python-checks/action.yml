@@ -36,11 +36,10 @@ runs:
       run: uv run poe lint-check
       working-directory: sdks/python
 
-    # TODO: Re-enable type checking once type issues are resolved
-    # - name: Run Python type checking
-    #   shell: bash
-    #   run: uv run poe type-check
-    #   working-directory: sdks/python
+    - name: Run Python type checking
+      shell: bash
+      run: uv run poe type-check
+      working-directory: sdks/python
 
     - name: Check Python dependencies
       shell: bash
