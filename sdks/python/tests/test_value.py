@@ -19,7 +19,7 @@ from stepflow_sdk import (
     OnSkipDefault,
     OnSkipSkip,
 )
-from stepflow_sdk.flow_builder import FlowBuilder, StepHandle
+from stepflow_sdk.flow_builder import FlowBuilder
 from stepflow_sdk.generated_flow import EscapedLiteral
 from stepflow_sdk.value import JsonPath, StepReference, Value, WorkflowInput
 
@@ -265,7 +265,7 @@ def test_value_class_in_flow_builder():
     # Test using Value in set_output
     builder.set_output(
         {
-            "result": Value.step(step1.step_id, "output"),
+            "result": Value.step(step1.id, "output"),
             "constant": Value.literal("done"),
         }
     )
@@ -359,8 +359,10 @@ def test_json_path_class():
     mutable_path.push_field("setting")
     assert str(mutable_path) == '$.config["env"].setting'
 
-    # Test path consistency with actual usage
-    step_handle = StepHandle("test_step")
+    # Test path consistency with actual usage using proper FlowBuilder API
+    from stepflow_sdk.flow_builder import FlowBuilder
+    builder = FlowBuilder()
+    step_handle = builder.add_step(id="test_step", component="test/component")
     step_ref = step_handle.field["key"][0].nested
     assert str(step_ref.path) == '$.field["key"][0].nested'
 
@@ -373,8 +375,10 @@ def test_json_path_consistency():
     """Test that all path-handling classes use JsonPath consistently."""
     # All these should produce consistent JSON Path format
 
-    # StepHandle -> StepReference
-    handle = StepHandle("step1")
+    # StepHandle -> StepReference  
+    from stepflow_sdk.flow_builder import FlowBuilder
+    builder = FlowBuilder()
+    handle = builder.add_step(id="step1", component="test/component")
     step_ref1 = handle.output.data[0].field
     assert str(step_ref1.path) == "$.output.data[0].field"
 

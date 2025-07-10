@@ -222,6 +222,7 @@ class Value:
         ref: StepReference | WorkflowInput,
     ) -> Reference:
         """Convert a reference to a Reference."""
+        base_ref: WorkflowReference | GeneratedStepReference
         if isinstance(ref, StepReference):
             base_ref = GeneratedStepReference(step=ref.step_id)
             path_str = str(ref.path) if str(ref.path) != "$" else None
@@ -272,7 +273,7 @@ class WorkflowInputValue(Value):
     def __init__(self):
         super().__init__(WorkflowInput())
 
-    def __getitem__(self, key: str) -> Value:
+    def __getitem__(self, key: str | int) -> Value:
         """Create a nested reference to workflow input."""
         return Value(self._value[key])
 

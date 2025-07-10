@@ -271,9 +271,9 @@ def test_step_ids():
     assert "custom_step_3" in step_ids
 
     # Check that handles have correct IDs
-    assert step1.step_id == "custom_step_1"
-    assert step2.step_id == "custom_step_2"
-    assert step3.step_id == "custom_step_3"
+    assert step1.id == "custom_step_1"
+    assert step2.id == "custom_step_2"
+    assert step3.id == "custom_step_3"
 
 
 def test_complex_nested_references():
@@ -467,7 +467,7 @@ def test_flowbuilder_load():
         input_data={"input": Value.input().field, "literal": Value.literal("constant")},
     )
 
-    original_builder.set_output({"result": Value.step(step1.step_id, "output")})
+    original_builder.set_output({"result": Value.step(step1.id, "output")})
     original_flow = original_builder.build()
 
     # Load the flow using FlowBuilder.load()
@@ -483,7 +483,7 @@ def test_flowbuilder_load():
 
     # Check that step handles were recreated
     assert "custom_step" in loaded_builder._step_handles
-    assert loaded_builder._step_handles["custom_step"].step_id == "custom_step"
+    assert loaded_builder._step_handles["custom_step"].id == "custom_step"
 
     # Check that we can analyze the loaded flow
     references = loaded_builder.get_references()
@@ -497,7 +497,7 @@ def test_flowbuilder_load():
     )
 
     # The new step should have the assigned ID
-    assert step2.step_id == "additional_step"
+    assert step2.id == "additional_step"
 
     # Build the modified flow
     modified_flow = loaded_builder.build()
@@ -522,7 +522,7 @@ def test_flowbuilder_load_and_extend():
 
     # Add a new step with explicit ID
     new_step = loaded_builder.add_step(id="step4", component="test/component4")
-    assert new_step.step_id == "step4"
+    assert new_step.id == "step4"
 
     # Verify all steps are present
     final_flow = loaded_builder.build()
@@ -550,10 +550,10 @@ def test_new_object_oriented_api():
     step2 = builder.add_step(
         id="analyzer",
         component="analyzer",
-        input_data={"data": Value.step(step1.step_id, "processed_data")},
+        input_data={"data": Value.step(step1.id, "processed_data")},
     )
 
-    builder.set_output({"analysis": Value.step(step2.step_id, "results")})
+    builder.set_output({"analysis": Value.step(step2.id, "results")})
     flow = builder.build()
 
     # Now demonstrate the new OO API for analysis

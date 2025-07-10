@@ -51,7 +51,7 @@ def test_method_request_default_jsonrpc():
 
 def test_method_success_default_jsonrpc():
     response = MethodSuccess(
-        id=UUID(int=42), result=InitializeResult(server_protocol_version=1)
+        id=str(UUID(int=42)), result=InitializeResult(server_protocol_version=1)
     )
 
     # Encode to JSON
