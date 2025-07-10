@@ -352,7 +352,7 @@ def test_json_path_class():
     assert str(mixed_path) == '$.field["key"].value'
     assert mixed_path.fragments == ["$", ".field", '["key"]', ".value"]
 
-    # Test mutating methods (push_field/push_index should still work for in-place mutation)
+    # Test mutating methods
     mutable_path = JsonPath()
     mutable_path.push_field("config")
     mutable_path.push_index("env")

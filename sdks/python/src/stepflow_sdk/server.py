@@ -101,8 +101,10 @@ class StepflowStdioServer:
 
         Args:
             func: The function to register (provided by the decorator)
-            name: Optional name for the component. If not provided, uses the function name
-            description: Optional description. If not provided, uses the function's docstring
+            name: Optional name for the component. If not provided, uses the function
+                name
+            description: Optional description. If not provided, uses the function's
+                docstring
         """
 
         def decorator(f: Callable) -> Callable:
@@ -197,7 +199,8 @@ class StepflowStdioServer:
                     raise ComponentNotFoundError(execute_request.component)
                 # Parse input parameters into the expected type
                 try:
-                    # execute_request.input is a Value, decode to the expected component type
+                    # execute_request.input is a Value, decode to the expected component
+                    # type
                     input = msgspec.convert(
                         execute_request.input, type=component.input_type
                     )
@@ -302,8 +305,8 @@ class StepflowStdioServer:
                 raise ServerNotInitializedError()
             return await self._handle_method_request(message)
         elif isinstance(message, MethodSuccess | MethodError):
-            # Response messages should be handled by the MessageDecoder in _handle_incoming_message
-            # and should not reach this point
+            # Response messages should be handled by the MessageDecoder in
+            # _handle_incoming_message and should not reach this point
             raise StepflowProtocolError(
                 "Unexpected response message in _handle_message"
             )

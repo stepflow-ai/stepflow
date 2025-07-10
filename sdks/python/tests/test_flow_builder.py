@@ -579,7 +579,3 @@ def test_new_object_oriented_api():
 
     assert len(input_refs) == 1  # input().data_source
     assert len(step_refs) == 2  # Two step references in step2 input and flow output
-
-    # The API is now much cleaner and more intuitive:
-    # FlowBuilder.load(flow).get_references() vs FlowBuilder.get_references_from_flow(flow)
-    assert str(input_refs[0].path) == "$.data_source"

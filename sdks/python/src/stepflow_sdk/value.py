@@ -34,7 +34,7 @@ from .generated_flow import (
 
 
 class JsonPath:
-    """Base class for handling JSON Path syntax consistently across all reference types."""
+    """Base class for handling JSON Path syntax across all reference types."""
 
     def __init__(self):
         """Initialize with an optional initial path."""
@@ -46,7 +46,11 @@ class JsonPath:
         return self
 
     def push_index(self, key: str | int) -> JsonPath:
-        """Add an index access to the path (e.g., [0] or ["key"]). Mutates this instance."""
+        """
+        Add an index access to the path (e.g., [0] or ["key"]).
+
+        Mutates this instance.
+        """
         if isinstance(key, int):
             self.fragments.append(f"[{key}]")
         else:
@@ -229,15 +233,23 @@ class Value:
         else:
             raise ValueError(f"Unknown reference type: {type(ref)}")
 
-    def __getitem__(self, key: str) -> Value:
-        """Create a nested reference if this is a reference, otherwise raise an error."""
+    def __getitem__(self, key: str | int) -> Value:
+        """
+        Create a nested reference to the given key.
+
+        Raises an error if this is not a reference.
+        """
         if isinstance(self._value, StepReference | WorkflowInput):
             return Value(self._value[key])
         else:
             raise TypeError(f"Cannot index into {type(self._value).__name__}")
 
     def __getattr__(self, name: str) -> Value:
-        """Create a nested reference if this is a reference, otherwise raise an error."""
+        """
+        Create a nested reference to the given name.
+
+        Raises an error if this is not a reference.
+        """
         if isinstance(self._value, StepReference | WorkflowInput):
             return Value(getattr(self._value, name))
         else:
@@ -246,7 +258,8 @@ class Value:
             )
 
     def with_on_skip(self, on_skip: SkipAction) -> Value:
-        """Create a copy of this Value with the specified onSkip action (only for references)."""
+        """Create a copy of this Value with the specified onSkip action (only for
+        references)."""
         if isinstance(self._value, StepReference | WorkflowInput):
             return Value(self._value.with_on_skip(on_skip))
         else:

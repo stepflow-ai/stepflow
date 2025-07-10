@@ -92,8 +92,9 @@ class StepWrapper:
 class FlowBuilder:
     """Builder for creating StepFlow workflows.
 
-    This class provides methods for building workflows programmatically using the Value API.
-    All input_data parameters accept Valuable types (Value, StepReference, WorkflowInput, etc.)
+    This class provides methods for building workflows programmatically using the
+    Value API. All input_data parameters accept Valuable types (Value, StepReference,
+    WorkflowInput, etc.)
 
     Recommended usage:
     - Use Value.literal() for creating literal values: Value.literal({"key": "value"})
@@ -266,7 +267,8 @@ class FlowBuilder:
         """Build the Flow object."""
         if self._output is None:
             raise ValueError(
-                "Flow output must be set before building. Use set_output() to specify the flow output."
+                "Flow output must be set before building. Use set_output() to specify "
+                "the flow output."
             )
 
         return Flow(

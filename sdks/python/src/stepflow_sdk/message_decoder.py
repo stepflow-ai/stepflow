@@ -94,7 +94,7 @@ class MessageDecoder(Generic[T]):
     def register_request_for_method(
         self, request_id: RequestId, method: Method, context: T
     ) -> None:
-        """Register a pending request with automatic result type detection based on method.
+        """Register a pending request with response type based on method.
 
         Args:
             request_id: The request ID to track
@@ -111,8 +111,9 @@ class MessageDecoder(Generic[T]):
             message_bytes: Raw JSON bytes of the message
 
         Returns:
-            A tuple of (properly typed Message, associated context from pending request or None)
-            The context will be non-None for method responses that had a matching pending request.
+            A tuple of (properly typed Message, associated context from pending request
+            or None). The context will be non-None for method responses that had a
+            matching pending request.
 
         Raises:
             StepflowProtocolError: If the message is invalid or malformed
@@ -173,7 +174,8 @@ class MessageDecoder(Generic[T]):
                 if raw_message.id in self._pending_requests:
                     result_type, context = self._pending_requests.pop(raw_message.id)
 
-                # Decode result with the correct type if available, otherwise try all types
+                # Decode result with the correct type if available, otherwise try all
+                # types
                 if result_type:
                     result = msgspec.json.decode(raw_message.result, type=result_type)
                 else:

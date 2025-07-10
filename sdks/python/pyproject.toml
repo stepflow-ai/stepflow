@@ -100,18 +100,12 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4"]
-ignore = [
-    "E501",  # Line too long (we'll gradually fix these)
-    "E402",  # Module level import not at top of file
-    "E722",  # Bare except (specific cases need manual review)
-    "UP007", # Union type syntax (compatibility consideration)
-    "UP038", # isinstance with tuple (readability preference)
-    "B904",  # Exception chaining (needs context-specific review)
-]
+ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
 "generate.py" = ["T201", "E501"]  # Allow prints and long lines in build script
+"**/generated_*.py" = ["E501", "UP006", "UP035"]  # Generated files can have long lines and old typing imports
 
 [tool.ruff.format]
 quote-style = "double"

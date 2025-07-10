@@ -102,67 +102,6 @@ class StepflowContext:
         response = await self._send_request("blobs/get", params, GetBlobResult)
         return response.data
 
-    def get_sync_proxy(self):
-        """Get a synchronous proxy object for use in non-async contexts.
-        This uses the current event loop to run async operations.
-        """
-        return SyncBlobProxy(self)
-
     def log(self, message):
         """Log a message."""
         print(f"PYTHON: {message}", file=sys.stderr)
-
-
-class SyncBlobProxy:
-    """Synchronous proxy for blob operations that can be used in custom component code."""
-
-    def __init__(self, context: StepflowContext):
-        self._context = context
-
-    def put_blob(self, data: Any) -> str:
-        """Store JSON data as a blob synchronously.
-
-        Args:
-            data: The JSON-serializable data to store
-
-        Returns:
-            The blob ID (SHA-256 hash) for the stored data
-        """
-        import asyncio
-
-        # Get the current event loop
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If we're already in an async context, create a task
-            # This is a bit of a hack, but we need to run the task to completion
-            # In a real implementation, this would need to be handled differently
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, self._context.put_blob(data))
-                return future.result()
-        else:
-            return asyncio.run(self._context.put_blob(data))
-
-    def get_blob(self, blob_id: str) -> Any:
-        """Retrieve JSON data by blob ID synchronously.
-
-        Args:
-            blob_id: The blob ID to retrieve
-
-        Returns:
-            The JSON data associated with the blob ID
-        """
-        import asyncio
-
-        # Get the current event loop
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If we're already in an async context, create a task
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, self._context.get_blob(blob_id))
-                return future.result()
-        else:
-            return asyncio.run(self._context.get_blob(blob_id))

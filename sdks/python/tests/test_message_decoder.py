@@ -272,7 +272,7 @@ class TestMessageDecoderErrors:
             decoder.decode(message_bytes)
 
     def test_decode_response_with_both_result_and_error(self):
-        """Test decoding response with both result and error (should prioritize error)."""
+        """Test decoding response with both result and error produces error."""
         message_json = {
             "jsonrpc": "2.0",
             "id": "test",

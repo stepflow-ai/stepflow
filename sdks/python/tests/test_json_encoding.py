@@ -32,7 +32,6 @@ from stepflow_sdk.generated_protocol import (
 
 
 def test_method_request_default_jsonrpc():
-    """Test that MethodRequest includes jsonrpc='2.0' in JSON even when not explicitly set."""
     request = MethodRequest(
         id="test-123",
         method=Method.initialize,
@@ -51,7 +50,6 @@ def test_method_request_default_jsonrpc():
 
 
 def test_method_success_default_jsonrpc():
-    """Test that MethodSuccess includes jsonrpc='2.0' in JSON even when not explicitly set."""
     response = MethodSuccess(
         id=UUID(int=42), result=InitializeResult(server_protocol_version=1)
     )
@@ -68,7 +66,6 @@ def test_method_success_default_jsonrpc():
 
 
 def test_method_error_default_jsonrpc():
-    """Test that MethodError includes jsonrpc='2.0' in JSON even when not explicitly set."""
     error_response = MethodError(
         id="error-test", error=Error(code=-32601, message="Method not found")
     )
@@ -86,7 +83,6 @@ def test_method_error_default_jsonrpc():
 
 
 def test_notification_default_jsonrpc():
-    """Test that Notification includes jsonrpc='2.0' in JSON even when not explicitly set."""
     notification = Notification(method=Method.initialized, params=Initialized())
 
     # Encode to JSON
@@ -101,7 +97,6 @@ def test_notification_default_jsonrpc():
 
 
 def test_explicit_jsonrpc_override():
-    """Test that explicitly setting jsonrpc still works (though it should always be '2.0')."""
     request = MethodRequest(
         id="explicit-test",
         method=Method.initialize,
@@ -156,6 +151,6 @@ def test_all_message_types_have_jsonrpc():
 
         # Every message should have jsonrpc field
         assert "jsonrpc" in json_dict, f"Missing jsonrpc in {type(message).__name__}"
-        assert json_dict["jsonrpc"] == "2.0", (
-            f"Wrong jsonrpc value in {type(message).__name__}"
-        )
+        assert (
+            json_dict["jsonrpc"] == "2.0"
+        ), f"Wrong jsonrpc value in {type(message).__name__}"
