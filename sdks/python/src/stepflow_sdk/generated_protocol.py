@@ -25,7 +25,7 @@ from typing import Annotated, Any, List, Literal
 from msgspec import Meta, Struct
 
 JsonRpc = (
-    Annotated[Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')]
+    Annotated[Literal["2.0"], Meta(description="The version of the JSON-RPC protocol.")]
     | None
 )
 
@@ -33,26 +33,26 @@ JsonRpc = (
 RequestId = Annotated[
     str | int,
     Meta(
-        description='The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.'
+        description="The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications."
     ),
 ]
 
 
 class Method(Enum):
-    initialize = 'initialize'
-    initialized = 'initialized'
-    components_list = 'components/list'
-    components_info = 'components/info'
-    components_execute = 'components/execute'
-    blobs_put = 'blobs/put'
-    blobs_get = 'blobs/get'
+    initialize = "initialize"
+    initialized = "initialized"
+    components_list = "components/list"
+    components_info = "components/info"
+    components_execute = "components/execute"
+    blobs_put = "blobs/put"
+    blobs_get = "blobs/get"
 
 
 class InitializeParams(Struct, kw_only=True):
     runtime_protocol_version: Annotated[
         int,
         Meta(
-            description='Maximum version of the protocol being used by the StepFlow runtime.',
+            description="Maximum version of the protocol being used by the StepFlow runtime.",
             ge=0,
         ),
     ]
@@ -67,7 +67,7 @@ class InitializeParams(Struct, kw_only=True):
 Component = Annotated[
     str,
     Meta(
-        description='Identifies a specific plugin and atomic functionality to execute.'
+        description="Identifies a specific plugin and atomic functionality to execute."
     ),
 ]
 
@@ -75,14 +75,14 @@ Component = Annotated[
 Value = Annotated[
     Any,
     Meta(
-        description='Any JSON value (object, array, string, number, boolean, or null)'
+        description="Any JSON value (object, array, string, number, boolean, or null)"
     ),
 ]
 
 
 class ComponentInfoParams(Struct, kw_only=True):
     component: Annotated[
-        Component, Meta(description='The component to get information about.')
+        Component, Meta(description="The component to get information about.")
     ]
 
 
@@ -93,7 +93,7 @@ class ComponentListParams(Struct, kw_only=True):
 BlobId = Annotated[
     str,
     Meta(
-        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
+        description="A SHA-256 hash of the blob content, represented as a hexadecimal string."
     ),
 ]
 
@@ -106,14 +106,14 @@ class InitializeResult(Struct, kw_only=True):
     server_protocol_version: Annotated[
         int,
         Meta(
-            description='Version of the protocol being used by the component server.',
+            description="Version of the protocol being used by the component server.",
             ge=0,
         ),
     ]
 
 
 class ComponentExecuteResult(Struct, kw_only=True):
-    output: Annotated[Value, Meta(description='The result of the component execution.')]
+    output: Annotated[Value, Meta(description="The result of the component execution.")]
 
 
 class Schema(Struct, kw_only=True):
@@ -129,15 +129,15 @@ class PutBlobResult(Struct, kw_only=True):
 
 
 class Error(Struct, kw_only=True):
-    code: Annotated[int, Meta(description='A numeric code indicating the error type.')]
+    code: Annotated[int, Meta(description="A numeric code indicating the error type.")]
     message: Annotated[
-        str, Meta(description='Concise, single-sentence description of the error.')
+        str, Meta(description="Concise, single-sentence description of the error.")
     ]
     data: (
         Annotated[
             Value | None,
             Meta(
-                description='Primitive or structured value that contains additional information about the error.'
+                description="Primitive or structured value that contains additional information about the error."
             ),
         ]
         | None
@@ -149,19 +149,19 @@ class Initialized(Struct, kw_only=True):
 
 
 class ComponentExecuteParams(Struct, kw_only=True):
-    component: Annotated[Component, Meta(description='The component to execute.')]
-    input: Annotated[Value, Meta(description='The input to the component.')]
+    component: Annotated[Component, Meta(description="The component to execute.")]
+    input: Annotated[Value, Meta(description="The input to the component.")]
 
 
 class GetBlobParams(Struct, kw_only=True):
-    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
+    blob_id: Annotated[BlobId, Meta(description="The ID of the blob to retrieve.")]
 
 
 class ComponentInfo(Struct, kw_only=True):
-    component: Annotated[Component, Meta(description='The component ID.')]
+    component: Annotated[Component, Meta(description="The component ID.")]
     description: (
         Annotated[
-            str | None, Meta(description='Optional description of the component.')
+            str | None, Meta(description="Optional description of the component.")
         ]
         | None
     ) = None
@@ -169,7 +169,7 @@ class ComponentInfo(Struct, kw_only=True):
         Annotated[
             Schema | None,
             Meta(
-                description='The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+                description="The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.)."
             ),
         ]
         | None
@@ -178,7 +178,7 @@ class ComponentInfo(Struct, kw_only=True):
         Annotated[
             Schema | None,
             Meta(
-                description='The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+                description="The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.)."
             ),
         ]
         | None
@@ -187,33 +187,33 @@ class ComponentInfo(Struct, kw_only=True):
 
 class ListComponentsResult(Struct, kw_only=True):
     components: Annotated[
-        List[ComponentInfo], Meta(description='A list of all available components.')
+        List[ComponentInfo], Meta(description="A list of all available components.")
     ]
 
 
 class MethodError(Struct, kw_only=True):
     id: RequestId
     error: Annotated[
-        Error, Meta(description='An error that occurred during method execution.')
+        Error, Meta(description="An error that occurred during method execution.")
     ]
-    jsonrpc: JsonRpc | None = '2.0'
+    jsonrpc: JsonRpc | None = "2.0"
 
 
 class Notification(Struct, kw_only=True):
-    method: Annotated[Method, Meta(description='The notification method being called.')]
+    method: Annotated[Method, Meta(description="The notification method being called.")]
     params: Annotated[
         Initialized,
         Meta(
-            description='The parameters for the notification.',
-            title='NotificationParams',
+            description="The parameters for the notification.",
+            title="NotificationParams",
         ),
     ]
-    jsonrpc: JsonRpc | None = '2.0'
+    jsonrpc: JsonRpc | None = "2.0"
 
 
 class MethodRequest(Struct, kw_only=True):
     id: RequestId
-    method: Annotated[Method, Meta(description='The method being called.')]
+    method: Annotated[Method, Meta(description="The method being called.")]
     params: Annotated[
         InitializeParams
         | ComponentExecuteParams
@@ -222,15 +222,15 @@ class MethodRequest(Struct, kw_only=True):
         | GetBlobParams
         | PutBlobParams,
         Meta(
-            description='The parameters for the method call. Set on method requests.',
-            title='MethodParams',
+            description="The parameters for the method call. Set on method requests.",
+            title="MethodParams",
         ),
     ]
-    jsonrpc: JsonRpc | None = '2.0'
+    jsonrpc: JsonRpc | None = "2.0"
 
 
 class ComponentInfoResult(Struct, kw_only=True):
-    info: Annotated[ComponentInfo, Meta(description='Information about the component.')]
+    info: Annotated[ComponentInfo, Meta(description="Information about the component.")]
 
 
 class MethodSuccess(Struct, kw_only=True):
@@ -243,22 +243,22 @@ class MethodSuccess(Struct, kw_only=True):
         | GetBlobResult
         | PutBlobResult,
         Meta(
-            description='The result of a successful method execution.',
-            title='MethodResult',
+            description="The result of a successful method execution.",
+            title="MethodResult",
         ),
     ]
-    jsonrpc: JsonRpc | None = '2.0'
+    jsonrpc: JsonRpc | None = "2.0"
 
 
 Message = Annotated[
     MethodRequest | MethodSuccess | MethodError | Notification,
     Meta(
-        description='The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.',
-        title='Message',
+        description="The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.",
+        title="Message",
     ),
 ]
 
 
 MethodResponse = Annotated[
-    MethodSuccess | MethodError, Meta(description='Response to a method request.')
+    MethodSuccess | MethodError, Meta(description="Response to a method request.")
 ]

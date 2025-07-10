@@ -8,6 +8,7 @@ requires-python = ">=3.13"
 dependencies = [
     "msgspec>=0.19.0",
     "jsonschema>=4.17.0",
+    "types-jsonschema>=4.17.0",
 ]
 
 [dependency-groups]
@@ -69,6 +70,7 @@ cmd = "uv run python generate.py --check"
 help = "Regenerate types from schemas"
 sequence = [
     {cmd = "uv run python generate.py"},
+    {cmd = "uvx ${RUFF} format src/stepflow_sdk/generated_*.py"},
     {cmd = "uvx ${RUFF} check --fix src/stepflow_sdk/generated_*.py"}
 ]
 
@@ -112,6 +114,11 @@ quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
 exclude = ["**/generated_*.py"]
+
+[tool.deptry]
+# types-* packages are type stubs for mypy and not directly imported  
+ignore = ["DEP002"]
+extend_exclude = ["types-jsonschema"]
 
 [tool.mypy]
 python_version = "3.13"
