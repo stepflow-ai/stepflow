@@ -14,8 +14,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""
-Type generation script for StepFlow Python SDK.
+"""Type generation script for StepFlow Python SDK.
 
 This script generates the protocol and flow types from the JSON schemas.
 """
@@ -29,7 +28,6 @@ from pathlib import Path
 
 def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
     """Generate types from a schema file and return the processed content."""
-
     # Get paths
     script_dir = Path(__file__).parent
     project_root = script_dir.parent.parent
@@ -45,7 +43,7 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
     # Generate to temporary file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py") as temp_file:
         temp_path = Path(temp_file.name)
-        
+
         # Run datamodel-code-generator
         cmd = [
             "python",
@@ -77,13 +75,13 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
             raise RuntimeError(f"Error generating {schema_name}: {result.stderr}")
 
         if verbose:
-            print(f"✓ Generated to temporary file")
+            print("✓ Generated to temporary file")
 
         # Process the generated file to add license header and remove timestamp
         if verbose:
             print(f"Processing generated {schema_name} file...")
 
-        with open(temp_path, "r") as f:
+        with open(temp_path) as f:
             content = f.read()
 
         # Parse the content
@@ -154,7 +152,6 @@ def generate_types_from_schema(
     schema_name: str, output_filename: str, check_only: bool = False
 ) -> int:
     """Generate types from a schema file."""
-
     # Get paths
     script_dir = Path(__file__).parent
     output_path = script_dir / "src" / "stepflow_sdk" / output_filename
@@ -166,7 +163,7 @@ def generate_types_from_schema(
         if check_only:
             # Compare with existing file
             if output_path.exists():
-                with open(output_path, "r") as f:
+                with open(output_path) as f:
                     existing_content = f.read()
 
                 if existing_content != new_content:
@@ -191,7 +188,6 @@ def generate_types_from_schema(
 
 def main():
     """Generate protocol and flow types from JSON schemas."""
-
     parser = argparse.ArgumentParser(
         description="Generate StepFlow Python SDK types from JSON schemas"
     )

@@ -14,20 +14,20 @@
 # the License.
 
 import json
-import pytest
 from uuid import UUID
 
 import msgspec
+
 from stepflow_sdk.generated_protocol import (
-    MethodRequest,
-    MethodSuccess,
-    MethodError,
-    Notification,
-    Method,
+    Error,
+    Initialized,
     InitializeParams,
     InitializeResult,
-    Initialized,
-    Error,
+    Method,
+    MethodError,
+    MethodRequest,
+    MethodSuccess,
+    Notification,
 )
 
 
@@ -36,13 +36,13 @@ def test_method_request_default_jsonrpc():
     request = MethodRequest(
         id="test-123",
         method=Method.initialize,
-        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python")
+        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python"),
     )
-    
+
     # Encode to JSON
     json_bytes = msgspec.json.encode(request)
     json_dict = json.loads(json_bytes)
-    
+
     # Verify jsonrpc field is present and correct
     assert "jsonrpc" in json_dict
     assert json_dict["jsonrpc"] == "2.0"
@@ -53,14 +53,13 @@ def test_method_request_default_jsonrpc():
 def test_method_success_default_jsonrpc():
     """Test that MethodSuccess includes jsonrpc='2.0' in JSON even when not explicitly set."""
     response = MethodSuccess(
-        id=UUID(int=42),
-        result=InitializeResult(server_protocol_version=1)
+        id=UUID(int=42), result=InitializeResult(server_protocol_version=1)
     )
-    
+
     # Encode to JSON
     json_bytes = msgspec.json.encode(response)
     json_dict = json.loads(json_bytes)
-    
+
     # Verify jsonrpc field is present and correct
     assert "jsonrpc" in json_dict
     assert json_dict["jsonrpc"] == "2.0"
@@ -71,14 +70,13 @@ def test_method_success_default_jsonrpc():
 def test_method_error_default_jsonrpc():
     """Test that MethodError includes jsonrpc='2.0' in JSON even when not explicitly set."""
     error_response = MethodError(
-        id="error-test",
-        error=Error(code=-32601, message="Method not found")
+        id="error-test", error=Error(code=-32601, message="Method not found")
     )
-    
+
     # Encode to JSON
     json_bytes = msgspec.json.encode(error_response)
     json_dict = json.loads(json_bytes)
-    
+
     # Verify jsonrpc field is present and correct
     assert "jsonrpc" in json_dict
     assert json_dict["jsonrpc"] == "2.0"
@@ -89,15 +87,12 @@ def test_method_error_default_jsonrpc():
 
 def test_notification_default_jsonrpc():
     """Test that Notification includes jsonrpc='2.0' in JSON even when not explicitly set."""
-    notification = Notification(
-        method=Method.initialized,
-        params=Initialized()
-    )
-    
+    notification = Notification(method=Method.initialized, params=Initialized())
+
     # Encode to JSON
     json_bytes = msgspec.json.encode(notification)
     json_dict = json.loads(json_bytes)
-    
+
     # Verify jsonrpc field is present and correct
     assert "jsonrpc" in json_dict
     assert json_dict["jsonrpc"] == "2.0"
@@ -111,13 +106,13 @@ def test_explicit_jsonrpc_override():
         id="explicit-test",
         method=Method.initialize,
         params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python"),
-        jsonrpc="2.0"  # Explicitly set
+        jsonrpc="2.0",  # Explicitly set
     )
-    
+
     # Encode to JSON
     json_bytes = msgspec.json.encode(request)
     json_dict = json.loads(json_bytes)
-    
+
     # Verify jsonrpc field is present and correct
     assert "jsonrpc" in json_dict
     assert json_dict["jsonrpc"] == "2.0"
@@ -128,13 +123,13 @@ def test_round_trip_decoding():
     original_request = MethodRequest(
         id=12345,
         method=Method.components_list,
-        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="test")
+        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="test"),
     )
-    
+
     # Encode to JSON
     json_bytes = msgspec.json.encode(original_request)
     json_dict = json.loads(json_bytes)
-    
+
     # Verify the JSON has correct structure including jsonrpc
     assert json_dict["id"] == 12345
     assert json_dict["method"] == "components/list"
@@ -148,26 +143,19 @@ def test_all_message_types_have_jsonrpc():
         MethodRequest(
             id="req",
             method=Method.initialize,
-            params=InitializeParams(runtime_protocol_version=1, protocol_prefix="test")
+            params=InitializeParams(runtime_protocol_version=1, protocol_prefix="test"),
         ),
-        MethodSuccess(
-            id="success",
-            result=InitializeResult(server_protocol_version=1)
-        ),
-        MethodError(
-            id="error",
-            error=Error(code=-32000, message="Test error")
-        ),
-        Notification(
-            method=Method.initialized,
-            params=Initialized()
-        )
+        MethodSuccess(id="success", result=InitializeResult(server_protocol_version=1)),
+        MethodError(id="error", error=Error(code=-32000, message="Test error")),
+        Notification(method=Method.initialized, params=Initialized()),
     ]
-    
+
     for message in messages:
         json_bytes = msgspec.json.encode(message)
         json_dict = json.loads(json_bytes)
-        
+
         # Every message should have jsonrpc field
         assert "jsonrpc" in json_dict, f"Missing jsonrpc in {type(message).__name__}"
-        assert json_dict["jsonrpc"] == "2.0", f"Wrong jsonrpc value in {type(message).__name__}"
+        assert json_dict["jsonrpc"] == "2.0", (
+            f"Wrong jsonrpc value in {type(message).__name__}"
+        )

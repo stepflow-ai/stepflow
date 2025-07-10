@@ -59,7 +59,7 @@ cargo build --release
 ### Running Tests
 
 ```bash
-# Run all tests (run from stepflow-rs directory)
+# Run fast unit tests (no external dependencies)
 cd stepflow-rs
 cargo test
 
@@ -71,6 +71,13 @@ cargo test -p stepflow-execution
 
 # Run a specific test
 cargo test -p stepflow-execution -- execute_flows
+
+# Run integration tests (requires Python environment)
+cd ..
+./scripts/test-integration.sh
+
+# Run complete test suite (unit + Python SDK + integration)
+./scripts/test-all.sh
 ```
 
 ### Code Quality

@@ -13,37 +13,37 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""
-Flow builder for creating StepFlow workflows programmatically.
-"""
+"""Flow builder for creating StepFlow workflows programmatically."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
-import msgspec
+from typing import Any
 
 from .generated_flow import (
-    Flow,
-    Step,
     Component,
-    ValueTemplate,
-    Reference,
-    EscapedLiteral,
-    WorkflowReference,
-    StepReference as GeneratedStepReference,
-    Value as GeneratedValue,
-    Schema,
     ErrorAction,
+    EscapedLiteral,
+    Flow,
+    Reference,
+    Schema,
+    Step,
+    ValueTemplate,
+    WorkflowReference,
+)
+from .generated_flow import (
+    StepReference as GeneratedStepReference,
+)
+from .generated_flow import (
+    Value as GeneratedValue,
 )
 from .value import (
     JsonPath,
     StepReference,
-    WorkflowInput,
-    Value,
     Valuable,
+    Value,
+    WorkflowInput,
 )
-
 
 
 @dataclass
@@ -52,12 +52,12 @@ class StepHandle:
 
     step_id: str
 
-    def __getitem__(self, key: Union[str, int]) -> "StepReference":
+    def __getitem__(self, key: str | int) -> StepReference:
         """Create a reference to a specific path in this step's output."""
         path = JsonPath().with_index(key)
         return StepReference(self.step_id, path)
 
-    def __getattr__(self, name: str) -> "StepReference":
+    def __getattr__(self, name: str) -> StepReference:
         """Create a reference to a field in this step's output."""
         path = JsonPath().with_field(name)
         return StepReference(self.step_id, path)
@@ -66,7 +66,7 @@ class StepHandle:
 class StepWrapper:
     """Wrapper for a step that provides analysis and reference extraction."""
 
-    def __init__(self, step: Step, builder: "FlowBuilder"):
+    def __init__(self, step: Step, builder: FlowBuilder):
         self.step = step
         self.builder = builder
         self._handle = StepHandle(step.id)
@@ -76,18 +76,17 @@ class StepWrapper:
         """Get the step ID."""
         return self.step.id
 
-    def get_references(self) -> List[Union[StepReference, WorkflowInput]]:
+    def get_references(self) -> list[StepReference | WorkflowInput]:
         """Extract all references used in this step."""
         return self.builder._get_step_references(self.step)
 
-    def __getitem__(self, key: Union[str, int]) -> "StepReference":
+    def __getitem__(self, key: str | int) -> StepReference:
         """Create a reference to a specific path in this step's output."""
         return self._handle[key]
 
-    def __getattr__(self, name: str) -> "StepReference":
+    def __getattr__(self, name: str) -> StepReference:
         """Create a reference to a field in this step's output."""
         return getattr(self._handle, name)
-
 
 
 class FlowBuilder:
@@ -128,21 +127,21 @@ class FlowBuilder:
 
     def __init__(
         self,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        version: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        version: str | None = None,
     ):
         self.name = name
         self.description = description
         self.version = version
-        self.input_schema: Optional[Schema] = None
-        self.output_schema: Optional[Schema] = None
-        self.steps: Dict[str, Step] = {}
-        self._step_handles: Dict[str, StepHandle] = {}
-        self._output: Optional[ValueTemplate] = None
+        self.input_schema: Schema | None = None
+        self.output_schema: Schema | None = None
+        self.steps: dict[str, Step] = {}
+        self._step_handles: dict[str, StepHandle] = {}
+        self._output: ValueTemplate | None = None
 
     @classmethod
-    def load(cls, flow: Flow) -> "FlowBuilder":
+    def load(cls, flow: Flow) -> FlowBuilder:
         """Create a FlowBuilder from an existing Flow.
 
         This allows you to load an existing flow and analyze or modify it.
@@ -172,7 +171,7 @@ class FlowBuilder:
             raise KeyError(f"Step '{step_id}' not found")
         return StepWrapper(self.steps[step_id], self)
 
-    def set_input_schema(self, schema: Union[Dict[str, Any], Schema]) -> "FlowBuilder":
+    def set_input_schema(self, schema: dict[str, Any] | Schema) -> FlowBuilder:
         """Set the input schema for the flow."""
         if isinstance(schema, dict):
             self.input_schema = Schema(**schema)
@@ -180,7 +179,7 @@ class FlowBuilder:
             self.input_schema = schema
         return self
 
-    def set_output_schema(self, schema: Union[Dict[str, Any], Schema]) -> "FlowBuilder":
+    def set_output_schema(self, schema: dict[str, Any] | Schema) -> FlowBuilder:
         """Set the output schema for the flow."""
         if isinstance(schema, dict):
             self.output_schema = Schema(**schema)
@@ -192,15 +191,14 @@ class FlowBuilder:
         self,
         *,
         id: str,
-        component: Union[str, Component],
-        input_data: Optional[Valuable] = None,
-        input_schema: Optional[Union[Dict[str, Any], Schema]] = None,
-        output_schema: Optional[Union[Dict[str, Any], Schema]] = None,
-        skip_if: Optional[Union[StepReference, WorkflowInput, Value]] = None,
-        on_error: Optional[ErrorAction] = None,
+        component: str | Component,
+        input_data: Valuable | None = None,
+        input_schema: dict[str, Any] | Schema | None = None,
+        output_schema: dict[str, Any] | Schema | None = None,
+        skip_if: StepReference | WorkflowInput | Value | None = None,
+        on_error: ErrorAction | None = None,
     ) -> StepHandle:
         """Add a step to the flow."""
-
         # Convert component to Component type
         if isinstance(component, str):
             component = Component(component)
@@ -259,7 +257,7 @@ class FlowBuilder:
 
         return handle
 
-    def set_output(self, output_data: Valuable) -> "FlowBuilder":
+    def set_output(self, output_data: Valuable) -> FlowBuilder:
         """Set the output of the flow."""
         self._output = self._convert_to_value_template(output_data)
         return self
@@ -267,8 +265,10 @@ class FlowBuilder:
     def build(self) -> Flow:
         """Build the Flow object."""
         if self._output is None:
-            raise ValueError("Flow output must be set before building. Use set_output() to specify the flow output.")
-        
+            raise ValueError(
+                "Flow output must be set before building. Use set_output() to specify the flow output."
+            )
+
         return Flow(
             name=self.name,
             description=self.description,
@@ -279,17 +279,17 @@ class FlowBuilder:
             output=self._output,
         )
 
-    def _convert_to_value_template(self, data: Valuable) -> Optional[ValueTemplate]:
+    def _convert_to_value_template(self, data: Valuable) -> ValueTemplate | None:
         """Convert arbitrary data to ValueTemplate."""
         return Value._convert_to_value_template(data)
 
     def _convert_reference_to_expr(
-        self, ref: Union[StepReference, WorkflowInput]
+        self, ref: StepReference | WorkflowInput
     ) -> Reference:
         """Convert a reference to a Reference."""
         return Value._convert_reference_to_expr(ref)
 
-    def get_references(self) -> List[Union[StepReference, WorkflowInput]]:
+    def get_references(self) -> list[StepReference | WorkflowInput]:
         """Extract all references used in the current flow."""
         references = []
 
@@ -303,9 +303,7 @@ class FlowBuilder:
 
         return references
 
-    def _get_step_references(
-        self, step: Step
-    ) -> List[Union[StepReference, WorkflowInput]]:
+    def _get_step_references(self, step: Step) -> list[StepReference | WorkflowInput]:
         """Extract all references used in a step."""
         references = []
 
@@ -331,7 +329,7 @@ class FlowBuilder:
 
     def get_value_template_references(
         self, value_template: ValueTemplate
-    ) -> List[Union[StepReference, WorkflowInput]]:
+    ) -> list[StepReference | WorkflowInput]:
         """Extract all references from a ValueTemplate."""
         references = []
 
@@ -357,8 +355,8 @@ class FlowBuilder:
         return references
 
     def get_expr_references(
-        self, expr: Union[Reference, EscapedLiteral, GeneratedValue]
-    ) -> List[Union[StepReference, WorkflowInput]]:
+        self, expr: Reference | EscapedLiteral | GeneratedValue
+    ) -> list[StepReference | WorkflowInput]:
         """Extract references from an Expr."""
         references = []
 

@@ -13,24 +13,23 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""
-Value API for creating workflow values and references.
-"""
+"""Value API for creating workflow values and references."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, field
+from typing import Any, Union
 
 from .generated_flow import (
-    ValueTemplate,
-    Reference,
     EscapedLiteral,
-    WorkflowReference,
-    StepReference as GeneratedStepReference,
-    WorkflowRef,
-    Value as GeneratedValue,
+    Reference,
     SkipAction,
+    ValueTemplate,
+    WorkflowRef,
+    WorkflowReference,
+)
+from .generated_flow import (
+    StepReference as GeneratedStepReference,
 )
 
 
@@ -41,12 +40,12 @@ class JsonPath:
         """Initialize with an optional initial path."""
         self.fragments = ["$"]
 
-    def push_field(self, name: str) -> "JsonPath":
+    def push_field(self, name: str) -> JsonPath:
         """Add a field access to the path (e.g., .fieldName). Mutates this instance."""
         self.fragments.append(f".{name}")
         return self
 
-    def push_index(self, key: Union[str, int]) -> "JsonPath":
+    def push_index(self, key: str | int) -> JsonPath:
         """Add an index access to the path (e.g., [0] or ["key"]). Mutates this instance."""
         if isinstance(key, int):
             self.fragments.append(f"[{key}]")
@@ -54,17 +53,17 @@ class JsonPath:
             self.fragments.append(f'["{key}"]')
         return self
 
-    def with_field(self, name: str) -> "JsonPath":
+    def with_field(self, name: str) -> JsonPath:
         path = self.copy()
         path.push_field(name)
         return path
 
-    def with_index(self, key: Union[str, int]) -> "JsonPath":
+    def with_index(self, key: str | int) -> JsonPath:
         path = self.copy()
         path.push_index(key)
         return path
 
-    def copy(self) -> "JsonPath":
+    def copy(self) -> JsonPath:
         """Create a copy of this JsonPath instance."""
         new_path = JsonPath()
         new_path.fragments = self.fragments.copy()
@@ -84,19 +83,19 @@ class StepReference:
 
     step_id: str
     path: JsonPath = field(default_factory=JsonPath)
-    on_skip: Optional[SkipAction] = None
+    on_skip: SkipAction | None = None
 
-    def __getitem__(self, key: Union[str, int]) -> "StepReference":
+    def __getitem__(self, key: str | int) -> StepReference:
         """Create a nested reference using index access."""
         new_path = self.path.with_index(key)
         return StepReference(self.step_id, new_path, self.on_skip)
 
-    def __getattr__(self, name: str) -> "StepReference":
+    def __getattr__(self, name: str) -> StepReference:
         """Create a nested reference to a field."""
         new_path = self.path.with_field(name)
         return StepReference(self.step_id, new_path, self.on_skip)
-    
-    def with_on_skip(self, on_skip: SkipAction) -> "StepReference":
+
+    def with_on_skip(self, on_skip: SkipAction) -> StepReference:
         """Create a copy of this reference with the specified onSkip action."""
         return StepReference(self.step_id, self.path, on_skip)
 
@@ -106,19 +105,19 @@ class WorkflowInput:
     """Reference to workflow input."""
 
     path: JsonPath = field(default_factory=JsonPath)
-    on_skip: Optional[SkipAction] = None
+    on_skip: SkipAction | None = None
 
-    def __getitem__(self, key: Union[str, int]) -> "WorkflowInput":
+    def __getitem__(self, key: str | int) -> WorkflowInput:
         """Create a reference to a specific path in the workflow input."""
         new_path = self.path.with_index(key)
         return WorkflowInput(new_path, self.on_skip)
 
-    def __getattr__(self, name: str) -> "WorkflowInput":
+    def __getattr__(self, name: str) -> WorkflowInput:
         """Create a reference to a field in the workflow input."""
         new_path = self.path.with_field(name)
         return WorkflowInput(new_path, self.on_skip)
-    
-    def with_on_skip(self, on_skip: SkipAction) -> "WorkflowInput":
+
+    def with_on_skip(self, on_skip: SkipAction) -> WorkflowInput:
         """Create a copy of this reference with the specified onSkip action."""
         return WorkflowInput(self.path, on_skip)
 
@@ -133,7 +132,7 @@ class Value:
     - Expressions using $literal and $from syntax
     """
 
-    def __init__(self, value: "Valuable"):
+    def __init__(self, value: Valuable):
         """Create a Value from a Valuable.
 
         Args:
@@ -145,14 +144,14 @@ class Value:
         """
         self._value = self._unwrap_value(value)
 
-    def _unwrap_value(self, value: "Valuable") -> Any:
+    def _unwrap_value(self, value: Valuable) -> Any:
         """Unwrap a Value if it's wrapped, otherwise return as-is."""
         if isinstance(value, Value):
             return value._value
         return value
 
     @staticmethod
-    def literal(value: Any) -> "Value":
+    def literal(value: Any) -> Value:
         """Create a literal value that won't be expanded as a reference.
 
         This is equivalent to using $literal in the workflow definition.
@@ -160,7 +159,9 @@ class Value:
         return Value(EscapedLiteral(field_literal=value))
 
     @staticmethod
-    def step(step_id: str, path: Optional[str] = None, on_skip: Optional[SkipAction] = None) -> "Value":
+    def step(
+        step_id: str, path: str | None = None, on_skip: SkipAction | None = None
+    ) -> Value:
         """Create a reference to a step's output.
 
         This is equivalent to using $from with a step reference.
@@ -171,7 +172,7 @@ class Value:
         return Value(StepReference(step_id, json_path, on_skip))
 
     @staticmethod
-    def input(path: Optional[str] = None, on_skip: Optional[SkipAction] = None) -> "Value":
+    def input(path: str | None = None, on_skip: SkipAction | None = None) -> Value:
         """Create a reference to workflow input.
 
         This is equivalent to using $from with a workflow input reference.
@@ -186,7 +187,7 @@ class Value:
         return Value._convert_to_value_template(self._value)
 
     @staticmethod
-    def _convert_to_value_template(data: Any) -> Optional[ValueTemplate]:
+    def _convert_to_value_template(data: Any) -> ValueTemplate | None:
         """Convert arbitrary data to ValueTemplate."""
         if data is None:
             return None
@@ -214,7 +215,7 @@ class Value:
 
     @staticmethod
     def _convert_reference_to_expr(
-        ref: Union[StepReference, WorkflowInput],
+        ref: StepReference | WorkflowInput,
     ) -> Reference:
         """Convert a reference to a Reference."""
         if isinstance(ref, StepReference):
@@ -228,14 +229,14 @@ class Value:
         else:
             raise ValueError(f"Unknown reference type: {type(ref)}")
 
-    def __getitem__(self, key: str) -> "Value":
+    def __getitem__(self, key: str) -> Value:
         """Create a nested reference if this is a reference, otherwise raise an error."""
         if isinstance(self._value, (StepReference, WorkflowInput)):
             return Value(self._value[key])
         else:
             raise TypeError(f"Cannot index into {type(self._value).__name__}")
 
-    def __getattr__(self, name: str) -> "Value":
+    def __getattr__(self, name: str) -> Value:
         """Create a nested reference if this is a reference, otherwise raise an error."""
         if isinstance(self._value, (StepReference, WorkflowInput)):
             return Value(getattr(self._value, name))
@@ -243,8 +244,8 @@ class Value:
             raise AttributeError(
                 f"'{type(self._value).__name__}' object has no attribute '{name}'"
             )
-    
-    def with_on_skip(self, on_skip: SkipAction) -> "Value":
+
+    def with_on_skip(self, on_skip: SkipAction) -> Value:
         """Create a copy of this Value with the specified onSkip action (only for references)."""
         if isinstance(self._value, (StepReference, WorkflowInput)):
             return Value(self._value.with_on_skip(on_skip))
@@ -258,11 +259,11 @@ class WorkflowInputValue(Value):
     def __init__(self):
         super().__init__(WorkflowInput())
 
-    def __getitem__(self, key: str) -> "Value":
+    def __getitem__(self, key: str) -> Value:
         """Create a nested reference to workflow input."""
         return Value(self._value[key])
 
-    def __getattr__(self, name: str) -> "Value":
+    def __getattr__(self, name: str) -> Value:
         """Create a nested reference to workflow input field."""
         return Value(getattr(self._value, name))
 
@@ -278,6 +279,6 @@ Valuable = Union[
     float,
     bool,
     None,
-    Dict[str, "Valuable"],
-    List["Valuable"],
+    dict[str, "Valuable"],
+    list["Valuable"],
 ]

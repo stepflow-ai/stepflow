@@ -16,6 +16,10 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.26.0",
     "pytest-cov>=4.1.0",
+    "poethepoet>=0.24.0",
+    "ruff>=0.9.4",
+    "mypy>=1.8.0",
+    "deptry>=0.22.0",
 ]
 
 [project.scripts]
@@ -24,3 +28,118 @@ stepflow_sdk = "stepflow_sdk.main:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.poe]
+# comment this out to debug poe tasks
+verbosity = -1
+
+[tool.poe.env]
+RUFF = "ruff@0.9.4"
+DEPTRY = "deptry@0.22.0"
+
+[tool.poe.tasks.fmt-check]
+help = "Runs `ruff format --check` to check for formatting issues (fix with `fmt-fix`)"
+cmd = "uvx ${RUFF} format --check ."
+
+[tool.poe.tasks.fmt-fix]
+help = "Runs `ruff format` to fix formatting issues"
+cmd = "uvx ${RUFF} format ."
+
+[tool.poe.tasks.lint-check]
+help = "Runs `ruff check` to check for lint issues (fix with `lint-fix`)"
+cmd = "uvx ${RUFF} check ."
+
+[tool.poe.tasks.lint-fix]
+help = "Runs `ruff check --fix` to fix lint issues"
+cmd = "uvx ${RUFF} check --fix ."
+
+[tool.poe.tasks.type-check]
+help = "Runs `mypy` to check for static type issues"
+cmd = "uv run mypy src tests"
+
+[tool.poe.tasks.dep-check]
+help = "Runs `deptry` to check for dependency issues"
+cmd = "uvx ${DEPTRY} src tests"
+
+[tool.poe.tasks.codegen-check]
+help = "Check that generated types are up-to-date"
+cmd = "uv run python generate.py --check"
+
+[tool.poe.tasks.codegen-fix]
+help = "Regenerate types from schemas"
+sequence = [
+    {cmd = "uv run python generate.py"},
+    {cmd = "uvx ${RUFF} format src/stepflow_sdk/generated_*.py"},
+    {cmd = "uvx ${RUFF} check --fix src/stepflow_sdk/generated_*.py"}
+]
+
+[tool.poe.tasks.test]
+help = "Run tests"
+cmd = "uv run pytest tests"
+
+# Aliases for common commands
+[tool.poe.tasks.fmt]
+help = "Alias for fmt-fix"
+ref = "fmt-fix"
+
+[tool.poe.tasks.lint]
+help = "Runs all checks (fixing where possible)"
+sequence = ["codegen-fix", "fmt-fix", "lint-fix", "dep-check"]
+
+[tool.poe.tasks.typecheck]
+help = "Alias for type-check"
+ref = "type-check"
+
+[tool.poe.tasks.check]
+help = "Runs all checks and tests"
+sequence = ["lint", "test"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "C4"]
+ignore = [
+    "E501",  # Line too long (we'll gradually fix these)
+    "E402",  # Module level import not at top of file
+    "E722",  # Bare except (specific cases need manual review)
+    "UP007", # Union type syntax (compatibility consideration)
+    "UP038", # isinstance with tuple (readability preference)
+    "B904",  # Exception chaining (needs context-specific review)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
+"generate.py" = ["T201", "E501"]  # Allow prints and long lines in build script
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+# Disable some strict checks for now - can be enabled gradually
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+strict_equality = false
+
+# Ignore errors in tests and generated files
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "stepflow_sdk.generated_*"
+ignore_errors = true

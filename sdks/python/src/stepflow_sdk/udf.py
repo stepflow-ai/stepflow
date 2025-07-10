@@ -13,10 +13,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import sys
-import msgspec
 import inspect
+import sys
 from typing import Any
+
+import msgspec
+
 from stepflow_sdk.context import StepflowContext
 
 # Global cache for compiled functions by blob_id
@@ -29,8 +31,7 @@ class UdfInput(msgspec.Struct):
 
 
 async def udf(input: UdfInput, context: StepflowContext) -> Any:
-    """
-    Execute user-defined function (UDF) using cached compiled functions from blobs.
+    """Execute user-defined function (UDF) using cached compiled functions from blobs.
 
     Args:
         input: Contains blob_id (referencing stored code/schema) and input (data)
@@ -93,10 +94,9 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
 def _compile_function(
     code: str, function_name: str | None, input_schema: dict, context: StepflowContext
 ):
-    """
-    Compile a function from code string and return the callable with validation.
-    """
+    """Compile a function from code string and return the callable with validation."""
     import json
+
     import jsonschema
 
     # Create a safe execution environment

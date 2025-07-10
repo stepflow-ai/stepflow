@@ -13,18 +13,19 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+
 import pytest
-import json
-from stepflow_sdk.flow_builder import FlowBuilder
+
 from stepflow_sdk import (
-    OnErrorFail,
-    OnErrorSkip, 
-    OnErrorRetry,
     OnErrorDefault,
-    Value,
+    OnErrorFail,
+    OnErrorRetry,
+    OnErrorSkip,
     StepReference,
+    Value,
     WorkflowInput,
 )
+from stepflow_sdk.flow_builder import FlowBuilder
 
 
 def test_basic_flow_builder():
@@ -96,7 +97,7 @@ def test_step_references():
 
     # Set output to make the test complete
     builder.set_output({"result": ref1})
-    
+
     flow = builder.build()
     assert len(flow.steps) == 5
 
@@ -127,7 +128,7 @@ def test_workflow_input_references():
 
     # Set output to make the test complete
     builder.set_output({"result": input_ref})
-    
+
     flow = builder.build()
     assert len(flow.steps) == 4
 
@@ -150,7 +151,7 @@ def test_literal_values():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     assert len(flow.steps) == 1
 
@@ -181,7 +182,7 @@ def test_error_handling():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     assert len(flow.steps) == 3
 
@@ -213,7 +214,7 @@ def test_error_default_handling():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     assert len(flow.steps) == 1
 
@@ -227,18 +228,16 @@ def test_error_default_handling():
 def test_build_requires_output():
     """Test that build() fails when output hasn't been set."""
     builder = FlowBuilder()
-    
+
     # Add a step but don't set output
     builder.add_step(
-        id="test_step",
-        component="test/component",
-        input_data={"value": 1}
+        id="test_step", component="test/component", input_data={"value": 1}
     )
-    
+
     # build() should fail without output
     with pytest.raises(ValueError, match="Flow output must be set before building"):
         builder.build()
-    
+
     # After setting output, build() should succeed
     builder.set_output({"result": "success"})
     flow = builder.build()
@@ -262,7 +261,7 @@ def test_step_ids():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
 
     # Check that IDs were set correctly
@@ -300,7 +299,7 @@ def test_complex_nested_references():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     assert len(flow.steps) == 2
 
@@ -362,7 +361,7 @@ def test_get_step_references():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     references = builder.step("test_step").get_references()
 
@@ -389,7 +388,7 @@ def test_get_references_with_skip_condition():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     references = builder.step("skip_test").get_references()
 
@@ -416,7 +415,7 @@ def test_get_references_with_literal_values():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     references = builder.step("literal_test").get_references()
 
@@ -442,7 +441,7 @@ def test_get_references_mixed_types():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     references = builder.step("mixed_test").get_references()
 
@@ -515,7 +514,7 @@ def test_flowbuilder_load_and_extend():
 
     # Set output to make the test complete
     original_builder.set_output({"result": "done"})
-    
+
     original_flow = original_builder.build()
 
     # Load the flow
