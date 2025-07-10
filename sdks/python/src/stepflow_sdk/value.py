@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Union
+from typing import Any
 
 from .generated_flow import (
     EscapedLiteral,
@@ -269,16 +269,16 @@ class WorkflowInputValue(Value):
 
 
 # Type alias for things that can be converted to JSON values
-Valuable = Union[
-    Value,
-    StepReference,
-    WorkflowInput,
-    EscapedLiteral,
-    str,
-    int,
-    float,
-    bool,
-    None,
-    dict[str, "Valuable"],
-    list["Valuable"],
-]
+Valuable = (
+    Value
+    | StepReference
+    | WorkflowInput
+    | EscapedLiteral
+    | str
+    | int
+    | float
+    | bool
+    | None
+    | dict[str, "Valuable"]
+    | list["Valuable"]
+)
