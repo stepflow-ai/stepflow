@@ -43,11 +43,11 @@ def test_basic_flow_builder():
     step2 = builder.add_step(
         id="double_result",
         component="builtin/eval",
-        input_data={"expr": "result * 2", "result": step1},
+        input_data={"expr": "result * 2", "result": Value.step(step1.id, "$")},
     )
 
     # Set the flow output
-    builder.set_output({"final_result": step2})
+    builder.set_output({"final_result": Value.step(step2.id, "$")})
 
     # Build the flow
     flow = builder.build()
@@ -85,7 +85,9 @@ def test_step_references():
 
     # Add steps that use these references
     builder.add_step(
-        id="step1", component="test/component", input_data={"direct": ref1}
+        id="step1",
+        component="test/component",
+        input_data={"direct": Value.step(step1.id, "$")},
     )
     builder.add_step(id="step2", component="test/component", input_data={"field": ref2})
     builder.add_step(
@@ -96,7 +98,7 @@ def test_step_references():
     )
 
     # Set output to make the test complete
-    builder.set_output({"result": ref1})
+    builder.set_output({"result": Value.step(step1.id, "$")})
 
     flow = builder.build()
     assert len(flow.steps) == 5

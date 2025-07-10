@@ -24,9 +24,10 @@ from typing import Annotated, Any, List, Literal
 
 from msgspec import Meta, Struct
 
-JsonRpc = Annotated[
-    Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')
-]
+JsonRpc = (
+    Annotated[Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')]
+    | None
+)
 
 
 RequestId = Annotated[

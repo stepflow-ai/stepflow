@@ -129,7 +129,12 @@ def test_skip_actions():
         if ref.on_skip and isinstance(ref.on_skip, OnSkipDefault)
     )
 
+    assert skip_ref.on_skip is not None
+    assert isinstance(skip_ref.on_skip, OnSkipSkip)
     assert skip_ref.on_skip.action == "skip"
+
+    assert default_ref.on_skip is not None
+    assert isinstance(default_ref.on_skip, OnSkipDefault)
     assert default_ref.on_skip.action == "useDefault"
     assert default_ref.on_skip.defaultValue == "default_value"
 
@@ -143,6 +148,8 @@ def test_value_with_on_skip():
     # Verify it's a new instance with onSkip set
     assert step_ref_with_skip is not step_ref
     assert isinstance(step_ref_with_skip._value, StepReference)
+    assert step_ref_with_skip._value.on_skip is not None
+    assert isinstance(step_ref_with_skip._value.on_skip, OnSkipSkip)
     assert step_ref_with_skip._value.on_skip.action == "skip"
 
     # Test with workflow input
@@ -153,6 +160,8 @@ def test_value_with_on_skip():
 
     assert input_ref_with_default is not input_ref
     assert isinstance(input_ref_with_default._value, WorkflowInput)
+    assert input_ref_with_default._value.on_skip is not None
+    assert isinstance(input_ref_with_default._value.on_skip, OnSkipDefault)
     assert input_ref_with_default._value.on_skip.action == "useDefault"
     assert input_ref_with_default._value.on_skip.defaultValue == "fallback"
 
@@ -197,12 +206,12 @@ def test_value_class_constructor():
     assert val3._value == {"key": "value"}
 
     # Test with StepReference
-    step_ref = StepReference("step1", "output")
+    step_ref = StepReference("step1", JsonPath().with_field("output"))
     val4 = Value(step_ref)
     assert val4._value == step_ref
 
     # Test with WorkflowInput
-    input_ref = WorkflowInput("input.field")
+    input_ref = WorkflowInput(JsonPath().with_field("input").with_field("field"))
     val5 = Value(input_ref)
     assert val5._value == input_ref
 
@@ -361,6 +370,7 @@ def test_json_path_class():
 
     # Test path consistency with actual usage using proper FlowBuilder API
     from stepflow_sdk.flow_builder import FlowBuilder
+
     builder = FlowBuilder()
     step_handle = builder.add_step(id="test_step", component="test/component")
     step_ref = step_handle.field["key"][0].nested
@@ -375,8 +385,9 @@ def test_json_path_consistency():
     """Test that all path-handling classes use JsonPath consistently."""
     # All these should produce consistent JSON Path format
 
-    # StepHandle -> StepReference  
+    # StepHandle -> StepReference
     from stepflow_sdk.flow_builder import FlowBuilder
+
     builder = FlowBuilder()
     handle = builder.add_step(id="step1", component="test/component")
     step_ref1 = handle.output.data[0].field

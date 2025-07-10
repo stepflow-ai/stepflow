@@ -52,7 +52,8 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/Step"
-      }
+      },
+      "default": []
     },
     "output": {
       "description": "The outputs of the flow, mapping output names to their values.",

@@ -48,7 +48,11 @@ from .value import (
 
 @dataclass
 class StepHandle:
-    """Handle to a step that can be used to create references to its output and analyze it."""
+    """Handle for interacting with a step.
+
+    Allows creating references to the step's output or analyzing
+    the references within the step.
+    """
 
     step: Step
     builder: FlowBuilder

@@ -19,7 +19,7 @@ This module handles the two-stage deserialization of JSON-RPC messages,
 using RawMessage as an implementation detail for efficient parsing.
 """
 
-from typing import Any, Generic, TypeVar, Union
+from typing import Any, Generic, TypeVar
 
 import msgspec
 from msgspec import Raw, Struct
