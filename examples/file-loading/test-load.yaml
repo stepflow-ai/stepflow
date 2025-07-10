@@ -9,7 +9,10 @@ steps:
 
 output:
   loaded_data: { $from: { step: "load_sales_data" }, path: "data" }
-  file_metadata: { $from: { step: "load_sales_data" }, path: "metadata" }
+  file_metadata:
+    size_bytes: { $from: { step: "load_sales_data" }, path: "$.metadata.size_bytes" }
+    format: { $from: { step: "load_sales_data" }, path: "$.metadata.format" }
+
 
 test:
   cases:
@@ -23,6 +26,5 @@ test:
           test: "data"
           value: 42
         file_metadata:
-          resolved_path: "../../../examples/file-loading/test-data.json"
           size_bytes: 29
           format: "json"

@@ -1,3 +1,4 @@
+#!/bin/bash
 # Licensed to the Apache Software Foundation (ASF) under one or more contributor
 # license agreements.  See the NOTICE file distributed with this work for
 # additional information regarding copyright ownership.  The ASF licenses this
@@ -13,20 +14,30 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-from stepflow_sdk.server import StepflowStdioServer
-from stepflow_sdk.udf import udf
+set -e
 
-# Create server instance
-server = StepflowStdioServer()
+echo "🚀 Running complete test suite..."
 
-# Register the UDF component
-server.component(udf)
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+cd "$PROJECT_ROOT"
 
-def main():
-    # Start the server
-    server.run()
+# Run Rust unit tests
+echo "📦 Running Rust unit tests..."
+cd stepflow-rs
+cargo test
+cd ..
 
+# Run Python SDK tests
+echo "🐍 Running Python SDK tests..."
+cd sdks/python
+uv run poe test
+cd ../..
 
-if __name__ == "__main__":
-    main()
+# Run integration tests
+echo "🔗 Running integration tests..."
+./scripts/test-integration.sh
+
+echo "✅ Complete test suite finished successfully"

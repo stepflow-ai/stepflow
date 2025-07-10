@@ -14,13 +14,14 @@
 # the License.
 
 import pytest
-from stepflow_sdk.value import Value, JsonPath, StepReference, WorkflowInput
+
+from stepflow_sdk import (
+    OnSkipDefault,
+    OnSkipSkip,
+)
 from stepflow_sdk.flow_builder import FlowBuilder, StepHandle
 from stepflow_sdk.generated_flow import EscapedLiteral
-from stepflow_sdk import (
-    OnSkipSkip,
-    OnSkipDefault,
-)
+from stepflow_sdk.value import JsonPath, StepReference, Value, WorkflowInput
 
 
 def test_value_api_methods():
@@ -89,7 +90,10 @@ def test_skip_actions():
 
     # Create references with onSkip actions
     input_with_skip = Value.input("field", on_skip=OnSkipSkip(action="skip"))
-    input_with_default = Value.input("field", on_skip=OnSkipDefault(action="useDefault", defaultValue="default_value"))
+    input_with_default = Value.input(
+        "field",
+        on_skip=OnSkipDefault(action="useDefault", defaultValue="default_value"),
+    )
 
     # Add step using references with onSkip
     builder.add_step(
@@ -103,22 +107,28 @@ def test_skip_actions():
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
-    
+
     flow = builder.build()
     assert len(flow.steps) == 1
 
     # Build and check references were created correctly
     loaded_builder = FlowBuilder.load(flow)
     references = loaded_builder.step("skip_test").get_references()
-    
+
     # Should find two workflow input references
     assert len(references) == 2
     assert all(isinstance(ref, WorkflowInput) for ref in references)
-    
+
     # Check that onSkip was set on the references
-    skip_ref = next(ref for ref in references if ref.on_skip and isinstance(ref.on_skip, OnSkipSkip))
-    default_ref = next(ref for ref in references if ref.on_skip and isinstance(ref.on_skip, OnSkipDefault))
-    
+    skip_ref = next(
+        ref for ref in references if ref.on_skip and isinstance(ref.on_skip, OnSkipSkip)
+    )
+    default_ref = next(
+        ref
+        for ref in references
+        if ref.on_skip and isinstance(ref.on_skip, OnSkipDefault)
+    )
+
     assert skip_ref.on_skip.action == "skip"
     assert default_ref.on_skip.action == "useDefault"
     assert default_ref.on_skip.defaultValue == "default_value"
@@ -129,21 +139,23 @@ def test_value_with_on_skip():
     # Test with step reference
     step_ref = Value.step("step1", "output")
     step_ref_with_skip = step_ref.with_on_skip(OnSkipSkip(action="skip"))
-    
+
     # Verify it's a new instance with onSkip set
     assert step_ref_with_skip is not step_ref
     assert isinstance(step_ref_with_skip._value, StepReference)
     assert step_ref_with_skip._value.on_skip.action == "skip"
-    
+
     # Test with workflow input
     input_ref = Value.input("field")
-    input_ref_with_default = input_ref.with_on_skip(OnSkipDefault(action="useDefault", defaultValue="fallback"))
-    
+    input_ref_with_default = input_ref.with_on_skip(
+        OnSkipDefault(action="useDefault", defaultValue="fallback")
+    )
+
     assert input_ref_with_default is not input_ref
     assert isinstance(input_ref_with_default._value, WorkflowInput)
     assert input_ref_with_default._value.on_skip.action == "useDefault"
     assert input_ref_with_default._value.on_skip.defaultValue == "fallback"
-    
+
     # Test error on non-reference
     literal_val = Value.literal("test")
     with pytest.raises(TypeError):

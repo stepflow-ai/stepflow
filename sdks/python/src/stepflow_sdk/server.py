@@ -15,17 +15,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Type, TypeVar, Union
-from functools import wraps
-import inspect
-import json
-import sys
 import asyncio
+import inspect
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import wraps
 from urllib.parse import urlparse
 
 import msgspec
-from msgspec import UNSET
+
+from stepflow_sdk.context import StepflowContext
 from stepflow_sdk.exceptions import (
     ComponentNotFoundError,
     InputValidationError,
@@ -35,35 +35,33 @@ from stepflow_sdk.exceptions import (
     StepflowProtocolError,
 )
 from stepflow_sdk.generated_protocol import (
-    RequestId,
-    Message,
-    MethodRequest,
-    MethodResponse,
-    MethodSuccess,
-    MethodError,
-    Notification,
-    InitializeParams,
-    InitializeResult,
-    ComponentInfoParams,
-    ComponentInfoResult,
     ComponentExecuteParams,
     ComponentExecuteResult,
     ComponentInfo,
-    Component,
+    ComponentInfoParams,
+    ComponentInfoResult,
+    InitializeParams,
+    InitializeResult,
     ListComponentsResult,
+    Message,
     Method,
+    MethodError,
+    MethodRequest,
+    MethodResponse,
+    MethodSuccess,
+    Notification,
+    RequestId,
 )
 from stepflow_sdk.message_decoder import MessageDecoder
-from stepflow_sdk.context import StepflowContext
 
 
 @dataclass
 class ComponentEntry:
     name: str
     function: Callable
-    input_type: Type
-    output_type: Type
-    description: Optional[str] = None
+    input_type: type
+    output_type: type
+    description: str | None = None
 
     def input_schema(self):
         return msgspec.json.schema(self.input_type)
@@ -82,7 +80,7 @@ def _handle_exception(e: Exception, id: RequestId | None) -> MethodError:
 
 class StepflowStdioServer:
     def __init__(self, default_protocol_prefix: str = "python"):
-        self._components: Dict[str, ComponentEntry] = {}
+        self._components: dict[str, ComponentEntry] = {}
         self._initialized = False
         self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
@@ -94,13 +92,12 @@ class StepflowStdioServer:
 
     def component(
         self,
-        func: Optional[Callable] = None,
+        func: Callable | None = None,
         *,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
     ):
-        """
-        Decorator to register a component function.
+        """Decorator to register a component function.
 
         Args:
             func: The function to register (provided by the decorator)
@@ -162,7 +159,6 @@ class StepflowStdioServer:
 
     async def _handle_method_request(self, request: MethodRequest) -> MethodResponse:
         """Handle a method request and return a response."""
-
         id = request.id
         match request.method:
             case Method.initialize:
@@ -212,7 +208,6 @@ class StepflowStdioServer:
                     )
 
                 # Execute component with or without context
-                import asyncio
                 import inspect
 
                 if (
@@ -266,7 +261,6 @@ class StepflowStdioServer:
 
     async def _handle_incoming_message(self, request_bytes: bytes):
         """Handle an incoming message in a separate task."""
-
         request_id = None
         try:
             # Decode message using message decoder
@@ -310,7 +304,9 @@ class StepflowStdioServer:
         elif isinstance(message, (MethodSuccess, MethodError)):
             # Response messages should be handled by the MessageDecoder in _handle_incoming_message
             # and should not reach this point
-            raise StepflowProtocolError("Unexpected response message in _handle_message")
+            raise StepflowProtocolError(
+                "Unexpected response message in _handle_message"
+            )
         elif isinstance(message, Notification):
             if message.method == Method.initialized:
                 self._initialized = True

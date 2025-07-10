@@ -16,7 +16,7 @@ cargo build --release
 
 ### Running Tests
 ```bash
-# Run all tests (run from stepflow-rs directory)
+# Fast unit tests only (no external dependencies required)
 cd stepflow-rs
 cargo test
 
@@ -28,6 +28,12 @@ cargo test -p stepflow-execution
 
 # Run a specific test
 cargo test -p stepflow-execution -- execute_flows
+
+# Integration tests (requires Python environment and stepflow binary)
+./scripts/test-integration.sh
+
+# Complete test suite (unit tests + Python SDK tests + integration tests)
+./scripts/test-all.sh
 ```
 
 ### Running the App

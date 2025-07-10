@@ -13,46 +13,45 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""
-Message reading and decoding for the StepFlow Python SDK.
+"""Message reading and decoding for the StepFlow Python SDK.
 
 This module handles the two-stage deserialization of JSON-RPC messages,
 using RawMessage as an implementation detail for efficient parsing.
 """
 
+from typing import Generic, TypeVar
+
 import msgspec
 from msgspec import Raw, Struct
-from typing import TypeVar, Generic, Dict, Tuple, Optional
 
+from .exceptions import StepflowProtocolError
 from .generated_protocol import (
-    Message,
-    MethodRequest,
-    MethodSuccess,
-    MethodError,
-    Notification,
-    Method,
-    RequestId,
-    Error,
-    InitializeParams,
-    InitializeResult,
     ComponentExecuteParams,
     ComponentExecuteResult,
-    ComponentListParams,
-    ListComponentsResult,
     ComponentInfoParams,
     ComponentInfoResult,
-    Initialized,
+    ComponentListParams,
+    Error,
     GetBlobParams,
     GetBlobResult,
+    Initialized,
+    InitializeParams,
+    InitializeResult,
+    ListComponentsResult,
+    Message,
+    Method,
+    MethodError,
+    MethodRequest,
+    MethodSuccess,
+    Notification,
     PutBlobParams,
     PutBlobResult,
+    RequestId,
 )
-from .exceptions import StepflowProtocolError
 
 
 class _RawMessage(Struct, omit_defaults=True, kw_only=True):
-    """
-    Raw message envelope for initial JSON-RPC deserialization.
+    """Raw message envelope for initial JSON-RPC deserialization.
 
     This is an implementation detail used only for initial parsing
     to determine message type, then immediately converted to proper typed Message.
@@ -70,8 +69,7 @@ T = TypeVar("T")
 
 
 class MessageDecoder(Generic[T]):
-    """
-    Stateful decoder for JSON-RPC messages with pending request tracking.
+    """Stateful decoder for JSON-RPC messages with pending request tracking.
 
     This class handles the two-stage deserialization of JSON-RPC messages,
     maintaining a map of pending requests to properly decode responses with
@@ -79,13 +77,12 @@ class MessageDecoder(Generic[T]):
     """
 
     def __init__(self):
-        self._pending_requests: Dict[RequestId, Tuple[type, T]] = {}
+        self._pending_requests: dict[RequestId, tuple[type, T]] = {}
 
     def register_request(
         self, request_id: RequestId, response_type: type, context: T
     ) -> None:
-        """
-        Register a pending request with its expected response type and context.
+        """Register a pending request with its expected response type and context.
 
         Args:
             request_id: The request ID to track
@@ -97,8 +94,7 @@ class MessageDecoder(Generic[T]):
     def register_request_for_method(
         self, request_id: RequestId, method: Method, context: T
     ) -> None:
-        """
-        Register a pending request with automatic result type detection based on method.
+        """Register a pending request with automatic result type detection based on method.
 
         Args:
             request_id: The request ID to track
@@ -108,9 +104,8 @@ class MessageDecoder(Generic[T]):
         response_type = _get_result_type_for_method(method)
         self.register_request(request_id, response_type, context)
 
-    def decode(self, message_bytes: bytes) -> Tuple[Message, Optional[T]]:
-        """
-        Decode JSON-RPC message bytes into a properly typed Message.
+    def decode(self, message_bytes: bytes) -> tuple[Message, T | None]:
+        """Decode JSON-RPC message bytes into a properly typed Message.
 
         Args:
             message_bytes: Raw JSON bytes of the message
@@ -134,7 +129,7 @@ class MessageDecoder(Generic[T]):
 
     def _convert_raw_to_typed(
         self, raw_message: _RawMessage
-    ) -> Tuple[Message, Optional[T]]:
+    ) -> tuple[Message, T | None]:
         """Convert a raw message to a properly typed message."""
         # Determine message type based on presence of id/method
         if raw_message.id is not None and raw_message.method is not None:

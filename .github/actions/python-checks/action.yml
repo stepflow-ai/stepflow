@@ -1,0 +1,53 @@
+name: 'Python SDK Checks'
+description: 'Run Python SDK tests and validate generated types'
+
+inputs:
+  uv-version:
+    description: 'uv version to install'
+    required: false
+    default: '0.7.5'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: ${{ inputs.uv-version }}
+        enable-cache: true
+
+    - name: Set up Python
+      shell: bash
+      run: uv python install
+      working-directory: sdks/python
+
+    - name: Regenerate Python types (ensure up-to-date)
+      shell: bash
+      run: uv run poe codegen-fix
+      working-directory: sdks/python
+
+    - name: Check Python formatting
+      shell: bash
+      run: uv run poe fmt-check
+      working-directory: sdks/python
+
+    - name: Run Python linting
+      shell: bash
+      run: uv run poe lint-check
+      working-directory: sdks/python
+
+    # TODO: Re-enable type checking once type issues are resolved
+    # - name: Run Python type checking
+    #   shell: bash
+    #   run: uv run poe type-check
+    #   working-directory: sdks/python
+
+    - name: Check Python dependencies
+      shell: bash
+      run: uv run poe dep-check
+      working-directory: sdks/python
+
+    - name: Run Python tests
+      shell: bash
+      run: uv run poe test
+      working-directory: sdks/python

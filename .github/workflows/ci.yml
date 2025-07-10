@@ -14,105 +14,111 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
-# TODO: Split into per-language custom actions and use https://github.com/dorny/paths-filter
-# to run actions only for affected packages.
+# =============================================================================
+# CI OPTIMIZATION STRATEGY
+# =============================================================================
+# This workflow uses path-based filtering to run checks only on changed sub-packages.
+# This significantly reduces CI time by avoiding unnecessary work.
+#
+# APPROACH:
+# 1. Use dorny/paths-filter to detect which sub-packages have changes
+# 2. Use composite actions (.github/actions/*) to encapsulate package-specific logic
+# 3. Run checks conditionally based on detected changes
+# 4. Use a final aggregation job to ensure all required checks pass
+#
+# SUB-PACKAGES:
+# - rust: stepflow-rs Rust workspace (crates/*)
+# - python: sdks/python Python SDK
+# - docs: docs/ Docusaurus documentation site
+#
+# EXTENDING THIS PATTERN:
+# To add new sub-packages (e.g., TypeScript SDK, UI):
+# 1. Create a new composite action in .github/actions/
+# 2. Add path filters below in the 'changes' job
+# 3. Add a conditional job that uses the new composite action
+# 4. Update the 'check-success' job dependencies
+# =============================================================================
+
 jobs:
-  test:
+  # Detect which parts of the codebase have changed
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      python: ${{ steps.filter.outputs.python }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'stepflow-rs/**'
+              - 'schemas/**'
+            python:
+              - 'sdks/python/**'
+              - 'schemas/**'
+            docs:
+              - 'docs/**'
+              - 'README.md'
+              - '*.md'
+
+  # Rust style checks (fast parallel execution)
+  rust-style:
+    name: Rust Style & Quality
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-style
+
+  # Rust build & test (heavy compilation)
+  rust-build:
+    name: Rust Build & Test
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: true
       matrix:
         include:
           - { os: ubuntu-latest }
+          # Additional OS can be added when needed:
           # - { os: macos-latest }
-          # - { os: macos-13 }
           # - { os: windows-latest }
-
-    name: Test ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-build
         with:
-          toolchain: stable
-          components: 'clippy'
+          os: ${{ matrix.os }}
 
-      - name: cargo cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            stepflow-rs
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "0.7.5"
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install
-        working-directory: sdks/python
-
-      - name: Check Python generated types are up-to-date
-        run: uv run python generate.py --check
-        working-directory: sdks/python
-
-      - name: Run pytests
-        run: uv run pytest tests
-        working-directory: sdks/python
-
-      - name: Run cargo-test
-        run: cargo test
-        working-directory: stepflow-rs
-
-      - name: Lint (clippy)
-        run: cargo clippy
-        working-directory: stepflow-rs
-
-  rustfmt:
-    name: Rust Format
+  # Python SDK checks
+  python-checks:
+    name: Python SDK Checks
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
-        components: 'rustfmt'
-    - name: Format
-      run: cargo fmt --check
-      working-directory: stepflow-rs
-
-  rust-unused-dependencies:
-    name: Rust Unused Dependencies
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install cargo-machete
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-machete
-      - name: Run cargo-machete
-        working-directory: stepflow-rs
-        run: |
-          cargo machete --with-metadata
-          exit_code=$?
-          if [ $exit_code -ne 0 ]; then
-            echo "::error::Unused deps check failed. Run \`cargo machete --fix --with-metadata\` to fix."
-            exit $exit_code
-          fi
-
-  rust-cargo-deny:
-    name: Rust Cargo Deny
-    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          manifest-path: stepflow-rs/Cargo.toml
+      - uses: ./.github/actions/python-checks
 
+  # Documentation build validation
+  docs-checks:
+    name: Documentation Checks
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/docs-checks
+
+  # License header validation (runs on all changes)
   licensure:
-    name: Licensure
-    runs-on: ubuntu-22.04
+    name: License Headers
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -120,7 +126,7 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: licensure
-      - name: Run licensure
+      - name: Check license headers
         run: |
           licensure -c -p
           exit_code=$?
@@ -128,3 +134,95 @@ jobs:
             echo "::error::License check failed. Run \`licensure -p --in-place\` to fix."
             exit $exit_code
           fi
+
+  # Integration tests (runs workflow execution tests with external dependencies)
+  integration-checks:
+    name: Integration Tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Configure Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            stepflow-rs
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.5"
+          enable-cache: true
+      - name: Set up Python
+        shell: bash
+        run: uv python install
+        working-directory: sdks/python
+      - name: Run integration tests
+        shell: bash
+        run: ./scripts/test-integration.sh
+
+  # Final aggregation job - ensures all required checks pass
+  # This job is required by branch protection rules
+  check-success:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [changes, rust-style, rust-build, python-checks, docs-checks, licensure, integration-checks]
+    # Always run this job, but fail if any required checks failed
+    if: always()
+    steps:
+      - name: Check all required jobs succeeded
+        run: |
+          # Check if any required job failed or was cancelled
+          if [[ "${{ needs.rust-style.result }}" == "failure" || "${{ needs.rust-style.result }}" == "cancelled" ]]; then
+            echo "::error::Rust style checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.rust-build.result }}" == "failure" || "${{ needs.rust-build.result }}" == "cancelled" ]]; then
+            echo "::error::Rust build checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.python-checks.result }}" == "failure" || "${{ needs.python-checks.result }}" == "cancelled" ]]; then
+            echo "::error::Python checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docs-checks.result }}" == "failure" || "${{ needs.docs-checks.result }}" == "cancelled" ]]; then
+            echo "::error::Documentation checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.licensure.result }}" == "failure" || "${{ needs.licensure.result }}" == "cancelled" ]]; then
+            echo "::error::License checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.integration-checks.result }}" == "failure" || "${{ needs.integration-checks.result }}" == "cancelled" ]]; then
+            echo "::error::Integration checks failed"
+            exit 1
+          fi
+          
+          # Check if required jobs were skipped when they should have run
+          if [[ "${{ needs.changes.outputs.rust }}" == "true" && "${{ needs.rust-style.result }}" == "skipped" ]]; then
+            echo "::error::Rust changes detected but rust-style was skipped"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.rust }}" == "true" && "${{ needs.rust-build.result }}" == "skipped" ]]; then
+            echo "::error::Rust changes detected but rust-build was skipped"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.python }}" == "true" && "${{ needs.python-checks.result }}" == "skipped" ]]; then
+            echo "::error::Python changes detected but python-checks was skipped"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.docs }}" == "true" && "${{ needs.docs-checks.result }}" == "skipped" ]]; then
+            echo "::error::Documentation changes detected but docs-checks was skipped"
+            exit 1
+          fi
+          if [[ ("${{ needs.changes.outputs.rust }}" == "true" || "${{ needs.changes.outputs.python }}" == "true") && "${{ needs.integration-checks.result }}" == "skipped" ]]; then
+            echo "::error::Rust or Python changes detected but integration-checks was skipped"
+            exit 1
+          fi
+          
+          echo "✅ All required checks passed!"
