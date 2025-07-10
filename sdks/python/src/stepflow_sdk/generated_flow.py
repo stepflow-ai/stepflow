@@ -251,6 +251,7 @@ class Step(Struct, kw_only=True):
 
 
 class Flow(Struct, kw_only=True):
+    steps: Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
     name: Annotated[str | None, Meta(description='The name of the flow.')] | None = None
     description: (
         Annotated[str | None, Meta(description='The description of the flow.')] | None
@@ -264,10 +265,6 @@ class Flow(Struct, kw_only=True):
     ) = None
     outputSchema: (
         Annotated[Schema | None, Meta(description='The output schema of the flow.')]
-        | None
-    ) = None
-    steps: (
-        Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
         | None
     ) = None
     output: (

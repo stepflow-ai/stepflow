@@ -49,7 +49,7 @@ class TestMessageDecoder:
         }
         message_bytes = json.dumps(message_json).encode()
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         message, context = decoder.decode(message_bytes)
 
         assert isinstance(message, MethodRequest)
@@ -64,7 +64,7 @@ class TestMessageDecoder:
     def test_decode_method_success_with_context(self):
         """Test decoding a successful response with registered request context."""
         # Register a pending request
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[dict[str, str]] = MessageDecoder()
         test_context = {"future": "mock_future", "timestamp": "2023-01-01"}
         decoder.register_request("init-123", InitializeResult, test_context)
 
@@ -96,7 +96,7 @@ class TestMessageDecoder:
         }
         message_bytes = json.dumps(message_json).encode()
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         message, context = decoder.decode(message_bytes)
 
         assert isinstance(message, MethodSuccess)
@@ -107,7 +107,7 @@ class TestMessageDecoder:
 
     def test_register_request_for_method(self):
         """Test automatic result type registration based on method."""
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[str] = MessageDecoder()
         test_context = "test_future"
 
         # Register using method (automatic type detection)
@@ -132,7 +132,7 @@ class TestMessageDecoder:
 
     def test_decode_method_error_with_context(self):
         """Test decoding an error response with registered request context."""
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[str] = MessageDecoder()
         test_context = "error_future"
         decoder.register_request("error-req", InitializeResult, test_context)
 
@@ -161,7 +161,7 @@ class TestMessageDecoder:
         message_json = {"jsonrpc": "2.0", "method": "initialized", "params": {}}
         message_bytes = json.dumps(message_json).encode()
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         message, context = decoder.decode(message_bytes)
 
         assert isinstance(message, Notification)
@@ -171,7 +171,7 @@ class TestMessageDecoder:
 
     def test_decode_multiple_messages_with_different_contexts(self):
         """Test decoding multiple messages with different contexts."""
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[str] = MessageDecoder()
 
         # Register multiple pending requests
         decoder.register_request("req-1", InitializeResult, "context-1")
@@ -212,7 +212,7 @@ class TestMessageDecoderErrors:
         """Test decoding invalid JSON bytes."""
         invalid_json = b'{"invalid": json}'
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(StepflowProtocolError, match="Failed to decode message"):
             decoder.decode(invalid_json)
 
@@ -220,7 +220,7 @@ class TestMessageDecoderErrors:
         """Test decoding empty message."""
         empty_message = b"{}"
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(
             StepflowProtocolError, match="Invalid message: no id or method"
         ):
@@ -236,7 +236,7 @@ class TestMessageDecoderErrors:
         }
         message_bytes = json.dumps(message_json).encode()
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(StepflowProtocolError, match="Failed to decode message"):
             decoder.decode(message_bytes)
 
@@ -250,7 +250,7 @@ class TestMessageDecoderErrors:
         }
         message_bytes = json.dumps(message_json).encode()
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(
             StepflowProtocolError, match="Method request missing params field"
         ):
@@ -265,7 +265,7 @@ class TestMessageDecoderErrors:
         }
         message_bytes = json.dumps(message_json).encode()
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(
             StepflowProtocolError, match="Method success response missing result field"
         ):
@@ -281,7 +281,7 @@ class TestMessageDecoderErrors:
         }
         message_bytes = json.dumps(message_json).encode()
 
-        decoder = MessageDecoder()
+        decoder: MessageDecoder[None] = MessageDecoder()
         message, context = decoder.decode(message_bytes)
 
         # Should be treated as error response since error field is present

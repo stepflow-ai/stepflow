@@ -77,6 +77,9 @@
       }
     }
   },
+  "required": [
+    "steps"
+  ],
   "$defs": {
     "Schema": {
       "description": "A JSON schema describing allowed JSON values.",

@@ -51,7 +51,6 @@ pub struct Flow {
     pub output_schema: Option<SchemaRef>,
 
     /// The steps to execute for the flow.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
