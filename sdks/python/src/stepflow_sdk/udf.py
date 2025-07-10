@@ -190,7 +190,7 @@ def _compile_function(
                 return func(input_data)
 
             return wrapper
-        except:
+        except Exception:
             # If that fails, try as statements in a function body
             try:
                 # Properly indent each line of the code
