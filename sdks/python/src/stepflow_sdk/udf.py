@@ -53,7 +53,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
         try:
             blob_data = await context.get_blob(input.blob_id)
         except Exception as e:
-            raise ValueError(f"Failed to retrieve blob {input.blob_id}: {e}")
+            raise ValueError(f"Failed to retrieve blob {input.blob_id}: {e}") from e
 
         # Extract code and schema from blob
         if not isinstance(blob_data, dict):
@@ -85,7 +85,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
         else:
             result = compiled_func(input.input)
     except Exception as e:
-        raise ValueError(f"Function execution failed: {e}")
+        raise ValueError(f"Function execution failed: {e}") from e
 
     print(f"Result: {result}", file=sys.stderr)
     return result
@@ -139,9 +139,9 @@ def _compile_function(
         try:
             jsonschema.validate(data, input_schema)
         except jsonschema.ValidationError as e:
-            raise ValueError(f"Input validation failed: {e.message}")
+            raise ValueError(f"Input validation failed: {e.message}") from e
         except jsonschema.SchemaError as e:
-            raise ValueError(f"Invalid schema: {e.message}")
+            raise ValueError(f"Invalid schema: {e.message}") from e
 
     if function_name is not None:
         # Code contains function definition(s)
@@ -149,7 +149,7 @@ def _compile_function(
         try:
             exec(code, safe_globals, local_scope)
         except Exception as e:
-            raise ValueError(f"Code execution failed: {e}")
+            raise ValueError(f"Code execution failed: {e}") from e
 
         # Look for the specified function
         if function_name not in local_scope:
@@ -217,4 +217,4 @@ def _compile_function(
 
                 return wrapper
             except Exception as e:
-                raise ValueError(f"Code compilation failed: {e}")
+                raise ValueError(f"Code compilation failed: {e}") from e

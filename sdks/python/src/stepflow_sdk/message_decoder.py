@@ -125,7 +125,7 @@ class MessageDecoder(Generic[T]):
             return self._convert_raw_to_typed(raw_message)
 
         except msgspec.DecodeError as e:
-            raise StepflowProtocolError(f"Failed to decode message: {e}")
+            raise StepflowProtocolError(f"Failed to decode message: {e}") from e
 
     def _convert_raw_to_typed(
         self, raw_message: _RawMessage

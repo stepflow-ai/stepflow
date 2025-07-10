@@ -205,7 +205,7 @@ class StepflowStdioServer:
                     raise InputValidationError(
                         f"Input validation failed: {str(e)}",
                         input_data=msgspec.json.encode(execute_request.input),
-                    )
+                    ) from e
 
                 # Execute component with or without context
                 import inspect
