@@ -14,6 +14,7 @@
 mod context;
 mod error;
 mod plugin;
+pub mod routing;
 
 pub use context::{Context, ExecutionContext};
 pub use error::{PluginError, Result};

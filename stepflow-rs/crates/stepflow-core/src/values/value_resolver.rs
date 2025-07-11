@@ -99,21 +99,8 @@ impl<L: ValueLoader> ValueResolver<L> {
         }
     }
 
-    /// Resolve a ValueRef, returning a FlowResult.
-    /// This is the legacy entry point for value resolution - delegates to ValueTemplate-based resolution.
-    pub async fn resolve(&self, value: &ValueRef) -> ValueResolverResult<FlowResult> {
-        // Parse the JSON as ValueTemplate to handle expressions properly
-        let template = serde_json::from_value(value.as_ref().clone())
-            .change_context(ValueResolverError::Internal)?;
-        self.resolve_template(&template).await
-    }
-
     /// Resolve a ValueTemplate, returning a FlowResult.
-    /// This is the new main entry point for value resolution with pre-parsed templates.
-    pub async fn resolve_template(
-        &self,
-        template: &ValueTemplate,
-    ) -> ValueResolverResult<FlowResult> {
+    pub async fn resolve(&self, template: &ValueTemplate) -> ValueResolverResult<FlowResult> {
         self.resolve_template_rec(template).await
     }
 
@@ -362,49 +349,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolve_workflow_input() {
-        let workflow_input = ValueRef::new(json!({"test": "hello", "number": 42}));
-        let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::new_v4();
-        let flow = create_test_flow();
-
-        let resolver = ValueResolver::new(run_id, workflow_input.clone(), loader, flow);
-
-        // Test resolving workflow input
-        let input_template = ValueRef::new(json!({"$from": {"workflow": "input"}}));
-        let resolved = resolver.resolve(&input_template).await.unwrap();
-        match resolved {
-            FlowResult::Success { result } => {
-                assert_eq!(result.as_ref(), &json!({"test": "hello", "number": 42}));
-            }
-            _ => panic!("Expected successful result, got: {resolved:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_resolve_step_result() {
-        let workflow_input = ValueRef::new(json!({}));
-        let step_result = FlowResult::Success {
-            result: ValueRef::new(json!({"output": "processed"})),
-        };
-        let loader = MockValueLoader::new(workflow_input.clone()).with_step_result(0, step_result);
-        let run_id = Uuid::new_v4();
-        let flow = create_test_flow();
-
-        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
-
-        // Test resolving step result
-        let input_template = ValueRef::new(json!({"$from": {"step": "step1"}}));
-        let resolved = resolver.resolve(&input_template).await.unwrap();
-        match resolved {
-            FlowResult::Success { result } => {
-                assert_eq!(result.as_ref(), &json!({"output": "processed"}));
-            }
-            _ => panic!("Expected successful result, got: {resolved:?}"),
-        }
-    }
-
-    #[tokio::test]
     async fn test_resolve_template() {
         let workflow_input = ValueRef::new(json!({"name": "Alice"}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -415,7 +359,7 @@ mod tests {
 
         // Test resolving ValueTemplate - create a template with an expression by deserializing from JSON
         let template = ValueTemplate::workflow_input(JsonPath::from("name"));
-        let resolved = resolver.resolve_template(&template).await.unwrap();
+        let resolved = resolver.resolve(&template).await.unwrap();
         match resolved {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!("Alice"));
