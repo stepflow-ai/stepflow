@@ -48,28 +48,14 @@ from .value import (
 
 @dataclass
 class StepHandle:
-    """Handle to a step that can be used to create references to its output."""
+    """Handle for interacting with a step.
 
-    step_id: str
+    Allows creating references to the step's output or analyzing
+    the references within the step.
+    """
 
-    def __getitem__(self, key: str | int) -> StepReference:
-        """Create a reference to a specific path in this step's output."""
-        path = JsonPath().with_index(key)
-        return StepReference(self.step_id, path)
-
-    def __getattr__(self, name: str) -> StepReference:
-        """Create a reference to a field in this step's output."""
-        path = JsonPath().with_field(name)
-        return StepReference(self.step_id, path)
-
-
-class StepWrapper:
-    """Wrapper for a step that provides analysis and reference extraction."""
-
-    def __init__(self, step: Step, builder: FlowBuilder):
-        self.step = step
-        self.builder = builder
-        self._handle = StepHandle(step.id)
+    step: Step
+    builder: FlowBuilder
 
     @property
     def id(self) -> str:
@@ -82,18 +68,21 @@ class StepWrapper:
 
     def __getitem__(self, key: str | int) -> StepReference:
         """Create a reference to a specific path in this step's output."""
-        return self._handle[key]
+        path = JsonPath().with_index(key)
+        return StepReference(self.step.id, path)
 
     def __getattr__(self, name: str) -> StepReference:
         """Create a reference to a field in this step's output."""
-        return getattr(self._handle, name)
+        path = JsonPath().with_field(name)
+        return StepReference(self.step.id, path)
 
 
 class FlowBuilder:
     """Builder for creating StepFlow workflows.
 
-    This class provides methods for building workflows programmatically using the Value API.
-    All input_data parameters accept Valuable types (Value, StepReference, WorkflowInput, etc.)
+    This class provides methods for building workflows programmatically using the
+    Value API. All input_data parameters accept Valuable types (Value, StepReference,
+    WorkflowInput, etc.)
 
     Recommended usage:
     - Use Value.literal() for creating literal values: Value.literal({"key": "value"})
@@ -161,15 +150,15 @@ class FlowBuilder:
         # Recreate steps as dict and step handles
         for step in flow.steps or []:
             builder.steps[step.id] = step
-            builder._step_handles[step.id] = StepHandle(step.id)
+            builder._step_handles[step.id] = StepHandle(step, builder)
 
         return builder
 
-    def step(self, step_id: str) -> StepWrapper:
+    def step(self, step_id: str) -> StepHandle:
         """Get a step by name for analysis and reference creation."""
         if step_id not in self.steps:
             raise KeyError(f"Step '{step_id}' not found")
-        return StepWrapper(self.steps[step_id], self)
+        return StepHandle(self.steps[step_id], self)
 
     def set_input_schema(self, schema: dict[str, Any] | Schema) -> FlowBuilder:
         """Set the input schema for the flow."""
@@ -226,7 +215,7 @@ class FlowBuilder:
         if skip_if is not None:
             if isinstance(skip_if, Value):
                 skip_if_ref = skip_if._value
-                if isinstance(skip_if_ref, (StepReference, WorkflowInput)):
+                if isinstance(skip_if_ref, StepReference | WorkflowInput):
                     skip_if_expr = self._convert_reference_to_expr(skip_if_ref)
                 else:
                     raise ValueError(
@@ -252,7 +241,7 @@ class FlowBuilder:
         self.steps[id] = step
 
         # Create and store handle
-        handle = StepHandle(id)
+        handle = StepHandle(step, self)
         self._step_handles[id] = handle
 
         return handle
@@ -266,7 +255,8 @@ class FlowBuilder:
         """Build the Flow object."""
         if self._output is None:
             raise ValueError(
-                "Flow output must be set before building. Use set_output() to specify the flow output."
+                "Flow output must be set before building. Use set_output() to specify "
+                "the flow output."
             )
 
         return Flow(
@@ -331,14 +321,14 @@ class FlowBuilder:
         self, value_template: ValueTemplate
     ) -> list[StepReference | WorkflowInput]:
         """Extract all references from a ValueTemplate."""
-        references = []
+        references: list[StepReference | WorkflowInput] = []
 
         if isinstance(value_template, Reference):
             # This is a $from expression
             references.extend(self.get_expr_references(value_template))
         elif isinstance(value_template, EscapedLiteral):
             # This is a $literal expression - check if it contains nested references
-            if isinstance(value_template.field_literal, (dict, list)):
+            if isinstance(value_template.field_literal, dict | list):
                 references.extend(
                     self.get_value_template_references(value_template.field_literal)
                 )
@@ -358,7 +348,7 @@ class FlowBuilder:
         self, expr: Reference | EscapedLiteral | GeneratedValue
     ) -> list[StepReference | WorkflowInput]:
         """Extract references from an Expr."""
-        references = []
+        references: list[StepReference | WorkflowInput] = []
 
         if isinstance(expr, Reference):
             # This is a $from expression
@@ -369,18 +359,16 @@ class FlowBuilder:
                 json_path = JsonPath()
                 if expr.path is not None and expr.path != "$":
                     json_path.fragments = [expr.path]
-                ref = WorkflowInput(json_path, expr.onSkip)
-                references.append(ref)
+                references.append(WorkflowInput(json_path, expr.onSkip))
             elif isinstance(base_ref, GeneratedStepReference):
                 # Reference to step output
                 json_path = JsonPath()
                 if expr.path is not None and expr.path != "$":
                     json_path.fragments = [expr.path]
-                ref = StepReference(base_ref.step, json_path, expr.onSkip)
-                references.append(ref)
+                references.append(StepReference(base_ref.step, json_path, expr.onSkip))
         elif isinstance(expr, EscapedLiteral):
             # This is a $literal expression - check if it contains nested references
-            if isinstance(expr.field_literal, (dict, list)):
+            if isinstance(expr.field_literal, dict | list):
                 references.extend(
                     self.get_value_template_references(expr.field_literal)
                 )

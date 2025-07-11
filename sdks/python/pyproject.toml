@@ -8,6 +8,7 @@ requires-python = ">=3.13"
 dependencies = [
     "msgspec>=0.19.0",
     "jsonschema>=4.17.0",
+    "types-jsonschema>=4.17.0",
 ]
 
 [dependency-groups]
@@ -39,11 +40,11 @@ DEPTRY = "deptry@0.22.0"
 
 [tool.poe.tasks.fmt-check]
 help = "Runs `ruff format --check` to check for formatting issues (fix with `fmt-fix`)"
-cmd = "uvx ${RUFF} format --check ."
+cmd = "uvx ${RUFF} format --check --exclude='**/generated_*.py' ."
 
 [tool.poe.tasks.fmt-fix]
 help = "Runs `ruff format` to fix formatting issues"
-cmd = "uvx ${RUFF} format ."
+cmd = "uvx ${RUFF} format --exclude='**/generated_*.py' ."
 
 [tool.poe.tasks.lint-check]
 help = "Runs `ruff check` to check for lint issues (fix with `lint-fix`)"
@@ -97,26 +98,27 @@ sequence = ["lint", "test"]
 [tool.ruff]
 target-version = "py313"
 line-length = 88
+extend-exclude = ["**/generated_*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4"]
-ignore = [
-    "E501",  # Line too long (we'll gradually fix these)
-    "E402",  # Module level import not at top of file
-    "E722",  # Bare except (specific cases need manual review)
-    "UP007", # Union type syntax (compatibility consideration)
-    "UP038", # isinstance with tuple (readability preference)
-    "B904",  # Exception chaining (needs context-specific review)
-]
+ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
 "generate.py" = ["T201", "E501"]  # Allow prints and long lines in build script
+"**/generated_*.py" = ["E501", "UP006", "UP035"]  # Generated files can have long lines and old typing imports
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
+exclude = ["**/generated_*.py"]
+
+[tool.deptry]
+# types-* packages are type stubs for mypy and not directly imported  
+ignore = ["DEP002"]
+extend_exclude = ["types-jsonschema"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -141,5 +143,9 @@ module = "tests.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_sdk.generated_*"
+module = "stepflow_sdk.generated_flow"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "stepflow_sdk.generated_protocol"
 ignore_errors = true

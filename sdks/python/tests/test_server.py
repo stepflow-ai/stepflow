@@ -27,6 +27,7 @@ from stepflow_sdk.exceptions import (
 from stepflow_sdk.generated_protocol import (
     ComponentExecuteParams,
     ComponentInfoParams,
+    ComponentInfoResult,
     ComponentListParams,
     Initialized,
     InitializeParams,
@@ -133,7 +134,7 @@ def test_list_components(server):
 async def test_handle_initialize(server):
     # Runtime -> Server: Initialize method request.
     request = MethodRequest(
-        id=UUID(int=1),
+        id=str(UUID(int=1)),
         method=Method.initialize,
         params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python"),
     )
@@ -163,7 +164,7 @@ async def test_handle_component_info(server):
     server._initialized = True
 
     request = MethodRequest(
-        id=UUID(int=1),
+        id=str(UUID(int=1)),
         method=Method.components_info,
         params=ComponentInfoParams(component="python://test_component"),
     )
@@ -171,6 +172,7 @@ async def test_handle_component_info(server):
     assert response.id == request.id
     assert isinstance(response, MethodSuccess)
     assert response.result is not None
+    assert isinstance(response.result, ComponentInfoResult)
     assert response.result.info.input_schema == msgspec.json.schema(ValidInput)
     assert response.result.info.output_schema == msgspec.json.schema(ValidOutput)
 
@@ -180,7 +182,7 @@ async def test_handle_component_info_not_found(server):
     server._initialized = True
 
     request = MethodRequest(
-        id=UUID(int=1),
+        id=str(UUID(int=1)),
         method=Method.components_info,
         params=ComponentInfoParams(component="python://non_existent"),
     )
@@ -199,7 +201,7 @@ async def test_handle_component_execute(server):
         )
 
     request = MethodRequest(
-        id=UUID(int=1),
+        id=str(UUID(int=1)),
         method=Method.components_execute,
         params=ComponentExecuteParams(
             component="python://test_component", input={"name": "Alice", "age": 25}
@@ -221,7 +223,7 @@ async def test_handle_component_execute_invalid_input(server):
         return ValidOutput(greeting="", age_next_year=0)
 
     request = MethodRequest(
-        id=UUID(int=1),
+        id=str(UUID(int=1)),
         method=Method.components_execute,
         params=ComponentExecuteParams(
             component="python://test_component", input={"invalid": "input"}
@@ -230,7 +232,7 @@ async def test_handle_component_execute_invalid_input(server):
 
     with pytest.raises(InputValidationError) as e:
         await server._handle_message(request)
-    assert e.value.data == {"input": b'{"invalid":"input"}'}
+    assert e.value.data == {"input": {"invalid": "input"}}
 
 
 @pytest.mark.asyncio
@@ -246,7 +248,7 @@ async def test_handle_list_components(server):
         return ValidOutput(greeting="", age_next_year=0)
 
     request = MethodRequest(
-        id=UUID(int=1), method=Method.components_list, params=ComponentListParams()
+        id=str(UUID(int=1)), method=Method.components_list, params=ComponentListParams()
     )
     response = await server._handle_message(request)
     assert response.id == request.id
@@ -263,8 +265,8 @@ async def test_handle_unknown_method(server):
     # NOTE: This test creates an invalid method that shouldn't exist
     # We'll simulate this by creating a raw message directly
     request = MethodRequest(
-        id=UUID(int=1),
-        method="unknown_method",  # type: ignore - intentionally invalid
+        id=str(UUID(int=1)),
+        method="unknown_method",  # type: ignore[arg-type]  # intentionally invalid
         params=ComponentListParams(),
     )
 
@@ -275,7 +277,7 @@ async def test_handle_unknown_method(server):
 @pytest.mark.asyncio
 async def test_uninitialized_server(server):
     request = MethodRequest(
-        id=UUID(int=1), method=Method.components_list, params=ComponentListParams()
+        id=str(UUID(int=1)), method=Method.components_list, params=ComponentListParams()
     )
 
     with pytest.raises(ServerNotInitializedError):

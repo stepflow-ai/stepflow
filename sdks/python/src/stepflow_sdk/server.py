@@ -21,6 +21,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
+from typing import Any, assert_never
 from urllib.parse import urlparse
 
 import msgspec
@@ -40,6 +41,7 @@ from stepflow_sdk.generated_protocol import (
     ComponentInfo,
     ComponentInfoParams,
     ComponentInfoResult,
+    Error,
     InitializeParams,
     InitializeResult,
     ListComponentsResult,
@@ -75,7 +77,17 @@ def _handle_exception(e: Exception, id: RequestId | None) -> MethodError:
     if not isinstance(e, StepflowError):
         e = StepflowExecutionError(f"Unexpected error: {str(e)}")
 
-    return MethodError(id=id, error=e.to_json_rpc_error())
+    error_dict = e.to_json_rpc_error()
+    error_obj = Error(
+        code=error_dict["code"],
+        message=error_dict["message"],
+        data=error_dict.get("data"),
+    )
+
+    # Handle the case where id might be None by providing a default
+    request_id = id if id is not None else "unknown"
+
+    return MethodError(id=request_id, error=error_obj)
 
 
 class StepflowStdioServer:
@@ -85,7 +97,9 @@ class StepflowStdioServer:
         self._protocol_prefix: str = default_protocol_prefix
         self._incoming_queue: asyncio.Queue = asyncio.Queue()
         self._outgoing_queue: asyncio.Queue = asyncio.Queue()
-        self._message_decoder: MessageDecoder[asyncio.Future] = MessageDecoder()
+        self._message_decoder: MessageDecoder[asyncio.Future[Message]] = (
+            MessageDecoder()
+        )
         self._context: StepflowContext = StepflowContext(
             self._outgoing_queue, self._message_decoder
         )
@@ -101,8 +115,10 @@ class StepflowStdioServer:
 
         Args:
             func: The function to register (provided by the decorator)
-            name: Optional name for the component. If not provided, uses the function name
-            description: Optional description. If not provided, uses the function's docstring
+            name: Optional name for the component. If not provided, uses the function
+                name
+            description: Optional description. If not provided, uses the function's
+                docstring
         """
 
         def decorator(f: Callable) -> Callable:
@@ -137,7 +153,7 @@ class StepflowStdioServer:
             )
 
             # Store whether function expects context
-            f._expects_context = expects_context
+            f._expects_context = expects_context  # type: ignore[attr-defined]
 
             @wraps(f)
             def wrapper(*args, **kwargs):
@@ -197,15 +213,24 @@ class StepflowStdioServer:
                     raise ComponentNotFoundError(execute_request.component)
                 # Parse input parameters into the expected type
                 try:
-                    # execute_request.input is a Value, decode to the expected component type
-                    input = msgspec.convert(
+                    # execute_request.input is a Value, decode to the expected component
+                    # type
+                    input: Any = msgspec.convert(
                         execute_request.input, type=component.input_type
                     )
                 except (msgspec.DecodeError, msgspec.ValidationError) as e:
+                    # Try to extract input data as dict, fallback to None if it fails
+                    input_data_dict = None
+                    try:
+                        if isinstance(execute_request.input, dict):
+                            input_data_dict = execute_request.input
+                    except Exception:
+                        pass
+
                     raise InputValidationError(
                         f"Input validation failed: {str(e)}",
-                        input_data=msgspec.json.encode(execute_request.input),
-                    )
+                        input_data=input_data_dict,
+                    ) from e
 
                 # Execute component with or without context
                 import inspect
@@ -301,9 +326,9 @@ class StepflowStdioServer:
             if not self._initialized and message.method != Method.initialize:
                 raise ServerNotInitializedError()
             return await self._handle_method_request(message)
-        elif isinstance(message, (MethodSuccess, MethodError)):
-            # Response messages should be handled by the MessageDecoder in _handle_incoming_message
-            # and should not reach this point
+        elif isinstance(message, MethodSuccess | MethodError):
+            # Response messages should be handled by the MessageDecoder in
+            # _handle_incoming_message and should not reach this point
             raise StepflowProtocolError(
                 "Unexpected response message in _handle_message"
             )
@@ -313,8 +338,7 @@ class StepflowStdioServer:
             await self._handle_notification(message)
             return None
         else:
-            print(f"Received unknown message type: {message}", file=sys.stderr)
-            return None
+            assert_never("Should have handled all cases")
 
     async def _process_messages(self, writer: asyncio.StreamWriter):
         """Process messages from both incoming and outgoing queues asynchronously."""

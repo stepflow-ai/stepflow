@@ -82,7 +82,7 @@ class StepflowRuntimeError(StepflowError):
     """Errors from the StepFlow runtime."""
 
     @property
-    def default_code(self) -> int:
+    def default_code(self) -> ErrorCode:
         return ErrorCode.RUNTIME_ERROR
 
 

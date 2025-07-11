@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Union
+from typing import Any
 
 from .generated_flow import (
     EscapedLiteral,
@@ -34,7 +34,7 @@ from .generated_flow import (
 
 
 class JsonPath:
-    """Base class for handling JSON Path syntax consistently across all reference types."""
+    """Base class for handling JSON Path syntax across all reference types."""
 
     def __init__(self):
         """Initialize with an optional initial path."""
@@ -46,7 +46,11 @@ class JsonPath:
         return self
 
     def push_index(self, key: str | int) -> JsonPath:
-        """Add an index access to the path (e.g., [0] or ["key"]). Mutates this instance."""
+        """
+        Add an index access to the path (e.g., [0] or ["key"]).
+
+        Mutates this instance.
+        """
         if isinstance(key, int):
             self.fragments.append(f"[{key}]")
         else:
@@ -195,7 +199,7 @@ class Value:
         if isinstance(data, Value):
             return Value._convert_to_value_template(data._value)
 
-        if isinstance(data, (StepReference, WorkflowInput)):
+        if isinstance(data, StepReference | WorkflowInput):
             return Value._convert_reference_to_expr(data)
 
         if isinstance(data, EscapedLiteral):
@@ -218,6 +222,7 @@ class Value:
         ref: StepReference | WorkflowInput,
     ) -> Reference:
         """Convert a reference to a Reference."""
+        base_ref: WorkflowReference | GeneratedStepReference
         if isinstance(ref, StepReference):
             base_ref = GeneratedStepReference(step=ref.step_id)
             path_str = str(ref.path) if str(ref.path) != "$" else None
@@ -229,16 +234,24 @@ class Value:
         else:
             raise ValueError(f"Unknown reference type: {type(ref)}")
 
-    def __getitem__(self, key: str) -> Value:
-        """Create a nested reference if this is a reference, otherwise raise an error."""
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+    def __getitem__(self, key: str | int) -> Value:
+        """
+        Create a nested reference to the given key.
+
+        Raises an error if this is not a reference.
+        """
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(self._value[key])
         else:
             raise TypeError(f"Cannot index into {type(self._value).__name__}")
 
     def __getattr__(self, name: str) -> Value:
-        """Create a nested reference if this is a reference, otherwise raise an error."""
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+        """
+        Create a nested reference to the given name.
+
+        Raises an error if this is not a reference.
+        """
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(getattr(self._value, name))
         else:
             raise AttributeError(
@@ -246,8 +259,9 @@ class Value:
             )
 
     def with_on_skip(self, on_skip: SkipAction) -> Value:
-        """Create a copy of this Value with the specified onSkip action (only for references)."""
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+        """Create a copy of this Value with the specified onSkip action (only for
+        references)."""
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(self._value.with_on_skip(on_skip))
         else:
             raise TypeError(f"Cannot set onSkip on {type(self._value).__name__}")
@@ -259,7 +273,7 @@ class WorkflowInputValue(Value):
     def __init__(self):
         super().__init__(WorkflowInput())
 
-    def __getitem__(self, key: str) -> Value:
+    def __getitem__(self, key: str | int) -> Value:
         """Create a nested reference to workflow input."""
         return Value(self._value[key])
 
@@ -269,16 +283,16 @@ class WorkflowInputValue(Value):
 
 
 # Type alias for things that can be converted to JSON values
-Valuable = Union[
-    Value,
-    StepReference,
-    WorkflowInput,
-    EscapedLiteral,
-    str,
-    int,
-    float,
-    bool,
-    None,
-    dict[str, "Valuable"],
-    list["Valuable"],
-]
+Valuable = (
+    Value
+    | StepReference
+    | WorkflowInput
+    | EscapedLiteral
+    | str
+    | int
+    | float
+    | bool
+    | None
+    | dict[str, "Valuable"]
+    | list["Valuable"]
+)

@@ -52,7 +52,8 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/Step"
-      }
+      },
+      "default": []
     },
     "output": {
       "description": "The outputs of the flow, mapping output names to their values.",
@@ -77,6 +78,9 @@
       }
     }
   },
+  "required": [
+    "steps"
+  ],
   "$defs": {
     "Schema": {
       "description": "A JSON schema describing allowed JSON values.",

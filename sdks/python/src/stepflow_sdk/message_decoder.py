@@ -19,7 +19,7 @@ This module handles the two-stage deserialization of JSON-RPC messages,
 using RawMessage as an implementation detail for efficient parsing.
 """
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import msgspec
 from msgspec import Raw, Struct
@@ -37,6 +37,7 @@ from .generated_protocol import (
     Initialized,
     InitializeParams,
     InitializeResult,
+    JsonRpc,
     ListComponentsResult,
     Message,
     Method,
@@ -57,11 +58,11 @@ class _RawMessage(Struct, omit_defaults=True, kw_only=True):
     to determine message type, then immediately converted to proper typed Message.
     """
 
-    jsonrpc: str = "2.0"
+    jsonrpc: JsonRpc = "2.0"
     id: RequestId | None = None  # None for notifications
     method: Method | None = None  # None for responses
-    params: Raw = None  # Raw params for two-stage decode
-    result: Raw = None  # Raw result for two-stage decode
+    params: Raw | msgspec.UnsetType = msgspec.UNSET  # Raw params for two-stage decode
+    result: Raw | msgspec.UnsetType = msgspec.UNSET  # Raw result for two-stage decode
     error: Error | None = None  # Error for failed responses
 
 
@@ -94,7 +95,7 @@ class MessageDecoder(Generic[T]):
     def register_request_for_method(
         self, request_id: RequestId, method: Method, context: T
     ) -> None:
-        """Register a pending request with automatic result type detection based on method.
+        """Register a pending request with response type based on method.
 
         Args:
             request_id: The request ID to track
@@ -111,8 +112,9 @@ class MessageDecoder(Generic[T]):
             message_bytes: Raw JSON bytes of the message
 
         Returns:
-            A tuple of (properly typed Message, associated context from pending request or None)
-            The context will be non-None for method responses that had a matching pending request.
+            A tuple of (properly typed Message, associated context from pending request
+            or None). The context will be non-None for method responses that had a
+            matching pending request.
 
         Raises:
             StepflowProtocolError: If the message is invalid or malformed
@@ -125,7 +127,7 @@ class MessageDecoder(Generic[T]):
             return self._convert_raw_to_typed(raw_message)
 
         except msgspec.DecodeError as e:
-            raise StepflowProtocolError(f"Failed to decode message: {e}")
+            raise StepflowProtocolError(f"Failed to decode message: {e}") from e
 
     def _convert_raw_to_typed(
         self, raw_message: _RawMessage
@@ -134,13 +136,13 @@ class MessageDecoder(Generic[T]):
         # Determine message type based on presence of id/method
         if raw_message.id is not None and raw_message.method is not None:
             # Method request
-            if raw_message.params is None:
+            if raw_message.params is msgspec.UNSET:
                 raise StepflowProtocolError("Method request missing params field")
 
             method = raw_message.method
             params = _decode_params_for_method(method, raw_message.params)
 
-            message = MethodRequest(
+            message: Message = MethodRequest(
                 jsonrpc=raw_message.jsonrpc,
                 id=raw_message.id,
                 method=method,
@@ -162,7 +164,7 @@ class MessageDecoder(Generic[T]):
                     _, context = self._pending_requests.pop(raw_message.id)
                 return (message, context)
             else:
-                if raw_message.result is None:
+                if raw_message.result is msgspec.UNSET:
                     raise StepflowProtocolError(
                         "Method success response missing result field"
                     )
@@ -173,7 +175,9 @@ class MessageDecoder(Generic[T]):
                 if raw_message.id in self._pending_requests:
                     result_type, context = self._pending_requests.pop(raw_message.id)
 
-                # Decode result with the correct type if available, otherwise try all types
+                # Decode result with the correct type if available, otherwise try all
+                # types
+                result: Any
                 if result_type:
                     result = msgspec.json.decode(raw_message.result, type=result_type)
                 else:
@@ -188,7 +192,7 @@ class MessageDecoder(Generic[T]):
 
         elif raw_message.method is not None and raw_message.id is None:
             # Notification
-            if raw_message.params is None:
+            if raw_message.params is msgspec.UNSET:
                 raise StepflowProtocolError("Notification missing params field")
 
             method = raw_message.method
