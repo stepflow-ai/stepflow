@@ -1,0 +1,33 @@
+name: "Langflow Components Demo"
+description: "Demonstrates basic langflow components integration"
+
+input_schema:
+  type: object
+  properties:
+    text_input:
+      type: string
+      description: "Text to process"
+    sample_data:
+      type: object
+      description: "Sample data to transform"
+
+steps:
+  - id: process_text
+    component: langflow://text_processor
+    input:
+      text: { $from: { workflow: input }, path: "text_input" }
+
+  - id: transform_data
+    component: langflow://data_transformer
+    input: { $from: { workflow: input }, path: "sample_data" }
+
+  - id: store_results
+    component: langflow://data_storage
+    input:
+      processed_text: { $from: { step: process_text }, path: "processed_text" }
+      transformed_data: { $from: { step: transform_data } }
+
+output:
+  processed_text: { $from: { step: process_text }, path: "processed_text" }
+  transformed_data: { $from: { step: transform_data } }
+  storage_info: { $from: { step: store_results } }

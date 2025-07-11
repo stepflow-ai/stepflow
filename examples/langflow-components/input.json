@@ -1,0 +1,11 @@
+{
+  "text_input": "hello world from langflow",
+  "sample_data": {
+    "name": "test_dataset",
+    "records": [
+      {"id": 1, "value": "apple"},
+      {"id": 2, "value": "banana"}
+    ],
+    "count": 2
+  }
+}

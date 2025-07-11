@@ -1,0 +1,7 @@
+plugins:
+  - name: builtin
+    type: builtin
+  - name: langflow
+    type: stdio
+    command: uv
+    args: ["--project", "../../sdks/langflow", "run", "python", "langflow_component_server.py"]

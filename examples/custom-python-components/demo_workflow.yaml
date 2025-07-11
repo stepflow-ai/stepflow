@@ -24,6 +24,10 @@ steps:
       path: blob_id
 - id: llm_call_TsLa4
   component: builtin://openai
+  # component: langflow-v1://openai
+  # component: langflow-v2://openai
+  # separate component servers
+   
   input:
     model: gpt-4o-mini
     temperature: 0.1

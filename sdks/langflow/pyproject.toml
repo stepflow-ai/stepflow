@@ -1,0 +1,28 @@
+[project]
+name = "stepflow-langflow"
+version = "0.1.0"
+description = "Langflow components for Stepflow workflows."
+readme = "README.md"
+authors = []
+requires-python = ">=3.13"
+dependencies = [
+    "stepflow-sdk",
+    "langflow==1.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.26.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+stepflow_langflow = "stepflow_langflow.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+stepflow-sdk = { path = "../python", editable = true }
