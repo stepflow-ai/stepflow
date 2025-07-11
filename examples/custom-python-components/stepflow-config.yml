@@ -4,8 +4,4 @@ plugins:
   - name: custom
     type: stdio
     command: /Users/jordan.frazier/.cargo/bin/uv
-    args: ["--project", "../../sdks/python", "run", "python", "custom_server.py"]
-  - name: langflow-v1 # creates component server
-    type: stdio
-    command: /Users/jordan.frazier/.cargo/bin/uv
-    args: ["--project", "../../sdks/python", "run", "langflow", "run"]
+    args: ["--project", "/Users/jordan.frazier/Documents/StepFlow/stepflow/sdks/python", "run", "python", "custom_server.py"]
