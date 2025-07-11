@@ -1,0 +1,26 @@
+name: "Simple Langflow Test"
+description: "Test basic Langflow component output structure"
+
+input_schema:
+  type: object
+  properties:
+    template:
+      type: string
+      default: "Hello {name}!"
+    name:
+      type: string
+      default: "World"
+
+steps:
+  - id: test_prompt
+    component: langflow://prompt_formatter
+    input:
+      data:
+        template: { $from: { workflow: input }, path: "template" }
+        variables:
+          name: { $from: { workflow: input }, path: "name" }
+
+output:
+  full_result: { $from: { step: test_prompt } }
+  result_only: { $from: { step: test_prompt }, path: "result" }
+  type_only: { $from: { step: test_prompt }, path: "type" }

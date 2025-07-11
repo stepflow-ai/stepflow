@@ -1,0 +1,88 @@
+name: "Langflow Components Demo"
+description: "Demonstrates integration with actual Langflow components like OpenAIChatModel"
+
+input_schema:
+  type: object
+  properties:
+    user_message:
+      type: string
+      description: "User's message for the AI assistant"
+      default: "Explain quantum computing in simple terms"
+    system_prompt:
+      type: string
+      description: "System prompt template with variables"
+      default: "You are a helpful {role} assistant. Your expertise is in {domain}. Please provide clear, {style} explanations."
+    role:
+      type: string
+      description: "Role for the AI assistant"
+      default: "technical"
+    domain:
+      type: string
+      description: "Domain of expertise"
+      default: "computer science"
+    style:
+      type: string
+      description: "Communication style"
+      default: "concise"
+
+steps:
+  # Step 1: Format the system prompt using native Langflow PromptComponent
+  - id: format_system_prompt
+    component: langflow://prompt_formatter
+    input:
+      data:
+        template: { $from: { workflow: input }, path: "system_prompt" }
+        variables:
+          role: { $from: { workflow: input }, path: "role" }
+          domain: { $from: { workflow: input }, path: "domain" }
+          style: { $from: { workflow: input }, path: "style" }
+
+  # Step 2: Create conversation messages
+  - id: create_messages
+    component: builtin://eval
+    input:
+      expression: |
+        [
+          {
+            "role": "system",
+            "content": system_prompt
+          },
+          {
+            "role": "user", 
+            "content": user_message
+          }
+        ]
+      variables:
+        system_prompt: { $from: { step: format_system_prompt }, path: "result.formatted_prompt" }
+        user_message: { $from: { workflow: input }, path: "user_message" }
+
+  # Step 3: Call OpenAI using native Langflow OpenAIChatModel
+  - id: openai_chat_response
+    component: langflow://openai_chat
+    input:
+      data:
+        messages: { $from: { step: create_messages }, path: "result" }
+        model: "gpt-4o-mini"
+        temperature: 0.3
+        max_tokens: 500
+        api_key: null  # Will use OPENAI_API_KEY environment variable
+
+  # Step 4: Echo component to demonstrate native type handling
+  - id: echo_test
+    component: langflow://echo_component
+    input:
+      data:
+        original_response: { $from: { step: openai_chat_response }, path: "result" }
+        formatted_prompt: { $from: { step: format_system_prompt }, path: "result" }
+        messages: { $from: { step: create_messages }, path: "result" }
+
+output:
+  # Native Langflow results
+  openai_response: { $from: { step: openai_chat_response }, path: "result" }
+  openai_response_type: { $from: { step: openai_chat_response }, path: "type" }
+  formatted_prompt: { $from: { step: format_system_prompt }, path: "result" }
+  formatted_prompt_type: { $from: { step: format_system_prompt }, path: "type" }
+  echo_result: { $from: { step: echo_test }, path: "result" }
+  echo_result_type: { $from: { step: echo_test }, path: "type" }
+  # Input messages for reference
+  conversation_messages: { $from: { step: create_messages }, path: "result" }
