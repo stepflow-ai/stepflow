@@ -30,59 +30,53 @@ steps:
   - id: format_system_prompt
     component: langflow://prompt_formatter
     input:
-      data:
-        template: { $from: { workflow: input }, path: "system_prompt" }
-        variables:
-          role: { $from: { workflow: input }, path: "role" }
-          domain: { $from: { workflow: input }, path: "domain" }
-          style: { $from: { workflow: input }, path: "style" }
-
-  # Step 2: Create conversation messages
-  - id: create_messages
-    component: builtin://eval
-    input:
-      expression: |
-        [
-          {
-            "role": "system",
-            "content": system_prompt
-          },
-          {
-            "role": "user", 
-            "content": user_message
-          }
-        ]
+      template: { $from: { workflow: input }, path: "system_prompt" }
       variables:
-        system_prompt: { $from: { step: format_system_prompt }, path: "result.formatted_prompt" }
-        user_message: { $from: { workflow: input }, path: "user_message" }
+        role: { $from: { workflow: input }, path: "role" }
+        domain: { $from: { workflow: input }, path: "domain" }
+        style: { $from: { workflow: input }, path: "style" }
 
-  # Step 3: Call OpenAI using native Langflow OpenAIChatModel
+  # Step 2: Create a native Langflow Message object
+  - id: create_system_message
+    component: langflow://create_message
+    input:
+      text: { $from: { step: format_system_prompt }, path: "formatted_prompt" }
+      sender: "system"
+      sender_name: "system"
+
+  # Step 3: Create user message
+  - id: create_user_message
+    component: langflow://create_message
+    input:
+      text: { $from: { workflow: input }, path: "user_message" }
+      sender: "user"
+      sender_name: "user"
+
+  # Step 4: Call OpenAI using native Langflow OpenAIChatModel
   - id: openai_chat_response
     component: langflow://openai_chat
     input:
-      data:
-        messages: { $from: { step: create_messages }, path: "result" }
-        model: "gpt-4o-mini"
-        temperature: 0.3
-        max_tokens: 500
-        api_key: null  # Will use OPENAI_API_KEY environment variable
+      messages: 
+        - { $from: { step: create_system_message } }
+        - { $from: { step: create_user_message } }
+      model: "gpt-4o-mini"
+      temperature: 0.3
+      max_tokens: 500
+      api_key: null  # Will use OPENAI_API_KEY environment variable
 
-  # Step 4: Echo component to demonstrate native type handling
+  # Step 5: Echo component to demonstrate native type handling
   - id: echo_test
     component: langflow://echo_component
     input:
-      data:
-        original_response: { $from: { step: openai_chat_response }, path: "result" }
-        formatted_prompt: { $from: { step: format_system_prompt }, path: "result" }
-        messages: { $from: { step: create_messages }, path: "result" }
+      original_response: { $from: { step: openai_chat_response } }
+      formatted_prompt: { $from: { step: format_system_prompt } }
+      system_message: { $from: { step: create_system_message } }
+      user_message: { $from: { step: create_user_message } }
 
 output:
-  # Native Langflow results
-  openai_response: { $from: { step: openai_chat_response }, path: "result" }
-  openai_response_type: { $from: { step: openai_chat_response }, path: "type" }
-  formatted_prompt: { $from: { step: format_system_prompt }, path: "result" }
-  formatted_prompt_type: { $from: { step: format_system_prompt }, path: "type" }
-  echo_result: { $from: { step: echo_test }, path: "result" }
-  echo_result_type: { $from: { step: echo_test }, path: "type" }
-  # Input messages for reference
-  conversation_messages: { $from: { step: create_messages }, path: "result" }
+  # Native Langflow results - these are the actual Data/Message objects
+  openai_response: { $from: { step: openai_chat_response } }
+  formatted_prompt: { $from: { step: format_system_prompt } }
+  system_message: { $from: { step: create_system_message } }
+  user_message: { $from: { step: create_user_message } }
+  echo_result: { $from: { step: echo_test } }

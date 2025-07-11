@@ -15,12 +15,27 @@ steps:
   - id: test_prompt
     component: langflow://prompt_formatter
     input:
+      template: { $from: { workflow: input }, path: "template" }
+      variables:
+        name: { $from: { workflow: input }, path: "name" }
+
+  - id: test_data
+    component: langflow://create_data
+    input:
       data:
-        template: { $from: { workflow: input }, path: "template" }
-        variables:
-          name: { $from: { workflow: input }, path: "name" }
+        formatted_prompt: { $from: { step: test_prompt }, path: "formatted_prompt" }
+        original_template: { $from: { workflow: input }, path: "template" }
+      text_key: "formatted_prompt"
+
+  - id: test_message
+    component: langflow://create_message
+    input:
+      text: { $from: { step: test_prompt }, path: "formatted_prompt" }
+      sender: "assistant"
+      sender_name: "Langflow Assistant"
 
 output:
-  full_result: { $from: { step: test_prompt } }
-  result_only: { $from: { step: test_prompt }, path: "result" }
-  type_only: { $from: { step: test_prompt }, path: "type" }
+  # Native Langflow types as results
+  prompt_result: { $from: { step: test_prompt } }
+  data_result: { $from: { step: test_data } }
+  message_result: { $from: { step: test_message } }
