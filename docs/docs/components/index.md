@@ -72,6 +72,8 @@ Use tools from Model Context Protocol (MCP) servers as components:
 - Leverage the growing ecosystem of MCP tools
 - No additional wrapping needed—MCP tools work directly as components
 
+[Learn more about MCP tools →](../examples/mcp-tools.md).
+
 ## How Components Work
 
 ### 1. Component Discovery

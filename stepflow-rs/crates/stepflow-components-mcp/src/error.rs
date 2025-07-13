@@ -16,11 +16,23 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[allow(dead_code)]
 pub enum McpError {
+    #[error("Failed to spawn MCP server process")]
+    ProcessSpawn,
+
+    #[error("Failed to setup MCP server process I/O")]
+    ProcessSetup,
+
     #[error("MCP server initialization failed")]
-    Initialization,
+    ServerInitialization,
+
+    #[error("MCP protocol handshake failed")]
+    ProtocolHandshake,
 
     #[error("MCP server communication failed")]
     Communication,
+
+    #[error("MCP server communication timeout")]
+    Timeout,
 
     #[error("MCP tool not found: {tool_name}")]
     ToolNotFound { tool_name: String },
