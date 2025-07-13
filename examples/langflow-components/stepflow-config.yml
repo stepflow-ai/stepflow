@@ -4,4 +4,4 @@ plugins:
   - name: langflow
     type: stdio
     command: uv
-    args: ["--project", "../../sdks/langflow", "run", "python", "langflow_component_server.py"]
+    args: ["--project", "../../sdks/langflow", "run", "python", "langflow_component_server_udf_only.py"]

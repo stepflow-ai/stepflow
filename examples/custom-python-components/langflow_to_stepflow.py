@@ -190,6 +190,7 @@ class LangflowToStepflowTranslator:
         if len(sorted_nodes) != len(nodes):
             # Circular dependency detected
             remaining = [node_id for node_id in node_map if node_id not in [n['id'] for n in sorted_nodes]]
+            # TODO: FRAZ - loop handling?
             print(f"WARNING: Circular dependency detected. Remaining nodes: {remaining}")
             # Add remaining nodes in original order
             for node in nodes:

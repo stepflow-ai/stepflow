@@ -147,45 +147,7 @@ def _compile_langflow_function(
     import json
     import jsonschema
 
-    # Create a safe execution environment with Langflow types
-    safe_globals = {
-        "__builtins__": {
-            "len": len,
-            "str": str,
-            "int": int,
-            "float": float,
-            "bool": bool,
-            "list": list,
-            "dict": dict,
-            "tuple": tuple,
-            "set": set,
-            "range": range,
-            "sum": sum,
-            "min": min,
-            "max": max,
-            "abs": abs,
-            "round": round,
-            "sorted": sorted,
-            "reversed": reversed,
-            "enumerate": enumerate,
-            "zip": zip,
-            "map": map,
-            "filter": filter,
-            "any": any,
-            "all": all,
-            "print": print,
-            "isinstance": isinstance,
-        },
-        "json": json,
-        "math": __import__("math"),
-        "re": __import__("re"),
-        "context": context,
-        # Langflow-specific types
-        "Data": Data,
-        "DataFrame": DataFrame,
-        "Message": Message,
-    }
-
+    exec_globals = {}
     def validate_input(data):
         """Validate input data against the schema."""
         try:
@@ -199,7 +161,7 @@ def _compile_langflow_function(
         # Code contains function definition(s)
         local_scope = {}
         try:
-            exec(code, safe_globals, local_scope)
+            exec(code, exec_globals, local_scope)
         except Exception as e:
             raise ValueError(f"Langflow code execution failed: {e}")
 
@@ -235,7 +197,7 @@ def _compile_langflow_function(
         try:
             # Try as expression first (for simple cases)
             wrapped_code = f"lambda input: {code}"
-            func = eval(wrapped_code, safe_globals)
+            func = eval(wrapped_code, exec_globals)
 
             def wrapper(input_data):
                 validate_input(input_data)
@@ -270,3 +232,318 @@ def _compile_langflow_function(
                 return wrapper
             except Exception as e:
                 raise ValueError(f"Langflow code compilation failed: {e}")
+
+
+def parse_langflow_to_stepflow_workflow(langflow_json: dict) -> List[Dict[str, Any]]:
+    """
+    Parse a Langflow JSON workflow and convert it to StepFlow workflow steps.
+    
+    Args:
+        langflow_json: The Langflow workflow JSON structure
+        
+    Returns:
+        List of StepFlow workflow steps that create UDF blobs for each component
+    """
+    data = langflow_json.get('data', {})
+    nodes = data.get('nodes', [])
+    edges = data.get('edges', [])
+    
+    # Build dependency graph from edges
+    dependencies = _build_dependency_graph(edges)
+    
+    workflow_steps = []
+    
+    for node in nodes:
+        node_data = node.get('data', {})
+        node_id = node_data.get('id')
+        node_type = node_data.get('type')
+        
+        # Skip note nodes and other non-component nodes
+        if node_type in ['note', 'noteNode'] or not node_id:
+            continue
+            
+        node_info = node_data.get('node', {})
+        
+        # Extract component information
+        component_info = _extract_component_info(node_data, node_info)
+        
+        # Generate UDF creation step
+        udf_step = _generate_udf_creation_step(node_id, component_info, dependencies.get(node_id, []))
+        workflow_steps.append(udf_step)
+    
+    return workflow_steps
+
+
+def _build_dependency_graph(edges: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Build a dependency graph from Langflow edges."""
+    dependencies = {}
+    
+    for edge in edges:
+        source = edge.get('source')
+        target = edge.get('target')
+        
+        if source and target:
+            if target not in dependencies:
+                dependencies[target] = []
+            dependencies[target].append(source)
+    
+    return dependencies
+
+
+def _extract_component_info(node_data: Dict[str, Any], node_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract component information from a Langflow node."""
+    template = node_info.get('template', {})
+    
+    # Extract input schema from template
+    input_schema = _generate_input_schema_from_template(template)
+    
+    # Extract the component type and configuration
+    component_type = node_data.get('type', 'unknown')
+    display_name = node_info.get('display_name', component_type)
+    description = node_info.get('description', '')
+    
+    return {
+        'type': component_type,
+        'display_name': display_name,
+        'description': description,
+        'template': template,
+        'input_schema': input_schema,
+        'outputs': node_info.get('outputs', [])
+    }
+
+
+def _generate_input_schema_from_template(template: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate JSON schema from Langflow template."""
+    properties = {}
+    required = []
+    
+    for field_name, field_config in template.items():
+        if field_name == '_type' or not isinstance(field_config, dict):
+            continue
+            
+        field_type = field_config.get('type', 'str')
+        field_required = field_config.get('required', False)
+        field_info = field_config.get('info', '')
+        
+        # Map Langflow types to JSON schema types
+        json_type = _map_langflow_type_to_json_schema(field_type)
+        
+        property_def = {
+            'type': json_type,
+            'description': field_info
+        }
+        
+        # Handle specific field configurations
+        if field_type == 'dropdown':
+            options = field_config.get('options', [])
+            if options:
+                property_def['enum'] = options
+        elif field_type == 'slider':
+            range_spec = field_config.get('range_spec', {})
+            if 'min' in range_spec:
+                property_def['minimum'] = range_spec['min']
+            if 'max' in range_spec:
+                property_def['maximum'] = range_spec['max']
+        
+        properties[field_name] = property_def
+        
+        if field_required:
+            required.append(field_name)
+    
+    return {
+        'type': 'object',
+        'properties': properties,
+        'required': required
+    }
+
+
+def _map_langflow_type_to_json_schema(langflow_type: str) -> str:
+    """Map Langflow field types to JSON schema types."""
+    type_mapping = {
+        'str': 'string',
+        'int': 'integer', 
+        'float': 'number',
+        'bool': 'boolean',
+        'list': 'array',
+        'dict': 'object',
+        'dropdown': 'string',
+        'slider': 'number',
+        'file': 'string',
+        'code': 'string',
+        'prompt': 'string',
+        'multiline': 'string'
+    }
+    return type_mapping.get(langflow_type, 'string')
+
+
+def _generate_udf_creation_step(node_id: str, component_info: Dict[str, Any], dependencies: List[str]) -> Dict[str, Any]:
+    """Generate a StepFlow step that creates a UDF blob for this component."""
+    component_type = component_info['type']
+    
+    # Generate code based on component type
+    code = _generate_component_code(component_info)
+    
+    # Create the UDF blob data
+    udf_data = {
+        'input_schema': component_info['input_schema'],
+        'code': code,
+        'function_name': None,  # Using lambda/expression format
+        'component_type': component_type,
+        'display_name': component_info['display_name'],
+        'description': component_info['description']
+    }
+    
+    step = {
+        'id': f'create_{node_id}_udf',
+        'component': 'builtin://put_blob',
+        'input': {
+            'data': udf_data
+        }
+    }
+    
+    # Add dependencies if any
+    if dependencies:
+        step['depends_on'] = [f'create_{dep}_udf' for dep in dependencies]
+    
+    return step
+
+
+def _generate_component_code(component_info: Dict[str, Any]) -> str:
+    """Generate Python code for executing this component type."""
+    component_type = component_info['type']
+    template = component_info['template']
+    
+    if component_type == 'ChatInput':
+        return _generate_chat_input_code(template)
+    elif component_type == 'ChatOutput':
+        return _generate_chat_output_code(template)
+    elif component_type == 'Prompt':
+        return _generate_prompt_code(template)
+    elif component_type == 'LanguageModelComponent':
+        return _generate_language_model_code(template)
+    else:
+        # Generic component handler
+        return _generate_generic_component_code(component_info)
+
+
+def _generate_chat_input_code(template: Dict[str, Any]) -> str:
+    """Generate code for ChatInput component."""
+    return """
+# ChatInput component - create Message from input
+from langflow.schema.message import Message
+
+text = input.get('input_value', input.get('text', ''))
+sender = input.get('sender', 'User')
+sender_name = input.get('sender_name', 'User')
+
+message = Message(
+    text=text,
+    sender=sender,
+    sender_name=sender_name
+)
+
+message
+"""
+
+
+def _generate_chat_output_code(template: Dict[str, Any]) -> str:
+    """Generate code for ChatOutput component."""
+    return """
+# ChatOutput component - format and return message
+from langflow.schema.message import Message
+
+if isinstance(input, dict):
+    if 'input_value' in input and isinstance(input['input_value'], Message):
+        result = input['input_value']
+    else:
+        # Create message from input data
+        text = input.get('input_value', str(input))
+        result = Message(
+            text=text,
+            sender=input.get('sender', 'AI'),
+            sender_name=input.get('sender_name', 'AI')
+        )
+elif isinstance(input, Message):
+    result = input
+else:
+    result = Message(text=str(input), sender='AI', sender_name='AI')
+
+result
+"""
+
+
+def _generate_prompt_code(template: Dict[str, Any]) -> str:
+    """Generate code for Prompt component."""
+    prompt_template = template.get('template', {}).get('value', 'Answer the user as if you were a GenAI expert.')
+    
+    code = """
+# Prompt component - create formatted prompt
+from langflow.schema.message import Message
+
+template = '''""" + prompt_template + """'''
+
+# Simple template formatting - replace {variable} with input values
+formatted_text = template
+if isinstance(input, dict):
+    for key, value in input.items():
+        formatted_text = formatted_text.replace('{' + key + '}', str(value))
+
+Message(text=formatted_text)
+"""
+    return code
+
+
+def _generate_language_model_code(template: Dict[str, Any]) -> str:
+    """Generate code for LanguageModel component."""
+    provider = template.get('provider', {}).get('value', 'OpenAI')
+    model_name = template.get('model_name', {}).get('value', 'gpt-4o-mini')
+    temperature = template.get('temperature', {}).get('value', 0.1)
+    
+    code = """
+# LanguageModel component - simulate model response
+from langflow.schema.message import Message
+import json
+
+# Extract input text and system message
+if isinstance(input, dict):
+    input_text = input.get('input_value', {}).get('text', '') if isinstance(input.get('input_value'), dict) else str(input.get('input_value', ''))
+    system_message = input.get('system_message', {}).get('text', '') if isinstance(input.get('system_message'), dict) else str(input.get('system_message', ''))
+elif hasattr(input, 'text'):
+    input_text = input.text
+    system_message = ''
+else:
+    input_text = str(input)
+    system_message = ''
+
+# For now, create a mock response
+# In a real implementation, this would call the actual model API
+response_text = "[Mock """ + provider + " " + model_name + """ Response] System: " + system_message + " User: " + input_text
+
+Message(text=response_text)
+"""
+    return code
+
+
+def _generate_generic_component_code(component_info: Dict[str, Any]) -> str:
+    """Generate code for generic/unknown components."""
+    component_type = component_info['type']
+    
+    code = """
+# Generic component handler for """ + component_type + """
+from langflow.schema.message import Message
+from langflow.schema.data import Data
+
+# Pass through input data, converting to appropriate Langflow type
+if isinstance(input, dict):
+    if 'text' in input:
+        result = Message(text=input['text'])
+    else:
+        result = Data(data=input)
+elif isinstance(input, str):
+    result = Message(text=input)
+else:
+    result = Data(data={'value': str(input)})
+
+result
+"""
+    return code
