@@ -3,5 +3,6 @@ plugins:
     type: builtin
   - name: langflow
     type: stdio
-    command: uv
-    args: ["--project", "../../sdks/langflow", "run", "python", "langflow_component_server_udf_only.py"]
+    command: /Users/jordan.frazier/Documents/StepFlow/stepflow/.venv/bin/uv
+    args: ["--project", "/Users/jordan.frazier/Documents/StepFlow/stepflow/sdks/langflow", "run", "python", "langflow_component_server_udf_only.py"]
+    inherit_env: true

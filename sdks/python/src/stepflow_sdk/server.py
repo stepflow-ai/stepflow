@@ -369,9 +369,10 @@ class StepflowStdioServer:
     async def start(self):
         """Start the server and begin processing messages."""
         # Set up unbuffered binary IO
-        # Create async streams for stdin/stdout
+        # Create async streams for stdin/stdout with increased buffer limit for large messages
         loop = asyncio.get_event_loop()
-        reader = asyncio.StreamReader()
+        # Increase limit to 50MB to handle large Langflow component blobs
+        reader = asyncio.StreamReader(limit=50 * 1024 * 1024)  # 50MB limit
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sys.stdin)
 

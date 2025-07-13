@@ -5411,7 +5411,7 @@ wheels = [
 
 [[package]]
 name = "scrapegraph-py"
-version = "1.14.1"
+version = "1.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -5420,9 +5420,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/44/69/c4b971bfe32a48fcc2dd9363fdc07c87481fb7d4147c5d6ded1b915baaf0/scrapegraph_py-1.14.1.tar.gz", hash = "sha256:0b8b5b2877648fbdde27387dece06401375cf3c2c88552ad170efd39bf9355dc", size = 148957, upload-time = "2025-07-08T14:48:00.98Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/32/fbb88336cdd84a85fc397424cac46df35a89508f205a12c36e0d10ed6f34/scrapegraph_py-1.14.2.tar.gz", hash = "sha256:68b6369896d878881a033f33976e19339a45aef241e3ba798512e255bf605c44", size = 150256, upload-time = "2025-07-12T17:38:55.641Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9d/93/6f0713d285c0bb61f03fbb27b226846aa469ff4ff32528fcb983846b254a/scrapegraph_py-1.14.1-py3-none-any.whl", hash = "sha256:04d4799a756c840d89ed8ca4e627b2c9d7c1b07a90d1b9120361eb74a96c0abf", size = 18059, upload-time = "2025-07-08T14:48:00.042Z" },
+    { url = "https://files.pythonhosted.org/packages/84/5c/9039320c08cb902b2534f1f648faafc2281082e1a653442ce4020618d7c7/scrapegraph_py-1.14.2-py3-none-any.whl", hash = "sha256:ecf10ac0dab715786cef817e32e4872960f251689dddf2f970463a1fac668739", size = 18474, upload-time = "2025-07-12T17:38:54.421Z" },
 ]
 
 [[package]]
@@ -5693,7 +5693,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "langflow", specifier = "==1.5.0" },
+    { name = "langflow", specifier = ">=1.5.0" },
     { name = "stepflow-sdk", editable = "../python" },
 ]
 

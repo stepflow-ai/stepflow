@@ -1,7 +1,0 @@
-{
-  "user_message": "What is machine learning and how does it work?",
-  "system_prompt": "You are a helpful {role} assistant with expertise in {domain}. Please provide {style} explanations that are easy to understand.",
-  "role": "educational",
-  "domain": "artificial intelligence",
-  "style": "clear and detailed"
-}
