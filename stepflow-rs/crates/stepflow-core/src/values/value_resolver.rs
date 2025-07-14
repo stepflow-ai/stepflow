@@ -330,7 +330,7 @@ mod tests {
             output_schema: None,
             steps: vec![Step {
                 id: "step1".to_string(),
-                component: Component::from_string("mock://test"),
+                component: Component::from_string("/mock/test"),
                 input: ValueTemplate::literal(json!({})),
                 input_schema: None,
                 output_schema: None,

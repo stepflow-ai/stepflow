@@ -14,7 +14,7 @@ outputSchema:
       type: string
 steps:
 - id: conditional_step
-  component: mock://one_output
+  component: /mock/one_output
   inputSchema: null
   outputSchema: null
   skipIf:
@@ -27,7 +27,7 @@ steps:
         workflow: input
       path: value
 - id: dependent_step
-  component: mock://handle_skip
+  component: /mock/handle_skip
   inputSchema: null
   outputSchema: null
   input:

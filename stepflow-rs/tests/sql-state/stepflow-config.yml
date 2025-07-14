@@ -2,7 +2,7 @@ plugins:
   - name: mock
     type: mock
     components:
-      mock://identity:
+      /mock/identity:
         input_schema:
           type: object
           properties:

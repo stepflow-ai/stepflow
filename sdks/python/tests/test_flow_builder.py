@@ -35,14 +35,14 @@ def test_basic_flow_builder():
     # Add a step that uses workflow input
     step1 = builder.add_step(
         id="add_numbers",
-        component="builtin/eval",
+        component="eval",
         input_data={"expr": "x + y", "x": Value.input().x, "y": Value.input().y},
     )
 
     # Add a step that uses the output of the previous step
     step2 = builder.add_step(
         id="double_result",
-        component="builtin/eval",
+        component="eval",
         input_data={"expr": "result * 2", "result": Value.step(step1.id, "$")},
     )
 
@@ -60,12 +60,12 @@ def test_basic_flow_builder():
     # Check step 1
     step1_def = flow.steps[0]
     assert step1_def.id == "add_numbers"
-    assert step1_def.component == "builtin/eval"
+    assert step1_def.component == "eval"
 
     # Check step 2
     step2_def = flow.steps[1]
     assert step2_def.id == "double_result"
-    assert step2_def.component == "builtin/eval"
+    assert step2_def.component == "eval"
 
 
 def test_step_references():
@@ -74,7 +74,7 @@ def test_step_references():
 
     # Add a step
     step1 = builder.add_step(
-        id="test_step", component="test/component", input_data={"value": 42}
+        id="test_step", component="/test/component", input_data={"value": 42}
     )
 
     # Test different ways to reference the step
@@ -86,15 +86,17 @@ def test_step_references():
     # Add steps that use these references
     builder.add_step(
         id="step1",
-        component="test/component",
+        component="/test/component",
         input_data={"direct": Value.step(step1.id, "$")},
     )
-    builder.add_step(id="step2", component="test/component", input_data={"field": ref2})
     builder.add_step(
-        id="step3", component="test/component", input_data={"indexed": ref3}
+        id="step2", component="/test/component", input_data={"field": ref2}
     )
     builder.add_step(
-        id="step4", component="test/component", input_data={"nested": ref4}
+        id="step3", component="/test/component", input_data={"indexed": ref3}
+    )
+    builder.add_step(
+        id="step4", component="/test/component", input_data={"nested": ref4}
     )
 
     # Set output to make the test complete
@@ -116,16 +118,16 @@ def test_workflow_input_references():
 
     # Add steps that use these references
     builder.add_step(
-        id="step1", component="test/component", input_data={"full_input": input_ref}
+        id="step1", component="/test/component", input_data={"full_input": input_ref}
     )
     builder.add_step(
-        id="step2", component="test/component", input_data={"field": field_ref}
+        id="step2", component="/test/component", input_data={"field": field_ref}
     )
     builder.add_step(
-        id="step3", component="test/component", input_data={"indexed": indexed_ref}
+        id="step3", component="/test/component", input_data={"indexed": indexed_ref}
     )
     builder.add_step(
-        id="step4", component="test/component", input_data={"nested": nested_ref}
+        id="step4", component="/test/component", input_data={"nested": nested_ref}
     )
 
     # Set output to make the test complete
@@ -142,7 +144,7 @@ def test_literal_values():
     # Add a step with a literal value that contains $from
     builder.add_step(
         id="literal_step",
-        component="test/component",
+        component="/test/component",
         input_data={
             "literal_with_from": Value.literal(
                 {"$from": "this should not be expanded"}
@@ -165,19 +167,19 @@ def test_error_handling():
     # Add steps with different error handling
     builder.add_step(
         id="fail_step",
-        component="test/component",
+        component="/test/component",
         input_data={"value": 1},
         on_error=OnErrorFail(action="fail"),
     )
     builder.add_step(
         id="skip_step",
-        component="test/component",
+        component="/test/component",
         input_data={"value": 2},
         on_error=OnErrorSkip(action="skip"),
     )
     builder.add_step(
         id="retry_step",
-        component="test/component",
+        component="/test/component",
         input_data={"value": 3},
         on_error=OnErrorRetry(action="retry"),
     )
@@ -209,7 +211,7 @@ def test_error_default_handling():
     # Add step with OnErrorDefault
     builder.add_step(
         id="default_step",
-        component="test/component",
+        component="/test/component",
         input_data={"value": 1},
         on_error=OnErrorDefault(action="useDefault", defaultValue="fallback_value"),
     )
@@ -233,7 +235,7 @@ def test_build_requires_output():
 
     # Add a step but don't set output
     builder.add_step(
-        id="test_step", component="test/component", input_data={"value": 1}
+        id="test_step", component="/test/component", input_data={"value": 1}
     )
 
     # build() should fail without output
@@ -252,13 +254,13 @@ def test_step_ids():
 
     # Add steps with explicit IDs
     step1 = builder.add_step(
-        id="custom_step_1", component="test/component", input_data={"value": 1}
+        id="custom_step_1", component="/test/component", input_data={"value": 1}
     )
     step2 = builder.add_step(
-        id="custom_step_2", component="test/component", input_data={"value": 2}
+        id="custom_step_2", component="/test/component", input_data={"value": 2}
     )
     step3 = builder.add_step(
-        id="custom_step_3", component="test/component", input_data={"value": 3}
+        id="custom_step_3", component="/test/component", input_data={"value": 3}
     )
 
     # Set output to make the test complete
@@ -285,14 +287,14 @@ def test_complex_nested_references():
     # Add a step
     step1 = builder.add_step(
         id="nested_step_1",
-        component="test/component",
+        component="/test/component",
         input_data={"data": Value.input().config.settings},
     )
 
     # Add another step that references nested data from the first step
     step2 = builder.add_step(
         id="nested_step_2",
-        component="test/component",
+        component="/test/component",
         input_data={
             "prev_result": step1.output.nested.value,
             "input_ref": Value.input().another.nested.field,
@@ -313,13 +315,13 @@ def test_get_references():
     # Add a step that uses workflow input
     step1 = builder.add_step(
         id="input_step",
-        component="test/component",
+        component="/test/component",
         input_data={"x": Value.input().x, "y": Value.input().nested.y},
     )
 
     # Add a step that references the first step
     step2 = builder.add_step(
-        id="ref_step", component="test/component", input_data={"result": step1.output}
+        id="ref_step", component="/test/component", input_data={"result": step1.output}
     )
 
     # Set flow output that references step2
@@ -354,7 +356,7 @@ def test_get_step_references():
     # Add a step with multiple references
     step1 = builder.add_step(
         id="test_step",
-        component="test/component",
+        component="/test/component",
         input_data={
             "input_val": Value.input().value,
             "nested_input": Value.input().config.setting,
@@ -383,7 +385,7 @@ def test_get_references_with_skip_condition():
     # Add a step with a skipIf condition
     step1 = builder.add_step(
         id="skip_test",
-        component="test/component",
+        component="/test/component",
         input_data={"value": 42},
         skip_if=Value.input().skip_flag,
     )
@@ -407,7 +409,7 @@ def test_get_references_with_literal_values():
     # Add a step with literal values
     step1 = builder.add_step(
         id="literal_test",
-        component="test/component",
+        component="/test/component",
         input_data={
             "literal_dict": Value.literal({"$from": "should not be a reference"}),
             "normal_value": "just a string",
@@ -432,7 +434,7 @@ def test_get_references_mixed_types():
     # Add a step with mixed reference types
     step1 = builder.add_step(
         id="mixed_test",
-        component="test/component",
+        component="/test/component",
         input_data={
             "input_ref": Value.input().value,
             "literal_value": "string",
@@ -465,7 +467,7 @@ def test_flowbuilder_load():
 
     step1 = original_builder.add_step(
         id="custom_step",
-        component="test/component",
+        component="/test/component",
         input_data={"input": Value.input().field, "literal": Value.literal("constant")},
     )
 

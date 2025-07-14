@@ -32,7 +32,8 @@ class Schema(Struct, kw_only=True):
 Component = Annotated[
     str,
     Meta(
-        description="Identifies a specific plugin and atomic functionality to execute."
+        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
+        examples=['eval', '/mcpfs/list_files', '/python/udf'],
     ),
 ]
 
@@ -42,49 +43,49 @@ class StepReference(Struct, kw_only=True):
 
 
 class WorkflowRef(Enum):
-    input = "input"
+    input = 'input'
 
 
 JsonPath = Annotated[
     str,
     Meta(
-        description="JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
-        examples=["field", "$.field", '$["field"]', "$[0]", "$.field[0].nested"],
+        description='JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.',
+        examples=['field', '$.field', '$["field"]', '$[0]', '$.field[0].nested'],
     ),
 ]
 
 
 class OnSkipSkip(Struct, kw_only=True):
-    action: Literal["skip"]
+    action: Literal['skip']
 
 
 Value = Annotated[
     Any,
     Meta(
-        description="Any JSON value (object, array, string, number, boolean, or null)"
+        description='Any JSON value (object, array, string, number, boolean, or null)'
     ),
 ]
 
 
 class OnErrorFail(Struct, kw_only=True):
-    action: Literal["fail"]
+    action: Literal['fail']
 
 
 class OnErrorSkip(Struct, kw_only=True):
-    action: Literal["skip"]
+    action: Literal['skip']
 
 
 class OnErrorRetry(Struct, kw_only=True):
-    action: Literal["retry"]
+    action: Literal['retry']
 
 
 class Success(Struct, kw_only=True):
     result: Value
-    outcome: Literal["success"]
+    outcome: Literal['success']
 
 
 class Skipped(Struct, kw_only=True):
-    outcome: Literal["skipped"]
+    outcome: Literal['skipped']
 
 
 class FlowError(Struct, kw_only=True):
@@ -95,13 +96,13 @@ class FlowError(Struct, kw_only=True):
 
 class ExampleInput(Struct, kw_only=True):
     name: Annotated[
-        str, Meta(description="Name of the example input for display purposes.")
+        str, Meta(description='Name of the example input for display purposes.')
     ]
-    input: Annotated[Value, Meta(description="The input data for this example.")]
+    input: Annotated[Value, Meta(description='The input data for this example.')]
     description: (
         Annotated[
             str | None,
-            Meta(description="Optional description of what this example demonstrates."),
+            Meta(description='Optional description of what this example demonstrates.'),
         ]
         | None
     ) = None
@@ -111,9 +112,9 @@ class EscapedLiteral(Struct, kw_only=True):
     field_literal: Annotated[
         Value,
         Meta(
-            description="A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion."
+            description='A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion.'
         ),
-    ] = field(name="$literal")
+    ] = field(name='$literal')
 
 
 class WorkflowReference(Struct, kw_only=True):
@@ -123,13 +124,13 @@ class WorkflowReference(Struct, kw_only=True):
 BaseRef = Annotated[
     WorkflowReference | StepReference,
     Meta(
-        description="An expression that can be either a literal value or a template expression."
+        description='An expression that can be either a literal value or a template expression.'
     ),
 ]
 
 
 class OnSkipDefault(Struct, kw_only=True):
-    action: Literal["useDefault"]
+    action: Literal['useDefault']
     defaultValue: Value | None = None
 
 
@@ -138,23 +139,23 @@ SkipAction = OnSkipSkip | OnSkipDefault
 
 class Failed(Struct, kw_only=True):
     error: FlowError
-    outcome: Literal["failed"]
+    outcome: Literal['failed']
 
 
 FlowResult = Annotated[
-    Success | Skipped | Failed, Meta(description="The results of a step execution.")
+    Success | Skipped | Failed, Meta(description='The results of a step execution.')
 ]
 
 
 class Reference(Struct, kw_only=True):
-    field_from: Annotated[BaseRef, Meta(description="The source of the reference.")] = (
-        field(name="$from")
+    field_from: Annotated[BaseRef, Meta(description='The source of the reference.')] = (
+        field(name='$from')
     )
     path: (
         Annotated[
             JsonPath,
             Meta(
-                description="JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object."
+                description='JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.'
             ),
         ]
         | None
@@ -165,48 +166,42 @@ class Reference(Struct, kw_only=True):
 Expr = Annotated[
     Reference | EscapedLiteral | Value,
     Meta(
-        description="An expression that can be either a literal value or a template expression."
+        description='An expression that can be either a literal value or a template expression.'
     ),
 ]
 
 
 ValueTemplate = Annotated[
-    Expr
-    | bool
-    | float
-    | str
-    | List["ValueTemplate"]
-    | Dict[str, "ValueTemplate"]
-    | None,
+    Expr | bool | float | str | List['ValueTemplate'] | Dict[str, 'ValueTemplate'] | None,
     Meta(
-        description="A value that can be either a literal JSON value or an expression that references other values using the $from syntax"
+        description='A value that can be either a literal JSON value or an expression that references other values using the $from syntax'
     ),
 ]
 
 
 class TestCase(Struct, kw_only=True):
-    name: Annotated[str, Meta(description="Unique identifier for the test case.")]
+    name: Annotated[str, Meta(description='Unique identifier for the test case.')]
     input: Annotated[
-        Value, Meta(description="Input data for the workflow in this test case.")
+        Value, Meta(description='Input data for the workflow in this test case.')
     ]
     description: (
         Annotated[
             str | None,
-            Meta(description="Optional description of what this test case verifies."),
+            Meta(description='Optional description of what this test case verifies.'),
         ]
         | None
     ) = None
     output: (
         Annotated[
             FlowResult | None,
-            Meta(description="Expected output from the workflow for this test case."),
+            Meta(description='Expected output from the workflow for this test case.'),
         ]
         | None
     ) = None
 
 
 class OnErrorDefault(Struct, kw_only=True):
-    action: Literal["useDefault"]
+    action: Literal['useDefault']
     defaultValue: ValueTemplate | None = None
 
 
@@ -215,33 +210,33 @@ ErrorAction = OnErrorFail | OnErrorSkip | OnErrorDefault | OnErrorRetry
 
 class TestConfig(Struct, kw_only=True):
     stepflowConfig: (
-        Annotated[Any, Meta(description="Stepflow configuration specific to tests.")]
+        Annotated[Any, Meta(description='Stepflow configuration specific to tests.')]
         | None
     ) = None
     cases: (
-        Annotated[List[TestCase], Meta(description="Test cases for the workflow.")]
+        Annotated[List[TestCase], Meta(description='Test cases for the workflow.')]
         | None
     ) = None
 
 
 class Step(Struct, kw_only=True):
-    id: Annotated[str, Meta(description="Identifier for the step")]
+    id: Annotated[str, Meta(description='Identifier for the step')]
     component: Annotated[
-        Component, Meta(description="The component to execute in this step")
+        Component, Meta(description='The component to execute in this step')
     ]
     inputSchema: (
-        Annotated[Schema | None, Meta(description="The input schema for this step.")]
+        Annotated[Schema | None, Meta(description='The input schema for this step.')]
         | None
     ) = None
     outputSchema: (
-        Annotated[Schema | None, Meta(description="The output schema for this step.")]
+        Annotated[Schema | None, Meta(description='The output schema for this step.')]
         | None
     ) = None
     skipIf: (
         Annotated[
             Expr | None,
             Meta(
-                description="If set and the referenced value is truthy, this step will be skipped."
+                description='If set and the referenced value is truthy, this step will be skipped.'
             ),
         ]
         | None
@@ -250,41 +245,41 @@ class Step(Struct, kw_only=True):
     input: (
         Annotated[
             ValueTemplate,
-            Meta(description="Arguments to pass to the component for this step"),
+            Meta(description='Arguments to pass to the component for this step'),
         ]
         | None
     ) = None
 
 
 class Flow(Struct, kw_only=True):
-    steps: Annotated[List[Step], Meta(description="The steps to execute for the flow.")]
-    name: Annotated[str | None, Meta(description="The name of the flow.")] | None = None
+    steps: Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
+    name: Annotated[str | None, Meta(description='The name of the flow.')] | None = None
     description: (
-        Annotated[str | None, Meta(description="The description of the flow.")] | None
+        Annotated[str | None, Meta(description='The description of the flow.')] | None
     ) = None
     version: (
-        Annotated[str | None, Meta(description="The version of the flow.")] | None
+        Annotated[str | None, Meta(description='The version of the flow.')] | None
     ) = None
     inputSchema: (
-        Annotated[Schema | None, Meta(description="The input schema of the flow.")]
+        Annotated[Schema | None, Meta(description='The input schema of the flow.')]
         | None
     ) = None
     outputSchema: (
-        Annotated[Schema | None, Meta(description="The output schema of the flow.")]
+        Annotated[Schema | None, Meta(description='The output schema of the flow.')]
         | None
     ) = None
     output: (
         Annotated[
             ValueTemplate,
             Meta(
-                description="The outputs of the flow, mapping output names to their values."
+                description='The outputs of the flow, mapping output names to their values.'
             ),
         ]
         | None
     ) = None
     test: (
         Annotated[
-            TestConfig | None, Meta(description="Test configuration for the flow.")
+            TestConfig | None, Meta(description='Test configuration for the flow.')
         ]
         | None
     ) = None
@@ -292,7 +287,7 @@ class Flow(Struct, kw_only=True):
         Annotated[
             List[ExampleInput],
             Meta(
-                description="Example inputs for the workflow that can be used for testing and UI dropdowns."
+                description='Example inputs for the workflow that can be used for testing and UI dropdowns.'
             ),
         ]
         | None

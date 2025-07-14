@@ -61,7 +61,7 @@ mod tests {
             output: ValueTemplate::empty_object(),
             steps: vec![stepflow_core::workflow::Step {
                 id: "test_step".to_string(),
-                component: stepflow_core::workflow::Component::from_string("test://mock"),
+                component: stepflow_core::workflow::Component::from_string("/test/mock"),
                 input: ValueTemplate::empty_object(),
                 input_schema: None,
                 output_schema: None,

@@ -22,7 +22,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, assert_never
-from urllib.parse import urlparse
 
 import msgspec
 
@@ -165,13 +164,13 @@ class StepflowStdioServer:
             return decorator
         return decorator(func)
 
-    def get_component(self, component_url: str) -> ComponentEntry | None:
-        """Get a registered component by name."""
-        parse_result = urlparse(component_url)
-        component_name = parse_result.netloc
-        if parse_result.path:
-            component_name += "/" + parse_result.path
-        return self._components.get(component_name)
+    def get_component(self, component_path: str) -> ComponentEntry | None:
+        """Get a registered component by path."""
+        # Handle path format: /plugin/component_name
+        if component_path.startswith(f"/{self._protocol_prefix}/"):
+            component_name = component_path[len(f"/{self._protocol_prefix}/") :]
+            return self._components.get(component_name)
+        return None
 
     async def _handle_method_request(self, request: MethodRequest) -> MethodResponse:
         """Handle a method request and return a response."""
@@ -257,7 +256,7 @@ class StepflowStdioServer:
                 # Return component info objects
                 component_infos = []
                 for name, component in self._components.items():
-                    component_url = f"{self._protocol_prefix}://{name}"
+                    component_url = f"/{self._protocol_prefix}/{name}"
                     component_infos.append(
                         ComponentInfo(
                             component=component_url,

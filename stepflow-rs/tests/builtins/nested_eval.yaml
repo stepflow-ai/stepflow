@@ -2,7 +2,7 @@ name: nested_eval_test
 description: Test nested flow execution with eval component
 steps:
 - id: nested_flow
-  component: builtin://eval
+  component: eval
   input_schema: null
   output_schema: null
   input:
@@ -11,7 +11,7 @@ steps:
         name: simple_nested
         steps:
         - id: inner_step
-          component: builtin://create_messages
+          component: create_messages
           input:
             user_prompt: Hello from nested flow
         output:

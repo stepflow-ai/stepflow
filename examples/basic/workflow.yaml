@@ -27,7 +27,7 @@ output_schema:
 steps:
   # Create UDF for addition
   - id: create_addition_udf
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -40,7 +40,7 @@ steps:
 
   # Create UDF for multiplication  
   - id: create_multiplication_udf
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -53,7 +53,7 @@ steps:
 
   # Calculate m + n using UDF
   - id: m_plus_n
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_addition_udf }, path: "blob_id" }
       input:
@@ -62,7 +62,7 @@ steps:
 
   # Calculate m * n using UDF
   - id: m_times_n
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_multiplication_udf }, path: "blob_id" }
       input:
@@ -71,7 +71,7 @@ steps:
 
   # Calculate (m + n) * n using UDF
   - id: m_plus_n_times_n
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_multiplication_udf }, path: "blob_id" }
       input:

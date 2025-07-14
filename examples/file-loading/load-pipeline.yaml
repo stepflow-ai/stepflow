@@ -14,20 +14,20 @@ input_schema:
 steps:
   # Load the sales data from file
   - id: load_sales_data
-    component: "builtin://load_file"
+    component: "load_file"
     input:
       path: { $from: "$input", path: "data_file_path" }
 
   # Extract the sales_data array using UDF
   - id: extract_sales_udf
-    component: "builtin://put_blob"
+    component: "put_blob"
     input:
       data:
         $literal:
           code: "input['file_data']['sales_data']"
 
   - id: extract_sales_array
-    component: python://udf
+    component: "/python/udf"
     input:
       blob_id: { $from: { step: extract_sales_udf }, path: "blob_id" }
       input:
@@ -35,56 +35,56 @@ steps:
 
   # Now process the sales data array
   - id: sum_revenue_udf
-    component: "builtin://put_blob"
+    component: "put_blob"
     input:
       data:
         $literal:
           code: "sum(item['revenue'] for item in input['sales_data'])"
 
   - id: calculate_total_revenue
-    component: python://udf
+    component: "/python/udf"
     input:
       blob_id: { $from: { step: sum_revenue_udf }, path: "blob_id" }
       input:
         sales_data: { $from: { step: "extract_sales_array" }, path: "result" }
 
   - id: count_sales_udf
-    component: "builtin://put_blob"
+    component: "put_blob"
     input:
       data:
         $literal:
           code: "len(input['sales_data'])"
 
   - id: count_sales
-    component: python://udf
+    component: "/python/udf"
     input:
       blob_id: { $from: { step: count_sales_udf }, path: "blob_id" }
       input:
         sales_data: { $from: { step: "extract_sales_array" }, path: "result" }
 
   - id: average_sale_udf
-    component: "builtin://put_blob"
+    component: "put_blob"
     input:
       data:
         $literal:
           code: "sum(item['revenue'] for item in input['sales_data']) / len(input['sales_data']) if input['sales_data'] else 0"
 
   - id: calculate_average_sale
-    component: python://udf
+    component: "/python/udf"
     input:
       blob_id: { $from: { step: average_sale_udf }, path: "blob_id" }
       input:
         sales_data: { $from: { step: "extract_sales_array" }, path: "result" }
 
   - id: divide_udf
-    component: "builtin://put_blob"
+    component: "put_blob"
     input:
       data:
         $literal:
           code: "input['a'] / input['b'] if input['b'] != 0 else 0"
 
   - id: calculate_performance_ratio
-    component: python://udf
+    component: "/python/udf"
     input:
       blob_id: { $from: { step: divide_udf }, path: "blob_id" }
       input:
