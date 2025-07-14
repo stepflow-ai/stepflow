@@ -94,15 +94,15 @@ impl McpClient {
             .change_context(McpError::ProcessSpawn)
             .attach_printable_lazy(|| format!("Command: {} {:?}", config.command, config.args))?;
 
-        let stdin = process.stdin.take().ok_or_else(|| {
-            error_stack::Report::new(McpError::ProcessSetup)
-                .attach_printable("Failed to capture stdin handle from MCP server process")
-        })?;
+        let stdin = process
+            .stdin
+            .take()
+            .ok_or_else(|| error_stack::report!(McpError::ProcessSetup("stdin")))?;
 
-        let stdout = process.stdout.take().ok_or_else(|| {
-            error_stack::Report::new(McpError::ProcessSetup)
-                .attach_printable("Failed to capture stdout handle from MCP server process")
-        })?;
+        let stdout = process
+            .stdout
+            .take()
+            .ok_or_else(|| error_stack::report!(McpError::ProcessSetup("stdout")))?;
 
         Ok(Self {
             process,
@@ -321,7 +321,6 @@ impl Plugin for McpPlugin {
         // Convert MCP tools to StepFlow components
         for tool in &state.available_tools {
             let mut info = crate::schema::mcp_tool_to_component_info(tool)
-                .change_context(McpError::SchemaConversion)
                 .change_context(PluginError::ComponentInfo)?;
 
             // Update the component URL to use plugin name as protocol
@@ -335,27 +334,17 @@ impl Plugin for McpPlugin {
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        let tool_name = component_url_to_tool_name(component.url_string()).ok_or_else(|| {
-            error_stack::Report::new(McpError::SchemaConversion)
-                .attach_printable("Invalid MCP component URL format")
-                .change_context(PluginError::ComponentInfo)
-        })?;
+        let tool_name = component_url_to_tool_name(component.url_string())
+            .ok_or_else(|| error_stack::report!(PluginError::ComponentInfo))?;
 
         let state = self.state.read().await;
         let tool = state
             .available_tools
             .iter()
             .find(|tool| tool.name == tool_name)
-            .ok_or_else(|| {
-                error_stack::Report::new(McpError::ToolNotFound {
-                    tool_name: tool_name.to_string(),
-                })
-                .change_context(PluginError::ComponentInfo)
-            })?;
+            .ok_or_else(|| error_stack::report!(PluginError::ComponentInfo))?;
 
-        mcp_tool_to_component_info(tool)
-            .change_context(McpError::SchemaConversion)
-            .change_context(PluginError::ComponentInfo)
+        mcp_tool_to_component_info(tool).change_context(PluginError::ComponentInfo)
     }
 
     async fn execute(

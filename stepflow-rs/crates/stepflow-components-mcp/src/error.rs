@@ -19,8 +19,8 @@ pub enum McpError {
     #[error("Failed to spawn MCP server process")]
     ProcessSpawn,
 
-    #[error("Failed to setup MCP server process I/O")]
-    ProcessSetup,
+    #[error("Failed to setup MCP server process I/O: {0}")]
+    ProcessSetup(&'static str),
 
     #[error("MCP server initialization failed")]
     ServerInitialization,
