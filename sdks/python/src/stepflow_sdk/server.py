@@ -169,7 +169,7 @@ class StepflowStdioServer:
         """Get a registered component by path."""
         # Handle path format: /plugin/component_name
         if component_path.startswith(f"/{self._protocol_prefix}/"):
-            component_name = component_path[len(f"/{self._protocol_prefix}/"):]
+            component_name = component_path[len(f"/{self._protocol_prefix}/") :]
             return self._components.get(component_name)
         return None
 

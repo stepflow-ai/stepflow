@@ -89,7 +89,9 @@ def test_step_references():
         component="/test/component",
         input_data={"direct": Value.step(step1.id, "$")},
     )
-    builder.add_step(id="step2", component="/test/component", input_data={"field": ref2})
+    builder.add_step(
+        id="step2", component="/test/component", input_data={"field": ref2}
+    )
     builder.add_step(
         id="step3", component="/test/component", input_data={"indexed": ref3}
     )
