@@ -25,17 +25,13 @@ use stepflow_core::{
 use stepflow_plugin::{
     Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
 };
-use stepflow_protocol::stdio::StdioError;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::RwLock;
 use tokio::time::{Duration, timeout};
 
-#[allow(unused_imports)]
-use crate::protocol::{
-    INITIALIZE_METHOD, Implementation, ServerCapabilities, TOOLS_CALL_METHOD, TOOLS_LIST_METHOD,
-    Tool,
-};
+use crate::error::{McpError, Result as McpResult};
+use crate::protocol::{Implementation, ServerCapabilities, Tool};
 use crate::schema::{component_path_to_tool_name, mcp_tool_to_component_info};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -48,7 +44,7 @@ pub struct McpPluginConfig {
 }
 
 impl PluginConfig for McpPluginConfig {
-    type Error = StdioError;
+    type Error = McpError;
 
     async fn create_plugin(
         self,
@@ -80,7 +76,7 @@ struct McpClient {
 }
 
 impl McpClient {
-    async fn new(config: &McpPluginConfig, working_directory: &std::path::Path) -> Result<Self> {
+    async fn new(config: &McpPluginConfig, working_directory: &std::path::Path) -> McpResult<Self> {
         let mut cmd = Command::new(&config.command);
         cmd.args(&config.args);
         cmd.current_dir(working_directory);
@@ -95,18 +91,18 @@ impl McpClient {
 
         let mut process = cmd
             .spawn()
-            .change_context(PluginError::Initializing)
-            .attach_printable("Failed to spawn MCP server process")?;
+            .change_context(McpError::ProcessSpawn)
+            .attach_printable_lazy(|| format!("Command: {} {:?}", config.command, config.args))?;
 
-        let stdin = process.stdin.take().ok_or_else(|| {
-            error_stack::Report::new(PluginError::Initializing)
-                .attach_printable("Failed to capture stdin for MCP server")
-        })?;
+        let stdin = process
+            .stdin
+            .take()
+            .ok_or_else(|| error_stack::report!(McpError::ProcessSetup("stdin")))?;
 
-        let stdout = process.stdout.take().ok_or_else(|| {
-            error_stack::Report::new(PluginError::Initializing)
-                .attach_printable("Failed to capture stdout for MCP server")
-        })?;
+        let stdout = process
+            .stdout
+            .take()
+            .ok_or_else(|| error_stack::report!(McpError::ProcessSetup("stdout")))?;
 
         Ok(Self {
             process,
@@ -120,7 +116,7 @@ impl McpClient {
         &mut self,
         method: &str,
         params: serde_json::Value,
-    ) -> Result<serde_json::Value> {
+    ) -> McpResult<serde_json::Value> {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -132,7 +128,7 @@ impl McpClient {
         });
 
         let msg = serde_json::to_string(&request)
-            .change_context(PluginError::Execution)
+            .change_context(McpError::Communication)
             .attach_printable_lazy(|| {
                 format!("Failed to serialize MCP request for method '{method}'")
             })?;
@@ -145,11 +141,11 @@ impl McpClient {
             self.stdin.flush().await
         })
         .await
-        .change_context(PluginError::Execution)
+        .change_context(McpError::Timeout)
         .attach_printable_lazy(|| {
             format!("Timeout sending request to MCP server for method '{method}'")
         })?
-        .change_context(PluginError::Execution)
+        .change_context(McpError::Communication)
         .attach_printable_lazy(|| format!("Failed to write to MCP server for method '{method}'"))?;
 
         // Read the response with timeout
@@ -157,25 +153,25 @@ impl McpClient {
         let mut line = String::new();
         let bytes_read = timeout(read_timeout, self.stdout.read_line(&mut line))
             .await
-            .change_context(PluginError::Execution)
+            .change_context(McpError::Timeout)
             .attach_printable_lazy(|| {
                 format!("Timeout waiting for MCP server response for method '{method}'")
             })?
-            .change_context(PluginError::Execution)
+            .change_context(McpError::Communication)
             .attach_printable_lazy(|| {
                 format!("Failed to read from MCP server for method '{method}'")
             })?;
 
         error_stack::ensure!(
             bytes_read > 0,
-            error_stack::Report::new(PluginError::Execution).attach_printable(format!(
+            error_stack::Report::new(McpError::Communication).attach_printable(format!(
                 "MCP server closed connection while waiting for response to method '{method}'"
             ))
         );
 
         // Parse the response
         let response: serde_json::Value = serde_json::from_str(line.trim())
-            .change_context(PluginError::Execution)
+            .change_context(McpError::InvalidResponse)
             .attach_printable_lazy(|| {
                 format!(
                     "Failed to parse MCP server response for method '{}'. Raw response: '{}'",
@@ -187,7 +183,7 @@ impl McpClient {
         // Validate response ID matches request
         if let Some(response_id) = response.get("id") {
             if response_id.as_u64() != Some(id) {
-                return Err(error_stack::Report::new(PluginError::Execution)
+                return Err(error_stack::Report::new(McpError::InvalidResponse)
                     .attach_printable(format!("Response ID mismatch for method '{method}': expected {id}, got {response_id}")));
             }
         }
@@ -206,20 +202,20 @@ impl McpClient {
 
             // For tools/call method, this is a tool execution error that should be treated as business logic failure
             if method == "tools/call" {
-                return Err(error_stack::Report::new(PluginError::Execution)
+                return Err(error_stack::Report::new(McpError::ToolExecution)
                     .attach_printable("MCP_TOOL_ERROR") // Special marker for tool execution errors
                     .attach_printable(format!(
                         "Tool execution error [{error_code}]: {error_message}{error_data}"
                     )));
             } else {
-                return Err(error_stack::Report::new(PluginError::Execution)
+                return Err(error_stack::Report::new(McpError::Communication)
                     .attach_printable(format!("MCP server error for method '{method}': [{error_code}] {error_message}{error_data}")));
             }
         }
 
         // Return the result field
         response.get("result").cloned().ok_or_else(|| {
-            error_stack::Report::new(PluginError::Execution)
+            error_stack::Report::new(McpError::InvalidResponse)
                 .attach_printable(format!("MCP server response for method '{method}' missing result field. Response: {response}"))
         })
     }
@@ -299,7 +295,9 @@ impl Plugin for McpPlugin {
         // Don't initialize the underlying stdio plugin since we handle MCP protocol directly
 
         // Create the MCP client
-        let mcp_client = McpClient::new(&self.config, &self.working_directory).await?;
+        let mcp_client = McpClient::new(&self.config, &self.working_directory)
+            .await
+            .change_context(PluginError::Initializing)?;
 
         // Store the client in state
         {
@@ -337,16 +335,14 @@ impl Plugin for McpPlugin {
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
         let tool_name = component_path_to_tool_name(component.path_string())
-            .ok_or(PluginError::ComponentInfo)
-            .attach_printable("Invalid MCP component path format")?;
+            .ok_or_else(|| error_stack::report!(PluginError::ComponentInfo))?;
 
         let state = self.state.read().await;
         let tool = state
             .available_tools
             .iter()
             .find(|tool| tool.name == tool_name)
-            .ok_or(PluginError::ComponentInfo)
-            .attach_printable("MCP tool not found")?;
+            .ok_or_else(|| error_stack::report!(PluginError::ComponentInfo))?;
 
         mcp_tool_to_component_info(tool).change_context(PluginError::ComponentInfo)
     }
@@ -358,14 +354,13 @@ impl Plugin for McpPlugin {
         input: ValueRef,
     ) -> Result<FlowResult> {
         let tool_name = component_path_to_tool_name(component.path_string())
-            .ok_or(PluginError::Execution)
-            .attach_printable("Invalid MCP component path format")?;
+            .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
 
         let mut state = self.state.write().await;
-        let mcp_client = state.mcp_client.as_mut().ok_or_else(|| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable("MCP client not initialized")
-        })?;
+        let mcp_client = state
+            .mcp_client
+            .as_mut()
+            .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
 
         // Send tools/call request to execute the tool
         let call_params = json!({
@@ -377,26 +372,19 @@ impl Plugin for McpPlugin {
             Ok(result) => result,
             Err(err) => {
                 // Check if this is an MCP tool execution error that should be treated as a business logic failure
-                let error_message = format!("{err:?}");
-                if error_message.contains("MCP_TOOL_ERROR") {
-                    // This is a tool execution failure, not an implementation failure
-                    // Extract the actual error message after the marker
-                    let tool_error_msg =
-                        if let Some(msg) = error_message.split("Tool execution error").nth(1) {
-                            msg.trim_start_matches(':').trim()
-                        } else {
-                            "execution failed"
-                        };
-
-                    return Ok(FlowResult::Failed {
-                        error: FlowError::new(
-                            500,
-                            format!("Tool '{tool_name}' failed: {tool_error_msg}"),
-                        ),
-                    });
+                if let Some(mcp_error) = err.downcast_ref::<McpError>() {
+                    if matches!(mcp_error, McpError::ToolExecution) {
+                        // This is a tool execution failure, not an implementation failure
+                        return Ok(FlowResult::Failed {
+                            error: FlowError::new(
+                                500,
+                                format!("Tool '{tool_name}' execution failed"),
+                            ),
+                        });
+                    }
                 }
                 // For other errors (timeouts, connection issues, etc.), propagate as implementation errors
-                return Err(err);
+                return Err(err.change_context(PluginError::Execution));
             }
         };
 
@@ -438,7 +426,8 @@ impl McpPlugin {
             })?;
             mcp_client
                 .send_request("initialize", initialize_params)
-                .await?
+                .await
+                .change_context(PluginError::Initializing)?
         };
 
         // Parse and store the server capabilities and info from the response
@@ -484,7 +473,10 @@ impl McpPlugin {
                 error_stack::Report::new(PluginError::Initializing)
                     .attach_printable("MCP client not initialized")
             })?;
-            mcp_client.send_request("tools/list", json!({})).await?
+            mcp_client
+                .send_request("tools/list", json!({}))
+                .await
+                .change_context(PluginError::Initializing)?
         };
 
         // Parse the tools from the response
