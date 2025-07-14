@@ -118,7 +118,7 @@ Store large datasets in blobs to avoid memory duplication:
 steps:
   # Store large dataset in blob
   - id: store_large_dataset
-    component: builtin://put_blob
+    component: put_blob
     input:
       data: { $from: { step: load_massive_dataset } }
 
@@ -148,7 +148,7 @@ steps:
       # ✅ Good - reference specific fields
       user_id: { $from: { step: load_user }, path: "id" }
       user_name: { $from: { step: load_user }, path: "profile.name" }
-      
+
   - id: inefficient_processing
     component: user/process
     input:
@@ -165,14 +165,14 @@ Select components based on the complexity of your task:
 ```yaml
 # For simple data transformations, use lightweight components
 - id: extract_field
-  component: builtin://extract
+  component: extract
   input:
     data: { $from: { step: load_data } }
     path: "metadata.id"
 
 # For complex processing, use specialized components
 - id: ai_analysis
-  component: builtin://openai
+  component: openai
   input:
     messages: [...]
     model: "gpt-4"
@@ -204,7 +204,7 @@ Optimize component settings for your use case:
 ```yaml
 steps:
   - id: ai_generation
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_messages } }
       # Optimize parameters for performance vs quality
@@ -223,7 +223,7 @@ Structure workflows to minimize data copying and movement:
 steps:
   # Store shared data once
   - id: store_shared_context
-    component: builtin://put_blob
+    component: put_blob
     input:
       data: { $from: { step: load_context } }
 
@@ -269,7 +269,7 @@ Optimize AI prompts for performance and cost:
 ```yaml
 steps:
   - id: efficient_ai_call
-    component: builtin://openai
+    component: openai
     input:
       messages:
         - role: system
@@ -298,7 +298,7 @@ steps:
 
   # Only call AI if not cached
   - id: generate_ai_response
-    component: builtin://openai
+    component: openai
     skip_if: { $from: { step: check_ai_cache }, path: "cache_hit" }
     input:
       messages: { $from: { step: create_messages } }
@@ -444,13 +444,13 @@ steps:
 # ❌ Bad - too many small steps
 steps:
   - id: get_field_1
-    component: builtin://extract
+    component: extract
     input:
       data: { $from: { step: load_data } }
       path: "field1"
 
   - id: get_field_2
-    component: builtin://extract
+    component: extract
     input:
       data: { $from: { step: load_data } }
       path: "field2"
@@ -482,7 +482,7 @@ steps:
 # ✅ Good - use blob storage
 steps:
   - id: store_large_data
-    component: builtin://put_blob
+    component: put_blob
     input:
       data: { $from: { step: load_large_data } }
 

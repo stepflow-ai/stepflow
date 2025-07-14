@@ -47,25 +47,25 @@ Steps execute based on their dependencies, not their order in the YAML file. Ste
 steps:
   # This step runs first (no dependencies)
   - id: load_data
-    component: builtin://load_file
+    component: load_file
     input:
       path: "data.json"
-  
+
   # This step waits for load_data to complete
   - id: process_data
-    component: python://udf
+    component: /python/udf
     input:
       data: { $from: { step: load_data } }
-      
+
   # This step also waits for load_data (runs in parallel with process_data)
   - id: validate_data
-    component: builtin://validate
+    component: validate
     input:
       data: { $from: { step: load_data } }
-      
+
   # This step waits for both process_data and validate_data
   - id: combine_results
-    component: builtin://merge
+    component: merge
     input:
       processed: { $from: { step: process_data } }
       validated: { $from: { step: validate_data } }
@@ -139,7 +139,7 @@ steps:
   - id: optional_step
     component: data/process
     skip: { $from: { workflow: input }, path: "skip_optional" }
-    
+
   # This step is skipped if optional_step is skipped
   - id: dependent_step
     component: data/analyze
@@ -205,13 +205,13 @@ When using `action: continue`, the `default_output` must:
 ```yaml
 # Blob storage
 - id: store_data
-  component: builtin://put_blob
+  component: put_blob
   input:
     data: { $from: { step: prepare_data } }
 
 # Sub-workflow execution
 - id: sub_process
-  component: builtin://eval
+  component: eval
   input:
     workflow: { $from: { step: load_workflow } }
     input: { $from: { step: prepare_input } }
@@ -222,7 +222,7 @@ When using `action: continue`, the `default_output` must:
 ```yaml
 # Python UDF
 - id: custom_logic
-  component: python://udf
+  component: /python/udf
   input:
     blob_id: { $from: { step: create_udf } }
     input: { $from: { workflow: input } }
@@ -240,7 +240,7 @@ When using `action: continue`, the `default_output` must:
 ```yaml
 # OpenAI API call
 - id: ai_analysis
-  component: builtin://openai
+  component: openai
   input:
     messages:
       - role: system
@@ -260,11 +260,11 @@ Create components at runtime:
 ```yaml
 steps:
   - id: create_custom_component
-    component: factory://create_processor
+    component: /factory/create_processor
     input:
       type: "data_transformer"
       config: { $from: { workflow: input }, path: "processor_config" }
-      
+
   - id: use_custom_component
     component: { $from: { step: create_custom_component }, path: "component_url" }
     input:
@@ -277,12 +277,12 @@ steps:
 steps:
   - id: process_if_large
     component: data/heavy_processor
-    skip: 
+    skip:
       $from: { step: check_size }
       path: "is_small"
     input:
       data: { $from: { step: load_data } }
-      
+
   - id: process_if_small
     component: data/light_processor
     skip:
@@ -342,11 +342,11 @@ input:
   # Data inputs
   user_data: { $from: { step: load_user } }
   settings: { $from: { step: load_settings } }
-  
+
   # Configuration
   timeout: { $literal: 30 }
   retries: { $literal: 3 }
-  
+
   # Optional parameters with defaults
   debug_mode:
     $from: { workflow: input }
@@ -366,7 +366,7 @@ input:
 - id: authenticate_user
   component: auth/verify
   # on_error defaults to terminate
-  
+
 # Optional enhancement - can fail gracefully
 - id: enrich_profile
   component: data/enrich
@@ -375,7 +375,7 @@ input:
     default_output:
       enriched: false
       metadata: {}
-      
+
 # Completely optional - skip if fails
 - id: log_analytics
   component: analytics/track

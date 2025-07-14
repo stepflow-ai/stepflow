@@ -3269,7 +3269,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "stepflow-core",
- "stepflow-mock",
  "stepflow-state",
  "thiserror 2.0.12",
  "trait-variant",

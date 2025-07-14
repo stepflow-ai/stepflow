@@ -51,7 +51,9 @@ async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepFlowExec
     let executor = StepFlowExecutor::new(state_store, working_directory.clone(), plugin_router);
 
     // Initialize all plugins
-    executor.initialize_plugins().await
+    executor
+        .initialize_plugins()
+        .await
         .change_context(MainError::Configuration)?;
 
     Ok(executor)

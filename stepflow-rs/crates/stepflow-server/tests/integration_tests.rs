@@ -137,6 +137,7 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
 
     let plugin_router = plugin_router_builder.build().unwrap();
     let executor = StepFlowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router);
+    executor.initialize_plugins().await.unwrap();
 
     // Use the real startup logic but without swagger UI for tests
     use stepflow_server::AppConfig;

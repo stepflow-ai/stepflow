@@ -133,7 +133,7 @@ input_schema:
 
 steps:
   - id: add_numbers
-    component: python://add
+    component: /python/add
     args:
       a: { $from: $input, path: m }
       b: { $from: $input, path: n }

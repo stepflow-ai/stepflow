@@ -229,20 +229,20 @@ $default:
 # Chain of optional dependencies
 steps:
   - id: optional_step_1
-    component: data://fetch
+    component: /data/fetch
     skip_if: { $from: { workflow: input }, path: "skip_optional" }
     input:
       source: "external_api"
 
   - id: optional_step_2
-    component: data://process
+    component: /data/process
     input:
       data:
         $from: { step: optional_step_1 }
         $on_skip: "skip_step"  # Propagates skip
 
   - id: robust_step
-    component: data://combine
+    component: /data/combine
     input:
       required_data: { $from: { step: required_step } }
       optional_data:

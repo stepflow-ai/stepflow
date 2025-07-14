@@ -16,13 +16,13 @@ StepFlow uses a dependency-driven execution model rather than sequential executi
 steps:
   # Step 1: No dependencies - starts immediately
   - id: load_config
-    component: builtin://load_file
+    component: load_file
     input:
       path: "config.json"
 
   # Step 2: No dependencies - runs in parallel with load_config
   - id: load_data
-    component: builtin://load_file
+    component: load_file
     input:
       path: "data.json"
 
@@ -137,7 +137,7 @@ Use blobs for large or reusable data:
 steps:
   # Store large dataset in blob
   - id: store_large_dataset
-    component: builtin://put_blob
+    component: put_blob
     input:
       data: { $from: { step: load_massive_dataset } }
 
@@ -199,7 +199,7 @@ steps:
       request: { $from: { workflow: input } }
 
   - id: execute_dynamic_workflow
-    component: builtin://eval
+    component: eval
     input:
       workflow: { $from: { step: determine_workflow_type }, path: "workflow_definition" }
       input: { $from: { workflow: input } }

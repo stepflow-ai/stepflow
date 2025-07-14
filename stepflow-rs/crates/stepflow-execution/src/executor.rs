@@ -22,7 +22,7 @@ use stepflow_core::{
     FlowError, FlowResult,
     workflow::{Component, Flow, ValueRef},
 };
-use stepflow_plugin::{Context, DynPlugin, ExecutionContext, Plugin, routing::PluginRouter};
+use stepflow_plugin::{Context, DynPlugin, ExecutionContext, Plugin as _, routing::PluginRouter};
 use stepflow_state::{InMemoryStateStore, StateStore};
 use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;

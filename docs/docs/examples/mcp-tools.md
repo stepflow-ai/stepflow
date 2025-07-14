@@ -21,7 +21,7 @@ plugins:
     type: mcp
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/workspace"]
-  
+
   # Database MCP server (example)
   - name: database
     type: mcp
@@ -29,7 +29,7 @@ plugins:
     args: ["--connection-string", "postgresql://localhost/mydb"]
     env:
       PGPASSWORD: "secret"
-  
+
   # Multiple MCP servers can be configured
   - name: github
     type: mcp
@@ -68,13 +68,13 @@ steps:
     inputs:
       path: /tmp/workspace/output.txt
       content: ${{ inputs.content }}
-  
+
   # Read the file back
   - name: verify_content
     component: /fs/read_file
     inputs:
       path: /tmp/workspace/output.txt
-  
+
   # List directory contents
   - name: list_files
     component: /fs/list_directory
@@ -111,7 +111,7 @@ steps:
     component: /fs/create_directory
     inputs:
       path: /tmp/workspace/docs
-  
+
   # Process each document
   - name: save_documents
     forEach: ${{ inputs.documents }}
@@ -122,10 +122,10 @@ steps:
         inputs:
           path: /tmp/workspace/docs/${{ doc.name }}.txt
           content: ${{ doc.content }}
-  
+
   # Generate index file
   - name: create_index
-    component: builtin.template
+    component: template
     inputs:
       template: |
         # Document Index
@@ -133,14 +133,14 @@ steps:
         - {{ doc.name }}
         {% endfor %}
       documents: ${{ inputs.documents }}
-  
+
   # Save the index
   - name: save_index
     component: /fs/write_file
     inputs:
       path: /tmp/workspace/docs/index.md
       content: ${{ steps.create_index }}
-  
+
   # List all created files
   - name: list_output
     component: /fs/list_directory
@@ -210,9 +210,9 @@ MCP tools can return two types of errors:
      inputs:
        path: /tmp/workspace/config.json
      continueOnError: true
-   
+
    - name: use_default
-     component: builtin.template
+     component: template
      when: ${{ steps.read_config.failed }}
      inputs:
        template: '{"default": true}'
@@ -261,7 +261,7 @@ Use `continueOnError` and conditional steps for graceful error handling:
 
 - name: fallback
   when: ${{ steps.try_operation.failed }}
-  component: builtin.log
+  component: log
   inputs:
     message: "Operation failed, using fallback"
 ```
@@ -296,10 +296,10 @@ Use `continueOnError` and conditional steps for graceful error handling:
 ```yaml
 steps:
   - name: select_operation
-    component: builtin.template
+    component: template
     inputs:
       template: "${{ inputs.operation_type }}://{{ inputs.tool_name }}"
-      
+
   - name: execute
     component: ${{ steps.select_operation }}
     inputs: ${{ inputs.tool_params }}
