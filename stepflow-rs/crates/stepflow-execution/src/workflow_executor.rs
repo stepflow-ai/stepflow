@@ -618,7 +618,7 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self
             .resolver
-            .resolve_template(&step.input)
+            .resolve(&step.input)
             .await
             .change_context(ExecutionError::ValueResolverFailure)?
         {
@@ -695,7 +695,7 @@ impl WorkflowExecutor {
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
         self.resolver
-            .resolve_template(&self.flow.output)
+            .resolve(&self.flow.output)
             .await
             .change_context(ExecutionError::ValueResolverFailure)
     }
@@ -767,7 +767,7 @@ impl WorkflowExecutor {
                 // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = self
                     .resolver
-                    .resolve_template(&step_input)
+                    .resolve(&step_input)
                     .await
                     .change_context(ExecutionError::ValueResolverFailure)?;
                 let step_input = match step_input {
@@ -907,7 +907,7 @@ pub(crate) async fn execute_step_async(
                     };
                     // Resolve the ValueTemplate to get the actual value
                     let default_value = resolver
-                        .resolve_template(&template)
+                        .resolve(&template)
                         .await
                         .change_context(ExecutionError::ValueResolverFailure)?;
                     match default_value {

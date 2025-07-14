@@ -11,11 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-mod context;
-mod error;
-mod plugin;
-pub mod routing;
+mod router;
+mod rules;
 
-pub use context::{Context, ExecutionContext};
-pub use error::{PluginError, Result};
-pub use plugin::{DynPlugin, Plugin, PluginConfig};
+pub use router::{ComponentRouter, Router, RouterError};
+pub use rules::{InputCondition, MatchRule, RoutingRule, RoutingRules};
