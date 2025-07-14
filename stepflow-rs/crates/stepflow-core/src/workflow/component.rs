@@ -74,9 +74,9 @@ impl Component {
 
     /// Creates a component from a string, handling both paths and builtin names.
     pub fn from_string(input: &str) -> Self {
-        if input.starts_with('/') {
+        if let Some(absolute_path) = input.strip_prefix("/") {
             // Path-based component
-            match input[1..].find('/') {
+            match absolute_path.find('/') {
                 Some(pos) => Self {
                     path: input.to_string(),
                     delimiter: pos + 2, // Position after the plugin name and second slash

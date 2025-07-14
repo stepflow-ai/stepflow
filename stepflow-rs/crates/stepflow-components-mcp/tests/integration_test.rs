@@ -11,7 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use futures::future::FutureExt;
+use futures::future::FutureExt as _;
 use indexmap::IndexMap;
 use serde_json::json;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ use stepflow_core::{
     FlowResult,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig};
+use stepflow_plugin::{ExecutionContext, Plugin as _, PluginConfig as _};
 use stepflow_state::InMemoryStateStore;
 use uuid::Uuid;
 
@@ -184,15 +184,14 @@ async fn test_mcp_error_handling() {
     let result = plugin.execute(&bad_component, exec_context, input).await;
     assert!(
         result.is_ok(),
-        "Expected Ok(FlowResult::Failed), got Err: {:?}",
-        result
+        "Expected Ok(FlowResult::Failed), got Err: {result:?}"
     );
 
     match result.unwrap() {
         FlowResult::Failed { error } => {
-            let error_message = format!("{}", error);
+            let error_message = format!("{error}");
             assert!(error_message.contains("nonexistent"));
         }
-        other => panic!("Expected FlowResult::Failed, got: {:?}", other),
+        other => panic!("Expected FlowResult::Failed, got: {other:?}"),
     }
 }

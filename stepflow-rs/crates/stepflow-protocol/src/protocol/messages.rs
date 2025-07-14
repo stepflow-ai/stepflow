@@ -321,7 +321,7 @@ mod tests {
             if !name
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
             {
                 return false;
             }
@@ -381,9 +381,8 @@ mod tests {
         let invalid_titles = validate_python_class_names(&generated_json);
         assert!(
             invalid_titles.is_empty(),
-            "Found invalid Python class names in protocol schema titles: {:?}. \
-             All titles must be valid Python class names for --use-title-as-name to work.",
-            invalid_titles
+            "Found invalid Python class names in protocol schema titles: {invalid_titles:?}. \
+             All titles must be valid Python class names for --use-title-as-name to work."
         );
 
         // Read the reference schema
