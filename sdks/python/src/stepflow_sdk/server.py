@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any, assert_never
 
-# No longer needed: from urllib.parse import urlparse
 import msgspec
 
 from stepflow_sdk.context import StepflowContext
