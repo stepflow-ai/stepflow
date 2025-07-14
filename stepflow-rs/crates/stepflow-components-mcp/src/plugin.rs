@@ -32,7 +32,7 @@ use tokio::time::{Duration, timeout};
 
 use crate::error::{McpError, Result as McpResult};
 use crate::protocol::{Implementation, ServerCapabilities, Tool};
-use crate::schema::{component_url_to_tool_name, mcp_tool_to_component_info};
+use crate::schema::{component_path_to_tool_name, mcp_tool_to_component_info};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct McpPluginConfig {
@@ -334,7 +334,7 @@ impl Plugin for McpPlugin {
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        let tool_name = component_url_to_tool_name(component.url_string())
+        let tool_name = component_path_to_tool_name(component.path_string())
             .ok_or_else(|| error_stack::report!(PluginError::ComponentInfo))?;
 
         let state = self.state.read().await;
@@ -354,14 +354,13 @@ impl Plugin for McpPlugin {
         input: ValueRef,
     ) -> Result<FlowResult> {
         let tool_name = component_path_to_tool_name(component.path_string())
-            .ok_or(PluginError::Execution)
-            .attach_printable("Invalid MCP component path format")?;
+            .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
 
         let mut state = self.state.write().await;
-        let mcp_client = state.mcp_client.as_mut().ok_or_else(|| {
-            error_stack::Report::new(PluginError::Execution)
-                .attach_printable("MCP client not initialized")
-        })?;
+        let mcp_client = state
+            .mcp_client
+            .as_mut()
+            .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
 
         // Send tools/call request to execute the tool
         let call_params = json!({
