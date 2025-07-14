@@ -18,4 +18,4 @@ mod plugin;
 mod recv_message_loop;
 
 pub use error::{Result, StdioError};
-pub use plugin::StdioPluginConfig;
+pub use plugin::StepflowPluginConfig;

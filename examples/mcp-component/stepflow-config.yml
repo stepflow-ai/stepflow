@@ -3,12 +3,12 @@
 
 plugins:
   # Built-in StepFlow components
-  - name: builtin
+  builtin:
     type: builtin
 
   # MCP server for filesystem operations
   # Note: On macOS, use "/private/tmp" instead of "/tmp" due to symlink resolution
-  - name: filesystem
+  filesystem:
     type: mcp
     command: npx
     args: 
@@ -20,7 +20,7 @@ plugins:
       DEBUG: "false"
 
   # Another MCP server for brave search (example)
-  # - name: brave-search
+  # brave-search:
   #   type: mcp
   #   command: npx
   #   args:
@@ -28,6 +28,12 @@ plugins:
   #     - "@modelcontextprotocol/server-brave-search"
   #   env:
   #     BRAVE_API_KEY: "your-api-key-here"
+
+routing:
+  - match: "/filesystem/*"
+    target: filesystem
+  - match: "*"
+    target: builtin
 
 # Optional: Configure state storage
 state_store:

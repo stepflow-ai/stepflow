@@ -18,14 +18,6 @@ use std::borrow::Cow;
 use stepflow_core::values::ValueRef;
 use stepflow_core::workflow::JsonPath;
 
-/// Router configuration containing routing rules with JSON path support
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct RoutingRules {
-    /// List of routing rules evaluated in order
-    #[serde(default)]
-    pub rules: Vec<RoutingRule>,
-}
-
 /// A single routing rule that matches components and routes them to plugins
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -155,29 +147,29 @@ impl<'de> Deserialize<'de> for MatchRule {
 mod tests {
     use super::*;
 
+    type RoutingRules = Vec<RoutingRule>;
+
     #[test]
     fn test_routing_rules_serialization() {
-        let rules = RoutingRules {
-            rules: vec![
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/openai/*".to_string(),
-                        input: vec![],
+        let rules = vec![
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/openai/*".to_string(),
+                    input: vec![],
+                }],
+                target: "openai".into(),
+            },
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/custom/*".to_string(),
+                    input: vec![InputCondition {
+                        path: JsonPath::parse("$.model").unwrap(),
+                        value: ValueRef::new(serde_json::json!("gpt-4")),
                     }],
-                    target: "openai".into(),
-                },
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/custom/*".to_string(),
-                        input: vec![InputCondition {
-                            path: JsonPath::parse("$.model").unwrap(),
-                            value: ValueRef::new(serde_json::json!("gpt-4")),
-                        }],
-                    }],
-                    target: "custom".into(),
-                },
-            ],
-        };
+                }],
+                target: "custom".into(),
+            },
+        ];
 
         let serialized = serde_json::to_string(&rules).unwrap();
         assert!(serialized.contains("/openai/*"));
@@ -188,37 +180,35 @@ mod tests {
     #[test]
     fn test_routing_rules_deserialization() {
         let json_str = r#"
-        {
-            "rules": [
-                {
-                    "match": "/openai/*",
-                    "target": "openai"
+        [
+            {
+                "match": "/openai/*",
+                "target": "openai"
+            },
+            {
+                "match": {
+                    "component": "/custom/*",
+                    "input": [
+                        {
+                            "path": "$.model",
+                            "value": "gpt-4"
+                        }
+                    ]
                 },
-                {
-                    "match": {
-                        "component": "/custom/*",
-                        "input": [
-                            {
-                                "path": "$.model",
-                                "value": "gpt-4"
-                            }
-                        ]
-                    },
-                    "target": "custom"
-                }
-            ]
-        }
+                "target": "custom"
+            }
+        ]
         "#;
 
         let rules: RoutingRules = serde_json::from_str(json_str).unwrap();
-        assert_eq!(rules.rules.len(), 2);
-        assert_eq!(rules.rules[0].match_rule[0].component, "/openai/*");
-        assert_eq!(rules.rules[0].target, "openai");
-        assert_eq!(rules.rules[1].match_rule[0].component, "/custom/*");
-        assert_eq!(rules.rules[1].target, "custom");
-        assert_eq!(rules.rules[1].match_rule[0].input.len(), 1);
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].match_rule[0].component, "/openai/*");
+        assert_eq!(rules[0].target, "openai");
+        assert_eq!(rules[1].match_rule[0].component, "/custom/*");
+        assert_eq!(rules[1].target, "custom");
+        assert_eq!(rules[1].match_rule[0].input.len(), 1);
         assert_eq!(
-            rules.rules[1].match_rule[0].input[0].value,
+            rules[1].match_rule[0].input[0].value,
             ValueRef::new(serde_json::json!("gpt-4"))
         );
     }
@@ -401,63 +391,61 @@ mod tests {
     #[test]
     fn test_empty_routing_rules() {
         let rules = RoutingRules::default();
-        assert!(rules.rules.is_empty());
+        assert!(rules.is_empty());
 
         let serialized = serde_json::to_string(&rules).unwrap();
         let deserialized: RoutingRules = serde_json::from_str(&serialized).unwrap();
-        assert!(deserialized.rules.is_empty());
+        assert!(deserialized.is_empty());
     }
 
     #[test]
     fn test_routing_rules_roundtrip() {
-        let original = RoutingRules {
-            rules: vec![
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/openai/*".to_string(),
+        let original = vec![
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/openai/*".to_string(),
+                    input: vec![],
+                }],
+                target: "openai".into(),
+            },
+            RoutingRule {
+                match_rule: vec![
+                    MatchRule {
+                        component: "/custom/*".to_string(),
+                        input: vec![InputCondition {
+                            path: JsonPath::parse("$.model").unwrap(),
+                            value: ValueRef::new(serde_json::json!("gpt-4")),
+                        }],
+                    },
+                    MatchRule {
+                        component: "/fallback/*".to_string(),
                         input: vec![],
-                    }],
-                    target: "openai".into(),
-                },
-                RoutingRule {
-                    match_rule: vec![
-                        MatchRule {
-                            component: "/custom/*".to_string(),
-                            input: vec![InputCondition {
-                                path: JsonPath::parse("$.model").unwrap(),
-                                value: ValueRef::new(serde_json::json!("gpt-4")),
-                            }],
-                        },
-                        MatchRule {
-                            component: "/fallback/*".to_string(),
-                            input: vec![],
-                        },
-                    ],
-                    target: "custom".into(),
-                },
-            ],
-        };
+                    },
+                ],
+                target: "custom".into(),
+            },
+        ];
 
         let serialized = serde_json::to_string(&original).unwrap();
         let deserialized: RoutingRules = serde_json::from_str(&serialized).unwrap();
 
-        assert_eq!(original.rules.len(), deserialized.rules.len());
+        assert_eq!(original.len(), deserialized.len());
         assert_eq!(
-            original.rules[0].match_rule[0].component,
-            deserialized.rules[0].match_rule[0].component
+            original[0].match_rule[0].component,
+            deserialized[0].match_rule[0].component
         );
-        assert_eq!(original.rules[0].target, deserialized.rules[0].target);
+        assert_eq!(original[0].target, deserialized[0].target);
         assert_eq!(
-            original.rules[1].match_rule.len(),
-            deserialized.rules[1].match_rule.len()
-        );
-        assert_eq!(
-            original.rules[1].match_rule[0].component,
-            deserialized.rules[1].match_rule[0].component
+            original[1].match_rule.len(),
+            deserialized[1].match_rule.len()
         );
         assert_eq!(
-            original.rules[1].match_rule[0].input[0].value,
-            deserialized.rules[1].match_rule[0].input[0].value
+            original[1].match_rule[0].component,
+            deserialized[1].match_rule[0].component
+        );
+        assert_eq!(
+            original[1].match_rule[0].input[0].value,
+            deserialized[1].match_rule[0].input[0].value
         );
     }
 }

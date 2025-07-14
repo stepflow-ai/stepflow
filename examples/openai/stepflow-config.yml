@@ -1,3 +1,6 @@
 plugins:
-  - type: builtin
-    name: builtin
+  builtin:
+    type: builtin
+routing:
+  - match: "*"
+    target: builtin

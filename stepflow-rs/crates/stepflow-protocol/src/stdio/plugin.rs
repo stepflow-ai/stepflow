@@ -33,7 +33,7 @@ use super::{
 };
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct StdioPluginConfig {
+pub struct StepflowPluginConfig {
     pub command: String,
     pub args: Vec<String>,
     /// Environment variables to pass to the sub-process.
@@ -41,7 +41,7 @@ pub struct StdioPluginConfig {
     pub env: IndexMap<String, String>,
 }
 
-impl PluginConfig for StdioPluginConfig {
+impl PluginConfig for StepflowPluginConfig {
     type Error = StdioError;
 
     async fn create_plugin(

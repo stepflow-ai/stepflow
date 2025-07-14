@@ -618,7 +618,7 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self
             .resolver
-            .resolve(&step.input)
+            .resolve_template(&step.input)
             .await
             .change_context(ExecutionError::ValueResolverFailure)?
         {
@@ -645,7 +645,10 @@ impl WorkflowExecutor {
         };
 
         // Get plugin and execute the step
-        let plugin = self.executor.get_plugin(&step.component).await?;
+        let plugin = self
+            .executor
+            .get_plugin(&step.component, step_input.clone())
+            .await?;
         let result = execute_step_async(
             plugin,
             step,
@@ -695,7 +698,7 @@ impl WorkflowExecutor {
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
         self.resolver
-            .resolve(&self.flow.output)
+            .resolve_template(&self.flow.output)
             .await
             .change_context(ExecutionError::ValueResolverFailure)
     }
@@ -767,7 +770,7 @@ impl WorkflowExecutor {
                 // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = self
                     .resolver
-                    .resolve(&step_input)
+                    .resolve_template(&step_input)
                     .await
                     .change_context(ExecutionError::ValueResolverFailure)?;
                 let step_input = match step_input {
@@ -848,7 +851,10 @@ impl WorkflowExecutor {
         tracing::debug!("Starting execution of step {}", step.id);
 
         // Get plugin for this step
-        let plugin = self.executor.get_plugin(&step.component).await?;
+        let plugin = self
+            .executor
+            .get_plugin(&step.component, step_input.clone())
+            .await?;
 
         // Clone necessary data for the async task
         let flow = self.flow.clone();
@@ -856,9 +862,11 @@ impl WorkflowExecutor {
         let resolver = self.resolver.clone();
 
         // Create the async task
+        let plugin_clone = plugin.clone();
         let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
             let step = &flow.steps[step_index];
-            let result = execute_step_async(plugin, step, step_input, context, &resolver).await;
+            let result =
+                execute_step_async(&plugin_clone, step, step_input, context, &resolver).await;
             (step_index, result)
         });
 
@@ -870,7 +878,7 @@ impl WorkflowExecutor {
 
 /// Execute a single step asynchronously.
 pub(crate) async fn execute_step_async(
-    plugin: Arc<DynPlugin<'static>>,
+    plugin: &Arc<DynPlugin<'static>>,
     step: &stepflow_core::workflow::Step,
     input: ValueRef,
     context: ExecutionContext,
@@ -907,7 +915,7 @@ pub(crate) async fn execute_step_async(
                     };
                     // Resolve the ValueTemplate to get the actual value
                     let default_value = resolver
-                        .resolve(&template)
+                        .resolve_template(&template)
                         .await
                         .change_context(ExecutionError::ValueResolverFailure)?;
                     match default_value {
@@ -1002,7 +1010,6 @@ mod tests {
         let flow = Arc::new(flow);
 
         // Create executor with mock plugin
-        let executor = crate::executor::StepFlowExecutor::new_in_memory();
         let mut mock_plugin = MockPlugin::new();
 
         // Configure mock behaviors - use a wildcard approach where any input gets the same behavior
@@ -1029,10 +1036,28 @@ mod tests {
         }
 
         let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
-        executor
+
+        // Create a plugin router with mock plugin routing rules
+        use stepflow_plugin::routing::{MatchRule, RoutingRule};
+        let rules = vec![RoutingRule {
+            match_rule: vec![MatchRule {
+                component: "**".to_string(),
+                input: vec![],
+            }],
+            target: "mock".into(),
+        }];
+
+        let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
+            .with_routing_rules(rules)
             .register_plugin("mock".to_string(), dyn_plugin)
-            .await
+            .build()
             .unwrap();
+
+        let executor = crate::executor::StepFlowExecutor::new(
+            Arc::new(InMemoryStateStore::new()),
+            std::path::PathBuf::from("."),
+            plugin_router,
+        );
 
         let flow_hash = Flow::hash(flow.as_ref());
         (executor, flow, flow_hash)

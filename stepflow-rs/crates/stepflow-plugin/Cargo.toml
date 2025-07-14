@@ -30,3 +30,4 @@ trait-variant.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+stepflow-mock.workspace = true

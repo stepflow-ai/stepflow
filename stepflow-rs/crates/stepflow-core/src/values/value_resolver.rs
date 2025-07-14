@@ -99,8 +99,11 @@ impl<L: ValueLoader> ValueResolver<L> {
         }
     }
 
-    /// Resolve a ValueTemplate, returning a FlowResult.
-    pub async fn resolve(&self, template: &ValueTemplate) -> ValueResolverResult<FlowResult> {
+    /// Expand a ValueTemplate, returning a FlowResult.
+    pub async fn resolve_template(
+        &self,
+        template: &ValueTemplate,
+    ) -> ValueResolverResult<FlowResult> {
         self.resolve_template_rec(template).await
     }
 
@@ -354,7 +357,7 @@ mod tests {
 
         // Test resolving ValueTemplate - create a template with an expression by deserializing from JSON
         let template = ValueTemplate::workflow_input(JsonPath::from("name"));
-        let resolved = resolver.resolve(&template).await.unwrap();
+        let resolved = resolver.resolve_template(&template).await.unwrap();
         match resolved {
             FlowResult::Success { result } => {
                 assert_eq!(result.as_ref(), &json!("Alice"));

@@ -1,5 +1,5 @@
 plugins:
-  - name: mock
+  mock:
     type: mock
     components:
       /mock/identity:
@@ -20,6 +20,9 @@ plugins:
           { value: "Testing" }:
             outcome: success
             result: { result: "Testing" }
+routing:
+  - match: "/mock/*"
+    target: mock
 
 # Use SQLite with in-memory database for testing
 state_store:

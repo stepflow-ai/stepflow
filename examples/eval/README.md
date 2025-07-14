@@ -128,12 +128,18 @@ The `stepflow-config.yml` includes:
 
 ```yaml
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: python  # Only needed for math-eval example
-    type: stdio
+  python:  # Only needed for math-eval example
+    type: stepflow
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
+
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "*"
+    target: builtin
 ```
 
 ## Important Notes

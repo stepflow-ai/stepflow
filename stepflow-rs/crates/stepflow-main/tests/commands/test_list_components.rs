@@ -96,8 +96,11 @@ fn test_list_components_custom_config() {
     let config_content = r#"
 working_directory: .
 plugins:
-  - name: test-builtins
+  test-builtins:
     type: builtin
+routing:
+  - match: /test-builtins/*
+    target: test-builtins
 "#;
 
     fs::write(&config_path, config_content).expect("Failed to write config file");

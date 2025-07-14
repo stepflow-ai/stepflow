@@ -178,7 +178,7 @@ plugins:
 
   # Mock external services for testing
   - name: http_mock
-    type: stdio
+    type: stepflow
     command: "mock-server"
     args: ["--config", "test/http-mocks.json"]
 

@@ -391,7 +391,7 @@ plugins:
   - name: builtin
     type: builtin
   - name: mock_external_apis
-    type: stdio
+    type: stepflow
     command: "test/mock-server.py"
 
 state_store:

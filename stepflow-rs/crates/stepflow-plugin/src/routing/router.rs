@@ -11,9 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use crate::routing::MatchRule;
+use crate::routing::{MatchRule, RoutingRule};
 
-use super::rules::RoutingRules;
 use error_stack::ResultExt as _;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use stepflow_core::values::ValueRef;
@@ -58,12 +57,12 @@ pub enum RouterError {
 
 impl Router {
     /// Create a new router from routing rules
-    pub fn new(routing_rules: RoutingRules) -> error_stack::Result<Self, RouterError> {
+    pub fn new(routing_rules: Vec<RoutingRule>) -> error_stack::Result<Self, RouterError> {
         let mut builder = GlobSetBuilder::new();
         let mut rules = Vec::new();
 
         // Build glob patterns and create mapping
-        for (rule_index, rule) in routing_rules.rules.into_iter().enumerate() {
+        for (rule_index, rule) in routing_rules.into_iter().enumerate() {
             for match_rule in rule.match_rule {
                 let pattern = &match_rule.component;
                 let glob = Glob::new(pattern).change_context_lazy(|| RouterError::InvalidGlob {
@@ -116,8 +115,8 @@ impl<'a> ComponentRouter<'a> {
         }
     }
 
-    /// Resolve the target plugin for this step router, optionally with input data
-    pub fn resolve(&self, input: ValueRef) -> error_stack::Result<usize, RouterError> {
+    /// Resolve the target plugin for this step router.
+    pub fn route_input(&self, input: ValueRef) -> error_stack::Result<usize, RouterError> {
         match self {
             ComponentRouter::Direct(target) => Ok(*target),
             ComponentRouter::Conditional {
@@ -160,35 +159,33 @@ mod tests {
     use serde_json::json;
     use stepflow_core::workflow::JsonPath;
 
-    fn create_test_rules() -> RoutingRules {
-        RoutingRules {
-            rules: vec![
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/openai/*".to_string(),
-                        input: vec![],
+    fn create_test_rules() -> Vec<RoutingRule> {
+        vec![
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/openai/*".to_string(),
+                    input: vec![],
+                }],
+                target: "openai".into(),
+            },
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/custom/*".to_string(),
+                    input: vec![InputCondition {
+                        path: JsonPath::parse("$.model").unwrap(),
+                        value: ValueRef::new(json!("gpt-4")),
                     }],
-                    target: "openai".into(),
-                },
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/custom/*".to_string(),
-                        input: vec![InputCondition {
-                            path: JsonPath::parse("$.model").unwrap(),
-                            value: ValueRef::new(json!("gpt-4")),
-                        }],
-                    }],
-                    target: "custom".into(),
-                },
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/fallback/*".to_string(),
-                        input: vec![],
-                    }],
-                    target: "fallback".into(),
-                },
-            ],
-        }
+                }],
+                target: "custom".into(),
+            },
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/fallback/*".to_string(),
+                    input: vec![],
+                }],
+                target: "fallback".into(),
+            },
+        ]
     }
 
     #[test]
@@ -233,7 +230,7 @@ mod tests {
     fn test_step_router_resolve_direct() {
         let step_router = ComponentRouter::Direct(0);
         let input = ValueRef::new(serde_json::Value::Null);
-        let result = step_router.resolve(input).unwrap();
+        let result = step_router.route_input(input).unwrap();
         assert_eq!(result, 0);
     }
 
@@ -245,7 +242,7 @@ mod tests {
 
         let step_router = router.route("/custom/model".to_string()).unwrap();
         let input = ValueRef::new(json!({"model": "gpt-4"}));
-        let result = step_router.resolve(input).unwrap();
+        let result = step_router.route_input(input).unwrap();
         assert_eq!(result, 1); // Second rule index
     }
 
@@ -257,7 +254,7 @@ mod tests {
 
         let step_router = router.route("/custom/model".to_string()).unwrap();
         let input = ValueRef::new(json!({"model": "gpt-3"})); // Doesn't match "gpt-4"
-        let result = step_router.resolve(input);
+        let result = step_router.route_input(input);
         assert_eq!(
             result.unwrap_err().current_context(),
             &RouterError::NoMatchingRule {
@@ -268,24 +265,22 @@ mod tests {
 
     #[test]
     fn test_path_style_component_matching() {
-        let rules = RoutingRules {
-            rules: vec![
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/openai/chat/*".to_string(),
-                        input: vec![],
-                    }],
-                    target: "openai".into(),
-                },
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/anthropic/*/claude".to_string(),
-                        input: vec![],
-                    }],
-                    target: "anthropic".into(),
-                },
-            ],
-        };
+        let rules = vec![
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/openai/chat/*".to_string(),
+                    input: vec![],
+                }],
+                target: "openai".into(),
+            },
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/anthropic/*/claude".to_string(),
+                    input: vec![],
+                }],
+                target: "anthropic".into(),
+            },
+        ];
 
         let router = Router::new(rules).unwrap();
 
@@ -324,27 +319,25 @@ mod tests {
 
     #[test]
     fn test_fallback_routing() {
-        let rules = RoutingRules {
-            rules: vec![
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/service/*".to_string(),
-                        input: vec![InputCondition {
-                            path: JsonPath::parse("$.priority").unwrap(),
-                            value: ValueRef::new(json!("high")),
-                        }],
+        let rules = vec![
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/service/*".to_string(),
+                    input: vec![InputCondition {
+                        path: JsonPath::parse("$.priority").unwrap(),
+                        value: ValueRef::new(json!("high")),
                     }],
-                    target: "high_priority".into(),
-                },
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/service/*".to_string(),
-                        input: vec![],
-                    }],
-                    target: "default".into(),
-                },
-            ],
-        };
+                }],
+                target: "high_priority".into(),
+            },
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/service/*".to_string(),
+                    input: vec![],
+                }],
+                target: "default".into(),
+            },
+        ];
 
         let router = Router::new(rules).unwrap();
         let step_router = router.route("/service/process".to_string()).unwrap();
@@ -355,12 +348,12 @@ mod tests {
 
                 // Test high priority match
                 let input = ValueRef::new(json!({"priority": "high"}));
-                let result = step_router.resolve(input).unwrap();
+                let result = step_router.route_input(input).unwrap();
                 assert_eq!(result, 0); // First rule index
 
                 // Test fallback match
                 let input = ValueRef::new(json!({"priority": "low"}));
-                let result = step_router.resolve(input).unwrap();
+                let result = step_router.route_input(input).unwrap();
                 assert_eq!(result, 1); // Second rule index (fallback)
             }
             _ => panic!("Expected conditional routing"),
@@ -381,30 +374,28 @@ mod tests {
 
     #[test]
     fn test_rule_map_structure() {
-        let rules = RoutingRules {
-            rules: vec![
-                RoutingRule {
-                    match_rule: vec![
-                        MatchRule {
-                            component: "/pattern1/*".to_string(),
-                            input: vec![],
-                        },
-                        MatchRule {
-                            component: "/pattern2/*".to_string(),
-                            input: vec![],
-                        },
-                    ],
-                    target: "target1".into(),
-                },
-                RoutingRule {
-                    match_rule: vec![MatchRule {
-                        component: "/pattern3/*".to_string(),
+        let rules = vec![
+            RoutingRule {
+                match_rule: vec![
+                    MatchRule {
+                        component: "/pattern1/*".to_string(),
                         input: vec![],
-                    }],
-                    target: "target2".into(),
-                },
-            ],
-        };
+                    },
+                    MatchRule {
+                        component: "/pattern2/*".to_string(),
+                        input: vec![],
+                    },
+                ],
+                target: "target1".into(),
+            },
+            RoutingRule {
+                match_rule: vec![MatchRule {
+                    component: "/pattern3/*".to_string(),
+                    input: vec![],
+                }],
+                target: "target2".into(),
+            },
+        ];
 
         let router = Router::new(rules).unwrap();
 

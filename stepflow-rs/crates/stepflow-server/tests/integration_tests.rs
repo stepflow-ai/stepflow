@@ -52,16 +52,15 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
     use stepflow_mock::MockComponentBehavior;
 
     let state_store = Arc::new(InMemoryStateStore::new());
-    let executor = StepFlowExecutor::new(state_store, std::path::PathBuf::from("."));
+
+    // Build the plugin router
+    let mut plugin_router_builder = stepflow_plugin::routing::PluginRouter::builder();
 
     // Always register builtin plugins for basic functionality
-    executor
-        .register_plugin(
-            "builtin".to_owned(),
-            DynPlugin::boxed(stepflow_builtins::Builtins::new("builtin".to_owned())),
-        )
-        .await
-        .unwrap();
+    plugin_router_builder = plugin_router_builder.register_plugin(
+        "builtin".to_string(),
+        DynPlugin::boxed(stepflow_builtins::Builtins::new("builtin".to_owned())),
+    );
 
     // Optionally register mock plugins for status testing
     if include_mocks {
@@ -101,11 +100,43 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
                 }),
             );
 
-        executor
-            .register_plugin("mock".to_owned(), DynPlugin::boxed(mock_plugin))
-            .await
-            .unwrap();
+        plugin_router_builder = plugin_router_builder
+            .register_plugin("mock".to_string(), DynPlugin::boxed(mock_plugin));
     }
+
+    // Set up routing rules
+    use stepflow_plugin::routing::{MatchRule, RoutingRule};
+    let mut routing_rules = vec![
+        RoutingRule {
+            match_rule: vec![MatchRule {
+                component: "/builtin/*".to_string(),
+                input: vec![],
+            }],
+            target: "builtin".into(),
+        },
+        RoutingRule {
+            match_rule: vec![MatchRule {
+                component: "create_messages".to_string(),
+                input: vec![],
+            }],
+            target: "builtin".into(),
+        },
+    ];
+
+    if include_mocks {
+        routing_rules.push(RoutingRule {
+            match_rule: vec![MatchRule {
+                component: "/mock/*".to_string(),
+                input: vec![],
+            }],
+            target: "mock".into(),
+        });
+    }
+
+    plugin_router_builder = plugin_router_builder.with_routing_rules(routing_rules);
+
+    let plugin_router = plugin_router_builder.build().unwrap();
+    let executor = StepFlowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router);
 
     // Use the real startup logic but without swagger UI for tests
     use stepflow_server::AppConfig;

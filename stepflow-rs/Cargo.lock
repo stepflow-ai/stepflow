@@ -3215,6 +3215,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "error-stack",
+ "indexmap 2.10.0",
  "insta-cmd",
  "regex",
  "reqwest",
@@ -3268,6 +3269,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "stepflow-core",
+ "stepflow-mock",
  "stepflow-state",
  "thiserror 2.0.12",
  "trait-variant",
