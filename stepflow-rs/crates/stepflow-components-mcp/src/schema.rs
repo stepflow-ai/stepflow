@@ -45,10 +45,10 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
             .attach_printable("Failed to create output schema")
     })?;
 
-    // Create component URL in MCP-compliant format: mcp://server_name/tool_name
+    // Create component path in MCP-compliant format: /mcp/server/tool_name
     // Note: The actual server name will be injected by the plugin when listing components
-    let component_url = format!("mcp://server/{}", tool.name);
-    let component = Component::from_string(&component_url);
+    let component_path = format!("/mcp/server/{}", tool.name);
+    let component = Component::from_string(&component_path);
 
     Ok(ComponentInfo {
         component,
@@ -58,11 +58,13 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
     })
 }
 
-/// Convert StepFlow Component URL to MCP tool name
-pub fn component_url_to_tool_name(component_url: &str) -> Option<String> {
-    // Expected format: plugin_name://tool_name
-    if let Some(start) = component_url.find("://") {
-        return Some(component_url[start + 3..].to_string());
+/// Convert StepFlow Component path to MCP tool name
+pub fn component_path_to_tool_name(component_path: &str) -> Option<String> {
+    // Expected format: /plugin_name/tool_name
+    if let Some(without_leading_slash) = component_path.strip_prefix('/') {
+        if let Some(pos) = without_leading_slash.find('/') {
+            return Some(without_leading_slash[pos + 1..].to_string());
+        }
     }
     None
 }
@@ -72,17 +74,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_component_url_to_tool_name() {
+    fn test_component_path_to_tool_name() {
         assert_eq!(
-            component_url_to_tool_name("filesystem://read_file"),
+            component_path_to_tool_name("/filesystem/read_file"),
             Some("read_file".to_string())
         );
 
         assert_eq!(
-            component_url_to_tool_name("mock-server://tool_name"),
+            component_path_to_tool_name("/mock-server/tool_name"),
             Some("tool_name".to_string())
         );
 
-        assert_eq!(component_url_to_tool_name("invalidurl"), None);
+        assert_eq!(component_path_to_tool_name("invalidpath"), None);
+        assert_eq!(component_path_to_tool_name("/filesystem"), None);
     }
 }

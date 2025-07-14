@@ -357,11 +357,11 @@ mod tests {
                 count:
                     type: integer
         steps:
-          - component: langflow://echo
+          - component: /langflow/echo
             id: s1
             input:
               a: "hello world"
-          - component: mcp+http://foo/bar
+          - component: /mcp/foo/bar
             id: s2
             input:
               a: "hello world 2"
@@ -392,9 +392,9 @@ mod tests {
 
         // Verify step details
         assert_eq!(flow.steps[0].id, "s1");
-        assert_eq!(flow.steps[0].component.url_string(), "langflow://echo");
+        assert_eq!(flow.steps[0].component.path_string(), "/langflow/echo");
         assert_eq!(flow.steps[1].id, "s2");
-        assert_eq!(flow.steps[1].component.url_string(), "mcp+http://foo/bar");
+        assert_eq!(flow.steps[1].component.path_string(), "/mcp/foo/bar");
 
         // Test round-trip serialization to ensure expressions are preserved
         let serialized = serde_json::to_string(&flow).unwrap();
@@ -417,7 +417,7 @@ mod tests {
             steps: vec![
                 Step {
                     id: "s1".to_owned(),
-                    component: Component::from_string("langflow://echo"),
+                    component: Component::from_string("/langflow/echo"),
                     input: ValueTemplate::literal(serde_json::json!({
                         "a": "hello world"
                     })),
@@ -428,7 +428,7 @@ mod tests {
                 },
                 Step {
                     id: "s2".to_owned(),
-                    component: Component::from_string("mcp+http://foo/bar"),
+                    component: Component::from_string("/mcp/foo/bar"),
                     input: ValueTemplate::literal(serde_json::json!({
                         "a": "hello world 2"
                     })),
@@ -522,7 +522,7 @@ mod tests {
             if !name
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
             {
                 return false;
             }
@@ -582,9 +582,8 @@ mod tests {
         let invalid_titles = validate_python_class_names(&generated_json);
         assert!(
             invalid_titles.is_empty(),
-            "Found invalid Python class names in flow schema titles: {:?}. \
-             All titles must be valid Python class names for --use-title-as-name to work.",
-            invalid_titles
+            "Found invalid Python class names in flow schema titles: {invalid_titles:?}. \
+             All titles must be valid Python class names for --use-title-as-name to work."
         );
 
         let flow_schema_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../schemas/flow.json");

@@ -11,7 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use futures::future::FutureExt;
+use futures::future::FutureExt as _;
 use indexmap::IndexMap;
 use serde_json::json;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ use stepflow_core::{
     FlowResult,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{ExecutionContext, Plugin, PluginConfig};
+use stepflow_plugin::{ExecutionContext, Plugin as _, PluginConfig as _};
 use stepflow_state::InMemoryStateStore;
 use uuid::Uuid;
 
@@ -86,13 +86,13 @@ async fn test_mcp_plugin_initialization() {
     let components = plugin.list_components().await.unwrap();
     assert_eq!(components.len(), 2);
 
-    // Check that the component URLs are correct
-    let urls: Vec<String> = components
+    // Check that the component paths are correct
+    let paths: Vec<String> = components
         .iter()
-        .map(|c| c.component.url_string().to_string())
+        .map(|c| c.component.path_string().to_string())
         .collect();
-    assert!(urls.contains(&"mock-server://echo".to_string()));
-    assert!(urls.contains(&"mock-server://add".to_string()));
+    assert!(paths.contains(&"/mock-server/echo".to_string()));
+    assert!(paths.contains(&"/mock-server/add".to_string()));
 }
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn test_mcp_tool_execution() {
     plugin.init(&test_context).await.unwrap();
 
     // Test echo tool
-    let echo_component = Component::from_string("mock-server://echo");
+    let echo_component = Component::from_string("/mock-server/echo");
     let echo_input = ValueRef::new(json!({
         "message": "Hello, MCP!"
     }));
@@ -136,7 +136,7 @@ async fn test_mcp_tool_execution() {
     }
 
     // Test add tool
-    let add_component = Component::from_string("mock-server://add");
+    let add_component = Component::from_string("/mock-server/add");
     let add_input = ValueRef::new(json!({
         "a": 5,
         "b": 3
@@ -178,21 +178,20 @@ async fn test_mcp_error_handling() {
     plugin.init(&test_context).await.unwrap();
 
     // Test calling a non-existent tool
-    let bad_component = Component::from_string("mock-server://nonexistent");
+    let bad_component = Component::from_string("/mock-server/nonexistent");
     let input = ValueRef::new(json!({}));
 
     let result = plugin.execute(&bad_component, exec_context, input).await;
     assert!(
         result.is_ok(),
-        "Expected Ok(FlowResult::Failed), got Err: {:?}",
-        result
+        "Expected Ok(FlowResult::Failed), got Err: {result:?}"
     );
 
     match result.unwrap() {
         FlowResult::Failed { error } => {
-            let error_message = format!("{}", error);
+            let error_message = format!("{error}");
             assert!(error_message.contains("nonexistent"));
         }
-        other => panic!("Expected FlowResult::Failed, got: {:?}", other),
+        other => panic!("Expected FlowResult::Failed, got: {other:?}"),
     }
 }

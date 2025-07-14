@@ -12,10 +12,10 @@ A comprehensive Extract, Transform, Load pipeline with validation and error hand
 
 :::info Future Components
 This example uses several planned future components:
-- `database://query` - SQL database operations
-- `csv://parse` - CSV file parsing
-- `http://post` - HTTP POST requests
-- `validation://schema` - Data schema validation
+- `/database/query` - SQL database operations
+- `/csv/parse` - CSV file parsing
+- `/http/post` - HTTP POST requests
+- `/validation/schema` - Data schema validation
 
 Currently, you can achieve similar functionality using custom Python components with libraries like `pandas`, `sqlalchemy`, and `requests`.
 :::
@@ -46,7 +46,7 @@ steps:
 
   # Extract sales data from database
   - id: extract_sales_data
-    component: database://query  # Future component
+    component: /database/query  # Future component
     on_error:
       action: continue
       default_output:
@@ -71,7 +71,7 @@ steps:
 
   # Extract customer data from CSV file
   - id: extract_customer_data
-    component: csv://parse  # Future component
+    component: /csv/parse  # Future component
     on_error:
       action: continue
       default_output:
@@ -86,7 +86,7 @@ steps:
 
   # Extract product data from API
   - id: extract_product_data
-    component: http://get  # Future component
+    component: /http/get  # Future component
     on_error:
       action: continue
       default_output:
@@ -104,7 +104,7 @@ steps:
 
   # Validate sales data structure
   - id: validate_sales_data
-    component: validation://schema  # Future component
+    component: /validation/schema  # Future component
     input:
       data: { $from: { step: extract_sales_data }, path: "data" }
       schema:
@@ -123,7 +123,7 @@ steps:
 
   # Create data quality report
   - id: create_quality_report
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -179,7 +179,7 @@ steps:
 
   # Execute quality report
   - id: execute_quality_report
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_quality_report }, path: "blob_id" }
       input:
@@ -192,7 +192,7 @@ steps:
 
   # Transform and enrich sales data
   - id: transform_sales_data
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -261,7 +261,7 @@ steps:
 
   # Execute sales transformation
   - id: execute_sales_transformation
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: transform_sales_data }, path: "blob_id" }
       input:
@@ -273,7 +273,7 @@ steps:
 
   # Prepare data for loading
   - id: prepare_warehouse_load
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -309,7 +309,7 @@ steps:
 
   # Execute load preparation
   - id: execute_load_preparation
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: prepare_warehouse_load }, path: "blob_id" }
       input:
@@ -318,7 +318,7 @@ steps:
 
   # Load data to warehouse
   - id: load_to_warehouse
-    component: database://bulk_insert  # Future component
+    component: /database/bulk_insert  # Future component
     on_error:
       action: continue
       default_output:
@@ -334,7 +334,7 @@ steps:
 
   # Create final ETL report
   - id: create_etl_report
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -399,7 +399,7 @@ steps:
 
   # Execute ETL report creation
   - id: execute_etl_report
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_etl_report }, path: "blob_id" }
       input:
@@ -430,9 +430,9 @@ test:
 
 :::info Future Components
 This example demonstrates a real-time processing pattern using planned components:
-- `stream://kafka_consumer` - Kafka message consumption
-- `cache://redis` - Redis caching operations
-- `metrics://publish` - Metrics publication
+- `/stream/kafka_consumer` - Kafka message consumption
+- `/cache/redis` - Redis caching operations
+- `/metrics/publish` - Metrics publication
 
 These can be implemented today using custom Python components with appropriate libraries.
 :::
@@ -461,7 +461,7 @@ input_schema:
 steps:
   # Consume events from Kafka stream
   - id: consume_events
-    component: stream://kafka_consumer  # Future component
+    component: /stream/kafka_consumer  # Future component
     input:
       bootstrap_servers: { $from: { workflow: input }, path: "stream_config.kafka_bootstrap_servers" }
       topic: { $from: { workflow: input }, path: "stream_config.topic_name" }
@@ -471,7 +471,7 @@ steps:
 
   # Parse and validate incoming events
   - id: parse_events
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -532,7 +532,7 @@ steps:
 
   # Execute event parsing
   - id: execute_event_parsing
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: parse_events }, path: "blob_id" }
       input:
@@ -540,7 +540,7 @@ steps:
 
   # Real-time analytics and aggregation
   - id: calculate_real_time_metrics
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -618,7 +618,7 @@ steps:
 
   # Execute real-time analytics
   - id: execute_real_time_analytics
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: calculate_real_time_metrics }, path: "blob_id" }
       input:
@@ -627,7 +627,7 @@ steps:
 
   # Cache metrics for dashboard
   - id: cache_metrics
-    component: cache://redis  # Future component
+    component: /cache/redis  # Future component
     on_error:
       action: continue
       default_output:
@@ -641,7 +641,7 @@ steps:
 
   # Publish metrics to monitoring system
   - id: publish_metrics
-    component: metrics://publish  # Future component
+    component: /metrics/publish  # Future component
     input:
       metrics:
         - name: "events_processed_total"
@@ -659,7 +659,7 @@ steps:
 
   # Send alerts if enabled
   - id: send_alerts
-    component: notifications://slack  # Future component
+    component: /notifications/slack  # Future component
     skip:
       # Skip if no alerts or alerts disabled
       # This would check: !input.processing_rules.enable_real_time_alerts OR len(alerts) == 0
@@ -713,7 +713,7 @@ input_schema:
 steps:
   # Profile each dataset in parallel
   - id: profile_dataset_1
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -757,7 +757,7 @@ steps:
 
   # Execute dataset profiling for first dataset
   - id: execute_dataset_1_profiling
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: profile_dataset_1 }, path: "blob_id" }
       input:
@@ -765,7 +765,7 @@ steps:
 
   # Apply quality rules to dataset
   - id: apply_quality_rules
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -863,7 +863,7 @@ steps:
 
   # Execute quality rule application
   - id: execute_quality_rules
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: apply_quality_rules }, path: "blob_id" }
       input:
@@ -872,7 +872,7 @@ steps:
 
   # Generate quality dashboard data
   - id: generate_dashboard_data
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -926,7 +926,7 @@ steps:
 
   # Execute dashboard generation
   - id: execute_dashboard_generation
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: generate_dashboard_data }, path: "blob_id" }
       input:

@@ -180,7 +180,7 @@ class FlowBuilder:
         self,
         *,
         id: str,
-        component: str | Component,
+        component: Component,
         input_data: Valuable | None = None,
         input_schema: dict[str, Any] | Schema | None = None,
         output_schema: dict[str, Any] | Schema | None = None,
@@ -188,9 +188,8 @@ class FlowBuilder:
         on_error: ErrorAction | None = None,
     ) -> StepHandle:
         """Add a step to the flow."""
-        # Convert component to Component type
-        if isinstance(component, str):
-            component = Component(component)
+        # Component is now just a string, no conversion needed
+        # component is already the correct type
 
         # Convert input data to ValueTemplate
         input_template = self._convert_to_value_template(input_data)

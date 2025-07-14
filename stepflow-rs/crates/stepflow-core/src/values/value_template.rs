@@ -665,12 +665,6 @@ mod tests {
         let schema = schema_for!(ValueTemplate);
         let json_schema = serde_json::to_value(&schema).unwrap();
 
-        // Print it for manual inspection
-        println!(
-            "ValueTemplate schema: {}",
-            serde_json::to_string_pretty(&json_schema).unwrap()
-        );
-
         // Basic check that it includes both expressions and values
         let schema_str = serde_json::to_string(&json_schema).unwrap();
         assert!(schema_str.contains("$from") || schema_str.contains("Expr"));

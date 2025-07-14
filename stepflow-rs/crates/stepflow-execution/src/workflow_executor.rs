@@ -618,7 +618,7 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self
             .resolver
-            .resolve_template(&step.input)
+            .resolve(&step.input)
             .await
             .change_context(ExecutionError::ValueResolverFailure)?
         {
@@ -695,7 +695,7 @@ impl WorkflowExecutor {
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
         self.resolver
-            .resolve_template(&self.flow.output)
+            .resolve(&self.flow.output)
             .await
             .change_context(ExecutionError::ValueResolverFailure)
     }
@@ -767,7 +767,7 @@ impl WorkflowExecutor {
                 // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = self
                     .resolver
-                    .resolve_template(&step_input)
+                    .resolve(&step_input)
                     .await
                     .change_context(ExecutionError::ValueResolverFailure)?;
                 let step_input = match step_input {
@@ -907,7 +907,7 @@ pub(crate) async fn execute_step_async(
                     };
                     // Resolve the ValueTemplate to get the actual value
                     let default_value = resolver
-                        .resolve_template(&template)
+                        .resolve(&template)
                         .await
                         .change_context(ExecutionError::ValueResolverFailure)?;
                     match default_value {
@@ -1071,7 +1071,7 @@ mod tests {
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
             id: id.to_string(),
-            component: Component::from_string("mock://test"),
+            component: Component::from_string("/mock/test"),
             input_schema: None,
             output_schema: None,
             skip_if: None,
@@ -1129,7 +1129,7 @@ mod tests {
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://simple
+    component: /mock/simple
     input:
       $from:
         workflow: input
@@ -1140,7 +1140,7 @@ output:
 
         let input_value = json!({"message": "hello"});
         let mock_behaviors = vec![(
-            "mock://simple",
+            "/mock/simple",
             FlowResult::Success {
                 result: ValueRef::new(json!({"output": "processed"})),
             },
@@ -1163,12 +1163,12 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://first
+    component: /mock/first
     input:
       $from:
         workflow: input
   - id: step2
-    component: mock://second
+    component: /mock/second
     input:
       $from:
         step: step1
@@ -1182,13 +1182,13 @@ output:
 
         let mock_behaviors = vec![
             (
-                "mock://first",
+                "/mock/first",
                 FlowResult::Success {
                     result: ValueRef::new(step1_output.clone()),
                 },
             ),
             (
-                "mock://second",
+                "/mock/second",
                 FlowResult::Success {
                     result: ValueRef::new(json!({"final": 30})),
                 },
@@ -1213,12 +1213,12 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://first
+    component: /mock/first
     input:
       $from:
         workflow: input
   - id: step2
-    component: mock://second
+    component: /mock/second
     input:
       $from:
         step: step1
@@ -1230,13 +1230,13 @@ output:
         let workflow_input = json!({"value": 10});
         let mock_behaviors = vec![
             (
-                "mock://first",
+                "/mock/first",
                 FlowResult::Success {
                     result: ValueRef::new(json!({"result": 20})),
                 },
             ),
             (
-                "mock://second",
+                "/mock/second",
                 FlowResult::Success {
                     result: ValueRef::new(json!({"final": 30})),
                 },
@@ -1298,11 +1298,11 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://identity
+    component: /mock/identity
     input:
       value: "step1_output"
   - id: step2
-    component: mock://identity
+    component: /mock/identity
     input:
       value: { $from: { step: step1 } }
 output:
@@ -1390,15 +1390,15 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://identity
+    component: /mock/identity
     input:
       value: "step1_result"
   - id: step2
-    component: mock://identity
+    component: /mock/identity
     input:
       value: { $from: { step: step1 } }
   - id: step3
-    component: mock://identity
+    component: /mock/identity
     input:
       value: { $from: { step: step2 } }
 output:
@@ -1479,23 +1479,23 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://identity
+    component: /mock/identity
     input:
       value: "step1_result"
   - id: step2
-    component: mock://identity
+    component: /mock/identity
     input:
       value: "step2_result"
   - id: step3
-    component: mock://identity
+    component: /mock/identity
     input:
       value: { $from: { step: step1 } }
   - id: step4
-    component: mock://identity
+    component: /mock/identity
     input:
       value: { $from: { step: step2 } }
   - id: step5
-    component: mock://identity
+    component: /mock/identity
     input:
       deps: [{ $from: { step: step3 } }, { $from: { step: step4 } }]
 output:
@@ -1578,7 +1578,7 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://identity
+    component: /mock/identity
     input:
       value: "step1_result"
 output:
@@ -1619,17 +1619,17 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: step1
-    component: mock://parallel1
+    component: /mock/parallel1
     input:
       $from:
         workflow: input
   - id: step2
-    component: mock://parallel2
+    component: /mock/parallel2
     input:
       $from:
         workflow: input
   - id: final
-    component: mock://combiner
+    component: /mock/combiner
     input:
       step1:
         $from:
@@ -1650,19 +1650,19 @@ output:
         // Test parallel execution
         let parallel_mock_behaviors = vec![
             (
-                "mock://parallel1",
+                "/mock/parallel1",
                 FlowResult::Success {
                     result: ValueRef::new(step1_output.clone()),
                 },
             ),
             (
-                "mock://parallel2",
+                "/mock/parallel2",
                 FlowResult::Success {
                     result: ValueRef::new(step2_output.clone()),
                 },
             ),
             (
-                "mock://combiner",
+                "/mock/combiner",
                 FlowResult::Success {
                     result: ValueRef::new(final_output.clone()),
                 },
@@ -1680,19 +1680,19 @@ output:
         // Test sequential execution
         let sequential_mock_behaviors = vec![
             (
-                "mock://parallel1",
+                "/mock/parallel1",
                 FlowResult::Success {
                     result: ValueRef::new(step1_output.clone()),
                 },
             ),
             (
-                "mock://parallel2",
+                "/mock/parallel2",
                 FlowResult::Success {
                     result: ValueRef::new(step2_output.clone()),
                 },
             ),
             (
-                "mock://combiner",
+                "/mock/combiner",
                 FlowResult::Success {
                     result: ValueRef::new(final_output.clone()),
                 },
@@ -1734,7 +1734,7 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: failing_step
-    component: mock://error
+    component: /mock/error
     onError:
       action: skip
     input:
@@ -1745,7 +1745,7 @@ output:
 "#;
 
         let mock_behaviors = vec![(
-            "mock://error",
+            "/mock/error",
             FlowResult::Failed {
                 error: stepflow_core::FlowError::new(500, "Test error"),
             },
@@ -1769,7 +1769,7 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: failing_step
-    component: mock://error
+    component: /mock/error
     onError:
       action: useDefault
       defaultValue: {"fallback": "value"}
@@ -1781,7 +1781,7 @@ output:
 "#;
 
         let mock_behaviors = vec![(
-            "mock://error",
+            "/mock/error",
             FlowResult::Failed {
                 error: stepflow_core::FlowError::new(500, "Test error"),
             },
@@ -1804,7 +1804,7 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: failing_step
-    component: mock://error
+    component: /mock/error
     onError:
       action: useDefault
     input:
@@ -1815,7 +1815,7 @@ output:
 "#;
 
         let mock_behaviors = vec![(
-            "mock://error",
+            "/mock/error",
             FlowResult::Failed {
                 error: stepflow_core::FlowError::new(500, "Test error"),
             },
@@ -1838,7 +1838,7 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: failing_step
-    component: mock://error
+    component: /mock/error
     onError:
       action: fail
     input:
@@ -1849,7 +1849,7 @@ output:
 "#;
 
         let mock_behaviors = vec![(
-            "mock://error",
+            "/mock/error",
             FlowResult::Failed {
                 error: stepflow_core::FlowError::new(500, "Test error"),
             },
@@ -1873,7 +1873,7 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: success_step
-    component: mock://success
+    component: /mock/success
     onError:
       action: skip
     input: {}
@@ -1883,7 +1883,7 @@ output:
 "#;
 
         let mock_behaviors = vec![(
-            "mock://success",
+            "/mock/success",
             FlowResult::Success {
                 result: ValueRef::new(json!({"result": "success"})),
             },
@@ -1907,13 +1907,13 @@ output:
         let workflow_yaml = r#"
 steps:
   - id: failing_step
-    component: mock://error
+    component: /mock/error
     onError:
       action: skip
     input:
       mode: error
   - id: downstream_step
-    component: mock://success
+    component: /mock/success
     input:
       $from:
         step: failing_step
@@ -1924,13 +1924,13 @@ output:
 
         let mock_behaviors = vec![
             (
-                "mock://error",
+                "/mock/error",
                 FlowResult::Failed {
                     error: stepflow_core::FlowError::new(500, "Test error"),
                 },
             ),
             (
-                "mock://success",
+                "/mock/success",
                 FlowResult::Success {
                     result: ValueRef::new(json!({"handled_skip": true})),
                 },

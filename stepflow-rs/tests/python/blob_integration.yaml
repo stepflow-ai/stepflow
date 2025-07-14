@@ -17,13 +17,13 @@ output_schema:
 steps:
   # Step 1: Store initial data as blob using builtin component
   - id: store_original_data
-    component: builtin://put_blob
+    component: put_blob
     input:
       data: { $from: { workflow: input }, path: user_data }
 
   # Step 2: Create blob for Python function definition
   - id: create_process_data_blob
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -61,7 +61,7 @@ steps:
 
   # Step 3: Python UDF retrieves blob and processes it
   - id: process_blob_data
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_process_data_blob }, path: blob_id }
       input:
@@ -70,7 +70,7 @@ steps:
 
   # Step 4: Retrieve final processed data using builtin component
   - id: get_final_result
-    component: builtin://get_blob
+    component: get_blob
     input:
       blob_id: { $from: { step: process_blob_data }, path: processed_blob_id }
 

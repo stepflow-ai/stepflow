@@ -10,7 +10,7 @@ input:
 
 steps:
   - id: process_message
-    component: mock://identity
+    component: /mock/identity
     input:
       value: {$from: { workflow: input }, path: message }
 

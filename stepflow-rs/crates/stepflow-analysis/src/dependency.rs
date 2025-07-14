@@ -201,7 +201,7 @@ mod tests {
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
             id: id.to_string(),
-            component: Component::from_string("mock://test"),
+            component: Component::from_string("/mock/test"),
             input: ValueTemplate::parse_value(input).unwrap(),
             input_schema: None,
             output_schema: None,
@@ -220,7 +220,7 @@ mod tests {
             steps: vec![
                 Step {
                     id: "step1".to_string(),
-                    component: Component::from_string("mock://test"),
+                    component: Component::from_string("/mock/test"),
                     input: ValueTemplate::workflow_input(JsonPath::default()),
                     input_schema: None,
                     output_schema: None,
@@ -229,7 +229,7 @@ mod tests {
                 },
                 Step {
                     id: "step2".to_string(),
-                    component: Component::from_string("mock://test"),
+                    component: Component::from_string("/mock/test"),
                     input: ValueTemplate::step_ref("step1", JsonPath::default()),
                     input_schema: None,
                     output_schema: None,

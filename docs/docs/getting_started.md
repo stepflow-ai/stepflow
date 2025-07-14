@@ -73,7 +73,7 @@ output_schema:
 steps:
   # Store the context as a blob for potential reuse
   - id: store_context
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         context: { $from: { workflow: input }, path: "context" }
@@ -81,7 +81,7 @@ steps:
 
     # Format the context and question into a clear prompt
   - id: format_prompt
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         context: { $from: { workflow: input }, path: "context" }
@@ -89,20 +89,20 @@ steps:
 
   # Get the formatted prompt from the blob
   - id: get_prompt
-    component: builtin://get_blob
+    component: get_blob
     input:
       blob_id: { $from: { step: format_prompt }, path: "blob_id" }
 
   # Create messages for OpenAI
   - id: create_messages
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: "You are a helpful assistant. Answer the user's question based on the provided context. If the context doesn't contain enough information, say so and provide your best general answer."
       user_prompt: { $from: { step: get_prompt }, path: "$.data.question" }
 
   # Generate AI response using OpenAI  
   - id: generate_answer
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_messages }, path: "messages" }
       temperature: 0.3
@@ -110,7 +110,7 @@ steps:
 
   # Create response metadata
   - id: create_metadata
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         processed_at: "2024-01-15T10:30:00Z"
@@ -168,9 +168,9 @@ You should see output with the `answer` and `metadata` properties as defined in 
 This AI Q&A workflow demonstrates several key StepFlow concepts:
 
 - **Input/Output Schemas**: Define the structure of questions, context, and answers
-- **AI Integration**: Use [`builtin://openai`](./components/builtins.md#builtinopenai) and [`builtin://create_messages`](./components/builtins.md#builtincreate_messages) for natural language processing
+- **AI Integration**: Use [`openai`](./components/builtins.md#builtinopenai) and [`create_messages`](./components/builtins.md#builtincreate_messages) for natural language processing
 - **Data References**: Use [`$from`](./workflows/expressions.md#data-references-from) to pass data between steps
-- **Blob Storage**: Store context and metadata for reuse with [`builtin://put_blob`](./components/builtins.md#builtinput_blob)
+- **Blob Storage**: Store context and metadata for reuse with [`put_blob`](./components/builtins.md#builtinput_blob)
 - **Multi-step Processing**: Orchestrate data storage, prompt formatting, and AI generation
 
 The workflow follows this pattern:
@@ -252,8 +252,8 @@ You've just built a simple AI Q&A application! Check out the `examples/` directo
 ### AI-Free Workflows
 
 The example above requires an OpenAI API key. For workflows that don't require AI, you can use:
-- Data transformation workflows with just `builtin://put_blob`
-- HTTP API integrations with `builtin://http_request`
+- Data transformation workflows with just `put_blob`
+- HTTP API integrations with `http_request`
 - File processing and validation workflows
 
 ### Key Concepts to Explore
