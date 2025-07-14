@@ -291,11 +291,6 @@ mod tests {
                 step_results: HashMap::new(),
             }
         }
-
-        fn with_step_result(mut self, step_index: usize, result: FlowResult) -> Self {
-            self.step_results.insert(step_index, result);
-            self
-        }
     }
 
     #[derive(Debug, thiserror::Error)]
