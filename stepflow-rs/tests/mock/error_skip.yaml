@@ -7,7 +7,7 @@ outputSchema:
       type: string
 steps:
 - id: error
-  component: mock://error
+  component: /mock/error
   inputSchema: null
   outputSchema: null
   onError:

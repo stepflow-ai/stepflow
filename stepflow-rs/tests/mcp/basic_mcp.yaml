@@ -8,7 +8,7 @@ output:
 
 steps:
   - id: test_step
-    component: builtin://stepflow-builtins/eval
+    component: eval
     input:
       expr: '"Testing MCP integration: " + $.input.message'
     output: result

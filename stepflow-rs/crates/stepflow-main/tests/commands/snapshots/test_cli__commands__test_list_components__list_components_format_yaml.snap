@@ -14,7 +14,7 @@ success: true
 exit_code: 0
 ----- stdout -----
 components:
-- component: create_messages
+- component: /builtin/create_messages
   description: Create a chat message list from system instructions and user prompt
   input_schema:
     type: object
@@ -38,7 +38,7 @@ components:
           $ref: '#/$defs/ChatMessage'
     required:
     - messages
-- component: eval
+- component: /builtin/eval
   description: Execute a nested workflow with given input and return the result
   input_schema:
     description: Input for the eval component
@@ -74,7 +74,7 @@ components:
     required:
     - result
     - run_id
-- component: get_blob
+- component: /builtin/get_blob
   description: Retrieve JSON data from a blob using its ID
   input_schema:
     description: Input for the get_blob component
@@ -93,7 +93,7 @@ components:
         description: The JSON data stored in the blob
     required:
     - data
-- component: load_file
+- component: /builtin/load_file
   description: Load and parse a file (JSON, YAML, or text) from the filesystem
   input_schema:
     type: object
@@ -119,7 +119,7 @@ components:
     required:
     - data
     - metadata
-- component: openai
+- component: /builtin/openai
   description: Send messages to OpenAI's chat completion API and get a response
   input_schema:
     description: Input for the OpenAI component
@@ -160,7 +160,7 @@ components:
         type: string
     required:
     - response
-- component: put_blob
+- component: /builtin/put_blob
   description: Store JSON data as a blob and return its content-addressable ID
   input_schema:
     description: Input for the put_blob component

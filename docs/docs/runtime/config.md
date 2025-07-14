@@ -62,12 +62,12 @@ plugins:
 ```
 
 **Available Components:**
-- `builtin://openai` - OpenAI API integration
-- `builtin://create_messages` - Chat message creation
-- `builtin://eval` - Nested workflow execution
-- `builtin://put_blob` - Store data as blobs
-- `builtin://get_blob` - Retrieve blob data
-- `builtin://load_file` - Load and parse files
+- `openai` - OpenAI API integration
+- `create_messages` - Chat message creation
+- `eval` - Nested workflow execution
+- `put_blob` - Store data as blobs
+- `get_blob` - Retrieve blob data
+- `load_file` - Load and parse files
 
 #### Stdio Plugins
 
@@ -107,12 +107,12 @@ plugins:
 
 ### Component URLs
 
-Components are referenced by URL format: `<plugin_name>://<component_name>`
+Components are referenced by path format: `<component_name>` for builtin components or `/<plugin_name>/<component_name>` for plugin components
 
 ```yaml
 steps:
   - id: my_step
-    component: python://my_component
+    component: /python/my_component
     input: { }
 ```
 
@@ -129,7 +129,7 @@ plugins:
 ```
 
 This plugin enables components like:
-- `python://udf` - Execute user-defined Python functions
+- `/python/udf` - Execute user-defined Python functions
 - Custom components defined in your Python project
 
 ### MCP Integration
@@ -144,7 +144,7 @@ plugins:
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
 ```
 
-MCP tools are accessed with format: `mcp+stdio://server/tool_name`
+MCP tools are accessed with format: `/server/tool_name`
 
 ## State Store Configuration
 
@@ -293,7 +293,7 @@ StepFlow respects these environment variables:
 
 ### Component-Specific
 
-- **`OPENAI_API_KEY`**: OpenAI API key for `builtin://openai` component
+- **`OPENAI_API_KEY`**: OpenAI API key for `openai` component
 - **`PYTHONPATH`**: Python path for Python components
 - **Custom variables**: Passed through to component servers via plugin configuration
 

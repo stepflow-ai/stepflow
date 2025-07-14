@@ -251,7 +251,7 @@ input_schema:
 steps:
   # Use custom HTTP component
   - id: fetch_api_data
-    component: my_components://http_request
+    component: /my_components/http_request
     input:
       url: { $from: { workflow: input }, path: "api_url" }
       method: "GET"
@@ -260,7 +260,7 @@ steps:
 
   # Process data with custom component
   - id: process_user_data
-    component: my_components://process_data
+    component: /my_components/process_data
     input:
       data: { $from: { workflow: input }, path: "user_data" }
       processing_rules:
@@ -269,7 +269,7 @@ steps:
 
   # Cache the results
   - id: cache_results
-    component: my_components://cache_data
+    component: /my_components/cache_data
     input:
       key: "processed_user_data"
       data:
@@ -1025,7 +1025,7 @@ input_schema:
 
 steps:
   - id: process_test_data
-    component: my_components://process_data
+    component: /my_components/process_data
     input:
       data: { $from: { workflow: input }, path: "test_data" }
       processing_rules:
@@ -1033,14 +1033,14 @@ steps:
       include_metadata: true
 
   - id: cache_processed_data
-    component: my_components://cache_data
+    component: /my_components/cache_data
     input:
       key: "integration_test"
       data: { $from: { step: process_test_data } }
       ttl_minutes: 5
 
   - id: retrieve_cached_data
-    component: my_components://retrieve_cache
+    component: /my_components/retrieve_cache
     input:
       blob_id: { $from: { step: cache_processed_data }, path: "blob_id" }
 

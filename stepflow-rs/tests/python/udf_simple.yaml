@@ -17,7 +17,7 @@ output_schema:
 steps:
 # Create blobs for function definitions
 - id: create_addition_blob
-  component: builtin://put_blob
+  component: put_blob
   input_schema: null
   output_schema: null
   input:
@@ -34,7 +34,7 @@ steps:
         - y
       code: input['x'] + input['y']
 - id: create_multiplication_blob
-  component: builtin://put_blob
+  component: put_blob
   input_schema: null
   output_schema: null
   input:
@@ -51,7 +51,7 @@ steps:
         - y
       code: input['x'] * input['y']
 - id: create_complex_calculation_blob
-  component: builtin://put_blob
+  component: put_blob
   input_schema: null
   output_schema: null
   input:
@@ -69,7 +69,7 @@ steps:
       code: math.sqrt(input['sum'] ** 2 + input['product'] ** 2)
 # Execute functions using blob_ids
 - id: simple_addition
-  component: python://udf
+  component: /python/udf
   input_schema: null
   output_schema: null
   input:
@@ -87,7 +87,7 @@ steps:
           workflow: input
         path: y
 - id: simple_multiplication
-  component: python://udf
+  component: /python/udf
   input_schema: null
   output_schema: null
   input:
@@ -105,7 +105,7 @@ steps:
           workflow: input
         path: y
 - id: complex_calculation
-  component: python://udf
+  component: /python/udf
   input_schema: null
   output_schema: null
   input:

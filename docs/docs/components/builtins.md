@@ -8,7 +8,7 @@ StepFlow provides several built-in components that handle common workflow operat
 
 ## Data Storage Components
 
-### `builtin://put_blob`
+### `put_blob`
 
 Store JSON data as content-addressable blobs for efficient reuse across workflow steps.
 
@@ -35,7 +35,7 @@ output:
 ```yaml
 steps:
   - id: store_user_data
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         user_id: { $from: { workflow: input }, path: "user_id" }
@@ -43,7 +43,7 @@ steps:
         preferences: { $from: { step: load_preferences } }
 ```
 
-### `builtin://get_blob`
+### `get_blob`
 
 Retrieve JSON data from previously stored blobs.
 
@@ -70,7 +70,7 @@ output:
 ```yaml
 steps:
   - id: retrieve_user_data
-    component: builtin://get_blob
+    component: get_blob
     input:
       blob_id: { $from: { step: store_user_data }, path: "blob_id" }
 ```
@@ -84,7 +84,7 @@ steps:
 
 ## File Operations
 
-### `builtin://load_file`
+### `load_file`
 
 Load and parse files from the filesystem with automatic format detection.
 
@@ -124,12 +124,12 @@ output:
 ```yaml
 steps:
   - id: load_config
-    component: builtin://load_file
+    component: load_file
     input:
       path: "config/settings.yaml"
 
   - id: load_data
-    component: builtin://load_file
+    component: load_file
     input:
       path: { $from: { workflow: input }, path: "data_file" }
       format: "json"
@@ -137,7 +137,7 @@ steps:
 
 ## AI Integration Components
 
-### `builtin://create_messages`
+### `create_messages`
 
 Create structured chat message arrays for AI models from system instructions and user prompts.
 
@@ -170,13 +170,13 @@ output:
 ```yaml
 steps:
   - id: prepare_chat
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: "You are an expert data analyst"
       user_prompt: { $from: { workflow: input }, path: "question" }
 ```
 
-### `builtin://openai`
+### `openai`
 
 Send messages to OpenAI's chat completion API and receive responses.
 
@@ -219,7 +219,7 @@ Each message must have:
 ```yaml
 steps:
   - id: ask_ai
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: prepare_chat }, path: "messages" }
       max_tokens: 200
@@ -231,13 +231,13 @@ steps:
 ```yaml
 steps:
   - id: create_prompt
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: "You are a code review assistant. Analyze code for potential issues."
       user_prompt: { $from: { workflow: input }, path: "code_snippet" }
 
   - id: analyze_code
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_prompt }, path: "messages" }
       max_tokens: 500
@@ -246,7 +246,7 @@ steps:
 
 ## Workflow Composition
 
-### `builtin://eval`
+### `eval`
 
 Execute nested workflows with isolated execution contexts.
 
@@ -280,7 +280,7 @@ output:
 ```yaml
 steps:
   - id: run_analysis
-    component: builtin://eval
+    component: eval
     input:
       workflow:
         input_schema:

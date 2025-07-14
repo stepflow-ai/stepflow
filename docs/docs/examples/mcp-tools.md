@@ -49,7 +49,7 @@ plugins:
 
 ## Using MCP Tools in Workflows
 
-MCP tools are referenced using the format `plugin_name://tool_name`:
+MCP tools are referenced using the format `/plugin_name/tool_name`:
 
 ```yaml
 name: file_processing
@@ -64,20 +64,20 @@ inputs:
 steps:
   # Write content to a file
   - name: save_content
-    component: fs://write_file
+    component: /fs/write_file
     inputs:
       path: /tmp/workspace/output.txt
       content: ${{ inputs.content }}
   
   # Read the file back
   - name: verify_content
-    component: fs://read_file
+    component: /fs/read_file
     inputs:
       path: /tmp/workspace/output.txt
   
   # List directory contents
   - name: list_files
-    component: fs://list_directory
+    component: /fs/list_directory
     inputs:
       path: /tmp/workspace
 
@@ -108,7 +108,7 @@ inputs:
 steps:
   # Create a working directory
   - name: setup_workspace
-    component: fs://create_directory
+    component: /fs/create_directory
     inputs:
       path: /tmp/workspace/docs
   
@@ -118,7 +118,7 @@ steps:
     iteratorName: doc
     steps:
       - name: write_doc
-        component: fs://write_file
+        component: /fs/write_file
         inputs:
           path: /tmp/workspace/docs/${{ doc.name }}.txt
           content: ${{ doc.content }}
@@ -136,14 +136,14 @@ steps:
   
   # Save the index
   - name: save_index
-    component: fs://write_file
+    component: /fs/write_file
     inputs:
       path: /tmp/workspace/docs/index.md
       content: ${{ steps.create_index }}
   
   # List all created files
   - name: list_output
-    component: fs://list_directory
+    component: /fs/list_directory
     inputs:
       path: /tmp/workspace/docs
 
@@ -193,7 +193,7 @@ version: "1.0"
 steps:
   # This will fail but show available tools in the error message
   - name: discover
-    component: fs://unknown_tool
+    component: /fs/unknown_tool
     inputs: {}
 ```
 
@@ -206,7 +206,7 @@ MCP tools can return two types of errors:
 1. **Tool Errors**: Expected failures (e.g., file not found)
    ```yaml
    - name: read_config
-     component: fs://read_file
+     component: /fs/read_file
      inputs:
        path: /tmp/workspace/config.json
      continueOnError: true
@@ -256,7 +256,7 @@ Use `continueOnError` and conditional steps for graceful error handling:
 
 ```yaml
 - name: try_operation
-  component: mcp_tool://operation
+  component: /mcp_tool/operation
   continueOnError: true
 
 - name: fallback
@@ -313,7 +313,7 @@ steps:
   iteratorName: file
   steps:
     - name: write
-      component: fs://write_file
+      component: /fs/write_file
       inputs:
         path: /tmp/workspace/${{ file.name }}
         content: ${{ file.content }}

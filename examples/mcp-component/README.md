@@ -28,18 +28,18 @@ cargo run -- run --flow=../examples/mcp-component/basic.yaml --input=../examples
 3. **Read the File**: Uses the MCP `read_file` tool to read back the created file
 4. **List Directory**: Uses the MCP `list_directory` tool to show all files in the `/tmp` directory
 
-## Understanding MCP Component URLs
+## Understanding MCP Component Paths
 
-MCP tools are referenced using StepFlow's plugin-based URL format:
+MCP tools are referenced using StepFlow's plugin-based path format:
 ```
-plugin_name://tool_name
+/plugin_name/tool_name
 ```
 
-Where `plugin_name` corresponds to the name configured in the StepFlow config file. This follows StepFlow's standard plugin architecture where each plugin registers with a name that becomes the protocol.
+Where `plugin_name` corresponds to the name configured in the StepFlow config file. This follows StepFlow's standard plugin architecture where each plugin registers with a name that becomes part of the path.
 
 For example:
-- `filesystem://write_file` - The `write_file` tool from the `filesystem` MCP server
-- `filesystem://read_file` - The `read_file` tool from the `filesystem` MCP server
+- `/filesystem/write_file` - The `write_file` tool from the `filesystem` MCP server
+- `/filesystem/read_file` - The `read_file` tool from the `filesystem` MCP server
 
 ## Expected Output
 
@@ -66,7 +66,7 @@ You can add additional MCP servers to the configuration. For example, to add a B
 Then use it in workflows like:
 ```yaml
 search_step:
-  component: "brave-search://brave_web_search"
+  component: "/brave-search/brave_web_search"
   input:
     query: "StepFlow workflow engine"
 ```

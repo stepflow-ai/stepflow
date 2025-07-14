@@ -16,19 +16,19 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Identifies a specific plugin and atomic functionality to execute.
 ///
-/// A component is identified by a URL that specifies:
-/// - The protocol (e.g., "langflow", "mcp")
-/// - The transport (e.g., "http", "stdio")
-/// - The path to the specific functionality
+/// A component is identified by a path that specifies:
+/// - The plugin name
+/// - The component name within that plugin
+/// - Optional sub-path for specific functionality
 ///
 /// Components can be specified as:
-/// - Full URLs: "mock://test", "mcp+stdio://my-tool/component"
+/// - Full paths: "/mock/test", "/mcp/my-tool/component"
 /// - Builtin names: "eval", "load_file" (treated as builtin components)
 #[derive(Debug, Eq, PartialEq, Clone, Hash, utoipa::ToSchema)]
 pub struct Component {
-    /// The component URL as a string
-    url: String,
-    /// Position of the first colon in the URL, if any (for efficient parsing)
+    /// The component path as a string
+    path: String,
+    /// Position of the first slash in the path, if any (for efficient parsing)
     delimiter: usize,
 }
 
@@ -39,11 +39,8 @@ impl JsonSchema for Component {
 
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
-            "description": "Identifies a specific plugin and atomic functionality to execute.",
-            "oneOf": [
-                { "type": "string" },
-                { "type": "string", "format": "uri" }
-            ]
+            "type": "string",
+            "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf')."
         })
     }
 }
@@ -56,56 +53,65 @@ impl PartialOrd for Component {
 
 impl Ord for Component {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.url.cmp(&other.url)
+        self.path.cmp(&other.path)
     }
 }
 
 impl std::fmt::Display for Component {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.url)
+        write!(f, "{}", self.path)
     }
 }
 
 impl Component {
     /// Creates a new component for a specific plugin.
-    pub fn for_plugin(plugin: &str, path: &str) -> Self {
+    pub fn for_plugin(plugin: &str, component_path: &str) -> Self {
         Self {
-            url: format!("{plugin}://{path}"),
-            delimiter: plugin.len(),
+            path: format!("/{plugin}/{component_path}"),
+            delimiter: 1, // Position after the first slash
         }
     }
 
-    /// Creates a component from a string, handling both URLs and builtin names.
+    /// Creates a component from a string, handling both paths and builtin names.
     pub fn from_string(input: &str) -> Self {
-        match input.find(':') {
-            None => {
-                // If no colon found, treat as builtin
-                Self {
-                    url: format!("builtin://{input}"),
-                    delimiter: "builtin".len(), // Position of the colon in "builtin:"
+        if input.starts_with('/') {
+            // Path-based component
+            match input[1..].find('/') {
+                Some(pos) => Self {
+                    path: input.to_string(),
+                    delimiter: pos + 2, // Position after the plugin name and second slash
+                },
+                None => {
+                    // Just plugin name like "/plugin", treat as error or default
+                    Self {
+                        path: input.to_string(),
+                        delimiter: input.len(),
+                    }
                 }
             }
-            Some(delimiter) => Self {
-                url: input.to_string(),
-                delimiter,
-            },
+        } else {
+            // Builtin component (no leading slash)
+            Self {
+                path: input.to_string(),
+                delimiter: 0, // No plugin delimiter for builtins
+            }
         }
     }
 
-    /// Returns the full URL string of the component.
-    pub fn url_string(&self) -> &str {
-        &self.url
+    /// Returns the full path string of the component.
+    pub fn path_string(&self) -> &str {
+        &self.path
     }
 
     /// Returns true if this is a builtin component.
     pub fn is_builtin(&self) -> bool {
-        self.plugin() == "builtin"
+        !self.path.starts_with('/')
     }
 
     /// Returns the builtin name if this is a builtin component.
     pub fn builtin_name(&self) -> Option<&str> {
         if self.is_builtin() {
-            Some(&self.url[10..]) // Skip "builtin://"
+            Some(&self.path)
         } else {
             None
         }
@@ -113,24 +119,33 @@ impl Component {
 
     /// Returns the plugin name of the component.
     ///
-    /// For example, for "mcp-files://example.com", returns "mcp-files".
+    /// For example, for "/mcp-files/example", returns "mcp-files".
     /// For builtin components, returns "builtin".
     pub fn plugin(&self) -> &str {
-        &self.url[0..self.delimiter]
+        if self.is_builtin() {
+            "builtin"
+        } else {
+            // Find the plugin name between the first and second slash
+            let without_leading_slash = &self.path[1..];
+            match without_leading_slash.find('/') {
+                Some(pos) => &without_leading_slash[0..pos],
+                None => without_leading_slash, // Only plugin name, no component path
+            }
+        }
     }
 }
 
-// Custom serialization: output just the URL string
+// Custom serialization: output just the path string
 impl Serialize for Component {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // For builtin components, serialize just the builtin name without "builtin://" prefix
+        // For builtin components, serialize just the builtin name
         if self.is_builtin() {
             self.builtin_name().unwrap_or("").serialize(serializer)
         } else {
-            self.url.serialize(serializer)
+            self.path.serialize(serializer)
         }
     }
 }
@@ -153,7 +168,7 @@ mod tests {
     #[test]
     fn test_component_new() {
         let component = Component::for_plugin("mock", "test");
-        assert_eq!(component.url_string(), "mock://test");
+        assert_eq!(component.path_string(), "/mock/test");
         assert_eq!(component.plugin(), "mock");
         assert!(!component.is_builtin());
     }
@@ -161,17 +176,17 @@ mod tests {
     #[test]
     fn test_component_builtin() {
         let component = Component::from_string("eval");
-        assert_eq!(component.url_string(), "builtin://eval");
+        assert_eq!(component.path_string(), "eval");
         assert_eq!(component.plugin(), "builtin");
         assert!(component.is_builtin());
         assert_eq!(component.builtin_name(), Some("eval"));
     }
 
     #[test]
-    fn test_component_from_string_url() {
-        let component = Component::from_string("mcp+stdio://tool/component");
-        assert_eq!(component.url_string(), "mcp+stdio://tool/component");
-        assert_eq!(component.plugin(), "mcp+stdio");
+    fn test_component_from_string_path() {
+        let component = Component::from_string("/mcp/tool/component");
+        assert_eq!(component.path_string(), "/mcp/tool/component");
+        assert_eq!(component.plugin(), "mcp");
         assert!(!component.is_builtin());
     }
 
@@ -190,10 +205,10 @@ mod tests {
         let json = serde_json::to_string(&component).unwrap();
         assert_eq!(json, "\"eval\"");
 
-        // Test URL serialization
-        let component = Component::from_string("mock://test");
+        // Test path serialization
+        let component = Component::from_string("/mock/test");
         let json = serde_json::to_string(&component).unwrap();
-        assert_eq!(json, "\"mock://test\"");
+        assert_eq!(json, "\"/mock/test\"");
     }
 
     #[test]
@@ -203,15 +218,15 @@ mod tests {
         assert!(component.is_builtin());
         assert_eq!(component.builtin_name(), Some("eval"));
 
-        // Test URL deserialization
-        let component: Component = serde_json::from_str("\"mock://test\"").unwrap();
+        // Test path deserialization
+        let component: Component = serde_json::from_str("\"/mock/test\"").unwrap();
         assert!(!component.is_builtin());
-        assert_eq!(component.url_string(), "mock://test");
+        assert_eq!(component.path_string(), "/mock/test");
     }
 
     #[test]
     fn test_component_roundtrip() {
-        let test_cases = vec!["eval", "load_file", "mock://test", "mcp+stdio://tool/comp"];
+        let test_cases = vec!["eval", "load_file", "/mock/test", "/mcp/tool/comp"];
 
         for case in test_cases {
             let component = Component::from_string(case);
@@ -221,7 +236,7 @@ mod tests {
             if component.is_builtin() {
                 assert_eq!(component.builtin_name(), deserialized.builtin_name());
             } else {
-                assert_eq!(component.url_string(), deserialized.url_string());
+                assert_eq!(component.path_string(), deserialized.path_string());
             }
         }
     }
@@ -229,7 +244,7 @@ mod tests {
     #[test]
     fn test_new_plugin() {
         let component = Component::for_plugin("mcp", "tool/component");
-        assert_eq!(component.url_string(), "mcp://tool/component");
+        assert_eq!(component.path_string(), "/mcp/tool/component");
         assert_eq!(component.plugin(), "mcp");
         assert!(!component.is_builtin());
     }

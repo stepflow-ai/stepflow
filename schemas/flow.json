@@ -147,16 +147,8 @@
       ]
     },
     "Component": {
-      "description": "Identifies a specific plugin and atomic functionality to execute.",
-      "oneOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "string",
-          "format": "uri"
-        }
-      ]
+      "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
+      "type": "string"
     },
     "Expr": {
       "description": "An expression that can be either a literal value or a template expression.",

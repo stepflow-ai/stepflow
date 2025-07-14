@@ -36,7 +36,7 @@ input_schema:
 steps:
   # Create personalized system instructions
   - id: create_system_prompt
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -69,7 +69,7 @@ steps:
 
   # Execute system prompt creation
   - id: execute_system_prompt
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_system_prompt }, path: "blob_id" }
       input:
@@ -82,14 +82,14 @@ steps:
 
   # Create chat messages
   - id: create_messages
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: { $from: { step: execute_system_prompt } }
       user_prompt: { $from: { workflow: input }, path: "user_question" }
 
   # Get AI response
   - id: get_ai_response
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_messages }, path: "messages" }
       max_tokens: 500
@@ -97,7 +97,7 @@ steps:
 
   # Post-process response (add metadata, format, etc.)
   - id: format_response
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -120,7 +120,7 @@ steps:
 
   # Execute response formatting
   - id: execute_formatting
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: format_response }, path: "blob_id" }
       input:
@@ -193,13 +193,13 @@ input_schema:
 steps:
   # Load the document
   - id: load_document
-    component: builtin://load_file
+    component: load_file
     input:
       path: { $from: { workflow: input }, path: "document_path" }
 
   # Extract key information
   - id: extract_key_info
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a document analysis expert. Extract the most important information from documents.
@@ -211,7 +211,7 @@ steps:
         {{ $from: { step: load_document }, path: "data" }}
 
   - id: get_key_info
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: extract_key_info }, path: "messages" }
       max_tokens: 800
@@ -219,7 +219,7 @@ steps:
 
   # Generate summary (runs in parallel with key info extraction)
   - id: create_summary_prompt
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a professional summarization expert. Create clear, concise summaries
@@ -231,7 +231,7 @@ steps:
         {{ $from: { step: load_document }, path: "data" }}
 
   - id: get_summary
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_summary_prompt }, path: "messages" }
       max_tokens: 400
@@ -239,7 +239,7 @@ steps:
 
   # Perform sentiment analysis (if requested)
   - id: analyze_sentiment
-    component: builtin://create_messages
+    component: create_messages
     skip:
       # Skip if sentiment not in focus_areas
       # This would need custom logic to check array membership
@@ -253,7 +253,7 @@ steps:
         {{ $from: { step: load_document }, path: "data" }}
 
   - id: get_sentiment
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: analyze_sentiment }, path: "messages" }
       max_tokens: 300
@@ -261,7 +261,7 @@ steps:
 
   # Generate recommendations (if comprehensive analysis requested)
   - id: generate_recommendations
-    component: builtin://create_messages
+    component: create_messages
     skip:
       # Skip if not comprehensive analysis
       # This would check if analysis_depth != "comprehensive"
@@ -279,7 +279,7 @@ steps:
         {{ $from: { step: load_document }, path: "data" }}
 
   - id: get_recommendations
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: generate_recommendations }, path: "messages" }
       max_tokens: 600
@@ -287,7 +287,7 @@ steps:
 
   # Combine all analysis results
   - id: combine_analysis
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -334,7 +334,7 @@ steps:
 
   # Execute analysis combination
   - id: execute_combination
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: combine_analysis }, path: "blob_id" }
       input:
@@ -400,7 +400,7 @@ input_schema:
 steps:
   # Step 1: Break down the research question
   - id: analyze_question
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a research methodology expert. When given a research question,
@@ -418,7 +418,7 @@ steps:
         4. Suggested research approach
 
   - id: get_question_analysis
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: analyze_question }, path: "messages" }
       max_tokens: 600
@@ -426,7 +426,7 @@ steps:
 
   # Step 2: Load and process context documents
   - id: load_context_docs
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -452,7 +452,7 @@ steps:
           }
 
   - id: execute_doc_loading
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: load_context_docs }, path: "blob_id" }
       input:
@@ -460,7 +460,7 @@ steps:
 
   # Step 3: Search for relevant information in documents
   - id: search_documents
-    component: vector://search  # Future component
+    component: /vector/search  # Future component
     on_error:
       action: continue
       default_output:
@@ -474,7 +474,7 @@ steps:
 
   # Step 4: First reasoning iteration
   - id: first_reasoning_step
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a research analyst. Based on the research question breakdown and
@@ -490,7 +490,7 @@ steps:
         Please provide your initial analysis and identify what additional information is needed.
 
   - id: get_first_reasoning
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: first_reasoning_step }, path: "messages" }
       max_tokens: 800
@@ -498,7 +498,7 @@ steps:
 
   # Step 5: Second reasoning iteration (deeper analysis)
   - id: second_reasoning_step
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a senior research analyst. Building on previous analysis,
@@ -514,7 +514,7 @@ steps:
         4. Areas of uncertainty
 
   - id: get_second_reasoning
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: second_reasoning_step }, path: "messages" }
       max_tokens: 800
@@ -522,7 +522,7 @@ steps:
 
   # Step 6: Generate final research synthesis
   - id: final_synthesis
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a research director. Synthesize all previous analysis into a
@@ -545,7 +545,7 @@ steps:
         5. Suggested next research steps
 
   - id: get_final_synthesis
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: final_synthesis }, path: "messages" }
       max_tokens: 1200
@@ -553,7 +553,7 @@ steps:
 
   # Step 7: Create structured research report
   - id: create_research_report
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -612,7 +612,7 @@ steps:
 
   # Execute report creation
   - id: execute_report_creation
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_research_report }, path: "blob_id" }
       input:
@@ -673,7 +673,7 @@ input_schema:
 steps:
   # Generate initial content outline
   - id: create_outline
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a content strategist and expert writer. Create detailed outlines
@@ -692,7 +692,7 @@ steps:
         Provide a structured outline with main sections, subsections, and brief descriptions.
 
   - id: get_outline
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_outline }, path: "messages" }
       max_tokens: 600
@@ -700,7 +700,7 @@ steps:
 
   # Generate full content based on outline
   - id: generate_content
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are an expert content writer. Write engaging, well-structured content
@@ -719,7 +719,7 @@ steps:
         Make it engaging, informative, and well-structured.
 
   - id: get_initial_content
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: generate_content }, path: "messages" }
       max_tokens: 1500
@@ -727,7 +727,7 @@ steps:
 
   # Review content for accuracy and structure
   - id: review_content
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a content editor and quality assurance expert. Review content
@@ -747,7 +747,7 @@ steps:
         Provide specific suggestions for improvement.
 
   - id: get_content_review
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: review_content }, path: "messages" }
       max_tokens: 800
@@ -755,7 +755,7 @@ steps:
 
   # Refine content based on review
   - id: refine_content
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: |
         You are a senior content editor. Refine and improve content based on
@@ -772,7 +772,7 @@ steps:
         Provide the improved version of the content.
 
   - id: get_refined_content
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: refine_content }, path: "messages" }
       max_tokens: 1500
@@ -780,7 +780,7 @@ steps:
 
   # Generate final content package
   - id: create_content_package
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -832,7 +832,7 @@ steps:
 
   # Execute package creation
   - id: execute_package_creation
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: create_content_package }, path: "blob_id" }
       input:

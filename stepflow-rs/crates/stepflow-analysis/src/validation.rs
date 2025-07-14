@@ -277,16 +277,16 @@ fn validate_component(component: &Component, path: &[String], diagnostics: &mut 
         }
     } else {
         // For non-builtin components, check basic format
-        let url_str = component.url_string();
-        if !url_str.contains("://") {
-            let error = "Component URL must contain '://' for non-builtin components".to_string();
+        let path_str = component.path_string();
+        if !path_str.starts_with('/') {
+            let error = "Component path must start with '/' for non-builtin components".to_string();
 
             // Extract step_id from path for backwards compatibility with DiagnosticMessage
             let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();
             diagnostics.add(
                 DiagnosticMessage::InvalidComponentUrl {
                     step_id,
-                    url: url_str.to_string(),
+                    url: path_str.to_string(),
                     error,
                 },
                 path.to_vec(),
@@ -378,7 +378,7 @@ mod tests {
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
             id: id.to_string(),
-            component: Component::from_string("mock://test"),
+            component: Component::from_string("/mock/test"),
             input: serde_json::from_value(input).unwrap(),
             input_schema: None,
             output_schema: None,

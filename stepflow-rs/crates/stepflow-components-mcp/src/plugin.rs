@@ -36,7 +36,7 @@ use crate::protocol::{
     INITIALIZE_METHOD, Implementation, ServerCapabilities, TOOLS_CALL_METHOD, TOOLS_LIST_METHOD,
     Tool,
 };
-use crate::schema::{component_url_to_tool_name, mcp_tool_to_component_info};
+use crate::schema::{component_path_to_tool_name, mcp_tool_to_component_info};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct McpPluginConfig {
@@ -325,9 +325,9 @@ impl Plugin for McpPlugin {
             let mut info = crate::schema::mcp_tool_to_component_info(tool)
                 .change_context(PluginError::ComponentInfo)?;
 
-            // Update the component URL to use plugin name as protocol
-            let component_url = format!("{}://{}", self.plugin_name, tool.name);
-            info.component = Component::from_string(&component_url);
+            // Update the component path to use plugin name as directory
+            let component_path = format!("/{}/{}", self.plugin_name, tool.name);
+            info.component = Component::from_string(&component_path);
 
             components.push(info);
         }
@@ -336,9 +336,9 @@ impl Plugin for McpPlugin {
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        let tool_name = component_url_to_tool_name(component.url_string())
+        let tool_name = component_path_to_tool_name(component.path_string())
             .ok_or(PluginError::ComponentInfo)
-            .attach_printable("Invalid MCP component URL format")?;
+            .attach_printable("Invalid MCP component path format")?;
 
         let state = self.state.read().await;
         let tool = state
@@ -357,9 +357,9 @@ impl Plugin for McpPlugin {
         _context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        let tool_name = component_url_to_tool_name(component.url_string())
+        let tool_name = component_path_to_tool_name(component.path_string())
             .ok_or(PluginError::Execution)
-            .attach_printable("Invalid MCP component URL format")?;
+            .attach_printable("Invalid MCP component path format")?;
 
         let mut state = self.state.write().await;
         let mcp_client = state.mcp_client.as_mut().ok_or_else(|| {

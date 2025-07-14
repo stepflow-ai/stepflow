@@ -70,8 +70,6 @@ cmd = "uv run python generate.py --check"
 help = "Regenerate types from schemas"
 sequence = [
     {cmd = "uv run python generate.py"},
-    {cmd = "uvx ${RUFF} format src/stepflow_sdk/generated_*.py"},
-    {cmd = "uvx ${RUFF} check --fix src/stepflow_sdk/generated_*.py"}
 ]
 
 [tool.poe.tasks.test]
@@ -116,7 +114,7 @@ docstring-code-format = true
 exclude = ["**/generated_*.py"]
 
 [tool.deptry]
-# types-* packages are type stubs for mypy and not directly imported  
+# types-* packages are type stubs for mypy and not directly imported
 ignore = ["DEP002"]
 extend_exclude = ["types-jsonschema"]
 

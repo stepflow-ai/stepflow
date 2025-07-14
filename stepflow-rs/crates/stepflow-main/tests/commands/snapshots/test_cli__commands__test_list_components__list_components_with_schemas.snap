@@ -16,7 +16,7 @@ exit_code: 0
 Available Components:
 ====================
 
-Component: builtin://create_messages
+Component: /builtin/create_messages
   Description: Create a chat message list from system instructions and user prompt
   Input Schema:
     {
@@ -54,7 +54,7 @@ Component: builtin://create_messages
       ]
     }
 
-Component: builtin://eval
+Component: /builtin/eval
   Description: Execute a nested workflow with given input and return the result
   Input Schema:
     {
@@ -106,7 +106,7 @@ Component: builtin://eval
       ]
     }
 
-Component: builtin://get_blob
+Component: /builtin/get_blob
   Description: Retrieve JSON data from a blob using its ID
   Input Schema:
     {
@@ -136,7 +136,7 @@ Component: builtin://get_blob
       ]
     }
 
-Component: builtin://load_file
+Component: /builtin/load_file
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
   Input Schema:
     {
@@ -180,7 +180,7 @@ Component: builtin://load_file
       ]
     }
 
-Component: builtin://openai
+Component: /builtin/openai
   Description: Send messages to OpenAI's chat completion API and get a response
   Input Schema:
     {
@@ -239,7 +239,7 @@ Component: builtin://openai
       ]
     }
 
-Component: builtin://put_blob
+Component: /builtin/put_blob
   Description: Store JSON data as a blob and return its content-addressable ID
   Input Schema:
     {

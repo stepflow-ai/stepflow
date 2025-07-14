@@ -38,7 +38,7 @@ output_schema:
 steps:
   # Step 1: Validate input data
   - id: validate_input
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -58,7 +58,7 @@ steps:
 
   # Step 2: Run validation
   - id: run_validation
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: validate_input }, path: "blob_id" }
       input:
@@ -66,7 +66,7 @@ steps:
 
   # Step 3: Transform data (only if validation passes)
   - id: transform_data
-    component: builtin://put_blob
+    component: put_blob
     skip: 
       $from: { step: run_validation }
       path: "is_valid"
@@ -91,7 +91,7 @@ steps:
 
   # Step 4: Execute transformation
   - id: execute_transform
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: transform_data }, path: "blob_id" }
       input:
@@ -180,7 +180,7 @@ input_schema:
 steps:
   # Load configuration with error handling
   - id: load_config
-    component: builtin://load_file
+    component: load_file
     on_error:
       action: continue
       default_output:
@@ -196,13 +196,13 @@ steps:
 
   # Load data file
   - id: load_data
-    component: builtin://load_file
+    component: load_file
     input:
       path: { $from: { workflow: input }, path: "data_file" }
 
   # Validate that we have required configuration
   - id: validate_config
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -223,7 +223,7 @@ steps:
 
   # Run configuration validation
   - id: check_config
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: validate_config }, path: "blob_id" }
       input:
@@ -231,7 +231,7 @@ steps:
 
   # Process data if configuration is valid
   - id: process_data
-    component: builtin://put_blob
+    component: put_blob
     skip:
       $from: { step: check_config }
       path: "is_valid"
@@ -265,7 +265,7 @@ steps:
 
   # Execute processing
   - id: execute_processing
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: process_data }, path: "blob_id" }
       input:
@@ -274,7 +274,7 @@ steps:
 
   # Format output according to requested format
   - id: format_output
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -302,7 +302,7 @@ steps:
 
   # Execute formatting
   - id: execute_formatting
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: format_output }, path: "blob_id" }
       input:
@@ -362,7 +362,7 @@ steps:
   
   # Process API sources
   - id: process_api_sources
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -386,7 +386,7 @@ steps:
 
   # Process file sources  
   - id: process_file_sources
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -410,7 +410,7 @@ steps:
 
   # Process database sources
   - id: process_database_sources
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -434,21 +434,21 @@ steps:
 
   # Execute all processing in parallel
   - id: execute_api_processing
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: process_api_sources }, path: "blob_id" }
       input:
         sources: { $from: { workflow: input }, path: "data_sources" }
 
   - id: execute_file_processing
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: process_file_sources }, path: "blob_id" }
       input:
         sources: { $from: { workflow: input }, path: "data_sources" }
 
   - id: execute_database_processing
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: process_database_sources }, path: "blob_id" }
       input:
@@ -456,7 +456,7 @@ steps:
 
   # Combine all results (waits for all parallel processing to complete)
   - id: combine_results
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -493,7 +493,7 @@ steps:
 
   # Execute combination
   - id: execute_combination
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: combine_results }, path: "blob_id" }
       input:
@@ -573,7 +573,7 @@ input_schema:
 steps:
   # Try primary API with retry logic
   - id: try_primary_api
-    component: http://get  # Future component
+    component: /http/get  # Future component
     on_error:
       action: continue
       default_output:
@@ -587,7 +587,7 @@ steps:
 
   # Try secondary API if primary fails
   - id: try_secondary_api
-    component: http://get  # Future component
+    component: /http/get  # Future component
     skip: { $from: { step: try_primary_api }, path: "success" }
     on_error:
       action: continue
@@ -602,7 +602,7 @@ steps:
 
   # Use fallback data if all APIs fail
   - id: use_fallback_data
-    component: builtin://put_blob
+    component: put_blob
     skip:
       # Skip if either API succeeded
       # This would need custom logic to check if ANY API succeeded
@@ -614,7 +614,7 @@ steps:
 
   # Combine results from whichever source succeeded
   - id: combine_results
-    component: builtin://put_blob
+    component: put_blob
     input:
       data:
         input_schema:
@@ -647,7 +647,7 @@ steps:
 
   # Execute result combination
   - id: execute_combination
-    component: python://udf
+    component: /python/udf
     input:
       blob_id: { $from: { step: combine_results }, path: "blob_id" }
       input:

@@ -17,7 +17,7 @@ output_schema:
 steps:
 # Create blobs for function definitions
 - id: create_word_analysis_blob
-  component: builtin://put_blob
+  component: put_blob
   input_schema: null
   output_schema: null
   input:
@@ -57,7 +57,7 @@ steps:
             'most_common_words': [{'word': word, 'count': count} for word, count in most_common]
         }
 - id: create_pattern_search_blob
-  component: builtin://put_blob
+  component: put_blob
   input_schema: null
   output_schema: null
   input:
@@ -82,7 +82,7 @@ steps:
         except:
             return []
 - id: create_sentiment_analysis_blob
-  component: builtin://put_blob
+  component: put_blob
   input_schema: null
   output_schema: null
   input:
@@ -114,7 +114,7 @@ steps:
         return round(sentiment_score, 2)
 # Execute functions using blob_ids
 - id: word_analysis
-  component: python://udf
+  component: /python/udf
   input_schema: null
   output_schema: null
   input:
@@ -128,7 +128,7 @@ steps:
           workflow: input
         path: text
 - id: pattern_search
-  component: python://udf
+  component: /python/udf
   input_schema: null
   output_schema: null
   input:
@@ -146,7 +146,7 @@ steps:
           workflow: input
         path: pattern
 - id: sentiment_analysis
-  component: python://udf
+  component: /python/udf
   input_schema: null
   output_schema: null
   input:

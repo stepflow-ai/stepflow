@@ -28,19 +28,19 @@ input_schema:
 
 steps:
   - id: analyze_customer_data
-    component: custom://analyze_customers
+    component: "/custom/analyze_customers"
     input:
       customers: { $from: { workflow: input }, path: "customers" }
       orders: { $from: { workflow: input }, path: "orders" }
 
   - id: generate_business_report
-    component: custom://generate_report
+    component: "/custom/generate_report"
     input:
       analysis: { $from: { step: analyze_customer_data } }
       report_title: "Q4 Customer Analysis Report"
 
   - id: retrieve_report
-    component: builtin://get_blob
+    component: "get_blob"
     input:
       blob_id: { $from: { step: generate_business_report }, path: "report_blob_id" }
 

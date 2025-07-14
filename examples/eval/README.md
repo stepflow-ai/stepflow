@@ -1,10 +1,10 @@
 # Eval Component Examples
 
-This directory demonstrates the `builtin://eval` component, which enables **nested workflow execution** within StepFlow. The eval component allows you to define complete workflows as steps, enabling powerful composition and reusability patterns.
+This directory demonstrates the `eval` component, which enables **nested workflow execution** within StepFlow. The eval component allows you to define complete workflows as steps, enabling powerful composition and reusability patterns.
 
 ## What is the Eval Component?
 
-The `builtin://eval` component executes a nested workflow with its own steps, inputs, and outputs. This enables:
+The `eval` component executes a nested workflow with its own steps, inputs, and outputs. This enables:
 
 - **Workflow Composition**: Build complex workflows from simpler, reusable sub-workflows
 - **Isolation**: Each nested workflow runs independently with its own execution context
@@ -51,7 +51,7 @@ cargo run -- run \
 **Purpose**: Tests the built-in component registry, specifically the `create_messages` component.
 
 **What it demonstrates**:
-- Using the `builtin://create_messages` component
+- Using the `create_messages` component
 - Proper input/output structure for builtin components
 
 **Run it**:
@@ -149,7 +149,7 @@ The examples have been updated to use the correct workflow syntax:
 ```yaml
 steps:
   - id: my_eval_step
-    component: "builtin://eval"
+    component: "eval"
     input:  # Not 'args'
       workflow:
         $literal:  # Required for inline workflow definitions
@@ -169,7 +169,7 @@ output:  # Not 'outputs'
 
 1. **"Component not found" errors**
    - Make sure the builtin plugin is registered in your config
-   - Verify the component URLs (e.g., `builtin://eval`)
+   - Verify the component paths (e.g., `eval`)
 
 2. **"Nested flow execution was cancelled" errors**
    - Check that output references use the correct format
@@ -192,19 +192,19 @@ Once you've verified the basic examples work, you can use eval components for:
 ### Regional Analysis Pattern
 ```yaml
 - id: analyze_region
-  component: "builtin://eval"
+  component: "eval"
   input:
     workflow:
       $literal:
         steps:
           - id: filter_data
-            component: python://filter_by_field
+            component: "/python/filter_by_field"
             input:
               data: { $from: { workflow: input }, path: "sales_data" }
               field: "region"
               value: { $from: { workflow: input }, path: "region_name" }
           - id: calculate_metrics
-            component: python://sum_field
+            component: "/python/sum_field"
             input:
               data: { $from: { step: filter_data }, path: "filtered_data" }
               field: "revenue"
@@ -218,7 +218,7 @@ Once you've verified the basic examples work, you can use eval components for:
 ### Dynamic Workflow Generation
 ```yaml
 - id: process_all_regions
-  component: "builtin://eval"
+  component: "eval"
   input:
     workflow: { $from: { step: generate_region_workflow }, path: "workflow_def" }
     input: { $from: { step: prepare_region_data }, path: "data" }

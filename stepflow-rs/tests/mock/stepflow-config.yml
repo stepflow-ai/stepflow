@@ -2,7 +2,7 @@ plugins:
   - name: mock
     type: mock
     components:
-      mock://one_output:
+      /mock/one_output:
         input_schema:
           type: object
           properties:
@@ -20,7 +20,7 @@ plugins:
           { input: "hello"}:
             outcome: success
             result: {output: world}
-      mock://two_outputs:
+      /mock/two_outputs:
         input_schema:
           type: object
           properties:
@@ -40,7 +40,7 @@ plugins:
           { input: "world"}:
             outcome: success
             result: {x: 2, y: 8}
-      mock://error:
+      /mock/error:
         input_schema:
           type: object
           properties:
@@ -58,7 +58,7 @@ plugins:
           { mode: "succeed" }:
             outcome: success
             result: {output: "succeeded"}
-      mock://handle_skip:
+      /mock/handle_skip:
         input_schema:
           type: object
           properties:

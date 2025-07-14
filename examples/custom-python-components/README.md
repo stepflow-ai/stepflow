@@ -67,8 +67,8 @@ cargo run -- test ../examples/custom-python-components/workflow.yaml --config=..
 
 The workflow will:
 
-1. **Analyze customer data** using the `custom://analyze_customers` component
-2. **Generate a business report** using the `custom://generate_report` component  
+1. **Analyze customer data** using the `/custom/analyze_customers` component
+2. **Generate a business report** using the `/custom/generate_report` component  
 3. **Store the report as a blob** and return a summary
 
 Sample output structure:
@@ -130,12 +130,12 @@ Components are registered using the `@server.component` decorator, which:
 
 ### 3. Workflow Integration
 
-The workflow uses the custom components via the `custom://` protocol:
+The workflow uses the custom components via the `/custom/` path:
 
 ```yaml
 steps:
   - id: analyze_customer_data
-    component: custom://analyze_customers
+    component: "/custom/analyze_customers"
     input:
       customers: { $from: { workflow: input }, path: "customers" }
       orders: { $from: { workflow: input }, path: "orders" }

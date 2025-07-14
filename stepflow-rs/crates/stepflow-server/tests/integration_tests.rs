@@ -67,9 +67,9 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
     if include_mocks {
         let mut mock_plugin = MockPlugin::new();
 
-        // Configure mock://one_output component
+        // Configure /mock/one_output component
         mock_plugin
-            .mock_component("mock://one_output")
+            .mock_component("/mock/one_output")
             .behavior(
                 json!({"input": "first_step"}),
                 MockComponentBehavior::result(json!({"output": "step1_result"})),
@@ -79,9 +79,9 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
                 MockComponentBehavior::result(json!({"output": "debug_result"})),
             );
 
-        // Configure mock://two_outputs component
+        // Configure /mock/two_outputs component
         mock_plugin
-            .mock_component("mock://two_outputs")
+            .mock_component("/mock/two_outputs")
             .behavior(
                 json!({"input": "step1_result"}),
                 MockComponentBehavior::result(json!({"x": 42, "y": 100})),
@@ -91,9 +91,9 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
                 MockComponentBehavior::result(json!({"x": 99, "y": 200})),
             );
 
-        // Configure mock://error_component component
+        // Configure /mock/error_component component
         mock_plugin
-            .mock_component("mock://error_component")
+            .mock_component("/mock/error_component")
             .behavior(
                 json!({"input": "trigger_error"}),
                 MockComponentBehavior::result(FlowResult::Failed {
@@ -139,7 +139,7 @@ fn create_test_workflow() -> Flow {
         output_schema: None,
         steps: vec![Step {
             id: "test_step".to_string(),
-            component: Component::from_string("builtin://create_messages"),
+            component: Component::from_string("create_messages"),
             input: ValueTemplate::literal(json!({
                 "user_prompt": "Hello from test"
             })),
@@ -523,7 +523,7 @@ async fn test_status_updates_during_regular_execution() {
         steps: vec![
             Step {
                 id: "step1".to_string(),
-                component: Component::from_string("mock://one_output"),
+                component: Component::from_string("/mock/one_output"),
                 input: ValueTemplate::parse_value(json!({"input": "first_step"})).unwrap(),
                 input_schema: None,
                 output_schema: None,
@@ -532,7 +532,7 @@ async fn test_status_updates_during_regular_execution() {
             },
             Step {
                 id: "step2".to_string(),
-                component: Component::from_string("mock://two_outputs"),
+                component: Component::from_string("/mock/two_outputs"),
                 input: ValueTemplate::parse_value(json!({
                     "input": {
                         "$from": {"step": "step1"},
@@ -621,9 +621,9 @@ async fn test_status_updates_during_regular_execution() {
     let step2 = &steps["step2"];
 
     assert_eq!(step1["stepId"], "step1");
-    assert_eq!(step1["component"], "mock://one_output");
+    assert_eq!(step1["component"], "/mock/one_output");
     assert_eq!(step2["stepId"], "step2");
-    assert_eq!(step2["component"], "mock://two_outputs");
+    assert_eq!(step2["component"], "/mock/two_outputs");
 
     // With the standardized field naming, verify steps have a status field
     assert!(step1.get("status").is_some());
@@ -646,7 +646,7 @@ async fn test_status_updates_during_debug_execution() {
         steps: vec![
             Step {
                 id: "step1".to_string(),
-                component: Component::from_string("mock://one_output"),
+                component: Component::from_string("/mock/one_output"),
                 input: ValueTemplate::parse_value(json!({"input": "debug_step"})).unwrap(),
                 input_schema: None,
                 output_schema: None,
@@ -655,7 +655,7 @@ async fn test_status_updates_during_debug_execution() {
             },
             Step {
                 id: "step2".to_string(),
-                component: Component::from_string("mock://two_outputs"),
+                component: Component::from_string("/mock/two_outputs"),
                 input: ValueTemplate::parse_value(json!({
                     "input": {
                         "$from": {"step": "step1"},
@@ -745,9 +745,9 @@ async fn test_status_updates_during_debug_execution() {
 
     // Verify that status field is used consistently
     assert_eq!(step1["stepId"], "step1");
-    assert_eq!(step1["component"], "mock://one_output");
+    assert_eq!(step1["component"], "/mock/one_output");
     assert_eq!(step2["stepId"], "step2");
-    assert_eq!(step2["component"], "mock://two_outputs");
+    assert_eq!(step2["component"], "/mock/two_outputs");
 
     // Verify that steps have status information
     assert!(step1.get("status").is_some());
@@ -783,7 +783,7 @@ async fn test_status_transitions_with_error_handling() {
         output_schema: None,
         steps: vec![Step {
             id: "failing_step".to_string(),
-            component: Component::from_string("mock://error_component"),
+            component: Component::from_string("/mock/error_component"),
             input: ValueTemplate::literal(json!({"input": "trigger_error"})),
             input_schema: None,
             output_schema: None,
@@ -862,7 +862,7 @@ async fn test_status_transitions_with_error_handling() {
     // Much cleaner access with dictionary API
     let failing_step = &steps["failing_step"];
     assert_eq!(failing_step["stepId"], "failing_step");
-    assert_eq!(failing_step["component"], "mock://error_component");
+    assert_eq!(failing_step["component"], "/mock/error_component");
 
     // The key test for error handling is that the workflow overall failed (verified above)
     // and that step information is accessible via the improved dictionary API
