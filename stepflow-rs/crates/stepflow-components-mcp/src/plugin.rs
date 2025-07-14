@@ -31,10 +31,7 @@ use tokio::sync::RwLock;
 use tokio::time::{Duration, timeout};
 
 use crate::error::{McpError, Result as McpResult};
-use crate::protocol::{
-    Implementation, ServerCapabilities,
-    Tool,
-};
+use crate::protocol::{Implementation, ServerCapabilities, Tool};
 use crate::schema::{component_url_to_tool_name, mcp_tool_to_component_info};
 
 #[derive(Serialize, Deserialize, Debug)]

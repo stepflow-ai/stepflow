@@ -19,7 +19,6 @@ doctest = false
 # Core StepFlow dependencies
 stepflow-core.workspace = true
 stepflow-plugin.workspace = true
-stepflow-protocol.workspace = true
 
 # Serialization
 serde.workspace = true
