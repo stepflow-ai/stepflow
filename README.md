@@ -133,7 +133,7 @@ input_schema:
 
 steps:
   - id: add_numbers
-    component: python://add
+    component: /python/add
     args:
       a: { $from: $input, path: m }
       b: { $from: $input, path: n }
@@ -159,16 +159,22 @@ cargo run -- run --flow=workflow.yaml --input=input.json
 
 ### Configuration
 
-Create a `stepflow-config.yaml` file to define available plugins:
+Create a `stepflow-config.yaml` file to define available plugins and routing:
 
 ```yaml
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: python
-    type: stdio
+  python:
+    type: stepflow
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "*"
+    target: builtin
 ```
 
 _For more examples, please refer to the [Documentation](https://fuzzy-journey-4j3y1we.pages.github.io/)_
@@ -182,10 +188,10 @@ _For more examples, please refer to the [Documentation](https://fuzzy-journey-4j
 - [x] JSON-RPC over stdio protocol for component servers
 - [x] Initial Stepflow UI
 - [x] SQL state store for durable execution
-- [ ] MCP tools as components
-- [ ] Container-based component servers
+- [x] MCP tools as components
+- [x] Container-based component servers
 - [ ] JSON-RPC over http protocol for remote execution
-- [ ] Improve Python SDK
+- [x] Improve Python SDK
 - [ ] Enrich component libraries
 - [ ] Distributed state stores for scalable execution
 - [ ] Kubernetes and container based deployments

@@ -3214,6 +3214,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "error-stack",
+ "indexmap 2.10.0",
  "insta-cmd",
  "regex",
  "reqwest",

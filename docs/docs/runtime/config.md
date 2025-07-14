@@ -8,20 +8,28 @@ StepFlow configuration controls which plugins and components are available to wo
 
 ## Configuration File Structure
 
-The main configuration file (typically `stepflow-config.yml`) defines plugins and state storage:
+The main configuration file (typically `stepflow-config.yml`) defines plugins, routing rules, and state storage:
 
 ```yaml
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: python
-    type: stdio
+  python:
+    type: stepflow
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
-  - name: custom_server
-    type: stdio
+  custom_server:
+    type: stepflow
     command: "./my-component-server"
     args: ["--config", "server.json"]
+
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "/custom/*"
+    target: custom_server
+  - match: "*"
+    target: builtin
 
 state_store:
   type: sqlite
@@ -57,7 +65,7 @@ Built-in components provided by StepFlow itself:
 
 ```yaml
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
 ```
 
@@ -75,8 +83,8 @@ External component servers that communicate via JSON-RPC over stdin/stdout:
 
 ```yaml
 plugins:
-  - name: python
-    type: stdio
+  python:
+    type: stepflow
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
     working_directory: "."  # optional, defaults to current directory
@@ -86,7 +94,6 @@ plugins:
 ```
 
 **Parameters:**
-- **`name`**: Unique identifier for the plugin
 - **`type`**: Must be `stdio`
 - **`command`**: Executable to run
 - **`args`**: Command-line arguments
@@ -99,11 +106,50 @@ HTTP-based component servers (planned feature):
 
 ```yaml
 plugins:
-  - name: remote_server
+  remote_server:
     type: http
     base_url: "http://localhost:8080"
     timeout: 30
 ```
+
+## Routing Configuration
+
+**Routing rules are required** for components to be accessible. StepFlow uses routing rules to map component paths to specific plugins.
+
+### Basic Routing
+
+```yaml
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "/filesystem/*"
+    target: filesystem
+  - match: "*"
+    target: builtin
+```
+
+- **`match`**: Glob pattern to match component paths (supports `*` and `**` wildcards)
+- **`target`**: Plugin name to route to (must match a key in the plugins section)
+- Rules are evaluated in order, first match wins
+- Use `*` as a catch-all pattern for fallback routing
+
+### Advanced Routing with Input Conditions
+
+```yaml
+routing:
+  - match: "/ai/chat"
+    input:
+      - path: "$.model"
+        value: "gpt-4"
+    target: openai_plugin
+  - match: "/ai/chat"
+    target: fallback_plugin
+```
+
+**Input conditions:**
+- **`path`**: JSON path expression to extract value from input
+- **`value`**: Expected value for exact match
+- All conditions must match for the rule to apply
 
 ### Component URLs
 
@@ -122,8 +168,8 @@ The Python SDK provides a convenient way to create components:
 
 ```yaml
 plugins:
-  - name: python
-    type: stdio
+  python:
+    type: stepflow
     command: uv
     args: ["--project", "path/to/python/project", "run", "stepflow_sdk"]
 ```
@@ -138,8 +184,8 @@ Model Context Protocol (MCP) servers can be used as component plugins:
 
 ```yaml
 plugins:
-  - name: filesystem
-    type: stdio
+  filesystem:
+    type: stepflow
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
 ```
@@ -210,14 +256,20 @@ state_store:
 ```yaml
 # stepflow-config.yml for development
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: python
-    type: stdio
+  python:
+    type: stepflow
     command: uv
     args: ["--project", ".", "run", "stepflow_sdk"]
     env:
       DEBUG: "true"
+
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "*"
+    target: builtin
 
 state_store:
   type: in_memory
@@ -228,21 +280,31 @@ state_store:
 ```yaml
 # stepflow-config.yml for production
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: python
-    type: stdio
+  python:
+    type: stepflow
     command: python
     args: ["-m", "stepflow_sdk"]
     working_directory: "/app/components"
-  - name: data_processing
-    type: stdio
+  data_processing:
+    type: stepflow
     command: "./data-processor"
     args: ["--config", "/etc/data-processor.json"]
-  - name: mcp_filesystem
-    type: stdio
+  mcp_filesystem:
+    type: stepflow
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/app/data"]
+
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "/data/*"
+    target: data_processing
+  - match: "/filesystem/*"
+    target: mcp_filesystem
+  - match: "*"
+    target: builtin
 
 state_store:
   type: sqlite
@@ -256,23 +318,33 @@ state_store:
 ```yaml
 # stepflow-config.yml for multi-service setup
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: analytics
-    type: stdio
+  analytics:
+    type: stepflow
     command: "./analytics-service"
     args: ["--port", "0"]  # Use stdio instead of HTTP
-  - name: ml_models
-    type: stdio
+  ml_models:
+    type: stepflow
     command: python
     args: ["-m", "ml_components"]
     env:
       MODEL_PATH: "/models"
       CUDA_VISIBLE_DEVICES: "0"
-  - name: external_apis
-    type: stdio
+  external_apis:
+    type: stepflow
     command: node
     args: ["api-gateway.js"]
+
+routing:
+  - match: "/analytics/*"
+    target: analytics
+  - match: "/ml/*"
+    target: ml_models
+  - match: "/external/*"
+    target: external_apis
+  - match: "*"
+    target: builtin
 
 state_store:
   type: sqlite

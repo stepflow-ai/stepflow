@@ -23,6 +23,8 @@ pub enum ExecutionError {
     UndefinedField { field: String, value: ValueRef },
     #[error("error executing plugin")]
     PluginError,
+    #[error("error initializing plugin")]
+    PluginInitialization,
     #[error("flow not compiled")]
     FlowNotCompiled,
     #[error("error receiving input")]
@@ -39,6 +41,8 @@ pub enum ExecutionError {
     BlobNotFound { blob_id: String },
     #[error("no plugin registered for protocol: {0}")]
     UnregisteredProtocol(String),
+    #[error("error routing component")]
+    RouterError,
     #[error("workflow deadlock: no runnable steps and output cannot be resolved")]
     Deadlock,
     #[error("malformed reference: {message}")]

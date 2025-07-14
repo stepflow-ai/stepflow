@@ -15,6 +15,7 @@ use error_stack::ResultExt as _;
 use std::{path::Path, sync::Arc};
 use stepflow_core::workflow::Flow;
 use stepflow_execution::StepFlowExecutor;
+use stepflow_plugin::routing::PluginRouter;
 
 use crate::{
     MainError, Result,
@@ -32,15 +33,29 @@ async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepFlowExec
         .as_ref()
         .expect("working_directory");
 
-    let executor = StepFlowExecutor::new(state_store, working_directory.clone());
+    // Build the plugin router
+    let mut plugin_router_builder = PluginRouter::builder().with_routing_rules(config.routing);
 
-    for plugin_config in config.plugins {
-        let (protocol, plugin) = plugin_config.instantiate(working_directory).await?;
-        executor
-            .register_plugin(protocol, plugin)
-            .await
-            .change_context(MainError::RegisterPlugin)?;
+    // Register plugins from IndexMap
+    for (plugin_name, plugin_config) in config.plugins {
+        let plugin = plugin_config
+            .instantiate(working_directory, &plugin_name)
+            .await?;
+        plugin_router_builder = plugin_router_builder.register_plugin(plugin_name, plugin);
     }
+
+    let plugin_router = plugin_router_builder
+        .build()
+        .change_context(MainError::Configuration)?;
+
+    let executor = StepFlowExecutor::new(state_store, working_directory.clone(), plugin_router);
+
+    // Initialize all plugins
+    executor
+        .initialize_plugins()
+        .await
+        .change_context(MainError::Configuration)?;
+
     Ok(executor)
 }
 

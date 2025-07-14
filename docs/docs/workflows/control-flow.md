@@ -101,7 +101,7 @@ Sub-workflows can be executed using the built-in `eval` component:
 ```yaml
 steps:
   - id: sub_process
-    component: builtin://eval
+    component: eval
     input:
       workflow:
         inputs:

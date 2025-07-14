@@ -40,6 +40,10 @@ pub enum PluginError {
     InvalidInput,
     #[error("error creating plugin")]
     CreatePlugin,
+    #[error("invalid rule index: {0}")]
+    InvalidRuleIndex(usize),
+    #[error("plugin not found: {0}")]
+    PluginNotFound(String),
 }
 
 pub type Result<T, E = error_stack::Report<PluginError>> = std::result::Result<T, E>;

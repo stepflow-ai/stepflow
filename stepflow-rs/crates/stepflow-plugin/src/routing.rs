@@ -11,8 +11,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+pub mod plugin_router;
 mod router;
 mod rules;
 
+pub use plugin_router::{PluginRouter, PluginRouterBuilder};
 pub use router::{ComponentRouter, Router, RouterError};
-pub use rules::{InputCondition, MatchRule, RoutingRule, RoutingRules};
+pub use rules::{InputCondition, MatchRule, RoutingRule};

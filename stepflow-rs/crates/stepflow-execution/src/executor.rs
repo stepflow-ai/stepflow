@@ -22,7 +22,7 @@ use stepflow_core::{
     FlowError, FlowResult,
     workflow::{Component, Flow, ValueRef},
 };
-use stepflow_plugin::{Context, DynPlugin, ExecutionContext, Plugin as _};
+use stepflow_plugin::{Context, DynPlugin, ExecutionContext, Plugin as _, routing::PluginRouter};
 use stepflow_state::{InMemoryStateStore, StateStore};
 use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
@@ -33,7 +33,7 @@ type FutureFlowResult = futures::future::Shared<oneshot::Receiver<FlowResult>>;
 pub struct StepFlowExecutor {
     state_store: Arc<dyn StateStore>,
     working_directory: PathBuf,
-    plugins: RwLock<HashMap<String, Arc<DynPlugin<'static>>>>,
+    plugin_router: PluginRouter,
     /// Pending workflows and their result futures.
     // TODO: Should treat this as a cache and evict old executions.
     // TODO: Should write execution state to the state store for persistence.
@@ -45,23 +45,46 @@ pub struct StepFlowExecutor {
 }
 
 impl StepFlowExecutor {
-    /// Create a new stepflow executor with a custom state store.
-    pub fn new(state_store: Arc<dyn StateStore>, working_directory: PathBuf) -> Arc<Self> {
+    /// Create a new stepflow executor with a custom state store and plugin router.
+    pub fn new(
+        state_store: Arc<dyn StateStore>,
+        working_directory: PathBuf,
+        plugin_router: PluginRouter,
+    ) -> Arc<Self> {
         Arc::new_cyclic(|weak| Self {
-            plugins: RwLock::new(HashMap::new()),
             state_store,
             working_directory,
+            plugin_router,
             pending: Arc::new(RwLock::new(HashMap::new())),
             debug_sessions: Arc::new(RwLock::new(HashMap::new())),
             self_weak: weak.clone(),
         })
     }
 
-    /// Create a new stepflow executor with an in-memory state store.
-    ///
-    /// Will initialize the plugins.
+    /// Initialize all plugins in the plugin router
+    pub async fn initialize_plugins(&self) -> Result<()> {
+        let context: Arc<dyn Context> = self.executor();
+
+        // Initialize each unique plugin once
+        for plugin in self.plugin_router.plugins() {
+            plugin
+                .init(&context)
+                .await
+                .change_context(ExecutionError::PluginInitialization)?;
+        }
+
+        Ok(())
+    }
+
+    /// Create a new stepflow executor with an in-memory state store and empty plugin router.
     pub fn new_in_memory() -> Arc<Self> {
-        Self::new(Arc::new(InMemoryStateStore::new()), PathBuf::from("."))
+        use stepflow_plugin::routing::PluginRouter;
+        let plugin_router = PluginRouter::builder().build().unwrap();
+        Self::new(
+            Arc::new(InMemoryStateStore::new()),
+            PathBuf::from("."),
+            plugin_router,
+        )
     }
 
     pub fn executor(&self) -> Arc<Self> {
@@ -82,44 +105,20 @@ impl StepFlowExecutor {
         self.state_store.clone()
     }
 
-    pub async fn get_plugin(&self, component: &Component) -> Result<Arc<DynPlugin<'static>>> {
-        let protocol = component.plugin();
-        let guard = self.plugins.read().await;
-        let plugin = guard
-            .get(protocol)
-            .cloned()
-            .ok_or_else(|| ExecutionError::UnregisteredProtocol(protocol.to_owned()))?;
-        Ok(plugin)
-    }
-
-    /// List all registered plugins and their protocols
-    pub async fn list_plugins(&self) -> Vec<Arc<DynPlugin<'static>>> {
-        let guard = self.plugins.read().await;
-        guard.values().cloned().collect()
-    }
-
-    /// Register a plugin for the given protocol.
-    ///
-    /// The plugin should be wrapped in `DynPlugin` first, which can be done using
-    /// `DynPlugin::boxed(plugin)`.
-    pub async fn register_plugin(
+    pub async fn get_plugin(
         &self,
-        protocol: String,
-        plugin: Box<DynPlugin<'static>>,
-    ) -> Result<()> {
-        let plugin: Arc<DynPlugin<'static>> = Arc::from(plugin);
+        component: &Component,
+        input: ValueRef,
+    ) -> Result<&Arc<DynPlugin<'static>>> {
+        // Use the integrated plugin router to get the plugin directly
+        self.plugin_router
+            .get_plugin(component.path_string(), input)
+            .change_context(ExecutionError::RouterError)
+    }
 
-        // Initialize the plugin
-        let context: Arc<dyn Context> = self.executor();
-        plugin
-            .init(&context)
-            .await
-            .change_context(ExecutionError::PluginError)?;
-
-        // Add the plugin to the registry
-        let mut guard = self.plugins.write().await;
-        guard.insert(protocol, plugin);
-        Ok(())
+    /// List all registered plugins
+    pub async fn list_plugins(&self) -> Vec<&Arc<DynPlugin<'static>>> {
+        self.plugin_router.plugins().collect()
     }
 
     /// Get or create a debug session for step-by-step execution control
@@ -325,7 +324,10 @@ mod tests {
     async fn test_executor_with_custom_state_store() {
         // Create executor with custom state store
         let state_store = Arc::new(InMemoryStateStore::new());
-        let executor = StepFlowExecutor::new(state_store.clone(), PathBuf::from("."));
+        use stepflow_plugin::routing::PluginRouter;
+        let plugin_router = PluginRouter::builder().build().unwrap();
+        let executor =
+            StepFlowExecutor::new(state_store.clone(), PathBuf::from("."), plugin_router);
 
         // Create blob through executor context
         let test_data = json!({"custom": "state store test"});

@@ -25,17 +25,17 @@ flowchart TB
         S2[Step 2]
         S3[Step 3]
     end
-    
+
     subgraph "Component Servers"
         CS1[Built-in Components]
         CS2[Python SDK Server]
         CS3[MCP Tool Server]
     end
-    
+
     W --> S1 --> CS1
     W --> S2 --> CS2
     W --> S3 --> CS3
-    
+
     CS1 --> AI[AI APIs]
     CS2 --> DB[(Database)]
     CS3 --> WEB[Web Services]
@@ -62,7 +62,7 @@ Create your own components using StepFlow SDKs:
 - **TypeScript SDK**: Create high-performance Node.js components (coming soon)
 - **Any Language**: Implement the StepFlow Protocol directly
 
-[Learn more about custom components →](../examples/custom-components.md). 
+[Learn more about custom components →](../examples/custom-components.md).
 
 ### 3. MCP Tool Components
 
@@ -85,7 +85,7 @@ plugins:
   - name: builtin
     type: builtin
   - name: my_components
-    type: stdio
+    type: stepflow
     command: python
     args: ["my_component_server.py"]
   - name: mcp_tools
@@ -110,17 +110,17 @@ Components communicate through structured JSON data:
 ```yaml
 steps:
   - id: load_data
-    component: builtin://load_file
+    component: load_file
     input:
       path: "data.json"
-  
+
   - id: process
     component: my_components://analyze_text
     input:
       text: { $from: { step: load_data }, path: "data.content" }
-  
+
   - id: store_result
-    component: builtin://put_blob
+    component: put_blob
     input:
       data: { $from: { step: process } }
 ```
@@ -169,13 +169,13 @@ Start with StepFlow's built-in components for common tasks:
 name: "AI Analysis Workflow"
 steps:
   - id: prepare_prompt
-    component: builtin://create_messages
+    component: create_messages
     input:
       system_instructions: "You are a helpful assistant"
       user_prompt: "Analyze this text for sentiment"
-  
+
   - id: call_ai
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: prepare_prompt }, path: "messages" }
       max_tokens: 150

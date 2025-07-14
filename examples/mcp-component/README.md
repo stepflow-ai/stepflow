@@ -53,14 +53,19 @@ The workflow will output:
 You can add additional MCP servers to the configuration. For example, to add a Brave Search MCP server:
 
 ```yaml
-- name: brave-search
-  type: mcp
-  command: npx
-  args:
-    - "-y"
-    - "@modelcontextprotocol/server-brave-search"
-  env:
-    BRAVE_API_KEY: "your-api-key-here"
+plugins:
+  brave-search:
+    type: mcp
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-brave-search"
+    env:
+      BRAVE_API_KEY: "your-api-key-here"
+
+routing:
+  - match: "/brave-search/*"
+    target: brave-search
 ```
 
 Then use it in workflows like:

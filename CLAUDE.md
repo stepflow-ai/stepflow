@@ -346,25 +346,135 @@ Use consistent derive patterns based on type purpose:
 
 ## Configuration
 
-The `stepflow-config.yml` file defines plugins and state storage available to the workflow executor:
+The `stepflow-config.yml` file defines plugins, routing rules, and state storage available to the workflow executor:
 
 ### Plugin Configuration
 
+Plugins are defined as key-value pairs where the key is the plugin name and the value specifies the plugin type and configuration:
+
 ```yaml
 plugins:
-  - name: builtin  # Built-in components
+  builtin:  # Plugin name (used in routing rules)
     type: builtin
-  - name: python   # Plugin identifier
-    type: stdio    # Communication method (stdio or http)
+  python:   # Plugin name for Python component server
+    type: stepflow # Plugin (builtin, stepflow, mcp, etc.)
     command: uv    # Command to execute
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]  # Arguments
+  filesystem:  # Plugin name for MCP filesystem server
+    type: mcp
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
 ### Plugin Types
 
-- **builtin**: Built-in components (OpenAI, etc.)
-- **stdio**: JSON-RPC over stdio communication
+- **builtin**: Built-in components (OpenAI, create_messages, eval, etc.)
+- **stdio**: JSON-RPC over stdio communication with external processes
+- **mcp**: Model Context Protocol servers
 - **http**: JSON-RPC over HTTP (future feature)
+
+### Routing Configuration
+
+StepFlow uses routing rules to map component paths to specific plugins. **Routing rules are required** - components will not be accessible without appropriate routing rules.
+
+```yaml
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "/filesystem/*"
+    target: filesystem
+  - match: "*"
+    target: builtin
+```
+
+#### Routing Rules
+
+- **match**: Glob pattern to match component paths (supports `*` and `**` wildcards)
+- **target**: Plugin name to route to (must match a key in the plugins section)
+- Rules are evaluated in order, first match wins
+- Use `*` as a catch-all pattern for fallback routing
+- **Important**: Target plugins referenced in routing rules must be defined in the plugins section
+
+#### Advanced Routing with Input Conditions
+
+Routing rules can include input-based conditions for more sophisticated routing:
+
+```yaml
+routing:
+  - match: "/custom/*"
+    input:
+      - path: "$.model"
+        value: "gpt-4"
+    target: openai
+  - match: "/custom/*"
+    target: fallback
+```
+
+This routes `/custom/*` components to the `openai` plugin when the input contains `"model": "gpt-4"`, otherwise to the `fallback` plugin.
+
+**Input conditions support:**
+- **path**: JSON path expression to extract value from input (e.g., `$.model`, `$.config.temperature`)
+- **value**: Expected value for the path (exact match required)
+- Multiple conditions can be specified - all must match for the rule to apply
+
+#### Routing Rule Examples
+
+```yaml
+routing:
+  # Route Python components to Python SDK
+  - match: "/python/*"
+    target: python
+
+  # Route specific builtin components
+  - match: "/builtin/openai"
+    target: builtin
+
+  # Route filesystem operations to MCP server
+  - match: "/filesystem/*"
+    target: filesystem
+
+  # Route based on input conditions
+  - match: "/ai/chat"
+    input:
+      - path: "$.provider"
+        value: "openai"
+    target: openai_plugin
+
+  # Fallback to builtin for everything else
+  - match: "*"
+    target: builtin
+```
+
+### Complete Configuration Example
+
+Here's a complete example showing plugins, routing, and state store configuration:
+
+```yaml
+plugins:
+  builtin:
+    type: builtin
+  python:
+    type: stepflow
+    command: uv
+    args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+  filesystem:
+    type: mcp
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "/filesystem/*"
+    target: filesystem
+  - match: "*"
+    target: builtin
+
+state_store:
+  type: sqlite
+  database_url: "sqlite:workflow_state.db"
+  auto_migrate: true
+```
 
 ### State Store Configuration
 

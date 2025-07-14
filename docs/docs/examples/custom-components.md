@@ -228,7 +228,7 @@ plugins:
   - name: builtin
     type: builtin
   - name: my_components
-    type: stdio
+    type: stepflow
     command: python
     args: ["my_components.py"]
     working_directory: "."

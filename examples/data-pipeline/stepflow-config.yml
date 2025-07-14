@@ -1,7 +1,12 @@
 plugins:
-  - name: python
-    type: stdio
+  python:
+    type: stepflow
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
-  - name: builtin
+  builtin:
     type: builtin
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "*"
+    target: builtin

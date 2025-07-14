@@ -129,13 +129,13 @@ Select components based on your specific needs:
 ```yaml
 # For simple operations, use builtin components
 - id: store_data
-  component: builtin://put_blob
+  component: put_blob
   input:
     data: { $from: { step: process_data } }
 
 # For AI operations, use OpenAI components
 - id: generate_summary
-  component: builtin://openai
+  component: openai
   input:
     messages: { $from: { step: create_messages } }
 
@@ -155,7 +155,7 @@ Configure components appropriately for your use case:
 steps:
   # Fast, deterministic AI responses
   - id: quick_classification
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_simple_prompt } }
       model: "gpt-3.5-turbo"      # Faster model
@@ -164,7 +164,7 @@ steps:
 
   # Creative AI responses
   - id: creative_writing
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_creative_prompt } }
       model: "gpt-4"             # Better model for creativity
@@ -186,7 +186,7 @@ steps:
 
   # Expensive operations only run on valid input
   - id: process_with_ai
-    component: builtin://openai
+    component: openai
     input:
       messages: { $from: { step: create_messages_from_valid_request } }
       validated_request: { $from: { step: validate_request } }
@@ -202,7 +202,7 @@ Store large or reusable data in blobs:
 steps:
   # Store large dataset once
   - id: store_dataset
-    component: builtin://put_blob
+    component: put_blob
     input:
       data: { $from: { step: load_large_dataset } }
 
@@ -391,7 +391,7 @@ plugins:
   - name: builtin
     type: builtin
   - name: mock_external_apis
-    type: stdio
+    type: stepflow
     command: "test/mock-server.py"
 
 state_store:
@@ -634,7 +634,7 @@ steps:
 # ✅ Good - simple extraction
 steps:
   - id: extract_field
-    component: builtin://extract
+    component: extract
     input:
       data: { $from: { step: load_data } }
       path: "user.email"

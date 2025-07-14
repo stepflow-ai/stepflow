@@ -1,5 +1,5 @@
 plugins:
-  - name: mock
+  mock:
     type: mock
     components:
       /mock/one_output:
@@ -79,3 +79,6 @@ plugins:
           { input: null }:
             outcome: success
             result: {output: received null}
+routing:
+  - match: "/mock/*"
+    target: mock

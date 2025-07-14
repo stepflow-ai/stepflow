@@ -1,9 +1,14 @@
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: test-mcp
+  test-mcp:
     type: mcp
     command: echo
     args: ["Testing MCP server"]
     env:
       TEST_VAR: "mcp_test"
+routing:
+  - match: "/test-mcp/*"
+    target: test-mcp
+  - match: "*"
+    target: builtin

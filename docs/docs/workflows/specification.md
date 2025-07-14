@@ -31,7 +31,7 @@ output_schema:
 # Workflow execution steps
 steps:
   - id: step_identifier
-    component: component://name
+    component: /component/name
     # Step configuration...
 
 # Output mapping
@@ -192,7 +192,7 @@ output_schema:
 ```yaml
 steps:
   - id: unique_step_identifier
-    component: builtin://component_name
+    component: component_name
     input:
       param1: { $from: { workflow: input }, path: "field" }
       param2: { $literal: "static_value" }
@@ -221,7 +221,7 @@ Individual steps can define their own input/output schemas:
 ```yaml
 steps:
   - id: data_processor
-    component: custom://processor
+    component: /custom/processor
 
     input_schema:
       type: object
@@ -497,13 +497,13 @@ Examples serve multiple purposes:
 ```yaml
 steps:
   - id: check_environment
-    component: builtin://environment_check
+    component: environment_check
     input:
       environment: { $from: { workflow: input }, path: "env" }
 
   # Different processing based on environment
   - id: production_processing
-    component: production://processor
+    component: /production/processor
     skip_if:
       $from: { step: check_environment }
       path: "is_development"
@@ -511,7 +511,7 @@ steps:
       data: { $from: { workflow: input }, path: "data" }
 
   - id: development_processing
-    component: development://processor
+    component: /development/processor
     skip_if:
       $from: { step: check_environment }
       path: "is_production"
@@ -542,7 +542,7 @@ environments:
 # Use environment variables in steps
 steps:
   - id: connect_database
-    component: database://connect
+    component: /database/connect
     input:
       connection_string:
         $from: { environment: current }
@@ -565,14 +565,14 @@ imports:
 steps:
   # Use imported workflow as a step
   - id: validate_input
-    component: builtin://eval
+    component: eval
     input:
       workflow: { $import: "validate" }
       input: { $from: { workflow: input } }
 
   # Chain workflows
   - id: process_text
-    component: builtin://eval
+    component: eval
     input:
       workflow: { $import: "text_proc" }
       input: { $from: { step: validate_input } }
@@ -682,7 +682,7 @@ steps:
       - Name must be 1-100 characters
       - Email must be valid format from allowed domains
       - Age must be realistic (0-150)
-    component: validation://user_validator
+    component: /validation/user_validator
     # ... rest of step configuration
 ```
 
