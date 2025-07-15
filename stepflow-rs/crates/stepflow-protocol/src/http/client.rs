@@ -91,7 +91,11 @@ impl HttpClientHandle {
         Ok(())
     }
 
-    pub async fn register_pending(&self, id: RequestId, sender: oneshot::Sender<OwnedJson>) -> Result<()> {
+    pub async fn register_pending(
+        &self,
+        id: RequestId,
+        sender: oneshot::Sender<OwnedJson>,
+    ) -> Result<()> {
         self.pending_tx
             .send((id, sender))
             .await
@@ -119,16 +123,16 @@ async fn http_message_loop(
     // Set up SSE connection for incoming messages
     let events_url = format!("{base_url}/runtime/events");
     let mut event_source = EventSource::get(&events_url);
-    
+
     // Track pending requests
     let mut pending_requests = std::collections::HashMap::new();
-    
+
     // Wait for endpoint negotiation (MCP-style session negotiation)
     let mut endpoint_url = None;
     let mut session_negotiated = false;
-    
+
     tracing::info!("Waiting for endpoint negotiation...");
-    
+
     // Set up fallback timeout for non-MCP servers
     let negotiation_timeout = tokio::time::sleep(tokio::time::Duration::from_secs(5));
     tokio::pin!(negotiation_timeout);
@@ -138,10 +142,10 @@ async fn http_message_loop(
             // Handle outgoing messages (only after session negotiation)
             Some(message) = outgoing_rx.recv(), if session_negotiated => {
                 tracing::debug!("Sending HTTP message: {}", message);
-                
+
                 // Use the negotiated endpoint URL if available
                 let target_url = endpoint_url.as_ref().unwrap_or(&base_url);
-                
+
                 // Send JSON-RPC message via HTTP POST
                 let response = client
                     .post(target_url)
@@ -161,13 +165,13 @@ async fn http_message_loop(
                 let response_text = response.text().await.change_context(TransportError::Recv)?;
                 if !response_text.is_empty() {
                     tracing::debug!("Received HTTP response: {}", response_text);
-                    
+
                     // Parse and handle the response
                     let owned_json = OwnedJson::try_new(response_text).change_context(TransportError::Recv)?;
                     handle_message(owned_json, &mut pending_requests, &context, &outgoing_tx).await?;
                 }
             }
-            
+
             // Handle SSE events
             Some(event) = event_source.next() => {
                 match event {
@@ -176,7 +180,7 @@ async fn http_message_loop(
                     }
                     Ok(Event::Message(msg)) => {
                         tracing::debug!("Received SSE event: {} - {}", msg.event, msg.data);
-                        
+
                         // Handle different event types
                         match msg.event.as_str() {
                             "endpoint" => {
@@ -189,7 +193,7 @@ async fn http_message_loop(
                                         } else {
                                             endpoint.to_string()
                                         };
-                                        
+
                                         tracing::info!("Received endpoint: {}", full_endpoint);
                                         endpoint_url = Some(full_endpoint);
                                         session_negotiated = true;
@@ -222,19 +226,19 @@ async fn http_message_loop(
                     }
                 }
             }
-            
+
             // Handle new pending requests
             Some((id, sender)) = pending_rx.recv() => {
                 pending_requests.insert(id, sender);
             }
-            
+
             // Handle session negotiation timeout (fallback for non-MCP servers)
             _ = &mut negotiation_timeout, if !session_negotiated => {
                 tracing::warn!("Session negotiation timeout - falling back to direct HTTP communication");
                 session_negotiated = true;
                 // endpoint_url remains None, so we'll use base_url directly
             }
-            
+
             else => {
                 tracing::info!("HTTP message loop exiting");
                 break;
@@ -255,7 +259,9 @@ async fn handle_message(
         Message::Request(request) => {
             tracing::info!("Received request for method '{}'", request.method);
 
-            let Some(handler) = MessageHandlerRegistry::instance().get_method_handler(request.method) else {
+            let Some(handler) =
+                MessageHandlerRegistry::instance().get_method_handler(request.method)
+            else {
                 tracing::warn!("No handler found for method '{}'", request.method);
 
                 // Send an error response
@@ -263,34 +269,51 @@ async fn handle_message(
                     request.id.clone(),
                     crate::Error::method_not_found(request.method),
                 ));
-                let response_json = serde_json::to_string(&response).change_context(TransportError::Send)?;
-                outgoing_tx.send(response_json).await.map_err(|_| TransportError::Send)?;
+                let response_json =
+                    serde_json::to_string(&response).change_context(TransportError::Send)?;
+                outgoing_tx
+                    .send(response_json)
+                    .await
+                    .map_err(|_| TransportError::Send)?;
                 return Ok(());
             };
 
             // Handle the request asynchronously
             let outgoing_tx = outgoing_tx.clone();
             let context = context.clone();
-            
+
             let future = async move {
                 let Message::Request(request) = owned_json.message() else {
                     panic!("Expected a request message");
                 };
 
-                if let Err(err) = handler.handle_message(request, outgoing_tx, context.clone()).await {
-                    tracing::error!("Error handling request for method '{}': {:?}", request.method, err);
+                if let Err(err) = handler
+                    .handle_message(request, outgoing_tx, context.clone())
+                    .await
+                {
+                    tracing::error!(
+                        "Error handling request for method '{}': {:?}",
+                        request.method,
+                        err
+                    );
                 }
             };
             tokio::spawn(future);
         }
         Message::Notification(notification) => {
-            tracing::error!("Received unsupported notification for method '{}'", notification.method);
+            tracing::error!(
+                "Received unsupported notification for method '{}'",
+                notification.method
+            );
         }
         Message::Response(response) => {
             tracing::info!("Received response with id '{}'", response.id());
-            
+
             if let Some(pending) = pending_requests.remove(response.id()) {
-                tracing::info!("Sending response to pending request with id '{}'", response.id());
+                tracing::info!(
+                    "Sending response to pending request with id '{}'",
+                    response.id()
+                );
                 pending.send(owned_json).map_err(|_| TransportError::Send)?;
             } else {
                 tracing::warn!("Unexpected response with id '{}'", response.id());

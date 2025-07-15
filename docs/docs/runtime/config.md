@@ -225,6 +225,7 @@ Model Context Protocol (MCP) servers can be used as component plugins:
 plugins:
   filesystem:
     type: stepflow
+    transport: stdio
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
 ```
@@ -299,6 +300,7 @@ plugins:
     type: builtin
   python:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", ".", "run", "stepflow_sdk"]
     env:

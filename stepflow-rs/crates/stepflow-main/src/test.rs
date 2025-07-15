@@ -258,7 +258,12 @@ pub async fn run_tests(
     for workflow_path in workflow_files {
         let result = run_single_workflow_test(&workflow_path, config_path.clone(), &options)
             .await
-            .unwrap_or_else(|_| panic!("Failed to execute tests in {}", workflow_path.display()));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to execute tests in {}: {e:#}",
+                    workflow_path.display()
+                )
+            });
         // Print immediate feedback
         println!(
             "{}: {}/{} passed",

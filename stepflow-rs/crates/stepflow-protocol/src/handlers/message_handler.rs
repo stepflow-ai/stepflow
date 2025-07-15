@@ -18,8 +18,8 @@ use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
 use super::blob_handlers::{GetBlobHandler, PutBlobHandler};
-use crate::protocol::{Method, MethodRequest};
 use crate::error::TransportError;
+use crate::protocol::{Method, MethodRequest};
 
 /// Trait for handling incoming method calls and notifications from component servers.
 ///

@@ -194,7 +194,9 @@ class StepflowHttpServer:
                     else:
                         raise StepflowExecutionError(
                             code=ErrorCode.INVALID_REQUEST,
-                            message=f"Invalid params for components_list: {request.params}",
+                            message=(
+                                f"Invalid params for components_list: {request.params}"
+                            ),
                         )
                     list_result = await self._handle_component_list(
                         list_params, session
@@ -211,7 +213,9 @@ class StepflowHttpServer:
                     else:
                         raise StepflowExecutionError(
                             code=ErrorCode.INVALID_REQUEST,
-                            message=f"Invalid params for components_info: {request.params}",
+                            message=(
+                                f"Invalid params for components_info: {request.params}"
+                            ),
                         )
                     info_result = await self._handle_component_info(
                         info_params, session
@@ -228,7 +232,10 @@ class StepflowHttpServer:
                     else:
                         raise StepflowExecutionError(
                             code=ErrorCode.INVALID_REQUEST,
-                            message=f"Invalid params for components_execute: {request.params}",
+                            message=(
+                                "Invalid params for components_execute: "
+                                f"{request.params}"
+                            ),
                         )
                     execute_result = await self._handle_component_execute(
                         execute_params, session

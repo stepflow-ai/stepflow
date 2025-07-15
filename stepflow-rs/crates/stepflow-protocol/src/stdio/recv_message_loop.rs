@@ -62,7 +62,11 @@ impl ReceiveMessageLoop {
     }
 
     fn check_child_status(&mut self) -> Result<()> {
-        if let Some(status) = self.child.try_wait().change_context(TransportError::Spawn)? {
+        if let Some(status) = self
+            .child
+            .try_wait()
+            .change_context(TransportError::Spawn)?
+        {
             if !status.success() {
                 tracing::error!("Child process exited with status {status}");
                 return Err(TransportError::Spawn.into());

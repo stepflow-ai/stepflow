@@ -18,8 +18,8 @@ use std::sync::Arc;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
-use crate::lazy_value::LazyValue;
 use crate::error::{Result, TransportError};
+use crate::lazy_value::LazyValue;
 use crate::{Error, MethodHandler, MethodResponse};
 use crate::{Message, MethodRequest};
 

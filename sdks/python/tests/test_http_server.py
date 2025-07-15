@@ -21,6 +21,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from stepflow_sdk.context import StepflowContext
+from stepflow_sdk.generated_protocol import (
+    ComponentExecuteParams,
+    ComponentListParams,
+    Method,
+    MethodRequest,
+)
 from stepflow_sdk.http_server import StepflowHttpServer
 from stepflow_sdk.server import StepflowServer
 
@@ -75,33 +81,33 @@ class TestSessionIsolation:
         session2_id = "test-session-2"
 
         # Request 1 to session 1 (non-existent session)
+        request1 = MethodRequest(
+            id=same_request_id,
+            method=Method.components_execute,
+            params=ComponentExecuteParams(
+                component="/python/test_component",
+                input={"message": "Session 1 message"},
+            ),
+        )
         response1 = client.post(
             "/",
             params={"sessionId": session1_id},
-            json={
-                "jsonrpc": "2.0",
-                "method": "components/execute",
-                "id": same_request_id,
-                "params": {
-                    "component": "/python/test_component",
-                    "input": {"message": "Session 1 message"},
-                },
-            },
+            json=msgspec.to_builtins(request1),
         )
 
         # Request 2 to session 2 with same request ID (non-existent session)
+        request2 = MethodRequest(
+            id=same_request_id,
+            method=Method.components_execute,
+            params=ComponentExecuteParams(
+                component="/python/test_component",
+                input={"message": "Session 2 message"},
+            ),
+        )
         response2 = client.post(
             "/",
             params={"sessionId": session2_id},
-            json={
-                "jsonrpc": "2.0",
-                "method": "components/execute",
-                "id": same_request_id,
-                "params": {
-                    "component": "/python/test_component",
-                    "input": {"message": "Session 2 message"},
-                },
-            },
+            json=msgspec.to_builtins(request2),
         )
 
         # Both requests should fail because sessions don't exist yet
@@ -174,7 +180,7 @@ class TestSessionIsolation:
         # Create request payloads
         request1 = {
             "jsonrpc": "2.0",
-            "method": "components/execute",
+            "method": Method.components_execute,
             "id": same_request_id,
             "params": {
                 "component": "/python/test_component",
@@ -184,7 +190,7 @@ class TestSessionIsolation:
 
         request2 = {
             "jsonrpc": "2.0",
-            "method": "components/execute",
+            "method": Method.components_execute,
             "id": same_request_id,
             "params": {
                 "component": "/python/test_component",
@@ -274,7 +280,7 @@ class TestSessionIsolation:
         for i, session_id in enumerate(session_ids):
             request = {
                 "jsonrpc": "2.0",
-                "method": "components/execute",
+                "method": Method.components_execute,
                 "id": shared_request_id,
                 "params": {
                     "component": "/python/test_component",
@@ -313,9 +319,14 @@ class TestSessionIsolation:
 
     def test_missing_session_id_parameter(self, client):
         """Test that requests without sessionId parameter are rejected."""
+        request = MethodRequest(
+            id="test-request",
+            method=Method.components_list,
+            params=ComponentListParams(),
+        )
         response = client.post(
             "/",
-            json={"jsonrpc": "2.0", "method": "components/list", "id": "test-request"},
+            json=msgspec.to_builtins(request),
         )
 
         assert response.status_code == 400
@@ -325,10 +336,15 @@ class TestSessionIsolation:
 
     def test_invalid_session_id(self, client):
         """Test that requests with invalid sessionId are rejected."""
+        request = MethodRequest(
+            id="test-request",
+            method=Method.components_list,
+            params=ComponentListParams(),
+        )
         response = client.post(
             "/",
             params={"sessionId": "non-existent-session"},
-            json={"jsonrpc": "2.0", "method": "components/list", "id": "test-request"},
+            json=msgspec.to_builtins(request),
         )
 
         assert response.status_code == 400
@@ -400,7 +416,7 @@ class TestSessionIsolation:
         # Create request payloads with the same request ID
         request1 = {
             "jsonrpc": "2.0",
-            "method": "components/execute",
+            "method": Method.components_execute,
             "id": same_request_id,
             "params": {
                 "component": "/python/test_component",
@@ -410,7 +426,7 @@ class TestSessionIsolation:
 
         request2 = {
             "jsonrpc": "2.0",
-            "method": "components/execute",
+            "method": Method.components_execute,
             "id": same_request_id,
             "params": {
                 "component": "/python/test_component",
@@ -484,7 +500,7 @@ class TestSessionIsolation:
 
             request = {
                 "jsonrpc": "2.0",
-                "method": "components/execute",
+                "method": Method.components_execute,
                 "id": same_request_id,
                 "params": {
                     "component": "/python/test_component",
@@ -551,7 +567,7 @@ class TestSessionIsolation:
         # Request 1: Valid component (should succeed)
         request1 = {
             "jsonrpc": "2.0",
-            "method": "components/execute",
+            "method": Method.components_execute,
             "id": same_request_id,
             "params": {
                 "component": "/python/test_component",
@@ -562,7 +578,7 @@ class TestSessionIsolation:
         # Request 2: Invalid component (should fail)
         request2 = {
             "jsonrpc": "2.0",
-            "method": "components/execute",
+            "method": Method.components_execute,
             "id": same_request_id,
             "params": {
                 "component": "/python/nonexistent_component",

@@ -3,6 +3,7 @@ plugins:
     type: builtin
   custom:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "custom_server.py"]
 routing:

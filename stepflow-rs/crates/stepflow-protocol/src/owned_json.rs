@@ -14,8 +14,8 @@
 use error_stack::ResultExt as _;
 
 use crate::Message;
-use crate::lazy_value::LazyValue;
 use crate::error::{Result, TransportError};
+use crate::lazy_value::LazyValue;
 
 /// Owned wrapper around a `Message` parsed from a `String`.
 ///
