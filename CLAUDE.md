@@ -333,6 +333,81 @@ StepFlow uses a dual error approach to distinguish between business logic and sy
 - Add context with `error_stack::ResultExt::attach_printable`
 - Define custom error types with `thiserror::Error`
 
+#### Domain-Specific vs Boundary Errors
+Use strongly-typed domain errors internally, but convert to broader boundary errors at trait/API boundaries:
+
+```rust
+// Internal method with domain-specific error
+async fn connect_internal(&self) -> McpResult<Connection> {
+    // Use specific McpError variants
+    client.connect().change_context(McpError::Communication)?
+}
+
+// Trait method converts to boundary error  
+async fn connect(&self) -> Result<Connection> {
+    self.connect_internal()
+        .await
+        .change_context(PluginError::Execution)
+}
+```
+
+**Benefits:**
+- Precise error categorization internally
+- Maintains trait compatibility
+- Preserves error chains for debugging via `error_stack`
+
+#### Parameterized Error Variants
+Use parameterized error variants for context instead of verbose attachments:
+
+```rust
+// Good: Parameterized variant
+#[derive(Error, Debug)]
+pub enum McpError {
+    #[error("Failed to setup I/O: {0}")]
+    ProcessSetup(&'static str),
+}
+
+// Usage
+error_stack::report!(McpError::ProcessSetup("stdin"))
+
+// Avoid: Redundant attachment
+error_stack::report!(McpError::ProcessSetup)
+    .attach_printable("Failed to capture stdin handle")
+```
+
+#### Error Context Guidelines
+**When to use `attach_printable`:**
+- Adding valuable runtime context (variables, computed values)
+- Dynamic information not captured in the error type
+
+**When to avoid `attach_printable`:**
+- Error type + line number provide sufficient context
+- Information that just restates the error variant
+
+**Additional patterns:**
+- Use `attach_printable_lazy` for expensive string formatting
+- Use `error_stack::report!` macro instead of `Report::new()`
+- Prefer parameterized error variants over attachments for simple context
+
+#### Error Inspection Patterns
+Use `downcast_ref()` to inspect specific error types in error chains:
+
+```rust
+if let Some(mcp_error) = error.downcast_ref::<McpError>() {
+    match mcp_error {
+        McpError::ToolExecution => {
+            // Handle as business logic failure
+            return Ok(FlowResult::Failed { 
+                error: FlowError::new(500, "Tool failed") 
+            });
+        }
+        _ => {} // Handle as system error
+    }
+}
+```
+
+This enables fine-grained error handling while preserving the complete error context.
+
 ### Derive Patterns
 
 Use consistent derive patterns based on type purpose:
