@@ -11,9 +11,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod error;
 mod handlers;
+pub mod http;
 mod lazy_value;
 mod owned_json;
+mod plugin;
 mod protocol;
 pub mod stdio;
 
@@ -22,3 +25,7 @@ use handlers::*;
 use lazy_value::*;
 use owned_json::OwnedJson;
 use protocol::*;
+
+// Re-export main plugin types
+pub use error::{Result, TransportError};
+pub use plugin::{StepflowPluginConfig, StepflowTransport};

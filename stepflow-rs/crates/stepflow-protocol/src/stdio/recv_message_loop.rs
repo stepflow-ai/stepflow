@@ -26,7 +26,7 @@ use tokio::{
 use tokio_stream::{StreamExt as _, wrappers::LinesStream};
 
 use crate::OwnedJson;
-use crate::stdio::{Result, StdioError};
+use crate::error::{Result, TransportError};
 use crate::{Message, MessageHandlerRegistry, RequestId};
 
 use super::launcher::Launcher;
@@ -62,10 +62,10 @@ impl ReceiveMessageLoop {
     }
 
     fn check_child_status(&mut self) -> Result<()> {
-        if let Some(status) = self.child.try_wait().change_context(StdioError::Spawn)? {
+        if let Some(status) = self.child.try_wait().change_context(TransportError::Spawn)? {
             if !status.success() {
                 tracing::error!("Child process exited with status {status}");
-                return Err(StdioError::Spawn.into());
+                return Err(TransportError::Spawn.into());
             }
         }
         Ok(())
@@ -76,11 +76,11 @@ impl ReceiveMessageLoop {
         self.to_child
             .write_all(json.as_bytes())
             .await
-            .change_context(StdioError::Send)?;
+            .change_context(TransportError::Send)?;
         self.to_child
             .write_all(b"\n")
             .await
-            .change_context(StdioError::Send)?;
+            .change_context(TransportError::Send)?;
         Ok(())
     }
 
@@ -110,14 +110,14 @@ impl ReceiveMessageLoop {
                 Ok(true)
             }
             Some(stderr_line) = self.from_child_stderr.next() => {
-                let stderr_line = stderr_line.change_context(StdioError::Recv)?;
+                let stderr_line = stderr_line.change_context(TransportError::Recv)?;
                 tracing::info!("Component stderr: {stderr_line}");
                 Ok(true)
             }
             Some(line) = self.from_child_stdout.next() => {
-                let line = line.change_context(StdioError::Recv)?;
+                let line = line.change_context(TransportError::Recv)?;
                 tracing::info!("Received line from child: {line:?}");
-                let msg = OwnedJson::try_new(line).change_context(StdioError::Recv)?;
+                let msg = OwnedJson::try_new(line).change_context(TransportError::Recv)?;
 
                 let message = msg.message();
                 match message {
@@ -132,7 +132,7 @@ impl ReceiveMessageLoop {
                                 request.id.clone(),
                                 crate::Error::method_not_found(request.method),
                             ));
-                            let response = serde_json::to_string(&response).change_context(StdioError::Send)?;
+                            let response = serde_json::to_string(&response).change_context(TransportError::Send)?;
                             self.send(response).await?;
                             return Ok(true);
                         };
@@ -160,7 +160,7 @@ impl ReceiveMessageLoop {
                         if let Some(pending) = self.get_pending(pending_rx, response.id()) {
                             // Send the response to the pending request.
                             tracing::info!("Sending response to pending request with id '{}'", response.id());
-                            pending.send(msg).map_err(|_| StdioError::Send)?;
+                            pending.send(msg).map_err(|_| TransportError::Send)?;
                         }
                         Ok(true)
                     }
@@ -241,7 +241,7 @@ pub async fn recv_message_loop(
                 if let Err(child_error) = recv_loop.check_child_status() {
                     e.extend_one(child_error);
                 }
-                return Err(StdioError::RecvLoop.into());
+                return Err(TransportError::RecvLoop.into());
             }
         }
     }

@@ -84,7 +84,47 @@ cargo check -p stepflow-protocol
 ```bash
 # Test Python SDK
 uv run --project sdks/python pytest
+
+# Run Python SDK in stdio mode (default)
+uv run --project sdks/python stepflow_sdk
+
+# Run Python SDK in HTTP mode
+uv run --project sdks/python --extra http stepflow_sdk --http --port 8080
+
+# Run Python SDK with custom host and port
+uv run --project sdks/python --extra http stepflow_sdk --http --host 0.0.0.0 --port 8080
 ```
+
+#### Python SDK HTTP Mode
+
+The Python SDK supports HTTP mode for remote component servers:
+
+**Installation with HTTP dependencies:**
+```bash
+# Install with HTTP support
+pip install stepflow-sdk[http]
+
+# Or with uv
+uv add stepflow-sdk[http]
+```
+
+**Running the HTTP server:**
+```bash
+# Basic HTTP mode
+stepflow_sdk --http
+
+# Custom host and port
+stepflow_sdk --http --host 0.0.0.0 --port 8080
+```
+
+**Features:**
+- FastAPI-based HTTP server
+- JSON-RPC over HTTP with MCP-style session negotiation
+- Server-Sent Events (SSE) for bidirectional communication
+- Per-session isolation and context management
+- Compatible with existing component registration
+- Automatic discovery and component info endpoints
+- Backward compatibility with non-MCP clients
 
 ### UI Development (stepflow-ui)
 ```bash
@@ -431,10 +471,15 @@ Plugins are defined as key-value pairs where the key is the plugin name and the 
 plugins:
   builtin:  # Plugin name (used in routing rules)
     type: builtin
-  python:   # Plugin name for Python component server
-    type: stepflow # Plugin (builtin, stepflow, mcp, etc.)
+  python:   # Plugin name for Python component server (stdio)
+    type: stepflow
+    transport: stdio
     command: uv    # Command to execute
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]  # Arguments
+  python_http:  # Plugin name for Python component server (HTTP)
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"  # URL of the HTTP component server
   filesystem:  # Plugin name for MCP filesystem server
     type: mcp
     command: npx
@@ -444,9 +489,65 @@ plugins:
 ### Plugin Types
 
 - **builtin**: Built-in components (OpenAI, create_messages, eval, etc.)
-- **stdio**: JSON-RPC over stdio communication with external processes
+- **stepflow**: StepFlow component servers with configurable transport
+  - **stdio transport**: JSON-RPC over stdio communication with external processes
+  - **http transport**: JSON-RPC over HTTP with Server-Sent Events for bidirectional communication
 - **mcp**: Model Context Protocol servers
-- **http**: JSON-RPC over HTTP (future feature)
+
+### StepFlow Plugin Transport Options
+
+The `stepflow` plugin type supports two transport methods:
+
+#### Stdio Transport
+```yaml
+python_stdio:
+  type: stepflow
+  transport: stdio
+  command: uv
+  args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+  env:  # Optional environment variables
+    PYTHONPATH: "/custom/path"
+```
+
+#### HTTP Transport
+```yaml
+python_http:
+  type: stepflow
+  transport: http
+  url: "http://localhost:8080"
+```
+
+**HTTP Transport Features:**
+- Remote component servers
+- HTTP-based JSON-RPC communication
+- Server-Sent Events (SSE) for bidirectional communication
+- MCP-style session negotiation for connection isolation
+- Automatic session management and cleanup
+- Scalable for distributed deployments
+- No process management required
+- Backward compatibility with non-MCP servers
+
+#### HTTP Transport Session Negotiation
+
+The HTTP transport implements MCP-style session negotiation for proper connection isolation:
+
+**Connection Flow:**
+1. Client connects to `/runtime/events` SSE endpoint
+2. Server sends an `endpoint` event with a session-specific URL: `{"endpoint": "/?sessionId=<uuid>"}`
+3. Client uses the sessionId URL for all subsequent JSON-RPC requests
+4. Each session has isolated context and request handling
+5. Sessions are automatically cleaned up when SSE connections close
+
+**Fallback Behavior:**
+- If no `endpoint` event is received within 5 seconds, the client falls back to direct HTTP communication
+- This ensures compatibility with older or non-MCP servers
+- Fallback mode uses the base URL without session isolation
+
+**Session Benefits:**
+- **Isolation**: Each client gets its own session context and message handling
+- **Reliability**: Request/response matching is scoped to individual sessions
+- **Scalability**: Multiple clients can connect simultaneously without interference
+- **Cleanup**: Resources are automatically freed when clients disconnect
 
 ### Routing Configuration
 
@@ -456,6 +557,8 @@ StepFlow uses routing rules to map component paths to specific plugins. **Routin
 routing:
   - match: "/python/*"
     target: python
+  - match: "/python_http/*"
+    target: python_http
   - match: "/filesystem/*"
     target: filesystem
   - match: "*"
@@ -496,9 +599,13 @@ This routes `/custom/*` components to the `openai` plugin when the input contain
 
 ```yaml
 routing:
-  # Route Python components to Python SDK
+  # Route Python components to Python SDK (stdio)
   - match: "/python/*"
-    target: python
+    target: python_stdio
+
+  # Route Python HTTP components to remote Python server
+  - match: "/python_http/*"
+    target: python_http
 
   # Route specific builtin components
   - match: "/builtin/openai"
@@ -528,10 +635,15 @@ Here's a complete example showing plugins, routing, and state store configuratio
 plugins:
   builtin:
     type: builtin
-  python:
+  python_stdio:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+  python_http:
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"
   filesystem:
     type: mcp
     command: npx
@@ -539,7 +651,9 @@ plugins:
 
 routing:
   - match: "/python/*"
-    target: python
+    target: python_stdio
+  - match: "/python_http/*"
+    target: python_http
   - match: "/filesystem/*"
     target: filesystem
   - match: "*"

@@ -15,7 +15,7 @@ use error_stack::ResultExt as _;
 
 use crate::Message;
 use crate::lazy_value::LazyValue;
-use crate::stdio::{Result, StdioError};
+use crate::error::{Result, TransportError};
 
 /// Owned wrapper around a `Message` parsed from a `String`.
 ///
@@ -59,7 +59,7 @@ impl OwnedJson<Message<'static>> {
     pub fn try_new(json: String) -> Result<Self> {
         let json = json.into_boxed_str();
         let message: Message<'_> = serde_json::from_str(&json)
-            .change_context_lazy(|| StdioError::InvalidMessage(json.to_string()))?;
+            .change_context_lazy(|| TransportError::InvalidMessage(json.to_string()))?;
 
         // SAFETY: we take a reference to JSON, which we will ensure lives at least as long
         // as the message.

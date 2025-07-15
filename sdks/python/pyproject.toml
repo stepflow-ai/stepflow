@@ -11,6 +11,13 @@ dependencies = [
     "types-jsonschema>=4.17.0",
 ]
 
+[project.optional-dependencies]
+http = [
+    "fastapi>=0.104.1",
+    "uvicorn>=0.24.0",
+    "sse-starlette>=1.6.5",
+]
+
 [dependency-groups]
 dev = [
     "datamodel-code-generator[http,ruff]>=0.31.2",

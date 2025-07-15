@@ -28,12 +28,12 @@ use tokio::{
 use tracing::Instrument as _;
 
 use super::{launcher::Launcher, recv_message_loop::recv_message_loop};
-use crate::stdio::{Result, StdioError};
+use crate::error::{Result, TransportError};
 
 /// Manages a client process spawned from a command.
 ///
 /// Messages may be sent (as lines) to a channel that are sent via stdio.
-pub struct Client {
+pub struct StdioClient {
     outgoing_tx: mpsc::Sender<String>,
     pending_tx: mpsc::Sender<(RequestId, oneshot::Sender<OwnedJson>)>,
     // TODO: Use the handle. We should actually check it for errors
@@ -42,7 +42,7 @@ pub struct Client {
     loop_handle: JoinHandle<Result<()>>,
 }
 
-impl Client {
+impl StdioClient {
     pub async fn try_new(launcher: Launcher, context: Arc<dyn Context>) -> Result<Self> {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
         let (pending_tx, pending_rx) = mpsc::channel(100);
@@ -66,8 +66,8 @@ impl Client {
         })
     }
 
-    pub fn handle(&self) -> ClientHandle {
-        ClientHandle {
+    pub fn handle(&self) -> StdioClientHandle {
+        StdioClientHandle {
             outgoing_tx: self.outgoing_tx.clone(),
             pending_tx: self.pending_tx.clone(),
         }
@@ -75,13 +75,13 @@ impl Client {
 }
 
 #[derive(Clone)]
-pub struct ClientHandle {
+pub struct StdioClientHandle {
     outgoing_tx: mpsc::Sender<String>,
     /// Channel to send new pending requests to.
     pending_tx: mpsc::Sender<(RequestId, oneshot::Sender<OwnedJson>)>,
 }
 
-impl ClientHandle {
+impl StdioClientHandle {
     pub async fn method<I>(&self, params: &I) -> Result<I::Response>
     where
         I: ProtocolMethod + serde::Serialize + Send + Sync + std::fmt::Debug,
@@ -93,7 +93,7 @@ impl ClientHandle {
         response
             .value()
             .deserialize_to::<I::Response>()
-            .change_context(StdioError::InvalidResponse(I::METHOD_NAME))
+            .change_context(TransportError::InvalidResponse(I::METHOD_NAME))
     }
 
     pub async fn notify<I>(&self, params: &I) -> Result<()>
@@ -110,12 +110,12 @@ impl ClientHandle {
     }
 
     async fn send(&self, msg: &(dyn erased_serde::Serialize + Send + Sync)) -> Result<()> {
-        let msg = serde_json::to_string(&msg).change_context(StdioError::Send)?;
+        let msg = serde_json::to_string(&msg).change_context(TransportError::Send)?;
 
         self.outgoing_tx
             .send(msg)
             .await
-            .change_context(StdioError::Send)?;
+            .change_context(TransportError::Send)?;
 
         Ok(())
     }
@@ -131,14 +131,14 @@ impl ClientHandle {
         self.pending_tx
             .send((id.clone(), response_tx))
             .await
-            .map_err(|_| StdioError::Send)?;
+            .map_err(|_| TransportError::Send)?;
 
         let request = MethodRequest::new(id.clone(), method, Some(params));
         self.send(&request).await?;
 
-        let response = response_rx.await.change_context(StdioError::Recv)?;
+        let response = response_rx.await.change_context(TransportError::Recv)?;
         let Message::Response(method_response) = response.message() else {
-            error_stack::bail!(StdioError::NotResponse(response.json().to_string()));
+            error_stack::bail!(TransportError::NotResponse(response.json().to_string()));
         };
 
         // This is an assertion since the routing should only send the response for the
@@ -159,7 +159,7 @@ impl ClientHandle {
                     .map(|v| v.deserialize_to())
                     .transpose()
                     .expect("all values should be decodable as serde_json::Value");
-                error_stack::bail!(StdioError::ServerError {
+                error_stack::bail!(TransportError::ServerError {
                     code: error.code,
                     message: error.message.as_ref().to_owned(),
                     data,

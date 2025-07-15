@@ -217,23 +217,58 @@ async def retrieve_cache(input: RetrieveCacheInput, context: StepflowContext) ->
 
 # Run the server
 if __name__ == "__main__":
-    server.run()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Component Server")
+    parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
+    parser.add_argument("--port", type=int, default=8080, help="HTTP port")
+    args = parser.parse_args()
+    
+    if args.http:
+        import uvicorn
+        # Create HTTP app from server
+        app = server.create_http_app()
+        uvicorn.run(app, host="0.0.0.0", port=args.port)
+    else:
+        # Run in STDIO mode
+        server.run()
 ```
 
 ### Configuration for Python Components
 
+**STDIO Transport (Default):**
 ```yaml
 # stepflow-config.yml
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: my_components
+  my_components:
     type: stepflow
+    transport: stdio
     command: python
     args: ["my_components.py"]
     working_directory: "."
     env:
       PYTHONPATH: "."
+```
+
+**HTTP Transport:**
+```yaml
+# stepflow-config.yml
+plugins:
+  builtin:
+    type: builtin
+  my_components_http:
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"
+    timeout: 60
+```
+
+Start the HTTP server:
+```bash
+# Start the component server in HTTP mode
+uv run --extra http python my_components.py --http --port 8080
 ```
 
 ### Using the Custom Components
@@ -1240,12 +1275,254 @@ async def batch_processing(input: BatchProcessingInput, context: StepflowContext
         )
 ```
 
+## HTTP Transport Example
+
+This example shows how to create a distributed component server using HTTP transport, ideal for microservices architectures.
+
+### HTTP Component Server
+
+```python
+# http_components.py
+from stepflow_sdk import StepflowServer
+import msgspec
+import uvicorn
+import argparse
+from typing import Optional
+
+# Create the core server (transport-agnostic)
+server = StepflowServer()
+
+class DistributedProcessingInput(msgspec.Struct):
+    task_id: str
+    data: dict
+    processing_mode: str = "standard"
+    priority: int = 1
+
+class DistributedProcessingOutput(msgspec.Struct):
+    task_id: str
+    result: dict
+    processing_time_ms: int
+    server_id: str
+    session_id: Optional[str] = None
+
+@server.component
+def distributed_processing(input: DistributedProcessingInput) -> DistributedProcessingOutput:
+    """Process data in a distributed environment."""
+    import time
+    import os
+    import uuid
+    
+    start_time = time.time()
+    
+    # Simulate distributed processing
+    processed_data = {
+        "original_data": input.data,
+        "processed_by": f"server-{os.getpid()}",
+        "task_id": input.task_id,
+        "mode": input.processing_mode,
+        "priority": input.priority,
+        "timestamp": time.time()
+    }
+    
+    # Simulate processing time based on priority
+    processing_delay = max(0.1, 1.0 / input.priority)
+    time.sleep(processing_delay)
+    
+    processing_time = int((time.time() - start_time) * 1000)
+    
+    return DistributedProcessingOutput(
+        task_id=input.task_id,
+        result=processed_data,
+        processing_time_ms=processing_time,
+        server_id=f"server-{os.getpid()}",
+        session_id=str(uuid.uuid4())
+    )
+
+class HealthCheckOutput(msgspec.Struct):
+    status: str
+    server_id: str
+    uptime_seconds: int
+
+@server.component
+def health_check() -> HealthCheckOutput:
+    """Health check endpoint for monitoring."""
+    import time
+    import os
+    
+    return HealthCheckOutput(
+        status="healthy",
+        server_id=f"server-{os.getpid()}",
+        uptime_seconds=int(time.time() - getattr(server, '_start_time', time.time()))
+    )
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Distributed Component Server")
+    parser.add_argument("--port", type=int, default=8080, help="HTTP port")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    args = parser.parse_args()
+    
+    # Track startup time
+    import time
+    server._start_time = time.time()
+    
+    # Create and run the HTTP server
+    app = server.create_http_app()
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+```
+
+### HTTP Server Configuration
+
+```yaml
+# distributed-config.yml
+plugins:
+  builtin:
+    type: builtin
+  processing_cluster:
+    type: stepflow
+    transport: http
+    url: "http://processing-server:8080"
+    timeout: 120
+  monitoring:
+    type: stepflow
+    transport: http
+    url: "http://monitoring-server:8081"
+    timeout: 30
+
+routing:
+  - match: "/processing/*"
+    target: processing_cluster
+  - match: "/monitoring/*"
+    target: monitoring
+  - match: "*"
+    target: builtin
+
+state_store:
+  type: sqlite
+  database_url: "sqlite:distributed_state.db"
+  auto_migrate: true
+```
+
+### Docker Deployment
+
+```dockerfile
+# Dockerfile for HTTP component server
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Copy component server
+COPY http_components.py .
+
+# Expose port
+EXPOSE 8080
+
+# Run the server
+CMD ["python", "http_components.py", "--port", "8080", "--host", "0.0.0.0"]
+```
+
+```yaml
+# docker-compose.yml for distributed setup
+version: '3.8'
+
+services:
+  processing-server:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_ID=processing-1
+
+  monitoring-server:
+    build: .
+    ports:
+      - "8081:8080"
+    environment:
+      - SERVER_ID=monitoring-1
+    command: ["python", "http_components.py", "--port", "8080"]
+
+  stepflow-runtime:
+    image: stepflow:latest
+    volumes:
+      - ./distributed-config.yml:/app/stepflow-config.yml
+      - ./workflows:/app/workflows
+    depends_on:
+      - processing-server
+      - monitoring-server
+    command: ["stepflow", "serve", "--config", "/app/stepflow-config.yml"]
+```
+
+### Using Distributed Components
+
+```yaml
+# distributed-workflow.yaml
+name: "Distributed Processing Workflow"
+description: "Process data using distributed HTTP components"
+
+input_schema:
+  type: object
+  properties:
+    tasks:
+      type: array
+      items:
+        type: object
+        properties:
+          id: { type: string }
+          data: { type: object }
+          priority: { type: integer, default: 1 }
+
+steps:
+  # Health check before processing
+  - id: health_check
+    component: /processing/health_check
+    input: {}
+
+  # Process multiple tasks in parallel
+  - id: process_tasks
+    component: /processing/distributed_processing
+    input:
+      task_id: { $from: { workflow: input }, path: "tasks[*].id" }
+      data: { $from: { workflow: input }, path: "tasks[*].data" }
+      processing_mode: "distributed"
+      priority: { $from: { workflow: input }, path: "tasks[*].priority" }
+    foreach: { $from: { workflow: input }, path: "tasks" }
+
+  # Monitor processing results
+  - id: monitor_results
+    component: /monitoring/health_check
+    input: {}
+
+output:
+  health_status: { $from: { step: health_check } }
+  processing_results: { $from: { step: process_tasks } }
+  monitoring_info: { $from: { step: monitor_results } }
+
+test:
+  cases:
+  - name: distributed_processing_test
+    input:
+      tasks:
+        - id: "task-1"
+          data: { message: "Process this data" }
+          priority: 2
+        - id: "task-2"
+          data: { message: "Higher priority task" }
+          priority: 1
+    output:
+      outcome: success
+```
+
 ## Next Steps
 
 Custom components are the key to extending StepFlow's capabilities:
 
 - **Start Simple**: Begin with basic data processing components
+- **Choose Transport**: Use STDIO for simple local components, HTTP for distributed systems
 - **Add Error Handling**: Implement robust error handling and retry logic
 - **Optimize Performance**: Use async/await and parallel processing for scalability
 - **Test Thoroughly**: Write comprehensive unit and integration tests
 - **Document Well**: Provide clear schemas and usage examples
+- **Scale Appropriately**: Use HTTP transport for microservices and distributed deployments

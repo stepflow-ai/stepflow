@@ -23,7 +23,7 @@ use stepflow_components_mcp::McpPluginConfig;
 use stepflow_mock::MockPlugin;
 use stepflow_plugin::routing::RoutingRule;
 use stepflow_plugin::{DynPlugin, PluginConfig};
-use stepflow_protocol::stdio::StepflowPluginConfig;
+use stepflow_protocol::StepflowPluginConfig;
 use stepflow_state::{InMemoryStateStore, StateStore};
 use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
 

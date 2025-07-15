@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 
 use super::blob_handlers::{GetBlobHandler, PutBlobHandler};
 use crate::protocol::{Method, MethodRequest};
-use crate::stdio::StdioError;
+use crate::error::TransportError;
 
 /// Trait for handling incoming method calls and notifications from component servers.
 ///
@@ -39,7 +39,7 @@ pub trait MethodHandler: Send + Sync {
         request: &'a MethodRequest<'a>,
         outgoing_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
-    ) -> BoxFuture<'a, error_stack::Result<(), StdioError>>;
+    ) -> BoxFuture<'a, error_stack::Result<(), TransportError>>;
 }
 
 /// Registry for incoming message handlers.
