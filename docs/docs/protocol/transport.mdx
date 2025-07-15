@@ -4,9 +4,13 @@ sidebar_position: 2
 
 # Transport
 
-Currently, the StepFlow protocol only supports communicating with subprocesses over stdin/stdout.
-Future improvements are intended to support JSON-RPC over HTTP, as well as other protocols such as gRPC for improved performance.
-Some of these may be automatically negotiated during initialization (see [Lifecycle](./lifecycle.md)).
+StepFlow protocol supports two transport mechanisms for communicating with component servers:
+
+1. **STDIO Transport** - JSON-RPC over stdin/stdout with subprocess communication
+2. **HTTP Transport** - JSON-RPC over HTTP with optional MCP-style session negotiation
+
+Future improvements will include additional protocols such as gRPC for improved performance.
+Transport selection and session negotiation may be automatically handled during initialization (see [Lifecycle](./lifecycle.md)).
 
 ```mermaid
 sequenceDiagram
@@ -70,4 +74,100 @@ Successful method responses look like:
     "method": <notification method name>,
     "params": <input to method as JSON>
 }
+```
+
+## Transport Types
+
+### STDIO Transport
+
+The STDIO transport communicates with component servers running as subprocesses using JSON-RPC over stdin/stdout. This is the default transport for most component servers.
+
+**Configuration:**
+```yaml
+plugins:
+  python:
+    type: stepflow
+    transport: stdio
+    command: python
+    args: ["-m", "stepflow_sdk"]
+```
+
+**Communication Flow:**
+- StepFlow launches the component server as a subprocess
+- JSON-RPC messages are sent via stdin
+- Responses are received via stdout
+- Bidirectional communication is supported through the same channels
+
+### HTTP Transport
+
+The HTTP transport communicates with component servers over HTTP using JSON-RPC. This allows for distributed component servers and better scalability.
+
+**Configuration:**
+```yaml
+plugins:
+  remote_python:
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"
+```
+
+**Communication Flow:**
+- Component server runs as an independent HTTP service
+- JSON-RPC requests are sent via HTTP POST to the configured URL
+- Responses are received as HTTP responses
+- Optional MCP-style session negotiation for connection isolation
+
+#### MCP-Style Session Negotiation
+
+For HTTP transport, StepFlow supports optional MCP (Model Context Protocol) style session negotiation to isolate multiple client connections:
+
+```mermaid
+sequenceDiagram
+    participant C as StepFlow Client
+    participant S as Component Server
+    
+    C->>S: GET /runtime/events (SSE)
+    S-->>C: event: endpoint<br/>data: {"endpoint": "/session/abc123"}
+    C->>S: POST /session/abc123 (JSON-RPC requests)
+    S-->>C: JSON-RPC responses
+```
+
+**Session Negotiation Process:**
+1. Client opens Server-Sent Events (SSE) connection to `/runtime/events`
+2. Server sends an `endpoint` event with session-specific URL
+3. Client uses the provided endpoint URL for all JSON-RPC communication
+4. Each session is isolated with its own request/response handling
+
+**Fallback Behavior:**
+If the server doesn't support MCP-style negotiation, StepFlow will fall back to direct JSON-RPC communication with the configured base URL after a timeout period.
+
+#### Starting HTTP Component Servers
+
+**Python SDK HTTP Server:**
+```python
+# Start server in HTTP mode
+from stepflow_sdk import StepflowServer
+import uvicorn
+
+server = StepflowServer()
+
+@server.component
+def my_component(input: MyInput) -> MyOutput:
+    return MyOutput(result="processed")
+
+# Create FastAPI app
+app = server.create_http_app()
+
+# Run with uvicorn
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+```
+
+**Command Line:**
+```bash
+# Start Python SDK server in HTTP mode
+python -m stepflow_sdk --http --port 8080
+
+# Or using uv
+uv run --project . --extra http python -m stepflow_sdk --http --port 8080
 ```

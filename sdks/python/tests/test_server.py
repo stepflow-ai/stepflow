@@ -71,7 +71,7 @@ def test_component_registration(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    assert "test_component" in server._components
+    assert "test_component" in server._server.get_components()
     component = server.get_component("/python/test_component")
     assert isinstance(component, ComponentEntry)
     assert component.name == "test_component"
@@ -86,7 +86,7 @@ def test_component_with_custom_name(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    assert "custom_name" in server._components
+    assert "custom_name" in server._server.get_components()
     component = server.get_component("/python/custom_name")
     assert isinstance(component, ComponentEntry)
     assert component.name == "custom_name"
@@ -118,7 +118,7 @@ def test_list_components(server):
     def test_component2(input_data: ValidInput) -> ValidOutput:
         return ValidOutput(greeting="", age_next_year=0)
 
-    components = server._components
+    components = server._server.get_components()
     assert len(components) == 2
     assert "component1" in components
     assert "component2" in components
@@ -145,14 +145,14 @@ async def test_handle_initialize(server):
     assert isinstance(response.result, InitializeResult)
     assert response.result.server_protocol_version == 1
 
-    assert server._initialized == False
+    assert server._server.is_initialized() == False
 
     # Runtime -> Server: Initialized notification.
     notification = Notification(method=Method.initialized, params=Initialized())
     response = await server._handle_message(notification)
     assert response is None
 
-    assert server._initialized == True
+    assert server._server.is_initialized() == True
 
 
 @pytest.mark.asyncio
@@ -161,7 +161,7 @@ async def test_handle_component_info(server):
     def test_component(input_data: ValidInput) -> ValidOutput:
         return ValidOutput(greeting="", age_next_year=0)
 
-    server._initialized = True
+    server._server.set_initialized(True)
 
     request = MethodRequest(
         id=str(UUID(int=1)),
@@ -179,7 +179,7 @@ async def test_handle_component_info(server):
 
 @pytest.mark.asyncio
 async def test_handle_component_info_not_found(server):
-    server._initialized = True
+    server._server.set_initialized(True)
 
     request = MethodRequest(
         id=str(UUID(int=1)),
@@ -192,7 +192,7 @@ async def test_handle_component_info_not_found(server):
 
 @pytest.mark.asyncio
 async def test_handle_component_execute(server):
-    server._initialized = True
+    server._server.set_initialized(True)
 
     @server.component(name="test_component")
     def test_component(input_data: ValidInput) -> ValidOutput:
@@ -216,7 +216,7 @@ async def test_handle_component_execute(server):
 
 @pytest.mark.asyncio
 async def test_handle_component_execute_invalid_input(server):
-    server._initialized = True
+    server._server.set_initialized(True)
 
     @server.component(name="test_component")
     def test_component(input_data: ValidInput) -> ValidOutput:
@@ -237,7 +237,7 @@ async def test_handle_component_execute_invalid_input(server):
 
 @pytest.mark.asyncio
 async def test_handle_list_components(server):
-    server._initialized = True
+    server._server.set_initialized(True)
 
     @server.component(name="component1")
     def test_component1(input_data: ValidInput) -> ValidOutput:
@@ -260,7 +260,7 @@ async def test_handle_list_components(server):
 
 @pytest.mark.asyncio
 async def test_handle_unknown_method(server):
-    server._initialized = True
+    server._server.set_initialized(True)
 
     # NOTE: This test creates an invalid method that shouldn't exist
     # We'll simulate this by creating a raw message directly
@@ -287,7 +287,7 @@ async def test_uninitialized_server(server):
 @pytest.mark.asyncio
 async def test_server_responses_include_jsonrpc(server):
     """Test that server responses include jsonrpc field in JSON encoding."""
-    server._initialized = True
+    server._server.set_initialized(True)
 
     @server.component(name="test_component")
     def test_component(input_data: ValidInput) -> ValidOutput:

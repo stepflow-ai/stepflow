@@ -18,8 +18,8 @@ use std::sync::Arc;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
+use crate::error::{Result, TransportError};
 use crate::lazy_value::LazyValue;
-use crate::stdio::{Result, StdioError};
 use crate::{Error, MethodHandler, MethodResponse};
 use crate::{Message, MethodRequest};
 
@@ -38,12 +38,12 @@ where
     let id = request.id.clone();
     let report_user_error = async |error| {
         let response = Message::Response(MethodResponse::error(id.clone(), error));
-        let response = serde_json::to_string(&response).change_context(StdioError::Send)?;
+        let response = serde_json::to_string(&response).change_context(TransportError::Send)?;
 
         response_tx
             .send(response)
             .await
-            .change_context(StdioError::Send)?;
+            .change_context(TransportError::Send)?;
         Ok(())
     };
 
@@ -73,12 +73,12 @@ where
         }
     };
     let response = Message::Response(MethodResponse::success(id, LazyValue::write_ref(&response)));
-    let response = serde_json::to_string(&response).change_context(StdioError::Send)?;
+    let response = serde_json::to_string(&response).change_context(TransportError::Send)?;
 
     response_tx
         .send(response)
         .await
-        .change_context(StdioError::Send)?;
+        .change_context(TransportError::Send)?;
 
     Ok(())
 }
@@ -92,7 +92,7 @@ impl MethodHandler for PutBlobHandler {
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
-    ) -> BoxFuture<'a, error_stack::Result<(), StdioError>> {
+    ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
         handle_method_call(
             request,
             response_tx,
@@ -121,7 +121,7 @@ impl MethodHandler for GetBlobHandler {
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
-    ) -> BoxFuture<'a, error_stack::Result<(), StdioError>> {
+    ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
         handle_method_call(
             request,
             response_tx,

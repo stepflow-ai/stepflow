@@ -13,6 +13,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+import argparse
+import asyncio
+
 from stepflow_sdk.server import StepflowStdioServer
 from stepflow_sdk.udf import udf
 
@@ -24,8 +27,32 @@ server.component(udf)
 
 
 def main():
-    # Start the server
-    server.run()
+    parser = argparse.ArgumentParser(description="StepFlow Python SDK Server")
+    parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
+    parser.add_argument(
+        "--port", type=int, default=8080, help="HTTP port (default: 8080)"
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="localhost",
+        help="HTTP host (default: localhost)",
+    )
+
+    args = parser.parse_args()
+
+    if args.http:
+        # Import HTTP server here to avoid import if not needed
+        from stepflow_sdk.http_server import StepflowHttpServer
+
+        # Create HTTP server wrapping the stdio server
+        http_server = StepflowHttpServer(server._server, host=args.host, port=args.port)
+
+        # Start HTTP server
+        asyncio.run(http_server.run())
+    else:
+        # Start the stdio server
+        server.run()
 
 
 if __name__ == "__main__":

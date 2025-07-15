@@ -86,6 +86,7 @@ plugins:
     type: builtin
   - name: my_components
     type: stepflow
+    transport: stdio
     command: python
     args: ["my_component_server.py"]
   - name: mcp_tools

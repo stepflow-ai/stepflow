@@ -40,6 +40,7 @@ from stepflow_sdk.generated_protocol import (
     ComponentInfo,
     ComponentInfoParams,
     ComponentInfoResult,
+    ComponentListParams,
     Error,
     InitializeParams,
     InitializeResult,
@@ -89,19 +90,29 @@ def _handle_exception(e: Exception, id: RequestId | None) -> MethodError:
     return MethodError(id=request_id, error=error_obj)
 
 
-class StepflowStdioServer:
+class StepflowServer:
+    """Core StepFlow server with component registry and business logic."""
+
     def __init__(self, default_protocol_prefix: str = "python"):
         self._components: dict[str, ComponentEntry] = {}
         self._initialized = False
         self._protocol_prefix: str = default_protocol_prefix
-        self._incoming_queue: asyncio.Queue = asyncio.Queue()
-        self._outgoing_queue: asyncio.Queue = asyncio.Queue()
-        self._message_decoder: MessageDecoder[asyncio.Future[Message]] = (
-            MessageDecoder()
-        )
-        self._context: StepflowContext = StepflowContext(
-            self._outgoing_queue, self._message_decoder
-        )
+
+    def get_protocol_prefix(self) -> str:
+        """Get the current protocol prefix."""
+        return self._protocol_prefix
+
+    def set_protocol_prefix(self, prefix: str):
+        """Set the protocol prefix."""
+        self._protocol_prefix = prefix
+
+    def is_initialized(self) -> bool:
+        """Check if the server is initialized."""
+        return self._initialized
+
+    def set_initialized(self, initialized: bool):
+        """Set the initialization state."""
+        self._initialized = initialized
 
     def component(
         self,
@@ -172,6 +183,39 @@ class StepflowStdioServer:
             return self._components.get(component_name)
         return None
 
+    def get_components(self) -> dict[str, ComponentEntry]:
+        """Get all registered components."""
+        return self._components
+
+
+class StepflowStdioServer:
+    """STDIO transport wrapper for StepflowServer."""
+
+    def __init__(self, server: StepflowServer | None = None):
+        self._server = server or StepflowServer()
+        self._incoming_queue: asyncio.Queue = asyncio.Queue()
+        self._outgoing_queue: asyncio.Queue = asyncio.Queue()
+        self._message_decoder: MessageDecoder[asyncio.Future[Message]] = (
+            MessageDecoder()
+        )
+        self._context: StepflowContext = StepflowContext(
+            self._outgoing_queue, self._message_decoder, session_id=None
+        )
+
+    def component(
+        self,
+        func: Callable | None = None,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ):
+        """Delegate component registration to the underlying server."""
+        return self._server.component(func, name=name, description=description)
+
+    def get_component(self, component_path: str) -> ComponentEntry | None:
+        """Get a registered component by path."""
+        return self._server.get_component(component_path)
+
     async def _handle_method_request(self, request: MethodRequest) -> MethodResponse:
         """Handle a method request and return a response."""
         id = request.id
@@ -180,7 +224,7 @@ class StepflowStdioServer:
                 init_request = msgspec.json.decode(
                     msgspec.json.encode(request.params), type=InitializeParams
                 )
-                self._protocol_prefix = init_request.protocol_prefix
+                self._server.set_protocol_prefix(init_request.protocol_prefix)
                 return MethodSuccess(
                     id=id,
                     result=InitializeResult(server_protocol_version=1),
@@ -189,7 +233,7 @@ class StepflowStdioServer:
                 component_request = msgspec.json.decode(
                     msgspec.json.encode(request.params), type=ComponentInfoParams
                 )
-                component = self.get_component(component_request.component)
+                component = self._server.get_component(component_request.component)
                 if not component:
                     raise ComponentNotFoundError(component_request.component)
                 return MethodSuccess(
@@ -207,7 +251,7 @@ class StepflowStdioServer:
                 execute_request = msgspec.json.decode(
                     msgspec.json.encode(request.params), type=ComponentExecuteParams
                 )
-                component = self.get_component(execute_request.component)
+                component = self._server.get_component(execute_request.component)
                 if not component:
                     raise ComponentNotFoundError(execute_request.component)
                 # Parse input parameters into the expected type
@@ -255,8 +299,8 @@ class StepflowStdioServer:
             case Method.components_list:
                 # Return component info objects
                 component_infos = []
-                for name, component in self._components.items():
-                    component_url = f"/{self._protocol_prefix}/{name}"
+                for name, component in self._server.get_components().items():
+                    component_url = f"/{self._server.get_protocol_prefix()}/{name}"
                     component_infos.append(
                         ComponentInfo(
                             component=component_url,
@@ -276,7 +320,7 @@ class StepflowStdioServer:
         """Handle a notification and return a response."""
         match notification.method:
             case Method.initialized:
-                self._initialized = True
+                self._server.set_initialized(True)
             case _:
                 print(
                     f"Received unknown notification {notification.method}",
@@ -322,7 +366,10 @@ class StepflowStdioServer:
     async def _handle_message(self, message: Message) -> MethodResponse | None:
         """Handle an incoming message and return a response."""
         if isinstance(message, MethodRequest):
-            if not self._initialized and message.method != Method.initialize:
+            if (
+                not self._server.is_initialized()
+                and message.method != Method.initialize
+            ):
                 raise ServerNotInitializedError()
             return await self._handle_method_request(message)
         elif isinstance(message, MethodSuccess | MethodError):
@@ -333,7 +380,7 @@ class StepflowStdioServer:
             )
         elif isinstance(message, Notification):
             if message.method == Method.initialized:
-                self._initialized = True
+                self._server.set_initialized(True)
             await self._handle_notification(message)
             return None
         else:
@@ -419,3 +466,87 @@ class StepflowStdioServer:
     def run(self):
         """Run the server in the main thread."""
         asyncio.run(self.start())
+
+    async def _initialize(self):
+        """Initialize the server for HTTP mode."""
+        self._server.set_initialized(True)
+
+    async def _handle_component_list(
+        self, params: ComponentListParams
+    ) -> ListComponentsResult:
+        """Handle component list request."""
+        if not self._server.is_initialized():
+            raise ServerNotInitializedError()
+
+        component_infos = []
+        for name, component in self._server.get_components().items():
+            component_url = f"/{self._server.get_protocol_prefix()}/{name}"
+            component_infos.append(
+                ComponentInfo(
+                    component=component_url,
+                    input_schema=component.input_schema(),
+                    output_schema=component.output_schema(),
+                    description=component.description,
+                )
+            )
+        return ListComponentsResult(components=component_infos)
+
+    async def _handle_component_info(
+        self, params: ComponentInfoParams
+    ) -> ComponentInfoResult:
+        """Handle component info request."""
+        if not self._server.is_initialized():
+            raise ServerNotInitializedError()
+
+        component_name = params.component.split("/")[-1]
+        components = self._server.get_components()
+        if component_name not in components:
+            raise ComponentNotFoundError(f"Component '{component_name}' not found")
+
+        component = components[component_name]
+        info = ComponentInfo(
+            component=params.component,
+            input_schema=component.input_schema(),
+            output_schema=component.output_schema(),
+            description=component.description,
+        )
+        return ComponentInfoResult(info=info)
+
+    async def _handle_component_execute(
+        self, params: ComponentExecuteParams
+    ) -> ComponentExecuteResult:
+        """Handle component execute request."""
+        if not self._server.is_initialized():
+            raise ServerNotInitializedError()
+
+        component_name = params.component.split("/")[-1]
+        components = self._server.get_components()
+        if component_name not in components:
+            raise ComponentNotFoundError(f"Component '{component_name}' not found")
+
+        component = components[component_name]
+
+        try:
+            # Extract input data
+            input_data = params.input.to_json()
+
+            # Deserialize input using the component's input type
+            input_value: Any = msgspec.json.decode(
+                input_data, type=component.input_type
+            )
+
+            # Execute the component
+            if component.function.__code__.co_argcount == 2:
+                # Function expects context as second parameter
+                result = await component.function(input_value, self._context)
+            else:
+                # Function only expects input
+                result = await component.function(input_value)
+
+            # Serialize the result
+            output_data = msgspec.json.encode(result)
+            output = params.input.from_json(output_data)
+
+            return ComponentExecuteResult(output=output)
+        except Exception as e:
+            raise StepflowExecutionError(f"Component execution failed: {str(e)}") from e

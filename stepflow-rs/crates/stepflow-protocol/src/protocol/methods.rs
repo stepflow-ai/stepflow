@@ -46,12 +46,12 @@ impl std::fmt::Display for Method {
     }
 }
 
-pub(crate) trait ProtocolMethod {
+pub trait ProtocolMethod {
     const METHOD_NAME: Method;
     type Response: Sync + Send + std::fmt::Debug;
 }
 
-pub(crate) trait ProtocolNotification {
+pub trait ProtocolNotification {
     const METHOD_NAME: Method;
 }
 

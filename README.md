@@ -167,6 +167,7 @@ plugins:
     type: builtin
   python:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
 

@@ -45,9 +45,11 @@ class StepflowContext:
         self,
         outgoing_queue: asyncio.Queue,
         message_decoder: MessageDecoder[asyncio.Future[Message]],
+        session_id: str | None = None,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
+        self._session_id = session_id
 
     async def _send_request[T](
         self, method: str, params: Any, result_type: type[T]
@@ -114,6 +116,11 @@ class StepflowContext:
         params = {"blob_id": blob_id}
         response = await self._send_request("blobs/get", params, GetBlobResult)
         return response.data
+
+    @property
+    def session_id(self) -> str | None:
+        """Get the session ID for HTTP mode, or None for STDIO mode."""
+        return self._session_id
 
     def log(self, message):
         """Log a message."""

@@ -11,8 +11,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-pub mod client;
-pub mod launcher;
-pub mod recv_message_loop;
+mod client;
 
-pub use client::{StdioClient, StdioClientHandle};
+pub use client::{HttpClient, HttpClientHandle};

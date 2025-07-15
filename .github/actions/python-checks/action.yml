@@ -21,6 +21,11 @@ runs:
       run: uv python install
       working-directory: sdks/python
 
+    - name: Install HTTP optional dependencies
+      shell: bash
+      run: uv sync --extra http
+      working-directory: sdks/python
+
     - name: Regenerate Python types (ensure up-to-date)
       shell: bash
       run: uv run poe codegen-fix

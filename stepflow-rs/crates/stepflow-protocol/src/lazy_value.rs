@@ -18,7 +18,7 @@ use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Deserializer, Serialize};
 use stepflow_core::workflow::ValueRef;
 
-pub(crate) trait ErasedSerializeDebug: erased_serde::Serialize + std::fmt::Debug {}
+pub trait ErasedSerializeDebug: erased_serde::Serialize + std::fmt::Debug {}
 impl<T: erased_serde::Serialize + std::fmt::Debug> ErasedSerializeDebug for T {}
 
 #[derive(Debug)]

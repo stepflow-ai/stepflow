@@ -19,7 +19,7 @@ use thiserror::Error;
 use crate::protocol::Method;
 
 #[derive(Error, Debug)]
-pub enum StdioError {
+pub enum TransportError {
     #[error("error spawning stepflow component process")]
     Spawn,
     #[error("error sending message")]
@@ -56,4 +56,4 @@ pub enum StdioError {
     MethodMissingId { method: Cow<'static, str> },
 }
 
-pub type Result<T, E = error_stack::Report<StdioError>> = std::result::Result<T, E>;
+pub type Result<T, E = error_stack::Report<TransportError>> = std::result::Result<T, E>;

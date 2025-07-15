@@ -13,15 +13,13 @@
 
 use std::{ffi::OsString, path::PathBuf, process::Stdio};
 
-use crate::stdio::Result;
+use crate::error::{Result, TransportError};
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use tokio::process::Child;
 
-use super::StdioError;
-
 /// Helper for launching a sub-process.
-pub(crate) struct Launcher {
+pub struct Launcher {
     working_directory: PathBuf,
     pub command: PathBuf,
     pub args: Vec<OsString>,
@@ -40,8 +38,8 @@ impl Launcher {
             .custom_cwd(working_directory.clone())
             .binary_name(command.clone().into())
             .first_result()
-            .change_context_lazy(|| StdioError::MissingCommand(command))?;
-        error_stack::ensure!(command.is_file(), StdioError::InvalidCommand(command));
+            .change_context_lazy(|| TransportError::MissingCommand(command))?;
+        error_stack::ensure!(command.is_file(), TransportError::InvalidCommand(command));
 
         Ok(Self {
             working_directory,
@@ -85,7 +83,7 @@ impl Launcher {
                 );
 
                 Err(
-                    error_stack::report!(StdioError::Spawn).attach_printable(format!(
+                    error_stack::report!(TransportError::Spawn).attach_printable(format!(
                         "Failed to spawn '{} {:?}",
                         self.command.display(),
                         self.args

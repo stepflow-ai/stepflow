@@ -16,10 +16,16 @@ plugins:
     type: builtin
   python:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+  remote_python:
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"
   custom_server:
     type: stepflow
+    transport: stdio
     command: "./my-component-server"
     args: ["--config", "server.json"]
 
@@ -77,7 +83,7 @@ plugins:
 - `get_blob` - Retrieve blob data
 - `load_file` - Load and parse files
 
-#### Stdio Plugins
+#### STDIO Plugins
 
 External component servers that communicate via JSON-RPC over stdin/stdout:
 
@@ -85,6 +91,7 @@ External component servers that communicate via JSON-RPC over stdin/stdout:
 plugins:
   python:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
     working_directory: "."  # optional, defaults to current directory
@@ -94,23 +101,37 @@ plugins:
 ```
 
 **Parameters:**
-- **`type`**: Must be `stdio`
+- **`type`**: Must be `stepflow`
+- **`transport`**: Set to `stdio` (default if not specified)
 - **`command`**: Executable to run
 - **`args`**: Command-line arguments
 - **`working_directory`** (optional): Working directory for the command
 - **`env`** (optional): Environment variables to set
 
-#### HTTP Plugins (Future)
+#### HTTP Plugins
 
-HTTP-based component servers (planned feature):
+HTTP-based component servers for distributed architectures:
 
 ```yaml
 plugins:
   remote_server:
-    type: http
-    base_url: "http://localhost:8080"
-    timeout: 30
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"
+    timeout: 30  # optional, request timeout in seconds
 ```
+
+**Parameters:**
+- **`type`**: Must be `stepflow`
+- **`transport`**: Set to `http`
+- **`url`**: Base URL of the HTTP component server
+- **`timeout`** (optional): Request timeout in seconds [default: 30]
+
+**Features:**
+- Distributed component servers running as independent HTTP services
+- Optional MCP-style session negotiation for connection isolation
+- Automatic fallback for servers that don't support session negotiation
+- Scalable architecture suitable for production deployments
 
 ## Routing Configuration
 
@@ -122,6 +143,8 @@ plugins:
 routing:
   - match: "/python/*"
     target: python
+  - match: "/remote/*"
+    target: remote_python
   - match: "/filesystem/*"
     target: filesystem
   - match: "*"
@@ -164,17 +187,33 @@ steps:
 
 ### Python SDK Plugin
 
-The Python SDK provides a convenient way to create components:
+The Python SDK provides a convenient way to create components with both STDIO and HTTP transports:
 
+**STDIO Mode (Default):**
 ```yaml
 plugins:
   python:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", "path/to/python/project", "run", "stepflow_sdk"]
 ```
 
-This plugin enables components like:
+**HTTP Mode:**
+```yaml
+plugins:
+  python_http:
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"
+```
+
+Start the Python SDK server in HTTP mode:
+```bash
+uv run --project path/to/python/project --extra http python -m stepflow_sdk --http --port 8080
+```
+
+Both modes enable components like:
 - `/python/udf` - Execute user-defined Python functions
 - Custom components defined in your Python project
 
@@ -186,6 +225,7 @@ Model Context Protocol (MCP) servers can be used as component plugins:
 plugins:
   filesystem:
     type: stepflow
+    transport: stdio
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
 ```
@@ -260,6 +300,7 @@ plugins:
     type: builtin
   python:
     type: stepflow
+    transport: stdio
     command: uv
     args: ["--project", ".", "run", "stepflow_sdk"]
     env:
@@ -284,21 +325,30 @@ plugins:
     type: builtin
   python:
     type: stepflow
+    transport: stdio
     command: python
     args: ["-m", "stepflow_sdk"]
     working_directory: "/app/components"
+  remote_ai:
+    type: stepflow
+    transport: http
+    url: "http://ai-service:8080"
+    timeout: 60
   data_processing:
     type: stepflow
-    command: "./data-processor"
-    args: ["--config", "/etc/data-processor.json"]
+    transport: http
+    url: "http://data-processor:8081"
   mcp_filesystem:
     type: stepflow
+    transport: stdio
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/app/data"]
 
 routing:
   - match: "/python/*"
     target: python
+  - match: "/ai/*"
+    target: remote_ai
   - match: "/data/*"
     target: data_processing
   - match: "/filesystem/*"
@@ -322,10 +372,12 @@ plugins:
     type: builtin
   analytics:
     type: stepflow
-    command: "./analytics-service"
-    args: ["--port", "0"]  # Use stdio instead of HTTP
+    transport: http
+    url: "http://analytics-service:8080"
+    timeout: 120
   ml_models:
     type: stepflow
+    transport: stdio
     command: python
     args: ["-m", "ml_components"]
     env:
@@ -333,8 +385,8 @@ plugins:
       CUDA_VISIBLE_DEVICES: "0"
   external_apis:
     type: stepflow
-    command: node
-    args: ["api-gateway.js"]
+    transport: http
+    url: "http://api-gateway:8082"
 
 routing:
   - match: "/analytics/*"
@@ -371,16 +423,25 @@ StepFlow respects these environment variables:
 
 ## Plugin Development
 
-### Creating Stdio Components
+### Creating Component Servers
 
-To create a stdio component server:
+Component servers can be created using either STDIO or HTTP transports:
 
+**STDIO Transport Requirements:**
 1. **Implement JSON-RPC Protocol**: Handle `initialize`, `component_info`, and `component_execute` methods
 2. **Define Component Schemas**: Provide input/output schemas via `component_info`
 3. **Handle Bidirectional Communication**: Support `blob_store` and `blob_get` calls back to runtime
+4. **Process Management**: Handle subprocess lifecycle and stdio communication
+
+**HTTP Transport Requirements:**
+1. **Implement HTTP Server**: Serve JSON-RPC over HTTP POST requests
+2. **Optional Session Support**: Implement MCP-style session negotiation with SSE
+3. **Handle Bidirectional Communication**: Support `blob_store` and `blob_get` calls back to runtime
+4. **Service Management**: Handle HTTP service lifecycle and request routing
 
 ### Python SDK Example
 
+**STDIO Mode:**
 ```python
 from stepflow_sdk import StepflowStdioServer
 
@@ -392,6 +453,23 @@ def my_component(input: MyInput) -> MyOutput:
     return MyOutput(result="processed")
 
 server.run()
+```
+
+**HTTP Mode:**
+```python
+from stepflow_sdk import StepflowServer
+import uvicorn
+
+server = StepflowServer()
+
+@server.component
+def my_component(input: MyInput) -> MyOutput:
+    # Component logic here
+    return MyOutput(result="processed")
+
+# Create FastAPI app and run HTTP server
+app = server.create_http_app()
+uvicorn.run(app, host="0.0.0.0", port=8080)
 ```
 
 ### TypeScript SDK Example
@@ -441,6 +519,8 @@ server.run();
 - **Connection pooling**: Configure appropriate max_connections for state store
 - **Plugin lifecycle**: Reuse plugin processes across workflow executions
 - **Resource limits**: Set appropriate resource limits for component servers
+- **Transport selection**: Use HTTP transport for distributed deployments and better scalability
+- **Session management**: Configure MCP-style session negotiation for HTTP transport isolation
 - **Monitoring**: Monitor plugin performance and resource usage
 
 ## Troubleshooting
@@ -459,10 +539,17 @@ Error: Plugin 'python' not found
 ```
 Error: Failed to initialize plugin 'python'
 ```
+**For STDIO Transport:**
 - Check command path and arguments
 - Verify dependencies are installed
 - Check working directory and environment variables
 - Review component server logs
+
+**For HTTP Transport:**
+- Verify server is running and accessible at the configured URL
+- Check network connectivity and firewall settings
+- Verify server supports the StepFlow protocol
+- Check server logs for initialization errors
 
 #### State Store Connection Failed
 ```
@@ -472,6 +559,17 @@ Error: Failed to connect to state store
 - Check file permissions for SQLite files
 - Ensure database server is running (for PostgreSQL)
 - Check connection limits and timeouts
+
+#### HTTP Transport Connection Issues
+```
+Error: HTTP request failed or timed out
+```
+- Verify the component server is running on the specified URL
+- Check network connectivity between StepFlow and the server
+- Increase timeout values if requests are timing out
+- Verify the server supports JSON-RPC over HTTP POST
+- Check if MCP-style session negotiation is working correctly
+- Review server logs for HTTP-specific errors
 
 ### Debugging Configuration
 
