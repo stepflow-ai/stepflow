@@ -43,6 +43,7 @@ similar-asserts = { version = "1.7.0", features = ["serde" ] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "uuid", "sqlite"] }
 static_assertions = "1.1.0"
 stepflow-analysis = { path = "./crates/stepflow-analysis" }
+subst = { version = "0.3" }
 stepflow-builtins = { path = "./crates/stepflow-builtins" }
 stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }
 stepflow-core = { path = "./crates/stepflow-core" }

@@ -54,6 +54,8 @@ pub enum TransportError {
     UnknownMethod { method: String },
     #[error("method requested without ID: {method:?}")]
     MethodMissingId { method: Cow<'static, str> },
+    #[error("invalid environment variable: {0}")]
+    InvalidEnvironmentVariable(String),
 }
 
 pub type Result<T, E = error_stack::Report<TransportError>> = std::result::Result<T, E>;

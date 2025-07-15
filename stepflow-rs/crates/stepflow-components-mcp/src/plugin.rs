@@ -39,6 +39,7 @@ pub struct McpPluginConfig {
     pub command: String,
     pub args: Vec<String>,
     /// Environment variables to pass to the MCP server process.
+    /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub env: IndexMap<String, String>,
 }
@@ -84,9 +85,13 @@ impl McpClient {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        // Set environment variables
-        for (key, value) in &config.env {
-            cmd.env(key, value);
+        // Set environment variables with substitution
+        let current_env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        for (key, template) in &config.env {
+            // Substitute environment variables in the template
+            let substituted_value = subst::substitute(template, &current_env)
+                .change_context(McpError::ProcessSetup("environment variable substitution"))?;
+            cmd.env(key, substituted_value);
         }
 
         let mut process = cmd
