@@ -161,11 +161,76 @@ See `CLAUDE.md` for detailed architecture information.
 
 ### Error Handling
 
+#### Basic Requirements
+
 - Define custom error types in `error.rs` modules
 - Use `thiserror` for defining error types
 - Include context in error messages
 - Document error variants and their meanings
 - Include `type Result<T, E = TheErrorType>` aliases
+
+#### Practical Guidelines
+
+**1. Choose the right error type:**
+- Use domain-specific errors (`McpError`, `StateError`) for internal implementations
+- Convert to boundary errors (`PluginError`) at trait/public API boundaries
+- Use `FlowError` for business logic failures that workflows should handle
+
+**2. Context management:**
+- Prefer parameterized error variants over verbose `attach_printable` calls
+- Only add `attach_printable` when it provides valuable runtime context
+- Use `error_stack::report!` macro instead of `Report::new()`
+
+**3. Error conversion patterns:**
+```rust
+// Convert at boundaries while preserving error chain
+internal_method()
+    .await
+    .change_context(PublicApiError::SomeCategory)
+```
+
+**4. Testing error conditions:**
+- Test both success and failure paths
+- Use `downcast_ref()` to verify specific error types in tests
+- Ensure error messages are helpful for debugging
+
+#### Common Patterns to Avoid
+
+- ❌ Redundant error attachments when type + line number suffice
+- ❌ Using `Report::new()` instead of `report!` macro  
+- ❌ Deep error conversion chains (convert once at boundaries)
+- ❌ Adding `attach_printable` that just restates the error type
+
+#### Example: Good Error Handling
+
+```rust
+// 1. Define parameterized error variants
+#[derive(Error, Debug)]
+pub enum MyError {
+    #[error("Connection failed to {host}")]
+    ConnectionFailed { host: String },
+    
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(&'static str),
+}
+
+// 2. Use domain-specific errors internally
+async fn connect_internal(&self, host: &str) -> MyResult<Connection> {
+    client.connect(host)
+        .change_context(MyError::ConnectionFailed { 
+            host: host.to_string() 
+        })
+}
+
+// 3. Convert at API boundaries
+async fn connect(&self, host: &str) -> Result<Connection> {
+    self.connect_internal(host)
+        .await
+        .change_context(PluginError::Execution)
+}
+```
+
+See `CLAUDE.md` for detailed architecture and advanced patterns.
 
 ### Testing
 
