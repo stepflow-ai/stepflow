@@ -18,7 +18,6 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use stepflow_core::component::ComponentInfo;
-use stepflow_plugin::Plugin as _;
 
 /// Output format for command line display
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -51,29 +50,21 @@ pub async fn list_components(
     // Create executor to instantiate plugins
     let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
-    // Get all registered plugins and query their components
-    let mut all_components = Vec::new();
+    // Get all components with routing context applied (filtered and transformed)
+    let mut all_components = executor
+        .list_components_with_routing()
+        .await
+        .change_context(MainError::PluginCommunication)?;
 
-    // Get the list of plugins from the executor
-    for plugin in executor.list_plugins().await {
-        // List components available from this plugin
-        let components = plugin
-            .list_components()
-            .await
-            .change_context(MainError::PluginCommunication)?;
-
-        // Components are already ComponentInfo structs, just filter schemas if needed
-        for mut info in components {
-            if !include_schemas {
-                info.input_schema = None;
-                info.output_schema = None;
-            }
-            all_components.push(info);
+    // Filter schemas if needed
+    if !include_schemas {
+        for info in &mut all_components {
+            info.input_schema = None;
+            info.output_schema = None;
         }
     }
 
-    // Sort components by their URL for consistent output
-    all_components.sort_by(|a, b| a.component.to_string().cmp(&b.component.to_string()));
+    // Components are already sorted and deduplicated by the routing method
 
     let component_list = ComponentList {
         components: all_components,

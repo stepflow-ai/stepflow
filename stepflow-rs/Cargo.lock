@@ -3311,6 +3311,7 @@ dependencies = [
 name = "stepflow-plugin"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dynosaur",
  "error-stack",
  "futures",
@@ -3321,6 +3322,7 @@ dependencies = [
  "stepflow-core",
  "stepflow-state",
  "thiserror 2.0.12",
+ "tokio",
  "trait-variant",
  "uuid",
 ]

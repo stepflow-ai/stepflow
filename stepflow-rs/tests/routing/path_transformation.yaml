@@ -1,0 +1,185 @@
+input_schema:
+  type: object
+  properties:
+    numbers:
+      type: array
+      items:
+        type: number
+    message:
+      type: string
+output_schema:
+  type: object
+  properties:
+    processed_data:
+      type: object
+    analysis_result:
+      type: object
+    final_message:
+      type: string
+steps:
+# Store processing function as a blob
+- id: create_processor_blob
+  component: put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          numbers:
+            type: array
+            items:
+              type: number
+        required:
+        - numbers
+      code: |
+        import statistics
+        numbers = input['numbers']
+        return {
+          'sum': sum(numbers),
+          'mean': statistics.mean(numbers),
+          'count': len(numbers),
+          'max': max(numbers),
+          'min': min(numbers)
+        }
+
+# Store analysis function as a blob
+- id: create_analyzer_blob
+  component: put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          processed_data:
+            type: object
+          message:
+            type: string
+        required:
+        - processed_data
+        - message
+      code: |
+        data = input['processed_data']
+        message = input['message']
+        
+        # Analyze the processed data
+        analysis = {
+          'range': data['max'] - data['min'],
+          'is_large_dataset': data['count'] > 5,
+          'above_average': data['sum'] > data['mean'] * data['count'] * 0.8,
+          'analysis_summary': f"Dataset with {data['count']} numbers, mean={data['mean']:.2f}"
+        }
+        
+        return {
+          'analysis': analysis,
+          'enhanced_message': f"{message} - Analysis: {analysis['analysis_summary']}"
+        }
+
+# Process data using the /python/udf component (with component filtering)
+- id: process_numbers
+  component: /python/udf
+  input_schema: null
+  output_schema: null
+  input:
+    blob_id:
+      $from:
+        step: create_processor_blob
+      path: blob_id
+    input:
+      numbers:
+        $from:
+          workflow: input
+        path: numbers
+
+# For demo purposes, let's use the same UDF component for analysis
+# In a real scenario, you would implement an actual analyzer component
+- id: analyze_data
+  component: /python/udf
+  input_schema: null
+  output_schema: null
+  input:
+    blob_id:
+      $from:
+        step: create_analyzer_blob
+      path: blob_id
+    input:
+      processed_data:
+        $from:
+          step: process_numbers
+      message:
+        $from:
+          workflow: input
+        path: message
+
+# Create final message using builtin component
+- id: create_final_message
+  component: create_messages
+  input_schema: null
+  output_schema: null
+  input:
+    system: "You are a data analysis assistant. Provide a concise summary of the analysis results."
+    user:
+      $from:
+        step: analyze_data
+      path: enhanced_message
+
+output:
+  processed_data:
+    $from:
+      step: process_numbers
+  analysis_result:
+    $from:
+      step: analyze_data
+  final_message:
+    $from:
+      step: create_final_message
+    path: content
+
+test:
+  cases:
+  - name: analyze small dataset
+    input:
+      numbers: [1, 2, 3, 4, 5]
+      message: "Small dataset analysis"
+    output:
+      outcome: success
+      result:
+        processed_data:
+          sum: 15
+          mean: 3.0
+          count: 5
+          max: 5
+          min: 1
+        analysis_result:
+          analysis:
+            range: 4
+            is_large_dataset: false
+            above_average: true
+            analysis_summary: "Dataset with 5 numbers, mean=3.00"
+          enhanced_message: "Small dataset analysis - Analysis: Dataset with 5 numbers, mean=3.00"
+        final_message: "Data analysis complete: Small dataset with 5 numbers showing a mean of 3.00, range of 4, and above-average sum distribution."
+  
+  - name: analyze large dataset
+    input:
+      numbers: [10, 20, 30, 40, 50, 60, 70]
+      message: "Large dataset processing"
+    output:
+      outcome: success
+      result:
+        processed_data:
+          sum: 280
+          mean: 40.0
+          count: 7
+          max: 70
+          min: 10
+        analysis_result:
+          analysis:
+            range: 60
+            is_large_dataset: true
+            above_average: true
+            analysis_summary: "Dataset with 7 numbers, mean=40.00"
+          enhanced_message: "Large dataset processing - Analysis: Dataset with 7 numbers, mean=40.00"
+        final_message: "Data analysis complete: Large dataset with 7 numbers showing a mean of 40.00, range of 60, and above-average sum distribution."

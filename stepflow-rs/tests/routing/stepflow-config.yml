@@ -1,0 +1,23 @@
+plugins:
+  builtin:
+    type: builtin
+  python:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: [--project, "../../../sdks/python", run, stepflow_sdk]
+routing:
+  # Simple routing that works with current Python plugin behavior
+  # The Python plugin returns "/python/udf" so we route "/python/*" directly
+  - match: "/python/*"
+    target:
+      plugin: python
+      strip_segments: [] # No transformation needed since plugin returns correct paths
+      components: ["udf"] # Only allow udf component (no analyzer in current Python SDK)
+      exclude_components: ["debug_*"] # Exclude debug tools
+  # Simple routing for builtin components
+  - match: "/builtin/*"
+    target: builtin
+  # Fallback to builtin for unmatched paths
+  - match: "*"
+    target: builtin

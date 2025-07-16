@@ -116,9 +116,34 @@ impl StepFlowExecutor {
             .change_context(ExecutionError::RouterError)
     }
 
+    pub async fn get_plugin_with_transformed_path(
+        &self,
+        component: &Component,
+        input: ValueRef,
+    ) -> Result<(&Arc<DynPlugin<'static>>, Component)> {
+        // Use the integrated plugin router to get the plugin and transformed path
+        self.plugin_router
+            .get_plugin_with_transformed_path(component.path_string(), input)
+            .change_context(ExecutionError::RouterError)
+    }
+
     /// List all registered plugins
     pub async fn list_plugins(&self) -> Vec<&Arc<DynPlugin<'static>>> {
         self.plugin_router.plugins().collect()
+    }
+
+    /// Get the plugin router for advanced routing operations
+    pub fn plugin_router(&self) -> &PluginRouter {
+        &self.plugin_router
+    }
+
+    /// List components with routing context applied
+    /// This method applies component filtering and reverse path transformation
+    pub async fn list_components_with_routing(&self) -> Result<Vec<stepflow_core::component::ComponentInfo>> {
+        self.plugin_router
+            .list_components_with_routing()
+            .await
+            .change_context(ExecutionError::PluginError)
     }
 
     /// Get or create a debug session for step-by-step execution control

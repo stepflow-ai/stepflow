@@ -644,14 +644,15 @@ impl WorkflowExecutor {
             }
         };
 
-        // Get plugin and execute the step
-        let plugin = self
+        // Get plugin and transformed component path, then execute the step
+        let (plugin, transformed_component) = self
             .executor
-            .get_plugin(&step.component, step_input.clone())
+            .get_plugin_with_transformed_path(&step.component, step_input.clone())
             .await?;
         let result = execute_step_async(
             plugin,
             step,
+            &transformed_component,
             step_input,
             self.context.clone(),
             &self.resolver,
@@ -850,10 +851,10 @@ impl WorkflowExecutor {
         let step = &self.flow.steps[step_index];
         tracing::debug!("Starting execution of step {}", step.id);
 
-        // Get plugin for this step
-        let plugin = self
+        // Get plugin and transformed component path for this step
+        let (plugin, transformed_component) = self
             .executor
-            .get_plugin(&step.component, step_input.clone())
+            .get_plugin_with_transformed_path(&step.component, step_input.clone())
             .await?;
 
         // Clone necessary data for the async task
@@ -863,10 +864,11 @@ impl WorkflowExecutor {
 
         // Create the async task
         let plugin_clone = plugin.clone();
+        let transformed_component_clone = transformed_component.clone();
         let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
             let step = &flow.steps[step_index];
             let result =
-                execute_step_async(&plugin_clone, step, step_input, context, &resolver).await;
+                execute_step_async(&plugin_clone, step, &transformed_component_clone, step_input, context, &resolver).await;
             (step_index, result)
         });
 
@@ -880,13 +882,14 @@ impl WorkflowExecutor {
 pub(crate) async fn execute_step_async(
     plugin: &Arc<DynPlugin<'static>>,
     step: &stepflow_core::workflow::Step,
+    transformed_component: &stepflow_core::workflow::Component,
     input: ValueRef,
     context: ExecutionContext,
     resolver: &ValueResolver<StateValueLoader>,
 ) -> Result<FlowResult> {
-    // Execute the component
+    // Execute the component with the transformed component path
     let result = plugin
-        .execute(&step.component, context, input)
+        .execute(transformed_component, context, input)
         .await
         .change_context(ExecutionError::StepFailed {
             step: step.id.to_owned(),

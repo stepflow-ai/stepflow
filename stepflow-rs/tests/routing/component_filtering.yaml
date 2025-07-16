@@ -1,0 +1,126 @@
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+    operation:
+      type: string
+      enum: ["uppercase", "lowercase", "reverse"]
+output_schema:
+  type: object
+  properties:
+    original_text:
+      type: string
+    transformed_text:
+      type: string
+    operation_used:
+      type: string
+steps:
+# Create text processing function as a blob
+- id: create_text_processor_blob
+  component: put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          text:
+            type: string
+          operation:
+            type: string
+        required:
+        - text
+        - operation
+      code: |
+        text = input['text']
+        operation = input['operation']
+        
+        if operation == 'uppercase':
+          result = text.upper()
+        elif operation == 'lowercase':
+          result = text.lower()
+        elif operation == 'reverse':
+          result = text[::-1]
+        else:
+          result = text
+        
+        return {
+          'original': text,
+          'transformed': result,
+          'operation': operation
+        }
+
+# Process text using the /python/udf component
+# Note: This component is allowed by the "components" filter in stepflow-config.yml
+- id: process_text
+  component: /python/udf
+  input_schema: null
+  output_schema: null
+  input:
+    blob_id:
+      $from:
+        step: create_text_processor_blob
+      path: blob_id
+    input:
+      text:
+        $from:
+          workflow: input
+        path: text
+      operation:
+        $from:
+          workflow: input
+        path: operation
+
+# Note: If we tried to use /python/debug_tool, it would be filtered out
+# by the "exclude_components" filter in stepflow-config.yml and would fail
+
+output:
+  original_text:
+    $from:
+      step: process_text
+    path: original
+  transformed_text:
+    $from:
+      step: process_text
+    path: transformed
+  operation_used:
+    $from:
+      step: process_text
+    path: operation
+
+test:
+  cases:
+  - name: uppercase transformation
+    input:
+      text: "Hello World"
+      operation: "uppercase"
+    output:
+      outcome: success
+      result:
+        original_text: "Hello World"
+        transformed_text: "HELLO WORLD"
+        operation_used: "uppercase"
+  
+  - name: lowercase transformation
+    input:
+      text: "Hello World"
+      operation: "lowercase"
+    output:
+      outcome: success
+      result:
+        original_text: "Hello World"
+        transformed_text: "hello world"
+        operation_used: "lowercase"
+  
+  - name: reverse transformation
+    input:
+      text: "Hello World"
+      operation: "reverse"
+    output:
+      outcome: success
+      result:
+        original_text: "Hello World"
+        transformed_text: "dlroW olleH"
+        operation_used: "reverse"

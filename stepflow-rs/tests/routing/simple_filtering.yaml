@@ -1,0 +1,79 @@
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+output_schema:
+  type: object
+  properties:
+    processed_text:
+      type: string
+    message_count:
+      type: number
+steps:
+# Create a simple text processing function
+- id: create_text_processor
+  component: put_blob
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          text:
+            type: string
+        required:
+        - text
+      code: |
+        text = input['text']
+        # Simple text processing: uppercase and add exclamation
+        processed = text.upper() + "!"
+        return processed
+
+# Process text using the filtered Python UDF component
+- id: process_text
+  component: /python/udf
+  input_schema: null
+  output_schema: null
+  input:
+    blob_id:
+      $from:
+        step: create_text_processor
+      path: blob_id
+    input:
+      text:
+        $from:
+          workflow: input
+        path: text
+
+# Create a message using builtin component
+- id: create_message
+  component: create_messages
+  input_schema: null
+  output_schema: null
+  input:
+    system: "You are a helpful assistant."
+    user:
+      $from:
+        step: process_text
+
+output:
+  processed_text:
+    $from:
+      step: process_text
+  message_count:
+    $from:
+      step: create_message
+    path: content.length
+
+test:
+  cases:
+  - name: simple text processing
+    input:
+      text: "hello world"
+    output:
+      outcome: success
+      result:
+        processed_text: "HELLO WORLD!"
+        message_count: 5  # Example - actual value depends on create_messages output

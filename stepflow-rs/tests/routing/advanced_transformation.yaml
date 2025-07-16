@@ -1,0 +1,67 @@
+## Advanced Path Transformation Example
+
+# This file demonstrates how to configure path transformation for plugins
+# that return unprefixed component paths (not the current Python plugin)
+
+# Example stepflow-config.yml for path transformation:
+# ```yaml
+# plugins:
+#   custom_plugin:
+#     type: stepflow
+#     transport: stdio
+#     command: my-custom-plugin
+#     args: []
+# routing:
+#   - match: "/ai/ml/custom/*"
+#     target:
+#       plugin: custom_plugin
+#       strip_segments: ["ai", "ml", "custom"]
+#       components: ["classifier", "regressor"]
+#       exclude_components: ["debug_*"]
+# ```
+
+# With this configuration:
+# - User writes:    /ai/ml/custom/classifier
+# - System strips:  /ai/ml/custom/classifier → /classifier
+# - Plugin receives: /classifier
+# - Plugin returns:  /classifier (unprefixed path)
+# - System adds back: /classifier → /ai/ml/custom/classifier (for display)
+
+# This is useful for:
+# 1. Organizing components into logical namespaces
+# 2. Keeping plugin implementations simple (no path prefixing needed)
+# 3. Providing consistent component naming across different plugins
+# 4. Controlling access to specific components via filtering
+
+# Example workflow using path transformation:
+input_schema:
+  type: object
+  properties:
+    data:
+      type: array
+      items:
+        type: number
+output_schema:
+  type: object
+  properties:
+    classification:
+      type: string
+steps:
+# This would use the custom plugin with path transformation
+- id: classify_data
+  component: /ai/ml/custom/classifier
+  input_schema: null
+  output_schema: null
+  input:
+    data:
+      $from:
+        workflow: input
+      path: data
+output:
+  classification:
+    $from:
+      step: classify_data
+    path: result
+
+# Note: This example is for illustration only and won't run
+# since the custom plugin doesn't exist in the current setup

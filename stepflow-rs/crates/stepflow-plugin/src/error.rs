@@ -44,6 +44,8 @@ pub enum PluginError {
     InvalidRuleIndex(usize),
     #[error("plugin not found: {0}")]
     PluginNotFound(String),
+    #[error("configuration error")]
+    Configuration,
 }
 
 pub type Result<T, E = error_stack::Report<PluginError>> = std::result::Result<T, E>;
