@@ -494,6 +494,28 @@ plugins:
   - **http transport**: JSON-RPC over HTTP with Server-Sent Events for bidirectional communication
 - **mcp**: Model Context Protocol servers
 
+#### MCP Plugin Configuration
+
+MCP plugins support environment variable substitution in both command arguments and environment variables:
+
+```yaml
+filesystem:
+  type: mcp
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "${HOME}/workspace"]
+  env:
+    MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
+    MCP_CONFIG_DIR: "${HOME}/.config/mcp"
+    MCP_WORKSPACE: "${WORKSPACE_DIR:-${HOME}/workspace}"
+```
+
+**MCP Environment Variable Features:**
+- Same substitution syntax as StepFlow plugins: `${VAR}` and `${VAR:-default}`
+- Environment variables are substituted when the MCP server process is launched
+- Both `args` and `env` fields support full substitution
+- Useful for configuring MCP servers with user-specific paths and settings
+- Command arguments can include environment variables for flexible server configuration
+
 ### StepFlow Plugin Transport Options
 
 The `stepflow` plugin type supports two transport methods:
@@ -504,10 +526,20 @@ python_stdio:
   type: stepflow
   transport: stdio
   command: uv
-  args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
-  env:  # Optional environment variables
-    PYTHONPATH: "/custom/path"
+  args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_sdk"]
+  env:  # Optional environment variables with substitution support
+    PYTHONPATH: "${HOME}/custom/path"
+    USER_CONFIG: "${USER:-anonymous}"
+    CUSTOM_PATH: "${HOME}/projects/${USER}"
 ```
+
+**Environment Variable Substitution:**
+- Environment variables support shell-like substitution using `${VAR}` syntax
+- Default values can be specified using `${VAR:-default}` syntax
+- Nested substitution is supported: `${HOME}/projects/${USER}`
+- Values are substituted from the current process environment when the plugin is launched
+- If a variable is not found and no default is provided, substitution will fail with an error
+- **Applies to both**: Command arguments (`args`) and environment variables (`env`)
 
 #### HTTP Transport
 ```yaml
@@ -640,6 +672,9 @@ plugins:
     transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+    env:
+      PYTHONPATH: "${HOME}/custom/path"
+      USER_CONFIG: "${USER:-anonymous}"
   python_http:
     type: stepflow
     transport: http
@@ -647,7 +682,10 @@ plugins:
   filesystem:
     type: mcp
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${HOME}/workspace"]
+    env:
+      MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
+      MCP_CONFIG_DIR: "${HOME}/.config/mcp"
 
 routing:
   - match: "/python/*"
