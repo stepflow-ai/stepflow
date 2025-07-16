@@ -80,7 +80,7 @@ impl McpClient {
     async fn new(config: &McpPluginConfig, working_directory: &std::path::Path) -> McpResult<Self> {
         // Collect current environment variables for substitution
         let current_env: std::collections::HashMap<String, String> = std::env::vars().collect();
-        
+
         // Substitute environment variables in command arguments
         let mut substituted_args = Vec::new();
         for arg in &config.args {
@@ -88,7 +88,7 @@ impl McpClient {
                 .change_context(McpError::ProcessSetup("command argument substitution"))?;
             substituted_args.push(substituted_arg);
         }
-        
+
         let mut cmd = Command::new(&config.command);
         cmd.args(&substituted_args);
         cmd.current_dir(working_directory);
@@ -583,7 +583,10 @@ mod tests {
 
         // Check substitution results
         assert_eq!(substituted_args[0], "-y");
-        assert_eq!(substituted_args[1], "@modelcontextprotocol/server-filesystem");
+        assert_eq!(
+            substituted_args[1],
+            "@modelcontextprotocol/server-filesystem"
+        );
         assert_eq!(substituted_args[2], "/test/workspace");
         assert_eq!(substituted_args[3], "--config");
         assert_eq!(substituted_args[4], "/test/workspace/mcp.json");
