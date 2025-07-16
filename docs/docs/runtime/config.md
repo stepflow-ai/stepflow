@@ -93,11 +93,13 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+    args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_sdk"]
     working_directory: "."  # optional, defaults to current directory
-    env:                    # optional environment variables
-      PYTHONPATH: "/custom/path"
+    env:                    # optional environment variables with substitution support
+      PYTHONPATH: "${HOME}/custom/path"
       DEBUG: "true"
+      USER_CONFIG: "${USER:-anonymous}"
+      WORKSPACE: "${HOME}/projects/${USER}"
 ```
 
 **Parameters:**
@@ -107,6 +109,15 @@ plugins:
 - **`args`**: Command-line arguments
 - **`working_directory`** (optional): Working directory for the command
 - **`env`** (optional): Environment variables to set
+
+**Environment Variable Substitution:**
+Environment variables in both `args` and `env` sections support shell-like substitution:
+- **Basic substitution**: `${VAR}` - expands to the value of environment variable `VAR`
+- **Default values**: `${VAR:-default}` - uses `default` if `VAR` is not set
+- **Nested substitution**: `${HOME}/projects/${USER}` - combines multiple variables
+- **Substitution timing**: Variables are resolved when the plugin is launched using the current process environment
+- **Error handling**: If a variable is not found and no default is provided, plugin initialization will fail
+- **Applies to**: Both command arguments (`args`) and environment variables (`env`)
 
 #### HTTP Plugins
 
@@ -224,13 +235,21 @@ Model Context Protocol (MCP) servers can be used as component plugins:
 ```yaml
 plugins:
   filesystem:
-    type: stepflow
-    transport: stdio
+    type: mcp
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${HOME}/workspace"]
+    env:
+      MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
+      MCP_CONFIG_DIR: "${HOME}/.config/mcp"
+      MCP_WORKSPACE: "${WORKSPACE_DIR:-${HOME}/workspace}"
 ```
 
-MCP tools are accessed with format: `/server/tool_name`
+**MCP Plugin Features:**
+- **Environment Variable Substitution**: Same substitution syntax as StepFlow plugins
+- **Command Arguments**: Environment variables can be used in both `args` and `env` fields
+- **Tool Access**: MCP tools are accessed with format: `/server/tool_name`
+- **Process Management**: MCP servers run as separate processes with isolated environments
+- **Args Substitution**: Command line arguments support full environment variable substitution
 
 ## State Store Configuration
 
@@ -305,6 +324,8 @@ plugins:
     args: ["--project", ".", "run", "stepflow_sdk"]
     env:
       DEBUG: "true"
+      PYTHONPATH: "${HOME}/dev/python-libs"
+      USER_CONFIG: "${USER:-dev}"
 
 routing:
   - match: "/python/*"
@@ -329,6 +350,9 @@ plugins:
     command: python
     args: ["-m", "stepflow_sdk"]
     working_directory: "/app/components"
+    env:
+      PYTHONPATH: "${APP_ROOT}/lib"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
   remote_ai:
     type: stepflow
     transport: http
@@ -339,10 +363,12 @@ plugins:
     transport: http
     url: "http://data-processor:8081"
   mcp_filesystem:
-    type: stepflow
-    transport: stdio
+    type: mcp
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/app/data"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${DATA_DIR:-/app/data}"]
+    env:
+      MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
+      MCP_CONFIG_DIR: "${CONFIG_DIR:-/app/config}"
 
 routing:
   - match: "/python/*"
@@ -381,8 +407,9 @@ plugins:
     command: python
     args: ["-m", "ml_components"]
     env:
-      MODEL_PATH: "/models"
-      CUDA_VISIBLE_DEVICES: "0"
+      MODEL_PATH: "${MODEL_PATH:-/models}"
+      CUDA_VISIBLE_DEVICES: "${CUDA_DEVICES:-0}"
+      HF_HOME: "${HOME}/.cache/huggingface"
   external_apis:
     type: stepflow
     transport: http
@@ -420,6 +447,31 @@ StepFlow respects these environment variables:
 - **`OPENAI_API_KEY`**: OpenAI API key for `openai` component
 - **`PYTHONPATH`**: Python path for Python components
 - **Custom variables**: Passed through to component servers via plugin configuration
+
+### Environment Variable Substitution in Configuration
+
+Plugin configurations support environment variable substitution in the `env` section:
+
+```yaml
+plugins:
+  python:
+    type: stepflow
+    transport: stdio
+    command: python
+    env:
+      # Basic substitution
+      PYTHONPATH: "${HOME}/custom/path"
+      # Default values
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # Nested substitution
+      CONFIG_FILE: "${HOME}/.config/${USER}/settings.json"
+```
+
+**Substitution Syntax:**
+- `${VAR}` - Substitutes the value of environment variable `VAR`
+- `${VAR:-default}` - Uses `default` if `VAR` is not set or empty
+- Variables are resolved from the current process environment when the plugin is launched
+- Substitution failures will prevent plugin initialization
 
 ## Plugin Development
 

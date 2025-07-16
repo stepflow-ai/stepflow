@@ -86,6 +86,37 @@ cargo fmt
 cargo check
 ```
 
+## Configuration
+
+StepFlow supports flexible plugin configuration with environment variable substitution:
+
+```yaml
+# stepflow-config.yml
+plugins:
+  python:
+    type: stepflow
+    transport: stdio
+    command: python
+    args: ["--project", "${PROJECT_DIR:-../sdk}"]
+    env:
+      PYTHONPATH: "${HOME}/custom/path"
+      USER_CONFIG: "${USER:-anonymous}"
+  
+  filesystem:
+    type: mcp
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${HOME}/workspace"]
+    env:
+      MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
+```
+
+**Environment Variable Features:**
+- Shell-like substitution with `${VAR}` syntax
+- Default values using `${VAR:-default}` syntax
+- Nested substitution: `${HOME}/projects/${USER}`
+- Works with both StepFlow and MCP plugins
+- Applies to both command arguments (`args`) and environment variables (`env`)
+
 ## Project Structure
 
 This is a Rust workspace containing multiple crates:

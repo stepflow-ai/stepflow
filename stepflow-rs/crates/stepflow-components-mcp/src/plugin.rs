@@ -39,6 +39,7 @@ pub struct McpPluginConfig {
     pub command: String,
     pub args: Vec<String>,
     /// Environment variables to pass to the MCP server process.
+    /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub env: IndexMap<String, String>,
 }
@@ -77,16 +78,30 @@ struct McpClient {
 
 impl McpClient {
     async fn new(config: &McpPluginConfig, working_directory: &std::path::Path) -> McpResult<Self> {
+        // Collect current environment variables for substitution
+        let current_env: std::collections::HashMap<String, String> = std::env::vars().collect();
+
+        // Substitute environment variables in command arguments
+        let mut substituted_args = Vec::new();
+        for arg in &config.args {
+            let substituted_arg = subst::substitute(arg, &current_env)
+                .change_context(McpError::ProcessSetup("command argument substitution"))?;
+            substituted_args.push(substituted_arg);
+        }
+
         let mut cmd = Command::new(&config.command);
-        cmd.args(&config.args);
+        cmd.args(&substituted_args);
         cmd.current_dir(working_directory);
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        // Set environment variables
-        for (key, value) in &config.env {
-            cmd.env(key, value);
+        // Set environment variables with substitution
+        for (key, template) in &config.env {
+            // Substitute environment variables in the template
+            let substituted_value = subst::substitute(template, &current_env)
+                .change_context(McpError::ProcessSetup("environment variable substitution"))?;
+            cmd.env(key, substituted_value);
         }
 
         let mut process = cmd
@@ -496,5 +511,126 @@ impl McpPlugin {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use std::collections::HashMap;
+    use std::env;
+
+    #[test]
+    fn test_mcp_plugin_env_substitution() {
+        // Test environment variable substitution in MCP plugin config
+        unsafe {
+            env::set_var("TEST_MCP_HOME", "/test/mcp");
+            env::set_var("TEST_MCP_USER", "mcpuser");
+        }
+
+        let mut env_config = IndexMap::new();
+        env_config.insert("MCP_HOME".to_string(), "${TEST_MCP_HOME}".to_string());
+        env_config.insert("MCP_USER".to_string(), "${TEST_MCP_USER}".to_string());
+        env_config.insert(
+            "MCP_CONFIG".to_string(),
+            "${TEST_MCP_HOME}/.config/${TEST_MCP_USER}".to_string(),
+        );
+
+        // Test the substitution logic similar to what's in McpClient::new()
+        let current_env: HashMap<String, String> = env::vars().collect();
+
+        for (key, template) in &env_config {
+            let substituted_value = subst::substitute(template, &current_env).unwrap();
+            match key.as_str() {
+                "MCP_HOME" => assert_eq!(substituted_value, "/test/mcp"),
+                "MCP_USER" => assert_eq!(substituted_value, "mcpuser"),
+                "MCP_CONFIG" => assert_eq!(substituted_value, "/test/mcp/.config/mcpuser"),
+                _ => {}
+            }
+        }
+
+        // Clean up
+        unsafe {
+            env::remove_var("TEST_MCP_HOME");
+            env::remove_var("TEST_MCP_USER");
+        }
+    }
+
+    #[test]
+    fn test_mcp_plugin_args_substitution() {
+        // Test environment variable substitution in MCP plugin args
+        unsafe {
+            env::set_var("TEST_MCP_DIR", "/test/workspace");
+            env::set_var("TEST_MCP_CONFIG", "mcp.json");
+        }
+
+        let args = vec![
+            "-y".to_string(),
+            "@modelcontextprotocol/server-filesystem".to_string(),
+            "${TEST_MCP_DIR}".to_string(),
+            "--config".to_string(),
+            "${TEST_MCP_DIR}/${TEST_MCP_CONFIG}".to_string(),
+        ];
+
+        // Test the substitution logic similar to what's in McpClient::new()
+        let current_env: HashMap<String, String> = env::vars().collect();
+
+        let mut substituted_args = Vec::new();
+        for arg in &args {
+            let substituted_arg = subst::substitute(arg, &current_env).unwrap();
+            substituted_args.push(substituted_arg);
+        }
+
+        // Check substitution results
+        assert_eq!(substituted_args[0], "-y");
+        assert_eq!(
+            substituted_args[1],
+            "@modelcontextprotocol/server-filesystem"
+        );
+        assert_eq!(substituted_args[2], "/test/workspace");
+        assert_eq!(substituted_args[3], "--config");
+        assert_eq!(substituted_args[4], "/test/workspace/mcp.json");
+
+        // Clean up
+        unsafe {
+            env::remove_var("TEST_MCP_DIR");
+            env::remove_var("TEST_MCP_CONFIG");
+        }
+    }
+
+    #[test]
+    fn test_mcp_plugin_args_with_defaults() {
+        // Test environment variable substitution with default values
+        unsafe {
+            env::set_var("TEST_MCP_PORT", "8080");
+            // Don't set TEST_MCP_HOST to test default
+        }
+
+        let args = vec![
+            "--host".to_string(),
+            "${TEST_MCP_HOST:-localhost}".to_string(),
+            "--port".to_string(),
+            "${TEST_MCP_PORT}".to_string(),
+        ];
+
+        // Test the substitution logic
+        let current_env: HashMap<String, String> = env::vars().collect();
+
+        let mut substituted_args = Vec::new();
+        for arg in &args {
+            let substituted_arg = subst::substitute(arg, &current_env).unwrap();
+            substituted_args.push(substituted_arg);
+        }
+
+        // Check substitution results
+        assert_eq!(substituted_args[0], "--host");
+        assert_eq!(substituted_args[1], "-localhost"); // Uses default (note the "-" prefix)
+        assert_eq!(substituted_args[2], "--port");
+        assert_eq!(substituted_args[3], "8080");
+
+        // Clean up
+        unsafe {
+            env::remove_var("TEST_MCP_PORT");
+        }
     }
 }

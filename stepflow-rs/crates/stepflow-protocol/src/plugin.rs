@@ -153,6 +153,7 @@ pub enum StepflowTransport {
         command: String,
         args: Vec<String>,
         /// Environment variables to pass to the sub-process.
+        /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
         #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
         env: IndexMap<String, String>,
     },
