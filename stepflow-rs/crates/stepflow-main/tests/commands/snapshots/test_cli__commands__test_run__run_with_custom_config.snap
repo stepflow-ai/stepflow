@@ -6,12 +6,12 @@ info:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
     - run
-    - "--flow=tests/builtins/nested_eval.yaml"
+    - "--flow=tests/builtins/blob_test.yaml"
     - "--config=tests/builtins/stepflow-config.yml"
-    - "--input-json={\"input\": 42}"
+    - "--input-json={\"data\": \"hello\"}"
 ---
 success: true
 exit_code: 0
 ----- stdout -----
-{"outcome":"success","result":{"nested_result":{"result":{"result":{"messages":[{"role":"user","content":"Hello from nested flow"}]}},"run_id":"26c761e5-1344-4bad-b3f9-ce82ec2d5dcf"}}}
+{"outcome":"success","result":{"blob_id":"5aa762ae383fbb727af3c7a36d4940a5b8c40a989452d2304fc958ff3f354e7a","retrieved_data":"hello"}}
 ----- stderr -----

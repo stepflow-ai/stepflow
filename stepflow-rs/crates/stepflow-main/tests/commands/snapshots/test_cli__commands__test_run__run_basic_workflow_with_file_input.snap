@@ -7,10 +7,10 @@ info:
     - "--omit-stack-trace"
     - run
     - "--flow=tests/mock/basic.yaml"
-    - "--input=examples/eval/input.json"
+    - "--input=tests/mock/input.json"
 ---
 success: true
 exit_code: 0
 ----- stdout -----
-{"outcome":"failed","error":{"code":500,"message":"Flow execution failed: failed to resolve value"}}
+{"outcome":"success","result":{"name":"b","x":1,"y":2}}
 ----- stderr -----

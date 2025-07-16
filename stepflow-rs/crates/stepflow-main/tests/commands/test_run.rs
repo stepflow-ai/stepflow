@@ -25,7 +25,7 @@ fn test_run_basic_workflow_with_file_input() {
         stepflow()
             .arg("run")
             .arg("--flow=tests/mock/basic.yaml")
-            .arg("--input=examples/eval/input.json")
+            .arg("--input=tests/mock/input.json")
     );
 }
 
@@ -35,7 +35,7 @@ fn test_run_basic_workflow_with_json_input() {
         stepflow()
             .arg("run")
             .arg("--flow=tests/mock/basic.yaml")
-            .arg(r#"--input-json={"m": 3, "n": 4}"#)
+            .arg(r#"--input-json={"name": "hello"}"#)
     );
 }
 
@@ -45,7 +45,7 @@ fn test_run_basic_workflow_with_yaml_input() {
         stepflow()
             .arg("run")
             .arg("--flow=tests/mock/basic.yaml")
-            .arg("--input-yaml=m: 2\nn: 7")
+            .arg("--input-yaml=name: hello")
     );
 }
 
@@ -54,9 +54,9 @@ fn test_run_with_custom_config() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")
-            .arg("--flow=tests/builtins/nested_eval.yaml")
+            .arg("--flow=tests/builtins/blob_test.yaml")
             .arg("--config=tests/builtins/stepflow-config.yml")
-            .arg(r#"--input-json={"input": 42}"#)
+            .arg(r#"--input-json={"data": "hello"}"#)
     );
 }
 
