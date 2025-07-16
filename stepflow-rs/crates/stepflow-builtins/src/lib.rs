@@ -17,7 +17,9 @@ use stepflow_plugin::ExecutionContext;
 mod blob;
 mod error;
 mod eval;
+mod iterate;
 mod load_file;
+mod map;
 mod messages;
 #[cfg(test)]
 mod mock_context;

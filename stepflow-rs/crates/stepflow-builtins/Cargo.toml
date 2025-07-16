@@ -18,6 +18,7 @@ doctest = false
 [dependencies]
 dynosaur.workspace = true
 error-stack.workspace = true
+futures.workspace = true
 openai-api-rs.workspace = true
 schemars.workspace = true
 serde.workspace = true

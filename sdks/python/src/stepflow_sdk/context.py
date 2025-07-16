@@ -21,12 +21,14 @@ from typing import Any
 from uuid import uuid4
 
 from stepflow_sdk.generated_protocol import (
+    EvaluateFlowResult,
     GetBlobResult,
     Message,
     MethodError,
     MethodSuccess,
     PutBlobResult,
 )
+from stepflow_sdk.generated_protocol import Flow
 from stepflow_sdk.message_decoder import MessageDecoder
 
 """
@@ -79,9 +81,9 @@ class StepflowContext:
         # Extract the result from the response message
         if isinstance(response_message, MethodSuccess):
             result = response_message.result
-            assert isinstance(result, result_type), (
-                f"Expected {result_type}, got {type(result)}"
-            )
+            assert isinstance(
+                result, result_type
+            ), f"Expected {result_type}, got {type(result)}"
             return result
         elif isinstance(response_message, MethodError):
             # Handle error case
@@ -121,6 +123,77 @@ class StepflowContext:
     def session_id(self) -> str | None:
         """Get the session ID for HTTP mode, or None for STDIO mode."""
         return self._session_id
+
+    async def evaluate_flow(self, flow: Flow | dict, input: Any) -> Any:
+        """Evaluate a flow with the given input.
+
+        Args:
+            flow: The flow definition (as a Flow object or dictionary)
+            input: The input to provide to the flow
+
+        Returns:
+            The result value on success
+
+        Raises:
+            StepflowSkipped: If the flow execution was skipped
+            StepflowFailed: If the flow execution failed with a business logic error
+            Exception: For system/runtime errors
+        """
+        from stepflow_sdk.exceptions import StepflowSkipped, StepflowFailed
+        
+        # Convert Flow object to dict if needed
+        if isinstance(flow, Flow):
+            import msgspec
+            flow_dict = msgspec.to_builtins(flow)
+        else:
+            flow_dict = flow
+            
+        params = {"flow": flow_dict, "input": input}
+        # Use raw dict response to avoid union deserialization issues
+        request_id = str(uuid4())
+        request = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "flows/evaluate",
+            "params": params,
+        }
+        
+        # Create future for response
+        future: asyncio.Future[Message] = asyncio.Future()
+        
+        # Register the pending request with the message decoder
+        self._message_decoder.register_request(request_id, dict, future)
+        
+        # Send request via queue
+        await self._outgoing_queue.put(request)
+        
+        # Wait for response - the MessageDecoder will resolve this future
+        response_message = await future
+        
+        if hasattr(response_message, 'error'):
+            raise Exception(f"Flow evaluation failed: {response_message.error}")
+        
+        # Extract the flow result
+        if hasattr(response_message, 'result'):
+            flow_result = response_message.result.get("result") if hasattr(response_message.result, 'get') else response_message.result
+        else:
+            flow_result = response_message.get("result", {}).get("result")
+        
+        # Check the outcome and either return the result or raise appropriate exception
+        outcome = flow_result.get("outcome")
+        if outcome == "success":
+            return flow_result.get("result")
+        elif outcome == "skipped":
+            raise StepflowSkipped("Flow execution was skipped")
+        elif outcome == "failed":
+            error = flow_result.get("error", {})
+            raise StepflowFailed(
+                error_code=error.get("code", 500),
+                message=error.get("message", "Flow execution failed"),
+                data=error.get("data")
+            )
+        else:
+            raise Exception(f"Unexpected flow outcome: {outcome}")
 
     def log(self, message):
         """Log a message."""

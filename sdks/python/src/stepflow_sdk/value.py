@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .generated_flow import (
+from .generated_protocol import (
     EscapedLiteral,
     Reference,
     SkipAction,
@@ -28,7 +28,7 @@ from .generated_flow import (
     WorkflowRef,
     WorkflowReference,
 )
-from .generated_flow import (
+from .generated_protocol import (
     StepReference as GeneratedStepReference,
 )
 

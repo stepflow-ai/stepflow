@@ -25,6 +25,7 @@ class ErrorCode(IntEnum):
     VALIDATION_ERROR = -32002
     EXECUTION_ERROR = -32003
     RUNTIME_ERROR = -32004
+    VALUE_ERROR = -32005
 
 
 class StepflowError(Exception):
@@ -68,6 +69,14 @@ class StepflowValidationError(StepflowError):
     @property
     def default_code(self) -> ErrorCode:
         return ErrorCode.VALIDATION_ERROR
+
+
+class StepflowValueError(StepflowError):
+    """Errors related to invalid values."""
+
+    @property
+    def default_code(self) -> ErrorCode:
+        return ErrorCode.VALUE_ERROR
 
 
 class StepflowExecutionError(StepflowError):
@@ -131,3 +140,21 @@ class CodeCompilationError(StepflowExecutionError):
         super().__init__(f"Code compilation failed: {compilation_error}")
         if code:
             self.data = {"code": code}
+
+
+class StepflowSkipped(Exception):
+    """Exception raised when a step or flow is skipped."""
+
+    def __init__(self, message: str = "Flow execution was skipped"):
+        super().__init__(message)
+        self.message = message
+
+
+class StepflowFailed(Exception):
+    """Exception raised when a step or flow fails with a business logic error."""
+
+    def __init__(self, error_code: int, message: str, data: any = None):
+        super().__init__(message)
+        self.error_code = error_code
+        self.message = message
+        self.data = data

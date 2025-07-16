@@ -48,8 +48,8 @@ pub enum WorkflowRef {
 }
 
 /// An expression that can be either a literal value or a template expression.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(untagged, rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", untagged)]
 pub enum Expr {
     /// # Reference
     /// Reference a value from a step, workflow, or other source.
@@ -203,6 +203,110 @@ impl SkipAction {
     }
 }
 
+// Custom serializer for Expr to maintain untagged format
+impl serde::Serialize for Expr {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Ref {
+                from,
+                path,
+                on_skip,
+            } => {
+                use serde::ser::SerializeStruct;
+                let mut state = serializer.serialize_struct("Expr", 3)?;
+                state.serialize_field("$from", from)?;
+                if !path.is_empty() {
+                    state.serialize_field("path", path)?;
+                }
+                if !on_skip.is_default() {
+                    state.serialize_field("onSkip", on_skip)?;
+                }
+                state.end()
+            }
+            Self::EscapedLiteral { literal } => {
+                use serde::ser::SerializeStruct;
+                let mut state = serializer.serialize_struct("Expr", 1)?;
+                state.serialize_field("$literal", literal)?;
+                state.end()
+            }
+            Self::Literal(value) => {
+                // Serialize literal values directly (untagged behavior)
+                value.serialize(serializer)
+            }
+        }
+    }
+}
+
+// Custom deserializer for Expr
+impl<'de> serde::Deserialize<'de> for Expr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+
+        // Check if this is an object with special keys
+        if let serde_json::Value::Object(ref obj) = value {
+            if obj.contains_key("$from") {
+                // This should be a reference - validate the $from value
+                if let Some(from_value) = obj.get("$from") {
+                    // $from must be an object, not a string
+                    if !from_value.is_object() {
+                        return Err(D::Error::custom(format!(
+                            "invalid type: string \"{}\", expected a map for $from",
+                            from_value.as_str().unwrap_or("<unknown>")
+                        )));
+                    }
+                }
+
+                // Try to deserialize as a reference
+                return serde_json::from_value::<ExprRef>(value)
+                    .map(|expr_ref| Self::Ref {
+                        from: expr_ref.from,
+                        path: expr_ref.path,
+                        on_skip: expr_ref.on_skip,
+                    })
+                    .map_err(D::Error::custom);
+            } else if obj.contains_key("$literal") {
+                // This should be an escaped literal
+                return serde_json::from_value::<ExprEscapedLiteral>(value)
+                    .map(|expr_lit| Self::EscapedLiteral {
+                        literal: expr_lit.literal,
+                    })
+                    .map_err(D::Error::custom);
+            }
+        }
+
+        // Otherwise, it's a literal value
+        let value_ref = serde_json::from_value::<ValueRef>(value).map_err(D::Error::custom)?;
+        Ok(Self::Literal(value_ref))
+    }
+}
+
+// Helper structs for deserialization
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExprRef {
+    #[serde(rename = "$from")]
+    from: BaseRef,
+    #[serde(default)]
+    path: JsonPath,
+    #[serde(default)]
+    on_skip: SkipAction,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExprEscapedLiteral {
+    #[serde(rename = "$literal")]
+    literal: ValueRef,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +396,15 @@ mod tests {
         assert_eq!(
             from_yaml("{ $from: { step: \"step1\" }, path: \"out\" }"),
             Expr::step_path("step1", "out", SkipAction::Skip)
+        );
+    }
+
+    #[test]
+    fn test_expr_from_yaml_invalid_reference() {
+        let from_yaml = |s| serde_yaml_ng::from_str::<Expr>(s).unwrap_err();
+        assert_eq!(
+            from_yaml("{ $from: \"input\" }").to_string(),
+            "invalid type: string \"input\", expected a map for $from",
         );
     }
 

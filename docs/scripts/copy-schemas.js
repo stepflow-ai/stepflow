@@ -8,7 +8,6 @@ const destDir = path.join(__dirname, '../static/schemas');
 
 // Schema files to copy (keeping original names)
 const schemaFiles = [
-  'flow.json',
   'protocol.json'
 ];
 

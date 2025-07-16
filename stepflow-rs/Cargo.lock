@@ -3179,6 +3179,7 @@ version = "0.1.0"
 dependencies = [
  "dynosaur",
  "error-stack",
+ "futures",
  "openai-api-rs",
  "schemars 1.0.3",
  "serde",
