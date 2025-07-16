@@ -20,9 +20,18 @@ mod test_submit;
 mod test_test;
 
 use insta_cmd::Command;
+use std::path::Path;
 
 fn stepflow() -> Command {
     let mut command = Command::new(insta_cmd::get_cargo_bin("stepflow"));
+
+    // Locate the cargo workspace
+    let path = Path::new(std::env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .expect("Failed to locate workspace root");
+    command.current_dir(path);
     command.arg("--log-file=/dev/null");
     command.arg("--omit-stack-trace");
     command

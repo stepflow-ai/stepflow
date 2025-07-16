@@ -7,11 +7,10 @@ info:
     - "--omit-stack-trace"
     - run
     - "--flow=tests/mock/basic.yaml"
-    - "--input-json={\"m\": 3, \"n\": 4}"
+    - "--input-json={\"name\": \"hello\"}"
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
-
+{"outcome":"success","result":{"name":"world","x":2,"y":8}}
 ----- stderr -----
-Missing file: tests/mock/basic.yaml

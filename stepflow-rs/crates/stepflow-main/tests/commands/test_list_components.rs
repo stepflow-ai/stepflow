@@ -33,8 +33,7 @@ fn test_list_components_default() {
         stepflow()
             .arg("--log-level=error")
             .arg("list-components")
-            .arg("--config=../../tests/stepflow-config.yml")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .arg("--config=tests/stepflow-config.yml")
     );
 }
 
@@ -44,9 +43,8 @@ fn test_list_components_format_json() {
         stepflow()
             .arg("--log-level=error")
             .arg("list-components")
-            .arg("--config=../../tests/stepflow-config.yml")
+            .arg("--config=tests/stepflow-config.yml")
             .arg("--format=json")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
     );
 }
 
@@ -56,9 +54,8 @@ fn test_list_components_format_yaml() {
         stepflow()
             .arg("--log-level=error")
             .arg("list-components")
-            .arg("--config=../../tests/stepflow-config.yml")
+            .arg("--config=tests/stepflow-config.yml")
             .arg("--format=yaml")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
     );
 }
 
@@ -68,9 +65,8 @@ fn test_list_components_with_schemas() {
         stepflow()
             .arg("--log-level=error")
             .arg("list-components")
-            .arg("--config=../../tests/stepflow-config.yml")
+            .arg("--config=tests/stepflow-config.yml")
             .arg("--schemas=true")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
     );
 }
 
@@ -80,10 +76,9 @@ fn test_list_components_json_no_schemas() {
         stepflow()
             .arg("--log-level=error")
             .arg("list-components")
-            .arg("--config=../../tests/stepflow-config.yml")
+            .arg("--config=tests/stepflow-config.yml")
             .arg("--format=json")
             .arg("--schemas=false")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
     );
 }
 
@@ -110,7 +105,6 @@ routing:
             .arg("--log-level=error")
             .arg("list-components")
             .arg(format!("--config={}", config_path.display()))
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
     );
 }
 
@@ -122,6 +116,5 @@ fn test_list_components_nonexistent_config() {
             .arg("--log-level=error")
             .arg("list-components")
             .arg("--config=/tmp/nonexistent-stepflow-config.yml")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
     );
 }

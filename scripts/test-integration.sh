@@ -38,11 +38,11 @@ cargo build
 # Test workflows using stepflow test command
 echo "🔗 Testing workflows..."
 
-# Test the main test workflows (equivalent to test_run_test_workflows)
+# Test the main test workflows
 echo "  Testing stepflow-rs/tests directory..."
-./target/debug/stepflow test ../stepflow-rs/tests
+./target/debug/stepflow test ../tests
 
-# Test the examples (equivalent to test_run_example_workflows)
+# Test the examples
 echo "  Testing examples directory..."
 ./target/debug/stepflow test ../examples
 

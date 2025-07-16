@@ -39,7 +39,7 @@ fn test_submit_with_file_input() {
             .arg("submit")
             .arg("--url=http://localhost:9999")
             .arg("--flow=tests/mock/basic.yaml")
-            .arg("--input=../../../../examples/eval/input.json")
+            .arg("--input=examples/eval/input.json")
     );
 }
 
