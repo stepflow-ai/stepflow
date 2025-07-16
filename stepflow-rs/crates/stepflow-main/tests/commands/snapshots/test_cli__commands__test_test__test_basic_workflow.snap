@@ -8,9 +8,20 @@ info:
     - test
     - tests/basic.yaml
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
+----------
+Running Test Case simple_echo
+----------
+Running Test Case different_message
+tests/basic.yaml: 2/2 passed
+tests/basic.yaml: 2/2 passed
+
+=== Test Summary ===
+Files tested: 1
+Total test cases: 2
+Passed: 2
+Failed: 0
 
 ----- stderr -----
-Missing file: tests/basic.yaml

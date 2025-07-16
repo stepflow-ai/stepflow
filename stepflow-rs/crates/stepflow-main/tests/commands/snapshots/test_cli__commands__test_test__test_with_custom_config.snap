@@ -9,9 +9,24 @@ info:
     - "--config=tests/builtins/stepflow-config.yml"
     - tests/builtins
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
+----------
+Running Test Case test complex data structure
+----------
+Running Test Case test nested object structure
+tests/builtins/blob_test.yaml: 2/2 passed
+----------
+Running Test Case test nested flow execution
+tests/builtins/nested_eval.yaml: 1/1 passed
+tests/builtins/blob_test.yaml: 2/2 passed
+tests/builtins/nested_eval.yaml: 1/1 passed
+
+=== Test Summary ===
+Files tested: 2
+Total test cases: 3
+Passed: 3
+Failed: 0
 
 ----- stderr -----
-Missing file: tests/builtins

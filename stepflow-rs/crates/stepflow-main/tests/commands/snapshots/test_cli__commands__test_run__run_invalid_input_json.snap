@@ -14,4 +14,4 @@ exit_code: 1
 ----- stdout -----
 
 ----- stderr -----
-Missing file: tests/mock/basic.yaml
+REPL command error: Invalid JSON input

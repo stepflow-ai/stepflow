@@ -10,9 +10,8 @@ info:
     - "--config=tests/builtins/stepflow-config.yml"
     - "--input-json={\"input\": 42}"
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
-
+{"outcome":"success","result":{"nested_result":{"result":{"result":{"messages":[{"role":"user","content":"Hello from nested flow"}]}},"run_id":"26c761e5-1344-4bad-b3f9-ce82ec2d5dcf"}}}
 ----- stderr -----
-Missing file: tests/builtins/nested_eval.yaml

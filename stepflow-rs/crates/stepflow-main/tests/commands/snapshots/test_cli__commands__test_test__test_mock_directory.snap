@@ -8,9 +8,62 @@ info:
     - test
     - tests/mock
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
+----------
+Running Test Case test with input 'a'
+----------
+Running Test Case test with input 'hello'
+----------
+Running Test Case test with input 'world'
+tests/mock/basic.yaml: 3/3 passed
+----------
+Running Test Case do not skip with input 'a'
+----------
+Running Test Case skip with input 'a'
+----------
+Running Test Case do not skip with input 'hello'
+tests/mock/conditional_skip.yaml: 3/3 passed
+----------
+Running Test Case do not skip with input 'a'
+----------
+Running Test Case skip with input 'a'
+----------
+Running Test Case do not skip with input 'hello'
+tests/mock/conditional_skip_use_default.yaml: 3/3 passed
+----------
+Running Test Case test error case that should fail
+----------
+Running Test Case test success case
+tests/mock/error_fail.yaml: 2/2 passed
+----------
+Running Test Case test error case that should skip
+----------
+Running Test Case test success case
+tests/mock/error_skip.yaml: 2/2 passed
+----------
+Running Test Case test error case that uses default
+----------
+Running Test Case test success case
+tests/mock/error_use_default.yaml: 2/2 passed
+----------
+Running Test Case test error case that uses default value
+----------
+Running Test Case test success case
+tests/mock/error_use_default_value.yaml: 2/2 passed
+tests/mock/basic.yaml: 3/3 passed
+tests/mock/conditional_skip.yaml: 3/3 passed
+tests/mock/conditional_skip_use_default.yaml: 3/3 passed
+tests/mock/error_fail.yaml: 2/2 passed
+tests/mock/error_skip.yaml: 2/2 passed
+tests/mock/error_use_default.yaml: 2/2 passed
+tests/mock/error_use_default_value.yaml: 2/2 passed
+
+=== Test Summary ===
+Files tested: 7
+Total test cases: 17
+Passed: 17
+Failed: 0
 
 ----- stderr -----
-Missing file: tests/mock

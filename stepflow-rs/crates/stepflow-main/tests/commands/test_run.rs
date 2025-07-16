@@ -25,7 +25,7 @@ fn test_run_basic_workflow_with_file_input() {
         stepflow()
             .arg("run")
             .arg("--flow=tests/mock/basic.yaml")
-            .arg("--input=../../../../examples/eval/input.json")
+            .arg("--input=examples/eval/input.json")
     );
 }
 

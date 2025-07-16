@@ -9,9 +9,8 @@ info:
     - "--flow=tests/mock/basic.yaml"
     - "--input-json={\"m\": 3, \"n\": 4}"
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
-
+{"outcome":"failed","error":{"code":500,"message":"Flow execution failed: failed to resolve value"}}
 ----- stderr -----
-Missing file: tests/mock/basic.yaml
