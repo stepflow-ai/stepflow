@@ -105,9 +105,7 @@ impl BuiltinComponent for IterateComponent {
                 };
                 let output_value =
                     serde_json::to_value(output).change_context(BuiltinError::Internal)?;
-                return Ok(FlowResult::Success(
-                    ValueRef::new(output_value),
-                ));
+                return Ok(FlowResult::Success(ValueRef::new(output_value)));
             }
 
             // Execute the workflow
@@ -133,9 +131,7 @@ impl BuiltinComponent for IterateComponent {
                             };
                             let output_value = serde_json::to_value(output)
                                 .change_context(BuiltinError::Internal)?;
-                            return Ok(FlowResult::Success(
-                                ValueRef::new(output_value),
-                            ));
+                            return Ok(FlowResult::Success(ValueRef::new(output_value)));
                         } else if let Some(next_input) = result_obj.get("next") {
                             // Found "next" field - continue iteration
                             current_input = ValueRef::new(next_input.clone());
@@ -144,12 +140,10 @@ impl BuiltinComponent for IterateComponent {
                     }
 
                     // Result doesn't have expected structure - return error
-                    return Ok(FlowResult::Failed(
-                        stepflow_core::FlowError::new(
-                            400,
-                            "Workflow result must contain either 'result' or 'next' field",
-                        ),
-                    ));
+                    return Ok(FlowResult::Failed(stepflow_core::FlowError::new(
+                        400,
+                        "Workflow result must contain either 'result' or 'next' field",
+                    )));
                 }
                 FlowResult::Failed(error) => {
                     // Propagate the failure from the workflow
@@ -157,12 +151,10 @@ impl BuiltinComponent for IterateComponent {
                 }
                 FlowResult::Skipped => {
                     // Treat skipped as an error in this context
-                    return Ok(FlowResult::Failed(
-                        stepflow_core::FlowError::new(
-                            400,
-                            "Workflow cannot be skipped during iteration",
-                        ),
-                    ));
+                    return Ok(FlowResult::Failed(stepflow_core::FlowError::new(
+                        400,
+                        "Workflow cannot be skipped during iteration",
+                    )));
                 }
             }
         }

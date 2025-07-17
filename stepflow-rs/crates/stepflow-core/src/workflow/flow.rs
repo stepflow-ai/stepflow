@@ -167,10 +167,10 @@ impl Flow {
     }
 }
 
-/// A wrapper around Arc<Flow> to support poem-openapi traits.
+/// A wrapper around `Arc<Flow>` to support poem-openapi traits.
 ///
 /// This wrapper exists to work around Rust's orphan rules which prevent
-/// implementing external traits on external types like Arc<Flow>.
+/// implementing external traits on external types like `Arc<Flow>`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowRef(std::sync::Arc<Flow>);
 
@@ -180,7 +180,7 @@ impl FlowRef {
         Self(std::sync::Arc::new(flow))
     }
 
-    /// Create a new FlowRef from an Arc<Flow>.
+    /// Create a new FlowRef from an `Arc<Flow>`.
     pub fn from_arc(arc: std::sync::Arc<Flow>) -> Self {
         Self(arc)
     }
@@ -190,12 +190,12 @@ impl FlowRef {
         &self.0
     }
 
-    /// Get the underlying Arc<Flow>.
+    /// Get the underlying `Arc<Flow>`.
     pub fn into_arc(self) -> std::sync::Arc<Flow> {
         self.0
     }
 
-    /// Get a reference to the underlying Arc<Flow>.
+    /// Get a reference to the underlying `Arc<Flow>`.
     pub fn as_arc(&self) -> &std::sync::Arc<Flow> {
         &self.0
     }

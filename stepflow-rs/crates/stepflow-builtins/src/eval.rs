@@ -100,9 +100,7 @@ impl BuiltinComponent for EvalComponent {
             run_id: context.run_id().to_string(),
         };
 
-        let result = FlowResult::Success(
-            ValueRef::new(serde_json::to_value(output).unwrap()),
-        );
+        let result = FlowResult::Success(ValueRef::new(serde_json::to_value(output).unwrap()));
         Ok(result)
     }
 }

@@ -210,18 +210,18 @@ impl<L: ValueLoader> ValueResolver<L> {
                 // Resolve the expression directly
                 self.resolve_expr(expr).await
             }
-            ValueTemplateRepr::Null => Ok(FlowResult::Success(
-                ValueRef::new(serde_json::Value::Null),
-            )),
-            ValueTemplateRepr::Bool(b) => Ok(FlowResult::Success(
-                ValueRef::new(serde_json::Value::Bool(*b)),
-            )),
-            ValueTemplateRepr::Number(n) => Ok(FlowResult::Success(
-                ValueRef::new(serde_json::Value::Number(n.clone())),
-            )),
-            ValueTemplateRepr::String(s) => Ok(FlowResult::Success(
-                ValueRef::new(serde_json::Value::String(s.clone())),
-            )),
+            ValueTemplateRepr::Null => {
+                Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
+            }
+            ValueTemplateRepr::Bool(b) => Ok(FlowResult::Success(ValueRef::new(
+                serde_json::Value::Bool(*b),
+            ))),
+            ValueTemplateRepr::Number(n) => Ok(FlowResult::Success(ValueRef::new(
+                serde_json::Value::Number(n.clone()),
+            ))),
+            ValueTemplateRepr::String(s) => Ok(FlowResult::Success(ValueRef::new(
+                serde_json::Value::String(s.clone()),
+            ))),
             ValueTemplateRepr::Array(arr) => {
                 // Process array recursively
                 let mut result_array = Vec::new();
@@ -238,9 +238,9 @@ impl<L: ValueLoader> ValueResolver<L> {
                         }
                     }
                 }
-                Ok(FlowResult::Success(
-                    ValueRef::new(serde_json::Value::Array(result_array)),
-                ))
+                Ok(FlowResult::Success(ValueRef::new(
+                    serde_json::Value::Array(result_array),
+                )))
             }
             ValueTemplateRepr::Object(obj) => {
                 // Process object recursively
@@ -258,9 +258,9 @@ impl<L: ValueLoader> ValueResolver<L> {
                         }
                     }
                 }
-                Ok(FlowResult::Success(
-                    ValueRef::new(serde_json::Value::Object(result_map)),
-                ))
+                Ok(FlowResult::Success(ValueRef::new(
+                    serde_json::Value::Object(result_map),
+                )))
             }
         }
     }
