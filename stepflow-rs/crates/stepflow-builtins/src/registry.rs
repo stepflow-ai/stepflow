@@ -22,7 +22,9 @@ use crate::{
     BuiltinComponent, DynBuiltinComponent,
     blob::{GetBlobComponent, PutBlobComponent},
     eval::EvalComponent,
+    iterate::IterateComponent,
     load_file::LoadFileComponent,
+    map::MapComponent,
     messages::CreateMessagesComponent,
     openai::OpenAIComponent,
 };
@@ -45,7 +47,9 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     registry.register("openai", OpenAIComponent::new("gpt-3.5-turbo"));
     registry.register("create_messages", CreateMessagesComponent);
     registry.register("eval", EvalComponent::new());
+    registry.register("iterate", IterateComponent::new());
     registry.register("load_file", LoadFileComponent);
+    registry.register("map", MapComponent::new());
     registry.register("put_blob", PutBlobComponent::new());
     registry.register("get_blob", GetBlobComponent::new());
     registry

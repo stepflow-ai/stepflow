@@ -1,0 +1,95 @@
+name: "Iterate Example"
+description: "Example of using the Python iterate component with counter workflow"
+
+input_schema:
+  type: object
+  properties:
+    current:
+      type: integer
+      description: "Starting count value"
+    target:
+      type: integer
+      description: "Target count value"
+  required: ["current", "target"]
+
+output_schema:
+  type: object
+  properties:
+    result:
+      type: object
+      properties:
+        result:
+          type: string
+          description: "Final result message"
+        iterations:
+          type: integer
+          description: "Number of iterations performed"
+        terminated:
+          type: boolean
+          description: "Whether iteration was terminated by max_iterations"
+
+steps:
+  - id: count_to_target
+    component: "/python/iterate"
+    input:
+      flow:
+        $literal:
+          steps:
+            - id: counter
+              component: "/python/counter_step"
+              input:
+                current: { $from: { workflow: input }, path: "current" }
+                target: { $from: { workflow: input }, path: "target" }
+          output: { $from: { step: "counter" } }
+      initial_input:
+        current: { $from: { workflow: input }, path: "current" }
+        target: { $from: { workflow: input }, path: "target" }
+      max_iterations: 20
+
+output: { $from: { step: "count_to_target" } }
+
+test:
+  cases:
+    - name: count from 0 to 5
+      input:
+        current: 0
+        target: 5
+      output:
+        outcome: success
+        result:
+          result: "Reached target 5"
+          iterations: 6
+          terminated: false
+
+    - name: count from 3 to 7
+      input:
+        current: 3
+        target: 7
+      output:
+        outcome: success
+        result:
+          result: "Reached target 7"
+          iterations: 5
+          terminated: false
+
+    - name: already at target
+      input:
+        current: 10
+        target: 10
+      output:
+        outcome: success
+        result:
+          result: "Reached target 10"
+          iterations: 1
+          terminated: false
+
+    - name: count from 0 to 1
+      input:
+        current: 0
+        target: 1
+      output:
+        outcome: success
+        result:
+          result: "Reached target 1"
+          iterations: 2
+          terminated: false

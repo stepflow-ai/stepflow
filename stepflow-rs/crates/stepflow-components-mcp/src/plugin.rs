@@ -390,12 +390,10 @@ impl Plugin for McpPlugin {
                 if let Some(mcp_error) = err.downcast_ref::<McpError>() {
                     if matches!(mcp_error, McpError::ToolExecution) {
                         // This is a tool execution failure, not an implementation failure
-                        return Ok(FlowResult::Failed {
-                            error: FlowError::new(
-                                500,
-                                format!("Tool '{tool_name}' execution failed"),
-                            ),
-                        });
+                        return Ok(FlowResult::Failed(FlowError::new(
+                            500,
+                            format!("Tool '{tool_name}' execution failed"),
+                        )));
                     }
                 }
                 // For other errors (timeouts, connection issues, etc.), propagate as implementation errors
@@ -409,9 +407,7 @@ impl Plugin for McpPlugin {
             call_result.clone()
         });
 
-        Ok(FlowResult::Success {
-            result: ValueRef::new(content),
-        })
+        Ok(FlowResult::Success(ValueRef::new(content)))
     }
 }
 

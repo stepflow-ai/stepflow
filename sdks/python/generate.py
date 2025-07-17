@@ -60,10 +60,11 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
             "--field-constraints",
             "--use-union-operator",
             "--keyword-only",
+            "--target-python-version",
+            "3.11",
         ]
 
         # Use --use-title-as-name for both schemas since both now have valid class name titles
-        # flow.json: "WorkflowReference", "StepReference", "OnErrorFail", etc.
         # protocol.json: "JsonRpcVersion", "InitializeParams", "ComponentExecuteResult", etc.
         cmd.append("--use-title-as-name")
 
@@ -187,7 +188,7 @@ def generate_types_from_schema(
 
 
 def main():
-    """Generate protocol and flow types from JSON schemas."""
+    """Generate protocol types from JSON schema (flow types are now included in protocol)."""
     parser = argparse.ArgumentParser(
         description="Generate StepFlow Python SDK types from JSON schemas"
     )
@@ -197,16 +198,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Generate protocol types
+    # Generate protocol types (includes Flow and all other types)
     result = generate_types_from_schema(
         "protocol", "generated_protocol.py", check_only=args.check
-    )
-    if result != 0:
-        return result
-
-    # Generate flow types
-    result = generate_types_from_schema(
-        "flow", "generated_flow.py", check_only=args.check
     )
     if result != 0:
         return result

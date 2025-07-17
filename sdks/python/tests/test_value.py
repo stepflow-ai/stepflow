@@ -20,7 +20,7 @@ from stepflow_sdk import (
     OnSkipSkip,
 )
 from stepflow_sdk.flow_builder import FlowBuilder
-from stepflow_sdk.generated_flow import EscapedLiteral
+from stepflow_sdk.generated_protocol import EscapedLiteral
 from stepflow_sdk.value import JsonPath, StepReference, Value, WorkflowInput
 
 

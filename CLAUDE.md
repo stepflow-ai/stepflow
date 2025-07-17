@@ -153,7 +153,7 @@ When making changes to core types, you may need to regenerate schemas and derive
 ```bash
 # Regenerate JSON schemas from Rust types (run from stepflow-rs directory)
 cd stepflow-rs
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-protocol
 
 # Regenerate Python types from updated schemas
 cd sdks/python
@@ -383,7 +383,7 @@ async fn connect_internal(&self) -> McpResult<Connection> {
     client.connect().change_context(McpError::Communication)?
 }
 
-// Trait method converts to boundary error  
+// Trait method converts to boundary error
 async fn connect(&self) -> Result<Connection> {
     self.connect_internal()
         .await
@@ -437,8 +437,8 @@ if let Some(mcp_error) = error.downcast_ref::<McpError>() {
     match mcp_error {
         McpError::ToolExecution => {
             // Handle as business logic failure
-            return Ok(FlowResult::Failed { 
-                error: FlowError::new(500, "Tool failed") 
+            return Ok(FlowResult::Failed {
+                error: FlowError::new(500, "Tool failed")
             });
         }
         _ => {} // Handle as system error

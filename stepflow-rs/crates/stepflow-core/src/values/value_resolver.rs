@@ -136,13 +136,9 @@ impl<L: ValueLoader> ValueResolver<L> {
     pub async fn resolve_expr(&self, expr: &Expr) -> ValueResolverResult<FlowResult> {
         // Handle literal expressions
         if let Expr::EscapedLiteral { literal } = expr {
-            return Ok(FlowResult::Success {
-                result: literal.clone(),
-            });
+            return Ok(FlowResult::Success(literal.clone()));
         } else if let Expr::Literal(literal) = expr {
-            return Ok(FlowResult::Success {
-                result: literal.clone(),
-            });
+            return Ok(FlowResult::Success(literal.clone()));
         }
 
         // Get the base reference
@@ -151,9 +147,7 @@ impl<L: ValueLoader> ValueResolver<L> {
         let base_result = match base_ref {
             BaseRef::Workflow(_) => {
                 // Return the workflow input
-                FlowResult::Success {
-                    result: self.input.clone(),
-                }
+                FlowResult::Success(self.input.clone())
             }
             BaseRef::Step { step: step_id } => self.resolve_step(step_id).await?,
         };
@@ -161,11 +155,11 @@ impl<L: ValueLoader> ValueResolver<L> {
         // Apply path if specified
         let path_result = if let Some(path) = expr.path() {
             match base_result {
-                FlowResult::Success { result } => {
+                FlowResult::Success(result) => {
                     tracing::debug!("Resolving path '{}' on value: {:?}", path, result.as_ref());
                     if let Some(sub_value) = result.resolve_json_path(path) {
                         tracing::debug!("Path '{}' resolved to: {:?}", path, sub_value.as_ref());
-                        FlowResult::Success { result: sub_value }
+                        FlowResult::Success(sub_value)
                     } else {
                         tracing::debug!("Path '{}' not found in value", path);
                         return Err(ValueResolverError::UndefinedField {
@@ -185,7 +179,7 @@ impl<L: ValueLoader> ValueResolver<L> {
         // Handle skip actions.
         // NOTE: Skip actions are applied after path resolution.
         match path_result {
-            FlowResult::Success { result } => Ok(FlowResult::Success { result }),
+            FlowResult::Success(result) => Ok(FlowResult::Success(result)),
             FlowResult::Skipped => {
                 match expr.on_skip() {
                     Some(SkipAction::UseDefault { default_value }) => {
@@ -193,9 +187,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                             .as_ref()
                             .map(|v| v.as_ref())
                             .unwrap_or(&serde_json::Value::Null);
-                        Ok(FlowResult::Success {
-                            result: ValueRef::new(default.clone()),
-                        })
+                        Ok(FlowResult::Success(ValueRef::new(default.clone())))
                     }
                     _ => {
                         // No on_skip action specified - propagate the skip
@@ -203,7 +195,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                     }
                 }
             }
-            FlowResult::Failed { error } => Ok(FlowResult::Failed { error }),
+            FlowResult::Failed(error) => Ok(FlowResult::Failed(error)),
         }
     }
 
@@ -218,57 +210,57 @@ impl<L: ValueLoader> ValueResolver<L> {
                 // Resolve the expression directly
                 self.resolve_expr(expr).await
             }
-            ValueTemplateRepr::Null => Ok(FlowResult::Success {
-                result: ValueRef::new(serde_json::Value::Null),
-            }),
-            ValueTemplateRepr::Bool(b) => Ok(FlowResult::Success {
-                result: ValueRef::new(serde_json::Value::Bool(*b)),
-            }),
-            ValueTemplateRepr::Number(n) => Ok(FlowResult::Success {
-                result: ValueRef::new(serde_json::Value::Number(n.clone())),
-            }),
-            ValueTemplateRepr::String(s) => Ok(FlowResult::Success {
-                result: ValueRef::new(serde_json::Value::String(s.clone())),
-            }),
+            ValueTemplateRepr::Null => {
+                Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
+            }
+            ValueTemplateRepr::Bool(b) => Ok(FlowResult::Success(ValueRef::new(
+                serde_json::Value::Bool(*b),
+            ))),
+            ValueTemplateRepr::Number(n) => Ok(FlowResult::Success(ValueRef::new(
+                serde_json::Value::Number(n.clone()),
+            ))),
+            ValueTemplateRepr::String(s) => Ok(FlowResult::Success(ValueRef::new(
+                serde_json::Value::String(s.clone()),
+            ))),
             ValueTemplateRepr::Array(arr) => {
                 // Process array recursively
                 let mut result_array = Vec::new();
                 for template in arr {
                     match Box::pin(self.resolve_template_rec(template)).await? {
-                        FlowResult::Success { result } => {
+                        FlowResult::Success(result) => {
                             result_array.push(result.as_ref().clone());
                         }
                         FlowResult::Skipped => {
                             return Ok(FlowResult::Skipped);
                         }
-                        FlowResult::Failed { error } => {
-                            return Ok(FlowResult::Failed { error });
+                        FlowResult::Failed(error) => {
+                            return Ok(FlowResult::Failed(error));
                         }
                     }
                 }
-                Ok(FlowResult::Success {
-                    result: ValueRef::new(serde_json::Value::Array(result_array)),
-                })
+                Ok(FlowResult::Success(ValueRef::new(
+                    serde_json::Value::Array(result_array),
+                )))
             }
             ValueTemplateRepr::Object(obj) => {
                 // Process object recursively
                 let mut result_map = serde_json::Map::new();
                 for (k, template) in obj {
                     match Box::pin(self.resolve_template_rec(template)).await? {
-                        FlowResult::Success { result } => {
+                        FlowResult::Success(result) => {
                             result_map.insert(k.clone(), result.as_ref().clone());
                         }
                         FlowResult::Skipped => {
                             return Ok(FlowResult::Skipped);
                         }
-                        FlowResult::Failed { error } => {
-                            return Ok(FlowResult::Failed { error });
+                        FlowResult::Failed(error) => {
+                            return Ok(FlowResult::Failed(error));
                         }
                     }
                 }
-                Ok(FlowResult::Success {
-                    result: ValueRef::new(serde_json::Value::Object(result_map)),
-                })
+                Ok(FlowResult::Success(ValueRef::new(
+                    serde_json::Value::Object(result_map),
+                )))
             }
         }
     }
@@ -359,7 +351,7 @@ mod tests {
         let template = ValueTemplate::workflow_input(JsonPath::from("name"));
         let resolved = resolver.resolve_template(&template).await.unwrap();
         match resolved {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!("Alice"));
             }
             _ => panic!("Expected successful result, got: {resolved:?}"),

@@ -252,49 +252,42 @@ impl<'de> Deserialize<'de> for ValueTemplateRepr {
         }
 
         // Otherwise, convert the JSON value to our template representation
-        let template_repr = json_value_to_template_repr(value);
+        let template_repr = json_value_to_template_repr(value).map_err(D::Error::custom)?;
         Ok(template_repr)
     }
 }
 
 /// Convert a serde_json::Value to ValueTemplateRepr recursively
-fn json_value_to_template_repr(value: serde_json::Value) -> ValueTemplateRepr {
+fn json_value_to_template_repr(value: serde_json::Value) -> Result<ValueTemplateRepr, String> {
     match value {
-        serde_json::Value::Null => ValueTemplateRepr::Null,
-        serde_json::Value::Bool(b) => ValueTemplateRepr::Bool(b),
-        serde_json::Value::Number(n) => ValueTemplateRepr::Number(n),
-        serde_json::Value::String(s) => ValueTemplateRepr::String(s),
+        serde_json::Value::Null => Ok(ValueTemplateRepr::Null),
+        serde_json::Value::Bool(b) => Ok(ValueTemplateRepr::Bool(b)),
+        serde_json::Value::Number(n) => Ok(ValueTemplateRepr::Number(n)),
+        serde_json::Value::String(s) => Ok(ValueTemplateRepr::String(s)),
         serde_json::Value::Array(arr) => {
             let templates = arr
                 .into_iter()
-                .map(|v| ValueTemplate(Arc::new(json_value_to_template_repr(v))))
-                .collect();
-            ValueTemplateRepr::Array(templates)
+                .map(|v| json_value_to_template_repr(v).map(|repr| ValueTemplate(Arc::new(repr))))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ValueTemplateRepr::Array(templates))
         }
-        serde_json::Value::Object(ref obj) => {
+        serde_json::Value::Object(obj) => {
             // Check if this object is an expression
             if obj.contains_key("$from") || obj.contains_key("$literal") {
-                // Try to deserialize as an expression
-                match Expr::deserialize(&value) {
-                    Ok(expr) => return ValueTemplateRepr::Expression(expr),
-                    Err(_) => {
-                        // If it fails to parse as an expression, treat as a regular object
-                        // This handles malformed expressions gracefully
-                    }
-                }
+                // Try to deserialize as an expression - must succeed or it's an error
+                let expr = Expr::deserialize(serde_json::Value::Object(obj.clone()))
+                    .map_err(|e| format!("Invalid expression: {e}"))?;
+                return Ok(ValueTemplateRepr::Expression(expr));
             }
 
             // Convert to regular object
             let templates = obj
-                .iter()
+                .into_iter()
                 .map(|(k, v)| {
-                    (
-                        k.clone(),
-                        ValueTemplate(Arc::new(json_value_to_template_repr(v.clone()))),
-                    )
+                    json_value_to_template_repr(v).map(|repr| (k, ValueTemplate(Arc::new(repr))))
                 })
-                .collect();
-            ValueTemplateRepr::Object(templates)
+                .collect::<Result<IndexMap<_, _>, _>>()?;
+            Ok(ValueTemplateRepr::Object(templates))
         }
     }
 }
@@ -729,5 +722,54 @@ mod tests {
         let literal_template = ValueTemplate::literal(serde_json::json!({"key": "value"}));
         let expressions: Vec<_> = literal_template.expressions().collect();
         assert_eq!(expressions.len(), 0); // No expressions in literal template
+    }
+
+    #[test]
+    fn test_invalid_from_syntax() {
+        // Test that invalid $from syntax fails to parse
+        let invalid_from_string = r#"{"$from": "input"}"#;
+        let result = serde_json::from_str::<ValueTemplate>(invalid_from_string);
+        assert!(result.is_err(), "Should fail to parse invalid $from syntax");
+
+        let error_message = result.unwrap_err().to_string();
+        assert!(
+            error_message.contains("expected a map for $from"),
+            "Error should mention invalid $from: {error_message}"
+        );
+
+        // Test that invalid $from syntax in nested objects also fails
+        let invalid_nested = r#"{"data": {"$from": "input"}, "other": "value"}"#;
+        let result = serde_json::from_str::<ValueTemplate>(invalid_nested);
+        assert!(
+            result.is_err(),
+            "Should fail to parse invalid $from syntax in nested objects"
+        );
+
+        // Test that invalid $from syntax in arrays also fails
+        let invalid_array = r#"[{"$from": "input"}, "literal_value"]"#;
+        let result = serde_json::from_str::<ValueTemplate>(invalid_array);
+        assert!(
+            result.is_err(),
+            "Should fail to parse invalid $from syntax in arrays"
+        );
+    }
+
+    #[test]
+    fn test_valid_from_syntax() {
+        // Test that valid $from syntax parses correctly
+        let valid_step_ref = r#"{"$from": {"step": "step1"}}"#;
+        let result = serde_json::from_str::<ValueTemplate>(valid_step_ref);
+        assert!(result.is_ok(), "Should parse valid step reference");
+        assert!(!result.unwrap().is_literal(), "Should be an expression");
+
+        let valid_workflow_ref = r#"{"$from": {"workflow": "input"}}"#;
+        let result = serde_json::from_str::<ValueTemplate>(valid_workflow_ref);
+        assert!(result.is_ok(), "Should parse valid workflow reference");
+        assert!(!result.unwrap().is_literal(), "Should be an expression");
+
+        let valid_with_path = r#"{"$from": {"step": "step1"}, "path": "field"}"#;
+        let result = serde_json::from_str::<ValueTemplate>(valid_with_path);
+        assert!(result.is_ok(), "Should parse valid reference with path");
+        assert!(!result.unwrap().is_literal(), "Should be an expression");
     }
 }

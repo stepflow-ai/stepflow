@@ -144,9 +144,7 @@ impl BuiltinComponent for LoadFileComponent {
 
         let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
 
-        Ok(FlowResult::Success {
-            result: ValueRef::new(output_value),
-        })
+        Ok(FlowResult::Success(ValueRef::new(output_value)))
     }
 }
 

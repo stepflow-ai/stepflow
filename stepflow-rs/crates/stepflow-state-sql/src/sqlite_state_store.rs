@@ -806,7 +806,7 @@ impl StateStore for SqliteStateStore {
                             completed_at,
                         },
                         input,
-                        result: result.map(|r| FlowResult::Success { result: r }),
+                        result: result.map(FlowResult::Success),
                     };
 
                     Ok(Some(details))

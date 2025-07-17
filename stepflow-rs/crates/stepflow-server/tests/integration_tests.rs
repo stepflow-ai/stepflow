@@ -95,9 +95,10 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
             .mock_component("/mock/error_component")
             .behavior(
                 json!({"input": "trigger_error"}),
-                MockComponentBehavior::result(FlowResult::Failed {
-                    error: FlowError::new(500, "Mock error for testing"),
-                }),
+                MockComponentBehavior::result(FlowResult::Failed(FlowError::new(
+                    500,
+                    "Mock error for testing",
+                ))),
             );
 
         plugin_router_builder = plugin_router_builder

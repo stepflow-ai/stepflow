@@ -7,7 +7,7 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=../../tests/stepflow-config.yml"
+    - "--config=tests/stepflow-config.yml"
     - "--format=json"
 ---
 success: true
@@ -90,7 +90,7 @@ exit_code: 0
         "properties": {
           "result": {
             "description": "The result from executing the nested workflow",
-            "$ref": "#/$defs/Value"
+            "$ref": "#/$defs/FlowResult"
           },
           "run_id": {
             "description": "The run ID of the nested workflow",
@@ -129,6 +129,60 @@ exit_code: 0
         },
         "required": [
           "data"
+        ]
+      }
+    },
+    {
+      "component": "/builtin/iterate",
+      "description": "Iteratively apply a workflow until it returns a result instead of next",
+      "input_schema": {
+        "description": "Input for the iterate component",
+        "type": "object",
+        "properties": {
+          "flow": {
+            "description": "The workflow to iterate. Must return either {\"result\": value} or {\"next\": value}",
+            "$ref": "#/$defs/Flow"
+          },
+          "initial_input": {
+            "description": "The initial input to pass to the workflow",
+            "$ref": "#/$defs/Value"
+          },
+          "max_iterations": {
+            "description": "Maximum number of iterations to prevent infinite loops (default: 1000)",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 1000
+          }
+        },
+        "required": [
+          "flow",
+          "initial_input"
+        ]
+      },
+      "output_schema": {
+        "description": "Output from the iterate component",
+        "type": "object",
+        "properties": {
+          "result": {
+            "description": "The final result value",
+            "$ref": "#/$defs/Value"
+          },
+          "iterations": {
+            "description": "The number of iterations performed",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "terminated": {
+            "description": "Whether the iteration was terminated by max_iterations",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "result",
+          "iterations",
+          "terminated"
         ]
       }
     },
@@ -172,6 +226,66 @@ exit_code: 0
         "required": [
           "data",
           "metadata"
+        ]
+      }
+    },
+    {
+      "component": "/builtin/map",
+      "description": "Apply a workflow to each item in a list and collect the results",
+      "input_schema": {
+        "description": "Input for the map component",
+        "type": "object",
+        "properties": {
+          "workflow": {
+            "description": "The workflow to apply to each item",
+            "$ref": "#/$defs/Flow"
+          },
+          "items": {
+            "description": "The list of items to process",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Value"
+            }
+          }
+        },
+        "required": [
+          "workflow",
+          "items"
+        ]
+      },
+      "output_schema": {
+        "description": "Output from the map component",
+        "type": "object",
+        "properties": {
+          "results": {
+            "description": "The results from processing each item",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/FlowResult"
+            }
+          },
+          "successful": {
+            "description": "Summary statistics",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "results",
+          "successful",
+          "failed",
+          "skipped"
         ]
       }
     },

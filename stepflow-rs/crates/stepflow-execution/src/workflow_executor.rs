@@ -563,7 +563,7 @@ impl WorkflowExecutor {
                 .await
             {
                 Ok(result) => match result {
-                    FlowResult::Success { .. } => StepStatus::Completed,
+                    FlowResult::Success(_) => StepStatus::Completed,
                     FlowResult::Skipped => StepStatus::Skipped,
                     FlowResult::Failed { .. } => StepStatus::Failed,
                 },
@@ -622,7 +622,7 @@ impl WorkflowExecutor {
             .await
             .change_context(ExecutionError::ValueResolverFailure)?
         {
-            FlowResult::Success { result } => result,
+            FlowResult::Success(result) => result,
             FlowResult::Skipped => {
                 // Step inputs contain skipped values - skip this step
                 let result = FlowResult::Skipped;
@@ -634,12 +634,12 @@ impl WorkflowExecutor {
                     result,
                 ));
             }
-            FlowResult::Failed { error } => {
+            FlowResult::Failed(error) => {
                 return Ok(StepExecutionResult::new(
                     step_index,
                     step_id,
                     component_string,
-                    FlowResult::Failed { error },
+                    FlowResult::Failed(error),
                 ));
             }
         };
@@ -722,7 +722,7 @@ impl WorkflowExecutor {
             .change_context(ExecutionError::ValueResolverFailure)?;
 
         match resolved_value {
-            FlowResult::Success { result } => Ok(result.is_truthy()),
+            FlowResult::Success(result) => Ok(result.is_truthy()),
             FlowResult::Skipped => Ok(false), // Don't skip if condition references skipped values
             FlowResult::Failed { .. } => Ok(false), // Don't skip if condition evaluation failed
         }
@@ -774,14 +774,14 @@ impl WorkflowExecutor {
                     .await
                     .change_context(ExecutionError::ValueResolverFailure)?;
                 let step_input = match step_input {
-                    FlowResult::Success { result } => result,
+                    FlowResult::Success(result) => result,
                     FlowResult::Skipped => {
                         // Step inputs contain skipped values - propagate the skip
                         additional_unblocked
                             .union_with(&self.skip_step(&step_id, step_index).await?);
                         continue;
                     }
-                    FlowResult::Failed { error } => {
+                    FlowResult::Failed(error) => {
                         tracing::error!(
                             "Failed to resolve inputs for step {} - input resolution failed: {:?}",
                             step_id,
@@ -893,7 +893,7 @@ pub(crate) async fn execute_step_async(
         })?;
 
     match &result {
-        FlowResult::Failed { error } => {
+        FlowResult::Failed(error) => {
             match &step.on_error {
                 stepflow_core::workflow::ErrorAction::Skip => {
                     tracing::debug!(
@@ -919,14 +919,12 @@ pub(crate) async fn execute_step_async(
                         .await
                         .change_context(ExecutionError::ValueResolverFailure)?;
                     match default_value {
-                        FlowResult::Success { result } => Ok(FlowResult::Success { result }),
+                        FlowResult::Success(result) => Ok(FlowResult::Success(result)),
                         FlowResult::Skipped => {
                             // Default value resolved to skipped - treat as null
-                            Ok(FlowResult::Success {
-                                result: ValueRef::new(serde_json::Value::Null),
-                            })
+                            Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
                         }
-                        FlowResult::Failed { error } => {
+                        FlowResult::Failed(error) => {
                             error_stack::bail!(ExecutionError::internal(format!(
                                 "Default value resolution failed for step {}: {:?}",
                                 step.id, error
@@ -995,6 +993,7 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+    use stepflow_core::FlowError;
     use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, StepId};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
@@ -1166,9 +1165,7 @@ output:
         let input_value = json!({"message": "hello"});
         let mock_behaviors = vec![(
             "/mock/simple",
-            FlowResult::Success {
-                result: ValueRef::new(json!({"output": "processed"})),
-            },
+            FlowResult::Success(ValueRef::new(json!({"output": "processed"}))),
         )];
 
         let result = execute_workflow_from_yaml_simple(workflow_yaml, input_value, mock_behaviors)
@@ -1176,7 +1173,7 @@ output:
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"output": "processed"}));
             }
             _ => panic!("Expected successful result, got: {result:?}"),
@@ -1208,15 +1205,11 @@ output:
         let mock_behaviors = vec![
             (
                 "/mock/first",
-                FlowResult::Success {
-                    result: ValueRef::new(step1_output.clone()),
-                },
+                FlowResult::Success(ValueRef::new(step1_output.clone())),
             ),
             (
                 "/mock/second",
-                FlowResult::Success {
-                    result: ValueRef::new(json!({"final": 30})),
-                },
+                FlowResult::Success(ValueRef::new(json!({"final": 30}))),
             ),
         ];
 
@@ -1226,7 +1219,7 @@ output:
                 .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"final": 30}));
             }
             _ => panic!("Expected successful result, got: {result:?}"),
@@ -1256,15 +1249,11 @@ output:
         let mock_behaviors = vec![
             (
                 "/mock/first",
-                FlowResult::Success {
-                    result: ValueRef::new(json!({"result": 20})),
-                },
+                FlowResult::Success(ValueRef::new(json!({"result": 20}))),
             ),
             (
                 "/mock/second",
-                FlowResult::Success {
-                    result: ValueRef::new(json!({"final": 30})),
-                },
+                FlowResult::Success(ValueRef::new(json!({"final": 30}))),
             ),
         ];
 
@@ -1284,7 +1273,7 @@ output:
         // Execute step1
         let result = workflow_executor.execute_step_by_index(0).await.unwrap();
         match result.result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"result": 20}));
             }
             _ => panic!("Expected successful result from step1"),
@@ -1298,7 +1287,7 @@ output:
         // Execute step2
         let result = workflow_executor.execute_step_by_index(1).await.unwrap();
         match result.result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"final": 30}));
             }
             _ => panic!("Expected successful result from step2"),
@@ -1311,7 +1300,7 @@ output:
         // Resolve final output
         let final_result = workflow_executor.resolve_workflow_output().await.unwrap();
         match final_result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"final": 30}));
             }
             _ => panic!("Expected successful final result"),
@@ -1352,9 +1341,7 @@ output:
         .unwrap();
 
         // Manually execute step1 to simulate partial execution
-        let step1_result = FlowResult::Success {
-            result: ValueRef::new(json!("step1_output")),
-        };
+        let step1_result = FlowResult::Success(ValueRef::new(json!("step1_output")));
 
         // Record step1 result directly to state store (bypassing normal execution)
         let step_result = StepResult::new(0, "step1", step1_result);
@@ -1403,7 +1390,7 @@ output:
             .await;
         assert!(cached_result.is_some());
         match cached_result.unwrap() {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!("step1_output"));
             }
             _ => panic!("Expected successful result"),
@@ -1447,9 +1434,7 @@ output:
         .unwrap();
 
         // Test that async writes are non-blocking
-        let step1_result = FlowResult::Success {
-            result: ValueRef::new(json!("step1_result")),
-        };
+        let step1_result = FlowResult::Success(ValueRef::new(json!("step1_result")));
         let step_result = StepResult::new(0, "step1", step1_result.clone());
 
         // Record multiple step results rapidly (should be queued)
@@ -1492,7 +1477,7 @@ output:
             .unwrap();
 
         match retrieved_result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!("step1_result"));
             }
             _ => panic!("Expected successful result"),
@@ -1547,16 +1532,12 @@ output:
         let step1_result = StepResult::new(
             0,
             "step1",
-            FlowResult::Success {
-                result: ValueRef::new(json!("step1_result")),
-            },
+            FlowResult::Success(ValueRef::new(json!("step1_result"))),
         );
         let step2_result = StepResult::new(
             1,
             "step2",
-            FlowResult::Success {
-                result: ValueRef::new(json!("step2_result")),
-            },
+            FlowResult::Success(ValueRef::new(json!("step2_result"))),
         );
 
         workflow_executor
@@ -1676,21 +1657,15 @@ output:
         let parallel_mock_behaviors = vec![
             (
                 "/mock/parallel1",
-                FlowResult::Success {
-                    result: ValueRef::new(step1_output.clone()),
-                },
+                FlowResult::Success(ValueRef::new(step1_output.clone())),
             ),
             (
                 "/mock/parallel2",
-                FlowResult::Success {
-                    result: ValueRef::new(step2_output.clone()),
-                },
+                FlowResult::Success(ValueRef::new(step2_output.clone())),
             ),
             (
                 "/mock/combiner",
-                FlowResult::Success {
-                    result: ValueRef::new(final_output.clone()),
-                },
+                FlowResult::Success(ValueRef::new(final_output.clone())),
             ),
         ];
 
@@ -1706,21 +1681,15 @@ output:
         let sequential_mock_behaviors = vec![
             (
                 "/mock/parallel1",
-                FlowResult::Success {
-                    result: ValueRef::new(step1_output.clone()),
-                },
+                FlowResult::Success(ValueRef::new(step1_output.clone())),
             ),
             (
                 "/mock/parallel2",
-                FlowResult::Success {
-                    result: ValueRef::new(step2_output.clone()),
-                },
+                FlowResult::Success(ValueRef::new(step2_output.clone())),
             ),
             (
                 "/mock/combiner",
-                FlowResult::Success {
-                    result: ValueRef::new(final_output.clone()),
-                },
+                FlowResult::Success(ValueRef::new(final_output.clone())),
             ),
         ];
 
@@ -1746,7 +1715,7 @@ output:
 
         // Both should produce the same result
         match (&parallel_result, &sequential_result) {
-            (FlowResult::Success { result: p }, FlowResult::Success { result: s }) => {
+            (FlowResult::Success(p), FlowResult::Success(s)) => {
                 assert_eq!(p.as_ref(), s.as_ref());
                 assert_eq!(p.as_ref(), &final_output);
             }
@@ -1771,9 +1740,7 @@ output:
 
         let mock_behaviors = vec![(
             "/mock/error",
-            FlowResult::Failed {
-                error: stepflow_core::FlowError::new(500, "Test error"),
-            },
+            FlowResult::Failed(FlowError::new(500, "Test error")),
         )];
 
         let result = execute_workflow_from_yaml_simple(workflow_yaml, json!({}), mock_behaviors)
@@ -1807,9 +1774,7 @@ output:
 
         let mock_behaviors = vec![(
             "/mock/error",
-            FlowResult::Failed {
-                error: stepflow_core::FlowError::new(500, "Test error"),
-            },
+            FlowResult::Failed(FlowError::new(500, "Test error")),
         )];
 
         let result = execute_workflow_from_yaml_simple(workflow_yaml, json!({}), mock_behaviors)
@@ -1817,7 +1782,7 @@ output:
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"fallback": "value"}));
             }
             _ => panic!("Expected success with default value, got: {result:?}"),
@@ -1841,9 +1806,7 @@ output:
 
         let mock_behaviors = vec![(
             "/mock/error",
-            FlowResult::Failed {
-                error: stepflow_core::FlowError::new(500, "Test error"),
-            },
+            FlowResult::Failed(FlowError::new(500, "Test error")),
         )];
 
         let result = execute_workflow_from_yaml_simple(workflow_yaml, json!({}), mock_behaviors)
@@ -1851,7 +1814,7 @@ output:
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &serde_json::Value::Null);
             }
             _ => panic!("Expected success with null value, got: {result:?}"),
@@ -1875,9 +1838,7 @@ output:
 
         let mock_behaviors = vec![(
             "/mock/error",
-            FlowResult::Failed {
-                error: stepflow_core::FlowError::new(500, "Test error"),
-            },
+            FlowResult::Failed(FlowError::new(500, "Test error")),
         )];
 
         let result = execute_workflow_from_yaml_simple(workflow_yaml, json!({}), mock_behaviors)
@@ -1885,7 +1846,7 @@ output:
             .unwrap();
 
         match result {
-            FlowResult::Failed { error } => {
+            FlowResult::Failed(error) => {
                 assert_eq!(error.code, 500);
                 assert_eq!(error.message, "Test error");
             }
@@ -1909,9 +1870,7 @@ output:
 
         let mock_behaviors = vec![(
             "/mock/success",
-            FlowResult::Success {
-                result: ValueRef::new(json!({"result": "success"})),
-            },
+            FlowResult::Success(ValueRef::new(json!({"result":"success"}))),
         )];
 
         let result = execute_workflow_from_yaml_simple(workflow_yaml, json!({}), mock_behaviors)
@@ -1919,7 +1878,7 @@ output:
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"result": "success"}));
             }
             _ => panic!("Expected success result, got: {result:?}"),
@@ -1950,15 +1909,11 @@ output:
         let mock_behaviors = vec![
             (
                 "/mock/error",
-                FlowResult::Failed {
-                    error: stepflow_core::FlowError::new(500, "Test error"),
-                },
+                FlowResult::Failed(FlowError::new(500, "Test error")),
             ),
             (
                 "/mock/success",
-                FlowResult::Success {
-                    result: ValueRef::new(json!({"handled_skip": true})),
-                },
+                FlowResult::Success(ValueRef::new(json!({"handled_skip":true}))),
             ),
         ];
 

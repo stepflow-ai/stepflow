@@ -1,0 +1,14 @@
+plugins:
+  builtin:
+    type: builtin
+  python:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "python", "loop_server.py"]
+
+routing:
+  - match: "/python/*"
+    target: python
+  - match: "*"
+    target: builtin

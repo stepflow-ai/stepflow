@@ -7,7 +7,7 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=../../tests/stepflow-config.yml"
+    - "--config=tests/stepflow-config.yml"
     - "--format=json"
     - "--schemas=false"
 ---
@@ -29,8 +29,16 @@ exit_code: 0
       "description": "Retrieve JSON data from a blob using its ID"
     },
     {
+      "component": "/builtin/iterate",
+      "description": "Iteratively apply a workflow until it returns a result instead of next"
+    },
+    {
       "component": "/builtin/load_file",
       "description": "Load and parse a file (JSON, YAML, or text) from the filesystem"
+    },
+    {
+      "component": "/builtin/map",
+      "description": "Apply a workflow to each item in a list and collect the results"
     },
     {
       "component": "/builtin/openai",

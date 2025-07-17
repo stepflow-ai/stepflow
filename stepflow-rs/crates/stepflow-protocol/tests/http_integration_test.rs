@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
-use stepflow_plugin::{Context, ExecutionContext, Plugin, PluginConfig, PluginError};
+use stepflow_plugin::{Context, ExecutionContext, Plugin as _, PluginConfig as _, PluginError};
 use stepflow_protocol::{StepflowPluginConfig, StepflowTransport};
 use stepflow_state::{InMemoryStateStore, StateStore};
 use tokio::process::Command;
@@ -104,7 +104,7 @@ async fn test_http_protocol_integration() {
     // Start the Python HTTP server
     let server_script = std::path::Path::new("tests/test_echo_server.py");
     let mut python_server = Command::new("uv")
-        .args(&[
+        .args([
             "run",
             "--project",
             "../../../sdks/python",
@@ -194,8 +194,8 @@ async fn test_http_protocol_integration() {
                                         println!("✓ Component execution successful");
                                         // The result should be a success with the echo response
                                         match flow_result {
-                                            stepflow_core::FlowResult::Success { result } => {
-                                                println!("✓ Got result: {:?}", result);
+                                            stepflow_core::FlowResult::Success(result) => {
+                                                println!("✓ Got result: {result:?}");
                                             }
                                             _ => {
                                                 eprintln!("✗ Expected success result");
@@ -203,7 +203,7 @@ async fn test_http_protocol_integration() {
                                         }
                                     }
                                     Ok(Err(e)) => {
-                                        eprintln!("✗ Component execution failed: {:?}", e);
+                                        eprintln!("✗ Component execution failed: {e:?}");
                                     }
                                     Err(_) => {
                                         eprintln!("✗ Component execution timed out");
@@ -211,7 +211,7 @@ async fn test_http_protocol_integration() {
                                 }
                             }
                             Ok(Err(e)) => {
-                                eprintln!("✗ Component info failed: {:?}", e);
+                                eprintln!("✗ Component info failed: {e:?}");
                             }
                             Err(_) => {
                                 eprintln!("✗ Component info timed out");
@@ -222,7 +222,7 @@ async fn test_http_protocol_integration() {
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!("✗ List components failed: {:?}", e);
+                    eprintln!("✗ List components failed: {e:?}");
                 }
                 Err(_) => {
                     eprintln!("✗ List components timed out");
@@ -230,7 +230,7 @@ async fn test_http_protocol_integration() {
             }
         }
         Ok(Err(e)) => {
-            eprintln!("✗ HTTP plugin initialization failed: {:?}", e);
+            eprintln!("✗ HTTP plugin initialization failed: {e:?}");
         }
         Err(_) => {
             eprintln!("✗ HTTP plugin initialization timed out");
@@ -272,7 +272,7 @@ async fn test_http_plugin_lifecycle() {
     // Start server
     let server_script = std::path::Path::new("tests/test_echo_server.py");
     let mut python_server = Command::new("uv")
-        .args(&[
+        .args([
             "run",
             "--project",
             "../../../sdks/python",
@@ -304,7 +304,7 @@ async fn test_http_plugin_lifecycle() {
             println!("✓ HTTP plugin initialized successfully after server startup");
         }
         Ok(Err(e)) => {
-            eprintln!("✗ HTTP plugin initialization failed: {:?}", e);
+            eprintln!("✗ HTTP plugin initialization failed: {e:?}");
         }
         Err(_) => {
             eprintln!("✗ HTTP plugin initialization timed out");

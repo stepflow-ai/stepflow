@@ -7,7 +7,7 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmp3dzQlZ/custom-config.yml"
+    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpQWO0Fm/custom-config.yml"
 ---
 success: true
 exit_code: 0
@@ -24,8 +24,14 @@ Component: /test-builtins/eval
 Component: /test-builtins/get_blob
   Description: Retrieve JSON data from a blob using its ID
 
+Component: /test-builtins/iterate
+  Description: Iteratively apply a workflow until it returns a result instead of next
+
 Component: /test-builtins/load_file
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
+
+Component: /test-builtins/map
+  Description: Apply a workflow to each item in a list and collect the results
 
 Component: /test-builtins/openai
   Description: Send messages to OpenAI's chat completion API and get a response
@@ -33,6 +39,6 @@ Component: /test-builtins/openai
 Component: /test-builtins/put_blob
   Description: Store JSON data as a blob and return its content-addressable ID
 
-Total components: 6
+Total components: 8
 
 ----- stderr -----

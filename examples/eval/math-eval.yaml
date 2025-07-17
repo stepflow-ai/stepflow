@@ -54,4 +54,6 @@ test:
       outcome: success
       result:
         math_result:
-          sum_result: 8
+          outcome: success
+          result:
+            sum_result: 8

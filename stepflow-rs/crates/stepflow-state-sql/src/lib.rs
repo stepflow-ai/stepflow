@@ -89,9 +89,7 @@ mod tests {
             .unwrap();
 
         // Create test step result
-        let flow_result = FlowResult::Success {
-            result: ValueRef::new(json!({"result": "success"})),
-        };
+        let flow_result = FlowResult::Success(ValueRef::new(json!({"result":"success"})));
         let step_result = StepResult::new(0, "test_step", flow_result.clone());
 
         // Store step result

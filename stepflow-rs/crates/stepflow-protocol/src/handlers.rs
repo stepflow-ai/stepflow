@@ -12,6 +12,7 @@
 // the License.
 
 mod blob_handlers;
+mod flow_handlers;
 mod message_handler;
 
 pub(crate) use message_handler::*;

@@ -175,9 +175,9 @@ mod tests {
             _context: crate::ExecutionContext,
             _input: stepflow_core::workflow::ValueRef,
         ) -> crate::Result<stepflow_core::FlowResult> {
-            Ok(stepflow_core::FlowResult::Success {
-                result: stepflow_core::workflow::ValueRef::new(json!({})),
-            })
+            Ok(stepflow_core::FlowResult::Success(
+                stepflow_core::workflow::ValueRef::new(json!({})),
+            ))
         }
     }
 

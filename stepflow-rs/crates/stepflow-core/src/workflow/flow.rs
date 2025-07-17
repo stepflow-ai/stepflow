@@ -167,10 +167,10 @@ impl Flow {
     }
 }
 
-/// A wrapper around Arc<Flow> to support poem-openapi traits.
+/// A wrapper around `Arc<Flow>` to support poem-openapi traits.
 ///
 /// This wrapper exists to work around Rust's orphan rules which prevent
-/// implementing external traits on external types like Arc<Flow>.
+/// implementing external traits on external types like `Arc<Flow>`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowRef(std::sync::Arc<Flow>);
 
@@ -180,7 +180,7 @@ impl FlowRef {
         Self(std::sync::Arc::new(flow))
     }
 
-    /// Create a new FlowRef from an Arc<Flow>.
+    /// Create a new FlowRef from an `Arc<Flow>`.
     pub fn from_arc(arc: std::sync::Arc<Flow>) -> Self {
         Self(arc)
     }
@@ -190,12 +190,12 @@ impl FlowRef {
         &self.0
     }
 
-    /// Get the underlying Arc<Flow>.
+    /// Get the underlying `Arc<Flow>`.
     pub fn into_arc(self) -> std::sync::Arc<Flow> {
         self.0
     }
 
-    /// Get a reference to the underlying Arc<Flow>.
+    /// Get a reference to the underlying `Arc<Flow>`.
     pub fn as_arc(&self) -> &std::sync::Arc<Flow> {
         &self.0
     }
@@ -338,7 +338,6 @@ impl Flow {
 #[cfg(test)]
 mod tests {
     use crate::workflow::{Component, ErrorAction, Step};
-    use std::env;
 
     use super::*;
 
@@ -506,125 +505,5 @@ mod tests {
             all_examples[1].description,
             Some("Test case as example".to_string())
         );
-    }
-
-    /// Helper function to validate that all titles in a schema are valid Python class names
-    fn validate_python_class_names(schema: &serde_json::Value) -> Vec<String> {
-        let mut invalid_titles = Vec::new();
-
-        fn is_valid_python_class_name(name: &str) -> bool {
-            // Python class names must:
-            // - Start with a letter or underscore
-            // - Contain only letters, numbers, and underscores
-            // - Not be a Python keyword
-
-            // Check basic pattern
-            if !name
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-            {
-                return false;
-            }
-
-            if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                return false;
-            }
-
-            // Check if it's not a Python keyword
-            let python_keywords = [
-                "False", "None", "True", "and", "as", "assert", "break", "class", "continue",
-                "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if",
-                "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-                "try", "while", "with", "yield", "async", "await",
-            ];
-
-            !python_keywords.contains(&name)
-        }
-
-        fn extract_titles_recursive(obj: &serde_json::Value, invalid_titles: &mut Vec<String>) {
-            match obj {
-                serde_json::Value::Object(map) => {
-                    // Check if this object has a title
-                    if let Some(serde_json::Value::String(title)) = map.get("title") {
-                        if !is_valid_python_class_name(title) {
-                            invalid_titles.push(title.clone());
-                        }
-                    }
-
-                    // Recursively search in all values
-                    for value in map.values() {
-                        extract_titles_recursive(value, invalid_titles);
-                    }
-                }
-                serde_json::Value::Array(arr) => {
-                    // Recursively search in all array items
-                    for item in arr {
-                        extract_titles_recursive(item, invalid_titles);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        extract_titles_recursive(schema, &mut invalid_titles);
-        invalid_titles
-    }
-
-    #[test]
-    fn test_schema_comparison_with_flow_json() {
-        let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
-        let generated_schema = generator.root_schema_for::<Flow>();
-        let generated_json = serde_json::to_value(&generated_schema)
-            .expect("Failed to convert generated schema to JSON");
-
-        // Validate that all titles are valid Python class names
-        let invalid_titles = validate_python_class_names(&generated_json);
-        assert!(
-            invalid_titles.is_empty(),
-            "Found invalid Python class names in flow schema titles: {invalid_titles:?}. \
-             All titles must be valid Python class names for --use-title-as-name to work."
-        );
-
-        let flow_schema_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../schemas/flow.json");
-
-        if env::var("STEPFLOW_OVERWRITE_SCHEMA").is_ok() {
-            // Create directory and write schema
-            if let Some(parent) = std::path::Path::new(flow_schema_path).parent() {
-                std::fs::create_dir_all(parent).expect("Failed to create schema directory");
-            }
-            std::fs::write(
-                flow_schema_path,
-                serde_json::to_string_pretty(&generated_json).unwrap(),
-            )
-            .expect("Failed to write updated schema");
-        } else {
-            // Compare with existing schema
-            match std::fs::read_to_string(flow_schema_path) {
-                Ok(flow_schema_str) => {
-                    let flow_schema: serde_json::Value = serde_json::from_str(&flow_schema_str)
-                        .expect("Failed to parse flow schema JSON");
-
-                    let generated_schema_str = serde_json::to_string_pretty(&generated_json)
-                        .expect("Failed to serialize generated schema");
-                    let expected_schema_str = serde_json::to_string_pretty(&flow_schema)
-                        .expect("Failed to serialize expected schema");
-
-                    similar_asserts::assert_eq!(
-                        generated_schema_str,
-                        expected_schema_str,
-                        "Generated schema does not match the reference schema at {}. \
-                         Run with STEPFLOW_OVERWRITE_SCHEMA=1 to update the reference schema.",
-                        flow_schema_path
-                    );
-                }
-                Err(_) => {
-                    panic!(
-                        "Flow schema file not found at {flow_schema_path}. \
-                           Run with STEPFLOW_OVERWRITE_SCHEMA=1 to create it."
-                    );
-                }
-            }
-        }
     }
 }

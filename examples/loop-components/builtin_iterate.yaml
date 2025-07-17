@@ -1,0 +1,93 @@
+name: "Test Builtin Iterate"
+description: "Test the builtin iterate component"
+
+steps:
+  - id: count_to_target
+    component: "/python/iterate"
+    input:
+      flow:
+        $literal:
+          steps:
+            - id: counter
+              component: "/python/counter_step"
+              input:
+                current: { $from: { workflow: input }, path: "current" }
+                target: { $from: { workflow: input }, path: "target" }
+          output: { $from: { step: "counter" } }
+      initial_input:
+        current: { $from: { workflow: input }, path: "current" }
+        target: { $from: { workflow: input }, path: "target" }
+      max_iterations: 20
+
+output: { $from: { step: "count_to_target" } }
+
+input_schema:
+  type: object
+  properties:
+    current:
+      type: integer
+      description: "Starting value for the counter"
+    target:
+      type: integer
+      description: "Target value to count to"
+  required: ["current", "target"]
+
+output_schema:
+  type: object
+  properties:
+    result:
+      type: string
+      description: "Final counter value"
+    iterations:
+      type: integer
+      description: "Number of iterations performed"
+    terminated:
+      type: boolean
+      description: "Whether iteration was terminated by max_iterations"
+  required: ["result", "iterations", "terminated"]
+
+test:
+  cases:
+    - name: "Count from 0 to 5"
+      input:
+        current: 0
+        target: 5
+      output:
+        outcome: success
+        result:
+          result: "Reached target 5"
+          iterations: 6
+          terminated: false
+
+    - name: "Count from 3 to 7"
+      input:
+        current: 3
+        target: 7
+      output:
+        outcome: success
+        result:
+          result: "Reached target 7"
+          iterations: 5
+          terminated: false
+
+    - name: "Already at target"
+      input:
+        current: 10
+        target: 10
+      output:
+        outcome: success
+        result:
+          result: "Reached target 10"
+          iterations: 1
+          terminated: false
+
+    - name: "Single step count"
+      input:
+        current: 1
+        target: 2
+      output:
+        outcome: success
+        result:
+          result: "Reached target 2"
+          iterations: 2
+          terminated: false

@@ -301,8 +301,6 @@ impl Plugin for StepflowPlugin {
             .await
             .change_context(PluginError::Execution)?;
 
-        Ok(FlowResult::Success {
-            result: response.output,
-        })
+        Ok(FlowResult::Success(response.output))
     }
 }

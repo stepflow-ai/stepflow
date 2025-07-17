@@ -7,7 +7,7 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=../../tests/stepflow-config.yml"
+    - "--config=tests/stepflow-config.yml"
 ---
 success: true
 exit_code: 0
@@ -24,8 +24,14 @@ Component: /builtin/eval
 Component: /builtin/get_blob
   Description: Retrieve JSON data from a blob using its ID
 
+Component: /builtin/iterate
+  Description: Iteratively apply a workflow until it returns a result instead of next
+
 Component: /builtin/load_file
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
+
+Component: /builtin/map
+  Description: Apply a workflow to each item in a list and collect the results
 
 Component: /builtin/openai
   Description: Send messages to OpenAI's chat completion API and get a response
@@ -33,6 +39,6 @@ Component: /builtin/openai
 Component: /builtin/put_blob
   Description: Store JSON data as a blob and return its content-addressable ID
 
-Total components: 6
+Total components: 8
 
 ----- stderr -----

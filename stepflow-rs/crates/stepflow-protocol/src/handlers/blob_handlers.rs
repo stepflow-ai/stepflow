@@ -24,7 +24,7 @@ use crate::{Error, MethodHandler, MethodResponse};
 use crate::{Message, MethodRequest};
 
 /// Helper function to handle a method call with request/response types.
-async fn handle_method_call<'a, Req, Resp, F, Fut>(
+pub(super) async fn handle_method_call<'a, Req, Resp, F, Fut>(
     request: &'a MethodRequest<'a>,
     response_tx: mpsc::Sender<String>,
     handler: F,

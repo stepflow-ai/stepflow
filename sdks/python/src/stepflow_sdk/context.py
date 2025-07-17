@@ -21,6 +21,11 @@ from typing import Any
 from uuid import uuid4
 
 from stepflow_sdk.generated_protocol import (
+    EvaluateFlowResult,
+    Flow,
+    FlowResultFailed,
+    FlowResultSkipped,
+    FlowResultSuccess,
     GetBlobResult,
     Message,
     MethodError,
@@ -121,6 +126,53 @@ class StepflowContext:
     def session_id(self) -> str | None:
         """Get the session ID for HTTP mode, or None for STDIO mode."""
         return self._session_id
+
+    async def evaluate_flow(self, flow: Flow | dict, input: Any) -> Any:
+        """Evaluate a flow with the given input.
+
+        Args:
+            flow: The flow definition (as a Flow object or dictionary)
+            input: The input to provide to the flow
+
+        Returns:
+            The result value on success
+
+        Raises:
+            StepflowSkipped: If the flow execution was skipped
+            StepflowFailed: If the flow execution failed with a business logic error
+            Exception: For system/runtime errors
+        """
+        from stepflow_sdk.exceptions import StepflowFailed, StepflowSkipped
+
+        # Convert Flow object to dict if needed
+        if isinstance(flow, Flow):
+            import msgspec
+
+            flow_dict = msgspec.to_builtins(flow)
+        else:
+            flow_dict = flow
+
+        params = {"flow": flow_dict, "input": input}
+
+        evaluate_result = await self._send_request(
+            "flows/evaluate", params, EvaluateFlowResult
+        )
+        flow_result = evaluate_result.result
+
+        # Check the outcome and either return the result or raise appropriate exception
+        if isinstance(flow_result, FlowResultSuccess):
+            return flow_result.result
+        elif isinstance(flow_result, FlowResultSkipped):
+            raise StepflowSkipped("Flow execution was skipped")
+        elif isinstance(flow_result, FlowResultFailed):
+            error = flow_result.error
+            raise StepflowFailed(
+                error_code=error.code,
+                message=error.message,
+                data=error.data,
+            )
+        else:
+            raise Exception(f"Unexpected flow result type: {type(flow_result)}")
 
     def log(self, message):
         """Log a message."""

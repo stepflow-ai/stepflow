@@ -30,6 +30,8 @@ pub enum Method {
     BlobsPut,
     #[serde(rename = "blobs/get")]
     BlobsGet,
+    #[serde(rename = "flows/evaluate")]
+    FlowsEvaluate,
 }
 
 impl std::fmt::Display for Method {
@@ -42,6 +44,7 @@ impl std::fmt::Display for Method {
             Method::ComponentsExecute => write!(f, "components/execute"),
             Method::BlobsPut => write!(f, "blobs/put"),
             Method::BlobsGet => write!(f, "blobs/get"),
+            Method::FlowsEvaluate => write!(f, "flows/evaluate"),
         }
     }
 }
@@ -63,6 +66,7 @@ pub(crate) fn method_params(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::components::ComponentListParams>(),
         generator.subschema_for::<super::blobs::GetBlobParams>(),
         generator.subschema_for::<super::blobs::PutBlobParams>(),
+        generator.subschema_for::<super::flows::EvaluateFlowParams>(),
     ];
     json_schema!({
         "title": "MethodParams",
@@ -79,6 +83,7 @@ pub(crate) fn method_result(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::components::ListComponentsResult>(),
         generator.subschema_for::<super::blobs::GetBlobResult>(),
         generator.subschema_for::<super::blobs::PutBlobResult>(),
+        generator.subschema_for::<super::flows::EvaluateFlowResult>(),
     ];
     json_schema!({
         "title": "MethodResult",
@@ -110,6 +115,10 @@ mod tests {
             serde_json::to_string(&Method::ComponentsList).unwrap(),
             r#""components/list""#
         );
+        assert_eq!(
+            serde_json::to_string(&Method::FlowsEvaluate).unwrap(),
+            r#""flows/evaluate""#
+        );
     }
 
     #[test]
@@ -121,6 +130,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Method>(r#""components/list""#).unwrap(),
             Method::ComponentsList
+        );
+        assert_eq!(
+            serde_json::from_str::<Method>(r#""flows/evaluate""#).unwrap(),
+            Method::FlowsEvaluate
         );
     }
 
