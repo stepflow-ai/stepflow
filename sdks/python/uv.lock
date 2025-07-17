@@ -687,12 +687,15 @@ http = [
 dev = [
     { name = "datamodel-code-generator", extra = ["http", "ruff"] },
     { name = "deptry" },
+    { name = "fastapi" },
     { name = "mypy" },
     { name = "poethepoet" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "sse-starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -709,12 +712,15 @@ requires-dist = [
 dev = [
     { name = "datamodel-code-generator", extras = ["http", "ruff"], specifier = ">=0.31.2" },
     { name = "deptry", specifier = ">=0.22.0" },
+    { name = "fastapi", specifier = ">=0.104.1" },
     { name = "mypy", specifier = ">=1.8.0" },
     { name = "poethepoet", specifier = ">=0.24.0" },
     { name = "pytest", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", specifier = ">=0.26.0" },
     { name = "pytest-cov", specifier = ">=4.1.0" },
     { name = "ruff", specifier = ">=0.9.4" },
+    { name = "sse-starlette", specifier = ">=1.6.5" },
+    { name = "uvicorn", specifier = ">=0.24.0" },
 ]
 
 [[package]]

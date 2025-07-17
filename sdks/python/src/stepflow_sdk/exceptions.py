@@ -14,6 +14,7 @@
 # the License.
 
 from enum import IntEnum
+from typing import Any
 
 
 class ErrorCode(IntEnum):
@@ -153,7 +154,7 @@ class StepflowSkipped(Exception):
 class StepflowFailed(Exception):
     """Exception raised when a step or flow fails with a business logic error."""
 
-    def __init__(self, error_code: int, message: str, data: any = None):
+    def __init__(self, error_code: int, message: str, data: Any = None):
         super().__init__(message)
         self.error_code = error_code
         self.message = message

@@ -20,13 +20,18 @@ import sys
 from typing import Any
 from uuid import uuid4
 
+from stepflow_sdk.exceptions import StepflowRuntimeError
 from stepflow_sdk.generated_protocol import (
+    EvaluateFlowResult,
     Flow,
     GetBlobResult,
     Message,
     MethodError,
     MethodSuccess,
     PutBlobResult,
+    Success,
+    Skipped,
+    Failed,
 )
 from stepflow_sdk.message_decoder import MessageDecoder
 
@@ -80,9 +85,9 @@ class StepflowContext:
         # Extract the result from the response message
         if isinstance(response_message, MethodSuccess):
             result = response_message.result
-            assert isinstance(result, result_type), (
-                f"Expected {result_type}, got {type(result)}"
-            )
+            assert isinstance(
+                result, result_type
+            ), f"Expected {result_type}, got {type(result)}"
             return result
         elif isinstance(response_message, MethodError):
             # Handle error case
@@ -170,34 +175,48 @@ class StepflowContext:
         # Wait for response - the MessageDecoder will resolve this future
         response_message = await future
 
-        if hasattr(response_message, "error"):
+        if isinstance(response_message, MethodError):
             raise Exception(f"Flow evaluation failed: {response_message.error}")
-
-        # Extract the flow result
-        if hasattr(response_message, "result"):
-            flow_result = (
-                response_message.result.get("result")
-                if hasattr(response_message.result, "get")
-                else response_message.result
-            )
+        elif isinstance(response_message, MethodSuccess):
+            if isinstance(response_message.result, EvaluateFlowResult):
+                flow_result = response_message.result.result
+            else:
+                raise StepflowRuntimeError(
+                    f"Expected EvaluateFlowResult, got {response_message.result}"
+                )
         else:
-            flow_result = response_message.get("result", {}).get("result")
+            raise StepflowRuntimeError(f"Uenexpected response {response_message}")
 
         # Check the outcome and either return the result or raise appropriate exception
-        outcome = flow_result.get("outcome")
-        if outcome == "success":
-            return flow_result.get("result")
-        elif outcome == "skipped":
+        if isinstance(flow_result, dict):
+            # Handle dictionary-based flow results
+            outcome = flow_result.get("outcome")
+            if outcome == "success":
+                return flow_result.get("result")
+            elif outcome == "skipped":
+                raise StepflowSkipped("Flow execution was skipped")
+            elif outcome == "failed":
+                error = flow_result.get("error", {})
+                raise StepflowFailed(
+                    error_code=error.get("code", 500),
+                    message=error.get("message", "Flow execution failed"),
+                    data=error.get("data"),
+                )
+            else:
+                raise Exception(f"Unexpected flow outcome: {outcome}")
+        elif isinstance(flow_result, Success):
+            return flow_result.result
+        elif isinstance(flow_result, Skipped):
             raise StepflowSkipped("Flow execution was skipped")
-        elif outcome == "failed":
-            error = flow_result.get("error", {})
+        elif isinstance(flow_result, Failed):
+            error = flow_result.error
             raise StepflowFailed(
-                error_code=error.get("code", 500),
-                message=error.get("message", "Flow execution failed"),
-                data=error.get("data"),
+                error_code=error.code,
+                message=error.message,
+                data=error.data,
             )
         else:
-            raise Exception(f"Unexpected flow outcome: {outcome}")
+            raise Exception(f"Unexpected flow result type: {type(flow_result)}")
 
     def log(self, message):
         """Log a message."""

@@ -45,9 +45,9 @@ from stepflow_sdk.message_decoder import MessageDecoder
 from stepflow_sdk.server import StepflowServer
 
 try:
-    import uvicorn
-    from fastapi import FastAPI, Request, Response
-    from sse_starlette.sse import EventSourceResponse
+    import uvicorn  # type: ignore
+    from fastapi import FastAPI, Request, Response  # type: ignore
+    from sse_starlette.sse import EventSourceResponse  # type: ignore
 except ImportError:
     print("Error: HTTP mode requires additional dependencies.", file=sys.stderr)
     print("Please install: pip install fastapi uvicorn sse-starlette", file=sys.stderr)
