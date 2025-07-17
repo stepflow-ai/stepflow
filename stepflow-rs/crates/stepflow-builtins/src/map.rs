@@ -93,7 +93,7 @@ impl BuiltinComponent for MapComponent {
             let context = context.clone();
             let flow = flow.clone();
             let workflow_hash = workflow_hash.clone();
-            
+
             tokio::spawn(async move {
                 context
                     .execute_flow(flow, workflow_hash, item)
@@ -138,8 +138,8 @@ impl BuiltinComponent for MapComponent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stepflow_core::values::ValueTemplate;
     use crate::mock_context::MockContext;
+    use stepflow_core::values::ValueTemplate;
 
     #[tokio::test]
     async fn test_map_component_success() {

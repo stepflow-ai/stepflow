@@ -276,7 +276,7 @@ fn json_value_to_template_repr(value: serde_json::Value) -> Result<ValueTemplate
             if obj.contains_key("$from") || obj.contains_key("$literal") {
                 // Try to deserialize as an expression - must succeed or it's an error
                 let expr = Expr::deserialize(serde_json::Value::Object(obj.clone()))
-                    .map_err(|e| format!("Invalid expression: {}", e))?;
+                    .map_err(|e| format!("Invalid expression: {e}"))?;
                 return Ok(ValueTemplateRepr::Expression(expr));
             }
 
@@ -284,8 +284,7 @@ fn json_value_to_template_repr(value: serde_json::Value) -> Result<ValueTemplate
             let templates = obj
                 .into_iter()
                 .map(|(k, v)| {
-                    json_value_to_template_repr(v)
-                        .map(|repr| (k, ValueTemplate(Arc::new(repr))))
+                    json_value_to_template_repr(v).map(|repr| (k, ValueTemplate(Arc::new(repr))))
                 })
                 .collect::<Result<IndexMap<_, _>, _>>()?;
             Ok(ValueTemplateRepr::Object(templates))
@@ -731,19 +730,28 @@ mod tests {
         let invalid_from_string = r#"{"$from": "input"}"#;
         let result = serde_json::from_str::<ValueTemplate>(invalid_from_string);
         assert!(result.is_err(), "Should fail to parse invalid $from syntax");
-        
+
         let error_message = result.unwrap_err().to_string();
-        assert!(error_message.contains("expected a map for $from"), "Error should mention invalid $from: {}", error_message);
+        assert!(
+            error_message.contains("expected a map for $from"),
+            "Error should mention invalid $from: {error_message}"
+        );
 
         // Test that invalid $from syntax in nested objects also fails
         let invalid_nested = r#"{"data": {"$from": "input"}, "other": "value"}"#;
         let result = serde_json::from_str::<ValueTemplate>(invalid_nested);
-        assert!(result.is_err(), "Should fail to parse invalid $from syntax in nested objects");
+        assert!(
+            result.is_err(),
+            "Should fail to parse invalid $from syntax in nested objects"
+        );
 
         // Test that invalid $from syntax in arrays also fails
         let invalid_array = r#"[{"$from": "input"}, "literal_value"]"#;
         let result = serde_json::from_str::<ValueTemplate>(invalid_array);
-        assert!(result.is_err(), "Should fail to parse invalid $from syntax in arrays");
+        assert!(
+            result.is_err(),
+            "Should fail to parse invalid $from syntax in arrays"
+        );
     }
 
     #[test]

@@ -38,7 +38,7 @@ impl MethodHandler for EvaluateFlowHandler {
             |request: crate::protocol::EvaluateFlowParams| async move {
                 let flow = Arc::new(request.flow);
                 let workflow_hash = Flow::hash(&flow);
-                
+
                 let result = context
                     .execute_flow(flow, workflow_hash, request.input)
                     .await
@@ -46,7 +46,7 @@ impl MethodHandler for EvaluateFlowHandler {
                         tracing::error!("Failed to evaluate flow: {e}");
                         Error::internal("Failed to evaluate flow")
                     })?;
-                
+
                 Ok(crate::protocol::EvaluateFlowResult { result })
             },
         )

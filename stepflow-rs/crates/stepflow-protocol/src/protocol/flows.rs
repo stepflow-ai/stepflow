@@ -13,8 +13,8 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use stepflow_core::workflow::{Flow, ValueRef};
 use stepflow_core::FlowResult;
+use stepflow_core::workflow::{Flow, ValueRef};
 
 use crate::protocol::Method;
 

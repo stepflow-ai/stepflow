@@ -215,7 +215,7 @@ impl serde::Serialize for Expr {
                 path,
                 on_skip,
             } => {
-                use serde::ser::SerializeStruct;
+                use serde::ser::SerializeStruct as _;
                 let mut state = serializer.serialize_struct("Expr", 3)?;
                 state.serialize_field("$from", from)?;
                 if !path.is_empty() {
@@ -227,7 +227,7 @@ impl serde::Serialize for Expr {
                 state.end()
             }
             Self::EscapedLiteral { literal } => {
-                use serde::ser::SerializeStruct;
+                use serde::ser::SerializeStruct as _;
                 let mut state = serializer.serialize_struct("Expr", 1)?;
                 state.serialize_field("$literal", literal)?;
                 state.end()

@@ -506,6 +506,4 @@ mod tests {
             Some("Test case as example".to_string())
         );
     }
-
-
 }
