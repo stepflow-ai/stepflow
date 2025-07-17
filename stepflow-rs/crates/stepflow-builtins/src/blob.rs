@@ -89,9 +89,7 @@ impl BuiltinComponent for PutBlobComponent {
 
         let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
 
-        Ok(FlowResult::Success {
-            result: ValueRef::new(output_value),
-        })
+        Ok(FlowResult::Success(ValueRef::new(output_value)))
     }
 }
 
@@ -164,9 +162,7 @@ impl BuiltinComponent for GetBlobComponent {
 
         let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
 
-        Ok(FlowResult::Success {
-            result: ValueRef::new(output_value),
-        })
+        Ok(FlowResult::Success(ValueRef::new(output_value)))
     }
 }
 
@@ -194,7 +190,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 let output: PutBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
 
@@ -234,7 +230,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 let output: GetBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
 
@@ -267,7 +263,7 @@ mod tests {
             .unwrap();
 
         let blob_id = match create_result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 let output: PutBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
                 output.blob_id
@@ -285,7 +281,7 @@ mod tests {
             .unwrap();
 
         match get_result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 let output: GetBlobOutput =
                     serde_json::from_value(result.as_ref().clone()).unwrap();
                 // Should return the actual stored data

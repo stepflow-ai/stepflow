@@ -28,11 +28,9 @@ use walkdir::WalkDir;
 /// Normalize run_id fields in FlowResult for consistent testing
 fn normalize_flow_result(result: FlowResult) -> FlowResult {
     match result {
-        FlowResult::Success { result } => {
+        FlowResult::Success(result) => {
             let normalized_value = normalize_json_value(result.as_ref().clone());
-            FlowResult::Success {
-                result: normalized_value.into(),
-            }
+            FlowResult::Success(normalized_value.into())
         }
         other => other,
     }

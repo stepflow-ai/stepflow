@@ -90,7 +90,7 @@ exit_code: 0
         "properties": {
           "result": {
             "description": "The result from executing the nested workflow",
-            "$ref": "#/$defs/Value"
+            "$ref": "#/$defs/FlowResult"
           },
           "run_id": {
             "description": "The run ID of the nested workflow",

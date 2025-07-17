@@ -421,14 +421,14 @@ mod tests {
                     assert_eq!(
                         generated_schema_str, expected_schema_str,
                         "Generated schema does not match the reference schema at {}. \
-                         Run with STEPFLOW_OVERWRITE_SCHEMA=1 to update the reference schema.",
+                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-protocol' to update.",
                         protocol_schema_path
                     );
                 }
                 Err(_) => {
                     // File doesn't exist, fail the test with helpful message
                     panic!(
-                        "Protocol schema file not found at {protocol_schema_path}. Run with STEPFLOW_OVERWRITE_SCHEMA=1 to create it."
+                        "Protocol schema file not found at {protocol_schema_path}. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-protocol' to create it."
                     );
                 }
             }

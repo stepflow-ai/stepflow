@@ -60,6 +60,8 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
             "--field-constraints",
             "--use-union-operator",
             "--keyword-only",
+            "--target-python-version",
+            "3.11",
         ]
 
         # Use --use-title-as-name for both schemas since both now have valid class name titles

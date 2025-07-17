@@ -114,7 +114,7 @@ impl BuiltinComponent for MapComponent {
         // Update counters
         for result in &results {
             match result {
-                FlowResult::Success { .. } => successful += 1,
+                FlowResult::Success(_) => successful += 1,
                 FlowResult::Failed { .. } => failed += 1,
                 FlowResult::Skipped => skipped += 1,
             }
@@ -129,9 +129,7 @@ impl BuiltinComponent for MapComponent {
 
         let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
 
-        Ok(FlowResult::Success {
-            result: ValueRef::new(output_value),
-        })
+        Ok(FlowResult::Success(ValueRef::new(output_value)))
     }
 }
 
@@ -173,7 +171,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 let output: MapOutput = serde_json::from_value(result.as_ref().clone()).unwrap();
                 assert_eq!(output.results.len(), 3);
                 assert_eq!(output.successful, 3);
@@ -209,7 +207,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 let output: MapOutput = serde_json::from_value(result.as_ref().clone()).unwrap();
                 assert_eq!(output.results.len(), 0);
                 assert_eq!(output.successful, 0);

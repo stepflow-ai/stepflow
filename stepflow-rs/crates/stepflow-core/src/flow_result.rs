@@ -13,7 +13,8 @@
 
 use std::borrow::Cow;
 
-use schemars::JsonSchema;
+use schemars::{JsonSchema, Schema};
+use serde::{Deserialize, Serialize};
 
 use crate::workflow::ValueRef;
 
@@ -55,33 +56,172 @@ impl FlowError {
 }
 
 /// The results of a step execution.
-#[derive(
-    Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema, utoipa::ToSchema,
-)]
-#[serde(rename_all = "camelCase", tag = "outcome")]
+#[derive(Debug, Clone, PartialEq, utoipa::ToSchema)]
 pub enum FlowResult {
     /// # Success
     /// The step execution was successful.
-    Success { result: ValueRef },
+    Success(ValueRef),
     /// # Skipped
     /// The step was skipped.
     Skipped,
     /// # Failed
     /// The step failed with the given error.
-    Failed { error: FlowError },
+    Failed(FlowError),
+}
+
+impl Serialize for FlowResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct as _;
+
+        match self {
+            FlowResult::Success(result) => {
+                let mut state = serializer.serialize_struct("FlowResult", 2)?;
+                state.serialize_field("outcome", "success")?;
+                state.serialize_field("result", result)?;
+                state.end()
+            }
+            FlowResult::Skipped => {
+                let mut state = serializer.serialize_struct("FlowResult", 1)?;
+                state.serialize_field("outcome", "skipped")?;
+                state.end()
+            }
+            FlowResult::Failed(error) => {
+                let mut state = serializer.serialize_struct("FlowResult", 2)?;
+                state.serialize_field("outcome", "failed")?;
+                state.serialize_field("error", error)?;
+                state.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for FlowResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let outcome = value
+            .get("outcome")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| D::Error::missing_field("outcome"))?;
+
+        match outcome {
+            "success" => {
+                let result = value
+                    .get("result")
+                    .ok_or_else(|| D::Error::missing_field("result"))?;
+                let result_ref = ValueRef::new(result.clone());
+                Ok(FlowResult::Success(result_ref))
+            }
+            "skipped" => Ok(FlowResult::Skipped),
+            "failed" => {
+                let error = FlowError::deserialize(
+                    value
+                        .get("error")
+                        .ok_or_else(|| D::Error::missing_field("error"))?,
+                )
+                .map_err(D::Error::custom)?;
+                Ok(FlowResult::Failed(error))
+            }
+            _ => Err(D::Error::unknown_variant(
+                outcome,
+                &["success", "skipped", "failed"],
+            )),
+        }
+    }
+}
+
+impl JsonSchema for FlowResult {
+    fn schema_name() -> Cow<'static, str> {
+        "FlowResult".into()
+    }
+
+    fn json_schema(generator: &mut schemars::generate::SchemaGenerator) -> Schema {
+        let value_schema = generator.subschema_for::<ValueRef>();
+        let error_schema = generator.subschema_for::<FlowError>();
+        let defs = generator.definitions_mut();
+        defs.insert(
+            "FlowResultSuccess".to_string(),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "outcome": {
+                        "title": "FlowOutcome",
+                        "const": "success",
+                        "default": "success",
+                    },
+                    "result": value_schema,
+                },
+                "required": ["outcome", "result"],
+            }),
+        );
+        defs.insert(
+            "FlowResultSkipped".to_string(),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "outcome": {
+                        "title": "FlowOutcome",
+                        "const": "skipped",
+                        "default": "skipped"
+                    },
+                },
+                "required": ["outcome"],
+            }),
+        );
+        defs.insert(
+            "FlowResultFailed".to_string(),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "outcome": {
+                        "title": "FlowOutcome",
+                        "const": "failed",
+                        "default": "failed"
+                    },
+                    "error": error_schema,
+                },
+                "required": ["outcome", "error"],
+            }),
+        );
+
+        schemars::json_schema!({
+            "title": "FlowResult",
+            "description": "The results of a step execution.",
+            "oneOf": [
+                {"$ref": "#/$defs/FlowResultSuccess"},
+                {"$ref": "#/$defs/FlowResultSkipped"},
+                {"$ref": "#/$defs/FlowResultFailed"}
+            ],
+            "discriminator": {
+                "propertyName": "outcome",
+                "mapping": {
+                    "success": "#/$defs/FlowResultSuccess",
+                    "skipped": "#/$defs/FlowResultSkipped",
+                    "failed": "#/$defs/FlowResultFailed"
+                }
+            },
+        })
+    }
 }
 
 impl From<serde_json::Value> for FlowResult {
     fn from(value: serde_json::Value) -> Self {
         let result = ValueRef::new(value);
-        Self::Success { result }
+        Self::Success(result)
     }
 }
 
 impl FlowResult {
     pub fn success(&self) -> Option<ValueRef> {
         match self {
-            Self::Success { result } => Some(result.clone()),
+            Self::Success(result) => Some(result.clone()),
             _ => None,
         }
     }
@@ -92,7 +232,7 @@ impl FlowResult {
 
     pub fn failed(&self) -> Option<&FlowError> {
         match self {
-            Self::Failed { error } => Some(error),
+            Self::Failed(error) => Some(error),
             _ => None,
         }
     }

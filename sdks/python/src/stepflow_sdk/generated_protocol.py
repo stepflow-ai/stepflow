@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Literal
+from typing import Annotated, Any, ClassVar, Dict, List, Literal
 
 from msgspec import Meta, Struct, field
 
@@ -157,19 +157,24 @@ class OnErrorRetry(Struct, kw_only=True):
     action: Literal['retry']
 
 
-class Success(Struct, kw_only=True):
-    result: Value
-    outcome: Literal['success']
-
-
-class Skipped(Struct, kw_only=True):
-    outcome: Literal['skipped']
-
-
 class FlowError(Struct, kw_only=True):
     code: int
     message: str
     data: Value | None = None
+
+
+class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
+    outcome: ClassVar[Annotated[Literal['success'], Meta(title='FlowOutcome')]]
+    result: Value
+
+
+class FlowResultSkipped(Struct, kw_only=True, tag_field='outcome', tag='skipped'):
+    outcome: ClassVar[Annotated[Literal['skipped'], Meta(title='FlowOutcome')]]
+
+
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
+    outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
+    error: FlowError
 
 
 class ExampleInput(Struct, kw_only=True):
@@ -283,13 +288,9 @@ BaseRef = Annotated[
 ]
 
 
-class Failed(Struct, kw_only=True):
-    error: FlowError
-    outcome: Literal['failed']
-
-
 FlowResult = Annotated[
-    Success | Skipped | Failed, Meta(description='The results of a step execution.')
+    FlowResultSuccess | FlowResultSkipped | FlowResultFailed,
+    Meta(description='The results of a step execution.', title='FlowResult'),
 ]
 
 

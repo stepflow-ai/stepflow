@@ -653,59 +653,27 @@
       ]
     },
     "FlowResult": {
+      "title": "FlowResult",
       "description": "The results of a step execution.",
       "oneOf": [
         {
-          "title": "Success",
-          "description": "The step execution was successful.",
-          "type": "object",
-          "properties": {
-            "result": {
-              "$ref": "#/$defs/Value"
-            },
-            "outcome": {
-              "type": "string",
-              "const": "success"
-            }
-          },
-          "required": [
-            "outcome",
-            "result"
-          ]
+          "$ref": "#/$defs/FlowResultSuccess"
         },
         {
-          "title": "Skipped",
-          "description": "The step was skipped.",
-          "type": "object",
-          "properties": {
-            "outcome": {
-              "type": "string",
-              "const": "skipped"
-            }
-          },
-          "required": [
-            "outcome"
-          ]
+          "$ref": "#/$defs/FlowResultSkipped"
         },
         {
-          "title": "Failed",
-          "description": "The step failed with the given error.",
-          "type": "object",
-          "properties": {
-            "error": {
-              "$ref": "#/$defs/FlowError"
-            },
-            "outcome": {
-              "type": "string",
-              "const": "failed"
-            }
-          },
-          "required": [
-            "outcome",
-            "error"
-          ]
+          "$ref": "#/$defs/FlowResultFailed"
         }
-      ]
+      ],
+      "discriminator": {
+        "propertyName": "outcome",
+        "mapping": {
+          "success": "#/$defs/FlowResultSuccess",
+          "skipped": "#/$defs/FlowResultSkipped",
+          "failed": "#/$defs/FlowResultFailed"
+        }
+      }
     },
     "FlowError": {
       "description": "An error reported from within a flow or step.",
@@ -732,6 +700,53 @@
       "required": [
         "code",
         "message"
+      ]
+    },
+    "FlowResultSuccess": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "title": "FlowOutcome",
+          "const": "success",
+          "default": "success"
+        },
+        "result": {
+          "$ref": "#/$defs/Value"
+        }
+      },
+      "required": [
+        "outcome",
+        "result"
+      ]
+    },
+    "FlowResultSkipped": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "title": "FlowOutcome",
+          "const": "skipped",
+          "default": "skipped"
+        }
+      },
+      "required": [
+        "outcome"
+      ]
+    },
+    "FlowResultFailed": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "title": "FlowOutcome",
+          "const": "failed",
+          "default": "failed"
+        },
+        "error": {
+          "$ref": "#/$defs/FlowError"
+        }
+      },
+      "required": [
+        "outcome",
+        "error"
       ]
     },
     "ExampleInput": {

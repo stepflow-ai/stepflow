@@ -3,8 +3,8 @@ description: Test nested flow execution with eval component
 steps:
 - id: nested_flow
   component: eval
-  input_schema: null
-  output_schema: null
+  inputSchema: null
+  outputSchema: null
   input:
     workflow:
       $literal:
@@ -23,6 +23,7 @@ output:
   nested_result:
     $from:
       step: nested_flow
+    path: $.result
 test:
   cases:
   - name: test nested flow execution
@@ -31,9 +32,9 @@ test:
       outcome: success
       result:
         nested_result:
+          outcome: success
           result:
             result:
               messages:
-              - role: user
-                content: Hello from nested flow
-          run_id: '09adb2f6-c390-4e3c-a06b-32ecf1e95ba5'
+              - content: Hello from nested flow
+                role: user

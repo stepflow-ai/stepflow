@@ -59,7 +59,7 @@ struct EvalInput {
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct EvalOutput {
     /// The result from executing the nested workflow
-    result: ValueRef,
+    result: FlowResult,
 
     /// The run ID of the nested workflow
     run_id: String,
@@ -89,31 +89,21 @@ impl BuiltinComponent for EvalComponent {
         let workflow_input = input.input;
 
         // Execute the nested workflow
-        let nested_result = context
+        let flow_result = context
             .execute_flow(flow, workflow_hash, workflow_input)
             .await
             .change_context(BuiltinError::Internal)?;
 
-        // Extract the result value
-        let result_value = match nested_result {
-            FlowResult::Success { result } => result.as_ref().clone(),
-            FlowResult::Skipped => serde_json::Value::Null,
-            FlowResult::Failed { error } => {
-                // Propagate the failure from the nested workflow
-                return Ok(FlowResult::Failed { error });
-            }
-        };
-
+        // Wrap that to make the evaluation output
         let output = EvalOutput {
-            result: result_value.into(),
+            result: flow_result.clone(),
             run_id: context.run_id().to_string(),
         };
 
-        let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
-
-        Ok(FlowResult::Success {
-            result: ValueRef::new(output_value),
-        })
+        let result = FlowResult::Success(
+            ValueRef::new(serde_json::to_value(output).unwrap()),
+        );
+        Ok(result)
     }
 }
 
@@ -153,7 +143,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Success { result } => {
+            FlowResult::Success(result) => {
                 let output: EvalOutput = serde_json::from_value(result.as_ref().clone()).unwrap();
                 assert_eq!(
                     output.result,

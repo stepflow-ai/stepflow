@@ -42,12 +42,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
             &self,
             _run_id: Uuid,
         ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
-            async move {
-                Ok(FlowResult::Success {
-                    result: ValueRef::default(),
-                })
-            }
-            .boxed()
+            async move { Ok(FlowResult::Success(ValueRef::default())) }.boxed()
         }
         fn state_store(&self) -> &Arc<dyn stepflow_state::StateStore> {
             &self.state_store
@@ -124,7 +119,7 @@ async fn test_mcp_tool_execution() {
         .unwrap();
 
     match result {
-        FlowResult::Success { result } => {
+        FlowResult::Success(result) => {
             let content = result.as_ref();
             assert!(content.is_array());
             let content_array = content.as_array().unwrap();
@@ -148,7 +143,7 @@ async fn test_mcp_tool_execution() {
         .unwrap();
 
     match result {
-        FlowResult::Success { result } => {
+        FlowResult::Success(result) => {
             let content = result.as_ref();
             assert!(content.is_array());
             let content_array = content.as_array().unwrap();
@@ -188,7 +183,7 @@ async fn test_mcp_error_handling() {
     );
 
     match result.unwrap() {
-        FlowResult::Failed { error } => {
+        FlowResult::Failed(error) => {
             let error_message = format!("{error}");
             assert!(error_message.contains("nonexistent"));
         }

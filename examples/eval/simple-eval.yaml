@@ -25,4 +25,6 @@ test:
       outcome: success
       result:
         result:
-          test_result: "Hello from nested workflow!"
+          outcome: success
+          result:
+            test_result: "Hello from nested workflow!"

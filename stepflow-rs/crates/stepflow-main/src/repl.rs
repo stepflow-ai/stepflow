@@ -674,9 +674,9 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
                         println!("Completed steps ({} total):", completed_steps.len());
                         for step in &completed_steps {
                             let status = match &step.result {
-                                stepflow_core::FlowResult::Success { .. } => "SUCCESS",
+                                stepflow_core::FlowResult::Success(_) => "SUCCESS",
                                 stepflow_core::FlowResult::Skipped => "SKIPPED",
-                                stepflow_core::FlowResult::Failed { .. } => "FAILED",
+                                stepflow_core::FlowResult::Failed(_) => "FAILED",
                             };
                             println!(
                                 "  [{}] {} ({}): {}",
@@ -747,7 +747,7 @@ fn print_step_result(step_id: &str, result: &stepflow_core::FlowResult) -> Resul
 /// Print a FlowResult in a formatted way
 fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
     match result {
-        stepflow_core::FlowResult::Success { result } => {
+        stepflow_core::FlowResult::Success(result) => {
             let result_json = serde_json::to_string_pretty(result.as_ref())
                 .change_context(MainError::FlowExecution)?;
             println!("Result: {result_json}");
@@ -755,7 +755,7 @@ fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
         stepflow_core::FlowResult::Skipped => {
             println!("Result: SKIPPED");
         }
-        stepflow_core::FlowResult::Failed { error } => {
+        stepflow_core::FlowResult::Failed(error) => {
             println!("Result: FAILED - {error}");
         }
     }

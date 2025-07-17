@@ -172,7 +172,7 @@ pub async fn create_run(
 
     // Check if the workflow execution was successful
     match &flow_result {
-        FlowResult::Success { result } => {
+        FlowResult::Success(result) => {
             // Update execution status to completed
             state_store
                 .update_run_status(run_id, ExecutionStatus::Completed, Some(result.clone()))
@@ -185,7 +185,7 @@ pub async fn create_run(
                 debug: debug_mode,
             }))
         }
-        FlowResult::Failed { .. } | FlowResult::Skipped => {
+        FlowResult::Failed(_) | FlowResult::Skipped => {
             // Update execution status to failed
             state_store
                 .update_run_status(run_id, ExecutionStatus::Failed, None)

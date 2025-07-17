@@ -20,18 +20,17 @@ import sys
 from typing import Any
 from uuid import uuid4
 
-from stepflow_sdk.exceptions import StepflowRuntimeError
 from stepflow_sdk.generated_protocol import (
     EvaluateFlowResult,
-    Failed,
     Flow,
+    FlowResultFailed,
+    FlowResultSkipped,
+    FlowResultSuccess,
     GetBlobResult,
     Message,
     MethodError,
     MethodSuccess,
     PutBlobResult,
-    Skipped,
-    Success,
 )
 from stepflow_sdk.message_decoder import MessageDecoder
 
@@ -154,61 +153,18 @@ class StepflowContext:
             flow_dict = flow
 
         params = {"flow": flow_dict, "input": input}
-        # Use raw dict response to avoid union deserialization issues
-        request_id = str(uuid4())
-        request = {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "method": "flows/evaluate",
-            "params": params,
-        }
 
-        # Create future for response
-        future: asyncio.Future[Message] = asyncio.Future()
-
-        # Register the pending request with the message decoder
-        self._message_decoder.register_request(request_id, dict, future)
-
-        # Send request via queue
-        await self._outgoing_queue.put(request)
-
-        # Wait for response - the MessageDecoder will resolve this future
-        response_message = await future
-
-        if isinstance(response_message, MethodError):
-            raise Exception(f"Flow evaluation failed: {response_message.error}")
-        elif isinstance(response_message, MethodSuccess):
-            if isinstance(response_message.result, EvaluateFlowResult):
-                flow_result = response_message.result.result
-            else:
-                raise StepflowRuntimeError(
-                    f"Expected EvaluateFlowResult, got {response_message.result}"
-                )
-        else:
-            raise StepflowRuntimeError(f"Uenexpected response {response_message}")
+        evaluate_result = await self._send_request(
+            "flows/evaluate", params, EvaluateFlowResult
+        )
+        flow_result = evaluate_result.result
 
         # Check the outcome and either return the result or raise appropriate exception
-        if isinstance(flow_result, dict):
-            # Handle dictionary-based flow results
-            outcome = flow_result.get("outcome")
-            if outcome == "success":
-                return flow_result.get("result")
-            elif outcome == "skipped":
-                raise StepflowSkipped("Flow execution was skipped")
-            elif outcome == "failed":
-                error = flow_result.get("error", {})
-                raise StepflowFailed(
-                    error_code=error.get("code", 500),
-                    message=error.get("message", "Flow execution failed"),
-                    data=error.get("data"),
-                )
-            else:
-                raise Exception(f"Unexpected flow outcome: {outcome}")
-        elif isinstance(flow_result, Success):
+        if isinstance(flow_result, FlowResultSuccess):
             return flow_result.result
-        elif isinstance(flow_result, Skipped):
+        elif isinstance(flow_result, FlowResultSkipped):
             raise StepflowSkipped("Flow execution was skipped")
-        elif isinstance(flow_result, Failed):
+        elif isinstance(flow_result, FlowResultFailed):
             error = flow_result.error
             raise StepflowFailed(
                 error_code=error.code,

@@ -542,9 +542,7 @@ mod tests {
                 completed_at: Some(now),
             },
             input: stepflow_core::workflow::ValueRef::new(json!({"test": "input"})),
-            result: Some(FlowResult::Success {
-                result: stepflow_core::workflow::ValueRef::new(json!({"test": "output"})),
-            }),
+            result: Some(FlowResult::Success(stepflow_core::workflow::ValueRef::new(json!({"test": "output"})))),
         };
 
         // Serialize the RunDetails

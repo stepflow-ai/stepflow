@@ -74,9 +74,7 @@ impl stepflow_plugin::Context for MockExecutor {
     {
         Box::pin(async {
             let result = serde_json::json!({"message": "Hello from nested flow"});
-            Ok(FlowResult::Success {
-                result: ValueRef::new(result),
-            })
+            Ok(FlowResult::Success(ValueRef::new(result)))
         })
     }
 

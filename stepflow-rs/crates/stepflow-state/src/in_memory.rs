@@ -515,7 +515,7 @@ impl StateStore for InMemoryStateStore {
             let mut metadata = metadata.write().await;
             if let Some(exec_metadata) = metadata.get_mut(&run_id) {
                 exec_metadata.summary.status = status;
-                exec_metadata.result = result.map(|r| FlowResult::Success { result: r });
+                exec_metadata.result = result.map(FlowResult::Success);
 
                 if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed) {
                     exec_metadata.summary.completed_at = Some(chrono::Utc::now());
@@ -817,9 +817,8 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         // Test data
-        let step1_result = FlowResult::Success {
-            result: ValueRef::new(serde_json::json!({"output": "hello"})),
-        };
+        let step1_result =
+            FlowResult::Success(ValueRef::new(serde_json::json!({"output":"hello"})));
         let step2_result = FlowResult::Skipped;
 
         // Record step results with both index and ID
@@ -856,15 +855,11 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         // Record initial result
-        let initial_result = FlowResult::Success {
-            result: ValueRef::new(serde_json::json!({"attempt": 1})),
-        };
+        let initial_result = FlowResult::Success(ValueRef::new(serde_json::json!({"attempt":1})));
         store.record_step_result(run_id, StepResult::new(0, "step1", initial_result));
 
         // Overwrite with new result
-        let new_result = FlowResult::Success {
-            result: ValueRef::new(serde_json::json!({"attempt": 2})),
-        };
+        let new_result = FlowResult::Success(ValueRef::new(serde_json::json!({"attempt":2})));
         store.record_step_result(run_id, StepResult::new(0, "step1", new_result.clone()));
 
         // Should retrieve the new result by both index and ID
@@ -884,12 +879,8 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         // Insert steps out of order to test ordering
-        let step2_result = FlowResult::Success {
-            result: ValueRef::new(serde_json::json!({"step": 2})),
-        };
-        let step0_result = FlowResult::Success {
-            result: ValueRef::new(serde_json::json!({"step": 0})),
-        };
+        let step2_result = FlowResult::Success(ValueRef::new(serde_json::json!({"step":2})));
+        let step0_result = FlowResult::Success(ValueRef::new(serde_json::json!({"step":0})));
         let step1_result = FlowResult::Skipped;
 
         // Record in non-sequential order
@@ -911,9 +902,7 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         // Store some step results
-        let step_result = FlowResult::Success {
-            result: ValueRef::new(serde_json::json!({"output": "test"})),
-        };
+        let step_result = FlowResult::Success(ValueRef::new(serde_json::json!({"output":"test"})));
         store.record_step_result(run_id, StepResult::new(0, "step1", step_result.clone()));
 
         // Verify the result exists

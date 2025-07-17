@@ -105,9 +105,9 @@ impl BuiltinComponent for IterateComponent {
                 };
                 let output_value =
                     serde_json::to_value(output).change_context(BuiltinError::Internal)?;
-                return Ok(FlowResult::Success {
-                    result: ValueRef::new(output_value),
-                });
+                return Ok(FlowResult::Success(
+                    ValueRef::new(output_value),
+                ));
             }
 
             // Execute the workflow
@@ -119,7 +119,7 @@ impl BuiltinComponent for IterateComponent {
             iterations += 1;
 
             match result {
-                FlowResult::Success { result } => {
+                FlowResult::Success(result) => {
                     // Parse the result to check for "result" or "next" fields
                     let result_value = result.as_ref();
 
@@ -133,9 +133,9 @@ impl BuiltinComponent for IterateComponent {
                             };
                             let output_value = serde_json::to_value(output)
                                 .change_context(BuiltinError::Internal)?;
-                            return Ok(FlowResult::Success {
-                                result: ValueRef::new(output_value),
-                            });
+                            return Ok(FlowResult::Success(
+                                ValueRef::new(output_value),
+                            ));
                         } else if let Some(next_input) = result_obj.get("next") {
                             // Found "next" field - continue iteration
                             current_input = ValueRef::new(next_input.clone());
@@ -144,25 +144,25 @@ impl BuiltinComponent for IterateComponent {
                     }
 
                     // Result doesn't have expected structure - return error
-                    return Ok(FlowResult::Failed {
-                        error: stepflow_core::FlowError::new(
+                    return Ok(FlowResult::Failed(
+                        stepflow_core::FlowError::new(
                             400,
                             "Workflow result must contain either 'result' or 'next' field",
                         ),
-                    });
+                    ));
                 }
-                FlowResult::Failed { error } => {
+                FlowResult::Failed(error) => {
                     // Propagate the failure from the workflow
-                    return Ok(FlowResult::Failed { error });
+                    return Ok(FlowResult::Failed(error));
                 }
                 FlowResult::Skipped => {
                     // Treat skipped as an error in this context
-                    return Ok(FlowResult::Failed {
-                        error: stepflow_core::FlowError::new(
+                    return Ok(FlowResult::Failed(
+                        stepflow_core::FlowError::new(
                             400,
                             "Workflow cannot be skipped during iteration",
                         ),
-                    });
+                    ));
                 }
             }
         }
@@ -202,7 +202,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Failed { error } => {
+            FlowResult::Failed(error) => {
                 // The mock context returns {"message": "Hello from nested flow"} which doesn't have "result" or "next"
                 assert!(error.message.contains("result") || error.message.contains("next"));
             }
@@ -237,7 +237,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Failed { error } => {
+            FlowResult::Failed(error) => {
                 // The mock context returns {"message": "Hello from nested flow"} which doesn't have "result" or "next"
                 assert!(error.message.contains("result") || error.message.contains("next"));
             }
@@ -272,7 +272,7 @@ mod tests {
             .unwrap();
 
         match result {
-            FlowResult::Failed { error } => {
+            FlowResult::Failed(error) => {
                 // The mock context returns {"message": "Hello from nested flow"} which doesn't have "result" or "next"
                 assert!(error.message.contains("result") || error.message.contains("next"));
             }

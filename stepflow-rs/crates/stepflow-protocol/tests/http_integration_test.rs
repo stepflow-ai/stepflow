@@ -194,7 +194,7 @@ async fn test_http_protocol_integration() {
                                         println!("✓ Component execution successful");
                                         // The result should be a success with the echo response
                                         match flow_result {
-                                            stepflow_core::FlowResult::Success { result } => {
+                                            stepflow_core::FlowResult::Success(result) => {
                                                 println!("✓ Got result: {result:?}");
                                             }
                                             _ => {
