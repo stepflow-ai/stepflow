@@ -7,11 +7,12 @@ description: 'Comprehensive compilation, testing, and lint analysis for Rust cod
 # This action performs heavy compilation-based checks:
 # - Full test suite execution (cargo test)
 # - Comprehensive linting analysis (cargo clippy)
+# - Compilation verification (cargo check)
 #
 # EXECUTION STRATEGY:
 # - Runs in parallel with rust-style for maximum CI efficiency
 # - Shares compilation cache between test and clippy for performance
-# - Uses continue-on-error to run both checks even if one fails
+# - Uses shared script logic with scripts/check-rust.sh for consistency
 # - Takes 3-5 minutes but provides comprehensive functionality coverage
 #
 # COMPILATION OPTIMIZATION:
@@ -19,7 +20,7 @@ description: 'Comprehensive compilation, testing, and lint analysis for Rust cod
 # - Dependencies are pre-optimized (opt-level = 3) for faster builds
 # - Clippy reuses test compilation artifacts when possible
 #
-# CI INTEGRATION:  
+# CI INTEGRATION:
 # - Called from ci.yml as a parallel job alongside rust-style
 # - Supports matrix builds for cross-platform testing
 # - Provides comprehensive coverage while rust-style gives fast feedback
@@ -68,42 +69,7 @@ runs:
       run: uv sync --extra http
       working-directory: sdks/python
 
-    # Run the full test suite - continue even if it fails so we can run clippy too
-    - name: Run Rust tests
+    # Run Rust build and test checks using the shared script
+    - name: Run Rust build and test checks
       shell: bash
-      run: cargo test
-      working-directory: stepflow-rs
-      continue-on-error: true
-      id: test
-
-    # Run clippy linting - reuses compilation from tests when possible
-    - name: Run Rust linting (clippy)
-      shell: bash
-      run: cargo clippy
-      working-directory: stepflow-rs
-      continue-on-error: true
-      id: clippy
-
-    # Aggregate all results - fail the action if any check failed
-    # This ensures we get complete feedback while still failing CI appropriately
-    - name: Report build & test results
-      shell: bash
-      if: always()
-      run: |
-        echo "=== Rust Build & Test Results ==="
-        
-        # Check each step outcome
-        test_result="${{ steps.test.outcome }}"
-        clippy_result="${{ steps.clippy.outcome }}"
-        
-        echo "🧪 Tests: $test_result"
-        echo "📎 Clippy linting: $clippy_result"
-        
-        # Fail if any check failed
-        if [[ "$test_result" == "failure" || "$clippy_result" == "failure" ]]; then
-          echo "::error::One or more build/test checks failed"
-          echo "::notice::All checks were run to provide complete feedback"
-          exit 1
-        else
-          echo "✅ All build and test checks passed!"
-        fi
+      run: ./scripts/check-rust.sh

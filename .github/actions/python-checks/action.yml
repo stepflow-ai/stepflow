@@ -1,5 +1,5 @@
 name: 'Python SDK Checks'
-description: 'Run Python SDK tests and validate generated types'
+description: 'Run Python SDK tests and validate generated types using shared script logic'
 
 inputs:
   uv-version:
@@ -26,32 +26,7 @@ runs:
       run: uv sync --extra http
       working-directory: sdks/python
 
-    - name: Regenerate Python types (ensure up-to-date)
+    # Run Python SDK checks using the shared script
+    - name: Run Python SDK checks
       shell: bash
-      run: uv run poe codegen-fix
-      working-directory: sdks/python
-
-    - name: Check Python formatting
-      shell: bash
-      run: uv run poe fmt-check
-      working-directory: sdks/python
-
-    - name: Run Python linting
-      shell: bash
-      run: uv run poe lint-check
-      working-directory: sdks/python
-
-    - name: Run Python type checking
-      shell: bash
-      run: uv run poe type-check
-      working-directory: sdks/python
-
-    - name: Check Python dependencies
-      shell: bash
-      run: uv run poe dep-check
-      working-directory: sdks/python
-
-    - name: Run Python tests
-      shell: bash
-      run: uv run poe test
-      working-directory: sdks/python
+      run: ./scripts/check-python.sh

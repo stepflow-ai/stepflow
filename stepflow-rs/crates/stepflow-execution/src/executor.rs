@@ -222,12 +222,10 @@ impl Context for StepFlowExecutor {
                             FlowResult::Failed(error)
                         } else {
                             tracing::error!(?e, "Flow execution failed");
-                            FlowResult::Failed(
-                                stepflow_core::FlowError::new(
-                                    500,
-                                    format!("Flow execution failed: {e}"),
-                                ),
-                            )
+                            FlowResult::Failed(stepflow_core::FlowError::new(
+                                500,
+                                format!("Flow execution failed: {e}"),
+                            ))
                         }
                     }
                 };
@@ -264,23 +262,19 @@ impl Context for StepFlowExecutor {
                         Ok(result) => Ok(result),
                         Err(_) => {
                             // The sender was dropped, indicating the execution was cancelled or failed
-                            Ok(FlowResult::Failed(
-                                stepflow_core::FlowError::new(
-                                    410,
-                                    "Nested flow execution was cancelled",
-                                ),
-                            ))
+                            Ok(FlowResult::Failed(stepflow_core::FlowError::new(
+                                410,
+                                "Nested flow execution was cancelled",
+                            )))
                         }
                     }
                 }
                 None => {
                     // Execution ID not found
-                    Ok(FlowResult::Failed(
-                        stepflow_core::FlowError::new(
-                            404,
-                            format!("No run found for ID: {run_id}"),
-                        ),
-                    ))
+                    Ok(FlowResult::Failed(stepflow_core::FlowError::new(
+                        404,
+                        format!("No run found for ID: {run_id}"),
+                    )))
                 }
             }
         }
