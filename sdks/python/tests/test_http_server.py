@@ -18,7 +18,7 @@ import uuid
 
 import msgspec
 import pytest
-from fastapi.testclient import TestClient  # type: ignore
+from fastapi.testclient import TestClient
 
 from stepflow_sdk.context import StepflowContext
 from stepflow_sdk.generated_protocol import (

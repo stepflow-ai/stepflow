@@ -23,15 +23,15 @@ from uuid import uuid4
 from stepflow_sdk.exceptions import StepflowRuntimeError
 from stepflow_sdk.generated_protocol import (
     EvaluateFlowResult,
+    Failed,
     Flow,
     GetBlobResult,
     Message,
     MethodError,
     MethodSuccess,
     PutBlobResult,
-    Success,
     Skipped,
-    Failed,
+    Success,
 )
 from stepflow_sdk.message_decoder import MessageDecoder
 
@@ -85,9 +85,9 @@ class StepflowContext:
         # Extract the result from the response message
         if isinstance(response_message, MethodSuccess):
             result = response_message.result
-            assert isinstance(
-                result, result_type
-            ), f"Expected {result_type}, got {type(result)}"
+            assert isinstance(result, result_type), (
+                f"Expected {result_type}, got {type(result)}"
+            )
             return result
         elif isinstance(response_message, MethodError):
             # Handle error case
