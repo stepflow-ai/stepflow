@@ -63,7 +63,6 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
         ]
 
         # Use --use-title-as-name for both schemas since both now have valid class name titles
-        # flow.json: "WorkflowReference", "StepReference", "OnErrorFail", etc.
         # protocol.json: "JsonRpcVersion", "InitializeParams", "ComponentExecuteResult", etc.
         cmd.append("--use-title-as-name")
 
