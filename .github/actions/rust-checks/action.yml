@@ -52,6 +52,13 @@ runs:
         workspaces: |
           stepflow-rs
 
+    # Install cargo-deny for dependency security audit
+    # Intsall cargo-machete for unused dependency detection
+    - name: Install cargo-deny
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-deny,cargo-machete
+
     # Install UV and Python for HTTP integration tests
     - name: Install uv
       uses: astral-sh/setup-uv@v5
