@@ -21,14 +21,13 @@ from typing import Any
 from uuid import uuid4
 
 from stepflow_sdk.generated_protocol import (
-    EvaluateFlowResult,
+    Flow,
     GetBlobResult,
     Message,
     MethodError,
     MethodSuccess,
     PutBlobResult,
 )
-from stepflow_sdk.generated_protocol import Flow
 from stepflow_sdk.message_decoder import MessageDecoder
 
 """
@@ -81,9 +80,9 @@ class StepflowContext:
         # Extract the result from the response message
         if isinstance(response_message, MethodSuccess):
             result = response_message.result
-            assert isinstance(
-                result, result_type
-            ), f"Expected {result_type}, got {type(result)}"
+            assert isinstance(result, result_type), (
+                f"Expected {result_type}, got {type(result)}"
+            )
             return result
         elif isinstance(response_message, MethodError):
             # Handle error case
@@ -139,15 +138,16 @@ class StepflowContext:
             StepflowFailed: If the flow execution failed with a business logic error
             Exception: For system/runtime errors
         """
-        from stepflow_sdk.exceptions import StepflowSkipped, StepflowFailed
-        
+        from stepflow_sdk.exceptions import StepflowFailed, StepflowSkipped
+
         # Convert Flow object to dict if needed
         if isinstance(flow, Flow):
             import msgspec
+
             flow_dict = msgspec.to_builtins(flow)
         else:
             flow_dict = flow
-            
+
         params = {"flow": flow_dict, "input": input}
         # Use raw dict response to avoid union deserialization issues
         request_id = str(uuid4())
@@ -157,28 +157,32 @@ class StepflowContext:
             "method": "flows/evaluate",
             "params": params,
         }
-        
+
         # Create future for response
         future: asyncio.Future[Message] = asyncio.Future()
-        
+
         # Register the pending request with the message decoder
         self._message_decoder.register_request(request_id, dict, future)
-        
+
         # Send request via queue
         await self._outgoing_queue.put(request)
-        
+
         # Wait for response - the MessageDecoder will resolve this future
         response_message = await future
-        
-        if hasattr(response_message, 'error'):
+
+        if hasattr(response_message, "error"):
             raise Exception(f"Flow evaluation failed: {response_message.error}")
-        
+
         # Extract the flow result
-        if hasattr(response_message, 'result'):
-            flow_result = response_message.result.get("result") if hasattr(response_message.result, 'get') else response_message.result
+        if hasattr(response_message, "result"):
+            flow_result = (
+                response_message.result.get("result")
+                if hasattr(response_message.result, "get")
+                else response_message.result
+            )
         else:
             flow_result = response_message.get("result", {}).get("result")
-        
+
         # Check the outcome and either return the result or raise appropriate exception
         outcome = flow_result.get("outcome")
         if outcome == "success":
@@ -190,7 +194,7 @@ class StepflowContext:
             raise StepflowFailed(
                 error_code=error.get("code", 500),
                 message=error.get("message", "Flow execution failed"),
-                data=error.get("data")
+                data=error.get("data"),
             )
         else:
             raise Exception(f"Unexpected flow outcome: {outcome}")
