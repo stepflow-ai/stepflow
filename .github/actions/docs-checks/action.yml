@@ -1,5 +1,5 @@
 name: 'Documentation Checks'
-description: 'Build and validate documentation to ensure it compiles correctly'
+description: 'Build and validate documentation to ensure it compiles correctly using shared script logic'
 
 inputs:
   pnpm-version:
@@ -26,12 +26,7 @@ runs:
         cache: 'pnpm'
         cache-dependency-path: docs/pnpm-lock.yaml
 
-    - name: Install documentation dependencies
+    # Run documentation checks using the shared script
+    - name: Run documentation checks
       shell: bash
-      run: pnpm install --frozen-lockfile
-      working-directory: docs
-
-    - name: Build documentation
-      shell: bash
-      run: pnpm build
-      working-directory: docs
+      run: ./scripts/check-docs.sh

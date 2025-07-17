@@ -65,19 +65,9 @@ jobs:
               - 'README.md'
               - '*.md'
 
-  # Rust style checks (fast parallel execution)
-  rust-style:
-    name: Rust Style & Quality
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/rust-style
-
-  # Rust build & test (heavy compilation)
-  rust-build:
-    name: Rust Build & Test
+  # Rust checks (combined style, build, and test)
+  rust-checks:
+    name: Rust Checks
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     strategy:
@@ -91,9 +81,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/rust-build
-        with:
-          os: ${{ matrix.os }}
+      - uses: ./.github/actions/rust-checks
 
   # Python SDK checks
   python-checks:
@@ -127,13 +115,8 @@ jobs:
         with:
           tool: licensure
       - name: Check license headers
-        run: |
-          licensure -c -p
-          exit_code=$?
-          if [ $exit_code -ne 0 ]; then
-            echo "::error::License check failed. Run \`licensure -p --in-place\` to fix."
-            exit $exit_code
-          fi
+        shell: bash
+        run: ./scripts/check-licenses.sh
 
   # Integration tests (runs workflow execution tests with external dependencies)
   integration-checks:
@@ -171,19 +154,15 @@ jobs:
   check-success:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [changes, rust-style, rust-build, python-checks, docs-checks, licensure, integration-checks]
+    needs: [changes, rust-checks, python-checks, docs-checks, licensure, integration-checks]
     # Always run this job, but fail if any required checks failed
     if: always()
     steps:
       - name: Check all required jobs succeeded
         run: |
           # Check if any required job failed or was cancelled
-          if [[ "${{ needs.rust-style.result }}" == "failure" || "${{ needs.rust-style.result }}" == "cancelled" ]]; then
-            echo "::error::Rust style checks failed"
-            exit 1
-          fi
-          if [[ "${{ needs.rust-build.result }}" == "failure" || "${{ needs.rust-build.result }}" == "cancelled" ]]; then
-            echo "::error::Rust build checks failed"
+          if [[ "${{ needs.rust-checks.result }}" == "failure" || "${{ needs.rust-checks.result }}" == "cancelled" ]]; then
+            echo "::error::Rust checks failed"
             exit 1
           fi
           if [[ "${{ needs.python-checks.result }}" == "failure" || "${{ needs.python-checks.result }}" == "cancelled" ]]; then
@@ -202,14 +181,10 @@ jobs:
             echo "::error::Integration checks failed"
             exit 1
           fi
-          
+
           # Check if required jobs were skipped when they should have run
-          if [[ "${{ needs.changes.outputs.rust }}" == "true" && "${{ needs.rust-style.result }}" == "skipped" ]]; then
-            echo "::error::Rust changes detected but rust-style was skipped"
-            exit 1
-          fi
-          if [[ "${{ needs.changes.outputs.rust }}" == "true" && "${{ needs.rust-build.result }}" == "skipped" ]]; then
-            echo "::error::Rust changes detected but rust-build was skipped"
+          if [[ "${{ needs.changes.outputs.rust }}" == "true" && "${{ needs.rust-checks.result }}" == "skipped" ]]; then
+            echo "::error::Rust changes detected but rust-checks was skipped"
             exit 1
           fi
           if [[ "${{ needs.changes.outputs.python }}" == "true" && "${{ needs.python-checks.result }}" == "skipped" ]]; then
@@ -224,5 +199,5 @@ jobs:
             echo "::error::Rust or Python changes detected but integration-checks was skipped"
             exit 1
           fi
-          
+
           echo "✅ All required checks passed!"
