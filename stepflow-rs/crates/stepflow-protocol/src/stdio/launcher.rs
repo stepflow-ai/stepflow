@@ -49,14 +49,11 @@ impl Launcher {
         })
     }
 
-    pub fn spawn(&self) -> Result<Child> {
-        // Collect current environment variables for substitution
-        let current_env: std::collections::HashMap<String, String> = std::env::vars().collect();
-
+    pub fn spawn(&self, env: &std::collections::HashMap<String, String>) -> Result<Child> {
         // Substitute environment variables in command arguments
         let mut substituted_args = Vec::new();
         for arg in &self.args {
-            let substituted_arg = subst::substitute(&arg.to_string_lossy(), &current_env)
+            let substituted_arg = subst::substitute(&arg.to_string_lossy(), env)
                 .change_context_lazy(|| {
                     TransportError::InvalidEnvironmentVariable(arg.to_string_lossy().to_string())
                 })?;
@@ -82,10 +79,9 @@ impl Launcher {
 
         for (key, template) in self.env.iter() {
             // Substitute environment variables in the template
-            let substituted_value =
-                subst::substitute(template, &current_env).change_context_lazy(|| {
-                    TransportError::InvalidEnvironmentVariable(template.clone())
-                })?;
+            let substituted_value = subst::substitute(template, env).change_context_lazy(|| {
+                TransportError::InvalidEnvironmentVariable(template.clone())
+            })?;
             command.env(key, substituted_value);
         }
 
@@ -145,14 +141,12 @@ mod tests {
     #[test]
     fn test_launcher_env_substitution() {
         // This test verifies that our launcher can process environment variables
-        // Note: This test depends on the actual environment, so we mock it
-        use std::env;
+        // using a custom environment map to avoid unsafe global environment mutation
 
-        // Set a test environment variable for this test
-        unsafe {
-            env::set_var("TEST_HOME", "/test/home");
-            env::set_var("TEST_USER", "testuser");
-        }
+        // Create a mock environment
+        let mut test_env = HashMap::new();
+        test_env.insert("TEST_HOME".to_string(), "/test/home".to_string());
+        test_env.insert("TEST_USER".to_string(), "testuser".to_string());
 
         let mut env_config = IndexMap::new();
         env_config.insert("CUSTOM_HOME".to_string(), "${TEST_HOME}".to_string());
@@ -163,10 +157,8 @@ mod tests {
         );
 
         // Test the substitution logic similar to what's in spawn()
-        let current_env: HashMap<String, String> = env::vars().collect();
-
         for (key, template) in &env_config {
-            let substituted_value = subst::substitute(template, &current_env).unwrap();
+            let substituted_value = subst::substitute(template, &test_env).unwrap();
             match key.as_str() {
                 "CUSTOM_HOME" => assert_eq!(substituted_value, "/test/home"),
                 "CUSTOM_USER" => assert_eq!(substituted_value, "testuser"),
@@ -174,24 +166,17 @@ mod tests {
                 _ => {}
             }
         }
-
-        // Clean up
-        unsafe {
-            env::remove_var("TEST_HOME");
-            env::remove_var("TEST_USER");
-        }
     }
 
     #[test]
     fn test_launcher_args_substitution() {
         // This test verifies that our launcher can process environment variables in args
-        use std::env;
+        // using a custom environment map to avoid unsafe global environment mutation
 
-        // Set test environment variables
-        unsafe {
-            env::set_var("TEST_PROJECT", "my-project");
-            env::set_var("TEST_CONFIG", "config.json");
-        }
+        // Create a mock environment
+        let mut test_env = HashMap::new();
+        test_env.insert("TEST_PROJECT".to_string(), "my-project".to_string());
+        test_env.insert("TEST_CONFIG".to_string(), "config.json".to_string());
 
         let args = vec![
             "--project".to_string(),
@@ -201,11 +186,9 @@ mod tests {
         ];
 
         // Test the substitution logic similar to what's in spawn()
-        let current_env: HashMap<String, String> = env::vars().collect();
-
         let mut substituted_args = Vec::new();
         for arg in &args {
-            let substituted_arg = subst::substitute(arg, &current_env).unwrap();
+            let substituted_arg = subst::substitute(arg, &test_env).unwrap();
             substituted_args.push(substituted_arg);
         }
 
@@ -214,11 +197,5 @@ mod tests {
         assert_eq!(substituted_args[1], "my-project");
         assert_eq!(substituted_args[2], "--config");
         assert_eq!(substituted_args[3], "-/default/config/config.json"); // Uses default for TEST_HOME_NOT_SET (note the "-" prefix)
-
-        // Clean up
-        unsafe {
-            env::remove_var("TEST_PROJECT");
-            env::remove_var("TEST_CONFIG");
-        }
     }
 }

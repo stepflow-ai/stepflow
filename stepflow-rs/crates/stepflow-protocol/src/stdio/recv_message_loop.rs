@@ -42,7 +42,8 @@ struct ReceiveMessageLoop {
 
 impl ReceiveMessageLoop {
     fn try_new(launcher: Launcher, outgoing_tx: mpsc::Sender<String>) -> Result<Self> {
-        let mut child = launcher.spawn()?;
+        let env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        let mut child = launcher.spawn(&env)?;
 
         let to_child = child.stdin.take().expect("stdin requested");
         let from_child_stdout = child.stdout.take().expect("stdout requested");

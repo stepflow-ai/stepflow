@@ -78,15 +78,15 @@ which = { version = "7.0.3", features = ["tracing"] }
 opt-level = 3
 
 [workspace.lints.rust]
-rust_2018_idioms = "warn"
-nonstandard_style = "warn"
-future_incompatible = "warn"
+rust_2018_idioms = "deny"
+nonstandard_style = "deny"
+future_incompatible = "deny"
 
 [workspace.lints.clippy]
-print_stderr = "warn"
-print_stdout = "warn"
-undocumented_unsafe_blocks = "warn"
-unused_trait_names = "warn"
+print_stderr = "deny"
+print_stdout = "deny"
+undocumented_unsafe_blocks = "deny"
+unused_trait_names = "deny"
 
 [workspace.metadata.cargo-machete]
 ignored = []
