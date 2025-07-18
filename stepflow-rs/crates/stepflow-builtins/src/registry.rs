@@ -44,24 +44,21 @@ impl Registry {
 
 static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     let mut registry = Registry::default();
-    registry.register("openai", OpenAIComponent::new("gpt-3.5-turbo"));
-    registry.register("create_messages", CreateMessagesComponent);
-    registry.register("eval", EvalComponent::new());
-    registry.register("iterate", IterateComponent::new());
-    registry.register("load_file", LoadFileComponent);
-    registry.register("map", MapComponent::new());
-    registry.register("put_blob", PutBlobComponent::new());
-    registry.register("get_blob", GetBlobComponent::new());
+    registry.register("/openai", OpenAIComponent::new("gpt-3.5-turbo"));
+    registry.register("/create_messages", CreateMessagesComponent);
+    registry.register("/eval", EvalComponent::new());
+    registry.register("/iterate", IterateComponent::new());
+    registry.register("/load_file", LoadFileComponent);
+    registry.register("/map", MapComponent::new());
+    registry.register("/put_blob", PutBlobComponent::new());
+    registry.register("/get_blob", GetBlobComponent::new());
     registry
 });
 
 pub fn get_component(component: &Component) -> Result<Arc<DynBuiltinComponent<'_>>> {
-    let name = component
-        .builtin_name()
-        .ok_or(PluginError::UnknownComponent(component.clone()))?;
     let builtin_component = REGISTRY
         .components
-        .get(name)
+        .get(component.path())
         .ok_or_else(|| PluginError::UnknownComponent(component.clone()))?;
 
     Ok(builtin_component.clone())

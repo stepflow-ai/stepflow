@@ -125,7 +125,7 @@ steps:
 
   # Generate index file
   - name: create_index
-    component: template
+    component: /builtin/template
     inputs:
       template: |
         # Document Index
@@ -212,7 +212,7 @@ MCP tools can return two types of errors:
      continueOnError: true
 
    - name: use_default
-     component: template
+     component: /builtin/template
      when: ${{ steps.read_config.failed }}
      inputs:
        template: '{"default": true}'
@@ -261,7 +261,7 @@ Use `continueOnError` and conditional steps for graceful error handling:
 
 - name: fallback
   when: ${{ steps.try_operation.failed }}
-  component: log
+  component: /builtin/log
   inputs:
     message: "Operation failed, using fallback"
 ```
@@ -296,7 +296,7 @@ Use `continueOnError` and conditional steps for graceful error handling:
 ```yaml
 steps:
   - name: select_operation
-    component: template
+    component: /builtin/template
     inputs:
       template: "${{ inputs.operation_type }}://{{ inputs.tool_name }}"
 

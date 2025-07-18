@@ -16,8 +16,10 @@ exit_code: 0
 Available Components:
 ====================
 
-Component: /builtin/create_messages
+Component: /create_messages (plugin: builtin)
   Description: Create a chat message list from system instructions and user prompt
+  Available Routes:
+    /builtin/create_messages
   Input Schema:
     {
       "type": "object",
@@ -54,8 +56,10 @@ Component: /builtin/create_messages
       ]
     }
 
-Component: /builtin/eval
+Component: /eval (plugin: builtin)
   Description: Execute a nested workflow with given input and return the result
+  Available Routes:
+    /builtin/eval
   Input Schema:
     {
       "description": "Input for the eval component",
@@ -106,8 +110,10 @@ Component: /builtin/eval
       ]
     }
 
-Component: /builtin/get_blob
+Component: /get_blob (plugin: builtin)
   Description: Retrieve JSON data from a blob using its ID
+  Available Routes:
+    /builtin/get_blob
   Input Schema:
     {
       "description": "Input for the get_blob component",
@@ -136,8 +142,10 @@ Component: /builtin/get_blob
       ]
     }
 
-Component: /builtin/iterate
+Component: /iterate (plugin: builtin)
   Description: Iteratively apply a workflow until it returns a result instead of next
+  Available Routes:
+    /builtin/iterate
   Input Schema:
     {
       "description": "Input for the iterate component",
@@ -191,8 +199,10 @@ Component: /builtin/iterate
       ]
     }
 
-Component: /builtin/load_file
+Component: /load_file (plugin: builtin)
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
+  Available Routes:
+    /builtin/load_file
   Input Schema:
     {
       "type": "object",
@@ -235,8 +245,10 @@ Component: /builtin/load_file
       ]
     }
 
-Component: /builtin/map
+Component: /map (plugin: builtin)
   Description: Apply a workflow to each item in a list and collect the results
+  Available Routes:
+    /builtin/map
   Input Schema:
     {
       "description": "Input for the map component",
@@ -296,8 +308,10 @@ Component: /builtin/map
       ]
     }
 
-Component: /builtin/openai
+Component: /openai (plugin: builtin)
   Description: Send messages to OpenAI's chat completion API and get a response
+  Available Routes:
+    /builtin/openai
   Input Schema:
     {
       "description": "Input for the OpenAI component",
@@ -355,8 +369,10 @@ Component: /builtin/openai
       ]
     }
 
-Component: /builtin/put_blob
+Component: /put_blob (plugin: builtin)
   Description: Store JSON data as a blob and return its content-addressable ID
+  Available Routes:
+    /builtin/put_blob
   Input Schema:
     {
       "description": "Input for the put_blob component",

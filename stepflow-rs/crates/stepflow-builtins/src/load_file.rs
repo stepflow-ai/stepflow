@@ -90,12 +90,12 @@ impl LoadFileComponent {
 }
 
 impl BuiltinComponent for LoadFileComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<LoadFileInput>();
         let output_schema = SchemaRef::for_type::<LoadFileOutput>();
 
         Ok(ComponentInfo {
-            component: Component::for_plugin(plugin, "load_file"),
+            component: Component::from_string("/load_file"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

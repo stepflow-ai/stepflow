@@ -14,7 +14,7 @@ success: true
 exit_code: 0
 ----- stdout -----
 components:
-- component: /builtin/create_messages
+- component: /create_messages
   description: Create a chat message list from system instructions and user prompt
   input_schema:
     type: object
@@ -38,7 +38,13 @@ components:
           $ref: '#/$defs/ChatMessage'
     required:
     - messages
-- component: /builtin/eval
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/create_messages
+    conditions: []
+    is_conditional: false
+- component: /eval
   description: Execute a nested workflow with given input and return the result
   input_schema:
     description: Input for the eval component
@@ -74,7 +80,13 @@ components:
     required:
     - result
     - run_id
-- component: /builtin/get_blob
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/eval
+    conditions: []
+    is_conditional: false
+- component: /get_blob
   description: Retrieve JSON data from a blob using its ID
   input_schema:
     description: Input for the get_blob component
@@ -93,7 +105,13 @@ components:
         description: The JSON data stored in the blob
     required:
     - data
-- component: /builtin/iterate
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/get_blob
+    conditions: []
+    is_conditional: false
+- component: /iterate
   description: Iteratively apply a workflow until it returns a result instead of next
   input_schema:
     description: Input for the iterate component
@@ -133,7 +151,13 @@ components:
     - result
     - iterations
     - terminated
-- component: /builtin/load_file
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/iterate
+    conditions: []
+    is_conditional: false
+- component: /load_file
   description: Load and parse a file (JSON, YAML, or text) from the filesystem
   input_schema:
     type: object
@@ -159,7 +183,13 @@ components:
     required:
     - data
     - metadata
-- component: /builtin/map
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/load_file
+    conditions: []
+    is_conditional: false
+- component: /map
   description: Apply a workflow to each item in a list and collect the results
   input_schema:
     description: Input for the map component
@@ -203,7 +233,13 @@ components:
     - successful
     - failed
     - skipped
-- component: /builtin/openai
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/map
+    conditions: []
+    is_conditional: false
+- component: /openai
   description: Send messages to OpenAI's chat completion API and get a response
   input_schema:
     description: Input for the OpenAI component
@@ -244,7 +280,13 @@ components:
         type: string
     required:
     - response
-- component: /builtin/put_blob
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/openai
+    conditions: []
+    is_conditional: false
+- component: /put_blob
   description: Store JSON data as a blob and return its content-addressable ID
   input_schema:
     description: Input for the put_blob component
@@ -263,6 +305,12 @@ components:
         type: string
     required:
     - blob_id
+  plugin: builtin
+  routes:
+  - path_pattern: /builtin/{*component}
+    resolved_path: /builtin/put_blob
+    conditions: []
+    is_conditional: false
 
 
 ----- stderr -----

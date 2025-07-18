@@ -17,4 +17,4 @@ mod rules;
 
 pub use plugin_router::{PluginRouter, PluginRouterBuilder};
 pub use router::{ComponentRouter, Router, RouterError};
-pub use rules::{InputCondition, MatchRule, RoutingRule};
+pub use rules::{InputCondition, RouteMatch, RouteRule, RoutingConfig};

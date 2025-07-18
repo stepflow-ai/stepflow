@@ -27,7 +27,7 @@ output_schema:
 steps:
   # Create UDF for addition
   - id: create_addition_udf
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -38,9 +38,9 @@ steps:
           required: [a, b]
         code: "input['a'] + input['b']"
 
-  # Create UDF for multiplication  
+  # Create UDF for multiplication
   - id: create_multiplication_udf
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:

@@ -50,6 +50,14 @@ Options:
           
           [possible values: true, false]
 
+      --hide-unreachable <HIDE_UNREACHABLE>
+          Hide components that are not reachable through any routing rule.
+          
+          Use --no-hide-unreachable to show all components regardless of routing.
+          
+          [default: true]
+          [possible values: true, false]
+
       --omit-stack-trace
           Omit stack traces (line numbers of errors)
 

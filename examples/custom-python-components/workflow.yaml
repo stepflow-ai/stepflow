@@ -40,7 +40,7 @@ steps:
       report_title: "Q4 Customer Analysis Report"
 
   - id: retrieve_report
-    component: "get_blob"
+    component: "/builtin/get_blob"
     input:
       blob_id: { $from: { step: generate_business_report }, path: "report_blob_id" }
 

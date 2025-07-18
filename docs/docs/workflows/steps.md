@@ -13,7 +13,7 @@ A step has the following structure:
 ```yaml
 steps:
   - id: step_name
-    component: component_url
+    component: /path/component
     input:
       # Input data for the component
     # Optional fields:
@@ -47,7 +47,7 @@ Steps execute based on their dependencies, not their order in the YAML file. Ste
 steps:
   # This step runs first (no dependencies)
   - id: load_data
-    component: load_file
+    component: /builtin/load_file
     input:
       path: "data.json"
 
@@ -59,13 +59,13 @@ steps:
 
   # This step also waits for load_data (runs in parallel with process_data)
   - id: validate_data
-    component: validate
+    component: /validate
     input:
       data: { $from: { step: load_data } }
 
   # This step waits for both process_data and validate_data
   - id: combine_results
-    component: merge
+    component: /merge
     input:
       processed: { $from: { step: process_data } }
       validated: { $from: { step: validate_data } }
@@ -124,7 +124,7 @@ input:
 ```yaml
 steps:
   - id: expensive_analysis
-    component: ai/analyze
+    component: /ai/analyze
     skip: { $from: { workflow: input }, path: "skip_analysis" }
     input:
       data: { $from: { step: load_data } }
@@ -137,12 +137,12 @@ When a step is skipped, consuming steps are also skipped by default:
 ```yaml
 steps:
   - id: optional_step
-    component: data/process
+    component: /data/process
     skip: { $from: { workflow: input }, path: "skip_optional" }
 
   # This step is skipped if optional_step is skipped
   - id: dependent_step
-    component: data/analyze
+    component: /data/analyze
     input:
       data: { $from: { step: optional_step } }
 ```
@@ -154,7 +154,7 @@ Use `$on_skip` to provide default values when dependencies are skipped:
 ```yaml
 steps:
   - id: consumer_step
-    component: data/process
+    component: /data/process
     input:
       required_data: { $from: { step: required_step } }
       optional_data:
@@ -175,7 +175,7 @@ steps:
 ```yaml
 steps:
   - id: risky_operation
-    component: external/api_call
+    component: /external/api_call
     on_error:
       action: continue        # continue|skip|terminate
       default_output:
@@ -205,13 +205,13 @@ When using `action: continue`, the `default_output` must:
 ```yaml
 # Blob storage
 - id: store_data
-  component: put_blob
+  component: /builtin/put_blob
   input:
     data: { $from: { step: prepare_data } }
 
 # Sub-workflow execution
 - id: sub_process
-  component: eval
+  component: /builtin/eval
   input:
     workflow: { $from: { step: load_workflow } }
     input: { $from: { step: prepare_input } }
@@ -229,7 +229,7 @@ When using `action: continue`, the `default_output` must:
 
 # Custom component server
 - id: specialized_task
-  component: my_plugin://advanced_processor
+  component: /my_plugin/advanced_processor
   input:
     configuration: { $from: { step: load_config } }
     data: { $from: { step: prepare_data } }
@@ -240,7 +240,7 @@ When using `action: continue`, the `default_output` must:
 ```yaml
 # OpenAI API call
 - id: ai_analysis
-  component: openai
+  component: /builtin/openai
   input:
     messages:
       - role: system
@@ -276,7 +276,7 @@ steps:
 ```yaml
 steps:
   - id: process_if_large
-    component: data/heavy_processor
+    component: /data/heavy_processor
     skip:
       $from: { step: check_size }
       path: "is_small"
@@ -284,7 +284,7 @@ steps:
       data: { $from: { step: load_data } }
 
   - id: process_if_small
-    component: data/light_processor
+    component: /data/light_processor
     skip:
       $from: { step: check_size }
       path: "is_large"
@@ -297,7 +297,7 @@ steps:
 ```yaml
 steps:
   - id: final_step
-    component: data/combine
+    component: /data/combine
     input:
       # Wait for multiple steps
       processed: { $from: { step: process_data } }
@@ -364,12 +364,12 @@ input:
 ```yaml
 # Critical operation - must succeed
 - id: authenticate_user
-  component: auth/verify
+  component: /auth/verify
   # on_error defaults to terminate
 
 # Optional enhancement - can fail gracefully
 - id: enrich_profile
-  component: data/enrich
+  component: /data/enrich
   on_error:
     action: continue
     default_output:
@@ -378,7 +378,7 @@ input:
 
 # Completely optional - skip if fails
 - id: log_analytics
-  component: analytics/track
+  component: /analytics/track
   on_error:
     action: skip
 ```

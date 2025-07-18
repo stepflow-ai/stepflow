@@ -84,7 +84,7 @@ async fn test_mcp_plugin_initialization() {
     // Check that the component paths are correct
     let paths: Vec<String> = components
         .iter()
-        .map(|c| c.component.path_string().to_string())
+        .map(|c| c.component.path().to_string())
         .collect();
     assert!(paths.contains(&"/mock-server/echo".to_string()));
     assert!(paths.contains(&"/mock-server/add".to_string()));

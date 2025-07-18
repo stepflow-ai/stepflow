@@ -35,7 +35,7 @@ output:
 ```yaml
 steps:
   - id: store_user_data
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         user_id: { $from: { workflow: input }, path: "user_id" }
@@ -70,7 +70,7 @@ output:
 ```yaml
 steps:
   - id: retrieve_user_data
-    component: get_blob
+    component: /builtin/et_blob
     input:
       blob_id: { $from: { step: store_user_data }, path: "blob_id" }
 ```
@@ -124,12 +124,12 @@ output:
 ```yaml
 steps:
   - id: load_config
-    component: load_file
+    component: /builtin/load_file
     input:
       path: "config/settings.yaml"
 
   - id: load_data
-    component: load_file
+    component: /builtin/load_file
     input:
       path: { $from: { workflow: input }, path: "data_file" }
       format: "json"
@@ -170,7 +170,7 @@ output:
 ```yaml
 steps:
   - id: prepare_chat
-    component: create_messages
+    component: /builtin/create_messages
     input:
       system_instructions: "You are an expert data analyst"
       user_prompt: { $from: { workflow: input }, path: "question" }
@@ -219,7 +219,7 @@ Each message must have:
 ```yaml
 steps:
   - id: ask_ai
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: prepare_chat }, path: "messages" }
       max_tokens: 200
@@ -231,13 +231,13 @@ steps:
 ```yaml
 steps:
   - id: create_prompt
-    component: create_messages
+    component: /builtin/create_messages
     input:
       system_instructions: "You are a code review assistant. Analyze code for potential issues."
       user_prompt: { $from: { workflow: input }, path: "code_snippet" }
 
   - id: analyze_code
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: create_prompt }, path: "messages" }
       max_tokens: 500
@@ -280,7 +280,7 @@ output:
 ```yaml
 steps:
   - id: run_analysis
-    component: eval
+    component: /builtin/eval
     input:
       workflow:
         input_schema:
@@ -289,11 +289,11 @@ steps:
             data: { type: array }
         steps:
           - id: process
-            component: data/analyze
+            component: /data/analyze
             input:
               data: { $from: { workflow: input }, path: "data" }
           - id: summarize
-            component: data/summarize
+            component: /data/summarize
             input:
               analysis: { $from: { step: process } }
         output:

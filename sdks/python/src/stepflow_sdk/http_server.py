@@ -280,10 +280,9 @@ class StepflowHttpServer:
 
         component_infos = []
         for name, component in session.server.get_components().items():
-            component_url = f"/{session.server.get_protocol_prefix()}/{name}"
             component_infos.append(
                 ComponentInfo(
-                    component=component_url,
+                    component=name,
                     input_schema=component.input_schema(),
                     output_schema=component.output_schema(),
                     description=component.description,
@@ -299,12 +298,10 @@ class StepflowHttpServer:
             # Auto-initialize for HTTP mode
             session.server.set_initialized(True)
 
-        component_name = params.component.split("/")[-1]
-        components = session.server.get_components()
-        if component_name not in components:
-            raise ComponentNotFoundError(f"Component '{component_name}' not found")
+        component = session.server.get_components().get(params.component)
+        if component is None:
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
-        component = components[component_name]
         info = ComponentInfo(
             component=params.component,
             input_schema=component.input_schema(),
@@ -321,12 +318,9 @@ class StepflowHttpServer:
             # Auto-initialize for HTTP mode
             session.server.set_initialized(True)
 
-        component_name = params.component.split("/")[-1]
-        components = session.server.get_components()
-        if component_name not in components:
-            raise ComponentNotFoundError(f"Component '{component_name}' not found")
-
-        component = components[component_name]
+        component = session.server.get_components().get(params.component)
+        if component is None:
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
         try:
             # The input is already a dictionary (JSON object)

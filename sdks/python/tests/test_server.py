@@ -71,10 +71,10 @@ def test_component_registration(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    assert "test_component" in server._server.get_components()
-    component = server.get_component("/python/test_component")
+    assert "/test_component" in server._server.get_components()
+    component = server.get_component("/test_component")
     assert isinstance(component, ComponentEntry)
-    assert component.name == "test_component"
+    assert component.name == "/test_component"
     assert component.input_type == ValidInput
     assert component.output_type == ValidOutput
 
@@ -86,10 +86,10 @@ def test_component_with_custom_name(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    assert "custom_name" in server._server.get_components()
-    component = server.get_component("/python/custom_name")
+    assert "/custom_name" in server._server.get_components()
+    component = server.get_component("/custom_name")
     assert isinstance(component, ComponentEntry)
-    assert component.name == "custom_name"
+    assert component.name == "/custom_name"
     assert component.input_type == ValidInput
     assert component.output_type == ValidOutput
 
@@ -101,7 +101,7 @@ def test_component_execution(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    component = server.get_component("/python/test_component")
+    component = server.get_component("/test_component")
     assert component is not None
     result = component.function(ValidInput(name="Alice", age=25))
     assert isinstance(result, ValidOutput)
@@ -120,8 +120,8 @@ def test_list_components(server):
 
     components = server._server.get_components()
     assert len(components) == 2
-    assert "component1" in components
-    assert "component2" in components
+    assert "/component1" in components
+    assert "/component2" in components
 
     for name, component in components.items():
         assert isinstance(component, ComponentEntry)
@@ -166,7 +166,7 @@ async def test_handle_component_info(server):
     request = MethodRequest(
         id=str(UUID(int=1)),
         method=Method.components_info,
-        params=ComponentInfoParams(component="/python/test_component"),
+        params=ComponentInfoParams(component="/test_component"),
     )
     response = await server._handle_message(request)
     assert response.id == request.id
@@ -204,7 +204,7 @@ async def test_handle_component_execute(server):
         id=str(UUID(int=1)),
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component="/python/test_component", input={"name": "Alice", "age": 25}
+            component="/test_component", input={"name": "Alice", "age": 25}
         ),
     )
     response = await server._handle_message(request)
@@ -226,7 +226,7 @@ async def test_handle_component_execute_invalid_input(server):
         id=str(UUID(int=1)),
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component="/python/test_component", input={"invalid": "input"}
+            component="/test_component", input={"invalid": "input"}
         ),
     )
 
@@ -254,8 +254,8 @@ async def test_handle_list_components(server):
     assert response.id == request.id
     assert len(response.result.components) == 2
     component_urls = [comp.component for comp in response.result.components]
-    assert "/python/component1" in component_urls
-    assert "/python/component2" in component_urls
+    assert "/component1" in component_urls
+    assert "/component2" in component_urls
 
 
 @pytest.mark.asyncio
@@ -299,7 +299,7 @@ async def test_server_responses_include_jsonrpc(server):
         id="jsonrpc-test",
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component="/python/test_component", input={"name": "Test", "age": 30}
+            component="/test_component", input={"name": "Test", "age": 30}
         ),
     )
 

@@ -71,12 +71,12 @@ struct IterateOutput {
 }
 
 impl BuiltinComponent for IterateComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<IterateInput>();
         let output_schema = SchemaRef::for_type::<IterateOutput>();
 
         Ok(ComponentInfo {
-            component: stepflow_core::workflow::Component::for_plugin(plugin, "iterate"),
+            component: stepflow_core::workflow::Component::from_string("/iterate"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

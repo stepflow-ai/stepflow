@@ -17,7 +17,7 @@ output_schema:
 steps:
 # Create blobs for function definitions
 - id: create_addition_blob
-  component: put_blob
+  component: /builtin/put_blob
   input_schema: null
   output_schema: null
   input:
@@ -34,7 +34,7 @@ steps:
         - y
       code: input['x'] + input['y']
 - id: create_multiplication_blob
-  component: put_blob
+  component: /builtin/put_blob
   input_schema: null
   output_schema: null
   input:
@@ -51,7 +51,7 @@ steps:
         - y
       code: input['x'] * input['y']
 - id: create_complex_calculation_blob
-  component: put_blob
+  component: /builtin/put_blob
   input_schema: null
   output_schema: null
   input:

@@ -9,14 +9,14 @@ input_schema:
 
 steps:
   - id: nested_math
-    component: "eval"
+    component: /builtin/eval
     input:
       workflow:
         $literal:
           name: "Nested Math Workflow"
           steps:
             - id: add_udf
-              component: "put_blob"
+              component: /builtin/put_blob
               input:
                 data:
                   $literal:
@@ -27,7 +27,7 @@ steps:
                         b: { type: integer }
                       required: [a, b]
                     code: "input['a'] + input['b']"
-            
+
             - id: compute_sum
               component: "/python/udf"
               input:

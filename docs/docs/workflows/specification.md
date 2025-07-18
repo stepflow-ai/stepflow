@@ -192,7 +192,7 @@ output_schema:
 ```yaml
 steps:
   - id: unique_step_identifier
-    component: component_name
+    component: /path/component_name
     input:
       param1: { $from: { workflow: input }, path: "field" }
       param2: { $literal: "static_value" }
@@ -497,7 +497,7 @@ Examples serve multiple purposes:
 ```yaml
 steps:
   - id: check_environment
-    component: environment_check
+    component: /env/environment_check
     input:
       environment: { $from: { workflow: input }, path: "env" }
 
@@ -565,14 +565,14 @@ imports:
 steps:
   # Use imported workflow as a step
   - id: validate_input
-    component: eval
+    component: /builtin/eval
     input:
       workflow: { $import: "validate" }
       input: { $from: { workflow: input } }
 
   # Chain workflows
   - id: process_text
-    component: eval
+    component: /builtin/eval
     input:
       workflow: { $import: "text_proc" }
       input: { $from: { step: validate_input } }

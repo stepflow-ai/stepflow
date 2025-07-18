@@ -7,8 +7,8 @@ plugins:
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "loop_server.py"]
 
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "*"
-    target: builtin
+routes:
+  "/builtin/{*component}":
+    - plugin: builtin
+  "/python/{*component}":
+    - plugin: python

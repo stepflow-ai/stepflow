@@ -1,0 +1,30 @@
+---
+source: crates/stepflow-main/tests/commands/test_list_components.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - "--log-level=error"
+    - list-components
+    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpu5zzRH/filtered-config.yml"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Available Components:
+====================
+
+Component: /create_messages (plugin: test-builtins)
+  Description: Create a chat message list from system instructions and user prompt
+  Available Routes:
+    /reachable/create_messages
+
+Component: /openai (plugin: test-builtins)
+  Description: Send messages to OpenAI's chat completion API and get a response
+  Available Routes:
+    /reachable/openai
+
+Total components: 2
+
+----- stderr -----

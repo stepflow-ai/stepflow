@@ -88,12 +88,12 @@ struct OpenAIOutput {
 }
 
 impl BuiltinComponent for OpenAIComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<OpenAIInput>();
         let output_schema = SchemaRef::for_type::<OpenAIOutput>();
 
         Ok(ComponentInfo {
-            component: Component::for_plugin(plugin, "openai"),
+            component: Component::from_string("/openai"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

@@ -16,28 +16,28 @@ Structure workflows to maximize parallel execution by identifying steps that can
 steps:
   # Load base data
   - id: load_user
-    component: user/load
+    component: /user/load
     input:
       user_id: { $from: { workflow: input }, path: "user_id" }
 
   # All these can run in parallel after load_user completes
   - id: load_user_posts
-    component: content/posts
+    component: /content/posts
     input:
       user_id: { $from: { step: load_user }, path: "id" }
 
   - id: load_user_followers
-    component: social/followers
+    component: /social/followers
     input:
       user_id: { $from: { step: load_user }, path: "id" }
 
   - id: load_user_activity
-    component: analytics/activity
+    component: /analytics/activity
     input:
       user_id: { $from: { step: load_user }, path: "id" }
 
   - id: calculate_metrics
-    component: analytics/metrics
+    component: /analytics/metrics
     input:
       user_data: { $from: { step: load_user } }
 ```
@@ -50,12 +50,12 @@ Don't create unnecessary dependencies that reduce parallelism:
 # ❌ Bad - creates false dependency chain
 steps:
   - id: step1
-    component: data/process
+    component: /data/process
     input:
       data: { $from: { workflow: input } }
 
   - id: step2
-    component: data/validate
+    component: /data/validate
     input:
       # This creates unnecessary dependency on step1
       original_data: { $from: { workflow: input } }
@@ -64,12 +64,12 @@ steps:
 # ✅ Good - remove false dependency
 steps:
   - id: step1
-    component: data/process
+    component: /data/process
     input:
       data: { $from: { workflow: input } }
 
   - id: step2
-    component: data/validate
+    component: /data/validate
     input:
       # Can run in parallel with step1
       data: { $from: { workflow: input } }
@@ -83,23 +83,23 @@ Fetch data from multiple sources simultaneously:
 steps:
   # All three data sources fetch in parallel
   - id: fetch_data_source_1
-    component: http/get
+    component: /http/get
     input:
       url: "https://api1.example.com/data"
 
   - id: fetch_data_source_2
-    component: http/get
+    component: /http/get
     input:
       url: "https://api2.example.com/data"
 
   - id: fetch_data_source_3
-    component: http/get
+    component: /http/get
     input:
       url: "https://api3.example.com/data"
 
   # Waits for all three fetches to complete
   - id: combine_data
-    component: data/merge
+    component: /data/merge
     input:
       source1: { $from: { step: fetch_data_source_1 } }
       source2: { $from: { step: fetch_data_source_2 } }
@@ -118,19 +118,19 @@ Store large datasets in blobs to avoid memory duplication:
 steps:
   # Store large dataset in blob
   - id: store_large_dataset
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data: { $from: { step: load_massive_dataset } }
 
   # Multiple steps can reference the same blob efficiently
   - id: analyze_subset_1
-    component: analytics/process
+    component: /analytics/process
     input:
       data_blob: { $from: { step: store_large_dataset }, path: "blob_id" }
       filter: "category=A"
 
   - id: analyze_subset_2
-    component: analytics/process
+    component: /analytics/process
     input:
       data_blob: { $from: { step: store_large_dataset }, path: "blob_id" }
       filter: "category=B"
@@ -143,14 +143,14 @@ Avoid copying entire large objects by referencing specific fields:
 ```yaml
 steps:
   - id: process_user_data
-    component: user/process
+    component: /user/process
     input:
       # ✅ Good - reference specific fields
       user_id: { $from: { step: load_user }, path: "id" }
       user_name: { $from: { step: load_user }, path: "profile.name" }
 
   - id: inefficient_processing
-    component: user/process
+    component: /user/process
     input:
       # ❌ Avoid - copying entire large object
       user_data: { $from: { step: load_user } }
@@ -165,14 +165,14 @@ Select components based on the complexity of your task:
 ```yaml
 # For simple data transformations, use lightweight components
 - id: extract_field
-  component: extract
+  component: /extract
   input:
     data: { $from: { step: load_data } }
     path: "metadata.id"
 
 # For complex processing, use specialized components
 - id: ai_analysis
-  component: openai
+  component: /builtin/openai
   input:
     messages: [...]
     model: "gpt-4"
@@ -185,14 +185,14 @@ Process data in batches when possible to reduce overhead:
 ```yaml
 # ✅ Good - batch processing
 - id: process_all_items
-  component: data/batch_process
+  component: /data/batch_process
   input:
     items: { $from: { step: load_items } }
     batch_size: 100
 
 # ❌ Avoid - individual processing (unless parallelism is needed)
 - id: process_item_1
-  component: data/process_single
+  component: /data/process_single
   input:
     item: { $from: { step: load_items }, path: "items[0]" }
 ```
@@ -204,7 +204,7 @@ Optimize component settings for your use case:
 ```yaml
 steps:
   - id: ai_generation
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: create_messages } }
       # Optimize parameters for performance vs quality
@@ -223,19 +223,19 @@ Structure workflows to minimize data copying and movement:
 steps:
   # Store shared data once
   - id: store_shared_context
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data: { $from: { step: load_context } }
 
   # Multiple processing steps reference the same blob
   - id: analysis_1
-    component: analytics/type_a
+    component: /analytics/type_a
     input:
       context_blob: { $from: { step: store_shared_context }, path: "blob_id" }
       specific_data: { $from: { step: load_specific_1 } }
 
   - id: analysis_2
-    component: analytics/type_b
+    component: /analytics/type_b
     input:
       context_blob: { $from: { step: store_shared_context }, path: "blob_id" }
       specific_data: { $from: { step: load_specific_2 } }
@@ -249,13 +249,13 @@ Validate inputs early to avoid expensive processing on invalid data:
 steps:
   # Fast validation step
   - id: validate_input
-    component: validation/fast_check
+    component: /validation/fast_check
     input:
       data: { $from: { workflow: input } }
 
   # Expensive processing only runs on valid data
   - id: expensive_processing
-    component: ai/complex_analysis
+    component: /ai/complex_analysis
     input:
       validated_data: { $from: { step: validate_input } }
 ```
@@ -269,7 +269,7 @@ Optimize AI prompts for performance and cost:
 ```yaml
 steps:
   - id: efficient_ai_call
-    component: openai
+    component: /builtin/openai
     input:
       messages:
         - role: system
@@ -292,20 +292,20 @@ Cache AI responses for repeated queries:
 steps:
   # Check cache first
   - id: check_ai_cache
-    component: cache/check
+    component: /cache/check
     input:
       key: { $from: { step: create_cache_key }, path: "cache_key" }
 
   # Only call AI if not cached
   - id: generate_ai_response
-    component: openai
+    component: /builtin/openai
     skip_if: { $from: { step: check_ai_cache }, path: "cache_hit" }
     input:
       messages: { $from: { step: create_messages } }
 
   # Store response in cache
   - id: cache_ai_response
-    component: cache/store
+    component: /cache/store
     skip_if: { $from: { step: check_ai_cache }, path: "cache_hit" }
     input:
       key: { $from: { step: create_cache_key }, path: "cache_key" }
@@ -322,23 +322,23 @@ Process multiple independent items and combine results:
 steps:
   # Fan-out: Process multiple items in parallel
   - id: process_item_1
-    component: item/process
+    component: /item/process
     input:
       item: { $from: { workflow: input }, path: "items[0]" }
 
   - id: process_item_2
-    component: item/process
+    component: /item/process
     input:
       item: { $from: { workflow: input }, path: "items[1]" }
 
   - id: process_item_3
-    component: item/process
+    component: /item/process
     input:
       item: { $from: { workflow: input }, path: "items[2]" }
 
   # Fan-in: Combine all results
   - id: combine_results
-    component: data/combine
+    component: /data/combine
     input:
       results:
         - { $from: { step: process_item_1 } }
@@ -353,17 +353,17 @@ Create processing pipelines with minimal intermediate storage:
 ```yaml
 steps:
   - id: stage_1
-    component: pipeline/extract
+    component: /pipeline/extract
     input:
       source: { $from: { workflow: input } }
 
   - id: stage_2
-    component: pipeline/transform
+    component: /pipeline/transform
     input:
       data: { $from: { step: stage_1 } }
 
   - id: stage_3
-    component: pipeline/load
+    component: /pipeline/load
     input:
       transformed_data: { $from: { step: stage_2 } }
 ```
@@ -413,12 +413,12 @@ test:
 # ❌ Bad - sequential processing
 steps:
   - id: process_1
-    component: data/process
+    component: /data/process
     input:
       data: { $from: { workflow: input }, path: "data1" }
 
   - id: process_2
-    component: data/process
+    component: /data/process
     input:
       data: { $from: { workflow: input }, path: "data2" }
       # Unnecessary dependency creates false sequence
@@ -427,12 +427,12 @@ steps:
 # ✅ Good - parallel processing
 steps:
   - id: process_1
-    component: data/process
+    component: /data/process
     input:
       data: { $from: { workflow: input }, path: "data1" }
 
   - id: process_2
-    component: data/process
+    component: /data/process
     input:
       data: { $from: { workflow: input }, path: "data2" }
       # No dependency - runs in parallel
@@ -444,13 +444,13 @@ steps:
 # ❌ Bad - too many small steps
 steps:
   - id: get_field_1
-    component: extract
+    component: /extract
     input:
       data: { $from: { step: load_data } }
       path: "field1"
 
   - id: get_field_2
-    component: extract
+    component: /extract
     input:
       data: { $from: { step: load_data } }
       path: "field2"
@@ -458,7 +458,7 @@ steps:
 # ✅ Good - combined extraction
 steps:
   - id: extract_fields
-    component: data/extract_multiple
+    component: /data/extract_multiple
     input:
       data: { $from: { step: load_data } }
       fields: ["field1", "field2"]
@@ -470,29 +470,29 @@ steps:
 # ❌ Bad - copying large objects repeatedly
 steps:
   - id: step1
-    component: process/a
+    component: /process/a
     input:
       large_dataset: { $from: { step: load_large_data } }
 
   - id: step2
-    component: process/b
+    component: /process/b
     input:
       large_dataset: { $from: { step: load_large_data } }
 
 # ✅ Good - use blob storage
 steps:
   - id: store_large_data
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data: { $from: { step: load_large_data } }
 
   - id: step1
-    component: process/a
+    component: /process/a
     input:
       data_blob: { $from: { step: store_large_data }, path: "blob_id" }
 
   - id: step2
-    component: process/b
+    component: /process/b
     input:
       data_blob: { $from: { step: store_large_data }, path: "blob_id" }
 ```

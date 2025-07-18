@@ -1,5 +1,5 @@
 input:
-  message: 
+  message:
     type: string
 
 output:
@@ -8,7 +8,7 @@ output:
 
 steps:
   - id: test_step
-    component: eval
+    component: /builtin/eval
     input:
       expr: '"Testing MCP integration: " + $.input.message'
     output: result

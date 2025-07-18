@@ -130,6 +130,12 @@ pub enum Command {
         /// Defaults to false for pretty format, true for json/yaml formats.
         #[arg(long = "schemas")]
         schemas: Option<bool>,
+
+        /// Hide components that are not reachable through any routing rule.
+        ///
+        /// Use --no-hide-unreachable to show all components regardless of routing.
+        #[arg(long = "hide-unreachable", default_value = "true", action = clap::ArgAction::Set)]
+        hide_unreachable: bool,
     },
     /// Start an interactive REPL for workflow development and debugging.
     Repl {
@@ -202,9 +208,15 @@ impl Cli {
                 config_args,
                 format,
                 schemas,
+                hide_unreachable,
             } => {
-                crate::list_components::list_components(config_args.config_path, format, schemas)
-                    .await?;
+                crate::list_components::list_components(
+                    config_args.config_path,
+                    format,
+                    schemas,
+                    hide_unreachable,
+                )
+                .await?;
             }
             Command::Repl { config_args } => {
                 run_repl(config_args.config_path).await?;

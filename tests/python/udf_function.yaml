@@ -17,7 +17,7 @@ output_schema:
       type: object
 steps:
 - id: create_analyze_scores_blob
-  component: put_blob
+  component: /builtin/put_blob
   input_schema: null
   output_schema: null
   input:

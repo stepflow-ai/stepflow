@@ -15,10 +15,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::Router;
-use crate::routing::RoutingRule;
+use crate::routing::{RouteMatch, RouteRule, RoutingConfig};
 use crate::{DynPlugin, PluginError, Result};
 use error_stack::ResultExt as _;
-use stepflow_core::workflow::ValueRef;
+use indexmap::IndexMap;
+use stepflow_core::values::ValueRef;
 
 /// Integrated plugin router that combines routing logic with plugin management.
 ///
@@ -27,12 +28,9 @@ use stepflow_core::workflow::ValueRef;
 pub struct PluginRouter {
     /// The underlying router for component path resolution
     router: Router,
-    /// Plugin instances indexed by routing rule index
-    /// Each routing rule index maps directly to a plugin instance
-    plugins: Vec<Arc<DynPlugin<'static>>>,
-    /// Unique plugin instances (no duplicates)
-    /// Used for initialization to ensure each plugin is only initialized once
-    unique_plugins: Vec<Arc<DynPlugin<'static>>>,
+    /// Ordered mapping from plugin names to their instances
+    /// IndexMap maintains insertion order and provides both name-based and index-based access
+    plugins: IndexMap<String, Arc<DynPlugin<'static>>>,
 }
 
 impl PluginRouter {
@@ -41,67 +39,85 @@ impl PluginRouter {
         PluginRouterBuilder::new()
     }
 
-    /// Get a plugin for the given component path and input data
-    pub fn get_plugin(
+    /// Get a plugin and resolved component name for the given component path and input data
+    pub fn get_plugin_and_component(
         &self,
         component_path: &str,
         input: ValueRef,
-    ) -> Result<&Arc<DynPlugin<'static>>> {
-        // NOTE: If the component router step is expensive, we could instead
-        // have this return the `ComponentRouter` and allow the caller to store
-        // that. This would allow determining if there is a static route, as
-        // well as re-using the path based routing.
-
+    ) -> Result<(&Arc<DynPlugin<'static>>, String)> {
         // Route the component path to get a component router
         let component_router = self
             .router
-            .route(component_path.to_string())
+            .route(component_path)
             .change_context(PluginError::InvalidInput)?;
 
-        // Resolve the input to get the rule index
-        let rule_index = component_router
-            .route_input(input)
+        // Resolve the input to get the route rule and component name
+        let (route_rule, resolved_component) = component_router
+            .get_route_and_component(input)
             .change_context(PluginError::InvalidInput)?;
 
-        // Get the plugin directly by rule index
-        self.plugins
-            .get(rule_index)
-            .ok_or(PluginError::InvalidRuleIndex(rule_index))
-            .map_err(|e| e.into())
+        tracing::info!(
+            "Component '{component_path}' routed to '{resolved_component}' on plugin '{}'",
+            route_rule.rule.plugin
+        );
+
+        // Get the plugin by index.
+        let plugin = self
+            .plugins
+            .get_index(route_rule.plugin_index)
+            .expect("Plugin index should be valid")
+            .1;
+
+        Ok((plugin, resolved_component))
     }
 
     /// Get all registered plugins
     /// This returns each plugin exactly once, even if it's used by multiple routing rules
     pub fn plugins(&self) -> impl Iterator<Item = &Arc<DynPlugin<'static>>> {
-        self.unique_plugins.iter()
+        self.plugins.values()
+    }
+
+    /// Get all registered plugins with their names
+    /// This returns each plugin exactly once with its corresponding name
+    pub fn plugins_with_names(&self) -> impl Iterator<Item = (&str, &Arc<DynPlugin<'static>>)> {
+        self.plugins
+            .iter()
+            .map(|(name, plugin)| (name.as_str(), plugin))
+    }
+
+    /// Find all routes that could match a given plugin and component
+    pub fn find_routes_for(&self, plugin: &str, component: &str) -> Vec<RouteMatch> {
+        self.router.find_routes_for(plugin, component)
     }
 }
 
 /// Builder for constructing a PluginRouter
 pub struct PluginRouterBuilder {
-    /// Routing rules for component path resolution
-    routing_rules: Vec<RoutingRule>,
-    /// Map from plugin name to plugin instance
-    plugins: HashMap<String, Arc<DynPlugin<'static>>>,
+    /// Routing configuration for component path resolution
+    routing_config: RoutingConfig,
+    /// Ordered map from plugin name to plugin instance
+    plugins: IndexMap<String, Arc<DynPlugin<'static>>>,
 }
 
 impl PluginRouterBuilder {
     fn new() -> Self {
         Self {
-            routing_rules: Vec::new(),
-            plugins: HashMap::new(),
+            routing_config: RoutingConfig {
+                routes: HashMap::new(),
+            },
+            plugins: IndexMap::new(),
         }
     }
 
-    /// Add a routing rule to the plugin router being built
-    pub fn with_routing_rule(mut self, rule: RoutingRule) -> Self {
-        self.routing_rules.push(rule);
+    /// Add a routing path with rules to the plugin router being built
+    pub fn with_routing_path(mut self, path: String, rules: Vec<RouteRule>) -> Self {
+        self.routing_config.routes.insert(path, rules);
         self
     }
 
-    /// Add multiple routing rules to the plugin router being built
-    pub fn with_routing_rules(mut self, rules: impl IntoIterator<Item = RoutingRule>) -> Self {
-        self.routing_rules.extend(rules);
+    /// Set the complete routing configuration
+    pub fn with_routing_config(mut self, config: RoutingConfig) -> Self {
+        self.routing_config = config;
         self
     }
 
@@ -113,27 +129,31 @@ impl PluginRouterBuilder {
 
     /// Build the PluginRouter
     pub fn build(self) -> Result<PluginRouter> {
-        // Expand the plugins HashMap into a Vec where each index corresponds to a routing rule
-        let mut plugins = Vec::new();
-        for rule in self.routing_rules.iter() {
-            let plugin_name = rule.target.as_ref();
-            if let Some(plugin) = self.plugins.get(plugin_name) {
-                plugins.push(plugin.clone());
-            } else {
-                return Err(PluginError::PluginNotFound(plugin_name.to_string()).into());
+        // Validate that all plugins referenced in rules exist
+        for (_path, rules) in self.routing_config.routes.iter() {
+            for rule in rules {
+                let plugin_name = rule.plugin.as_ref();
+                if !self.plugins.contains_key(plugin_name) {
+                    return Err(PluginError::PluginNotFound(plugin_name.to_string()).into());
+                }
             }
         }
 
-        // Create a vector of unique plugins (no duplicates)
-        let unique_plugins: Vec<Arc<DynPlugin<'static>>> = self.plugins.into_values().collect();
+        // Create plugin indices map for the router
+        let plugin_indices: HashMap<String, usize> = self
+            .plugins
+            .keys()
+            .enumerate()
+            .map(|(index, name)| (name.clone(), index))
+            .collect();
 
         // Create the underlying router
-        let router = Router::new(self.routing_rules).change_context(PluginError::CreatePlugin)?;
+        let router = Router::new(self.routing_config, &plugin_indices)
+            .change_context(PluginError::CreatePlugin)?;
 
         Ok(PluginRouter {
             router,
-            plugins,
-            unique_plugins,
+            plugins: self.plugins,
         })
     }
 }
@@ -141,7 +161,7 @@ impl PluginRouterBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::routing::rules::{MatchRule, RoutingRule};
+    use crate::routing::rules::{RouteRule, RoutingConfig};
     use serde_json::json;
 
     struct TestPlugin;
@@ -185,71 +205,98 @@ mod tests {
     fn test_plugin_router_basic() {
         let test_plugin = DynPlugin::boxed(TestPlugin);
 
-        let rules = vec![RoutingRule {
-            match_rule: vec![MatchRule {
-                component: "/test/*".to_string(),
-                input: vec![],
+        let mut routes = std::collections::HashMap::new();
+        routes.insert(
+            "/test/{component}".to_string(),
+            vec![RouteRule {
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                plugin: "test".into(),
+                component: None,
             }],
-            target: "test".into(),
-        }];
+        );
+
+        let config = RoutingConfig { routes };
 
         let router = PluginRouter::builder()
-            .with_routing_rules(rules)
+            .with_routing_config(config)
             .register_plugin("test".to_string(), test_plugin)
             .build()
             .unwrap();
 
         let input = ValueRef::new(json!({}));
-        let _plugin = router.get_plugin("/test/example", input).unwrap();
-        // Just verify we can get the plugin back without panicking
+        let (_plugin, path) = router
+            .get_plugin_and_component("/test/example", input)
+            .unwrap();
+        assert_eq!(path, "/example");
     }
 
     #[test]
     fn test_plugin_router_multiple_rules_same_plugin() {
         let test_plugin = DynPlugin::boxed(TestPlugin);
 
-        let rules = vec![
-            RoutingRule {
-                match_rule: vec![MatchRule {
-                    component: "/test/*".to_string(),
-                    input: vec![],
-                }],
-                target: "test".into(),
-            },
-            RoutingRule {
-                match_rule: vec![MatchRule {
-                    component: "/other/*".to_string(),
-                    input: vec![],
-                }],
-                target: "test".into(),
-            },
-        ];
+        let mut routes = std::collections::HashMap::new();
+        routes.insert(
+            "/test/{component}".to_string(),
+            vec![RouteRule {
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                plugin: "test".into(),
+                component: None,
+            }],
+        );
+        routes.insert(
+            "/other/{component}".to_string(),
+            vec![RouteRule {
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                plugin: "test".into(),
+                component: None,
+            }],
+        );
+
+        let config = RoutingConfig { routes };
 
         let router = PluginRouter::builder()
-            .with_routing_rules(rules)
+            .with_routing_config(config)
             .register_plugin("test".to_string(), test_plugin)
             .build()
             .unwrap();
 
         let input = ValueRef::new(json!({}));
-        let plugin1 = router.get_plugin("/test/example", input.clone()).unwrap();
-        let plugin2 = router.get_plugin("/other/example", input).unwrap();
+        let (plugin1, path1) = router
+            .get_plugin_and_component("/test/example", input.clone())
+            .unwrap();
+        let (plugin2, path2) = router
+            .get_plugin_and_component("/other/example", input)
+            .unwrap();
 
         // Both should be the same Arc instance
         assert!(Arc::ptr_eq(plugin1, plugin2));
+        assert_eq!(path1, "/example");
+        assert_eq!(path2, "/example");
     }
 
     #[test]
     fn test_plugin_router_missing_plugin() {
-        let rules = vec![RoutingRule {
-            match_rule: vec![MatchRule {
-                component: "/missing/*".to_string(),
-                input: vec![],
+        let mut routes = std::collections::HashMap::new();
+        routes.insert(
+            "/missing/{component}".to_string(),
+            vec![RouteRule {
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                plugin: "nonexistent".into(),
+                component: None,
             }],
-            target: "nonexistent".into(),
-        }];
+        );
 
-        let result = PluginRouter::builder().with_routing_rules(rules).build();
+        let config = RoutingConfig { routes };
+
+        let result = PluginRouter::builder().with_routing_config(config).build();
 
         assert!(result.is_err());
     }

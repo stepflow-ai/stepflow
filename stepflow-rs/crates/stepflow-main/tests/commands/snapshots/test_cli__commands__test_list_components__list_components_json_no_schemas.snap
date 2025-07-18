@@ -17,36 +17,108 @@ exit_code: 0
 {
   "components": [
     {
-      "component": "/builtin/create_messages",
-      "description": "Create a chat message list from system instructions and user prompt"
+      "component": "/create_messages",
+      "description": "Create a chat message list from system instructions and user prompt",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/create_messages",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/eval",
-      "description": "Execute a nested workflow with given input and return the result"
+      "component": "/eval",
+      "description": "Execute a nested workflow with given input and return the result",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/eval",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/get_blob",
-      "description": "Retrieve JSON data from a blob using its ID"
+      "component": "/get_blob",
+      "description": "Retrieve JSON data from a blob using its ID",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/get_blob",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/iterate",
-      "description": "Iteratively apply a workflow until it returns a result instead of next"
+      "component": "/iterate",
+      "description": "Iteratively apply a workflow until it returns a result instead of next",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/iterate",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/load_file",
-      "description": "Load and parse a file (JSON, YAML, or text) from the filesystem"
+      "component": "/load_file",
+      "description": "Load and parse a file (JSON, YAML, or text) from the filesystem",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/load_file",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/map",
-      "description": "Apply a workflow to each item in a list and collect the results"
+      "component": "/map",
+      "description": "Apply a workflow to each item in a list and collect the results",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/map",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/openai",
-      "description": "Send messages to OpenAI's chat completion API and get a response"
+      "component": "/openai",
+      "description": "Send messages to OpenAI's chat completion API and get a response",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/openai",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/put_blob",
-      "description": "Store JSON data as a blob and return its content-addressable ID"
+      "component": "/put_blob",
+      "description": "Store JSON data as a blob and return its content-addressable ID",
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/put_blob",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     }
   ]
 }

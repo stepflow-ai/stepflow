@@ -33,7 +33,7 @@ pub use plugin::{BuiltinPluginConfig, Builtins};
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(DynBuiltinComponent = dyn BuiltinComponent)]
 pub(crate) trait BuiltinComponent: Send + Sync {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo>;
+    fn component_info(&self) -> Result<ComponentInfo>;
 
     async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult>;
 }

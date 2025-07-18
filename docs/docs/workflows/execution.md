@@ -16,26 +16,26 @@ StepFlow uses a dependency-driven execution model rather than sequential executi
 steps:
   # Step 1: No dependencies - starts immediately
   - id: load_config
-    component: load_file
+    component: /builtin/load_file
     input:
       path: "config.json"
 
   # Step 2: No dependencies - runs in parallel with load_config
   - id: load_data
-    component: load_file
+    component: /builtin/load_file
     input:
       path: "data.json"
 
   # Step 3: Depends on load_data - waits for it to complete
   - id: validate_data
-    component: data/validate
+    component: /data/validate
     input:
       data: { $from: { step: load_data } }
       schema: { $from: { step: load_config }, path: "validation_schema" }
 
   # Step 4: Depends on validate_data - runs after validation
   - id: process_data
-    component: data/process
+    component: /data/process
     input:
       validated_data: { $from: { step: validate_data } }
 ```
@@ -52,23 +52,23 @@ Steps without dependencies run in parallel automatically:
 ```yaml
 steps:
   - id: load_user_data
-    component: user/load
+    component: /user/load
     input:
       user_id: { $from: { workflow: input }, path: "user_id" }
 
   # These three steps run in parallel after load_user_data completes
   - id: analyze_behavior
-    component: analytics/behavior
+    component: /analytics/behavior
     input:
       user_data: { $from: { step: load_user_data } }
 
   - id: check_permissions
-    component: auth/permissions
+    component: /auth/permissions
     input:
       user_data: { $from: { step: load_user_data } }
 
   - id: load_preferences
-    component: user/preferences
+    component: /user/preferences
     input:
       user_id: { $from: { step: load_user_data }, path: "id" }
 ```
@@ -104,23 +104,23 @@ StepFlow manages concurrent execution automatically:
 # No explicit parallelism needed - StepFlow handles it
 steps:
   - id: fetch_data_source_1
-    component: http/get
+    component: /http/get
     input:
       url: "https://api1.example.com/data"
 
   - id: fetch_data_source_2
-    component: http/get
+    component: /http/get
     input:
       url: "https://api2.example.com/data"
 
   - id: fetch_data_source_3
-    component: http/get
+    component: /http/get
     input:
       url: "https://api3.example.com/data"
 
   # Waits for all three fetches to complete
   - id: combine_data
-    component: data/merge
+    component: /data/merge
     input:
       source1: { $from: { step: fetch_data_source_1 } }
       source2: { $from: { step: fetch_data_source_2 } }
@@ -137,19 +137,19 @@ Use blobs for large or reusable data:
 steps:
   # Store large dataset in blob
   - id: store_large_dataset
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data: { $from: { step: load_massive_dataset } }
 
   # Multiple steps can reference the same blob efficiently
   - id: analyze_subset_1
-    component: analytics/process
+    component: /analytics/process
     input:
       data_blob: { $from: { step: store_large_dataset }, path: "blob_id" }
       filter: "category=A"
 
   - id: analyze_subset_2
-    component: analytics/process
+    component: /analytics/process
     input:
       data_blob: { $from: { step: store_large_dataset }, path: "blob_id" }
       filter: "category=B"
@@ -164,13 +164,13 @@ Implement conditional logic using skip conditions:
 ```yaml
 steps:
   - id: check_user_level
-    component: user/check_level
+    component: /user/check_level
     input:
       user_id: { $from: { workflow: input }, path: "user_id" }
 
   # Only run for premium users
   - id: premium_analysis
-    component: analytics/premium
+    component: /analytics/premium
     skip_if:
       $from: { step: check_user_level }
       path: "is_basic_user"
@@ -179,7 +179,7 @@ steps:
 
   # Only run for basic users
   - id: basic_analysis
-    component: analytics/basic
+    component: /analytics/basic
     skip_if:
       $from: { step: check_user_level }
       path: "is_premium_user"
@@ -194,12 +194,12 @@ Use nested workflows for dynamic execution:
 ```yaml
 steps:
   - id: determine_workflow_type
-    component: workflow/classifier
+    component: /workflow/classifier
     input:
       request: { $from: { workflow: input } }
 
   - id: execute_dynamic_workflow
-    component: eval
+    component: /builtins/eval
     input:
       workflow: { $from: { step: determine_workflow_type }, path: "workflow_definition" }
       input: { $from: { workflow: input } }
@@ -215,13 +215,13 @@ Use error handling to maintain workflow resilience:
 steps:
   # Critical step - must succeed
   - id: authenticate_user
-    component: auth/verify
+    component: /auth/verify
     input:
       token: { $from: { workflow: input }, path: "auth_token" }
 
   # Optional enhancement - can fail gracefully
   - id: enrich_profile
-    component: user/enrich
+    component: /user/enrich
     on_error:
       action: continue
       default_output:
@@ -232,7 +232,7 @@ steps:
 
   # Main processing - uses enriched data if available
   - id: generate_response
-    component: response/create
+    component: /response/create
     input:
       user_data: { $from: { step: authenticate_user } }
       enriched_data:
@@ -249,7 +249,7 @@ Control how errors propagate through the workflow:
 steps:
   # Optional data source - skip if it fails
   - id: load_optional_data
-    component: data/load
+    component: /data/load
     on_error:
       action: skip
     input:
@@ -257,7 +257,7 @@ steps:
 
   # Processing step - handles missing optional data
   - id: process_data
-    component: data/process
+    component: /data/process
     input:
       required_data: { $from: { step: load_required_data } }
       optional_data:

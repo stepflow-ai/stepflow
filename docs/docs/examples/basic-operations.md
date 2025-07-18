@@ -38,7 +38,7 @@ output_schema:
 steps:
   # Step 1: Validate input data
   - id: validate_input
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -49,7 +49,7 @@ steps:
           # Simple validation logic
           required_fields = ['name', 'email']
           missing_fields = [f for f in required_fields if f not in input['data']]
-          
+
           {
             'is_valid': len(missing_fields) == 0,
             'missing_fields': missing_fields,
@@ -66,8 +66,8 @@ steps:
 
   # Step 3: Transform data (only if validation passes)
   - id: transform_data
-    component: put_blob
-    skip: 
+    component: /builtin/put_blob
+    skip:
       $from: { step: run_validation }
       path: "is_valid"
       # Skip if NOT valid (invert the boolean logic in your condition)
@@ -128,7 +128,7 @@ test:
           is_valid: true
           missing_fields: []
           field_count: 3
-  
+
   - name: invalid_user_data
     description: Handle invalid user data gracefully
     input:
@@ -180,7 +180,7 @@ input_schema:
 steps:
   # Load configuration with error handling
   - id: load_config
-    component: load_file
+    component: /builtin/load_file
     on_error:
       action: continue
       default_output:
@@ -196,13 +196,13 @@ steps:
 
   # Load data file
   - id: load_data
-    component: load_file
+    component: /builtin/load_file
     input:
       path: { $from: { workflow: input }, path: "data_file" }
 
   # Validate that we have required configuration
   - id: validate_config
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -213,7 +213,7 @@ steps:
           config = input['config']
           has_rules = 'processing_rules' in config and config['processing_rules']
           has_output = 'output_settings' in config
-          
+
           {
             'is_valid': has_rules and has_output,
             'has_processing_rules': has_rules,
@@ -231,7 +231,7 @@ steps:
 
   # Process data if configuration is valid
   - id: process_data
-    component: put_blob
+    component: /builtin/put_blob
     skip:
       $from: { step: check_config }
       path: "is_valid"
@@ -247,7 +247,7 @@ steps:
           # Apply processing rules to data
           data = input['data']
           rules = input['rules']
-          
+
           processed = {}
           for key, value in data.items():
             if key in rules:
@@ -260,7 +260,7 @@ steps:
                 processed[key] = value
             else:
               processed[key] = value
-          
+
           processed
 
   # Execute processing
@@ -274,7 +274,7 @@ steps:
 
   # Format output according to requested format
   - id: format_output
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -285,15 +285,15 @@ steps:
         code: |
           import json
           import yaml
-          
+
           data = input['data']
           format_type = input['format']
-          
+
           if format_type == 'yaml':
             formatted = yaml.dump(data, default_flow_style=False)
           else:
             formatted = json.dumps(data, indent=2)
-          
+
           {
             'formatted_data': formatted,
             'format': format_type,
@@ -359,10 +359,10 @@ input_schema:
 
 steps:
   # These steps run in parallel - one for each data source type
-  
+
   # Process API sources
   - id: process_api_sources
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -384,9 +384,9 @@ steps:
             })
           results
 
-  # Process file sources  
+  # Process file sources
   - id: process_file_sources
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -410,7 +410,7 @@ steps:
 
   # Process database sources
   - id: process_database_sources
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -456,7 +456,7 @@ steps:
 
   # Combine all results (waits for all parallel processing to complete)
   - id: combine_results
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -471,7 +471,7 @@ steps:
           all_results.extend(input['api_results'])
           all_results.extend(input['file_results'])
           all_results.extend(input['database_results'])
-          
+
           # Generate summary
           total_records = sum(r['record_count'] for r in all_results)
           by_type = {}
@@ -481,7 +481,7 @@ steps:
               by_type[result_type] = {'count': 0, 'records': 0}
             by_type[result_type]['count'] += 1
             by_type[result_type]['records'] += result['record_count']
-          
+
           {
             'all_results': all_results,
             'summary': {
@@ -602,7 +602,7 @@ steps:
 
   # Use fallback data if all APIs fail
   - id: use_fallback_data
-    component: put_blob
+    component: /builtin/put_blob
     skip:
       # Skip if either API succeeded
       # This would need custom logic to check if ANY API succeeded
@@ -614,7 +614,7 @@ steps:
 
   # Combine results from whichever source succeeded
   - id: combine_results
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
