@@ -42,7 +42,6 @@ from stepflow_sdk.generated_protocol import (
     ComponentInfoResult,
     ComponentListParams,
     Error,
-    InitializeParams,
     InitializeResult,
     ListComponentsResult,
     Message,
@@ -93,18 +92,9 @@ def _handle_exception(e: Exception, id: RequestId | None) -> MethodError:
 class StepflowServer:
     """Core StepFlow server with component registry and business logic."""
 
-    def __init__(self, default_protocol_prefix: str = "python"):
+    def __init__(self):
         self._components: dict[str, ComponentEntry] = {}
         self._initialized = False
-        self._protocol_prefix: str = default_protocol_prefix
-
-    def get_protocol_prefix(self) -> str:
-        """Get the current protocol prefix."""
-        return self._protocol_prefix
-
-    def set_protocol_prefix(self, prefix: str):
-        """Set the protocol prefix."""
-        self._protocol_prefix = prefix
 
     def is_initialized(self) -> bool:
         """Check if the server is initialized."""
@@ -133,6 +123,8 @@ class StepflowServer:
 
         def decorator(f: Callable) -> Callable:
             component_name = name or f.__name__
+            if not component_name.startswith("/"):
+                component_name = f"/{component_name}"
 
             # Get input and output types from type hints
             sig = inspect.signature(f)
@@ -177,11 +169,7 @@ class StepflowServer:
 
     def get_component(self, component_path: str) -> ComponentEntry | None:
         """Get a registered component by path."""
-        # Handle path format: /plugin/component_name
-        if component_path.startswith(f"/{self._protocol_prefix}/"):
-            component_name = component_path[len(f"/{self._protocol_prefix}/") :]
-            return self._components.get(component_name)
-        return None
+        return self._components.get(component_path)
 
     def get_components(self) -> dict[str, ComponentEntry]:
         """Get all registered components."""
@@ -221,10 +209,6 @@ class StepflowStdioServer:
         id = request.id
         match request.method:
             case Method.initialize:
-                init_request = msgspec.json.decode(
-                    msgspec.json.encode(request.params), type=InitializeParams
-                )
-                self._server.set_protocol_prefix(init_request.protocol_prefix)
                 return MethodSuccess(
                     id=id,
                     result=InitializeResult(server_protocol_version=1),
@@ -300,10 +284,9 @@ class StepflowStdioServer:
                 # Return component info objects
                 component_infos = []
                 for name, component in self._server.get_components().items():
-                    component_url = f"/{self._server.get_protocol_prefix()}/{name}"
                     component_infos.append(
                         ComponentInfo(
-                            component=component_url,
+                            component=name,
                             input_schema=component.input_schema(),
                             output_schema=component.output_schema(),
                             description=component.description,
@@ -480,10 +463,9 @@ class StepflowStdioServer:
 
         component_infos = []
         for name, component in self._server.get_components().items():
-            component_url = f"/{self._server.get_protocol_prefix()}/{name}"
             component_infos.append(
                 ComponentInfo(
-                    component=component_url,
+                    component=name,
                     input_schema=component.input_schema(),
                     output_schema=component.output_schema(),
                     description=component.description,
@@ -498,12 +480,9 @@ class StepflowStdioServer:
         if not self._server.is_initialized():
             raise ServerNotInitializedError()
 
-        component_name = params.component.split("/")[-1]
-        components = self._server.get_components()
-        if component_name not in components:
-            raise ComponentNotFoundError(f"Component '{component_name}' not found")
-
-        component = components[component_name]
+        component = self._server.get_components().get(params.component)
+        if component is None:
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
         info = ComponentInfo(
             component=params.component,
             input_schema=component.input_schema(),
@@ -519,12 +498,9 @@ class StepflowStdioServer:
         if not self._server.is_initialized():
             raise ServerNotInitializedError()
 
-        component_name = params.component.split("/")[-1]
-        components = self._server.get_components()
-        if component_name not in components:
-            raise ComponentNotFoundError(f"Component '{component_name}' not found")
-
-        component = components[component_name]
+        component = self._server.get_components().get(params.component)
+        if component is None:
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
         try:
             # Extract input data

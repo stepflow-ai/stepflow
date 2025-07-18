@@ -3,7 +3,7 @@ description: This workflow has no test section and should be skipped
 
 steps:
   - id: simple_step
-    component: eval
+    component: /builtin/eval
     input:
       expression: '"This workflow has no tests"'
 

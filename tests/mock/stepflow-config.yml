@@ -2,7 +2,7 @@ plugins:
   mock:
     type: mock
     components:
-      /mock/one_output:
+      /one_output:
         input_schema:
           type: object
           properties:
@@ -20,7 +20,7 @@ plugins:
           { input: "hello"}:
             outcome: success
             result: {output: world}
-      /mock/two_outputs:
+      /two_outputs:
         input_schema:
           type: object
           properties:
@@ -34,13 +34,13 @@ plugins:
             y:
               type: integer
         behaviors:
-          { input: "b" }: 
+          { input: "b" }:
             outcome: success
             result: {x: 1, y: 2}
           { input: "world"}:
             outcome: success
             result: {x: 2, y: 8}
-      /mock/error:
+      /error:
         input_schema:
           type: object
           properties:
@@ -58,7 +58,7 @@ plugins:
           { mode: "succeed" }:
             outcome: success
             result: {output: "succeeded"}
-      /mock/handle_skip:
+      /handle_skip:
         input_schema:
           type: object
           properties:
@@ -79,6 +79,6 @@ plugins:
           { input: null }:
             outcome: success
             result: {output: received null}
-routing:
-  - match: "/mock/*"
-    target: mock
+routes:
+  "/mock/{component}":
+    - plugin: mock

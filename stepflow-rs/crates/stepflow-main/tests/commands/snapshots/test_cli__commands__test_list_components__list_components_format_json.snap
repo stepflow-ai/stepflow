@@ -16,7 +16,7 @@ exit_code: 0
 {
   "components": [
     {
-      "component": "/builtin/create_messages",
+      "component": "/create_messages",
       "description": "Create a chat message list from system instructions and user prompt",
       "input_schema": {
         "type": "object",
@@ -50,10 +50,19 @@ exit_code: 0
         "required": [
           "messages"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/create_messages",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/eval",
+      "component": "/eval",
       "description": "Execute a nested workflow with given input and return the result",
       "input_schema": {
         "description": "Input for the eval component",
@@ -101,10 +110,19 @@ exit_code: 0
           "result",
           "run_id"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/eval",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/get_blob",
+      "component": "/get_blob",
       "description": "Retrieve JSON data from a blob using its ID",
       "input_schema": {
         "description": "Input for the get_blob component",
@@ -130,10 +148,19 @@ exit_code: 0
         "required": [
           "data"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/get_blob",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/iterate",
+      "component": "/iterate",
       "description": "Iteratively apply a workflow until it returns a result instead of next",
       "input_schema": {
         "description": "Input for the iterate component",
@@ -184,10 +211,19 @@ exit_code: 0
           "iterations",
           "terminated"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/iterate",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/load_file",
+      "component": "/load_file",
       "description": "Load and parse a file (JSON, YAML, or text) from the filesystem",
       "input_schema": {
         "type": "object",
@@ -227,10 +263,19 @@ exit_code: 0
           "data",
           "metadata"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/load_file",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/map",
+      "component": "/map",
       "description": "Apply a workflow to each item in a list and collect the results",
       "input_schema": {
         "description": "Input for the map component",
@@ -287,10 +332,19 @@ exit_code: 0
           "failed",
           "skipped"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/map",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/openai",
+      "component": "/openai",
       "description": "Send messages to OpenAI's chat completion API and get a response",
       "input_schema": {
         "description": "Input for the OpenAI component",
@@ -345,10 +399,19 @@ exit_code: 0
         "required": [
           "response"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/openai",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     },
     {
-      "component": "/builtin/put_blob",
+      "component": "/put_blob",
       "description": "Store JSON data as a blob and return its content-addressable ID",
       "input_schema": {
         "description": "Input for the put_blob component",
@@ -374,7 +437,16 @@ exit_code: 0
         "required": [
           "blob_id"
         ]
-      }
+      },
+      "plugin": "builtin",
+      "routes": [
+        {
+          "path_pattern": "/builtin/{*component}",
+          "resolved_path": "/builtin/put_blob",
+          "conditions": [],
+          "is_conditional": false
+        }
+      ]
     }
   ]
 }

@@ -16,35 +16,35 @@ Design workflows with minimal coupling between steps to maximize parallelism and
 # ✅ Good - minimal dependencies
 steps:
   - id: load_user
-    component: user/load
+    component: /user/load
     input:
       user_id: { $from: { workflow: input }, path: "user_id" }
 
   # These can run in parallel
   - id: load_permissions
-    component: auth/permissions
+    component: /auth/permissions
     input:
       user_id: { $from: { step: load_user }, path: "id" }
 
   - id: load_preferences
-    component: user/preferences
+    component: /user/preferences
     input:
       user_id: { $from: { step: load_user }, path: "id" }
 
 # ❌ Avoid - unnecessary dependencies
 steps:
   - id: load_user
-    component: user/load
+    component: /user/load
     input:
       user_id: { $from: { workflow: input }, path: "user_id" }
 
   - id: load_permissions
-    component: auth/permissions
+    component: /auth/permissions
     input:
       user_id: { $from: { step: load_user }, path: "id" }
 
   - id: load_preferences
-    component: user/preferences
+    component: /user/preferences
     input:
       user_id: { $from: { step: load_user }, path: "id" }
       # Unnecessary dependency creates false sequence
@@ -59,30 +59,30 @@ Balance between too many small steps and too few large steps:
 # ✅ Good - appropriate granularity
 steps:
   - id: validate_and_parse_input
-    component: data/validate_parse
+    component: /data/validate_parse
     input:
       raw_data: { $from: { workflow: input } }
 
   - id: enrich_data
-    component: data/enrich
+    component: /data/enrich
     input:
       parsed_data: { $from: { step: validate_and_parse_input } }
 
   - id: process_and_format
-    component: data/process_format
+    component: /data/process_format
     input:
       enriched_data: { $from: { step: enrich_data } }
 
 # ❌ Avoid - too granular
 steps:
   - id: validate_input
-    component: validation/check
+    component: /validation/check
   - id: parse_input
-    component: parsing/parse
+    component: /parsing/parse
   - id: extract_field_1
-    component: data/extract
+    component: /data/extract
   - id: extract_field_2
-    component: data/extract
+    component: /data/extract
   # ... many tiny steps
 ```
 
@@ -94,13 +94,13 @@ Design workflows to handle failures elegantly:
 steps:
   # Critical operation - must succeed
   - id: authenticate_user
-    component: auth/verify
+    component: /auth/verify
     input:
       token: { $from: { workflow: input }, path: "auth_token" }
 
   # Optional enhancement - can fail gracefully
   - id: load_user_preferences
-    component: user/preferences
+    component: /user/preferences
     on_error:
       action: use_default
       default_value:
@@ -111,7 +111,7 @@ steps:
 
   # Main processing - uses preferences if available
   - id: generate_response
-    component: response/create
+    component: /response/create
     input:
       user_data: { $from: { step: authenticate_user } }
       preferences:
@@ -129,19 +129,19 @@ Select components based on your specific needs:
 ```yaml
 # For simple operations, use builtin components
 - id: store_data
-  component: put_blob
+  component: /builtin/put_blob
   input:
     data: { $from: { step: process_data } }
 
 # For AI operations, use OpenAI components
 - id: generate_summary
-  component: openai
+  component: /builtin/openai
   input:
     messages: { $from: { step: create_messages } }
 
 # For complex business logic, use custom components
 - id: complex_analysis
-  component: custom://business_analyzer
+  component: /custom/business_analyzer
   input:
     data: { $from: { step: load_data } }
     rules: { $from: { step: load_rules } }
@@ -155,7 +155,7 @@ Configure components appropriately for your use case:
 steps:
   # Fast, deterministic AI responses
   - id: quick_classification
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: create_simple_prompt } }
       model: "gpt-3.5-turbo"      # Faster model
@@ -164,7 +164,7 @@ steps:
 
   # Creative AI responses
   - id: creative_writing
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: create_creative_prompt } }
       model: "gpt-4"             # Better model for creativity
@@ -180,13 +180,13 @@ Catch errors before expensive operations:
 steps:
   # Fast validation first
   - id: validate_request
-    component: validation/request
+    component: /validation/request
     input:
       request: { $from: { workflow: input } }
 
   # Expensive operations only run on valid input
   - id: process_with_ai
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: create_messages_from_valid_request } }
       validated_request: { $from: { step: validate_request } }
@@ -202,18 +202,18 @@ Store large or reusable data in blobs:
 steps:
   # Store large dataset once
   - id: store_dataset
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data: { $from: { step: load_large_dataset } }
 
   # Multiple analyses reference the same blob
   - id: statistical_analysis
-    component: analytics/statistics
+    component: /analytics/statistics
     input:
       data_blob: { $from: { step: store_dataset }, path: "blob_id" }
 
   - id: ml_analysis
-    component: analytics/machine_learning
+    component: /analytics/machine_learning
     input:
       data_blob: { $from: { step: store_dataset }, path: "blob_id" }
 ```
@@ -225,7 +225,7 @@ Avoid copying entire large objects:
 ```yaml
 # ✅ Good - reference specific fields
 - id: create_user_summary
-  component: user/summarize
+  component: /user/summarize
   input:
     user_id: { $from: { step: load_user }, path: "id" }
     user_name: { $from: { step: load_user }, path: "profile.name" }
@@ -233,7 +233,7 @@ Avoid copying entire large objects:
 
 # ❌ Avoid - copying entire object
 - id: create_user_summary
-  component: user/summarize
+  component: /user/summarize
   input:
     user_data: { $from: { step: load_user } }  # Copies entire user object
 ```
@@ -245,14 +245,14 @@ Process multiple items efficiently:
 ```yaml
 # ✅ Good - batch processing
 - id: process_all_users
-  component: user/batch_process
+  component: /user/batch_process
   input:
     users: { $from: { step: load_users } }
     batch_size: 50
 
 # ❌ Avoid - individual processing (unless parallelism is needed)
 - id: process_user_1
-  component: user/process
+  component: /user/process
   input:
     user: { $from: { step: load_users }, path: "users[0]" }
 # ... repeated for each user
@@ -313,7 +313,7 @@ Add validation to individual steps when needed:
 ```yaml
 steps:
   - id: process_user_data
-    component: user/process
+    component: /user/process
     input_schema:
       type: object
       properties:
@@ -415,13 +415,13 @@ description: |
 steps:
   - id: validate_order_details
     description: "Validate order format, customer info, and product availability"
-    component: order/validate
+    component: /order/validate
     input:
       order: { $from: { workflow: input }, path: "order" }
 
   - id: check_inventory_availability
     description: "Verify all ordered items are in stock"
-    component: inventory/check
+    component: /inventory/check
     input:
       items: { $from: { step: validate_order_details }, path: "validated_items" }
 ```
@@ -469,7 +469,7 @@ Never include sensitive data in workflow definitions:
 # ❌ Avoid - hardcoded secrets
 steps:
   - id: api_call
-    component: http/request
+    component: /http/request
     input:
       url: "https://api.example.com/data"
       headers:
@@ -478,7 +478,7 @@ steps:
 # ✅ Good - use environment variables
 steps:
   - id: api_call
-    component: http/request
+    component: /http/request
     input:
       url: "https://api.example.com/data"
       headers:
@@ -492,13 +492,13 @@ Always validate data from external sources:
 ```yaml
 steps:
   - id: validate_external_data
-    component: validation/external
+    component: /validation/external
     input:
       data: { $from: { step: fetch_external_data } }
       schema: { $from: { step: load_validation_schema } }
 
   - id: sanitize_data
-    component: security/sanitize
+    component: /security/sanitize
     input:
       validated_data: { $from: { step: validate_external_data } }
 ```
@@ -512,7 +512,7 @@ Track performance metrics and optimize bottlenecks:
 ```yaml
 steps:
   - id: performance_critical_step
-    component: analytics/heavy_computation
+    component: /analytics/heavy_computation
     input:
       data: { $from: { step: load_data } }
     # Consider adding performance monitoring
@@ -528,7 +528,7 @@ Cache expensive computations:
 ```yaml
 steps:
   - id: expensive_computation
-    component: analytics/complex
+    component: /analytics/complex
     input:
       data: { $from: { step: prepare_data } }
       cache_key: { $from: { step: generate_cache_key } }
@@ -597,7 +597,7 @@ steps:
 # ❌ Avoid - no error handling
 steps:
   - id: critical_operation
-    component: external/api
+    component: /external/api
     input:
       data: { $from: { workflow: input } }
     # What happens if the API is down?
@@ -607,7 +607,7 @@ steps:
 # ✅ Good - comprehensive error handling
 steps:
   - id: critical_operation
-    component: external/api
+    component: /external/api
     on_error:
       action: retry
       max_attempts: 3
@@ -624,18 +624,18 @@ steps:
 # ❌ Avoid - overengineering simple tasks
 steps:
   - id: extract_field_setup
-    component: config/setup
+    component: /config/setup
   - id: extract_field_validate
-    component: validation/check
+    component: /validation/check
   - id: extract_field_execute
-    component: data/extract
+    component: /data/extract
   - id: extract_field_cleanup
-    component: cleanup/finalize
+    component: /cleanup/finalize
 
 # ✅ Good - simple extraction
 steps:
   - id: extract_field
-    component: extract
+    component: /extract
     input:
       data: { $from: { step: load_data } }
       path: "user.email"

@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use stepflow_builtins::BuiltinPluginConfig;
 use stepflow_components_mcp::McpPluginConfig;
 use stepflow_mock::MockPlugin;
-use stepflow_plugin::routing::RoutingRule;
+use stepflow_plugin::routing::RoutingConfig;
 use stepflow_plugin::{DynPlugin, PluginConfig};
 use stepflow_protocol::StepflowPluginConfig;
 use stepflow_state::{InMemoryStateStore, StateStore};
@@ -34,9 +34,9 @@ pub struct StepflowConfig {
     /// If not set, this will be the directory containing the config.
     pub working_directory: Option<PathBuf>,
     pub plugins: IndexMap<String, SupportedPluginConfig>,
-    /// Routing rules for mapping components to plugins.
-    #[serde(default)]
-    pub routing: Vec<RoutingRule>,
+    /// Routing configuration for mapping components to plugins.
+    #[serde(flatten)]
+    pub routing: RoutingConfig,
     /// State store configuration. If not specified, uses in-memory storage.
     #[serde(default)]
     pub state_store: StateStoreConfig,
@@ -55,7 +55,7 @@ impl Default for StepflowConfig {
         Self {
             working_directory: None,
             plugins,
-            routing: Vec::new(),
+            routing: RoutingConfig::default(),
             state_store: StateStoreConfig::default(),
         }
     }

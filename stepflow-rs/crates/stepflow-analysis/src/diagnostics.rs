@@ -11,6 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -83,10 +85,10 @@ pub enum DiagnosticMessage {
         reason: String,
     },
     #[serde(rename_all = "camelCase")]
-    InvalidComponentUrl {
+    InvalidComponent {
         step_id: String,
-        url: String,
-        error: String,
+        component: String,
+        error: Cow<'static, str>,
     },
     #[serde(rename_all = "camelCase")]
     EmptyComponentName { step_id: String },
@@ -130,7 +132,7 @@ impl DiagnosticMessage {
 
             // Error diagnostics
             DiagnosticMessage::InvalidFieldAccess { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::InvalidComponentUrl { .. } => DiagnosticLevel::Error,
+            DiagnosticMessage::InvalidComponent { .. } => DiagnosticLevel::Error,
             DiagnosticMessage::EmptyComponentName { .. } => DiagnosticLevel::Error,
             DiagnosticMessage::SchemaViolation { .. } => DiagnosticLevel::Error,
 
@@ -185,12 +187,12 @@ impl DiagnosticMessage {
             } => {
                 format!("Invalid field access '{field}' on step '{step_id}': {reason}")
             }
-            DiagnosticMessage::InvalidComponentUrl {
+            DiagnosticMessage::InvalidComponent {
                 step_id,
-                url,
+                component,
                 error,
             } => {
-                format!("Invalid component URL '{url}' in step '{step_id}': {error}")
+                format!("Invalid component '{component}' in step '{step_id}': {error}")
             }
             DiagnosticMessage::EmptyComponentName { step_id } => {
                 format!("Empty component name in step '{step_id}'")
@@ -235,7 +237,7 @@ impl DiagnosticMessage {
             DiagnosticMessage::UndefinedStepReference { from_step, .. } => from_step.as_deref(),
             DiagnosticMessage::InvalidReferenceExpression { step_id, .. } => step_id.as_deref(),
             DiagnosticMessage::InvalidFieldAccess { step_id, .. } => Some(step_id),
-            DiagnosticMessage::InvalidComponentUrl { step_id, .. } => Some(step_id),
+            DiagnosticMessage::InvalidComponent { step_id, .. } => Some(step_id),
             DiagnosticMessage::EmptyComponentName { step_id } => Some(step_id),
             DiagnosticMessage::SchemaViolation { step_id, .. } => Some(step_id),
             DiagnosticMessage::MockComponent { step_id } => Some(step_id),

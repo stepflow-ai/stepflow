@@ -7,7 +7,8 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmps4TvA1/custom-config.yml"
+    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpmN9KLx/filtered-config.yml"
+    - "--hide-unreachable=false"
 ---
 success: true
 exit_code: 0
@@ -18,42 +19,36 @@ Available Components:
 Component: /create_messages (plugin: test-builtins)
   Description: Create a chat message list from system instructions and user prompt
   Available Routes:
-    /test-builtins/create_messages
+    /reachable/create_messages
 
 Component: /eval (plugin: test-builtins)
   Description: Execute a nested workflow with given input and return the result
-  Available Routes:
-    /test-builtins/eval
+  Available Routes: None
 
 Component: /get_blob (plugin: test-builtins)
   Description: Retrieve JSON data from a blob using its ID
-  Available Routes:
-    /test-builtins/get_blob
+  Available Routes: None
 
 Component: /iterate (plugin: test-builtins)
   Description: Iteratively apply a workflow until it returns a result instead of next
-  Available Routes:
-    /test-builtins/iterate
+  Available Routes: None
 
 Component: /load_file (plugin: test-builtins)
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
-  Available Routes:
-    /test-builtins/load_file
+  Available Routes: None
 
 Component: /map (plugin: test-builtins)
   Description: Apply a workflow to each item in a list and collect the results
-  Available Routes:
-    /test-builtins/map
+  Available Routes: None
 
 Component: /openai (plugin: test-builtins)
   Description: Send messages to OpenAI's chat completion API and get a response
   Available Routes:
-    /test-builtins/openai
+    /reachable/openai
 
 Component: /put_blob (plugin: test-builtins)
   Description: Store JSON data as a blob and return its content-addressable ID
-  Available Routes:
-    /test-builtins/put_blob
+  Available Routes: None
 
 Total components: 8
 

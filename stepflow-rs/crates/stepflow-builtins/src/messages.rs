@@ -40,12 +40,12 @@ struct CreateMessagesOutput {
 }
 
 impl BuiltinComponent for CreateMessagesComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<CreateMessagesInput>();
         let output_schema = SchemaRef::for_type::<CreateMessagesOutput>();
 
         Ok(ComponentInfo {
-            component: Component::for_plugin(plugin, "create_messages"),
+            component: Component::from_string("/create_messages"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

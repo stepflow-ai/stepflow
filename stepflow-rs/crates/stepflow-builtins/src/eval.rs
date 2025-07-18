@@ -66,12 +66,12 @@ struct EvalOutput {
 }
 
 impl BuiltinComponent for EvalComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<EvalInput>();
         let output_schema = SchemaRef::for_type::<EvalOutput>();
 
         Ok(ComponentInfo {
-            component: Component::for_plugin(plugin, "eval"),
+            component: Component::from_string("/eval"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

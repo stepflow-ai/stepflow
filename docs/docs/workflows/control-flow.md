@@ -31,7 +31,7 @@ Steps can be conditionally skipped using the `skip` field:
 ```yaml
 steps:
   - id: expensive_analysis
-    component: ai/analyze
+    component: /ai/analyze
     skip: { $from: { workflow: input }, path: is_premium_user }
     input:
       data: { $from: { step: previous_step } }
@@ -51,7 +51,7 @@ This propagation can be interrupted by configuring how an input should be comput
 ```yaml
 steps:
   - id: consumer_step
-    component: data/process
+    component: /data/process
     input:
       required_data: { $from: { step: step1 } }
       optional_enhancement:
@@ -73,7 +73,7 @@ Steps can handle their own failures using the `on_error` field:
 ```yaml
 steps:
   - id: risky_operation
-    component: external/api_call
+    component: /external/api_call
     on_error:
       action: continue
       default_output:
@@ -101,18 +101,19 @@ Sub-workflows can be executed using the built-in `eval` component:
 ```yaml
 steps:
   - id: sub_process
-    component: eval
+    component: /builtin/eval
     input:
       workflow:
-        inputs:
-          data: { type: string }
-        steps:
-          - id: process
-            component: data/transform
-            input:
-              input: { $from: { workflow: input }, path: data }
-        output:
-          result: { $from: { step: process } }
+        $literal:
+          inputs:
+            data: { type: string }
+          steps:
+            - id: process
+              component: /data/transform
+              input:
+                input: { $from: { workflow: input }, path: data }
+          output:
+            result: { $from: { step: process } }
       input:
         data: { $from: { step: previous_step }, path: processed_data }
 ```

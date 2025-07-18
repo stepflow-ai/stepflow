@@ -156,7 +156,7 @@ The examples have been updated to use the correct workflow syntax:
 ```yaml
 steps:
   - id: my_eval_step
-    component: "eval"
+    component: /builtin/eval
     input:  # Not 'args'
       workflow:
         $literal:  # Required for inline workflow definitions
@@ -199,7 +199,7 @@ Once you've verified the basic examples work, you can use eval components for:
 ### Regional Analysis Pattern
 ```yaml
 - id: analyze_region
-  component: "eval"
+  component: /builtin/eval
   input:
     workflow:
       $literal:
@@ -225,7 +225,7 @@ Once you've verified the basic examples work, you can use eval components for:
 ### Dynamic Workflow Generation
 ```yaml
 - id: process_all_regions
-  component: "eval"
+  component: /builtin/eval
   input:
     workflow: { $from: { step: generate_region_workflow }, path: "workflow_def" }
     input: { $from: { step: prepare_region_data }, path: "data" }

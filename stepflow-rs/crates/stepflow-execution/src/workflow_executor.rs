@@ -644,14 +644,15 @@ impl WorkflowExecutor {
             }
         };
 
-        // Get plugin and execute the step
-        let plugin = self
+        // Get plugin and resolved component name
+        let (plugin, resolved_component) = self
             .executor
-            .get_plugin(&step.component, step_input.clone())
+            .get_plugin_and_component(&step.component, step_input.clone())
             .await?;
         let result = execute_step_async(
             plugin,
             step,
+            &resolved_component,
             step_input,
             self.context.clone(),
             &self.resolver,
@@ -850,10 +851,10 @@ impl WorkflowExecutor {
         let step = &self.flow.steps[step_index];
         tracing::debug!("Starting execution of step {}", step.id);
 
-        // Get plugin for this step
-        let plugin = self
+        // Get plugin and resolved component name for this step
+        let (plugin, resolved_component) = self
             .executor
-            .get_plugin(&step.component, step_input.clone())
+            .get_plugin_and_component(&step.component, step_input.clone())
             .await?;
 
         // Clone necessary data for the async task
@@ -863,10 +864,18 @@ impl WorkflowExecutor {
 
         // Create the async task
         let plugin_clone = plugin.clone();
+        let resolved_component_clone = resolved_component.clone();
         let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
             let step = &flow.steps[step_index];
-            let result =
-                execute_step_async(&plugin_clone, step, step_input, context, &resolver).await;
+            let result = execute_step_async(
+                &plugin_clone,
+                step,
+                &resolved_component_clone,
+                step_input,
+                context,
+                &resolver,
+            )
+            .await;
             (step_index, result)
         });
 
@@ -880,13 +889,17 @@ impl WorkflowExecutor {
 pub(crate) async fn execute_step_async(
     plugin: &Arc<DynPlugin<'static>>,
     step: &stepflow_core::workflow::Step,
+    resolved_component: &str,
     input: ValueRef,
     context: ExecutionContext,
     resolver: &ValueResolver<StateValueLoader>,
 ) -> Result<FlowResult> {
+    // Create a component from the resolved component name
+    let component = stepflow_core::workflow::Component::from_string(resolved_component);
+
     // Execute the component
     let result = plugin
-        .execute(&step.component, context, input)
+        .execute(&component, context, input)
         .await
         .change_context(ExecutionError::StepFailed {
             step: step.id.to_owned(),
@@ -1037,17 +1050,17 @@ mod tests {
         let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
 
         // Create a plugin router with mock plugin routing rules
-        use stepflow_plugin::routing::{MatchRule, RoutingRule};
-        let rules = vec![RoutingRule {
-            match_rule: vec![MatchRule {
-                component: "**".to_string(),
-                input: vec![],
-            }],
-            target: "mock".into(),
+        use stepflow_plugin::routing::RouteRule;
+        let rules = vec![RouteRule {
+            conditions: vec![],
+            component_allow: None,
+            component_deny: None,
+            plugin: "mock".into(),
+            component: None,
         }];
 
         let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
-            .with_routing_rules(rules)
+            .with_routing_path("/{*component}".to_string(), rules)
             .register_plugin("mock".to_string(), dyn_plugin)
             .build()
             .unwrap();

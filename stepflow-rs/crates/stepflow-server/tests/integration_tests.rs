@@ -59,16 +59,16 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
     // Always register builtin plugins for basic functionality
     plugin_router_builder = plugin_router_builder.register_plugin(
         "builtin".to_string(),
-        DynPlugin::boxed(stepflow_builtins::Builtins::new("builtin".to_owned())),
+        DynPlugin::boxed(stepflow_builtins::Builtins::new()),
     );
 
     // Optionally register mock plugins for status testing
     if include_mocks {
         let mut mock_plugin = MockPlugin::new();
 
-        // Configure /mock/one_output component
+        // Configure one_output component (without /mock/ prefix)
         mock_plugin
-            .mock_component("/mock/one_output")
+            .mock_component("/one_output")
             .behavior(
                 json!({"input": "first_step"}),
                 MockComponentBehavior::result(json!({"output": "step1_result"})),
@@ -78,9 +78,9 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
                 MockComponentBehavior::result(json!({"output": "debug_result"})),
             );
 
-        // Configure /mock/two_outputs component
+        // Configure two_outputs component (without /mock/ prefix)
         mock_plugin
-            .mock_component("/mock/two_outputs")
+            .mock_component("/two_outputs")
             .behavior(
                 json!({"input": "step1_result"}),
                 MockComponentBehavior::result(json!({"x": 42, "y": 100})),
@@ -90,51 +90,52 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
                 MockComponentBehavior::result(json!({"x": 99, "y": 200})),
             );
 
-        // Configure /mock/error_component component
-        mock_plugin
-            .mock_component("/mock/error_component")
-            .behavior(
-                json!({"input": "trigger_error"}),
-                MockComponentBehavior::result(FlowResult::Failed(FlowError::new(
-                    500,
-                    "Mock error for testing",
-                ))),
-            );
+        // Configure error_component component (without /mock/ prefix)
+        mock_plugin.mock_component("/error_component").behavior(
+            json!({"input": "trigger_error"}),
+            MockComponentBehavior::result(FlowResult::Failed(FlowError::new(
+                500,
+                "Mock error for testing",
+            ))),
+        );
 
         plugin_router_builder = plugin_router_builder
             .register_plugin("mock".to_string(), DynPlugin::boxed(mock_plugin));
     }
 
-    // Set up routing rules
-    use stepflow_plugin::routing::{MatchRule, RoutingRule};
-    let mut routing_rules = vec![
-        RoutingRule {
-            match_rule: vec![MatchRule {
-                component: "/builtin/*".to_string(),
-                input: vec![],
-            }],
-            target: "builtin".into(),
-        },
-        RoutingRule {
-            match_rule: vec![MatchRule {
-                component: "create_messages".to_string(),
-                input: vec![],
-            }],
-            target: "builtin".into(),
-        },
-    ];
+    // Set up routing configuration
+    use std::collections::HashMap;
+    use stepflow_plugin::routing::{RouteRule, RoutingConfig};
+
+    let mut routes = HashMap::new();
+
+    // Add builtin routes
+    routes.insert(
+        "/builtin/{*component}".to_string(),
+        vec![RouteRule {
+            conditions: vec![],
+            component_allow: None,
+            component_deny: None,
+            plugin: "builtin".into(),
+            component: None,
+        }],
+    );
 
     if include_mocks {
-        routing_rules.push(RoutingRule {
-            match_rule: vec![MatchRule {
-                component: "/mock/*".to_string(),
-                input: vec![],
+        routes.insert(
+            "/mock/{*component}".to_string(),
+            vec![RouteRule {
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                plugin: "mock".into(),
+                component: None,
             }],
-            target: "mock".into(),
-        });
+        );
     }
 
-    plugin_router_builder = plugin_router_builder.with_routing_rules(routing_rules);
+    let routing_config = RoutingConfig { routes };
+    plugin_router_builder = plugin_router_builder.with_routing_config(routing_config);
 
     let plugin_router = plugin_router_builder.build().unwrap();
     let executor = StepFlowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router);
@@ -172,7 +173,7 @@ fn create_test_workflow() -> Flow {
         output_schema: None,
         steps: vec![Step {
             id: "test_step".to_string(),
-            component: Component::from_string("create_messages"),
+            component: Component::from_string("/builtin/create_messages"),
             input: ValueTemplate::literal(json!({
                 "user_prompt": "Hello from test"
             })),

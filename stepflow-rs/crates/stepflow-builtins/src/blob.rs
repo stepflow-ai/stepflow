@@ -51,12 +51,12 @@ struct PutBlobOutput {
 }
 
 impl BuiltinComponent for PutBlobComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<PutBlobInput>();
         let output_schema = SchemaRef::for_type::<PutBlobOutput>();
 
         Ok(ComponentInfo {
-            component: Component::for_plugin(plugin, "put_blob"),
+            component: Component::from_string("/put_blob"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(
@@ -123,12 +123,12 @@ struct GetBlobOutput {
 }
 
 impl BuiltinComponent for GetBlobComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<GetBlobInput>();
         let output_schema = SchemaRef::for_type::<GetBlobOutput>();
 
         Ok(ComponentInfo {
-            component: Component::for_plugin(plugin, "get_blob"),
+            component: Component::from_string("/get_blob"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some("Retrieve JSON data from a blob using its ID".to_string()),

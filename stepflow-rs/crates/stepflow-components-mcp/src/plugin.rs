@@ -349,7 +349,7 @@ impl Plugin for McpPlugin {
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        let tool_name = component_path_to_tool_name(component.path_string())
+        let tool_name = component_path_to_tool_name(component.path())
             .ok_or_else(|| error_stack::report!(PluginError::ComponentInfo))?;
 
         let state = self.state.read().await;
@@ -368,7 +368,7 @@ impl Plugin for McpPlugin {
         _context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        let tool_name = component_path_to_tool_name(component.path_string())
+        let tool_name = component_path_to_tool_name(component.path())
             .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
 
         let mut state = self.state.write().await;

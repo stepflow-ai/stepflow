@@ -123,7 +123,7 @@ steps:
 
   # Create data quality report
   - id: create_quality_report
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -192,7 +192,7 @@ steps:
 
   # Transform and enrich sales data
   - id: transform_sales_data
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -273,7 +273,7 @@ steps:
 
   # Prepare data for loading
   - id: prepare_warehouse_load
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -334,7 +334,7 @@ steps:
 
   # Create final ETL report
   - id: create_etl_report
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -471,7 +471,7 @@ steps:
 
   # Parse and validate incoming events
   - id: parse_events
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -540,7 +540,7 @@ steps:
 
   # Real-time analytics and aggregation
   - id: calculate_real_time_metrics
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -713,7 +713,7 @@ input_schema:
 steps:
   # Profile each dataset in parallel
   - id: profile_dataset_1
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -765,7 +765,7 @@ steps:
 
   # Apply quality rules to dataset
   - id: apply_quality_rules
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:
@@ -872,7 +872,7 @@ steps:
 
   # Generate quality dashboard data
   - id: generate_dashboard_data
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         input_schema:

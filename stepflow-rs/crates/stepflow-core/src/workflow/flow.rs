@@ -391,9 +391,9 @@ mod tests {
 
         // Verify step details
         assert_eq!(flow.steps[0].id, "s1");
-        assert_eq!(flow.steps[0].component.path_string(), "/langflow/echo");
+        assert_eq!(flow.steps[0].component.path(), "/langflow/echo");
         assert_eq!(flow.steps[1].id, "s2");
-        assert_eq!(flow.steps[1].component.path_string(), "/mcp/foo/bar");
+        assert_eq!(flow.steps[1].component.path(), "/mcp/foo/bar");
 
         // Test round-trip serialization to ensure expressions are preserved
         let serialized = serde_json::to_string(&flow).unwrap();

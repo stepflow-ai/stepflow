@@ -73,7 +73,7 @@ output_schema:
 steps:
   # Store the context as a blob for potential reuse
   - id: store_context
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         context: { $from: { workflow: input }, path: "context" }
@@ -81,7 +81,7 @@ steps:
 
     # Format the context and question into a clear prompt
   - id: format_prompt
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         context: { $from: { workflow: input }, path: "context" }
@@ -89,20 +89,20 @@ steps:
 
   # Get the formatted prompt from the blob
   - id: get_prompt
-    component: get_blob
+    component: /builtin/get_blob
     input:
       blob_id: { $from: { step: format_prompt }, path: "blob_id" }
 
   # Create messages for OpenAI
   - id: create_messages
-    component: create_messages
+    component: /builtin/create_messages
     input:
       system_instructions: "You are a helpful assistant. Answer the user's question based on the provided context. If the context doesn't contain enough information, say so and provide your best general answer."
       user_prompt: { $from: { step: get_prompt }, path: "$.data.question" }
 
-  # Generate AI response using OpenAI  
+  # Generate AI response using OpenAI
   - id: generate_answer
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: create_messages }, path: "messages" }
       temperature: 0.3
@@ -110,7 +110,7 @@ steps:
 
   # Create response metadata
   - id: create_metadata
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data:
         processed_at: "2024-01-15T10:30:00Z"
@@ -226,7 +226,7 @@ Now that you've run your first RAG workflow, explore these topics to build more 
 
 ### Workflow Development
 * **[Workflow Fundamentals](./workflows/steps.md)** - Understanding steps, execution order, and dependencies
-* **[Input & Output](./workflows/input_output.md)** - Data flow patterns and schema validation  
+* **[Input & Output](./workflows/input_output.md)** - Data flow patterns and schema validation
 * **[Expression System](./workflows/expressions.md)** - Advanced data references and transformations
 * **[Testing](./workflows/testing.md)** - Comprehensive testing patterns and CI/CD integration
 * **[Workflow Specification](./workflows/specification.md)** - Complete workflow file format reference

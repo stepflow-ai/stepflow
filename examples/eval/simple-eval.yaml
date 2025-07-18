@@ -3,7 +3,7 @@ description: "Basic test of the eval builtin component"
 
 steps:
   - id: test_eval
-    component: "eval"
+    component: /builtin/eval
     input:
       workflow:
         $literal:

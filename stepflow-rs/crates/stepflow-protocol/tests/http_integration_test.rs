@@ -158,12 +158,9 @@ async fn test_http_protocol_integration() {
                     // Look for the echo component
                     let echo_component = components
                         .iter()
-                        .find(|c| c.component.path_string().ends_with("/echo"));
+                        .find(|c| c.component.path().ends_with("/echo"));
                     if let Some(echo_info) = echo_component {
-                        println!(
-                            "✓ Found echo component: {}",
-                            echo_info.component.path_string()
-                        );
+                        println!("✓ Found echo component: {}", echo_info.component.path());
 
                         // Test component info
                         let component = &echo_info.component;
@@ -172,7 +169,7 @@ async fn test_http_protocol_integration() {
                             timeout(Duration::from_secs(5), plugin.component_info(component)).await;
                         match info_result {
                             Ok(Ok(info)) => {
-                                println!("✓ Got component info: {}", info.component.path_string());
+                                println!("✓ Got component info: {}", info.component.path());
 
                                 // Test component execution
                                 let input_json = serde_json::json!({

@@ -111,17 +111,17 @@ Components communicate through structured JSON data:
 ```yaml
 steps:
   - id: load_data
-    component: load_file
+    component: /builtin/load_file
     input:
       path: "data.json"
 
   - id: process
-    component: my_components://analyze_text
+    component: /my_components/analyze_text
     input:
       text: { $from: { step: load_data }, path: "data.content" }
 
   - id: store_result
-    component: put_blob
+    component: /builtin/put_blob
     input:
       data: { $from: { step: process } }
 ```
@@ -170,13 +170,13 @@ Start with StepFlow's built-in components for common tasks:
 name: "AI Analysis Workflow"
 steps:
   - id: prepare_prompt
-    component: create_messages
+    component: /builtin/create_messages
     input:
       system_instructions: "You are a helpful assistant"
       user_prompt: "Analyze this text for sentiment"
 
   - id: call_ai
-    component: openai
+    component: /builtin/openai
     input:
       messages: { $from: { step: prepare_prompt }, path: "messages" }
       max_tokens: 150

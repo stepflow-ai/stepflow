@@ -85,7 +85,7 @@ class TestSessionIsolation:
             id=same_request_id,
             method=Method.components_execute,
             params=ComponentExecuteParams(
-                component="/python/test_component",
+                component="/test_component",
                 input={"message": "Session 1 message"},
             ),
         )
@@ -100,7 +100,7 @@ class TestSessionIsolation:
             id=same_request_id,
             method=Method.components_execute,
             params=ComponentExecuteParams(
-                component="/python/test_component",
+                component="/test_component",
                 input={"message": "Session 2 message"},
             ),
         )
@@ -183,7 +183,7 @@ class TestSessionIsolation:
             "method": Method.components_execute,
             "id": same_request_id,
             "params": {
-                "component": "/python/test_component",
+                "component": "/test_component",
                 "input": {"message": "Concurrent message 1"},
             },
         }
@@ -193,7 +193,7 @@ class TestSessionIsolation:
             "method": Method.components_execute,
             "id": same_request_id,
             "params": {
-                "component": "/python/test_component",
+                "component": "/test_component",
                 "input": {"message": "Concurrent message 2"},
             },
         }
@@ -283,7 +283,7 @@ class TestSessionIsolation:
                 "method": Method.components_execute,
                 "id": shared_request_id,
                 "params": {
-                    "component": "/python/test_component",
+                    "component": "/test_component",
                     "input": {"message": f"Message from session {i + 1}"},
                 },
             }
@@ -419,7 +419,7 @@ class TestSessionIsolation:
             "method": Method.components_execute,
             "id": same_request_id,
             "params": {
-                "component": "/python/test_component",
+                "component": "/test_component",
                 "input": {"message": "Success message 1"},
             },
         }
@@ -429,7 +429,7 @@ class TestSessionIsolation:
             "method": Method.components_execute,
             "id": same_request_id,
             "params": {
-                "component": "/python/test_component",
+                "component": "/test_component",
                 "input": {"message": "Success message 2"},
             },
         }
@@ -503,7 +503,7 @@ class TestSessionIsolation:
                 "method": Method.components_execute,
                 "id": same_request_id,
                 "params": {
-                    "component": "/python/test_component",
+                    "component": "/test_component",
                     "input": {"message": f"Rapid message {i} for {session_id}"},
                 },
             }
@@ -570,7 +570,7 @@ class TestSessionIsolation:
             "method": Method.components_execute,
             "id": same_request_id,
             "params": {
-                "component": "/python/test_component",
+                "component": "/test_component",
                 "input": {"message": "Valid request"},
             },
         }

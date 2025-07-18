@@ -14,13 +14,13 @@ input_schema:
 steps:
   # Load the sales data from file
   - id: load_sales_data
-    component: "load_file"
+    component: /builtin/load_file
     input:
       path: { $from: { workflow: input }, path: "data_file_path" }
 
   # Extract the sales_data array using UDF
   - id: extract_sales_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -35,7 +35,7 @@ steps:
 
   # Now process the sales data array
   - id: sum_revenue_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -49,7 +49,7 @@ steps:
         sales_data: { $from: { step: "extract_sales_array" }, path: "result" }
 
   - id: count_sales_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -63,7 +63,7 @@ steps:
         sales_data: { $from: { step: "extract_sales_array" }, path: "result" }
 
   - id: average_sale_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -77,7 +77,7 @@ steps:
         sales_data: { $from: { step: "extract_sales_array" }, path: "result" }
 
   - id: divide_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:

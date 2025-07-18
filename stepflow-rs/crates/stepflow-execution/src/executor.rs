@@ -105,20 +105,25 @@ impl StepFlowExecutor {
         self.state_store.clone()
     }
 
-    pub async fn get_plugin(
+    pub async fn get_plugin_and_component(
         &self,
         component: &Component,
         input: ValueRef,
-    ) -> Result<&Arc<DynPlugin<'static>>> {
-        // Use the integrated plugin router to get the plugin directly
+    ) -> Result<(&Arc<DynPlugin<'static>>, String)> {
+        // Use the integrated plugin router to get the plugin and resolved component name
         self.plugin_router
-            .get_plugin(component.path_string(), input)
+            .get_plugin_and_component(component.path(), input)
             .change_context(ExecutionError::RouterError)
     }
 
     /// List all registered plugins
     pub async fn list_plugins(&self) -> Vec<&Arc<DynPlugin<'static>>> {
         self.plugin_router.plugins().collect()
+    }
+
+    /// Get the plugin router for accessing routing functionality
+    pub fn plugin_router(&self) -> &PluginRouter {
+        &self.plugin_router
     }
 
     /// Get or create a debug session for step-by-step execution control

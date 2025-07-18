@@ -68,7 +68,7 @@ Component = Annotated[
     str,
     Meta(
         description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
-        examples=['eval', '/mcpfs/list_files', '/python/udf'],
+        examples=['/builtin/eval', '/mcpfs/list_files', '/python/udf'],
     ),
 ]
 

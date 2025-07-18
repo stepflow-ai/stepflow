@@ -63,12 +63,12 @@ struct MapOutput {
 }
 
 impl BuiltinComponent for MapComponent {
-    fn component_info(&self, plugin: &str) -> Result<ComponentInfo> {
+    fn component_info(&self) -> Result<ComponentInfo> {
         let input_schema = SchemaRef::for_type::<MapInput>();
         let output_schema = SchemaRef::for_type::<MapOutput>();
 
         Ok(ComponentInfo {
-            component: stepflow_core::workflow::Component::for_plugin(plugin, "map"),
+            component: stepflow_core::workflow::Component::from_string("/map"),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

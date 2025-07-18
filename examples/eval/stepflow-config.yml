@@ -6,8 +6,8 @@ plugins:
     transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "*"
-    target: builtin
+routes:
+  "/builtin/{*component}":
+    - plugin: builtin
+  "/python/{*component}":
+    - plugin: python

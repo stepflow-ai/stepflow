@@ -14,7 +14,7 @@ input_schema:
 steps:
   # Parallel data processing steps
   - id: sum_revenue_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -28,7 +28,7 @@ steps:
         sales_data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: count_sales_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -42,7 +42,7 @@ steps:
         sales_data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: average_sale_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -57,7 +57,7 @@ steps:
 
   # This step waits for total_revenue to complete
   - id: divide_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -73,14 +73,14 @@ steps:
 
   # Regional analysis using eval components (run in parallel)
   - id: analyze_west_region
-    component: "eval"
+    component: /builtin/eval
     input:
       workflow:
         $literal:
           name: "West Region Analysis"
           steps:
             - id: filter_west_udf
-              component: "put_blob"
+              component: /builtin/put_blob
               input:
                 data:
                   $literal:
@@ -94,7 +94,7 @@ steps:
                   sales_data: { $from: { workflow: input }, path: "sales_data" }
 
             - id: west_revenue_udf
-              component: "put_blob"
+              component: /builtin/put_blob
               input:
                 data:
                   $literal:
@@ -108,7 +108,7 @@ steps:
                   filtered_data: { $from: { step: filter_region }, path: "result" }
 
             - id: west_count_udf
-              component: "put_blob"
+              component: /builtin/put_blob
               input:
                 data:
                   $literal:
@@ -129,14 +129,14 @@ steps:
         sales_data: { $from: { workflow: input }, path: "sales_data" }
 
   - id: analyze_east_region
-    component: "eval"
+    component: /builtin/eval
     input:
       workflow:
         $literal:
           name: "East Region Analysis"
           steps:
             - id: filter_east_udf
-              component: "put_blob"
+              component: /builtin/put_blob
               input:
                 data:
                   $literal:
@@ -150,7 +150,7 @@ steps:
                   sales_data: { $from: { workflow: input }, path: "sales_data" }
 
             - id: east_revenue_udf
-              component: "put_blob"
+              component: /builtin/put_blob
               input:
                 data:
                   $literal:
@@ -164,7 +164,7 @@ steps:
                   filtered_data: { $from: { step: filter_region }, path: "result" }
 
             - id: east_count_udf
-              component: "put_blob"
+              component: /builtin/put_blob
               input:
                 data:
                   $literal:
@@ -186,7 +186,7 @@ steps:
 
   # Compare regional performance
   - id: compare_regions_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
@@ -216,25 +216,25 @@ steps:
 
   # Format metrics for AI analysis (waits for all calculations)
   - id: format_metrics_udf
-    component: "put_blob"
+    component: /builtin/put_blob
     input:
       data:
         $literal:
           code: |
             f"""Sales Analysis Summary:
-            
+
             Overall Metrics:
             - Total Revenue: ${input['total_revenue']:,.2f}
             - Number of Sales: {input['sales_count']}
             - Average Sale Value: ${input['average_sale']:,.2f}
             - Performance vs Target: {input['performance_ratio']:.1%} (Target: ${input['target_revenue']:,.2f})
-            
+
             Regional Performance:
             - West Region: ${input['regional_comparison']['west_revenue']:,.2f} ({input['regional_comparison']['west_count']} sales)
             - East Region: ${input['regional_comparison']['east_revenue']:,.2f} ({input['regional_comparison']['east_count']} sales)
             - Revenue Leader: {input['regional_comparison']['revenue_leader']} (${input['regional_comparison']['revenue_difference']:,.2f} difference)
             - Volume Leader: {input['regional_comparison']['count_leader']} ({input['regional_comparison']['count_difference']} sales difference)
-            
+
             Please provide strategic insights and recommendations based on this data."""
 
   - id: format_metrics_summary
@@ -251,14 +251,14 @@ steps:
 
   # Format messages for OpenAI (depends on metrics summary)
   - id: create_openai_messages
-    component: "create_messages"
+    component: /builtin/create_messages
     input:
       system_instructions: "You are a senior sales analyst providing insights based on business metrics and regional performance. Be specific and actionable in your recommendations."
       user_prompt: { $from: { step: format_metrics_summary }, path: "summary" }
 
   # Generate AI insights from the comprehensive metrics
   - id: generate_ai_insights
-    component: "openai"
+    component: /builtin/openai
     input:
       messages: { $from: { step: create_openai_messages }, path: "messages" }
 

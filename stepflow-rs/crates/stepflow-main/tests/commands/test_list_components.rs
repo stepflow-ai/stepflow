@@ -93,9 +93,9 @@ working_directory: .
 plugins:
   test-builtins:
     type: builtin
-routing:
-  - match: /test-builtins/*
-    target: test-builtins
+routes:
+  "/test-builtins/{component}":
+    - plugin: test-builtins
 "#;
 
     fs::write(&config_path, config_content).expect("Failed to write config file");
@@ -116,5 +116,62 @@ fn test_list_components_nonexistent_config() {
             .arg("--log-level=error")
             .arg("list-components")
             .arg("--config=/tmp/nonexistent-stepflow-config.yml")
+    );
+}
+
+#[test]
+fn test_list_components_hide_unreachable() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let config_path = temp_dir.path().join("filtered-config.yml");
+
+    // Create a config where only some components are reachable through routing
+    let config_content = r#"
+working_directory: .
+plugins:
+  test-builtins:
+    type: builtin
+routes:
+  "/reachable/{component}":
+    - plugin: test-builtins
+      component_allow: ["/openai", "/create_messages"]
+"#;
+
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+
+    // Test with hide_unreachable=true (default)
+    assert_cmd_snapshot!(
+        stepflow()
+            .arg("--log-level=error")
+            .arg("list-components")
+            .arg(format!("--config={}", config_path.display()))
+    );
+}
+
+#[test]
+fn test_list_components_show_unreachable() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let config_path = temp_dir.path().join("filtered-config.yml");
+
+    // Create a config where only some components are reachable through routing
+    let config_content = r#"
+working_directory: .
+plugins:
+  test-builtins:
+    type: builtin
+routes:
+  "/reachable/{component}":
+    - plugin: test-builtins
+      component_allow: ["/openai", "/create_messages"]
+"#;
+
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+
+    // Test with hide_unreachable=false to show all components
+    assert_cmd_snapshot!(
+        stepflow()
+            .arg("--log-level=error")
+            .arg("list-components")
+            .arg(format!("--config={}", config_path.display()))
+            .arg("--hide-unreachable=false")
     );
 }

@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use stepflow_core::workflow::{BaseRef, Component, Expr, Flow, Step, ValueTemplate, WorkflowRef};
 
@@ -130,20 +131,13 @@ fn validate_step_references(
         validate_expression_references(skip_if, &skip_path, available_steps, &step.id, diagnostics);
     }
 
-    // Validate component URL
+    // Validate component
     let mut component_path = step_path.clone();
     component_path.push("component".to_string());
     validate_component(&step.component, &component_path, diagnostics);
 
-    // Warn about mock components
-    if step.component.plugin() == "mock" {
-        diagnostics.add(
-            DiagnosticMessage::MockComponent {
-                step_id: step.id.clone(),
-            },
-            component_path,
-        );
-    }
+    // TODO: Warn about mock components. We'll need to look at the plugin
+    // definitinos to find out which ones are actually registered as mocsk.
 }
 
 /// Validate references within an expression
@@ -261,37 +255,20 @@ fn collect_expression_dependencies(expr: &Expr, dependencies: &mut HashSet<Strin
 
 /// Validate a component URL
 fn validate_component(component: &Component, path: &[String], diagnostics: &mut Diagnostics) {
-    // Check if component has valid builtin name
-    if component.is_builtin() {
-        // Empty builtin name
-        if component
-            .builtin_name()
-            .is_none_or(|name| name.trim().is_empty())
-        {
-            // Extract step_id from path for backwards compatibility with DiagnosticMessage
-            let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();
-            diagnostics.add(
-                DiagnosticMessage::EmptyComponentName { step_id },
-                path.to_vec(),
-            );
-        }
-    } else {
-        // For non-builtin components, check basic format
-        let path_str = component.path_string();
-        if !path_str.starts_with('/') {
-            let error = "Component path must start with '/' for non-builtin components".to_string();
+    let path_str = component.path();
+    if !path_str.starts_with('/') {
+        let error = Cow::Borrowed("Component path must start with '/'");
 
-            // Extract step_id from path for backwards compatibility with DiagnosticMessage
-            let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();
-            diagnostics.add(
-                DiagnosticMessage::InvalidComponentUrl {
-                    step_id,
-                    url: path_str.to_string(),
-                    error,
-                },
-                path.to_vec(),
-            );
-        }
+        // Extract step_id from path for backwards compatibility with DiagnosticMessage
+        let step_id = path.get(1).unwrap_or(&"unknown".to_string()).clone();
+        diagnostics.add(
+            DiagnosticMessage::InvalidComponent {
+                step_id,
+                component: path_str.to_string(),
+                error,
+            },
+            path.to_vec(),
+        );
     }
 }
 
@@ -405,10 +382,8 @@ mod tests {
         };
 
         let diagnostics = validate_workflow(&flow).unwrap();
-        let (fatal, _error, warning) = diagnostics.counts();
+        let (fatal, _error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
-        // Should have warnings about mock components and field access
-        assert!(warning > 0, "Expected some warnings");
     }
 
     #[test]
@@ -588,7 +563,7 @@ mod tests {
             diagnostics
                 .diagnostics
                 .iter()
-                .any(|d| matches!(d.message, DiagnosticMessage::EmptyComponentName { .. }))
+                .any(|d| matches!(d.message, DiagnosticMessage::InvalidComponent { .. }))
         );
     }
 
@@ -602,7 +577,7 @@ mod tests {
             output_schema: None,
             steps: vec![Step {
                 id: "step1".to_string(),
-                component: Component::from_string("eval"), // Valid builtin
+                component: Component::from_string("/builtin/eval"), // Valid builtin
                 input: ValueTemplate::workflow_input(JsonPath::default()),
                 input_schema: None,
                 output_schema: None,
