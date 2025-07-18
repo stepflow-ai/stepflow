@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
@@ -77,14 +78,15 @@ struct McpClient {
 }
 
 impl McpClient {
-    async fn new(config: &McpPluginConfig, working_directory: &std::path::Path) -> McpResult<Self> {
-        // Collect current environment variables for substitution
-        let current_env: std::collections::HashMap<String, String> = std::env::vars().collect();
-
+    async fn new(
+        config: &McpPluginConfig,
+        working_directory: &std::path::Path,
+        env: &HashMap<String, String>,
+    ) -> McpResult<Self> {
         // Substitute environment variables in command arguments
         let mut substituted_args = Vec::new();
         for arg in &config.args {
-            let substituted_arg = subst::substitute(arg, &current_env)
+            let substituted_arg = subst::substitute(arg, env)
                 .change_context(McpError::ProcessSetup("command argument substitution"))?;
             substituted_args.push(substituted_arg);
         }
@@ -99,7 +101,7 @@ impl McpClient {
         // Set environment variables with substitution
         for (key, template) in &config.env {
             // Substitute environment variables in the template
-            let substituted_value = subst::substitute(template, &current_env)
+            let substituted_value = subst::substitute(template, env)
                 .change_context(McpError::ProcessSetup("environment variable substitution"))?;
             cmd.env(key, substituted_value);
         }
@@ -310,7 +312,8 @@ impl Plugin for McpPlugin {
         // Don't initialize the underlying stdio plugin since we handle MCP protocol directly
 
         // Create the MCP client
-        let mcp_client = McpClient::new(&self.config, &self.working_directory)
+        let env: HashMap<String, String> = std::env::vars().collect();
+        let mcp_client = McpClient::new(&self.config, &self.working_directory, &env)
             .await
             .change_context(PluginError::Initializing)?;
 
@@ -514,15 +517,16 @@ impl McpPlugin {
 mod tests {
     use indexmap::IndexMap;
     use std::collections::HashMap;
-    use std::env;
 
     #[test]
     fn test_mcp_plugin_env_substitution() {
         // Test environment variable substitution in MCP plugin config
-        unsafe {
-            env::set_var("TEST_MCP_HOME", "/test/mcp");
-            env::set_var("TEST_MCP_USER", "mcpuser");
-        }
+        // using a custom environment map to avoid unsafe global environment mutation
+
+        // Create a mock environment
+        let mut test_env = HashMap::new();
+        test_env.insert("TEST_MCP_HOME".to_string(), "/test/mcp".to_string());
+        test_env.insert("TEST_MCP_USER".to_string(), "mcpuser".to_string());
 
         let mut env_config = IndexMap::new();
         env_config.insert("MCP_HOME".to_string(), "${TEST_MCP_HOME}".to_string());
@@ -533,10 +537,8 @@ mod tests {
         );
 
         // Test the substitution logic similar to what's in McpClient::new()
-        let current_env: HashMap<String, String> = env::vars().collect();
-
         for (key, template) in &env_config {
-            let substituted_value = subst::substitute(template, &current_env).unwrap();
+            let substituted_value = subst::substitute(template, &test_env).unwrap();
             match key.as_str() {
                 "MCP_HOME" => assert_eq!(substituted_value, "/test/mcp"),
                 "MCP_USER" => assert_eq!(substituted_value, "mcpuser"),
@@ -544,21 +546,17 @@ mod tests {
                 _ => {}
             }
         }
-
-        // Clean up
-        unsafe {
-            env::remove_var("TEST_MCP_HOME");
-            env::remove_var("TEST_MCP_USER");
-        }
     }
 
     #[test]
     fn test_mcp_plugin_args_substitution() {
         // Test environment variable substitution in MCP plugin args
-        unsafe {
-            env::set_var("TEST_MCP_DIR", "/test/workspace");
-            env::set_var("TEST_MCP_CONFIG", "mcp.json");
-        }
+        // using a custom environment map to avoid unsafe global environment mutation
+
+        // Create a mock environment
+        let mut test_env = HashMap::new();
+        test_env.insert("TEST_MCP_DIR".to_string(), "/test/workspace".to_string());
+        test_env.insert("TEST_MCP_CONFIG".to_string(), "mcp.json".to_string());
 
         let args = vec![
             "-y".to_string(),
@@ -569,11 +567,9 @@ mod tests {
         ];
 
         // Test the substitution logic similar to what's in McpClient::new()
-        let current_env: HashMap<String, String> = env::vars().collect();
-
         let mut substituted_args = Vec::new();
         for arg in &args {
-            let substituted_arg = subst::substitute(arg, &current_env).unwrap();
+            let substituted_arg = subst::substitute(arg, &test_env).unwrap();
             substituted_args.push(substituted_arg);
         }
 
@@ -586,21 +582,17 @@ mod tests {
         assert_eq!(substituted_args[2], "/test/workspace");
         assert_eq!(substituted_args[3], "--config");
         assert_eq!(substituted_args[4], "/test/workspace/mcp.json");
-
-        // Clean up
-        unsafe {
-            env::remove_var("TEST_MCP_DIR");
-            env::remove_var("TEST_MCP_CONFIG");
-        }
     }
 
     #[test]
     fn test_mcp_plugin_args_with_defaults() {
         // Test environment variable substitution with default values
-        unsafe {
-            env::set_var("TEST_MCP_PORT", "8080");
-            // Don't set TEST_MCP_HOST to test default
-        }
+        // using a custom environment map to avoid unsafe global environment mutation
+
+        // Create a mock environment with only TEST_MCP_PORT set
+        let mut test_env = HashMap::new();
+        test_env.insert("TEST_MCP_PORT".to_string(), "8080".to_string());
+        // Don't set TEST_MCP_HOST to test default
 
         let args = vec![
             "--host".to_string(),
@@ -610,11 +602,9 @@ mod tests {
         ];
 
         // Test the substitution logic
-        let current_env: HashMap<String, String> = env::vars().collect();
-
         let mut substituted_args = Vec::new();
         for arg in &args {
-            let substituted_arg = subst::substitute(arg, &current_env).unwrap();
+            let substituted_arg = subst::substitute(arg, &test_env).unwrap();
             substituted_args.push(substituted_arg);
         }
 
@@ -623,10 +613,5 @@ mod tests {
         assert_eq!(substituted_args[1], "-localhost"); // Uses default (note the "-" prefix)
         assert_eq!(substituted_args[2], "--port");
         assert_eq!(substituted_args[3], "8080");
-
-        // Clean up
-        unsafe {
-            env::remove_var("TEST_MCP_PORT");
-        }
     }
 }
