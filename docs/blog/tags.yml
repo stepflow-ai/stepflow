@@ -1,0 +1,6 @@
+announcements:
+  label: "Announcements"
+releases:
+  label: 'Releases'
+  permalink: '/releases'
+  description: 'Releases'
