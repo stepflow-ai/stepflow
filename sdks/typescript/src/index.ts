@@ -8,6 +8,10 @@ export {
   transport
 };
 
+// Export commonly used types
+export type { StepflowContext } from './transport';
+export type { ComponentEntry } from './server';
+
 if (require.main === module) {
   const { main } = require('./main');
   main();

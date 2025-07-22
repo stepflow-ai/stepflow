@@ -3,7 +3,7 @@
 
 import * as readline from 'readline';
 import * as url from 'url';
-import { Incoming, MethodResponse, createSuccessResponse, createErrorResponse, parseIncoming, serializeResponse } from './transport';
+import { Incoming, MethodResponse, createSuccessResponse, createErrorResponse, parseIncoming, serializeResponse, BidirectionalTransport, StepflowContext } from './transport';
 import * as protocol from './protocol';
 
 /**
@@ -11,9 +11,10 @@ import * as protocol from './protocol';
  */
 export interface ComponentEntry<TInput, TOutput> {
   name: string;
-  function: (input: TInput) => TOutput;
-  inputSchema: Record<string, any>;
-  outputSchema: Record<string, any>;
+  function: (input: TInput, context?: StepflowContext) => TOutput | Promise<TOutput>;
+  inputSchema?: Record<string, any>;
+  outputSchema?: Record<string, any>;
+  description?: string;
 }
 
 /**
@@ -32,6 +33,8 @@ export class StepflowStdioServer {
   private components: Map<string, ComponentEntry<any, any>> = new Map();
   private initialized: boolean = false;
   private rl?: readline.Interface;
+  private transport?: BidirectionalTransport;
+  private protocolPrefix: string = 'typescript';
 
   /**
    * Register a component with the server
@@ -65,20 +68,20 @@ export class StepflowStdioServer {
    * Internal method to register a component
    */
   public registerComponent<TInput, TOutput>(
-    func: (input: TInput) => TOutput,
-    name: string
-  ): (input: TInput) => TOutput {
-    // For TypeScript, we can't introspect types at runtime like Python
-    // So we need to infer schemas from sample data or provide them manually
-    // For now, we'll create empty schemas
-    const inputSchema: Record<string, any> = {};
-    const outputSchema: Record<string, any> = {};
-
+    func: (input: TInput, context?: StepflowContext) => TOutput | Promise<TOutput>,
+    name: string,
+    options?: {
+      description?: string;
+      inputSchema?: Record<string, any>;
+      outputSchema?: Record<string, any>;
+    }
+  ): (input: TInput, context?: StepflowContext) => TOutput | Promise<TOutput> {
     this.components.set(name, {
       name,
       function: func,
-      inputSchema,
-      outputSchema,
+      inputSchema: options?.inputSchema,
+      outputSchema: options?.outputSchema,
+      description: options?.description,
     });
 
     return func;
@@ -118,11 +121,14 @@ export class StepflowStdioServer {
     const id = request.id || '';
 
     switch (request.method) {
-      case 'initialize':
+      case 'initialize': {
+        const initRequest = request.params as protocol.InitializeParams;
+        this.protocolPrefix = initRequest.protocol_prefix;
         return createSuccessResponse(id, { server_protocol_version: 1 });
+      }
 
-      case 'component_info': {
-        const infoRequest = request.params as protocol.ComponentInfoRequest;
+      case 'components/info': {
+        const infoRequest = request.params as protocol.ComponentInfoParams;
         const component = this.getComponent(infoRequest.component);
 
         if (!component) {
@@ -134,14 +140,18 @@ export class StepflowStdioServer {
           );
         }
 
-        return createSuccessResponse(id, {
+        const componentInfo: protocol.ComponentInfo = {
+          component: infoRequest.component,
+          description: component.description,
           input_schema: component.inputSchema,
           output_schema: component.outputSchema,
-        });
+        };
+
+        return createSuccessResponse(id, { info: componentInfo });
       }
 
-      case 'component_execute': {
-        const executeRequest = request.params as protocol.ComponentExecuteRequest;
+      case 'components/execute': {
+        const executeRequest = request.params as protocol.ComponentExecuteParams;
         const component = this.getComponent(executeRequest.component);
 
         if (!component) {
@@ -154,12 +164,13 @@ export class StepflowStdioServer {
         }
 
         try {
-          // Execute the component function with the input
-          const output = component.function(executeRequest.input);
+          // Create context for bidirectional communication
+          const context = this.transport?.createContext();
+          
+          // Execute the component function with the input and context
+          const output = await component.function(executeRequest.input, context);
 
-          return createSuccessResponse(id, {
-            output
-          });
+          return createSuccessResponse(id, { output });
         } catch (e) {
           return createErrorResponse(
             id,
@@ -170,10 +181,16 @@ export class StepflowStdioServer {
         }
       }
 
-      case 'list_components':
-        return createSuccessResponse(id, {
-          components: Array.from(this.components.keys())
-        });
+      case 'components/list': {
+        const componentInfos: protocol.ComponentInfo[] = Array.from(this.components.values()).map(comp => ({
+          component: comp.name,
+          description: comp.description,
+          input_schema: comp.inputSchema,
+          output_schema: comp.outputSchema,
+        }));
+        
+        return createSuccessResponse(id, { components: componentInfos });
+      }
 
       default:
         return createErrorResponse(
@@ -195,15 +212,28 @@ export class StepflowStdioServer {
       terminal: false
     });
 
+    // Initialize bidirectional transport
+    this.transport = new BidirectionalTransport((message: string) => {
+      process.stdout.write(message + '\n');
+    });
+
     console.error('Starting server...');
 
     for await (const line of this.rl) {
       if (!line) continue;
 
       try {
-        const request = parseIncoming(line);
-        console.error(`Received request: ${JSON.stringify(request)}`);
+        const message = JSON.parse(line);
+        console.error(`Received message: ${JSON.stringify(message)}`);
 
+        // Check if this is a response to our outgoing request
+        if (message.id && ('result' in message || 'error' in message)) {
+          this.transport.handleResponse(message);
+          continue;
+        }
+
+        // Handle incoming request
+        const request = parseIncoming(line);
         const response = await this.handleMessage(request);
 
         if (response) {
@@ -249,6 +279,7 @@ export class StepflowStdioServer {
 
   /**
    * Set input and output schema for a component
+   * @deprecated Use registerComponent with options instead
    */
   public setComponentSchema(
     name: string,
