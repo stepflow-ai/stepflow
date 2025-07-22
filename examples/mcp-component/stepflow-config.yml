@@ -29,11 +29,11 @@ plugins:
   #   env:
   #     BRAVE_API_KEY: "your-api-key-here"
 
-routing:
-  - match: "/filesystem/*"
-    target: filesystem
-  - match: "*"
-    target: builtin
+routes:
+  "/filesystem/{*component}":
+    - plugin: filesystem
+  "/{*component}":
+    - plugin: builtin
 
 # Optional: Configure state storage
 state_store:

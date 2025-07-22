@@ -1,6 +1,6 @@
 plugins:
   builtin:
     type: builtin
-routing:
-  - match: "*"
-    target: builtin
+routes:
+  "/{*component}":
+    - plugin: builtin

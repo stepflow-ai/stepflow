@@ -7,8 +7,8 @@ plugins:
     args: ["Testing MCP server"]
     env:
       TEST_VAR: "mcp_test"
-routing:
-  - match: "/test-mcp/*"
-    target: test-mcp
-  - match: "*"
-    target: builtin
+routes:
+  "/test-mcp/{*component}":
+    - plugin: test-mcp
+  "/{*component}":
+    - plugin: builtin

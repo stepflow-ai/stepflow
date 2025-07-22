@@ -6,8 +6,8 @@ plugins:
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
   builtin:
     type: builtin
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{*component}":
+    - plugin: python
+  "/{*component}":
+    - plugin: builtin
