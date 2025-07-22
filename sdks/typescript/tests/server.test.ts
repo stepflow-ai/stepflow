@@ -149,7 +149,7 @@ describe('StepflowStdioServer', () => {
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'list_components',
+      method: 'components/list',
       params: {}
     };
 
@@ -161,8 +161,10 @@ describe('StepflowStdioServer', () => {
         if (response.result) {
           expect(response.result.components).toBeInstanceOf(Array);
           expect(response.result.components.length).toBe(2);
-          expect(response.result.components).toContain('component1');
-          expect(response.result.components).toContain('component2');
+          // Components now return ComponentInfo objects, not just names
+          const componentNames = response.result.components.map((c: any) => c.component);
+          expect(componentNames).toContain('component1');
+          expect(componentNames).toContain('component2');
         }
       }
     });
@@ -223,7 +225,7 @@ describe('StepflowStdioServer', () => {
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'component_info',
+      method: 'components/info',
       params: { component: 'test_component' }
     };
 
@@ -233,8 +235,10 @@ describe('StepflowStdioServer', () => {
         expect(response.id).toBe(request.id);
         expect(response.result).toBeDefined();
         if (response.result) {
-          expect(response.result.input_schema).toBeDefined();
-          expect(response.result.output_schema).toBeDefined();
+          expect(response.result.info).toBeDefined();
+          expect(response.result.info.component).toBe('test_component');
+          expect(response.result.info.input_schema).toBeDefined();
+          expect(response.result.info.output_schema).toBeDefined();
         }
       }
     });
@@ -247,7 +251,7 @@ describe('StepflowStdioServer', () => {
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'component_info',
+      method: 'components/info',
       params: { component: 'non_existent' }
     };
 
@@ -282,7 +286,7 @@ describe('StepflowStdioServer', () => {
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'component_execute',
+      method: 'components/execute',
       params: {
         component: 'test_component',
         input: {
@@ -328,7 +332,7 @@ describe('StepflowStdioServer', () => {
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'component_execute',
+      method: 'components/execute',
       params: {
         component: 'test_component',
         input: {
@@ -377,7 +381,7 @@ describe('StepflowStdioServer', () => {
     const request: Incoming = {
       jsonrpc: '2.0',
       id: uuidv4(),
-      method: 'list_components',
+      method: 'components/list',
       params: {}
     };
 
