@@ -169,7 +169,3 @@ npm test
 ```bash
 npm run lint
 ```
-
-## License
-
-MIT
