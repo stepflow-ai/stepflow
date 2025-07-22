@@ -40,7 +40,7 @@ Thank you for your interest in contributing to StepFlow! This guide will help yo
 
 4. **Try running an example**
    ```bash
-   cargo run -- run --flow=examples/python/basic.yaml --input=examples/python/input1.json
+   cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml
    ```
 
 ## Building and Testing

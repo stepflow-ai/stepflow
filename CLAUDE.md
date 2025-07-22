@@ -40,16 +40,16 @@ cargo test -p stepflow-execution -- execute_flows
 ```bash
 # Run a workflow with input file (run from stepflow-rs directory)
 cd stepflow-rs
-cargo run -- run --flow=examples/python/basic.yaml --input=examples/python/input1.json
+cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml
 
 # Run a workflow with inline JSON input
-cargo run -- run --flow=examples/python/basic.yaml --input-json='{"m": 3, "n": 4}'
+cargo run -- run --flow=examples/basic/workflow.yaml --input-json='{"m": 3, "n": 4}' --config=examples/basic/stepflow-config.yml
 
 # Run a workflow with inline YAML input
-cargo run -- run --flow=examples/python/basic.yaml --input-yaml='m: 2\nn: 7'
+cargo run -- run --flow=examples/basic/workflow.yaml --input-yaml='m: 2\nn: 7' --config=examples/basic/stepflow-config.yml
 
 # Run a workflow reading from stdin (JSON format)
-echo '{"m": 1, "n": 2}' | cargo run -- run --flow=examples/python/basic.yaml --format=json
+echo '{"m": 1, "n": 2}' | cargo run -- run --flow=examples/basic/workflow.yaml --format=json --config=examples/basic/stepflow-config.yml
 
 # Run with a custom config file
 cargo run -- run --flow=<flow.yaml> --input=<input.json> --config=<stepflow-config.yml>

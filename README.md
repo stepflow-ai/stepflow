@@ -109,7 +109,7 @@ To get a local copy up and running quickly follow these simple steps.
 
 3. Run a sample workflow
    ```sh
-   cargo run -- run --flow=examples/python/basic.yaml --input=examples/python/input1.json
+   cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml
    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
