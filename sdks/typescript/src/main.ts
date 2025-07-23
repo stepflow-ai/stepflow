@@ -1,5 +1,6 @@
 import { StepflowStdioServer } from './server';
 import { StepflowContext } from './transport';
+import { udf, udfSchema } from './udf';
 
 // Example input/output interfaces
 interface AddInput {
@@ -69,6 +70,13 @@ server.registerComponent(
       required: ['blobId']
     }
   }
+);
+
+// Register the UDF component
+server.registerComponent(
+  udf,
+  'udf',
+  udfSchema.component
 );
 
 export function main(): void {
