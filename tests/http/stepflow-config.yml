@@ -1,0 +1,27 @@
+plugins:
+  builtin:
+    type: builtin
+
+  # Test HTTP transport
+  test_http:
+    type: stepflow
+    transport: http
+    url: "http://127.0.0.1:${TEST_PORT:-8080}"
+
+  # Test STDIO transport for comparison
+  test_stdio:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py"]
+
+routes:
+  "/test/{component}":
+    - plugin: test_http
+  "/test_stdio/{component}":
+    - plugin: test_stdio
+  "/builtin/{component}":
+    - plugin: builtin
+
+state_store:
+  type: inMemory

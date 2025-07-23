@@ -26,6 +26,7 @@ hex = "0.4"
 indexmap = { version = "2.8.0", features = ["serde"] }
 insta = { version = "1.34.0", features = ["glob", "yaml" ] }
 insta-cmd = "0.6.0"
+nix = { version = "0.29", features = ["process", "signal"] }
 openai-api-rs = { version = "6.0.6", features = ["rustls"], default-features = false }
 regex = "1.11.1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }

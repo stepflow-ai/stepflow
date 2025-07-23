@@ -13,62 +13,58 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+"""Streamable HTTP server implementation for the StepFlow Python SDK.
+
+This module implements the Streamable HTTP transport according to the MCP spec,
+replacing the previous HTTP + SSE session-based approach with simpler request/response.
+"""
+
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
-import uuid
-from typing import Any
+from collections.abc import AsyncGenerator
+from typing import Any, assert_never
 
 import msgspec
 
-from stepflow_sdk.context import StepflowContext
-from stepflow_sdk.exceptions import (
-    ComponentNotFoundError,
-    ErrorCode,
+from .context import StepflowContext
+from .exceptions import (
     StepflowError,
-    StepflowExecutionError,
+    StepflowProtocolError,
 )
-from stepflow_sdk.generated_protocol import (
-    ComponentExecuteParams,
-    ComponentExecuteResult,
-    ComponentInfo,
-    ComponentInfoParams,
-    ComponentInfoResult,
-    ComponentListParams,
-    ListComponentsResult,
-    Method,
+from .generated_protocol import (
+    Error,
+    Message,
+    MethodError,
     MethodRequest,
+    MethodSuccess,
+    Notification,
 )
-from stepflow_sdk.message_decoder import MessageDecoder
-from stepflow_sdk.server import StepflowServer
+from .message_decoder import MessageDecoder
+from .server import StepflowServer
 
 try:
     import uvicorn
-    from fastapi import FastAPI, Request, Response
-    from sse_starlette.sse import EventSourceResponse
+    from fastapi import FastAPI, Request
+    from fastapi.responses import JSONResponse, StreamingResponse
 except ImportError:
     print("Error: HTTP mode requires additional dependencies.", file=sys.stderr)
-    print("Please install: pip install fastapi uvicorn sse-starlette", file=sys.stderr)
+    print("Please install: pip install fastapi uvicorn", file=sys.stderr)
     sys.exit(1)
 
 
-class StepflowSession:
-    """Represents a single client session."""
+class StepflowStreamableHttpServer:
+    """Streamable HTTP server for StepFlow components.
 
-    def __init__(self, session_id: str, server: StepflowServer):
-        self.session_id = session_id
-        self.server = server
-        self.event_queue: asyncio.Queue = asyncio.Queue()
-        self.message_decoder: MessageDecoder = MessageDecoder()
-        self.context = StepflowContext(
-            self.event_queue, self.message_decoder, session_id
-        )
-        self.connected = True
+    Implements the Streamable HTTP transport specification:
+    - Single POST endpoint accepting JSON-RPC Message objects
+    - Returns 202 Accepted for responses/notifications
+    - Returns 400 Bad Request for invalid input
+    - For requests: Returns direct JSON or SSE stream based on Context usage
+    - Uses RequestFuturesManager for bidirectional communication
+    """
 
-
-class StepflowHttpServer:
     def __init__(
         self,
         server: StepflowServer | None = None,
@@ -78,279 +74,265 @@ class StepflowHttpServer:
         self.server = server or StepflowServer()
         self.host = host
         self.port = port
-        self.app = FastAPI(title="StepFlow Component Server")
-        self.sessions: dict[str, StepflowSession] = {}
+        self.app = FastAPI(title="StepFlow Streamable HTTP Server")
+        self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
         self._setup_routes()
 
     def _setup_routes(self):
-        @self.app.get("/runtime/events")
-        async def runtime_events():
-            """SSE endpoint for bidirectional communication with MCP-style session negotiation"""  # noqa: E501
-            return EventSourceResponse(self._event_stream())
+        """Set up FastAPI routes for streamable HTTP transport."""
+
+        @self.app.get("/health")
+        async def health_check():
+            """Health check endpoint for integration tests."""
+            import datetime
+
+            return JSONResponse(
+                content={
+                    "status": "healthy",
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "service": "stepflow-python-http-server",
+                },
+                status_code=200,
+                media_type="application/json",
+            )
 
         @self.app.post("/")
-        async def handle_json_rpc(request: Request):
-            """Handle JSON-RPC requests with session ID support"""
-            request_id = None
+        async def handle_message(request: Request):
+            """Handle JSON-RPC messages according to Streamable HTTP specification."""
             try:
-                # Parse request body to extract ID for error responses
-                body = await request.json()
-                request_id = body.get("id")
+                # Parse request body using MessageDecoder for proper typing
+                body_bytes = await request.body()
 
-                # Extract session ID from query parameters
-                session_id = request.query_params.get("sessionId")
-                if not session_id:
-                    return Response(
-                        content=json.dumps(
-                            {
-                                "jsonrpc": "2.0",
-                                "id": request_id,
-                                "error": {
-                                    "code": -32600,
-                                    "message": "Invalid Request: sessionId parameter required",  # noqa: E501
-                                },
+                # Set Accept header expectation
+                accept_header = request.headers.get("accept", "")
+                if not (
+                    "application/json" in accept_header
+                    and "text/event-stream" in accept_header
+                ):
+                    return JSONResponse(
+                        content={
+                            "error": (
+                                "Accept header must include "
+                                "application/json and text/event-stream"
+                            )
+                        },
+                        status_code=406,
+                        media_type="application/json",
+                    )
+
+                # Try to parse JSON first to give proper parse errors
+                try:
+                    # Test JSON parsing to catch parse errors before MessageDecoder
+                    msgspec.json.decode(body_bytes)
+                except msgspec.DecodeError as e:
+                    # Invalid JSON format - return parse error
+                    return JSONResponse(
+                        content={
+                            "error": {
+                                "code": -32700,
+                                "message": f"Parse error: {str(e)}",
                             }
-                        ),
+                        },
                         status_code=400,
                         media_type="application/json",
                     )
 
-                # Get or create session
-                session = self.sessions.get(session_id)
-                if not session:
-                    return Response(
-                        content=json.dumps(
-                            {
-                                "jsonrpc": "2.0",
-                                "id": request_id,
-                                "error": {
-                                    "code": -32600,
-                                    "message": "Invalid Request: session not found",
-                                },
-                            }
-                        ),
-                        status_code=400,
-                        media_type="application/json",
-                    )
+                # Use MessageDecoder for proper message parsing and result typing
+                message, pending = self.message_decoder.decode(body_bytes)
+                return await self._handle_message(message, pending)
 
-                response = await self._handle_json_rpc(body, session)
-                return response
+            except msgspec.DecodeError as e:
+                # Invalid JSON format - return plain error since no request ID
+                return JSONResponse(
+                    content={
+                        "error": {"code": -32700, "message": f"Parse error: {str(e)}"}
+                    },
+                    status_code=400,
+                    media_type="application/json",
+                )
+            except StepflowProtocolError as e:
+                # MessageDecoder protocol error - return plain error since no request ID
+                return JSONResponse(
+                    content={"error": {"code": -32600, "message": str(e)}},
+                    status_code=400,
+                    media_type="application/json",
+                )
             except Exception as e:
-                return Response(
-                    content=json.dumps(
-                        {"jsonrpc": "2.0", "id": request_id, "error": str(e)}
-                    ),
+                # Internal server error - return plain error since no request ID
+                return JSONResponse(
+                    content={
+                        "error": {
+                            "code": -32603,
+                            "message": f"Internal error: {str(e)}",
+                        }
+                    },
                     status_code=500,
                     media_type="application/json",
                 )
 
-    async def _event_stream(self):
-        """Generate SSE events for runtime communication with MCP-style session negotiation"""  # noqa: E501
-        # Create new session
-        session_id = str(uuid.uuid4())
-        session = StepflowSession(session_id, self.server)
-        self.sessions[session_id] = session
+    async def _handle_message(
+        self, message: Message, pending: asyncio.Future[Any] | None
+    ):
+        """Handle a parsed JSON-RPC message according to type."""
 
+        if isinstance(message, MethodRequest):
+            # Handle method requests - may return JSON or SSE stream
+            return await self._handle_request(message)
+
+        elif isinstance(message, MethodError):
+            assert pending is not None
+
+            from .exceptions import StepflowProtocolError
+
+            error_msg = f"JSON-RPC error {message.error.code}: {message.error.message}"
+            if message.error.data is not None:
+                error_msg += f" (data: {message.error.data})"
+            pending.set_exception(StepflowProtocolError(error_msg))
+
+            return JSONResponse(
+                content="",
+                status_code=202,  # Empty body for 202 Accepted
+            )
+        elif isinstance(message, MethodSuccess):
+            assert pending is not None
+            pending.set_result(message)
+            return JSONResponse(
+                content="",
+                status_code=202,  # Empty body for 202 Accepted
+            )
+
+        elif isinstance(message, Notification):
+            # Handle notifications - always return 202 Accepted
+            # Note: We don't currently process notifications, just acknowledge them
+            return JSONResponse(
+                content="",
+                status_code=202,  # Empty body for 202 Accepted
+            )
+
+        else:
+            assert_never("Unhandled message type: {type(message)}")
+
+    async def _handle_request(self, request: MethodRequest):
+        """Handle a JSON-RPC method request."""
         try:
-            # Send endpoint event with session ID (MCP-style)
-            endpoint_url = f"/?sessionId={session_id}"
-            yield {"event": "endpoint", "data": json.dumps({"endpoint": endpoint_url})}
+            # Check if this message requires bidirectional context
+            needs_context = self.server.requires_context(request)
 
-            # Process events from this session
-            while session.connected:
-                try:
-                    # Wait for events from the session
-                    event = await asyncio.wait_for(
-                        session.event_queue.get(), timeout=30.0
-                    )
-                    yield {"event": "message", "data": json.dumps(event)}
-                except TimeoutError:
-                    # Send keep-alive
-                    yield {"event": "keepalive", "data": ""}
-                except Exception as e:
-                    print(f"Error in SSE stream: {e}", file=sys.stderr)
-                    break
-        finally:
-            # Clean up session
-            session.connected = False
-            if session_id in self.sessions:
-                del self.sessions[session_id]
-
-    async def _handle_json_rpc(
-        self, body: dict[str, Any], session: StepflowSession
-    ) -> dict[str, Any]:
-        """Handle JSON-RPC requests with session support"""
-        try:
-            # Parse the JSON-RPC request
-            if "method" in body:
-                # This is a method request
-                request = MethodRequest(**body)
-
-                method = request.method
-                if method == Method.components_list:
-                    # Convert params to ComponentListParams
-                    if isinstance(request.params, dict):
-                        list_params = ComponentListParams(**request.params)
-                    else:
-                        raise StepflowExecutionError(
-                            code=ErrorCode.INVALID_REQUEST,
-                            message=(
-                                f"Invalid params for components_list: {request.params}"
-                            ),
-                        )
-                    list_result = await self._handle_component_list(
-                        list_params, session
-                    )
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.id,
-                        "result": msgspec.to_builtins(list_result),
-                    }
-                elif method == Method.components_info:
-                    # Convert params to ComponentInfoParams
-                    if isinstance(request.params, dict):
-                        info_params = ComponentInfoParams(**request.params)
-                    else:
-                        raise StepflowExecutionError(
-                            code=ErrorCode.INVALID_REQUEST,
-                            message=(
-                                f"Invalid params for components_info: {request.params}"
-                            ),
-                        )
-                    info_result = await self._handle_component_info(
-                        info_params, session
-                    )
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.id,
-                        "result": msgspec.to_builtins(info_result),
-                    }
-                elif method == Method.components_execute:
-                    # Convert params to ComponentExecuteParams
-                    if isinstance(request.params, dict):
-                        execute_params = ComponentExecuteParams(**request.params)
-                    else:
-                        raise StepflowExecutionError(
-                            code=ErrorCode.INVALID_REQUEST,
-                            message=(
-                                "Invalid params for components_execute: "
-                                f"{request.params}"
-                            ),
-                        )
-                    execute_result = await self._handle_component_execute(
-                        execute_params, session
-                    )
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.id,
-                        "result": msgspec.to_builtins(execute_result),
-                    }
-                else:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.id,
-                        "error": {"code": -32601, "message": "Method not found"},
-                    }
-            else:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": body.get("id"),
-                    "error": {"code": -32600, "message": "Invalid Request"},
-                }
-        except StepflowError as e:
-            return {
-                "jsonrpc": "2.0",
-                "id": body.get("id"),
-                "error": e.to_json_rpc_error(),
-            }
-        except Exception as e:
-            return {
-                "jsonrpc": "2.0",
-                "id": body.get("id"),
-                "error": {"code": -32603, "message": "Internal error", "data": str(e)},
-            }
-
-    async def _handle_component_list(
-        self, params: ComponentListParams, session: StepflowSession
-    ) -> ListComponentsResult:
-        """Handle component list request for a session."""
-        if not session.server.is_initialized():
-            # Auto-initialize for HTTP mode
-            session.server.set_initialized(True)
-
-        component_infos = []
-        for name, component in session.server.get_components().items():
-            component_infos.append(
-                ComponentInfo(
-                    component=name,
-                    input_schema=component.input_schema(),
-                    output_schema=component.output_schema(),
-                    description=component.description,
+            if needs_context:
+                # Create context for bidirectional communication, use streaming
+                context = StepflowStreamingContext(self.message_decoder)
+                return StreamingResponse(
+                    self._execute_with_streaming_context(request, context),
+                    media_type="text/event-stream",
                 )
-            )
-        return ListComponentsResult(components=component_infos)
-
-    async def _handle_component_info(
-        self, params: ComponentInfoParams, session: StepflowSession
-    ) -> ComponentInfoResult:
-        """Handle component info request for a session."""
-        if not session.server.is_initialized():
-            # Auto-initialize for HTTP mode
-            session.server.set_initialized(True)
-
-        component = session.server.get_components().get(params.component)
-        if component is None:
-            raise ComponentNotFoundError(f"Component '{params.component}' not found")
-
-        info = ComponentInfo(
-            component=params.component,
-            input_schema=component.input_schema(),
-            output_schema=component.output_schema(),
-            description=component.description,
-        )
-        return ComponentInfoResult(info=info)
-
-    async def _handle_component_execute(
-        self, params: ComponentExecuteParams, session: StepflowSession
-    ) -> ComponentExecuteResult:
-        """Handle component execute request for a session."""
-        if not session.server.is_initialized():
-            # Auto-initialize for HTTP mode
-            session.server.set_initialized(True)
-
-        component = session.server.get_components().get(params.component)
-        if component is None:
-            raise ComponentNotFoundError(f"Component '{params.component}' not found")
-
-        try:
-            # The input is already a dictionary (JSON object)
-            input_data = msgspec.json.encode(params.input)
-
-            # Deserialize input using the component's input type
-            input_value: Any = msgspec.json.decode(
-                input_data, type=component.input_type
-            )
-
-            # Execute the component with session context
-            if component.function.__code__.co_argcount == 2:
-                # Function expects context as second parameter
-                result = component.function(input_value, session.context)
             else:
-                # Function only expects input
-                result = component.function(input_value)
+                # No context needed - delegate to core server
+                result = await self.server.handle_message(request)
 
-            # Serialize the result back to JSON
-            output_data = msgspec.json.encode(result)
-            output = msgspec.json.decode(output_data)
+                # Return direct JSON response
+                return JSONResponse(
+                    content=msgspec.to_builtins(result), media_type="application/json"
+                )
 
-            return ComponentExecuteResult(output=output)
+        except StepflowError as e:
+            # Handle known StepFlow errors
+            error_response = MethodError(
+                jsonrpc="2.0",
+                id=request.id,
+                error=Error(code=e.code.value, message=e.message, data=e.data),
+            )
+            return JSONResponse(
+                content=msgspec.to_builtins(error_response),
+                status_code=400,
+                media_type="application/json",
+            )
         except Exception as e:
-            raise StepflowExecutionError(f"Component execution failed: {str(e)}") from e
+            # Handle unexpected errors
+            error_response = MethodError(
+                jsonrpc="2.0",
+                id=request.id,
+                error=Error(
+                    code=-32603,  # Internal error
+                    message=f"Internal error: {str(e)}",
+                    data=None,
+                ),
+            )
+            return JSONResponse(
+                content=msgspec.to_builtins(error_response),
+                status_code=500,
+                media_type="application/json",
+            )
+
+    async def _execute_with_streaming_context(
+        self, request: MethodRequest, context: StepflowContext
+    ) -> AsyncGenerator[str]:
+        """Execute request with streaming context via SSE.
+
+        This method runs component execution and bidirectional message processing
+        concurrently to avoid deadlock scenarios where components need to make
+        bidirectional requests (like put_blob) before completing.
+        """
+        try:
+            # Start component execution as a background task
+            execution_task = asyncio.create_task(
+                self.server.handle_message(request, context)
+            )
+
+            # Continuously process bidirectional messages while component runs
+            while not execution_task.done():
+                # Yield any pending bidirectional messages
+                if isinstance(context, StepflowStreamingContext):
+                    async for sse_event in context.get_pending_messages():
+                        yield sse_event
+
+                # Brief pause to avoid busy waiting
+                await asyncio.sleep(0.01)
+
+            # Component execution completed - get the result
+            result = await execution_task
+
+            # Yield any final pending bidirectional messages
+            if isinstance(context, StepflowStreamingContext):
+                async for sse_event in context.get_pending_messages():
+                    yield sse_event
+
+            # Yield final response
+            sse_data = msgspec.json.encode(result).decode("utf-8")
+            yield f"data: {sse_data}\n\n"
+
+        except Exception as e:
+            # If we have an execution task, make sure it's cancelled
+            if "execution_task" in locals() and not execution_task.done():
+                execution_task.cancel()
+                try:
+                    await execution_task
+                except asyncio.CancelledError:
+                    pass
+
+            # Yield any pending messages first
+            if isinstance(context, StepflowStreamingContext):
+                async for sse_event in context.get_pending_messages():
+                    yield sse_event
+
+            # Yield error response
+            error_response = MethodError(
+                jsonrpc="2.0",
+                id=request.id,
+                error=Error(
+                    code=-32603,
+                    message=f"Request execution failed: {str(e)}",
+                    data=None,
+                ),
+            )
+
+            sse_data = msgspec.json.encode(error_response).decode("utf-8")
+            yield f"data: {sse_data}\n\n"
 
     async def run(self):
-        """Start the HTTP server"""
+        """Start the HTTP server."""
         print(
-            f"Starting StepFlow HTTP server on {self.host}:{self.port}", file=sys.stderr
+            f"Starting StepFlow Streamable HTTP server on {self.host}:{self.port}",
+            file=sys.stderr,
         )
 
         # Initialize the base server
@@ -362,3 +344,43 @@ class StepflowHttpServer:
         )
         server = uvicorn.Server(config)
         await server.serve()
+
+
+class StepflowStreamingContext(StepflowContext):
+    """Context for components executed with streaming support.
+
+    This context enables bidirectional communication by queuing
+    JSON-RPC requests that will be sent via the SSE stream.
+    Inherits from StepflowContext to reuse all request/response logic.
+    """
+
+    def __init__(self, message_decoder: MessageDecoder[asyncio.Future[Any]]):
+        # Create standard asyncio queue for outgoing messages
+        self._outgoing_queue = asyncio.Queue()
+
+        # Initialize the base context with the shared message decoder
+        super().__init__(
+            outgoing_queue=self._outgoing_queue,
+            message_decoder=message_decoder,
+            session_id=None,
+        )
+
+    async def get_pending_messages(self) -> AsyncGenerator[str]:
+        """Yield pending messages from the queue as SSE events."""
+        # Drain all messages currently in the queue
+        messages = []
+        while not self._outgoing_queue.empty():
+            try:
+                message = self._outgoing_queue.get_nowait()
+                messages.append(message)
+            except asyncio.QueueEmpty:
+                break
+
+        # Stream all messages as SSE events
+        for message in messages:
+            sse_data = msgspec.json.encode(message).decode("utf-8")
+            yield f"data: {sse_data}\n\n"
+
+
+# For backward compatibility, alias the new class
+StepflowHttpServer = StepflowStreamableHttpServer

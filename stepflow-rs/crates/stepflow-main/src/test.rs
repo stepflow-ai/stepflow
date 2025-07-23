@@ -13,6 +13,7 @@
 // the License.
 
 use crate::args::{ConfigArgs, OutputArgs, WorkflowLoader, load};
+use crate::test_server::TestServerManager;
 use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use clap::Args;
 use error_stack::ResultExt as _;
@@ -114,6 +115,7 @@ pub fn load_test_config(
     flow_path: &Path,
     config_path: Option<PathBuf>,
     workflow: &Flow,
+    server_manager: Option<&TestServerManager>,
 ) -> Result<StepflowConfig> {
     // If explicit config provided, use that
     if let Some(config_path) = config_path {
@@ -121,10 +123,10 @@ pub fn load_test_config(
         return config_args.load_config(None);
     }
 
-    // 1. Check stepflow_config in test section of this workflow
+    // 1. Check config in test section of this workflow (with server substitution)
     if let Some(test_config) = &workflow.test {
-        if let Some(stepflow_config) = &test_config.stepflow_config {
-            return parse_stepflow_config_from_value(stepflow_config, flow_path);
+        if let Some(config_value) = &test_config.config {
+            return parse_stepflow_config_from_value(config_value, flow_path, server_manager);
         }
     }
 
@@ -159,8 +161,18 @@ pub fn load_test_config(
 fn parse_stepflow_config_from_value(
     value: &serde_json::Value,
     flow_path: &Path,
+    server_manager: Option<&TestServerManager>,
 ) -> Result<StepflowConfig> {
-    let mut config: StepflowConfig = serde_json::from_value(value.clone())
+    // Apply server URL substitution if server manager is available
+    let config_str = if let Some(manager) = server_manager {
+        manager.create_substituted_config(value)?
+    } else {
+        serde_json::to_string(value)
+            .change_context(MainError::Configuration)
+            .attach_printable("Failed to serialize config")?
+    };
+
+    let mut config: StepflowConfig = serde_json::from_str(&config_str)
         .change_context_lazy(|| MainError::InvalidFile(flow_path.to_owned()))?;
 
     if config.working_directory.is_none() {
@@ -229,21 +241,25 @@ struct WorkflowTestResult {
     updates: HashMap<String, FlowResult>,
 }
 
-/// Main entry point for running tests on a file or directory.
+/// Main entry point for running tests on files or directories.
 ///
 /// Return number of failures.
 pub async fn run_tests(
-    path: &Path,
+    paths: &[PathBuf],
     config_path: Option<PathBuf>,
     options: TestOptions,
 ) -> Result<usize> {
-    let workflow_files = if path.is_file() {
-        vec![path.to_owned()]
-    } else if path.is_dir() {
-        discover_workflow_files(path)?
-    } else {
-        return Err(MainError::MissingFile(path.to_owned()).into());
-    };
+    let mut workflow_files = Vec::new();
+
+    for path in paths {
+        if path.is_file() {
+            workflow_files.push(path.to_owned());
+        } else if path.is_dir() {
+            workflow_files.extend(discover_workflow_files(path)?);
+        } else {
+            return Err(MainError::MissingFile(path.to_owned()).into());
+        }
+    }
 
     if workflow_files.is_empty() {
         println!("No workflow files found");
@@ -306,8 +322,20 @@ async fn run_single_workflow_test(
         });
     };
 
-    // Set up executor
-    let config = load_test_config(workflow_path, config_path, &flow)?;
+    // Initialize server manager and start any test servers
+    let mut server_manager = TestServerManager::new();
+    if let Some(test_config) = &flow.test {
+        if !test_config.servers.is_empty() {
+            println!("Starting {} test servers...", test_config.servers.len());
+            let working_dir = workflow_path.parent().unwrap_or_else(|| Path::new("."));
+            server_manager
+                .start_servers(&test_config.servers, working_dir)
+                .await?;
+        }
+    }
+
+    // Set up executor with server-aware config
+    let config = load_test_config(workflow_path, config_path, &flow, Some(&server_manager))?;
     let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
     // Filter test cases if specific cases requested
@@ -390,6 +418,9 @@ async fn run_single_workflow_test(
     let total_cases = cases_to_run.len();
     let failed_cases = updates.len() + execution_errors;
     let passed_cases = total_cases - failed_cases;
+
+    // Clean up test servers
+    server_manager.stop_all_servers().await?;
 
     Ok(WorkflowTestResult {
         file_status: FileStatus::Run,

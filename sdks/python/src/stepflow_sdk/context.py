@@ -28,6 +28,7 @@ from stepflow_sdk.generated_protocol import (
     FlowResultSuccess,
     GetBlobResult,
     Message,
+    Method,
     MethodError,
     MethodSuccess,
     PutBlobResult,
@@ -57,22 +58,26 @@ class StepflowContext:
         self._session_id = session_id
 
     async def _send_request[T](
-        self, method: str, params: Any, result_type: type[T]
+        self, method: Method, params: Any, result_type: type[T]
     ) -> T:
         """Send a request to the stepflow runtime and wait for response."""
+        print(
+            f"Sending request to method '{method.value}' with params: {params}",
+            file=sys.stderr,
+        )
         request_id = str(uuid4())
         request = {
             "jsonrpc": "2.0",
             "id": request_id,
-            "method": method,
+            "method": method.value,
             "params": params,
         }
 
         # Create future for response
         future: asyncio.Future[Message] = asyncio.Future()
 
-        # Register the pending request with the message decoder
-        self._message_decoder.register_request(request_id, result_type, future)
+        # Register pending request with message decoder using method registration
+        self._message_decoder.register_request_for_method(request_id, method, future)
 
         # Send request via queue
         await self._outgoing_queue.put(request)
@@ -106,7 +111,7 @@ class StepflowContext:
             The blob ID (SHA-256 hash) for the stored data
         """
         params = {"data": data}
-        response = await self._send_request("blobs/put", params, PutBlobResult)
+        response = await self._send_request(Method.blobs_put, params, PutBlobResult)
         return response.blob_id
 
     async def get_blob(self, blob_id: str) -> Any:
@@ -119,7 +124,7 @@ class StepflowContext:
             The JSON data associated with the blob ID
         """
         params = {"blob_id": blob_id}
-        response = await self._send_request("blobs/get", params, GetBlobResult)
+        response = await self._send_request(Method.blobs_get, params, GetBlobResult)
         return response.data
 
     @property
@@ -155,7 +160,7 @@ class StepflowContext:
         params = {"flow": flow_dict, "input": input}
 
         evaluate_result = await self._send_request(
-            "flows/evaluate", params, EvaluateFlowResult
+            Method.flows_evaluate, params, EvaluateFlowResult
         )
         flow_result = evaluate_result.result
 

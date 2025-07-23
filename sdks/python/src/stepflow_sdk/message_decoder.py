@@ -32,6 +32,8 @@ from .generated_protocol import (
     ComponentInfoResult,
     ComponentListParams,
     Error,
+    EvaluateFlowParams,
+    EvaluateFlowResult,
     GetBlobParams,
     GetBlobResult,
     Initialized,
@@ -208,10 +210,6 @@ class MessageDecoder(Generic[T]):
             raise StepflowProtocolError("Invalid message: no id or method")
 
 
-# Note: Legacy decode_message function has been removed.
-# Use MessageDecoder class for all message decoding.
-
-
 def _decode_params_for_method(method: Method, params_raw: Raw):
     """Decode parameters based on the method type."""
     if method == Method.initialize:
@@ -228,8 +226,10 @@ def _decode_params_for_method(method: Method, params_raw: Raw):
         return msgspec.json.decode(params_raw, type=GetBlobParams)
     elif method == Method.blobs_put:
         return msgspec.json.decode(params_raw, type=PutBlobParams)
+    elif method == Method.flows_evaluate:
+        return msgspec.json.decode(params_raw, type=EvaluateFlowParams)
     else:
-        raise StepflowProtocolError(f"Unknown method: {method}")
+        raise StepflowProtocolError(f"Unknown method: {method.value}")
 
 
 def _get_result_type_for_method(method: Method) -> type:
@@ -246,8 +246,10 @@ def _get_result_type_for_method(method: Method) -> type:
         return GetBlobResult
     elif method == Method.blobs_put:
         return PutBlobResult
+    elif method == Method.flows_evaluate:
+        return EvaluateFlowResult
     else:
-        raise StepflowProtocolError(f"Unknown method: {method}")
+        raise StepflowProtocolError(f"Unknown method: {method.value}")
 
 
 def _decode_result(result_raw: Raw):
@@ -264,6 +266,7 @@ def _decode_result(result_raw: Raw):
         ComponentInfoResult,
         GetBlobResult,
         PutBlobResult,
+        EvaluateFlowResult,
     ]
 
     # Try each type until one works

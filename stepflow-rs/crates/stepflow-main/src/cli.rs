@@ -104,11 +104,11 @@ pub enum Command {
         #[command(flatten)]
         output_args: OutputArgs,
     },
-    /// Run tests defined in a workflow file or directory.
+    /// Run tests defined in workflow files or directories.
     Test {
-        /// Path to the workflow file or directory containing tests.
+        /// Paths to workflow files or directories containing tests.
         #[arg(value_name = "PATH", value_hint = clap::ValueHint::AnyPath)]
-        path: PathBuf,
+        paths: Vec<PathBuf>,
 
         #[command(flatten)]
         config_args: ConfigArgs,
@@ -194,12 +194,12 @@ impl Cli {
                 output_args.write_output(output)?;
             }
             Command::Test {
-                path,
+                paths,
                 config_args,
                 test_options,
             } => {
                 let failures =
-                    crate::test::run_tests(&path, config_args.config_path, test_options).await?;
+                    crate::test::run_tests(&paths, config_args.config_path, test_options).await?;
                 if failures > 0 {
                     std::process::exit(1);
                 }
