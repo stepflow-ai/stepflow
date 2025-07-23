@@ -85,7 +85,7 @@ describe('StepflowStdioServer', () => {
     const component = server.getComponent('testComponent');
     expect(component).toBeDefined();
     expect(component?.name).toBe('testComponent');
-    expect(typeof component?.function).toBe('function');
+    expect(typeof component?.handler).toBe('function');
   });
 
   test('component with custom name', () => {
@@ -103,7 +103,7 @@ describe('StepflowStdioServer', () => {
     const component = server.getComponent('custom_name');
     expect(component).toBeDefined();
     expect(component?.name).toBe('custom_name');
-    expect(typeof component?.function).toBe('function');
+    expect(typeof component?.handler).toBe('function');
   });
 
   test('component execution', () => {
@@ -122,7 +122,7 @@ describe('StepflowStdioServer', () => {
     expect(component).toBeDefined();
 
     if (component) {
-      const result = component.function({ name: 'Alice', age: 25 }) as ValidOutput;
+      const result = component.handler({ name: 'Alice', age: 25 }) as ValidOutput;
       expect(result).toBeDefined();
       expect(result.greeting).toBe('Hello Alice!');
       expect(result.age_next_year).toBe(26);

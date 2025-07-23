@@ -9,12 +9,14 @@ import * as protocol from './protocol';
 /**
  * Component entry in the server registry
  */
-export interface ComponentEntry<TInput, TOutput> {
+export interface ComponentEntry<TInput = any, TOutput = any> {
   name: string;
-  function: (input: TInput, context?: StepflowContext) => TOutput | Promise<TOutput>;
-  inputSchema?: Record<string, any>;
-  outputSchema?: Record<string, any>;
-  description?: string;
+  handler: (input: TInput, context?: StepflowContext) => TOutput | Promise<TOutput>;
+  options?: {
+    description?: string;
+    inputSchema?: Record<string, any>;
+    outputSchema?: Record<string, any>;
+  };
 }
 
 /**
@@ -78,19 +80,17 @@ export class StepflowStdioServer {
   ): (input: TInput, context?: StepflowContext) => TOutput | Promise<TOutput> {
     this.components.set(name, {
       name,
-      function: func,
-      inputSchema: options?.inputSchema,
-      outputSchema: options?.outputSchema,
-      description: options?.description,
+      handler: func,
+      options
     });
 
     return func;
   }
 
   /**
-   * Get a component by URL
+   * Get a component by URL (internal use)
    */
-  public getComponent(componentUrl: string): ComponentEntry<any, any> | undefined {
+  private getComponentByUrl(componentUrl: string): ComponentEntry | undefined {
     const parsedUrl = url.parse(componentUrl);
     let componentName = parsedUrl.host || '';
     if (parsedUrl.pathname && parsedUrl.pathname !== '/') {
@@ -129,7 +129,7 @@ export class StepflowStdioServer {
 
       case 'components/info': {
         const infoRequest = request.params as protocol.ComponentInfoParams;
-        const component = this.getComponent(infoRequest.component);
+        const component = this.getComponentByUrl(infoRequest.component);
 
         if (!component) {
           return createErrorResponse(
@@ -142,9 +142,9 @@ export class StepflowStdioServer {
 
         const componentInfo: protocol.ComponentInfo = {
           component: infoRequest.component,
-          description: component.description,
-          input_schema: component.inputSchema,
-          output_schema: component.outputSchema,
+          description: component.options?.description,
+          input_schema: component.options?.inputSchema,
+          output_schema: component.options?.outputSchema,
         };
 
         return createSuccessResponse(id, { info: componentInfo });
@@ -152,7 +152,7 @@ export class StepflowStdioServer {
 
       case 'components/execute': {
         const executeRequest = request.params as protocol.ComponentExecuteParams;
-        const component = this.getComponent(executeRequest.component);
+        const component = this.getComponentByUrl(executeRequest.component);
 
         if (!component) {
           return createErrorResponse(
@@ -168,7 +168,7 @@ export class StepflowStdioServer {
           const context = this.transport?.createContext();
           
           // Execute the component function with the input and context
-          const output = await component.function(executeRequest.input, context);
+          const output = await component.handler(executeRequest.input, context);
 
           return createSuccessResponse(id, { output });
         } catch (e) {
@@ -184,9 +184,9 @@ export class StepflowStdioServer {
       case 'components/list': {
         const componentInfos: protocol.ComponentInfo[] = Array.from(this.components.values()).map(comp => ({
           component: comp.name,
-          description: comp.description,
-          input_schema: comp.inputSchema,
-          output_schema: comp.outputSchema,
+          description: comp.options?.description,
+          input_schema: comp.options?.inputSchema,
+          output_schema: comp.options?.outputSchema,
         }));
         
         return createSuccessResponse(id, { components: componentInfos });
@@ -288,8 +288,25 @@ export class StepflowStdioServer {
   ): void {
     const component = this.components.get(name);
     if (component) {
-      component.inputSchema = inputSchema;
-      component.outputSchema = outputSchema;
+      component.options = {
+        ...component.options,
+        inputSchema,
+        outputSchema
+      };
     }
+  }
+  
+  /**
+   * Get list of registered component names
+   */
+  public getComponents(): string[] {
+    return Array.from(this.components.keys());
+  }
+  
+  /**
+   * Get a specific component
+   */
+  public getComponent(name: string): ComponentEntry | undefined {
+    return this.components.get(name);
   }
 }
