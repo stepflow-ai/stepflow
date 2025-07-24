@@ -151,9 +151,9 @@ describe('Value', () => {
     const numberTemplate = numberLiteral.toValueTemplate();
     const objectTemplate = objectLiteral.toValueTemplate();
     
-    expect(stringTemplate).toEqual({ literal: { field_literal: 'hello' } });
-    expect(numberTemplate).toEqual({ literal: { field_literal: 42 } });
-    expect(objectTemplate).toEqual({ literal: { field_literal: { key: 'value' } } });
+    expect(stringTemplate).toEqual({ $literal: 'hello' });
+    expect(numberTemplate).toEqual({ $literal: 42 });
+    expect(objectTemplate).toEqual({ $literal: { key: 'value' } });
   });
 
   test('creates step references', () => {
@@ -164,23 +164,16 @@ describe('Value', () => {
     const template2 = stepRefWithPath.toValueTemplate();
     
     expect(template1).toEqual({
-      from: {
-        step: {
-          step_id: 'step1',
-          path: '$',
-          on_skip: undefined
-        }
+      $from: {
+        step: 'step1'
       }
     });
     
     expect(template2).toEqual({
-      from: {
-        step: {
-          step_id: 'step2',
-          path: '$.result',
-          on_skip: undefined
-        }
-      }
+      $from: {
+        step: 'step2'
+      },
+      path: '$.result'
     });
   });
 
@@ -192,21 +185,16 @@ describe('Value', () => {
     const template2 = Value.convertToValueTemplate(inputRefWithPath);
     
     expect(template1).toEqual({
-      from: {
-        input: {
-          path: '$',
-          on_skip: undefined
-        }
+      $from: {
+        workflow: 'input'
       }
     });
     
     expect(template2).toEqual({
-      from: {
-        input: {
-          path: '$.config.database',
-          on_skip: undefined
-        }
-      }
+      $from: {
+        workflow: 'input'
+      },
+      path: '$.config.database'
     });
   });
 
@@ -227,36 +215,27 @@ describe('Value', () => {
     expect(template).toEqual({
       config: {
         database: {
-          from: {
-            input: {
-              path: '$["db_config"]',
-              on_skip: undefined
-            }
-          }
+          $from: {
+            workflow: 'input'
+          },
+          path: '$["db_config"]'
         },
         retries: {
-          literal: { field_literal: 3 }
+          $literal: 3
         }
       },
       steps: [
         {
-          from: {
-            step: {
-              step_id: 'step1',
-              path: '$',
-              on_skip: undefined
-            }
+          $from: {
+            step: 'step1'
           }
         },
         {
           id: {
-            from: {
-              step: {
-                step_id: 'step2',
-                path: '$.id',
-                on_skip: undefined
-              }
-            }
+            $from: {
+              step: 'step2'
+            },
+            path: '$.id'
           }
         }
       ]
@@ -268,7 +247,7 @@ describe('Value', () => {
     const outerValue = new Value(innerValue);
     
     const template = outerValue.toValueTemplate();
-    expect(template).toEqual({ literal: { field_literal: 'inner' } });
+    expect(template).toEqual({ $literal: 'inner' });
   });
 
   test('handles primitive types directly', () => {
@@ -291,21 +270,14 @@ describe('Value', () => {
     const inputValue = new Value(inputRef);
     
     expect(stepValue.toValueTemplate()).toEqual({
-      from: {
-        step: {
-          step_id: 'step1',
-          path: '$',
-          on_skip: undefined
-        }
+      $from: {
+        step: 'step1'
       }
     });
     
     expect(inputValue.toValueTemplate()).toEqual({
-      from: {
-        input: {
-          path: '$',
-          on_skip: undefined
-        }
+      $from: {
+        workflow: 'input'
       }
     });
   });
@@ -324,23 +296,17 @@ describe('Value', () => {
     expect(template).toEqual([
       'literal string',
       42,
-      { literal: { field_literal: 'escaped literal' } },
+      { $literal: 'escaped literal' },
       {
-        from: {
-          step: {
-            step_id: 'step1',
-            path: '$',
-            on_skip: undefined
-          }
+        $from: {
+          step: 'step1'
         }
       },
       {
-        from: {
-          input: {
-            path: '$["config"]',
-            on_skip: undefined
-          }
-        }
+        $from: {
+          workflow: 'input'
+        },
+        path: '$["config"]'
       }
     ]);
   });
@@ -356,33 +322,22 @@ describe('Value', () => {
     });
     
     expect(result).toEqual({
-      literal: { literal: { field_literal: 'test' } },
+      literal: { $literal: 'test' },
       step: {
-        from: {
-          step: {
-            step_id: 'step1',
-            path: '$',
-            on_skip: undefined
-          }
+        $from: {
+          step: 'step1'
         }
       },
       input: {
-        from: {
-          input: {
-            path: '$',
-            on_skip: undefined
-          }
+        $from: {
+          workflow: 'input'
         }
       },
       nested: {
         array: [
           {
-            from: {
-              step: {
-                step_id: 'step2',
-                path: '$',
-                on_skip: undefined
-              }
+            $from: {
+              step: 'step2'
             }
           },
           'plain string'

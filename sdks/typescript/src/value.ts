@@ -3,6 +3,8 @@
  * This provides a TypeScript implementation of the Python SDK's Value system.
  */
 
+import { ValueTemplate, ReferenceExpr, EscapedLiteralExpr, SkipAction } from './protocol';
+
 export type Valuable = 
   | string
   | number
@@ -16,33 +18,12 @@ export type Valuable =
   | EscapedLiteral
   | Value;
 
-export interface SkipAction {
-  type: 'fail' | 'skip' | 'retry' | 'default';
-  value?: any;
-  max_attempts?: number;
-}
-
 export interface EscapedLiteral {
   field_literal: any;
 }
 
-export interface Reference {
-  step?: {
-    step_id: string;
-    path: string;
-    on_skip?: SkipAction;
-  };
-  input?: {
-    path: string;
-    on_skip?: SkipAction;
-  };
-}
-
-export interface ValueTemplate {
-  literal?: EscapedLiteral;
-  from?: Reference;
-  [key: string]: any;
-}
+// Re-export protocol types for convenience
+export { SkipAction } from './protocol';
 
 /**
  * Base class for handling JSON Path syntax across all reference types.
@@ -184,9 +165,29 @@ export class StepReference {
   }
 
   /**
-   * Convert to Reference object for protocol.
+   * Convert to ReferenceExpr object for protocol.
    */
-  toReference(): Reference {
+  toReferenceExpr(): ReferenceExpr {
+    const expr: ReferenceExpr = {
+      $from: { step: this.stepId }
+    };
+    
+    const pathStr = this.path.toString();
+    if (pathStr !== '$') {
+      expr.path = pathStr;
+    }
+    
+    if (this.onSkip) {
+      expr.onSkip = this.onSkip;
+    }
+    
+    return expr;
+  }
+
+  /**
+   * @deprecated Use toReferenceExpr() instead
+   */
+  toReference(): any {
     return {
       step: {
         step_id: this.stepId,
@@ -250,9 +251,29 @@ export class WorkflowInput {
   }
 
   /**
-   * Convert to Reference object for protocol.
+   * Convert to ReferenceExpr object for protocol.
    */
-  toReference(): Reference {
+  toReferenceExpr(): ReferenceExpr {
+    const expr: ReferenceExpr = {
+      $from: { workflow: "input" }
+    };
+    
+    const pathStr = this.path.toString();
+    if (pathStr !== '$') {
+      expr.path = pathStr;
+    }
+    
+    if (this.onSkip) {
+      expr.onSkip = this.onSkip;
+    }
+    
+    return expr;
+  }
+
+  /**
+   * @deprecated Use toReferenceExpr() instead
+   */
+  toReference(): any {
     return {
       input: {
         path: this.path.toString(),
@@ -308,12 +329,12 @@ export class Value {
    * Create a reference to workflow input.
    * This is equivalent to using $from with a workflow input reference.
    */
-  static input(path?: string, onSkip?: SkipAction): WorkflowInput {
+  static input(path?: string, onSkip?: SkipAction): Value {
     const jsonPath = new JsonPath();
     if (path && path !== '$') {
       jsonPath.setPath(path);
     }
-    return WorkflowInput.create(jsonPath, onSkip);
+    return new Value(WorkflowInput.create(jsonPath, onSkip));
   }
 
   /**
@@ -336,15 +357,15 @@ export class Value {
     }
 
     if (data instanceof StepReference) {
-      return { from: data.toReference() };
+      return data.toReferenceExpr();
     }
 
     if (data instanceof WorkflowInput) {
-      return { from: data.toReference() };
+      return data.toReferenceExpr();
     }
 
     if (data && typeof data === 'object' && 'field_literal' in data) {
-      return { literal: data as EscapedLiteral };
+      return { $literal: (data as EscapedLiteral).field_literal };
     }
 
     if (Array.isArray(data)) {
@@ -367,5 +388,18 @@ export class Value {
    */
   getValue(): any {
     return this._value;
+  }
+
+  /**
+   * Create a nested reference using bracket notation (when Value wraps a reference).
+   */
+  get(key: string | number): Value {
+    if (this._value instanceof StepReference) {
+      return new Value(this._value.get(key));
+    }
+    if (this._value instanceof WorkflowInput) {
+      return new Value(this._value.get(key));
+    }
+    throw new Error('get() can only be called on Value instances that wrap StepReference or WorkflowInput');
   }
 }

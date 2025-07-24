@@ -3,7 +3,8 @@
  * This provides a TypeScript implementation of the Python SDK's FlowBuilder.
  */
 
-import { Value, ValueTemplate, StepReference, WorkflowInput, Valuable, SkipAction, JsonPath } from './value';
+import { Value, StepReference, WorkflowInput, Valuable, SkipAction, JsonPath } from './value';
+import { ValueTemplate } from './protocol';
 
 export interface Schema {
   type?: string;
@@ -62,12 +63,16 @@ export class StepHandle {
       if (!template) return;
       
       if (typeof template === 'object' && template !== null) {
-        if ('from' in template && template.from) {
-          const ref = template.from;
-          if (ref.step) {
-            references.push(new StepReference(ref.step.step_id, undefined, ref.step.on_skip));
-          } else if (ref.input) {
-            references.push(new WorkflowInput(undefined, ref.input.on_skip));
+        if ('$from' in template && template.$from) {
+          const ref = template.$from as any;
+          if ('step' in ref) {
+            const path = 'path' in template ? template.path as string : '$';
+            const onSkip = 'onSkip' in template ? template.onSkip as any : undefined;
+            references.push(new StepReference(ref.step, new JsonPath([path]), onSkip));
+          } else if ('workflow' in ref && ref.workflow === 'input') {
+            const path = 'path' in template ? template.path as string : '$';
+            const onSkip = 'onSkip' in template ? template.onSkip as any : undefined;
+            references.push(new WorkflowInput(new JsonPath([path]), onSkip));
           }
         }
         
@@ -223,12 +228,16 @@ export class FlowBuilder {
     if (this._output) {
       const extractFromValueTemplate = (template: ValueTemplate): void => {
         if (typeof template === 'object' && template !== null) {
-          if ('from' in template && template.from) {
-            const ref = template.from;
-            if (ref.step) {
-              references.push(new StepReference(ref.step.step_id, undefined, ref.step.on_skip));
-            } else if (ref.input) {
-              references.push(new WorkflowInput(undefined, ref.input.on_skip));
+          if ('$from' in template && template.$from) {
+            const ref = template.$from as any;
+            if ('step' in ref) {
+              const path = 'path' in template ? template.path as string : '$';
+              const onSkip = 'onSkip' in template ? template.onSkip as any : undefined;
+              references.push(new StepReference(ref.step, new JsonPath([path]), onSkip));
+            } else if ('workflow' in ref && ref.workflow === 'input') {
+              const path = 'path' in template ? template.path as string : '$';
+              const onSkip = 'onSkip' in template ? template.onSkip as any : undefined;
+              references.push(new WorkflowInput(new JsonPath([path]), onSkip));
             }
           }
           
@@ -349,10 +358,6 @@ export function createFlow(name?: string, description?: string, version?: string
 /**
  * Create a workflow input reference.
  */
-export function input(path?: string, onSkip?: SkipAction): WorkflowInput {
-  const jsonPath = new JsonPath();
-  if (path && path !== '$') {
-    jsonPath.setPath(path);
-  }
-  return WorkflowInput.create(jsonPath, onSkip);
+export function input(path?: string, onSkip?: SkipAction): Value {
+  return Value.input(path, onSkip);
 }

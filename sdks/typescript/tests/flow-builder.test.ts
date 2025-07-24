@@ -121,9 +121,9 @@ describe('FlowBuilder', () => {
       const flow = builder.build();
 
       const input = flow.steps[0].input as any;
-      expect(input.literal_string.literal.field_literal).toBe('hello');
-      expect(input.literal_number.literal.field_literal).toBe(42);
-      expect(input.literal_object.literal.field_literal).toEqual({ key: 'value' });
+      expect(input.literal_string.$literal).toBe('hello');
+      expect(input.literal_number.$literal).toBe(42);
+      expect(input.literal_object.$literal).toEqual({ key: 'value' });
     });
 
     test('handles step references', () => {
@@ -149,9 +149,9 @@ describe('FlowBuilder', () => {
       const flow = builder.build();
 
       const consumerInput = flow.steps[1].input as any;
-      expect(consumerInput.data.from.step.step_id).toBe('producer');
-      expect(consumerInput.count.from.step.step_id).toBe('producer');
-      expect(consumerInput.first_item.from.step.step_id).toBe('producer');
+      expect(consumerInput.data.$from.step).toBe('producer');
+      expect(consumerInput.count.$from.step).toBe('producer');
+      expect(consumerInput.first_item.$from.step).toBe('producer');
     });
 
     test('handles workflow input references', () => {
@@ -171,12 +171,15 @@ describe('FlowBuilder', () => {
       const flow = builder.build();
 
       const processInput = flow.steps[0].input as any;
-      expect(processInput.raw_input.from.input.path).toBe('$');
-      expect(processInput.user_name.from.input.path).toBe('$["user"]["name"]');
-      expect(processInput.settings.from.input.path).toBe('$["config"]');
+      expect(processInput.raw_input.$from.workflow).toBe('input');
+      expect(processInput.user_name.$from.workflow).toBe('input');
+      expect(processInput.user_name.path).toBe('$["user"]["name"]');
+      expect(processInput.settings.$from.workflow).toBe('input');
+      expect(processInput.settings.path).toBe('$["config"]');
 
       const output = flow.output as any;
-      expect(output.result.from.input.path).toBe('$["expected_result"]');
+      expect(output.result.$from.workflow).toBe('input');
+      expect(output.result.path).toBe('$["expected_result"]');
     });
   });
 
@@ -201,7 +204,7 @@ describe('FlowBuilder', () => {
       const flow = builder.build();
 
       expect(flow.steps[1].skip_if).toBeDefined();
-      expect((flow.steps[1].skip_if as any).from.step.step_id).toBe('conditional');
+      expect((flow.steps[1].skip_if as any).$from.step).toBe('conditional');
     });
 
     test('supports error handling', () => {
