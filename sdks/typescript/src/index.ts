@@ -29,7 +29,8 @@ export {
 export type { StepflowContext } from './transport';
 export type { ComponentEntry } from './server';
 export type { Flow, Step, Schema, OnErrorAction, StepHandle } from './flow-builder';
-export type { Valuable, SkipAction, EscapedLiteral, Reference, ValueTemplate } from './value';
+export type { Valuable, SkipAction, EscapedLiteral } from './value';
+export type { ValueTemplate, ReferenceExpr, EscapedLiteralExpr } from './protocol';
 
 if (require.main === module) {
   runCLI().catch(error => {
