@@ -4,7 +4,8 @@ import * as protocol from './protocol';
 import * as transport from './transport';
 import { udf, udfSchema } from './udf';
 import { runCLI } from './cli';
-
+import { FlowBuilder, createFlow, OnError, input } from './flow-builder';
+import { Value, StepReference, WorkflowInput, JsonPath } from './value';
 
 export {
   StepflowStdioServer,
@@ -13,12 +14,22 @@ export {
   transport,
   udf,
   udfSchema,
-  runCLI
+  runCLI,
+  FlowBuilder,
+  createFlow,
+  OnError,
+  input,
+  Value,
+  StepReference,
+  WorkflowInput,
+  JsonPath
 };
 
 // Export commonly used types
 export type { StepflowContext } from './transport';
 export type { ComponentEntry } from './server';
+export type { Flow, Step, Schema, OnErrorAction, StepHandle } from './flow-builder';
+export type { Valuable, SkipAction, EscapedLiteral, Reference, ValueTemplate } from './value';
 
 if (require.main === module) {
   runCLI().catch(error => {
