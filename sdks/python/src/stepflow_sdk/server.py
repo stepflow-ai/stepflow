@@ -19,7 +19,7 @@ import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any
+from typing import Any, assert_never
 
 import msgspec
 
@@ -203,7 +203,9 @@ class StepflowServer:
         return False
 
     async def handle_message(
-        self, message: Message, context: StepflowContext | None = None
+        self,
+        message: MethodRequest | Notification,
+        context: StepflowContext | None = None,
     ) -> MethodResponse:
         """Central message handler for all JSON-RPC protocol methods.
 
@@ -227,8 +229,7 @@ class StepflowServer:
         elif isinstance(message, Notification):
             return await self._handle_notification(message, context)
         else:
-            # Responses should be handled by transport layer for request matching
-            raise StepflowProtocolError("Unexpected message type in handle_message")
+            assert_never("Unexpected message type in handle_message")
 
     async def _handle_request(
         self, request: MethodRequest, context: StepflowContext | None = None
@@ -265,9 +266,9 @@ class StepflowServer:
         # Return a success response (though notifications don't expect responses)
         # Create a dummy InitializeResult for notification response
         # (notifications don't typically expect responses)
-        assert (
-            notification.method == Method.initialized
-        ), "Only '{Method.initialized.value}' is expected as a notification"
+        assert notification.method == Method.initialized, (
+            "Only '{Method.initialized.value}' is expected as a notification"
+        )
 
         result = InitializeResult(server_protocol_version=1)
         self.set_initialized(True)

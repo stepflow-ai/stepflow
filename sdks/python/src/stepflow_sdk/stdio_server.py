@@ -18,22 +18,13 @@ from __future__ import annotations
 import asyncio
 import sys
 from collections.abc import Callable
-from typing import assert_never
 
 import msgspec
 
 from stepflow_sdk.context import StepflowContext
-from stepflow_sdk.exceptions import (
-    ServerNotInitializedError,
-    StepflowProtocolError,
-)
 from stepflow_sdk.generated_protocol import (
     Message,
-    Method,
-    MethodError,
     MethodRequest,
-    MethodResponse,
-    MethodSuccess,
     Notification,
 )
 from stepflow_sdk.message_decoder import MessageDecoder
@@ -68,23 +59,6 @@ class StepflowStdioServer:
         """Get a registered component by path."""
         return self._server.get_component(component_path)
 
-    async def _handle_method_request(self, request: MethodRequest) -> MethodResponse:
-        """Handle a method request by delegating to the core server."""
-        # Check if the message requires bidirectional context
-        needs_context = self._server.requires_context(request)
-
-        if needs_context:
-            # Provide the STDIO context for bidirectional communication
-            return await self._server.handle_message(request, self._context)
-        else:
-            # No context needed
-            return await self._server.handle_message(request)
-
-    async def _handle_notification(self, notification: Notification):
-        """Handle a notification by delegating to the core server."""
-        # Delegate to core server (though notifications don't return responses)
-        await self._server.handle_message(notification)
-
     async def _handle_incoming_message(self, request_bytes: bytes):
         """Handle an incoming message in a separate task."""
         request_id = None
@@ -104,16 +78,21 @@ class StepflowStdioServer:
                 return
 
             # Otherwise, this is an incoming request that we need to handle
-            response = await self._handle_message(message)
+            if isinstance(message, MethodRequest | Notification):
+                if self._server.requires_context(message):
+                    response = await self._server.handle_message(message, self._context)
+                else:
+                    response = await self._server.handle_message(message)
+            else:
+                # This shouldn't happen for incoming messages, but handle gracefully
+                print(f"Unexpected message type: {type(message)}", file=sys.stderr)
+                return
 
             # Encode and write response
-            if response is not None:
-                print(f"Sending response: {response} to {message}", file=sys.stderr)
-                response_bytes = msgspec.json.encode(response) + b"\n"
-                sys.stdout.buffer.write(response_bytes)
-                sys.stdout.buffer.flush()
-            else:
-                print(f"No response for message: {message}", file=sys.stderr)
+            print(f"Sending response: {response} to {message}", file=sys.stderr)
+            response_bytes = msgspec.json.encode(response) + b"\n"
+            sys.stdout.buffer.write(response_bytes)
+            sys.stdout.buffer.flush()
         except Exception as e:
             print(f"Error in _handle_incoming_message: {e}", file=sys.stderr)
             if request_id is not None:
@@ -128,28 +107,6 @@ class StepflowStdioServer:
                     file=sys.stderr,
                 )
             return
-
-    async def _handle_message(self, message: Message) -> MethodResponse | None:
-        """Handle an incoming message and return a response."""
-        if isinstance(message, MethodRequest):
-            # STDIO-specific: Check initialization for non-initialize methods
-            if (
-                not self._server.is_initialized()
-                and message.method != Method.initialize
-            ):
-                raise ServerNotInitializedError()
-            return await self._handle_method_request(message)
-        elif isinstance(message, MethodSuccess | MethodError):
-            # Response messages should be handled by the MessageDecoder in
-            # _handle_incoming_message and should not reach this point
-            raise StepflowProtocolError(
-                "Unexpected response message in _handle_message"
-            )
-        elif isinstance(message, Notification):
-            await self._handle_notification(message)
-            return None
-        else:
-            assert_never("Should have handled all cases")
 
     async def _process_messages(self, writer: asyncio.StreamWriter):
         """Process messages from both incoming and outgoing queues asynchronously."""
@@ -195,21 +152,35 @@ class StepflowStdioServer:
         except Exception as e:
             print(f"Error sending outgoing message: {e}", file=sys.stderr)
 
-    # _handle_response method removed - MessageDecoder now handles response processing
+    async def start(
+        self,
+        stdin: asyncio.StreamReader | None = None,
+        stdout: asyncio.StreamWriter | None = None,
+    ):
+        """Start the server and begin processing messages.
 
-    async def start(self):
-        """Start the server and begin processing messages."""
-        # Set up unbuffered binary IO
-        # Create async streams for stdin/stdout
-        loop = asyncio.get_event_loop()
-        reader = asyncio.StreamReader()
-        protocol = asyncio.StreamReaderProtocol(reader)
-        await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+        Args:
+            stdin: Optional StreamReader to read from (defaults to sys.stdin)
+            stdout: Optional StreamWriter to write to (defaults to sys.stdout)
+        """
+        # Set up reader - use provided or create from sys.stdin
+        if stdin is not None:
+            reader = stdin
+        else:
+            loop = asyncio.get_event_loop()
+            reader = asyncio.StreamReader()
+            protocol = asyncio.StreamReaderProtocol(reader)
+            await loop.connect_read_pipe(lambda: protocol, sys.stdin)
 
-        writer_transport, writer_protocol = await loop.connect_write_pipe(
-            asyncio.streams.FlowControlMixin, sys.stdout
-        )
-        writer = asyncio.StreamWriter(writer_transport, writer_protocol, None, loop)
+        # Set up writer - use provided or create from sys.stdout
+        if stdout is not None:
+            writer = stdout
+        else:
+            loop = asyncio.get_event_loop()
+            writer_transport, writer_protocol = await loop.connect_write_pipe(
+                asyncio.streams.FlowControlMixin, sys.stdout
+            )
+            writer = asyncio.StreamWriter(writer_transport, writer_protocol, None, loop)
 
         # Start async processing loop
         process_task = asyncio.create_task(self._process_messages(writer))
@@ -228,6 +199,15 @@ class StepflowStdioServer:
             # Clean up
             process_task.cancel()
 
-    def run(self):
-        """Run the server in the main thread."""
-        asyncio.run(self.start())
+    def run(
+        self,
+        stdin: asyncio.StreamReader | None = None,
+        stdout: asyncio.StreamWriter | None = None,
+    ):
+        """Run the server in the main thread.
+
+        Args:
+            stdin: Optional StreamReader to read from (defaults to sys.stdin)
+            stdout: Optional StreamWriter to write to (defaults to sys.stdout)
+        """
+        asyncio.run(self.start(stdin, stdout))
