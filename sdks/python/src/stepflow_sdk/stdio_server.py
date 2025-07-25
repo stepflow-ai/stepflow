@@ -116,9 +116,17 @@ class StepflowStdioServer:
                 print(f"No response for message: {message}", file=sys.stderr)
         except Exception as e:
             print(f"Error in _handle_incoming_message: {e}", file=sys.stderr)
-            error_response = _handle_exception(e, id=request_id)
-            sys.stdout.buffer.write(msgspec.json.encode(error_response) + b"\n")
-            sys.stdout.buffer.flush()
+            if request_id is not None:
+                error_response = _handle_exception(e, id=request_id)
+                sys.stdout.buffer.write(msgspec.json.encode(error_response) + b"\n")
+                sys.stdout.buffer.flush()
+            else:
+                # If we can't identify the request, we can't send a proper error
+                # response so just log the error
+                print(
+                    f"Failed to handle message without request ID: {e}",
+                    file=sys.stderr,
+                )
             return
 
     async def _handle_message(self, message: Message) -> MethodResponse | None:

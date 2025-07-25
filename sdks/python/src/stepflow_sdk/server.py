@@ -66,7 +66,7 @@ class ComponentEntry:
         return msgspec.json.schema(self.output_type)
 
 
-def _handle_exception(e: Exception, id: RequestId | None) -> MethodError:
+def _handle_exception(e: Exception, id: RequestId) -> MethodError:
     """Convert any exception to a proper JSON-RPC error response."""
     if not isinstance(e, StepflowError):
         e = StepflowExecutionError(f"Unexpected error: {str(e)}")
@@ -78,10 +78,7 @@ def _handle_exception(e: Exception, id: RequestId | None) -> MethodError:
         data=error_dict.get("data"),
     )
 
-    # Handle the case where id might be None by providing a default
-    request_id = id if id is not None else "unknown"
-
-    return MethodError(id=request_id, error=error_obj)
+    return MethodError(id=id, error=error_obj)
 
 
 class StepflowServer:
@@ -184,14 +181,8 @@ class StepflowServer:
             if message.method == Method.components_execute:
                 try:
                     # Parse the component name from the request
-                    params_dict = (
-                        message.params
-                        if isinstance(message.params, dict)
-                        else msgspec.to_builtins(message.params)
-                    )
-                    execute_params = ComponentExecuteParams(**params_dict)
-                    component = self._components.get(execute_params.component)
-
+                    assert isinstance(message.params, ComponentExecuteParams)
+                    component = self._components.get(message.params.component)
                     if component is None:
                         # Component not found - doesn't require context (errors later)
                         return False
@@ -244,18 +235,6 @@ class StepflowServer:
     ) -> MethodResponse:
         """Handle a JSON-RPC method request."""
         try:
-            # Handle string methods (unknown methods) first
-            if isinstance(request.method, str):
-                return MethodError(
-                    jsonrpc="2.0",
-                    id=request.id,
-                    error=Error(
-                        code=-32601,  # Method not found
-                        message=f"Method not found: {request.method}",
-                        data=None,
-                    ),
-                )
-
             # Route known methods
             if request.method == Method.initialize:
                 return await self._handle_initialize(request)
@@ -275,9 +254,6 @@ class StepflowServer:
                         data=None,
                     ),
                 )
-
-        except StepflowError as e:
-            return _handle_exception(e, request.id)
         except Exception as e:
             return _handle_exception(e, request.id)
 
@@ -289,7 +265,12 @@ class StepflowServer:
         # Return a success response (though notifications don't expect responses)
         # Create a dummy InitializeResult for notification response
         # (notifications don't typically expect responses)
+        assert (
+            notification.method == Method.initialized
+        ), "Only '{Method.initialized.value}' is expected as a notification"
+
         result = InitializeResult(server_protocol_version=1)
+        self.set_initialized(True)
         return MethodSuccess(
             jsonrpc="2.0",
             id="notification",  # Notifications don't have IDs, MethodSuccess needs one
@@ -298,9 +279,6 @@ class StepflowServer:
 
     async def _handle_initialize(self, request: MethodRequest) -> MethodResponse:
         """Handle the initialize method."""
-        # Auto-initialize the server
-        self.set_initialized(True)
-
         # Return protocol version
         result = InitializeResult(server_protocol_version=1)
 
@@ -309,19 +287,7 @@ class StepflowServer:
     async def _handle_component_list(self, request: MethodRequest) -> MethodResponse:
         """Handle the components/list method."""
         # Parse parameters - handle empty params case
-        if request.params:
-            params_dict = (
-                request.params
-                if isinstance(request.params, dict)
-                else msgspec.to_builtins(request.params)
-            )
-            _ = (
-                ComponentListParams(**params_dict)
-                if params_dict
-                else ComponentListParams()
-            )
-        else:
-            _ = ComponentListParams()
+        assert isinstance(request.params, ComponentListParams)
 
         # Build component list
         component_infos = []
@@ -340,21 +306,15 @@ class StepflowServer:
 
     async def _handle_component_info(self, request: MethodRequest) -> MethodResponse:
         """Handle the components/info method."""
-        params_dict = (
-            request.params
-            if isinstance(request.params, dict)
-            else msgspec.to_builtins(request.params)
-        )
-        info_params = ComponentInfoParams(**params_dict)
+        assert isinstance(request.params, ComponentInfoParams)
+        params: ComponentInfoParams = request.params
 
-        component = self._components.get(info_params.component)
+        component = self._components.get(params.component)
         if component is None:
-            raise ComponentNotFoundError(
-                f"Component '{info_params.component}' not found"
-            )
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
         info = ComponentInfo(
-            component=info_params.component,
+            component=params.component,
             input_schema=component.input_schema(),
             output_schema=component.output_schema(),
             description=component.description,
@@ -367,44 +327,26 @@ class StepflowServer:
         self, request: MethodRequest, context: StepflowContext | None = None
     ) -> MethodResponse:
         """Handle the components/execute method."""
-        params_dict = (
-            request.params
-            if isinstance(request.params, dict)
-            else msgspec.to_builtins(request.params)
-        )
-        execute_params = ComponentExecuteParams(**params_dict)
+        assert isinstance(request.params, ComponentExecuteParams)
+        params: ComponentExecuteParams = request.params
 
-        component = self._components.get(execute_params.component)
+        component = self._components.get(params.component)
         if component is None:
-            raise ComponentNotFoundError(
-                f"Component '{execute_params.component}' not found"
-            )
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
         try:
             # Parse input using component's input type
-            input_value: Any = msgspec.convert(
-                execute_params.input, type=component.input_type
-            )
+            input_value: Any = msgspec.convert(params.input, type=component.input_type)
 
             # Execute component with or without context
-            if (
-                hasattr(component.function, "_expects_context")
-                and component.function._expects_context
-            ):
-                if context is None:
-                    raise StepflowExecutionError(
-                        "Component requires context but none provided"
-                    )
-                if inspect.iscoroutinefunction(component.function):
-                    output = await component.function(input_value, context)
-                else:
-                    output = component.function(input_value, context)
+            args = [input_value]
+            if context is not None:
+                args.append(context)
+
+            if inspect.iscoroutinefunction(component.function):
+                output = await component.function(*args)
             else:
-                # Execute without context
-                if inspect.iscoroutinefunction(component.function):
-                    output = await component.function(input_value)
-                else:
-                    output = component.function(input_value)
+                output = component.function(*args)
 
             result = ComponentExecuteResult(output=output)
             return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
