@@ -61,10 +61,6 @@ class StepflowContext:
         self, method: Method, params: Any, result_type: type[T]
     ) -> T:
         """Send a request to the stepflow runtime and wait for response."""
-        print(
-            f"Sending request to method '{method.value}' with params: {params}",
-            file=sys.stderr,
-        )
         request_id = str(uuid4())
         request = {
             "jsonrpc": "2.0",

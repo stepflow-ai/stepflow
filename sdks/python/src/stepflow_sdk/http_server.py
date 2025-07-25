@@ -40,6 +40,7 @@ from .generated_protocol import (
     MethodRequest,
     MethodSuccess,
     Notification,
+    RequestId,
 )
 from .message_decoder import MessageDecoder
 from .server import StepflowServer
@@ -54,7 +55,7 @@ except ImportError:
     sys.exit(1)
 
 
-class StepflowStreamableHttpServer:
+class StepflowHttpServer:
     """Streamable HTTP server for StepFlow components.
 
     Implements the Streamable HTTP transport specification:
@@ -78,6 +79,52 @@ class StepflowStreamableHttpServer:
         self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
         self._setup_routes()
 
+    def _create_error_response(
+        self,
+        request_id: RequestId | None,
+        status_code: int,
+        error_code: int,
+        error_message: str,
+        data: Any = None,
+    ) -> JSONResponse:
+        """Create an error response."""
+        if request_id is not None:
+            # Have request ID - create proper JSON-RPC MethodError
+            error_response = MethodError(
+                jsonrpc="2.0",
+                id=request_id,
+                error=Error(code=error_code, message=error_message, data=data),
+            )
+            content = msgspec.to_builtins(error_response)
+        else:
+            # No request ID - create plain error object
+            content = {"error": {"code": error_code, "message": error_message}}
+            if data is not None:
+                content["error"]["data"] = data
+
+        return JSONResponse(
+            content=content,
+            status_code=status_code,
+            media_type="application/json",
+        )
+
+    def _create_sse_error_event(
+        self,
+        request_id: RequestId,
+        error_code: int,
+        error_message: str,
+        data: Any = None,
+    ) -> str:
+        """Create an SSE error event for streaming responses."""
+        # Reuse the error creation logic, but extract just the MethodError content
+        error_response = MethodError(
+            jsonrpc="2.0",
+            id=request_id,
+            error=Error(code=error_code, message=error_message, data=data),
+        )
+        sse_data = msgspec.json.encode(error_response).decode("utf-8")
+        return f"data: {sse_data}\n\n"
+
     def _setup_routes(self):
         """Set up FastAPI routes for streamable HTTP transport."""
 
@@ -100,8 +147,14 @@ class StepflowStreamableHttpServer:
         async def handle_message(request: Request):
             """Handle JSON-RPC messages according to Streamable HTTP specification."""
             try:
-                # Parse request body using MessageDecoder for proper typing
-                body_bytes = await request.body()
+                # Verify Content-Type header.
+                content_type = request.headers.get("content-type", "")
+                if "application/json" not in content_type:
+                    return JSONResponse(
+                        content={"error": "Content-Type must be application/json"},
+                        status_code=415,
+                        media_type="application/json",
+                    )
 
                 # Set Accept header expectation
                 accept_header = request.headers.get("accept", "")
@@ -120,54 +173,28 @@ class StepflowStreamableHttpServer:
                         media_type="application/json",
                     )
 
-                # Try to parse JSON first to give proper parse errors
-                try:
-                    # Test JSON parsing to catch parse errors before MessageDecoder
-                    msgspec.json.decode(body_bytes)
-                except msgspec.DecodeError as e:
-                    # Invalid JSON format - return parse error
-                    return JSONResponse(
-                        content={
-                            "error": {
-                                "code": -32700,
-                                "message": f"Parse error: {str(e)}",
-                            }
-                        },
-                        status_code=400,
-                        media_type="application/json",
-                    )
+                # Parse request body using MessageDecoder for proper typing
+                body_bytes = await request.body()
 
                 # Use MessageDecoder for proper message parsing and result typing
                 message, pending = self.message_decoder.decode(body_bytes)
                 return await self._handle_message(message, pending)
 
-            except msgspec.DecodeError as e:
-                # Invalid JSON format - return plain error since no request ID
-                return JSONResponse(
-                    content={
-                        "error": {"code": -32700, "message": f"Parse error: {str(e)}"}
-                    },
-                    status_code=400,
-                    media_type="application/json",
-                )
             except StepflowProtocolError as e:
-                # MessageDecoder protocol error - return plain error since no request ID
-                return JSONResponse(
-                    content={"error": {"code": -32600, "message": str(e)}},
+                # MessageDecoder protocol error - no request ID available
+                return self._create_error_response(
+                    request_id=None,
                     status_code=400,
-                    media_type="application/json",
+                    error_code=-32600,
+                    error_message=str(e),
                 )
             except Exception as e:
-                # Internal server error - return plain error since no request ID
-                return JSONResponse(
-                    content={
-                        "error": {
-                            "code": -32603,
-                            "message": f"Internal error: {str(e)}",
-                        }
-                    },
+                # Internal server error - no request ID available
+                return self._create_error_response(
+                    request_id=None,
                     status_code=500,
-                    media_type="application/json",
+                    error_code=-32603,
+                    error_message=f"Internal error: {str(e)}",
                 )
 
     async def _handle_message(
@@ -220,9 +247,16 @@ class StepflowStreamableHttpServer:
 
             if needs_context:
                 # Create context for bidirectional communication, use streaming
-                context = StepflowStreamingContext(self.message_decoder)
+                outgoing_queue: asyncio.Queue[MethodRequest] = asyncio.Queue()
+                context = StepflowContext(
+                    outgoing_queue=outgoing_queue,
+                    message_decoder=self.message_decoder,
+                    session_id=None,
+                )
                 return StreamingResponse(
-                    self._execute_with_streaming_context(request, context),
+                    self._execute_with_streaming_context(
+                        request, context, outgoing_queue
+                    ),
                     media_type="text/event-stream",
                 )
             else:
@@ -236,35 +270,27 @@ class StepflowStreamableHttpServer:
 
         except StepflowError as e:
             # Handle known StepFlow errors
-            error_response = MethodError(
-                jsonrpc="2.0",
-                id=request.id,
-                error=Error(code=e.code.value, message=e.message, data=e.data),
-            )
-            return JSONResponse(
-                content=msgspec.to_builtins(error_response),
+            return self._create_error_response(
+                request_id=request.id,
                 status_code=400,
-                media_type="application/json",
+                error_code=e.code.value,
+                error_message=e.message,
+                data=e.data,
             )
         except Exception as e:
             # Handle unexpected errors
-            error_response = MethodError(
-                jsonrpc="2.0",
-                id=request.id,
-                error=Error(
-                    code=-32603,  # Internal error
-                    message=f"Internal error: {str(e)}",
-                    data=None,
-                ),
-            )
-            return JSONResponse(
-                content=msgspec.to_builtins(error_response),
+            return self._create_error_response(
+                request_id=request.id,
                 status_code=500,
-                media_type="application/json",
+                error_code=-32603,
+                error_message=f"Internal error: {str(e)}",
             )
 
     async def _execute_with_streaming_context(
-        self, request: MethodRequest, context: StepflowContext
+        self,
+        request: MethodRequest,
+        context: StepflowContext,
+        outgoing_queue: asyncio.Queue[MethodRequest],
     ) -> AsyncGenerator[str]:
         """Execute request with streaming context via SSE.
 
@@ -272,29 +298,33 @@ class StepflowStreamableHttpServer:
         concurrently to avoid deadlock scenarios where components need to make
         bidirectional requests (like put_blob) before completing.
         """
+
+        async def execute_and_shutdown_queue():
+            try:
+                return await self.server.handle_message(request, context)
+            finally:
+                # Close the outgoing queue to signal no more events.
+                outgoing_queue.shutdown()
+
+        # Start component execution as a background task
+        execution_task = asyncio.create_task(execute_and_shutdown_queue())
+
         try:
-            # Start component execution as a background task
-            execution_task = asyncio.create_task(
-                self.server.handle_message(request, context)
-            )
+            # Continuously process bidirectional messages while component runs.
+            # It will close the stream when it is done.
+            try:
+                while True:
+                    message = await outgoing_queue.get()
+                    sse_data = msgspec.json.encode(message).decode("utf-8")
+                    yield f"data: {sse_data}\n\n"
+            except asyncio.QueueShutDown:
+                # This means we're done processing events.
+                pass
 
-            # Continuously process bidirectional messages while component runs
-            while not execution_task.done():
-                # Yield any pending bidirectional messages
-                if isinstance(context, StepflowStreamingContext):
-                    async for sse_event in context.get_pending_messages():
-                        yield sse_event
-
-                # Brief pause to avoid busy waiting
-                await asyncio.sleep(0.01)
-
-            # Component execution completed - get the result
+            # At this point, the queue should be closed, which means the task should be
+            # complete. Get the result.
+            assert execution_task.done()
             result = await execution_task
-
-            # Yield any final pending bidirectional messages
-            if isinstance(context, StepflowStreamingContext):
-                async for sse_event in context.get_pending_messages():
-                    yield sse_event
 
             # Yield final response
             sse_data = msgspec.json.encode(result).decode("utf-8")
@@ -302,31 +332,15 @@ class StepflowStreamableHttpServer:
 
         except Exception as e:
             # If we have an execution task, make sure it's cancelled
-            if "execution_task" in locals() and not execution_task.done():
+            if not execution_task.done():
                 execution_task.cancel()
-                try:
-                    await execution_task
-                except asyncio.CancelledError:
-                    pass
-
-            # Yield any pending messages first
-            if isinstance(context, StepflowStreamingContext):
-                async for sse_event in context.get_pending_messages():
-                    yield sse_event
 
             # Yield error response
-            error_response = MethodError(
-                jsonrpc="2.0",
-                id=request.id,
-                error=Error(
-                    code=-32603,
-                    message=f"Request execution failed: {str(e)}",
-                    data=None,
-                ),
+            yield self._create_sse_error_event(
+                request_id=request.id,
+                error_code=-32603,
+                error_message=f"Request execution failed: {str(e)}",
             )
-
-            sse_data = msgspec.json.encode(error_response).decode("utf-8")
-            yield f"data: {sse_data}\n\n"
 
     async def run(self):
         """Start the HTTP server."""
@@ -344,43 +358,3 @@ class StepflowStreamableHttpServer:
         )
         server = uvicorn.Server(config)
         await server.serve()
-
-
-class StepflowStreamingContext(StepflowContext):
-    """Context for components executed with streaming support.
-
-    This context enables bidirectional communication by queuing
-    JSON-RPC requests that will be sent via the SSE stream.
-    Inherits from StepflowContext to reuse all request/response logic.
-    """
-
-    def __init__(self, message_decoder: MessageDecoder[asyncio.Future[Any]]):
-        # Create standard asyncio queue for outgoing messages
-        self._outgoing_queue = asyncio.Queue()
-
-        # Initialize the base context with the shared message decoder
-        super().__init__(
-            outgoing_queue=self._outgoing_queue,
-            message_decoder=message_decoder,
-            session_id=None,
-        )
-
-    async def get_pending_messages(self) -> AsyncGenerator[str]:
-        """Yield pending messages from the queue as SSE events."""
-        # Drain all messages currently in the queue
-        messages = []
-        while not self._outgoing_queue.empty():
-            try:
-                message = self._outgoing_queue.get_nowait()
-                messages.append(message)
-            except asyncio.QueueEmpty:
-                break
-
-        # Stream all messages as SSE events
-        for message in messages:
-            sse_data = msgspec.json.encode(message).decode("utf-8")
-            yield f"data: {sse_data}\n\n"
-
-
-# For backward compatibility, alias the new class
-StepflowHttpServer = StepflowStreamableHttpServer
