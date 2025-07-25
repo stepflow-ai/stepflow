@@ -22,12 +22,13 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use futures::stream::StreamExt as _;
-use serde_json::Value as JsonValue;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
 use crate::error::{Result, TransportError};
-use crate::{Message, MessageHandlerRegistry, OwnedJson, RequestId};
+use crate::protocol::{Method, MethodRequest, ProtocolMethod, ProtocolNotification};
+use crate::{LazyValue, Message, MessageHandlerRegistry, OwnedJson, RequestId};
+use serde::de::DeserializeOwned;
 
 /// HTTP client that communicates with a remote component server using streamable HTTP
 pub struct HttpClient {
@@ -74,42 +75,96 @@ pub struct HttpClientHandle {
 }
 
 impl HttpClientHandle {
-    pub fn client(&self) -> &reqwest::Client {
-        &self.client
-    }
-
     pub fn url(&self) -> &str {
         &self.url
     }
 
-    /// Send a JSON-RPC request and wait for a response
-    /// Handles both direct JSON responses and SSE streams automatically
-    pub async fn send_request(&self, message: &str) -> Result<OwnedJson> {
-        // Parse the request to extract the ID for response tracking
-        let request_value: JsonValue = serde_json::from_str(message)
-            .change_context(TransportError::Send)
-            .attach_printable("Failed to parse JSON-RPC request")?;
+    /// Send a typed method request and return the typed response
+    /// This follows the same pattern as StdioClientHandle
+    pub async fn method<I>(&self, params: &I) -> Result<I::Response>
+    where
+        I: ProtocolMethod + serde::Serialize + Send + Sync + std::fmt::Debug,
+        I::Response: DeserializeOwned + Send + Sync + 'static,
+    {
+        let response = self
+            .method_dyn(I::METHOD_NAME, LazyValue::write_ref(params))
+            .await?;
 
-        let request_id = if let Some(id_value) = request_value.get("id") {
-            if let Some(s) = id_value.as_str() {
-                RequestId::from(s.to_string())
-            } else if let Some(i) = id_value.as_i64() {
-                RequestId::from(i)
-            } else {
-                return Err(TransportError::Send)
-                    .attach_printable("JSON-RPC request 'id' field must be string or integer");
-            }
-        } else {
-            return Err(TransportError::Send)
-                .attach_printable("JSON-RPC request missing 'id' field");
+        response
+            .value()
+            .deserialize_to()
+            .change_context(TransportError::InvalidResponse(I::METHOD_NAME))
+    }
+
+    async fn method_dyn(
+        &self,
+        method: Method,
+        params: LazyValue<'_>,
+    ) -> Result<OwnedJson<LazyValue<'static>>> {
+        let id = RequestId::new_uuid();
+        let request = MethodRequest {
+            jsonrpc: Default::default(),
+            id: id.clone(),
+            method,
+            params: Some(params),
         };
 
+        let request_str = serde_json::to_string(&request)
+            .change_context(TransportError::SerializeRequest(method))?;
+
+        let response = self
+            .send_method_request(id.clone(), request_str)
+            .await?
+            .owned_response()?;
+
+        // This is an assertion since the routing should only send the response for the
+        // registered ID to the pending one-shot channel.
+        debug_assert_eq!(response.response().id(), &id);
+        response.into_success_value()
+    }
+
+    /// Send a typed notification (fire-and-forget)
+    pub async fn notify<I>(&self, params: &I) -> Result<()>
+    where
+        I: ProtocolNotification + serde::Serialize + Send + Sync + std::fmt::Debug,
+    {
+        let notification =
+            crate::protocol::Notification::new(I::METHOD_NAME, Some(LazyValue::write_ref(params)));
+
+        let notification_str = serde_json::to_string(&notification)
+            .change_context(TransportError::Send)
+            .attach_printable_lazy(|| {
+                format!("Failed to serialize {} notification", I::METHOD_NAME)
+            })?;
+
+        // For notifications, we send the request but don't wait for a response
+        let response = self
+            .client
+            .post(&self.url)
+            .headers(self.request_headers.clone())
+            .body(notification_str)
+            .send()
+            .await
+            .change_context(TransportError::Send)?
+            .error_for_status()
+            .change_context(TransportError::Send)?;
+
+        error_stack::ensure!(
+            response.status() == reqwest::StatusCode::ACCEPTED,
+            TransportError::Send
+        );
+        Ok(())
+    }
+
+    /// Send a JSON-RPC request and wait for a response
+    /// Handles both direct JSON responses and SSE streams automatically
+    async fn send_method_request(&self, id: RequestId, message: String) -> Result<OwnedJson> {
         // Send the HTTP POST request using pre-built headers
         let response = self
             .client
             .post(&self.url)
             .headers(self.request_headers.clone())
-            .body(message.to_string())
+            .body(message)
             .send()
             .await
             .change_context(TransportError::Send)
@@ -139,10 +194,10 @@ impl HttpClientHandle {
 
         if content_type.contains("text/event-stream") {
             // Handle SSE streaming response - this means we need bidirectional communication
-            tracing::debug!("Received SSE streaming response for request {}", request_id);
+            tracing::debug!("Received SSE streaming response for request {}", id);
 
             // Process the SSE stream and handle bidirectional communication
-            self.handle_sse_stream(response, request_id).await
+            self.handle_sse_stream(id, response).await
         } else {
             // Handle direct JSON response
             let response_text = response
@@ -164,8 +219,8 @@ impl HttpClientHandle {
     /// Handle SSE stream and bidirectional communication
     async fn handle_sse_stream(
         &self,
+        id: RequestId,
         response: reqwest::Response,
-        expected_response_id: RequestId,
     ) -> Result<OwnedJson> {
         // Get the response text as a stream
         let mut stream = response.bytes_stream();
@@ -203,23 +258,21 @@ impl HttpClientHandle {
                     match owned_json.message() {
                         Message::Request(request) => {
                             // Handle bidirectional request from server
-                            tracing::info!(
-                                "Received bidirectional request for method '{}' with id {}",
-                                request.method,
-                                request.id
-                            );
-
-                            if let Err(e) = self.handle_bidirectional_request(owned_json).await {
+                            if let Err(e) = self
+                                .handle_incoming_request(
+                                    request.method,
+                                    request.id.clone(),
+                                    owned_json,
+                                )
+                                .await
+                            {
                                 tracing::error!("Failed to handle bidirectional request: {:?}", e);
                             }
                         }
                         Message::Response(response) => {
                             // Check if this is the final response we're waiting for
-                            if response.id() == &expected_response_id {
-                                tracing::info!(
-                                    "Received final response for request {}",
-                                    expected_response_id
-                                );
+                            if response.id() == &id {
+                                tracing::info!("Received final response for request {}", id);
                                 final_response = Some(owned_json);
                                 break; // We got our response, exit the loop
                             } else {
@@ -264,45 +317,30 @@ impl HttpClientHandle {
     }
 
     /// Handle a bidirectional request from the server during SSE streaming
-    async fn handle_bidirectional_request(&self, request_json: OwnedJson) -> Result<()> {
-        // Extract the request data before moving into the async block
-        let (request_method, request_id) = match request_json.message() {
-            Message::Request(request) => (request.method, request.id.clone()),
-            _ => {
-                return Err(
-                    error_stack::Report::new(TransportError::Recv).attach_printable(
-                        "Expected a request message for bidirectional communication",
-                    ),
-                );
-            }
-        };
+    async fn handle_incoming_request(
+        &self,
+        incoming_method: Method,
+        incoming_id: RequestId,
+        owned_message: OwnedJson<Message<'static>>,
+    ) -> Result<()> {
+        tracing::info!(
+            "Received bidirectional request for method '{}' with id {}",
+            incoming_method,
+            incoming_id
+        );
 
-        let Some(handler) = MessageHandlerRegistry::instance().get_method_handler(request_method)
+        let Some(handler) = MessageHandlerRegistry::instance().get_method_handler(incoming_method)
         else {
             tracing::warn!(
                 "No handler found for bidirectional method '{}'",
-                request_method
+                incoming_method
             );
-
-            // Send error response back to server
-            let error_response = serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": -32601,
-                    "message": format!("Method not found: {}", request_method)
-                }
-            });
-
-            if let Err(e) = self
-                .send_response_to_server(&error_response.to_string())
-                .await
-            {
-                tracing::error!(
-                    "Failed to send error response for bidirectional request: {:?}",
-                    e
-                );
-            }
+            self.send_error_response(
+                &incoming_id,
+                -32601,
+                &format!("Method not found: {incoming_method}"),
+            )
+            .await;
             return Ok(());
         };
 
@@ -313,8 +351,8 @@ impl HttpClientHandle {
         let future = async move {
             let (outgoing_tx, mut outgoing_rx) = mpsc::channel(100);
 
-            // Extract the request again in the async block
-            let request = match request_json.message() {
+            // Re-extract the request in the async block to avoid lifetime issues
+            let request = match owned_message.message() {
                 Message::Request(req) => req,
                 _ => {
                     tracing::error!("Invalid message type in bidirectional request handler");
@@ -333,30 +371,18 @@ impl HttpClientHandle {
                     e
                 );
 
-                // Send error response back to server
-                let error_response = serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": request.id,
-                    "error": {
-                        "code": -32601,
-                        "message": format!("Failed to handle method {}: {:?}", request.method, e)
-                    }
-                });
-
-                if let Err(e) = client_handle
-                    .send_response_to_server(&error_response.to_string())
-                    .await
-                {
-                    tracing::error!(
-                        "Failed to send error response for bidirectional request: {:?}",
-                        e
-                    );
-                }
+                client_handle
+                    .send_error_response(
+                        &request.id,
+                        -32601,
+                        &format!("Failed to handle method {}: {:?}", request.method, e),
+                    )
+                    .await;
                 return;
             };
 
             // Process any outgoing messages that were generated
-            // These are additional requests from the handler (like blob operations)
+            // These are additional requests and the actual response.
             while let Ok(outgoing_message) = outgoing_rx.try_recv() {
                 if let Err(e) = client_handle
                     .send_response_to_server(&outgoing_message)
@@ -369,6 +395,28 @@ impl HttpClientHandle {
 
         tokio::spawn(future);
         Ok(())
+    }
+
+    /// Helper method to send JSON-RPC error responses back to server
+    async fn send_error_response(&self, request_id: &RequestId, code: i32, message: &str) {
+        let error_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {
+                "code": code,
+                "message": message
+            }
+        });
+
+        if let Err(e) = self
+            .send_response_to_server(&error_response.to_string())
+            .await
+        {
+            tracing::error!(
+                "Failed to send error response for bidirectional request: {:?}",
+                e
+            );
+        }
     }
 
     /// Send a response back to the server (used for bidirectional communication and notifications)

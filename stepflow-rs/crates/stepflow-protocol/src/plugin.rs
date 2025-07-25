@@ -36,7 +36,6 @@ use crate::stdio::{
     launcher::Launcher,
 };
 use serde::de::DeserializeOwned;
-use uuid::Uuid;
 
 #[derive(Clone)]
 enum StepflowClientHandle {
@@ -55,48 +54,10 @@ impl StepflowClientHandle {
                 .method(params)
                 .await
                 .change_context(PluginError::Execution),
-            StepflowClientHandle::Http(client) => {
-                // Streamable HTTP client implementation
-                let method = I::METHOD_NAME;
-                let params_json =
-                    serde_json::to_string(params).change_context(PluginError::Execution)?;
-                let id = Uuid::new_v4().to_string();
-
-                // Create JSON-RPC request
-                let method_str = method.to_string();
-                let request = serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": method_str,
-                    "params": serde_json::from_str::<serde_json::Value>(&params_json).change_context(PluginError::Execution)?,
-                    "id": id
-                });
-
-                let request_str =
-                    serde_json::to_string(&request).change_context(PluginError::Execution)?;
-
-                // Send request and get response via streamable HTTP
-                let response_json = client
-                    .send_request(&request_str)
-                    .await
-                    .change_context(PluginError::Execution)?;
-
-                // Parse the OwnedJson response
-                let response_value: serde_json::Value = serde_json::from_str(response_json.json())
-                    .change_context(PluginError::Execution)?;
-
-                // Check for JSON-RPC error
-                if let Some(error) = response_value.get("error") {
-                    tracing::error!("JSON-RPC error response: {:?}", error);
-                    return Err(PluginError::Execution.into());
-                }
-
-                // Extract result
-                if let Some(result) = response_value.get("result") {
-                    serde_json::from_value(result.clone()).change_context(PluginError::Execution)
-                } else {
-                    Err(PluginError::Execution.into())
-                }
-            }
+            StepflowClientHandle::Http(client) => client
+                .method(params)
+                .await
+                .change_context(PluginError::Execution),
         }
     }
 
@@ -109,30 +70,10 @@ impl StepflowClientHandle {
                 .notify(params)
                 .await
                 .change_context(PluginError::Execution),
-            StepflowClientHandle::Http(client) => {
-                // Streamable HTTP notifications using JSON-RPC notification format
-                let method = I::METHOD_NAME;
-                let params_json =
-                    serde_json::to_string(params).change_context(PluginError::Execution)?;
-
-                // Create JSON-RPC notification (no id field)
-                let notification = serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": method,
-                    "params": serde_json::from_str::<serde_json::Value>(&params_json).change_context(PluginError::Execution)?
-                });
-
-                let notification_str =
-                    serde_json::to_string(&notification).change_context(PluginError::Execution)?;
-
-                // Send the notification via streamable HTTP (should return 202 Accepted)
-                client
-                    .send_response_to_server(&notification_str)
-                    .await
-                    .change_context(PluginError::Execution)?;
-
-                Ok(())
-            }
+            StepflowClientHandle::Http(client) => client
+                .notify(params)
+                .await
+                .change_context(PluginError::Execution),
         }
     }
 }
