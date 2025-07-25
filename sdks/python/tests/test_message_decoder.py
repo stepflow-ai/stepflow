@@ -97,13 +97,9 @@ class TestMessageDecoder:
         message_bytes = json.dumps(message_json).encode()
 
         decoder: MessageDecoder[None] = MessageDecoder()
-        message, context = decoder.decode(message_bytes)
-
-        assert isinstance(message, MethodSuccess)
-        assert message.id == "unknown-123"
-        assert isinstance(message.result, InitializeResult)  # Fallback type detection
-        assert message.result.server_protocol_version == 1
-        assert context is None
+        # Should now raise an error for unsolicited responses
+        with pytest.raises(StepflowProtocolError, match="no pending request"):
+            decoder.decode(message_bytes)
 
     def test_register_request_for_method(self):
         """Test automatic result type registration based on method."""
@@ -222,7 +218,7 @@ class TestMessageDecoderErrors:
 
         decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(
-            StepflowProtocolError, match="Invalid message: no id or method"
+            StepflowProtocolError, match="Notification missing 'method' field"
         ):
             decoder.decode(empty_message)
 
@@ -252,12 +248,12 @@ class TestMessageDecoderErrors:
 
         decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(
-            StepflowProtocolError, match="Method request missing params field"
+            StepflowProtocolError, match="Method request missing 'params' field"
         ):
             decoder.decode(message_bytes)
 
     def test_decode_missing_result(self):
-        """Test decoding success response without result field."""
+        """Test decoding response without result or error field."""
         message_json = {
             "jsonrpc": "2.0",
             "id": "test",
@@ -267,7 +263,8 @@ class TestMessageDecoderErrors:
 
         decoder: MessageDecoder[None] = MessageDecoder()
         with pytest.raises(
-            StepflowProtocolError, match="Method success response missing result field"
+            StepflowProtocolError,
+            match="Invalid message: must have either 'id' or 'method'",
         ):
             decoder.decode(message_bytes)
 
@@ -282,8 +279,8 @@ class TestMessageDecoderErrors:
         message_bytes = json.dumps(message_json).encode()
 
         decoder: MessageDecoder[None] = MessageDecoder()
-        message, context = decoder.decode(message_bytes)
-
-        # Should be treated as error response since error field is present
-        assert isinstance(message, MethodError)
-        assert message.error.code == -32603
+        # Should now raise an error for invalid message structure
+        with pytest.raises(
+            StepflowProtocolError, match="cannot have both 'result' and 'error' fields"
+        ):
+            decoder.decode(message_bytes)

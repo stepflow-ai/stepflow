@@ -178,7 +178,7 @@ class TestProtocolHandling:
     def test_method_response_handling(self, client):
         """Test handling method responses without pending request."""
         # Create a method response without a corresponding pending request
-        # This is an invalid scenario that should cause a server error
+        # This is an invalid scenario that should cause a protocol error
         response_msg = MethodSuccess(
             jsonrpc="2.0",
             id="test-response-123",
@@ -189,13 +189,16 @@ class TestProtocolHandling:
             "/", json=msgspec.to_builtins(response_msg), headers=POST_HEADERS
         )
 
-        # Should return 500 because assertions fail for unsolicited responses
-        assert response.status_code == 500
+        # Should return 400 because MessageDecoder validates pending requests
+        assert response.status_code == 400
+        error_data = response.json()
+        assert error_data["error"]["code"] == -32600  # Invalid Request
+        assert "no pending request" in error_data["error"]["message"]
 
     def test_method_error_handling(self, client):
         """Test handling method error responses without pending request."""
         # Create a method error without a corresponding pending request
-        # This is an invalid scenario that should cause a server error
+        # This is an invalid scenario that should cause a protocol error
         error_msg = MethodError(
             jsonrpc="2.0",
             id="test-error-456",
@@ -208,8 +211,11 @@ class TestProtocolHandling:
             headers=POST_HEADERS,
         )
 
-        # Should return 500 because assertions fail for unsolicited responses
-        assert response.status_code == 500
+        # Should return 400 because MessageDecoder validates pending requests
+        assert response.status_code == 400
+        error_data = response.json()
+        assert error_data["error"]["code"] == -32600  # Invalid Request
+        assert "no pending request" in error_data["error"]["message"]
 
 
 class TestComponentOperations:
