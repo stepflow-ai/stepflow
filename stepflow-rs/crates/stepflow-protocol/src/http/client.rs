@@ -219,91 +219,94 @@ impl HttpClientHandle {
     /// Handle SSE stream and bidirectional communication
     async fn handle_sse_stream(
         &self,
-        id: RequestId,
+        expected_id: RequestId,
         response: reqwest::Response,
     ) -> Result<OwnedJson> {
-        // Get the response text as a stream
-        let mut stream = response.bytes_stream();
+        let messages = self.sse_messages(response);
+        tokio::pin!(messages);
+
+        while let Some(owned_json) = messages.next().await {
+            match owned_json.message() {
+                Message::Request(request) => {
+                    // Handle bidirectional request from server in background
+                    if let Err(e) = self
+                        .handle_incoming_request(request.method, request.id.clone(), owned_json)
+                        .await
+                    {
+                        tracing::error!("Failed to handle bidirectional request: {:?}", e);
+                    }
+                }
+                Message::Response(response) => {
+                    // Check if this is the final response we were waiting for
+                    if response.id() == &expected_id {
+                        tracing::info!("Received final response for request {}", expected_id);
+                        return Ok(owned_json);
+                    } else {
+                        tracing::debug!(
+                            "Received response for unexpected request: {}",
+                            response.id()
+                        );
+                    }
+                }
+                Message::Notification(notification) => {
+                    tracing::debug!("Received notification for method '{}'", notification.method);
+                    // Notifications are fire-and-forget, no response needed
+                }
+            }
+        }
+
+        Err(error_stack::Report::new(TransportError::Recv)
+            .attach_printable("SSE stream ended without receiving final response"))
+    }
+
+    /// Create a clean async stream of parsed SSE messages using async_stream
+    fn sse_messages(
+        &self,
+        response: reqwest::Response,
+    ) -> impl futures::Stream<Item = OwnedJson> + '_ {
+        let mut byte_stream = response.bytes_stream();
         let mut buffer = String::new();
-        let mut final_response: Option<OwnedJson> = None;
 
-        // Process SSE stream chunks
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .change_context(TransportError::Recv)
-                .attach_printable("Failed to read chunk from SSE stream")?;
+        async_stream::stream! {
+            while let Some(chunk_result) = byte_stream.next().await {
+                // Handle chunk errors
+                let chunk = match chunk_result {
+                    Ok(chunk) => chunk,
+                    Err(e) => {
+                        tracing::error!("Failed to read chunk from SSE stream: {}", e);
+                        continue;
+                    }
+                };
 
-            let chunk_str = std::str::from_utf8(&chunk)
-                .change_context(TransportError::Recv)
-                .attach_printable("Invalid UTF-8 in SSE stream")?;
+                // Convert to string
+                let chunk_str = match std::str::from_utf8(&chunk) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!("Invalid UTF-8 in SSE stream: {}", e);
+                        continue;
+                    }
+                };
 
-            buffer.push_str(chunk_str);
+                buffer.push_str(chunk_str);
 
-            // Process complete SSE messages
-            while let Some(message_end) = buffer.find("\n\n") {
-                let message = buffer[..message_end].to_string();
-                buffer = buffer[message_end + 2..].to_string();
+                // Extract complete SSE messages (delimited by \n\n)
+                while let Some(message_end) = buffer.find("\n\n") {
+                    let raw_message = buffer[..message_end].to_string();
+                    buffer = buffer[message_end + 2..].to_string();
 
-                // Parse SSE message
-                if let Some(data) = self.parse_sse_message(&message) {
-                    // Parse the JSON-RPC message
-                    let owned_json = match OwnedJson::try_new(data) {
-                        Ok(json) => json,
-                        Err(e) => {
-                            tracing::error!("Failed to parse SSE message as JSON: {:?}", e);
-                            continue;
-                        }
-                    };
-
-                    match owned_json.message() {
-                        Message::Request(request) => {
-                            // Handle bidirectional request from server
-                            if let Err(e) = self
-                                .handle_incoming_request(
-                                    request.method,
-                                    request.id.clone(),
-                                    owned_json,
-                                )
-                                .await
-                            {
-                                tracing::error!("Failed to handle bidirectional request: {:?}", e);
+                    // Parse SSE message format and extract JSON data
+                    if let Some(json_data) = self.parse_sse_message(&raw_message) {
+                        match OwnedJson::try_new(json_data) {
+                            Ok(message) => yield message,
+                            Err(e) => {
+                                tracing::error!("Failed to parse SSE message as JSON: {:?}", e);
+                                continue;
                             }
-                        }
-                        Message::Response(response) => {
-                            // Check if this is the final response we're waiting for
-                            if response.id() == &id {
-                                tracing::info!("Received final response for request {}", id);
-                                final_response = Some(owned_json);
-                                break; // We got our response, exit the loop
-                            } else {
-                                tracing::debug!(
-                                    "Received response for different request: {}",
-                                    response.id()
-                                );
-                            }
-                        }
-                        Message::Notification(notification) => {
-                            tracing::debug!(
-                                "Received notification for method '{}'",
-                                notification.method
-                            );
-                            // Notifications are fire-and-forget, no response needed
                         }
                     }
                 }
             }
-
-            // If we got our final response, break out of the stream processing
-            if final_response.is_some() {
-                break;
-            }
         }
-
-        // Return the final response
-        final_response.ok_or_else(|| {
-            error_stack::Report::new(TransportError::Recv)
-                .attach_printable("SSE stream ended without receiving final response")
-        })
     }
 
     /// Parse an SSE message to extract the data field
@@ -381,9 +384,11 @@ impl HttpClientHandle {
                 return;
             };
 
-            // Process any outgoing messages that were generated
-            // These are additional requests and the actual response.
-            while let Ok(outgoing_message) = outgoing_rx.try_recv() {
+            assert!(
+                outgoing_rx.is_closed(),
+                "Once processing is done, outgoing channel should be closed"
+            );
+            while let Some(outgoing_message) = outgoing_rx.recv().await {
                 if let Err(e) = client_handle
                     .send_response_to_server(&outgoing_message)
                     .await
