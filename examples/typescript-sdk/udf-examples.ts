@@ -12,7 +12,7 @@
  * - Different input/output schemas
  */
 
-import { StepflowStdioServer, udf, udfSchema, StepflowContext } from '../src';
+import { StepflowStdioServer, udf, udfSchema, StepflowContext } from '../../sdks/typescript/src/index.js';
 import crypto from 'crypto';
 
 console.log('🔧 User-Defined Function (UDF) Examples\n');

@@ -13,7 +13,7 @@
  * - Flow analysis and introspection
  */
 
-import { createFlow, Value, input, OnError, StepReference, WorkflowInput } from '../src';
+import { createFlow, Value, input, OnError, StepReference, WorkflowInput } from '../../sdks/typescript/src/index.js';
 
 console.log('🏗️  Flow Builder Comprehensive Example\n');
 
@@ -331,7 +331,7 @@ console.log('\n🔄 Flow Loading and Analysis:');
 console.log('=============================');
 
 // Load workflow for analysis
-import { FlowBuilder } from '../src';
+import { FlowBuilder } from '../../sdks/typescript/src';
 const loadedBuilder = FlowBuilder.load(workflow);
 
 console.log(`Loaded workflow: ${loadedBuilder.getName()}`);

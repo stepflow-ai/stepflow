@@ -15,7 +15,7 @@
  *      -d '{"jsonrpc":"2.0","id":1,"method":"components/list","params":{}}'
  */
 
-import { runCLI } from '../src/cli';
+import { runCLI } from '../../sdks/typescript/src/cli.js';
 
 // Override process.argv to enable HTTP mode
 process.argv = ['node', 'http-server-demo.ts', '--http', '--port', '8080'];

@@ -1,0 +1,453 @@
+{
+  "name": "user-data-pipeline",
+  "description": "A comprehensive pipeline for processing user data with validation, transformation, and storage",
+  "version": "1.0.0",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "userId": {
+        "type": "string",
+        "description": "Unique user identifier"
+      },
+      "config": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Database connection string"
+          },
+          "retries": {
+            "type": "number",
+            "default": 3,
+            "description": "Number of retry attempts"
+          },
+          "enableValidation": {
+            "type": "boolean",
+            "default": true
+          },
+          "outputFormat": {
+            "type": "string",
+            "enum": [
+              "json",
+              "xml",
+              "yaml"
+            ],
+            "default": "json"
+          }
+        },
+        "required": [
+          "database"
+        ]
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "required": [
+      "userId",
+      "config"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "object"
+          },
+          "preferences": {
+            "type": "object"
+          }
+        }
+      },
+      "processed": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object"
+          },
+          "transformations": {
+            "type": "array"
+          },
+          "validationResults": {
+            "type": "object"
+          }
+        }
+      },
+      "storage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          }
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "processingTime": {
+            "type": "number"
+          },
+          "steps": {
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "fetch_user",
+      "component": "/api/users/get",
+      "input": {
+        "id": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "$.userId"
+        },
+        "connection": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "$.config.database"
+        },
+        "requestId": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "$.metadata.requestId"
+        },
+        "include": {
+          "$literal": [
+            "profile",
+            "preferences",
+            "settings"
+          ]
+        }
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "connection": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "on_error": {
+        "type": "retry",
+        "maxAttempts": 3
+      }
+    },
+    {
+      "id": "validate_user",
+      "component": "/validation/user",
+      "input": {
+        "user": {
+          "$from": {
+            "step": "fetch_user"
+          }
+        },
+        "validationRules": {
+          "$literal": {
+            "required": [
+              "id",
+              "email",
+              "profile"
+            ],
+            "email": {
+              "format": "email"
+            },
+            "profile": {
+              "required": [
+                "name"
+              ]
+            }
+          }
+        }
+      },
+      "skip_if": {
+        "$from": {
+          "step": "fetch_user"
+        },
+        "path": "$.error"
+      },
+      "on_error": {
+        "type": "fail"
+      }
+    },
+    {
+      "id": "transform_user",
+      "component": "/python/transform_user",
+      "input": {
+        "user": {
+          "$from": {
+            "step": "fetch_user"
+          },
+          "path": "$.data"
+        },
+        "profile": {
+          "$from": {
+            "step": "fetch_user"
+          },
+          "path": "$.data.profile"
+        },
+        "preferences": {
+          "$from": {
+            "step": "fetch_user"
+          },
+          "path": "$[\"preferences\"]"
+        },
+        "outputFormat": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "$.config.outputFormat"
+        },
+        "transformations": {
+          "$literal": [
+            {
+              "type": "normalize",
+              "fields": [
+                "email",
+                "phone"
+              ]
+            },
+            {
+              "type": "enrich",
+              "source": "external_api"
+            },
+            {
+              "type": "format",
+              "style": "camelCase"
+            }
+          ]
+        }
+      },
+      "skip_if": {
+        "$from": {
+          "step": "validate_user"
+        },
+        "path": "$.shouldSkip"
+      },
+      "on_error": {
+        "type": "default",
+        "value": {
+          "user": {
+            "stepId": "fetch_user",
+            "path": {
+              "fragments": [
+                "$"
+              ]
+            }
+          },
+          "transformations": [],
+          "status": "transformation_failed"
+        }
+      }
+    },
+    {
+      "id": "store_data",
+      "component": "/storage/persist",
+      "input": {
+        "data": {
+          "$from": {
+            "step": "transform_user"
+          }
+        },
+        "userId": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "$.userId"
+        },
+        "connection": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "$.config.database"
+        },
+        "metadata": {
+          "requestId": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "$.metadata.requestId"
+          },
+          "timestamp": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "$.metadata.timestamp"
+          },
+          "source": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "$.metadata.source"
+          },
+          "processedBy": {
+            "$literal": "user-data-pipeline"
+          }
+        }
+      },
+      "on_error": {
+        "type": "skip"
+      }
+    },
+    {
+      "id": "generate_report",
+      "component": "/reporting/summary",
+      "input": {
+        "user": {
+          "$from": {
+            "step": "transform_user"
+          },
+          "path": "$[\"user\"]"
+        },
+        "storage": {
+          "$from": {
+            "step": "store_data"
+          }
+        },
+        "validation": {
+          "$from": {
+            "step": "validate_user"
+          },
+          "path": "$.results"
+        },
+        "config": {
+          "format": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "$.config.outputFormat"
+          },
+          "includeMetadata": {
+            "$literal": true
+          },
+          "sections": {
+            "$literal": [
+              "user",
+              "processing",
+              "storage"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "output": {
+    "user": {
+      "id": {
+        "$from": {
+          "workflow": "input"
+        },
+        "path": "$.userId"
+      },
+      "profile": {
+        "$from": {
+          "step": "fetch_user"
+        },
+        "path": "$.data.profile"
+      },
+      "preferences": {
+        "$from": {
+          "step": "fetch_user"
+        },
+        "path": "$[\"preferences\"]"
+      }
+    },
+    "processed": {
+      "data": {
+        "$from": {
+          "step": "transform_user"
+        },
+        "path": "$[\"user\"]"
+      },
+      "transformations": {
+        "$from": {
+          "step": "transform_user"
+        },
+        "path": "$.applied_transformations"
+      },
+      "validationResults": {
+        "$from": {
+          "step": "validate_user"
+        }
+      }
+    },
+    "storage": {
+      "id": "store_data",
+      "location": {
+        "$from": {
+          "step": "store_data"
+        },
+        "path": "$[\"location\"]"
+      },
+      "format": {
+        "$from": {
+          "workflow": "input"
+        },
+        "path": "$.config.outputFormat"
+      }
+    },
+    "metadata": {
+      "processingTime": {
+        "$from": {
+          "step": "generate_report"
+        },
+        "path": "$[\"processingTime\"]"
+      },
+      "steps": {
+        "$literal": [
+          "fetch",
+          "validate",
+          "transform",
+          "store",
+          "report"
+        ]
+      },
+      "status": {
+        "$literal": "completed"
+      }
+    }
+  }
+}

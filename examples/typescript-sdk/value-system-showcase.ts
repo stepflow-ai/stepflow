@@ -13,7 +13,7 @@
  * - Protocol format generation
  */
 
-import { Value, input, StepReference, WorkflowInput, JsonPath } from '../src';
+import { Value, input, StepReference, WorkflowInput, JsonPath } from '../../sdks/typescript/src/index.js';
 
 console.log('🔗 Value System Showcase\n');
 

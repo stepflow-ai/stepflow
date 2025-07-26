@@ -20,7 +20,7 @@ import {
   udf,
   udfSchema,
   runCLI
-} from '../src';
+} from '../../sdks/typescript/src/index.js';
 
 console.log('🚀 Complete Component Server Example\n');
 
@@ -855,7 +855,7 @@ server.registerComponent(
 // ===============================================
 
 console.log('\n🎯 Server Configuration Complete!');
-console.log(`📦 Registered ${server.getComponentNames?.()?.length || 'multiple'} components:`);
+console.log(`📦 Registered ${server.getComponents().length} components:`);
 console.log('   - Math: add, calculate, statistics');
 console.log('   - Text: transform_text, analyze_text');
 console.log('   - Data: process_array, transform_object');
