@@ -194,7 +194,7 @@ impl HttpClientHandle {
 
         if content_type.contains("text/event-stream") {
             // Handle SSE streaming response - this means we need bidirectional communication
-            tracing::debug!("Received SSE streaming response for request {}", id);
+            tracing::debug!(request_id = %id, "Starting SSE stream processing for bidirectional communication");
 
             // Process the SSE stream and handle bidirectional communication
             self.handle_sse_stream(id, response).await
@@ -206,7 +206,7 @@ impl HttpClientHandle {
                 .change_context(TransportError::Recv)
                 .attach_printable("Failed to read response body")?;
 
-            tracing::debug!("Received direct JSON response: {}", response_text);
+            tracing::debug!(request_id = %id, response_size = response_text.len(), "Received direct JSON response");
 
             let owned_json = OwnedJson::try_new(response_text)
                 .change_context(TransportError::Recv)
@@ -228,28 +228,37 @@ impl HttpClientHandle {
         while let Some(owned_json) = messages.next().await {
             match owned_json.message() {
                 Message::Request(request) => {
+                    let method = request.method;
+                    let request_id = request.id.clone();
+
                     // Handle bidirectional request from server in background
                     if let Err(e) = self
-                        .handle_incoming_request(request.method, request.id.clone(), owned_json)
+                        .handle_incoming_request(method, request_id.clone(), owned_json)
                         .await
                     {
-                        tracing::error!("Failed to handle bidirectional request: {:?}", e);
+                        tracing::error!(
+                            method = %method,
+                            request_id = %request_id,
+                            error = ?e,
+                            "Failed to handle bidirectional request"
+                        );
                     }
                 }
                 Message::Response(response) => {
                     // Check if this is the final response we were waiting for
                     if response.id() == &expected_id {
-                        tracing::info!("Received final response for request {}", expected_id);
+                        tracing::debug!(request_id = %expected_id, "Received final response, completing request");
                         return Ok(owned_json);
                     } else {
-                        tracing::debug!(
-                            "Received response for unexpected request: {}",
-                            response.id()
+                        tracing::warn!(
+                            expected_id = %expected_id,
+                            received_id = %response.id(),
+                            "Received response for unexpected request ID"
                         );
                     }
                 }
                 Message::Notification(notification) => {
-                    tracing::debug!("Received notification for method '{}'", notification.method);
+                    tracing::debug!(method = %notification.method, "Received notification from server");
                     // Notifications are fire-and-forget, no response needed
                 }
             }
@@ -273,7 +282,7 @@ impl HttpClientHandle {
                 let chunk = match chunk_result {
                     Ok(chunk) => chunk,
                     Err(e) => {
-                        tracing::error!("Failed to read chunk from SSE stream: {}", e);
+                        tracing::warn!(error = %e, "Failed to read chunk from SSE stream, skipping");
                         continue;
                     }
                 };
@@ -282,7 +291,7 @@ impl HttpClientHandle {
                 let chunk_str = match std::str::from_utf8(&chunk) {
                     Ok(s) => s,
                     Err(e) => {
-                        tracing::error!("Invalid UTF-8 in SSE stream: {}", e);
+                        tracing::warn!(error = %e, "Invalid UTF-8 in SSE stream, skipping chunk");
                         continue;
                     }
                 };
@@ -299,7 +308,7 @@ impl HttpClientHandle {
                         match OwnedJson::try_new(json_data) {
                             Ok(message) => yield message,
                             Err(e) => {
-                                tracing::error!("Failed to parse SSE message as JSON: {:?}", e);
+                                tracing::warn!(error = ?e, "Failed to parse SSE message as JSON, skipping");
                                 continue;
                             }
                         }
@@ -326,17 +335,18 @@ impl HttpClientHandle {
         incoming_id: RequestId,
         owned_message: OwnedJson<Message<'static>>,
     ) -> Result<()> {
-        tracing::info!(
-            "Received bidirectional request for method '{}' with id {}",
-            incoming_method,
-            incoming_id
+        tracing::debug!(
+            method = %incoming_method,
+            request_id = %incoming_id,
+            "Processing bidirectional request from server"
         );
 
         let Some(handler) = MessageHandlerRegistry::instance().get_method_handler(incoming_method)
         else {
             tracing::warn!(
-                "No handler found for bidirectional method '{}'",
-                incoming_method
+                method = %incoming_method,
+                request_id = %incoming_id,
+                "No handler registered for bidirectional method"
             );
             self.send_error_response(
                 &incoming_id,
@@ -358,7 +368,11 @@ impl HttpClientHandle {
             let request = match owned_message.message() {
                 Message::Request(req) => req,
                 _ => {
-                    tracing::error!("Invalid message type in bidirectional request handler");
+                    tracing::error!(
+                        expected = "request",
+                        actual = ?owned_message.message(),
+                        "Invalid message type in bidirectional request handler"
+                    );
                     return;
                 }
             };
@@ -369,9 +383,10 @@ impl HttpClientHandle {
                 .await
             {
                 tracing::error!(
-                    "Failed executing handler for method '{}': {:?}",
-                    request.method,
-                    e
+                    method = %request.method,
+                    request_id = %request.id,
+                    error = ?e,
+                    "Handler execution failed for bidirectional request"
                 );
 
                 client_handle
@@ -386,18 +401,18 @@ impl HttpClientHandle {
 
             assert!(
                 outgoing_rx.is_closed(),
-                "Once processing is done, outgoing channel should be closed"
+                "Outgoing channel not closed after handler completion",
             );
+
             while let Some(outgoing_message) = outgoing_rx.recv().await {
                 if let Err(e) = client_handle
                     .send_response_to_server(&outgoing_message)
                     .await
                 {
-                    tracing::error!("Failed to send outgoing message: {:?}", e);
+                    tracing::error!(error = ?e, "Failed to send response back to server");
                 }
             }
         };
-
         tokio::spawn(future);
         Ok(())
     }
@@ -418,15 +433,16 @@ impl HttpClientHandle {
             .await
         {
             tracing::error!(
-                "Failed to send error response for bidirectional request: {:?}",
-                e
+                error = ?e,
+                request_id = %request_id,
+                "Failed to send error response for bidirectional request"
             );
         }
     }
 
     /// Send a response back to the server (used for bidirectional communication and notifications)
     pub async fn send_response_to_server(&self, message: &str) -> Result<()> {
-        tracing::info!("Sending response to server: {}", message);
+        tracing::debug!(message_size = message.len(), "Sending response to server");
         let response = self
             .client
             .post(&self.url)
@@ -441,7 +457,11 @@ impl HttpClientHandle {
         let status = response.status();
         if status != reqwest::StatusCode::ACCEPTED {
             let response_text = response.text().await;
-            tracing::warn!("Unexpected status for response: {status} {response_text:?}",);
+            tracing::warn!(
+                status = %status,
+                response = ?response_text,
+                "Server returned unexpected status for response"
+            );
         }
 
         Ok(())
