@@ -60,7 +60,9 @@ class ServerHelper:
     ):
         """Send a request to the live server."""
         request = self._create_request(method, component, input_data, request_id)
-        assert self._httpx_client is not None, "Server not started - call _start_live_server() first"
+        assert self._httpx_client is not None, (
+            "Server not started - call _start_live_server() first"
+        )
         return await self._httpx_client.post(
             f"{self.url}/",
             json=msgspec.to_builtins(request),
@@ -72,7 +74,9 @@ class ServerHelper:
     ):
         """Send a streaming request and return the response stream context manager."""
         request = self._create_request(method, component, input_data, request_id)
-        assert self._httpx_client is not None, "Server not started - call _start_live_server() first"
+        assert self._httpx_client is not None, (
+            "Server not started - call _start_live_server() first"
+        )
         return self._httpx_client.stream(
             "POST",
             f"{self.url}/",
@@ -146,7 +150,7 @@ class ServerHelper:
             if hasattr(server, "force_exit"):
                 server.force_exit = True
 
-            # Give server a moment to shutdown gracefully  
+            # Give server a moment to shutdown gracefully
             await asyncio.sleep(0.1)
 
             # Cancel server task if still running
