@@ -172,6 +172,6 @@ pub async fn serve(executor: Arc<StepFlowExecutor>, port: u16) -> Result<()> {
     // Use the experimental utoipa version for testing
     stepflow_server::start_server(port, executor)
         .await
-        .map_err(|e| Arc::<dyn std::error::Error + Send + Sync>::from(e))
+        .map_err(Arc::<dyn std::error::Error + Send + Sync>::from)
         .change_context(MainError::ServerError)
 }
