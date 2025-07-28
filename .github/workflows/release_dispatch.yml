@@ -51,7 +51,7 @@ jobs:
   dispatch-python-release:
     name: Dispatch Python SDK Release
     runs-on: ubuntu-22.04
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release:python-sdk')
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release:stepflow-py')
 
     steps:
       - name: Checkout repository
