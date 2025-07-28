@@ -1,0 +1,94 @@
+{
+  "name": "Load Test - Python UDF Messages",
+  "description": "Load test workflow using Python UDF for message creation",
+  "input_schema": {
+    "type": "object",
+    "required": ["prompt"],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "The user prompt"
+      },
+      "system_message": {
+        "type": "string",
+        "description": "Optional system message to set context",
+        "default": "You are a helpful assistant."
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "create_message_udf_blob",
+      "component": "/put_blob",
+      "input": {
+        "data": {
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "string"
+              },
+              "system_message": {
+                "type": "string"
+              }
+            },
+            "required": ["prompt", "system_message"]
+          },
+          "code": "# Simple message creation without external APIs\nimport json\n\n# Create messages array\nmessages = [\n    {\"role\": \"system\", \"content\": input['system_message']},\n    {\"role\": \"user\", \"content\": input['prompt']}\n]\n\n# Calculate some stats\ntotal_length = len(input['system_message']) + len(input['prompt'])\nword_count = len(input['prompt'].split()) + len(input['system_message'].split())\n\nreturn {\n    \"messages\": messages,\n    \"message_count\": len(messages),\n    \"total_length\": total_length,\n    \"word_count\": word_count,\n    \"prompt_chars\": len(input['prompt']),\n    \"system_chars\": len(input['system_message'])\n}"
+        }
+      }
+    },
+    {
+      "id": "create_messages",
+      "component": "/python/udf",
+      "input": {
+        "blob_id": {
+          "$from": {
+            "step": "create_message_udf_blob"
+          },
+          "path": "blob_id"
+        },
+        "input": {
+          "prompt": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "prompt"
+          },
+          "system_message": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "system_message"
+          }
+        }
+      }
+    }
+  ],
+  "output": {
+    "messages": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "messages"
+    },
+    "message_count": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "message_count"
+    },
+    "total_length": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "total_length"
+    },
+    "word_count": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "word_count"
+    }
+  }
+}

@@ -63,9 +63,9 @@ plugins:
     env:
       BRAVE_API_KEY: "your-api-key-here"
 
-routing:
-  - match: "/brave-search/*"
-    target: brave-search
+routes:
+  "/brave-search/{component}":
+    - plugin: brave-search
 ```
 
 Then use it in workflows like:

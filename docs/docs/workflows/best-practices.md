@@ -395,7 +395,7 @@ plugins:
     transport: stdio
     command: "test/mock-server.py"
 
-state_store:
+stateStore:
   type: in_memory
 ```
 

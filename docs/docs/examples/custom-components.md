@@ -218,12 +218,12 @@ async def retrieve_cache(input: RetrieveCacheInput, context: StepflowContext) ->
 # Run the server
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Component Server")
     parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
     parser.add_argument("--port", type=int, default=8080, help="HTTP port")
     args = parser.parse_args()
-    
+
     if args.http:
         import uvicorn
         # Create HTTP app from server
@@ -1311,9 +1311,9 @@ def distributed_processing(input: DistributedProcessingInput) -> DistributedProc
     import time
     import os
     import uuid
-    
+
     start_time = time.time()
-    
+
     # Simulate distributed processing
     processed_data = {
         "original_data": input.data,
@@ -1323,13 +1323,13 @@ def distributed_processing(input: DistributedProcessingInput) -> DistributedProc
         "priority": input.priority,
         "timestamp": time.time()
     }
-    
+
     # Simulate processing time based on priority
     processing_delay = max(0.1, 1.0 / input.priority)
     time.sleep(processing_delay)
-    
+
     processing_time = int((time.time() - start_time) * 1000)
-    
+
     return DistributedProcessingOutput(
         task_id=input.task_id,
         result=processed_data,
@@ -1348,7 +1348,7 @@ def health_check() -> HealthCheckOutput:
     """Health check endpoint for monitoring."""
     import time
     import os
-    
+
     return HealthCheckOutput(
         status="healthy",
         server_id=f"server-{os.getpid()}",
@@ -1360,11 +1360,11 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8080, help="HTTP port")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     args = parser.parse_args()
-    
+
     # Track startup time
     import time
     server._start_time = time.time()
-    
+
     # Create and run the HTTP server
     app = server.create_http_app()
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
@@ -1388,18 +1388,18 @@ plugins:
     url: "http://monitoring-server:8081"
     timeout: 30
 
-routing:
-  - match: "/processing/*"
-    target: processing_cluster
-  - match: "/monitoring/*"
-    target: monitoring
-  - match: "*"
-    target: builtin
+routes:
+  "/processing/{component}":
+    - plugin: processing_cluster
+  "/monitoring/{component}":
+    - plugin: monitoring
+  "/{component}"
+    - plugin: builtin
 
-state_store:
+stateStore:
   type: sqlite
-  database_url: "sqlite:distributed_state.db"
-  auto_migrate: true
+  databaseUrl: "sqlite:distributed_state.db"
+  autoMigrate: true
 ```
 
 ### Docker Deployment

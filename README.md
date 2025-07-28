@@ -159,7 +159,7 @@ cargo run -- run --flow=workflow.yaml --input=input.json
 
 ### Configuration
 
-Create a `stepflow-config.yaml` file to define available plugins and routing:
+Create a `stepflow-config.yaml` file to define available plugins and routes:
 
 ```yaml
 plugins:
@@ -171,11 +171,11 @@ plugins:
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
 
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{component}":
+    - plugin: python
+  "/{component}":
+    - plugin: builtin
 ```
 
 _For more examples, please refer to the [Documentation](https://fuzzy-journey-4j3y1we.pages.github.io/)_

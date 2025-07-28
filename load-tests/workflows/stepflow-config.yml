@@ -1,0 +1,30 @@
+plugins:
+  builtin:
+    type: builtin
+  python:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
+    env:
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  custom:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "python", "openai_custom_server.py"]
+    env:
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+
+routes:
+  "/python/{component}":
+    - plugin: python
+  "/custom/{component}":
+    - plugin: custom
+  "/{component}":
+    - plugin: builtin
+
+stateStore:
+  type: sqlite
+  databaseUrl: "sqlite:///Users/benjamin.chambers/code/stepflow-rs-fixes/load-tests/workflow_state.db"
+  autoMigrate: true

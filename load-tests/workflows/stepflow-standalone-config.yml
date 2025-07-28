@@ -1,0 +1,26 @@
+plugins:
+  builtin:
+    type: builtin
+  python:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
+  custom:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "python", "message_custom_server.py"]
+
+routes:
+  "/python/{component}":
+    - plugin: python
+  "/custom/{component}":
+    - plugin: custom
+  "/{component}":
+    - plugin: builtin
+
+stateStore:
+  type: sqlite
+  databaseUrl: "sqlite:///Users/benjamin.chambers/code/stepflow-rs-fixes/load-tests/workflow_state_standalone.db"
+  autoMigrate: true
