@@ -40,10 +40,10 @@ components:
     - messages
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/create_messages
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/create_messages
     conditions: []
-    is_conditional: false
+    isConditional: false
 - component: /eval
   description: Execute a nested workflow with given input and return the result
   input_schema:
@@ -82,10 +82,10 @@ components:
     - run_id
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/eval
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/eval
     conditions: []
-    is_conditional: false
+    isConditional: false
 - component: /get_blob
   description: Retrieve JSON data from a blob using its ID
   input_schema:
@@ -107,10 +107,10 @@ components:
     - data
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/get_blob
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/get_blob
     conditions: []
-    is_conditional: false
+    isConditional: false
 - component: /iterate
   description: Iteratively apply a workflow until it returns a result instead of next
   input_schema:
@@ -153,10 +153,10 @@ components:
     - terminated
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/iterate
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/iterate
     conditions: []
-    is_conditional: false
+    isConditional: false
 - component: /load_file
   description: Load and parse a file (JSON, YAML, or text) from the filesystem
   input_schema:
@@ -185,10 +185,10 @@ components:
     - metadata
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/load_file
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/load_file
     conditions: []
-    is_conditional: false
+    isConditional: false
 - component: /map
   description: Apply a workflow to each item in a list and collect the results
   input_schema:
@@ -235,10 +235,10 @@ components:
     - skipped
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/map
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/map
     conditions: []
-    is_conditional: false
+    isConditional: false
 - component: /openai
   description: Send messages to OpenAI's chat completion API and get a response
   input_schema:
@@ -282,10 +282,10 @@ components:
     - response
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/openai
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/openai
     conditions: []
-    is_conditional: false
+    isConditional: false
 - component: /put_blob
   description: Store JSON data as a blob and return its content-addressable ID
   input_schema:
@@ -307,10 +307,10 @@ components:
     - blob_id
   plugin: builtin
   routes:
-  - path_pattern: /builtin/{*component}
-    resolved_path: /builtin/put_blob
+  - pathPattern: /builtin/{*component}
+    resolvedPath: /builtin/put_blob
     conditions: []
-    is_conditional: false
+    isConditional: false
 
 
 ----- stderr -----

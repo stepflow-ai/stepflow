@@ -54,10 +54,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/create_messages",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/create_messages",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     },
@@ -114,10 +114,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/eval",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/eval",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     },
@@ -152,10 +152,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/get_blob",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/get_blob",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     },
@@ -215,10 +215,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/iterate",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/iterate",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     },
@@ -267,10 +267,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/load_file",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/load_file",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     },
@@ -336,10 +336,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/map",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/map",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     },
@@ -403,10 +403,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/openai",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/openai",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     },
@@ -441,10 +441,10 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         {
-          "path_pattern": "/builtin/{*component}",
-          "resolved_path": "/builtin/put_blob",
+          "pathPattern": "/builtin/{*component}",
+          "resolvedPath": "/builtin/put_blob",
           "conditions": [],
-          "is_conditional": false
+          "isConditional": false
         }
       ]
     }

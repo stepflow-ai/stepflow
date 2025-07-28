@@ -89,12 +89,12 @@ fn test_list_components_custom_config() {
 
     // Create a custom config with builtin components
     let config_content = r#"
-working_directory: .
+workingDirectory: .
 plugins:
   test-builtins:
     type: builtin
 routes:
-  "/test-builtins/{component}":
+  "/test-builtins/{*component}":
     - plugin: test-builtins
 "#;
 
@@ -126,14 +126,14 @@ fn test_list_components_hide_unreachable() {
 
     // Create a config where only some components are reachable through routing
     let config_content = r#"
-working_directory: .
+workingDirectory: .
 plugins:
   test-builtins:
     type: builtin
 routes:
-  "/reachable/{component}":
+  "/reachable/{*component}":
     - plugin: test-builtins
-      component_allow: ["/openai", "/create_messages"]
+      componentAllow: ["/openai", "/create_messages"]
 "#;
 
     fs::write(&config_path, config_content).expect("Failed to write config file");
@@ -154,14 +154,14 @@ fn test_list_components_show_unreachable() {
 
     // Create a config where only some components are reachable through routing
     let config_content = r#"
-working_directory: .
+workingDirectory: .
 plugins:
   test-builtins:
     type: builtin
 routes:
-  "/reachable/{component}":
+  "/reachable/{*component}":
     - plugin: test-builtins
-      component_allow: ["/openai", "/create_messages"]
+      componentAllow: ["/openai", "/create_messages"]
 "#;
 
     fs::write(&config_path, config_content).expect("Failed to write config file");
