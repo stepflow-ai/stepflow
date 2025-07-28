@@ -16,8 +16,8 @@
 import argparse
 import asyncio
 
-from stepflow_sdk.stdio_server import StepflowStdioServer
-from stepflow_sdk.udf import udf
+from stepflow_py.stdio_server import StepflowStdioServer
+from stepflow_py.udf import udf
 
 # Create server instance
 server = StepflowStdioServer()
@@ -43,7 +43,7 @@ def main():
 
     if args.http:
         # Import HTTP server here to avoid import if not needed
-        from stepflow_sdk.http_server import StepflowHttpServer
+        from stepflow_py.http_server import StepflowHttpServer
 
         # Create HTTP server wrapping the stdio server
         http_server = StepflowHttpServer(server._server, host=args.host, port=args.port)

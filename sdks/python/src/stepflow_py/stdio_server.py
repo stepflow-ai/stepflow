@@ -21,14 +21,14 @@ from collections.abc import Callable
 
 import msgspec
 
-from stepflow_sdk.context import StepflowContext
-from stepflow_sdk.generated_protocol import (
+from stepflow_py.context import StepflowContext
+from stepflow_py.generated_protocol import (
     Message,
     MethodRequest,
     Notification,
 )
-from stepflow_sdk.message_decoder import MessageDecoder
-from stepflow_sdk.server import ComponentEntry, StepflowServer, _handle_exception
+from stepflow_py.message_decoder import MessageDecoder
+from stepflow_py.server import ComponentEntry, StepflowServer, _handle_exception
 
 
 class StepflowStdioServer:

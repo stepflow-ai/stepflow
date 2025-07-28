@@ -24,12 +24,12 @@ import sys
 from typing import Any, Dict
 
 try:
-    from stepflow_sdk.server import StepflowServer, StepflowStdioServer
-    from stepflow_sdk.http_server import StepflowHttpServer
+    from stepflow_py.server import StepflowServer, StepflowStdioServer
+    from stepflow_py.http_server import StepflowHttpServer
     import msgspec
 except ImportError:
     print("Error: This test requires the Python SDK", file=sys.stderr)
-    print("Please install with: pip install stepflow-sdk[http]", file=sys.stderr)
+    print("Please install with: pip install stepflow-py[http]", file=sys.stderr)
     sys.exit(1)
 
 
@@ -51,15 +51,17 @@ async def main():
     parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
     parser.add_argument("--port", type=int, default=8080, help="HTTP port")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host")
-    
+
     args = parser.parse_args()
-    
+
     # Create core server instance
     core_server = StepflowServer(default_protocol_prefix="test")
-    
+
     # Register the echo component
-    core_server.component(echo_component, name="echo", description="Echo component for testing")
-    
+    core_server.component(
+        echo_component, name="echo", description="Echo component for testing"
+    )
+
     if args.http:
         # Create HTTP server
         http_server = StepflowHttpServer(core_server, host=args.host, port=args.port)

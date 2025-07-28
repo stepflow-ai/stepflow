@@ -20,17 +20,19 @@ Used for load testing Stepflow with Python custom components (no OpenAI)
 """
 
 import msgspec
-from stepflow_sdk import StepflowStdioServer
+from stepflow_py import StepflowStdioServer
 
 
 class MessageInput(msgspec.Struct):
     """Input schema for message creation"""
+
     prompt: str
     system_message: str = "You are a helpful assistant."
 
 
 class MessageOutput(msgspec.Struct):
     """Output schema for message creation"""
+
     messages: list
     message_count: int
     total_length: int
@@ -46,15 +48,13 @@ def create_messages(input: MessageInput) -> MessageOutput:
     """
     messages = [
         {"role": "system", "content": input.system_message},
-        {"role": "user", "content": input.prompt}
+        {"role": "user", "content": input.prompt},
     ]
-    
+
     total_length = len(input.system_message) + len(input.prompt)
-    
+
     return MessageOutput(
-        messages=messages,
-        message_count=len(messages),
-        total_length=total_length
+        messages=messages, message_count=len(messages), total_length=total_length
     )
 
 
@@ -65,17 +65,17 @@ def process_text(input: MessageInput) -> MessageOutput:
     """
     processed_prompt = input.prompt.upper().replace(" ", "_")
     processed_system = input.system_message.lower()
-    
+
     messages = [
         {"role": "system", "content": processed_system},
         {"role": "user", "content": processed_prompt},
-        {"role": "assistant", "content": f"Processed: {len(input.prompt)} chars"}
+        {"role": "assistant", "content": f"Processed: {len(input.prompt)} chars"},
     ]
-    
+
     return MessageOutput(
         messages=messages,
         message_count=len(messages),
-        total_length=len(processed_prompt) + len(processed_system)
+        total_length=len(processed_prompt) + len(processed_system),
     )
 
 

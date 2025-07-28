@@ -18,7 +18,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+    args: ["--project", "../sdks/python", "run", "stepflow_py"]
   remote_python:
     type: stepflow
     transport: http
@@ -93,7 +93,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_sdk"]
+    args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_py"]
     working_directory: "."  # optional, defaults to current directory
     env:                    # optional environment variables with substitution support
       PYTHONPATH: "${HOME}/custom/path"
@@ -206,7 +206,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "path/to/python/project", "run", "stepflow_sdk"]
+    args: ["--project", "path/to/python/project", "run", "stepflow_py"]
 ```
 
 **HTTP Mode:**
@@ -220,7 +220,7 @@ plugins:
 
 Start the Python SDK server in HTTP mode:
 ```bash
-uv run --project path/to/python/project --extra http python -m stepflow_sdk --http --port 8080
+uv run --project path/to/python/project --extra http python -m stepflow_py --http --port 8080
 ```
 
 Both modes enable components like:
@@ -320,7 +320,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", ".", "run", "stepflow_sdk"]
+    args: ["--project", ".", "run", "stepflow_py"]
     env:
       DEBUG: "true"
       PYTHONPATH: "${HOME}/dev/python-libs"
@@ -347,7 +347,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: python
-    args: ["-m", "stepflow_sdk"]
+    args: ["-m", "stepflow_py"]
     working_directory: "/app/components"
     env:
       PYTHONPATH: "${APP_ROOT}/lib"
@@ -494,7 +494,7 @@ Component servers can be created using either STDIO or HTTP transports:
 
 **STDIO Mode:**
 ```python
-from stepflow_sdk import StepflowStdioServer
+from stepflow_py import StepflowStdioServer
 
 server = StepflowStdioServer()
 
@@ -508,7 +508,7 @@ server.run()
 
 **HTTP Mode:**
 ```python
-from stepflow_sdk import StepflowServer
+from stepflow_py import StepflowServer
 import uvicorn
 
 server = StepflowServer()

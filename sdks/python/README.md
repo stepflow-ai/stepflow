@@ -6,7 +6,7 @@ Python SDK for building StepFlow components and workflows.
 
 ```bash
 # Install from source
-uv add stepflow-sdk
+uv add stepflow-py
 ```
 
 ## Usage
@@ -14,7 +14,7 @@ uv add stepflow-sdk
 ### Creating a Component Server
 
 ```python
-from stepflow_sdk import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowStdioServer, StepflowContext
 import msgspec
 
 # Define input/output types
@@ -86,7 +86,7 @@ The generation script automatically handles the generation and applies necessary
 
 ### Project Structure
 
-- `src/stepflow_sdk/` - Main SDK code
+- `src/stepflow_py/` - Main SDK code
   - `generated_protocol.py` - Auto-generated protocol types from JSON schema
   - `protocol.py` - Hybrid protocol layer with envelope patterns for efficient deserialization
   - `server.py` - Component server implementation
@@ -104,7 +104,7 @@ The SDK uses a hybrid approach for protocol handling:
 
 This design provides:
 - **Type Safety** - All protocol messages use properly typed structs
-- **Schema Consistency** - Generated types match the Rust protocol exactly  
+- **Schema Consistency** - Generated types match the Rust protocol exactly
 - **Performance** - Two-stage deserialization with `msgspec.Raw` for optimal speed
 - **Maintainability** - Protocol changes can be regenerated automatically
 

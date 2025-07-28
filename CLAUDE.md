@@ -86,13 +86,13 @@ cargo check -p stepflow-protocol
 uv run --project sdks/python pytest
 
 # Run Python SDK in stdio mode (default)
-uv run --project sdks/python stepflow_sdk
+uv run --project sdks/python stepflow_py
 
 # Run Python SDK in HTTP mode
-uv run --project sdks/python --extra http stepflow_sdk --http --port 8080
+uv run --project sdks/python --extra http stepflow_py --http --port 8080
 
 # Run Python SDK with custom host and port
-uv run --project sdks/python --extra http stepflow_sdk --http --host 0.0.0.0 --port 8080
+uv run --project sdks/python --extra http stepflow_py --http --host 0.0.0.0 --port 8080
 ```
 
 #### Python SDK HTTP Mode
@@ -102,19 +102,19 @@ The Python SDK supports HTTP mode for remote component servers:
 **Installation with HTTP dependencies:**
 ```bash
 # Install with HTTP support
-pip install stepflow-sdk[http]
+pip install stepflow-py[http]
 
 # Or with uv
-uv add stepflow-sdk[http]
+uv add stepflow-py[http]
 ```
 
 **Running the HTTP server:**
 ```bash
 # Basic HTTP mode
-stepflow_sdk --http
+stepflow_py --http
 
 # Custom host and port
-stepflow_sdk --http --host 0.0.0.0 --port 8080
+stepflow_py --http --host 0.0.0.0 --port 8080
 ```
 
 **Features:**
@@ -475,7 +475,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv    # Command to execute
-    args: ["--project", "../sdks/python", "run", "stepflow_sdk"]  # Arguments
+    args: ["--project", "../sdks/python", "run", "stepflow_py"]  # Arguments
   python_http:  # Plugin name for Python component server (HTTP)
     type: stepflow
     transport: http
@@ -526,7 +526,7 @@ python_stdio:
   type: stepflow
   transport: stdio
   command: uv
-  args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_sdk"]
+  args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_py"]
   env:  # Optional environment variables with substitution support
     PYTHONPATH: "${HOME}/custom/path"
     USER_CONFIG: "${USER:-anonymous}"
@@ -670,7 +670,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_sdk"]
+    args: ["--project", "../sdks/python", "run", "stepflow_py"]
     env:
       PYTHONPATH: "${HOME}/custom/path"
       USER_CONFIG: "${USER:-anonymous}"
@@ -773,7 +773,7 @@ The protocol supports bidirectional communication allowing component servers to 
 Components can receive a `StepflowContext` parameter to access runtime operations:
 
 ```python
-from stepflow_sdk import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowStdioServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -804,7 +804,7 @@ When accessing nested fields in workflow inputs or step outputs, use JSONPath sy
 input:
   # Simple field access
   message: { $from: { workflow: input }, path: "message" }
-  
+
   # Nested object field access (use JSONPath with $.)
   a: { $from: { workflow: input }, path: "$.numbers.a" }
   b: { $from: { workflow: input }, path: "$.numbers.b" }
@@ -815,7 +815,7 @@ input:
 input:
   # Access specific field from step result
   value: { $from: { step: math_add }, path: "result" }
-  
+
   # Access nested fields from step result
   details: { $from: { step: analysis }, path: "$.analysis.summary" }
 ```
@@ -855,15 +855,15 @@ The Python SDK supports both STDIO and HTTP transports:
 **STDIO Transport** (default):
 ```bash
 # Run Python component server in stdio mode
-uv run --project sdks/python stepflow_sdk
+uv run --project sdks/python stepflow_py
 
 # Used by Rust runtime via process spawning
 ```
 
 **HTTP Transport** (streaming):
 ```bash
-# Run Python component server in HTTP mode  
-uv run --project sdks/python --extra http stepflow_sdk --http --port 8080
+# Run Python component server in HTTP mode
+uv run --project sdks/python --extra http stepflow_py --http --port 8080
 
 # Provides streamable HTTP transport with bidirectional communication
 ```

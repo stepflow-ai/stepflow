@@ -6,7 +6,7 @@ This example demonstrates how to use the StepFlow Python SDK as a **library** to
 
 - **Custom Component Server**: How to create a standalone Python server using the StepFlow SDK
 - **Business Logic Components**: Domain-specific components for customer analysis
-- **Typed Interfaces**: Using `msgspec` for type-safe component inputs and outputs  
+- **Typed Interfaces**: Using `msgspec` for type-safe component inputs and outputs
 - **Async Context Usage**: Using `StepflowContext` for blob operations
 - **Real Business Use Case**: Customer analytics and report generation
 
@@ -68,7 +68,7 @@ cargo run -- test ../examples/custom-python-components/workflow.yaml --config=..
 The workflow will:
 
 1. **Analyze customer data** using the `/custom/analyze_customers` component
-2. **Generate a business report** using the `/custom/generate_report` component  
+2. **Generate a business report** using the `/custom/generate_report` component
 3. **Store the report as a blob** and return a summary
 
 Sample output structure:
@@ -105,7 +105,7 @@ Sample output structure:
 The `custom_server.py` file demonstrates the Python SDK library usage:
 
 ```python
-from stepflow_sdk import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowStdioServer, StepflowContext
 
 # Create server instance
 server = StepflowStdioServer(default_protocol_prefix="custom")
@@ -124,7 +124,7 @@ server.run()
 
 Components are registered using the `@server.component` decorator, which:
 - Automatically extracts input/output schemas from type hints
-- Handles JSON serialization/deserialization  
+- Handles JSON serialization/deserialization
 - Supports both sync and async functions
 - Optionally receives `StepflowContext` for blob operations
 

@@ -1,5 +1,5 @@
 {
-  "name": "stepflow-sdk",
+  "name": "stepflow-py",
   "version": "0.1.0",
   "description": "TypeScript SDK for Stepflow",
   "main": "dist/index.js",
@@ -8,7 +8,7 @@
     "dist"
   ],
   "bin": {
-    "stepflow-sdk": "./dist/cli.js"
+    "stepflow-py": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
