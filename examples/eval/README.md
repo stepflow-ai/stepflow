@@ -137,9 +137,9 @@ plugins:
     args: ["--project", "../../sdks/python", "run", "stepflow_sdk"]
 
 routes:
-  "/python/{component}":
+  "/python/{*component}":
     - plugin: python
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 ```
 

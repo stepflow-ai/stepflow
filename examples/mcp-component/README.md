@@ -64,7 +64,7 @@ plugins:
       BRAVE_API_KEY: "your-api-key-here"
 
 routes:
-  "/brave-search/{component}":
+  "/brave-search/{*component}":
     - plugin: brave-search
 ```
 

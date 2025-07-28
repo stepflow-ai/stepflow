@@ -587,23 +587,23 @@ StepFlow uses routes to map component paths to specific plugins. **Route rules a
 
 ```yaml
 routes:
-  "/python/{component}":
+  "/python/{*component}":
     - plugin: python
-  "/python_http/{component}":
+  "/python_http/{*component}":
     - plugin: python_http
-  "/filesystem/{component}":
+  "/filesystem/{*component}":
     - plugin: filesystem
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 ```
 
 #### Route Rules
 
-- **Path pattern**: Component path pattern to match (supports `{component}` wildcards)
+- **Path patterns**: Component path patterns with placeholders like `{component}` or `{*component}`
 - **plugin**: Plugin name to route to (must match a key in the plugins section)
 - Rules are evaluated in order, first match wins
-- Use `/{component}` as a catch-all pattern for fallback routing
-- **Important**: Target plugins referenced in route rules must be defined in the plugins section
+- Use `/{*component}` as a catch-all pattern for fallback routing
+- **Important**: Target plugins referenced in routing rules must be defined in the plugins section
 
 #### Advanced Routes with Input Conditions
 
@@ -611,8 +611,8 @@ Route rules can include input-based conditions for more sophisticated routing:
 
 ```yaml
 routes:
-  "/custom/{component}":
-    - input:
+  "/custom/{*component}":
+    - conditions:
         - path: "$.model"
           value: "gpt-4"
       plugin: openai
@@ -631,11 +631,11 @@ This routes `/custom/*` components to the `openai` plugin when the input contain
 ```yaml
 routes:
   # Route Python components to Python SDK (stdio)
-  "/python/{component}":
+  "/python/{*component}":
     - plugin: python_stdio
 
   # Route Python HTTP components to remote Python server
-  "/python_http/{component}":
+  "/python_http/{*component}":
     - plugin: python_http
 
   # Route specific builtin components
@@ -643,18 +643,18 @@ routes:
     - plugin: builtin
 
   # Route filesystem operations to MCP server
-  "/filesystem/{component}":
+  "/filesystem/{*component}":
     - plugin: filesystem
 
   # Route based on input conditions
   "/ai/chat":
-    - input:
+    - conditions:
         - path: "$.provider"
           value: "openai"
       plugin: openai_plugin
 
   # Fallback to builtin for everything else
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 ```
 
@@ -687,13 +687,13 @@ plugins:
       MCP_CONFIG_DIR: "${HOME}/.config/mcp"
 
 routes:
-  "/python/{component}":
+  "/python/{*component}":
     - plugin: python_stdio
-  "/python_http/{component}":
+  "/python_http/{*component}":
     - plugin: python_http
-  "/filesystem/{component}":
+  "/filesystem/{*component}":
     - plugin: filesystem
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 
 stateStore:
@@ -885,9 +885,9 @@ plugins:
     transport: http
     url: "http://localhost:8080"
 
-routing:
-  - match: "/python/*"
-    target: python_http
+routes:
+  "/python/{*component}":
+    - plugin: python_http
 ```
 
 ### Architecture Changes (Recent)
