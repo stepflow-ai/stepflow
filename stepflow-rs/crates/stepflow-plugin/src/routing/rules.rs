@@ -19,6 +19,7 @@ use stepflow_core::workflow::JsonPath;
 
 /// Path-keyed routing configuration
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RoutingConfig {
     /// Path-to-routing rules mapping
     ///
@@ -33,6 +34,7 @@ pub struct RoutingConfig {
 
 /// A single routing rule for a specific path
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct RouteRule {
     /// Optional input conditions that must match for this rule to apply
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -63,6 +65,7 @@ pub struct RouteRule {
 
 /// JSON path condition for matching specific parts of input data
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct InputCondition {
     /// JSON path expression (e.g., "$.model", "$.config.temperature")
     pub path: JsonPath,
@@ -73,6 +76,7 @@ pub struct InputCondition {
 
 /// Information about a route match for reverse routing
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct RouteMatch {
     /// The path pattern that matches this route (e.g., "/builtin/{component}")
     pub path_pattern: String,

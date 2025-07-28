@@ -1389,11 +1389,11 @@ plugins:
     timeout: 30
 
 routes:
-  "/processing/{component}":
+  "/processing/{*component}":
     - plugin: processing_cluster
-  "/monitoring/{component}":
+  "/monitoring/{*component}":
     - plugin: monitoring
-  "/{component}"
+  "/{*component}":
     - plugin: builtin
 
 stateStore:

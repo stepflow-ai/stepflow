@@ -396,7 +396,7 @@ plugins:
     command: "test/mock-server.py"
 
 stateStore:
-  type: in_memory
+  type: inMemory
 ```
 
 ## Documentation Best Practices

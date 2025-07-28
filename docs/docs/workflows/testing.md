@@ -184,7 +184,7 @@ plugins:
     args: ["--config", "test/http-mocks.json"]
 
 stateStore:
-  type: in_memory  # Use in-memory store for tests
+  type: inMemory  # Use in-memory store for tests
 
 # Test-specific settings
 settings:

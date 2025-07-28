@@ -23,5 +23,5 @@ routes:
   "/builtin/{component}":
     - plugin: builtin
 
-state_store:
+stateStore:
   type: inMemory

@@ -30,11 +30,11 @@ plugins:
     args: ["--config", "server.json"]
 
 routes:
-  "/python/{component}":
+  "/python/{*component}":
     - plugin: python
-  "/custom/{component}":
+  "/custom/{*component}":
     - plugin: custom_server
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 
 stateStore:
@@ -151,33 +151,32 @@ plugins:
 ### Basic Routing
 
 ```yaml
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "/remote/*"
-    target: remote_python
-  - match: "/filesystem/*"
-    target: filesystem
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{*component}":
+    - plugin: python
+  "/remote/{*component}":
+    - plugin: remote_python
+  "/filesystem/{*component}":
+    - plugin: filesystem
+  "/{*component}":
+    - plugin: builtin
 ```
 
-- **`match`**: Glob pattern to match component paths (supports `*` and `**` wildcards)
-- **`target`**: Plugin name to route to (must match a key in the plugins section)
+- **Path patterns**: Component path patterns with placeholders like `{component}` or `{*component}`
+- **`plugin`**: Plugin name to route to (must match a key in the plugins section)
 - Rules are evaluated in order, first match wins
-- Use `*` as a catch-all pattern for fallback routing
+- Use `/{*component}` as a catch-all pattern for fallback routing
 
 ### Advanced Routing with Input Conditions
 
 ```yaml
-routing:
-  - match: "/ai/chat"
-    input:
-      - path: "$.model"
-        value: "gpt-4"
-    target: openai_plugin
-  - match: "/ai/chat"
-    target: fallback_plugin
+routes:
+  "/ai/chat":
+    - conditions:
+        - path: "$.model"
+          value: "gpt-4"
+      plugin: openai_plugin
+    - plugin: fallback_plugin
 ```
 
 **Input conditions:**
@@ -328,13 +327,13 @@ plugins:
       USER_CONFIG: "${USER:-dev}"
 
 routes:
-  "/python/{component}":
+  "/python/{*component}":
     - plugin: python
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 
 stateStore:
-  type: in_memory
+  type: inMemory
 ```
 
 ### Production Configuration
@@ -371,15 +370,15 @@ plugins:
       MCP_CONFIG_DIR: "${CONFIG_DIR:-/app/config}"
 
 routes:
-  "/python/{component}":
+  "/python/{*component}":
     - plugin: python
-  "/ai/{component}":
+  "/ai/{*component}":
     - plugin: remote_ai
-  "/data/{component}":
+  "/data/{*component}":
     - plugin: data_processing
-  "/filesystem/{component}":
+  "/filesystem/{*component}":
     - plugin: mcp_filesystem
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 
 stateStore:
@@ -416,13 +415,13 @@ plugins:
     url: "http://api-gateway:8082"
 
 routes:
-  "/analytics/{component}":
+  "/analytics/{*component}":
     - plugin: analytics
-  "/ml/{component}":
+  "/ml/{*component}":
     - plugin: ml_models
-  "/external/{component}":
+  "/external/{*component}":
     - plugin: external_apis
-  "/{component}":
+  "/{*component}":
     - plugin: builtin
 
 stateStore:
