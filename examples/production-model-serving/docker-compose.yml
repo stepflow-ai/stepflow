@@ -1,0 +1,160 @@
+version: '3.8'
+
+services:
+  # StepFlow Runtime Service - Central workflow orchestration
+  stepflow-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.stepflow
+    ports:
+      - "7837:7837"
+    environment:
+      - LOG_LEVEL=INFO
+      - PORT=7837
+    volumes:
+      - ./stepflow-config-prod.yml:/app/stepflow-config.yml:ro
+      - ./ai_pipeline_workflow.yaml:/app/workflows/ai_pipeline_workflow.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7837/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      text-models:
+        condition: service_healthy
+      vision-models:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2G
+        reservations:
+          cpus: '0.2'
+          memory: 1G
+    restart: unless-stopped
+    networks:
+      - stepflow-network
+  # Text Models Service - CPU optimized for text processing
+  text-models:
+    build:
+      context: .
+      dockerfile: Dockerfile.text-models
+    ports:
+      - "8080:8080"
+    environment:
+      - LOG_LEVEL=INFO
+      - CUDA_VISIBLE_DEVICES=""  # Force CPU for text models
+      - TRANSFORMERS_OFFLINE=0
+      - HF_HUB_DISABLE_PROGRESS_BARS=1
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 4G
+        reservations:
+          cpus: '0.4'
+          memory: 2G
+    restart: unless-stopped
+    networks:
+      - stepflow-network
+
+  # Vision Models Service - GPU enabled for computer vision
+  vision-models:
+    build:
+      context: .
+      dockerfile: Dockerfile.vision-models
+    ports:
+      - "8081:8081"
+    environment:
+      - LOG_LEVEL=INFO
+      - CUDA_VISIBLE_DEVICES=0  # Enable GPU if available
+      - TRANSFORMERS_OFFLINE=0
+      - HF_HUB_DISABLE_PROGRESS_BARS=1
+      - PORT=8081
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8081/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s  # Longer startup for GPU initialization
+    deploy:
+      resources:
+        limits:
+          cpus: '0.7'
+          memory: 8G
+        reservations:
+          cpus: '0.3'
+          memory: 4G
+    restart: unless-stopped
+    networks:
+      - stepflow-network
+    # Uncomment for GPU support (requires nvidia-docker)
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=0
+
+  # Optional: Model Cache Service for sharing downloaded models
+  model-cache:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - model-cache-data:/data
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2G
+        reservations:
+          cpus: '0.1'
+          memory: 512M
+    restart: unless-stopped
+    networks:
+      - stepflow-network
+
+  # Optional: Monitoring with Prometheus metrics
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - stepflow-network
+
+volumes:
+  model-cache-data:
+    driver: local
+  prometheus-data:
+    driver: local
+
+networks:
+  stepflow-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

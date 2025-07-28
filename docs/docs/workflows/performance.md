@@ -299,14 +299,14 @@ steps:
   # Only call AI if not cached
   - id: generate_ai_response
     component: /builtin/openai
-    skip_if: { $from: { step: check_ai_cache }, path: "cache_hit" }
+    skipIf: { $from: { step: check_ai_cache }, path: "cache_hit" }
     input:
       messages: { $from: { step: create_messages } }
 
   # Store response in cache
   - id: cache_ai_response
     component: /cache/store
-    skip_if: { $from: { step: check_ai_cache }, path: "cache_hit" }
+    skipIf: { $from: { step: check_ai_cache }, path: "cache_hit" }
     input:
       key: { $from: { step: create_cache_key }, path: "cache_key" }
       value: { $from: { step: generate_ai_response } }

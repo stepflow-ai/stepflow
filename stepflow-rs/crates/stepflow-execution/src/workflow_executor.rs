@@ -756,7 +756,13 @@ impl WorkflowExecutor {
 
                 // Check explicit skip condition (skip_if expression)
                 if let Some(skip_if) = &skip_if {
-                    if self.should_skip_step(skip_if).await? {
+                    let should_skip = self.should_skip_step(skip_if).await?;
+                    tracing::debug!(
+                        "Step {} skip condition evaluated to {}",
+                        step_id,
+                        should_skip
+                    );
+                    if should_skip {
                         // Skip this step and collect any newly unblocked dependent steps
                         additional_unblocked
                             .union_with(&self.skip_step(&step_id, step_index).await?);

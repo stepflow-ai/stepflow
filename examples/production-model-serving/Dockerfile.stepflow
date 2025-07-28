@@ -1,0 +1,24 @@
+# Dockerfile for StepFlow Runtime Service
+# Central workflow orchestration service
+
+# Use the official released StepFlow Docker image
+FROM ghcr.io/riptano/stepflow:debian-0.2.2
+
+# Create application directory
+WORKDIR /app
+
+# Create directories for workflows and config
+RUN mkdir -p /app/workflows
+
+# The stepflow user already exists in the base image
+USER stepflow
+
+# Expose port
+EXPOSE 7837
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:7837/health || exit 1
+
+# Run StepFlow server
+CMD ["--log-level", "trace", "serve", "--port", "7837", "--config", "/app/stepflow-config.yml"]

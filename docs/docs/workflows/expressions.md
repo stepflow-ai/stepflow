@@ -230,7 +230,7 @@ $default:
 steps:
   - id: optional_step_1
     component: /data/fetch
-    skip_if: { $from: { workflow: input }, path: "skip_optional" }
+    skipIf: { $from: { workflow: input }, path: "skip_optional" }
     input:
       source: "external_api"
 
