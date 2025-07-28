@@ -157,6 +157,34 @@ class OnErrorRetry(Struct, kw_only=True):
     action: Literal['retry']
 
 
+class TestServerHealthCheck(Struct, kw_only=True):
+    path: Annotated[
+        str, Meta(description='Path for health check endpoint (e.g., "/health").')
+    ]
+    timeoutMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Timeout for health check requests (in milliseconds).', ge=0
+            ),
+        ]
+        | None
+    ) = 5000
+    retryAttempts: (
+        Annotated[
+            int, Meta(description='Number of retry attempts for health checks.', ge=0)
+        ]
+        | None
+    ) = 3
+    retryDelayMs: (
+        Annotated[
+            int,
+            Meta(description='Delay between retry attempts (in milliseconds).', ge=0),
+        ]
+        | None
+    ) = 1000
+
+
 class FlowError(Struct, kw_only=True):
     code: int
     message: str
@@ -288,6 +316,65 @@ BaseRef = Annotated[
 ]
 
 
+class TestServerConfig(Struct, kw_only=True):
+    command: Annotated[str, Meta(description='Command to start the server.')]
+    args: (
+        Annotated[List[str], Meta(description='Arguments for the server command.')]
+        | None
+    ) = None
+    env: (
+        Annotated[
+            Dict[str, str],
+            Meta(
+                description='Environment variables for the server process.\nValues can contain placeholders like {port} which will be substituted.'
+            ),
+        ]
+        | None
+    ) = None
+    workingDirectory: (
+        Annotated[
+            str | None, Meta(description='Working directory for the server process.')
+        ]
+        | None
+    ) = None
+    portRange: (
+        Annotated[
+            List[Any] | None,
+            Meta(
+                description='Port range for automatic port allocation.\nIf not specified, a random available port will be used.'
+            ),
+        ]
+        | None
+    ) = None
+    healthCheck: (
+        Annotated[
+            TestServerHealthCheck | None,
+            Meta(description='Health check configuration.'),
+        ]
+        | None
+    ) = None
+    startupTimeoutMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum time to wait for server startup (in milliseconds).',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = 10000
+    shutdownTimeoutMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum time to wait for server shutdown (in milliseconds).',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = 5000
+
+
 FlowResult = Annotated[
     FlowResultSuccess | FlowResultSkipped | FlowResultFailed,
     Meta(description='The results of a step execution.', title='FlowResult'),
@@ -404,8 +491,22 @@ ErrorAction = OnErrorFail | OnErrorSkip | OnErrorDefault | OnErrorRetry
 
 
 class TestConfig(Struct, kw_only=True):
-    stepflowConfig: (
-        Annotated[Any, Meta(description='Stepflow configuration specific to tests.')]
+    servers: (
+        Annotated[
+            Dict[str, TestServerConfig],
+            Meta(
+                description='Test servers to start before running tests.\nKey is the server name, value is the server configuration.'
+            ),
+        ]
+        | None
+    ) = None
+    config: (
+        Annotated[
+            Any,
+            Meta(
+                description='Stepflow configuration specific to tests.\nCan reference server URLs using placeholders like {server_name.url}.'
+            ),
+        ]
         | None
     ) = None
     cases: (

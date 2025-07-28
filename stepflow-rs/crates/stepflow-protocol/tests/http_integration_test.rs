@@ -11,6 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
@@ -70,6 +72,7 @@ impl Context for MockContext {
 /// Test that we can create an HTTP plugin and it fails gracefully when no server is running
 #[tokio::test]
 async fn test_http_plugin_creation_failure() {
+    // Test streamable HTTP transport (now the only HTTP transport)
     let config = StepflowPluginConfig {
         transport: StepflowTransport::Http {
             url: "http://127.0.0.1:18080".to_string(),
@@ -91,7 +94,7 @@ async fn test_http_plugin_creation_failure() {
     );
 }
 
-/// Integration test that starts a Python HTTP server and tests the full protocol
+/// Integration test that starts a Python HTTP server and tests the streamable HTTP protocol
 #[tokio::test]
 async fn test_http_protocol_integration() {
     // Skip test if we can't find the Python SDK
@@ -125,7 +128,7 @@ async fn test_http_protocol_integration() {
     // Wait for server to start
     sleep(Duration::from_secs(3)).await;
 
-    // Create HTTP plugin
+    // Create streamable HTTP plugin (now the primary HTTP transport)
     let config = StepflowPluginConfig {
         transport: StepflowTransport::Http {
             url: "http://127.0.0.1:18081".to_string(),
@@ -147,20 +150,26 @@ async fn test_http_protocol_integration() {
 
     match init_result {
         Ok(Ok(())) => {
-            println!("✓ HTTP plugin initialized successfully");
+            println!("✓ Streamable HTTP plugin initialized successfully");
 
             // Test component listing
             let components_result = timeout(Duration::from_secs(5), plugin.list_components()).await;
             match components_result {
                 Ok(Ok(components)) => {
-                    println!("✓ Listed {} components", components.len());
+                    println!(
+                        "✓ Listed {} components with streamable HTTP",
+                        components.len()
+                    );
 
                     // Look for the echo component
                     let echo_component = components
                         .iter()
                         .find(|c| c.component.path().ends_with("/echo"));
                     if let Some(echo_info) = echo_component {
-                        println!("✓ Found echo component: {}", echo_info.component.path());
+                        println!(
+                            "✓ Found echo component via streamable HTTP: {}",
+                            echo_info.component.path()
+                        );
 
                         // Test component info
                         let component = &echo_info.component;
@@ -169,11 +178,14 @@ async fn test_http_protocol_integration() {
                             timeout(Duration::from_secs(5), plugin.component_info(component)).await;
                         match info_result {
                             Ok(Ok(info)) => {
-                                println!("✓ Got component info: {}", info.component.path());
+                                println!(
+                                    "✓ Got component info via streamable HTTP: {}",
+                                    info.component.path()
+                                );
 
                                 // Test component execution
                                 let input_json = serde_json::json!({
-                                    "message": "Hello, HTTP!"
+                                    "message": "Hello, Streamable HTTP!"
                                 });
                                 let input_ref = ValueRef::from(input_json);
 
@@ -188,49 +200,59 @@ async fn test_http_protocol_integration() {
 
                                 match execute_result {
                                     Ok(Ok(flow_result)) => {
-                                        println!("✓ Component execution successful");
+                                        println!(
+                                            "✓ Streamable HTTP component execution successful"
+                                        );
                                         // The result should be a success with the echo response
                                         match flow_result {
                                             stepflow_core::FlowResult::Success(result) => {
-                                                println!("✓ Got result: {result:?}");
+                                                println!(
+                                                    "✓ Got streamable HTTP result: {result:?}"
+                                                );
                                             }
                                             _ => {
-                                                eprintln!("✗ Expected success result");
+                                                eprintln!(
+                                                    "✗ Expected success result from streamable HTTP"
+                                                );
                                             }
                                         }
                                     }
                                     Ok(Err(e)) => {
-                                        eprintln!("✗ Component execution failed: {e:?}");
+                                        eprintln!(
+                                            "✗ Streamable HTTP component execution failed: {e:?}"
+                                        );
                                     }
                                     Err(_) => {
-                                        eprintln!("✗ Component execution timed out");
+                                        eprintln!(
+                                            "✗ Streamable HTTP component execution timed out"
+                                        );
                                     }
                                 }
                             }
                             Ok(Err(e)) => {
-                                eprintln!("✗ Component info failed: {e:?}");
+                                eprintln!("✗ Streamable HTTP component info failed: {e:?}");
                             }
                             Err(_) => {
-                                eprintln!("✗ Component info timed out");
+                                eprintln!("✗ Streamable HTTP component info timed out");
                             }
                         }
                     } else {
-                        eprintln!("✗ Echo component not found in component list");
+                        eprintln!("✗ Echo component not found in streamable HTTP component list");
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!("✗ List components failed: {e:?}");
+                    eprintln!("✗ Streamable HTTP list components failed: {e:?}");
                 }
                 Err(_) => {
-                    eprintln!("✗ List components timed out");
+                    eprintln!("✗ Streamable HTTP list components timed out");
                 }
             }
         }
         Ok(Err(e)) => {
-            eprintln!("✗ HTTP plugin initialization failed: {e:?}");
+            eprintln!("✗ Streamable HTTP plugin initialization failed: {e:?}");
         }
         Err(_) => {
-            eprintln!("✗ HTTP plugin initialization timed out");
+            eprintln!("✗ Streamable HTTP plugin initialization timed out");
         }
     }
 }
@@ -245,7 +267,7 @@ async fn test_http_plugin_lifecycle() {
         return;
     }
 
-    // Create HTTP plugin
+    // Create streamable HTTP plugin (now the primary HTTP transport)
     let config = StepflowPluginConfig {
         transport: StepflowTransport::Http {
             url: "http://127.0.0.1:18082".to_string(),
@@ -298,13 +320,13 @@ async fn test_http_plugin_lifecycle() {
 
     match init_result {
         Ok(Ok(())) => {
-            println!("✓ HTTP plugin initialized successfully after server startup");
+            println!("✓ Streamable HTTP plugin initialized successfully after server startup");
         }
         Ok(Err(e)) => {
-            eprintln!("✗ HTTP plugin initialization failed: {e:?}");
+            eprintln!("✗ Streamable HTTP plugin initialization failed: {e:?}");
         }
         Err(_) => {
-            eprintln!("✗ HTTP plugin initialization timed out");
+            eprintln!("✗ Streamable HTTP plugin initialization timed out");
         }
     }
 }

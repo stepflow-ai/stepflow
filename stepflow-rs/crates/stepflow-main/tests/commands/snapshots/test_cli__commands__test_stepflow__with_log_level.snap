@@ -19,7 +19,7 @@ Commands:
   run              Run a workflow directly
   serve            Start a StepFlow service
   submit           Submit a workflow to a StepFlow service
-  test             Run tests defined in a workflow file or directory
+  test             Run tests defined in workflow files or directories
   list-components  List all available components from a stepflow config
   repl             Start an interactive REPL for workflow development and debugging
   help             Print this message or the help of the given subcommand(s)
