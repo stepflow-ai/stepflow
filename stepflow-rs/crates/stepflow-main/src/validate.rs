@@ -12,11 +12,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use crate::args::{load, ConfigArgs};
+use crate::args::{ConfigArgs, load};
 use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use error_stack::ResultExt as _;
 use std::path::Path;
-use stepflow_analysis::{validate_workflow, DiagnosticLevel};
+use stepflow_analysis::{DiagnosticLevel, validate_workflow};
 use stepflow_core::workflow::Flow;
 
 /// Validate workflow files and configuration
@@ -84,7 +84,7 @@ pub async fn validate(
     if failures == 0 {
         println!("✅ Validation passed with no errors");
     } else {
-        println!("❌ Validation completed with {} failure(s)", failures);
+        println!("❌ Validation completed with {failures} failure(s)");
     }
 
     Ok(failures)
@@ -105,7 +105,7 @@ async fn validate_config(config_path: Option<&Path>) -> Result<usize> {
             if failures == 0 {
                 println!("✅ Configuration is valid");
             } else {
-                println!("❌ Configuration has {} issue(s)", failures);
+                println!("❌ Configuration has {failures} issue(s)");
             }
             Ok(failures)
         }
@@ -129,33 +129,44 @@ fn validate_config_structure(config: &StepflowConfig) -> usize {
     }
 
     // Check that routing rules exist
-    if config.routing.rules.is_empty() {
+    if config.routing.routes.is_empty() {
         println!("❌ No routing rules configured in stepflow-config.yml");
         failures += 1;
     } else {
-        println!("✅ Found {} routing rule(s) configured", config.routing.rules.len());
+        let total_rules: usize = config
+            .routing
+            .routes
+            .values()
+            .map(|rules| rules.len())
+            .sum();
+        println!("✅ Found {total_rules} routing rule(s) configured");
     }
 
     // Validate routing rules reference existing plugins
-    for (index, rule) in config.routing.rules.iter().enumerate() {
-        if !config.plugins.contains_key(&rule.target) {
-            println!(
-                "❌ Routing rule {} references unknown plugin '{}'",
-                index + 1,
-                rule.target
-            );
-            failures += 1;
+    for (path, rules) in &config.routing.routes {
+        for (rule_index, rule) in rules.iter().enumerate() {
+            if !config.plugins.contains_key(rule.plugin.as_ref()) {
+                println!(
+                    "❌ Routing rule {} for path '{}' references unknown plugin '{}'",
+                    rule_index + 1,
+                    path,
+                    rule.plugin
+                );
+                failures += 1;
+            }
         }
     }
 
     // Check for unused plugins (plugins not referenced by any routing rule)
     for plugin_name in config.plugins.keys() {
-        let is_referenced = config.routing.rules.iter().any(|rule| rule.target == *plugin_name);
+        let is_referenced = config
+            .routing
+            .routes
+            .values()
+            .flatten()
+            .any(|rule| rule.plugin.as_ref() == plugin_name);
         if !is_referenced {
-            println!(
-                "⚠️  Plugin '{}' is not referenced by any routing rule",
-                plugin_name
-            );
+            println!("⚠️  Plugin '{plugin_name}' is not referenced by any routing rule");
             // This is a warning, not a failure
         }
     }
@@ -171,10 +182,9 @@ async fn validate_flow(flow_path: &Path) -> Result<usize> {
     let flow: Flow = load(flow_path)?;
 
     // Run workflow validation using stepflow-analysis
-    let diagnostics = validate_workflow(&flow)
-        .change_context(MainError::ValidationError(
-            "Workflow validation failed".to_string(),
-        ))?;
+    let diagnostics = validate_workflow(&flow).change_context(MainError::ValidationError(
+        "Workflow validation failed".to_string(),
+    ))?;
 
     // Count failures and display results
     let (fatal_count, error_count, warning_count) = diagnostics.counts();
@@ -184,10 +194,7 @@ async fn validate_flow(flow_path: &Path) -> Result<usize> {
     if diagnostics.is_empty() {
         println!("✅ Workflow is valid");
     } else {
-        println!(
-            "📊 Validation results: {} fatal, {} errors, {} warnings",
-            fatal_count, error_count, warning_count
-        );
+        println!("📊 Validation results: {fatal_count} fatal, {error_count} errors, {warning_count} warnings");
 
         // Group diagnostics by level
         let fatal_diagnostics = diagnostics.at_level(DiagnosticLevel::Fatal);
@@ -235,14 +242,14 @@ fn print_diagnostic(level: &str, diagnostic: &stepflow_analysis::Diagnostic) {
 
 /// Print a formatted error message
 fn print_error(context: &str, error: &error_stack::Report<MainError>) {
-    println!("❌ {}: {}", context, error);
+    println!("❌ {context}: {error}");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_validate_minimal_config() {
