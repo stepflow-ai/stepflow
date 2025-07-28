@@ -29,6 +29,19 @@ from .server import StepflowServer
 from .stdio_server import StepflowStdioServer
 from .value import JsonPath, StepReference, Valuable, Value, WorkflowInput
 
+# LangChain integration (optional)
+try:
+    from .langchain_integration import (
+        get_runnable_from_import_path,
+        invoke_named_runnable,
+        clear_import_cache,
+        create_invoke_named_component,
+        InvokeNamedInput
+    )
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+
 __all__ = [
     # Core classes
     "StepflowServer",
@@ -53,6 +66,16 @@ __all__ = [
     "OnSkipSkip",
     "OnSkipDefault",
 ]
+
+# Add LangChain exports if available
+if LANGCHAIN_AVAILABLE:
+    __all__.extend([
+        "get_runnable_from_import_path",
+        "invoke_named_runnable",
+        "clear_import_cache",
+        "create_invoke_named_component",
+        "InvokeNamedInput",
+    ])
 
 if __name__ == "__main__":
     from . import main

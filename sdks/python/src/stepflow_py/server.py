@@ -90,6 +90,9 @@ class StepflowServer:
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
         self._initialized = False
+        
+        # Add LangChain registry functionality
+        self._add_langchain_support()
 
         if include_builtins:
             # Register the UDF component
@@ -372,3 +375,19 @@ class StepflowServer:
             print("Error executing component:", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             raise StepflowExecutionError(f"Component execution failed: {str(e)}") from e
+
+    def _add_langchain_support(self):
+        """Add LangChain integration support to the server."""
+        try:
+            from stepflow_py.langchain_registry import add_langchain_component_method
+            from stepflow_py.langchain_components import register_langchain_components
+            
+            # Add the langchain_component decorator method
+            add_langchain_component_method(self.__class__)
+            
+            # Register built-in LangChain components
+            register_langchain_components(self)
+            
+        except ImportError:
+            # LangChain not available, skip adding support
+            pass

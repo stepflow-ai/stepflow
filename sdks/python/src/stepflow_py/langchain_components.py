@@ -1,0 +1,133 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more contributor
+# license agreements.  See the NOTICE file distributed with this work for
+# additional information regarding copyright ownership.  The ASF licenses this
+# file to you under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License.  You may obtain a copy of
+# the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+"""
+Direct LangChain components for StepFlow.
+
+This module provides built-in components for executing LangChain runnables
+directly without requiring blob storage.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict
+
+import msgspec
+
+from stepflow_py.context import StepflowContext
+from stepflow_py.exceptions import StepflowExecutionError
+from stepflow_py.langchain_integration import (
+    check_langchain_available,
+    deserialize_runnable,
+    execute_runnable,
+    create_runnable_config,
+    convert_stepflow_to_langchain_input,
+)
+
+
+class LangChainInvokeInput(msgspec.Struct):
+    """
+    Input structure for the /langchain/invoke component.
+    
+    This component allows direct execution of LangChain runnables by providing
+    the serialized runnable definition in the input.
+    """
+    runnable_definition: Dict[str, Any]
+    input: Any
+    config: Dict[str, Any] | None = None
+    execution_mode: str = "invoke"
+
+
+async def langchain_invoke(input: LangChainInvokeInput, context: StepflowContext) -> Any:
+    """
+    Execute a LangChain runnable directly from its serialized definition.
+    
+    This component provides a direct way to execute LangChain runnables without
+    requiring blob storage. The runnable definition is provided directly in the
+    component input.
+    
+    Args:
+        input: Contains runnable definition, input data, and optional config
+        context: StepFlow context for runtime services
+        
+    Returns:
+        The result of executing the LangChain runnable
+    """
+    check_langchain_available()
+    
+    # Validate execution mode
+    if input.execution_mode not in ["invoke", "batch", "stream"]:
+        raise StepflowExecutionError(
+            f"Invalid execution_mode '{input.execution_mode}'. Must be 'invoke', 'batch', or 'stream'"
+        )
+    
+    # Deserialize the runnable
+    try:
+        runnable = deserialize_runnable(input.runnable_definition)
+    except Exception as e:
+        raise StepflowExecutionError(
+            f"Failed to deserialize LangChain runnable: {e}"
+        ) from e
+    
+    # Prepare input for LangChain runnable
+    langchain_input = input.input
+    
+    # Create runnable config from StepFlow input
+    stepflow_input_dict = {
+        "input": input.input,
+        "config": input.config or {}
+    }
+    runnable_config = create_runnable_config(stepflow_input_dict, context)
+    
+    # Execute the runnable
+    try:
+        result = await execute_runnable(
+            runnable,
+            langchain_input,
+            config=runnable_config,
+            execution_mode=input.execution_mode
+        )
+        
+        return result
+        
+    except Exception as e:
+        if isinstance(e, StepflowExecutionError):
+            raise
+        raise StepflowExecutionError(f"LangChain runnable execution failed: {e}") from e
+
+
+def register_langchain_components(server):
+    """
+    Register all built-in LangChain components with a StepFlow server.
+    
+    This function registers the following components:
+    - /langchain/invoke: Execute LangChain runnables directly
+    
+    Args:
+        server: The StepFlow server instance to register components with
+    """
+    # Only register if LangChain is available
+    try:
+        check_langchain_available()
+    except StepflowExecutionError:
+        # LangChain not available, skip registration
+        return
+    
+    # Register the invoke component
+    server.component(langchain_invoke, name="/langchain/invoke")
+    
+    # Import and register the UDF component
+    from stepflow_py.langchain_udf import langchain_udf, LangChainUdfInput
+    server.component(langchain_udf, name="/langchain/udf")

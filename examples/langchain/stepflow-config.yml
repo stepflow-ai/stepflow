@@ -1,0 +1,19 @@
+plugins:
+  builtin:
+    type: builtin
+  langchain:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "python", "langchain_server.py"]
+    env:
+      PYTHONPATH: "${PYTHONPATH:-}:../../sdks/python/src"
+
+routes:
+  # Route all components to the langchain plugin first, then fallback to builtin
+  "/{*component}":
+    - plugin: langchain
+    - plugin: builtin
+
+stateStore:
+  type: inMemory
