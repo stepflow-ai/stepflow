@@ -11,7 +11,7 @@ plugins:
   filesystem:
     type: mcp
     command: npx
-    args: 
+    args:
       - "-y"
       - "@modelcontextprotocol/server-filesystem"
       - "/tmp"
@@ -24,7 +24,7 @@ plugins:
   #   type: mcp
   #   command: npx
   #   args:
-  #     - "-y" 
+  #     - "-y"
   #     - "@modelcontextprotocol/server-brave-search"
   #   env:
   #     BRAVE_API_KEY: "your-api-key-here"
@@ -36,5 +36,5 @@ routes:
     - plugin: builtin
 
 # Optional: Configure state storage
-state_store:
+stateStore:
   type: inMemory

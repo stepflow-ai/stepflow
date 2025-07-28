@@ -1,0 +1,53 @@
+{
+  "name": "Load Test - Rust Built-in Message Creation",
+  "description": "Load test workflow using Rust built-in create_messages component",
+  "input_schema": {
+    "type": "object",
+    "required": ["prompt"],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "The user prompt"
+      },
+      "system_message": {
+        "type": "string",
+        "description": "Optional system message to set context",
+        "default": "You are a helpful assistant."
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "create_messages",
+      "component": "/create_messages",
+      "input": {
+        "system_instructions": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "system_message"
+        },
+        "user_prompt": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "prompt"
+        }
+      }
+    }
+  ],
+  "output": {
+    "messages": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "messages"
+    },
+    "message_count": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "message_count"
+    }
+  }
+}

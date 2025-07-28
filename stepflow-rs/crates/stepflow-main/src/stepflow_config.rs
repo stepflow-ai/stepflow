@@ -28,6 +28,7 @@ use stepflow_state::{InMemoryStateStore, StateStore};
 use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StepflowConfig {
     /// Working directory for the configuration.
     ///

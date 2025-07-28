@@ -29,19 +29,19 @@ plugins:
     command: "./my-component-server"
     args: ["--config", "server.json"]
 
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "/custom/*"
-    target: custom_server
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{component}":
+    - plugin: python
+  "/custom/{component}":
+    - plugin: custom_server
+  "/{component}":
+    - plugin: builtin
 
-state_store:
+stateStore:
   type: sqlite
-  database_url: "sqlite:workflow_state.db"
-  auto_migrate: true
-  max_connections: 10
+  databaseUrl: "sqlite:workflow_state.db"
+  autoMigrate: true
+  maxConnections: 10
 ```
 
 ## Configuration Resolution
@@ -261,8 +261,8 @@ No configuration needed - this is the default:
 
 ```yaml
 # Optional explicit configuration
-state_store:
-  type: in_memory
+stateStore:
+  type: inMemory
 ```
 
 **Characteristics:**
@@ -276,19 +276,19 @@ state_store:
 File-based SQLite database for persistent storage:
 
 ```yaml
-state_store:
+stateStore:
   type: sqlite
-  database_url: "sqlite:workflow_state.db"
-  auto_migrate: true
-  max_connections: 10
+  databaseUrl: "sqlite:workflow_state.db"
+  autoMigrate: true
+  maxConnections: 10
 ```
 
 **Parameters:**
-- **`database_url`**: SQLite connection string
+- **`databaseUrl`**: SQLite connection string
   - File path: `"sqlite:path/to/database.db"`
   - In-memory: `"sqlite::memory:"`
-- **`auto_migrate`** (optional): Automatically create/update database schema [default: true]
-- **`max_connections`** (optional): Connection pool size [default: 10]
+- **`autoMigrate`** (optional): Automatically create/update database schema [default: true]
+- **`maxConnections`** (optional): Connection pool size [default: 10]
 
 **Characteristics:**
 - Persistent storage
@@ -301,11 +301,11 @@ state_store:
 Enterprise-grade persistent storage (planned feature):
 
 ```yaml
-state_store:
+stateStore:
   type: postgresql
-  database_url: "postgresql://user:password@localhost/stepflow"
-  max_connections: 20
-  auto_migrate: true
+  databaseUrl: "postgresql://user:password@localhost/stepflow"
+  maxConnections: 20
+  autoMigrate: true
 ```
 
 ## Complete Configuration Examples
@@ -327,13 +327,13 @@ plugins:
       PYTHONPATH: "${HOME}/dev/python-libs"
       USER_CONFIG: "${USER:-dev}"
 
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{component}":
+    - plugin: python
+  "/{component}":
+    - plugin: builtin
 
-state_store:
+stateStore:
   type: in_memory
 ```
 
@@ -370,23 +370,23 @@ plugins:
       MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
       MCP_CONFIG_DIR: "${CONFIG_DIR:-/app/config}"
 
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "/ai/*"
-    target: remote_ai
-  - match: "/data/*"
-    target: data_processing
-  - match: "/filesystem/*"
-    target: mcp_filesystem
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{component}":
+    - plugin: python
+  "/ai/{component}":
+    - plugin: remote_ai
+  "/data/{component}":
+    - plugin: data_processing
+  "/filesystem/{component}":
+    - plugin: mcp_filesystem
+  "/{component}":
+    - plugin: builtin
 
-state_store:
+stateStore:
   type: sqlite
-  database_url: "sqlite:/var/lib/stepflow/state.db"
-  auto_migrate: true
-  max_connections: 20
+  databaseUrl: "sqlite:/var/lib/stepflow/state.db"
+  autoMigrate: true
+  maxConnections: 20
 ```
 
 ### Multi-Service Configuration
@@ -415,21 +415,21 @@ plugins:
     transport: http
     url: "http://api-gateway:8082"
 
-routing:
-  - match: "/analytics/*"
-    target: analytics
-  - match: "/ml/*"
-    target: ml_models
-  - match: "/external/*"
-    target: external_apis
-  - match: "*"
-    target: builtin
+routes:
+  "/analytics/{component}":
+    - plugin: analytics
+  "/ml/{component}":
+    - plugin: ml_models
+  "/external/{component}":
+    - plugin: external_apis
+  "/{component}":
+    - plugin: builtin
 
-state_store:
+stateStore:
   type: sqlite
-  database_url: "sqlite:/shared/storage/workflows.db"
-  auto_migrate: true
-  max_connections: 50
+  databaseUrl: "sqlite:/shared/storage/workflows.db"
+  autoMigrate: true
+  maxConnections: 50
 ```
 
 ## Environment Variables

@@ -36,6 +36,7 @@ use crate::migrations;
 
 /// Configuration for SqliteStateStore
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SqliteStateStoreConfig {
     pub database_url: String,
     #[serde(default = "default_max_connections")]
@@ -66,7 +67,8 @@ impl SqliteStateStore {
             .max_connections(config.max_connections)
             .connect(&config.database_url)
             .await
-            .change_context(StateError::Connection)?;
+            .change_context(StateError::Connection)
+            .attach_printable_lazy(|| format!("Database URL: {}", config.database_url))?;
 
         if config.auto_migrate {
             migrations::run_migrations(&pool).await?;

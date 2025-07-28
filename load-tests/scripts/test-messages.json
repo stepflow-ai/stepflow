@@ -1,0 +1,42 @@
+[
+  {
+    "prompt": "Hello world",
+    "system_message": "You are a simple assistant."
+  },
+  {
+    "prompt": "Calculate 2 + 2",
+    "system_message": "You are a math helper."
+  },
+  {
+    "prompt": "What is the weather like?",
+    "system_message": "You are a weather assistant."
+  },
+  {
+    "prompt": "Process this text",
+    "system_message": "You are a text processor."
+  },
+  {
+    "prompt": "Help me with coding",
+    "system_message": "You are a programming assistant."
+  },
+  {
+    "prompt": "Explain quantum physics",
+    "system_message": "You are a science tutor."
+  },
+  {
+    "prompt": "Write a short story",
+    "system_message": "You are a creative writer."
+  },
+  {
+    "prompt": "Translate to Spanish",
+    "system_message": "You are a translator."
+  },
+  {
+    "prompt": "Summarize this document",
+    "system_message": "You are a document analyzer."
+  },
+  {
+    "prompt": "Check for errors",
+    "system_message": "You are a quality checker."
+  }
+]

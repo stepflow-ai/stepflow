@@ -1,0 +1,59 @@
+{
+  "name": "Load Test - Python Custom Component Messages",
+  "description": "Load test workflow using Python custom component for message creation",
+  "input_schema": {
+    "type": "object",
+    "required": ["prompt"],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "The user prompt"
+      },
+      "system_message": {
+        "type": "string",
+        "description": "Optional system message to set context",
+        "default": "You are a helpful assistant."
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "create_messages",
+      "component": "/custom/create_messages",
+      "input": {
+        "prompt": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "prompt"
+        },
+        "system_message": {
+          "$from": {
+            "workflow": "input"
+          },
+          "path": "system_message"
+        }
+      }
+    }
+  ],
+  "output": {
+    "messages": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "messages"
+    },
+    "message_count": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "message_count"
+    },
+    "total_length": {
+      "$from": {
+        "step": "create_messages"
+      },
+      "path": "total_length"
+    }
+  }
+}

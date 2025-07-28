@@ -127,6 +127,7 @@ def _compile_function(
             "all": all,
             "print": print,
             "isinstance": isinstance,
+            "__import__": __import__,
         },
         "json": json,
         "math": __import__("math"),

@@ -1,0 +1,81 @@
+{
+  "name": "Load Test - Python UDF OpenAI",
+  "description": "Load test workflow using Python UDF to call OpenAI GPT-4o-mini model",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "prompt"
+    ],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "The prompt to send to OpenAI"
+      },
+      "system_message": {
+        "type": "string",
+        "description": "Optional system message to set context",
+        "default": "You are a helpful assistant."
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "create_openai_udf_blob",
+      "component": "/put_blob",
+      "input": {
+        "data": {
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "string"
+              },
+              "system_message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "prompt",
+              "system_message"
+            ]
+          },
+          "code": "import openai\nimport os\n\n# Initialize OpenAI client\nclient = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))\n\n# Make API call\nresponse = client.chat.completions.create(\n    model=\"gpt-4o-mini\",\n    messages=[\n        {\"role\": \"system\", \"content\": input['system_message']},\n        {\"role\": \"user\", \"content\": input['prompt']}\n    ],\n    max_tokens=150,\n    temperature=0.7\n)\n\nreturn {\n    \"response\": response.choices[0].message.content,\n    \"model\": response.model,\n    \"usage\": {\n        \"prompt_tokens\": response.usage.prompt_tokens,\n        \"completion_tokens\": response.usage.completion_tokens,\n        \"total_tokens\": response.usage.total_tokens\n    }\n}"
+        }
+      }
+    },
+    {
+      "id": "call_openai",
+      "component": "/python/udf",
+      "input": {
+        "blob_id": {
+          "$from": {
+            "step": "create_openai_udf_blob"
+          },
+          "path": "blob_id"
+        },
+        "input": {
+          "prompt": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "prompt"
+          },
+          "system_message": {
+            "$from": {
+              "workflow": "input"
+            },
+            "path": "system_message"
+          }
+        }
+      }
+    }
+  ],
+  "output": {
+    "response": {
+      "$from": {
+        "step": "call_openai"
+      },
+      "path": "response"
+    }
+  }
+}

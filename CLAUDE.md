@@ -581,43 +581,42 @@ The HTTP transport implements MCP-style session negotiation for proper connectio
 - **Scalability**: Multiple clients can connect simultaneously without interference
 - **Cleanup**: Resources are automatically freed when clients disconnect
 
-### Routing Configuration
+### Routes Configuration
 
-StepFlow uses routing rules to map component paths to specific plugins. **Routing rules are required** - components will not be accessible without appropriate routing rules.
+StepFlow uses routes to map component paths to specific plugins. **Route rules are required** - components will not be accessible without appropriate route rules.
 
 ```yaml
-routing:
-  - match: "/python/*"
-    target: python
-  - match: "/python_http/*"
-    target: python_http
-  - match: "/filesystem/*"
-    target: filesystem
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{component}":
+    - plugin: python
+  "/python_http/{component}":
+    - plugin: python_http
+  "/filesystem/{component}":
+    - plugin: filesystem
+  "/{component}":
+    - plugin: builtin
 ```
 
-#### Routing Rules
+#### Route Rules
 
-- **match**: Glob pattern to match component paths (supports `*` and `**` wildcards)
-- **target**: Plugin name to route to (must match a key in the plugins section)
+- **Path pattern**: Component path pattern to match (supports `{component}` wildcards)
+- **plugin**: Plugin name to route to (must match a key in the plugins section)
 - Rules are evaluated in order, first match wins
-- Use `*` as a catch-all pattern for fallback routing
-- **Important**: Target plugins referenced in routing rules must be defined in the plugins section
+- Use `/{component}` as a catch-all pattern for fallback routing
+- **Important**: Target plugins referenced in route rules must be defined in the plugins section
 
-#### Advanced Routing with Input Conditions
+#### Advanced Routes with Input Conditions
 
-Routing rules can include input-based conditions for more sophisticated routing:
+Route rules can include input-based conditions for more sophisticated routing:
 
 ```yaml
-routing:
-  - match: "/custom/*"
-    input:
-      - path: "$.model"
-        value: "gpt-4"
-    target: openai
-  - match: "/custom/*"
-    target: fallback
+routes:
+  "/custom/{component}":
+    - input:
+        - path: "$.model"
+          value: "gpt-4"
+      plugin: openai
+    - plugin: fallback
 ```
 
 This routes `/custom/*` components to the `openai` plugin when the input contains `"model": "gpt-4"`, otherwise to the `fallback` plugin.
@@ -627,36 +626,36 @@ This routes `/custom/*` components to the `openai` plugin when the input contain
 - **value**: Expected value for the path (exact match required)
 - Multiple conditions can be specified - all must match for the rule to apply
 
-#### Routing Rule Examples
+#### Route Rule Examples
 
 ```yaml
-routing:
+routes:
   # Route Python components to Python SDK (stdio)
-  - match: "/python/*"
-    target: python_stdio
+  "/python/{component}":
+    - plugin: python_stdio
 
   # Route Python HTTP components to remote Python server
-  - match: "/python_http/*"
-    target: python_http
+  "/python_http/{component}":
+    - plugin: python_http
 
   # Route specific builtin components
-  - match: "/builtin/openai"
-    target: builtin
+  "/builtin/openai":
+    - plugin: builtin
 
   # Route filesystem operations to MCP server
-  - match: "/filesystem/*"
-    target: filesystem
+  "/filesystem/{component}":
+    - plugin: filesystem
 
   # Route based on input conditions
-  - match: "/ai/chat"
-    input:
-      - path: "$.provider"
-        value: "openai"
-    target: openai_plugin
+  "/ai/chat":
+    - input:
+        - path: "$.provider"
+          value: "openai"
+      plugin: openai_plugin
 
   # Fallback to builtin for everything else
-  - match: "*"
-    target: builtin
+  "/{component}":
+    - plugin: builtin
 ```
 
 ### Complete Configuration Example
@@ -687,20 +686,20 @@ plugins:
       MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
       MCP_CONFIG_DIR: "${HOME}/.config/mcp"
 
-routing:
-  - match: "/python/*"
-    target: python_stdio
-  - match: "/python_http/*"
-    target: python_http
-  - match: "/filesystem/*"
-    target: filesystem
-  - match: "*"
-    target: builtin
+routes:
+  "/python/{component}":
+    - plugin: python_stdio
+  "/python_http/{component}":
+    - plugin: python_http
+  "/filesystem/{component}":
+    - plugin: filesystem
+  "/{component}":
+    - plugin: builtin
 
-state_store:
+stateStore:
   type: sqlite
-  database_url: "sqlite:workflow_state.db"
-  auto_migrate: true
+  databaseUrl: "sqlite:workflow_state.db"
+  autoMigrate: true
 ```
 
 ### State Store Configuration
@@ -710,17 +709,17 @@ StepFlow supports multiple state storage backends for persisting workflow execut
 #### In-Memory State Store (Default)
 ```yaml
 # No configuration needed - this is the default
-state_store:
-  type: in_memory
+stateStore:
+  type: inMemory
 ```
 
 #### SQLite State Store
 ```yaml
-state_store:
+stateStore:
   type: sqlite
-  database_url: "sqlite:workflow_state.db"  # File path or ":memory:"
-  auto_migrate: true                        # Automatically create/update schema
-  max_connections: 10                       # Connection pool size
+  databaseUrl: "sqlite:workflow_state.db"  # File path or ":memory:"
+  autoMigrate: true                        # Automatically create/update schema
+  maxConnections: 10                       # Connection pool size
 ```
 
 ### Project Dependencies
