@@ -27,7 +27,7 @@ use tokio::sync::mpsc;
 
 use super::bidirectional_driver::BidirectionalDriver;
 use crate::error::{Result, TransportError};
-use crate::protocol::{Method, MethodRequest, ProtocolMethod, ProtocolNotification};
+use crate::protocol::{Method, MethodRequest, Notification, ProtocolMethod, ProtocolNotification};
 use crate::{LazyValue, Message, MessageHandlerRegistry, OwnedJson, RequestId};
 use serde::de::DeserializeOwned;
 
@@ -129,13 +129,16 @@ impl HttpClientHandle {
     where
         I: ProtocolNotification + serde::Serialize + Send + Sync + std::fmt::Debug,
     {
-        let notification =
-            crate::protocol::Notification::new(I::METHOD_NAME, Some(LazyValue::write_ref(params)));
+        let notification = Notification::new(I::METHOD_NAME, Some(LazyValue::write_ref(params)));
+        self.notify_dyn(notification).await
+    }
 
+    /// Send a notification.
+    async fn notify_dyn(&self, notification: Notification<'_>) -> Result<()> {
         let notification_str = serde_json::to_string(&notification)
             .change_context(TransportError::Send)
             .attach_printable_lazy(|| {
-                format!("Failed to serialize {} notification", I::METHOD_NAME)
+                format!("Failed to serialize {} notification", notification.method)
             })?;
 
         // For notifications, we send the request but don't wait for a response
