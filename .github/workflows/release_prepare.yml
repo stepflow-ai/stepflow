@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - stepflow-rs
+          - python-sdk
         default: 'stepflow-rs'
       bump_type:
         description: 'Type of version bump'
@@ -45,6 +46,10 @@ jobs:
       - name: Install git-cliff
         uses: kenji-miyake/setup-git-cliff@v1
 
+      - name: Install uv (for Python SDK)
+        if: inputs.package == 'python-sdk'
+        uses: astral-sh/setup-uv@v3
+
       - name: Configure git
         run: |
           git config --global user.name "github-actions[bot]"
@@ -54,11 +59,17 @@ jobs:
         run: |
           case "${{ inputs.package }}" in
             stepflow-rs)
-              cd stepflow-rs
               if [[ -n "${{ inputs.message }}" ]]; then
-                ./scripts/prepare-release.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
+                ./scripts/prepare-release-rust.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
               else
-                ./scripts/prepare-release.sh ${{ inputs.bump_type }} --pr
+                ./scripts/prepare-release-rust.sh ${{ inputs.bump_type }} --pr
+              fi
+              ;;
+            python-sdk)
+              if [[ -n "${{ inputs.message }}" ]]; then
+                ./scripts/prepare-release-python.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
+              else
+                ./scripts/prepare-release-python.sh ${{ inputs.bump_type }} --pr
               fi
               ;;
             *)

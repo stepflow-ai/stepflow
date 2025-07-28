@@ -13,7 +13,7 @@ This document describes how to perform releases and how the release machinery wo
 2. **Trigger the Release**
    - Click **"Run workflow"**
    - Select inputs:
-     - **Package**: `stepflow-rs` (currently the only option)
+     - **Package**: `stepflow-rs` or `python-sdk`
      - **Bump type**: `patch`, `minor`, or `major`
      - **Message**: (Optional) Custom message for the changelog entry
    - Click **"Run workflow"**
@@ -26,8 +26,21 @@ This document describes how to perform releases and how the release machinery wo
    - Merge the PR when ready
 
 4. **Automatic Release**
-   - Upon merge, a git tag `stepflow-rs-X.Y.Z` is automatically created
-   - The existing `release_rust.yml` workflow builds binaries and creates a GitHub release
+   - Upon merge, a git tag is automatically created (`stepflow-rs-X.Y.Z` or `stepflow-py-X.Y.Z`)
+   - The appropriate release workflow builds and publishes the package
+
+### Package-Specific Release Information
+
+#### Rust Package (`stepflow-rs`)
+- **Output**: Multi-platform binaries, Docker images, GitHub release
+- **Tag Format**: `stepflow-rs-X.Y.Z`
+- **Artifacts**: Compiled binaries for Linux, macOS, Windows; Docker images
+
+#### Python SDK (`python-sdk`)
+- **Output**: PyPI package, GitHub release
+- **Tag Format**: `stepflow-py-X.Y.Z`
+- **Publishing**: PyPI via Trusted Publishing (no tokens required)
+- **Artifacts**: Python wheel and source distribution
 
 ## How Releases Are Implemented
 
@@ -111,34 +124,62 @@ The release scripts can be tested locally without creating PRs or tags:
 
 #### Testing Version Bump and Changelog Generation
 
+**Rust Package:**
 ```bash
-cd stepflow-rs
-
 # Test patch release locally (safe - no commits/PRs)
-./scripts/prepare-release.sh patch
+./scripts/prepare-release-rust.sh patch
 
 # Test with custom message
-./scripts/prepare-release.sh patch --message "Critical security fixes and performance improvements"
+./scripts/prepare-release-rust.sh patch --message "Critical security fixes and performance improvements"
 
 # Review what changed
 git diff
 
 # Reset changes to test again
-git checkout -- Cargo.toml Cargo.lock CHANGELOG.md
+git checkout -- stepflow-rs/Cargo.toml stepflow-rs/Cargo.lock stepflow-rs/CHANGELOG.md
+```
+
+**Python SDK:**
+```bash
+# Test patch release locally (safe - no commits/PRs)
+./scripts/prepare-release-python.sh patch
+
+# Test with custom message
+./scripts/prepare-release-python.sh patch --message "Bug fixes and improvements"
+
+# Review what changed
+git diff
+
+# Reset changes to test again
+git checkout -- sdks/python/pyproject.toml sdks/python/uv.lock sdks/python/CHANGELOG.md
 ```
 
 #### Testing Different Bump Types
 
+**Rust Package:**
 ```bash
 # Test minor version bump
-./scripts/prepare-release.sh minor
+./scripts/prepare-release-rust.sh minor
 git diff
-git checkout -- Cargo.toml Cargo.lock CHANGELOG.md
+git checkout -- stepflow-rs/Cargo.toml stepflow-rs/Cargo.lock stepflow-rs/CHANGELOG.md
 
 # Test major version bump
-./scripts/prepare-release.sh major
+./scripts/prepare-release-rust.sh major
 git diff
-git checkout -- Cargo.toml Cargo.lock CHANGELOG.md
+git checkout -- stepflow-rs/Cargo.toml stepflow-rs/Cargo.lock stepflow-rs/CHANGELOG.md
+```
+
+**Python SDK:**
+```bash
+# Test minor version bump
+./scripts/prepare-release-python.sh minor
+git diff
+git checkout -- sdks/python/pyproject.toml sdks/python/uv.lock sdks/python/CHANGELOG.md
+
+# Test major version bump
+./scripts/prepare-release-python.sh major
+git diff
+git checkout -- sdks/python/pyproject.toml sdks/python/uv.lock sdks/python/CHANGELOG.md
 ```
 
 #### Verifying Changelog Generation
@@ -177,6 +218,7 @@ git branch -D test-release-script
 
 #### Testing Complete Release Flow
 
+**Rust Package:**
 ```bash
 # Test the entire release process without creating tags/releases
 # Go to Actions → Release Rust → Run workflow
@@ -188,6 +230,20 @@ git branch -D test-release-script
 # 1. Build all binaries and Docker images
 # 2. Verify artifacts work correctly
 # 3. Skip tag and release creation
+```
+
+**Python SDK:**
+```bash
+# Test the entire release process without publishing to PyPI
+# Go to Actions → Release Python SDK → Run workflow
+# Inputs:
+#   version: 1.2.3-test
+#   skip_tag_creation: true
+
+# This will:
+# 1. Build Python wheel and source distribution
+# 2. Run comprehensive tests
+# 3. Skip PyPI publishing and tag creation
 ```
 
 #### Validating Path Filtering
@@ -202,9 +258,17 @@ git log --oneline stepflow-rs-0.1.0..HEAD -- stepflow-rs/ CLAUDE.md CONTRIBUTING
 
 ### Dependencies for Local Testing
 
-**Required Tools:**
+**Common Tools:**
 - `git-cliff`: `cargo install git-cliff`
 - `gh` CLI: Required only for `--pr` flag (https://cli.github.com/)
+
+**Rust Package Additional Requirements:**
+- Rust toolchain (stable)
+- `cargo` for dependency management
+
+**Python SDK Additional Requirements:**
+- `uv`: Package manager (https://docs.astral.sh/uv/getting-started/installation/)
+- Python 3.13+ (automatically installed by uv)
 
 **Environment:**
 - Clean git working directory (for `--pr` flag)
