@@ -51,6 +51,10 @@ pub enum MainError {
     Configuration,
     #[error("Server error")]
     ServerError,
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;

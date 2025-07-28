@@ -24,6 +24,7 @@ use crate::{
     serve::serve,
     submit::submit,
     test::TestOptions,
+    validate,
 };
 
 /// StepFlow command line application.
@@ -142,6 +143,27 @@ pub enum Command {
         #[command(flatten)]
         config_args: ConfigArgs,
     },
+    /// Validate workflow files and configuration.
+    Validate {
+        /// Path to the workflow file to validate.
+        #[arg(
+            long = "flow",
+            value_name = "FILE",
+            value_hint = clap::ValueHint::FilePath
+        )]
+        flow_path: Option<PathBuf>,
+
+        #[command(flatten)]
+        config_args: ConfigArgs,
+
+        /// Only validate the configuration file, not the workflow.
+        #[arg(long)]
+        config_only: bool,
+
+        /// Only validate the workflow file, not the configuration.
+        #[arg(long)]
+        flow_only: bool,
+    },
 }
 
 impl Cli {
@@ -155,6 +177,7 @@ impl Cli {
                 Command::Submit { .. } => "submit",
                 Command::ListComponents { .. } => "list-components",
                 Command::Repl { .. } => "repl",
+                Command::Validate { .. } => "validate",
             }
         );
         match self.command {
@@ -220,6 +243,23 @@ impl Cli {
             }
             Command::Repl { config_args } => {
                 run_repl(config_args.config_path).await?;
+            }
+            Command::Validate {
+                flow_path,
+                config_args,
+                config_only,
+                flow_only,
+            } => {
+                let failures = validate::validate(
+                    flow_path.as_deref(),
+                    config_args.config_path.as_deref(),
+                    config_only,
+                    flow_only,
+                )
+                .await?;
+                if failures > 0 {
+                    std::process::exit(1);
+                }
             }
         };
 
