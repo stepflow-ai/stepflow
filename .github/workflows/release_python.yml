@@ -1,0 +1,284 @@
+name: Release - Python SDK
+
+on:
+  repository_dispatch:
+    types: [build-python-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3)'
+        required: true
+        type: string
+      skip_tag_creation:
+        description: 'Skip creating git tag (for testing)'
+        required: false
+        type: boolean
+        default: false
+
+# Limit concurrency to a single run per branch (ref).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  determine-version:
+    name: Determine Version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      skip_tag: ${{ steps.version.outputs.skip_tag }}
+
+    steps:
+      - name: Set version info
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.client_payload.tag }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=false" >> $GITHUB_OUTPUT
+            echo "Source: repository dispatch"
+            echo "Version: ${{ github.event.client_payload.version }}"
+            echo "Tag: ${{ github.event.client_payload.tag }}"
+          else
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=stepflow-py-${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=${{ inputs.skip_tag_creation }}" >> $GITHUB_OUTPUT
+            echo "Source: manual workflow dispatch"
+            echo "Version: ${{ inputs.version }}"
+            echo "Tag: stepflow-py-${{ inputs.version }}"
+            echo "Skip tag: ${{ inputs.skip_tag_creation }}"
+          fi
+
+  build-and-test:
+    name: Build and Test Python Package
+    runs-on: ubuntu-22.04
+    needs: determine-version
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: sdks/python
+        run: |
+          uv sync --extra http
+          uv sync --group dev
+
+      - name: Run code generation check
+        working-directory: sdks/python
+        run: uv run poe codegen-check
+
+      - name: Run linting
+        working-directory: sdks/python
+        run: |
+          uv run poe fmt-check
+          uv run poe lint-check
+
+      - name: Run type checking
+        working-directory: sdks/python
+        run: uv run poe type-check
+
+      - name: Run dependency checking
+        working-directory: sdks/python
+        run: uv run poe dep-check
+
+      - name: Run tests
+        working-directory: sdks/python
+        run: uv run poe test
+
+      - name: Build package
+        working-directory: sdks/python
+        run: uv build
+
+      - name: Verify build
+        working-directory: sdks/python
+        run: |
+          echo "Built packages:"
+          ls -la dist/
+          
+          # Test that the built wheel can be imported
+          uv run pip install dist/*.whl --force-reinstall
+          uv run python -c "import stepflow_py; print(f'stepflow_py version: {stepflow_py.__version__ if hasattr(stepflow_py, \"__version__\") else \"unknown\"}')"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: sdks/python/dist/
+          retention-days: 7
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/stepflow-py
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+
+  create-tag-and-release:
+    name: Create Tag and Release
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test, publish-to-pypi]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: ./release-artifacts
+
+      - name: Create release notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## StepFlow Python SDK v${{ needs.determine-version.outputs.version }}
+
+          📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/sdks/python/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[PyPI Package](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)**
+
+          This release includes the Python SDK for StepFlow with the following distribution files:
+
+          ### 📥 Installation
+
+          **Via pip:**
+          ```bash
+          pip install stepflow-py==${{ needs.determine-version.outputs.version }}
+          ```
+
+          **With HTTP support:**
+          ```bash
+          pip install stepflow-py[http]==${{ needs.determine-version.outputs.version }}
+          ```
+
+          **Via uv:**
+          ```bash
+          uv add stepflow-py==${{ needs.determine-version.outputs.version }}
+          ```
+
+          ### 📦 Distribution Files
+
+          The following files are included in this release:
+          - **Wheel**: `stepflow_py-${{ needs.determine-version.outputs.version }}-py3-none-any.whl`
+          - **Source Distribution**: `stepflow-py-${{ needs.determine-version.outputs.version }}.tar.gz`
+
+          ### 🔗 Links
+
+          - **PyPI Package**: https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/
+          - **Documentation**: https://github.com/${{ github.repository }}/tree/main/sdks/python
+          - **Examples**: https://github.com/${{ github.repository }}/tree/main/sdks/python/examples
+
+          ### 🚀 Usage
+
+          ```python
+          from stepflow_py import StepflowStdioServer
+
+          server = StepflowStdioServer()
+
+          @server.component
+          def my_component(input_data: dict) -> dict:
+              return {"result": input_data}
+
+          server.run()
+          ```
+
+          For HTTP server mode:
+          ```bash
+          stepflow_py --http --port 8080
+          ```
+          EOF
+
+      - name: Create GitHub release with tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.determine-version.outputs.tag }}" \
+            --title "StepFlow Python SDK v${{ needs.determine-version.outputs.version }}" \
+            --notes-file release-notes.md \
+            sdks/python/CHANGELOG.md \
+            ./release-artifacts/stepflow_py-*.whl \
+            ./release-artifacts/stepflow-py-*.tar.gz
+
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test, publish-to-pypi, create-tag-and-release]
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "## Python SDK Release Summary v${{ needs.determine-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.build-and-test.result }}" = "success" ]; then
+            echo "| Build & Test | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Build & Test | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ]; then
+            if [ "${{ needs.publish-to-pypi.result }}" = "success" ]; then
+              echo "| PyPI Publishing | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.publish-to-pypi.result }}" = "skipped" ]; then
+              echo "| PyPI Publishing | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| PyPI Publishing | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+              echo "| GitHub Release | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.create-tag-and-release.result }}" = "skipped" ]; then
+              echo "| GitHub Release | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| GitHub Release | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| PyPI Publishing | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+            echo "| GitHub Release | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐍 Python SDK Features" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version**: ${{ env.PYTHON_VERSION }}+" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package Management**: uv" >> $GITHUB_STEP_SUMMARY
+          echo "- **HTTP Support**: Optional extra (stepflow-py[http])" >> $GITHUB_STEP_SUMMARY
+          echo "- **Transport Modes**: STDIO and HTTP" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
+            echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            echo "**PyPI:** [stepflow-py v${{ needs.determine-version.outputs.version }}](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)" >> $GITHUB_STEP_SUMMARY
+            echo "**GitHub Release:** [StepFlow Python SDK v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+          fi
