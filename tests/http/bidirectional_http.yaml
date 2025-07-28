@@ -1,0 +1,108 @@
+name: "HTTP Transport Bidirectional Test"
+description: "Test HTTP transport with bidirectional (context-using) components"
+
+input_schema:
+  type: object
+  properties:
+    data_points:
+      type: array
+      items: { type: number }
+    analysis_type:
+      type: string
+      enum: ["statistics", "distribution"]
+    processing_steps:
+      type: array
+      items: { type: string }
+  required: [data_points, analysis_type, processing_steps]
+
+steps:
+  - id: analyze_data
+    component: "/test/data_analysis"
+    input:
+      data: { $from: { workflow: input }, path: "data_points" }
+      analysis_type: { $from: { workflow: input }, path: "analysis_type" }
+
+  - id: retrieve_analysis
+    component: "/builtin/get_blob"
+    input:
+      blob_id: { $from: { step: analyze_data }, path: "analysis_blob_id" }
+
+  - id: chain_process
+    component: "/test/chain_processing"
+    input:
+      initial_data:
+        test_data: { $from: { workflow: input }, path: "data_points" }
+        analysis_summary: { $from: { step: analyze_data }, path: "summary" }
+      processing_steps: { $from: { workflow: input }, path: "processing_steps" }
+
+output:
+  analysis_summary: { $from: { step: analyze_data }, path: "summary" }
+  analysis_type: { $from: { step: retrieve_analysis }, path: "$.data.type" }
+  processing_result:
+    final_result:
+      test_data: { $from: { step: chain_process }, path: "$.final_result.test_data" }
+      analysis_summary: { $from: { step: chain_process }, path: "$.final_result.analysis_summary" }
+
+test:
+  servers:
+    test_http:
+      command: "uv"
+      args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py", "--http", "--port", "{port}"]
+      env: {}
+      working_directory: ""
+      port_range: [18000, 19000]
+      health_check:
+        path: "/health"
+        timeout_ms: 5000
+        retry_attempts: 10
+        retry_delay_ms: 500
+      startup_timeout_ms: 10000
+      shutdown_timeout_ms: 5000
+  
+  config:
+    plugins:
+      builtin:
+        type: builtin
+      test_http:
+        type: stepflow
+        transport: http
+        url: "{test_http.url}"
+
+    routes:
+      "/builtin/{component}":
+        - plugin: builtin
+      "/test/{component}":
+        - plugin: test_http
+
+  cases:
+    - name: "Statistics analysis with blob storage"
+      input:
+        data_points: [1.0, 2.0, 3.0, 4.0, 5.0]
+        analysis_type: "statistics"
+        processing_steps: ["uppercase_strings", "multiply_numbers", "add_metadata"]
+
+      output:
+        outcome: success
+        result:
+          analysis_summary: "Statistics for 5 data points: mean=3.00, std_dev=1.41"
+          analysis_type: "statistics"
+          processing_result:
+            final_result:
+              test_data: [1.0, 2.0, 3.0, 4.0, 5.0]
+              analysis_summary: "STATISTICS FOR 5 DATA POINTS: MEAN=3.00, STD_DEV=1.41"
+
+    - name: "Distribution analysis"
+      input:
+        data_points: [1.0, 1.0, 2.0, 3.0, 5.0]
+        analysis_type: "distribution"
+        processing_steps: ["add_metadata"]
+
+      output:
+        outcome: success
+        result:
+          analysis_summary: "Distribution analysis for 5 data points with 0 outliers"
+          analysis_type: "distribution"
+          processing_result:
+            final_result:
+              test_data: [1.0, 1.0, 2.0, 3.0, 5.0]
+              analysis_summary: "Distribution analysis for 5 data points with 0 outliers"

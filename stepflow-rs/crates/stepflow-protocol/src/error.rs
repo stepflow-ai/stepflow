@@ -32,8 +32,8 @@ pub enum TransportError {
     InvalidResponse(Method),
     #[error("invalid message: {0}")]
     InvalidMessage(String),
-    #[error("invalid parameters")]
-    InvalidParams,
+    #[error("failed to serialize request for method '{0}'")]
+    SerializeRequest(Method),
     #[error("component server error({code}): {message}")]
     ServerError {
         code: i64,

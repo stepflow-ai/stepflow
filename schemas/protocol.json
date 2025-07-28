@@ -604,8 +604,15 @@
       "description": "Configuration for testing a workflow.",
       "type": "object",
       "properties": {
-        "stepflowConfig": {
-          "description": "Stepflow configuration specific to tests."
+        "servers": {
+          "description": "Test servers to start before running tests.\nKey is the server name, value is the server configuration.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/TestServerConfig"
+          }
+        },
+        "config": {
+          "description": "Stepflow configuration specific to tests.\nCan reference server URLs using placeholders like {server_name.url}."
         },
         "cases": {
           "description": "Test cases for the workflow.",
@@ -615,6 +622,122 @@
           }
         }
       }
+    },
+    "TestServerConfig": {
+      "description": "Configuration for a test server.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "Command to start the server.",
+          "type": "string"
+        },
+        "args": {
+          "description": "Arguments for the server command.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "description": "Environment variables for the server process.\nValues can contain placeholders like {port} which will be substituted.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "workingDirectory": {
+          "description": "Working directory for the server process.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "portRange": {
+          "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "prefixItems": [
+            {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "healthCheck": {
+          "description": "Health check configuration.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TestServerHealthCheck"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "startupTimeoutMs": {
+          "description": "Maximum time to wait for server startup (in milliseconds).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 10000
+        },
+        "shutdownTimeoutMs": {
+          "description": "Maximum time to wait for server shutdown (in milliseconds).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 5000
+        }
+      },
+      "required": [
+        "command"
+      ]
+    },
+    "TestServerHealthCheck": {
+      "description": "Health check configuration for test servers.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "Path for health check endpoint (e.g., \"/health\").",
+          "type": "string"
+        },
+        "timeoutMs": {
+          "description": "Timeout for health check requests (in milliseconds).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 5000
+        },
+        "retryAttempts": {
+          "description": "Number of retry attempts for health checks.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 3
+        },
+        "retryDelayMs": {
+          "description": "Delay between retry attempts (in milliseconds).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 1000
+        }
+      },
+      "required": [
+        "path"
+      ]
     },
     "TestCase": {
       "description": "A single test case for a workflow.",

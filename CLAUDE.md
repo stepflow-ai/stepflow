@@ -792,3 +792,109 @@ def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
 
 server.run()
 ```
+
+## Workflow Path Syntax & Value Resolution
+
+### JSON Path Syntax for Nested Data Access
+
+When accessing nested fields in workflow inputs or step outputs, use JSONPath syntax:
+
+**For workflow input:**
+```yaml
+input:
+  # Simple field access
+  message: { $from: { workflow: input }, path: "message" }
+  
+  # Nested object field access (use JSONPath with $.)
+  a: { $from: { workflow: input }, path: "$.numbers.a" }
+  b: { $from: { workflow: input }, path: "$.numbers.b" }
+```
+
+**For step output:**
+```yaml
+input:
+  # Access specific field from step result
+  value: { $from: { step: math_add }, path: "result" }
+  
+  # Access nested fields from step result
+  details: { $from: { step: analysis }, path: "$.analysis.summary" }
+```
+
+### Path Resolution Rules
+
+1. **Simple paths** (no dots): `path: "field_name"` - Access direct field
+2. **JSONPath syntax** (with $.): `path: "$.nested.field"` - Access nested fields
+3. **No path specified**: Returns the entire object/result
+
+### Common Path Patterns
+
+```yaml
+# Input data structure:
+# {
+#   "message": "hello",
+#   "config": {
+#     "temperature": 0.7,
+#     "model": "gpt-4"
+#   },
+#   "items": ["a", "b", "c"]
+# }
+
+# Correct path usage:
+message: { $from: { workflow: input }, path: "message" }           # "hello"
+temp: { $from: { workflow: input }, path: "$.config.temperature" } # 0.7
+model: { $from: { workflow: input }, path: "$.config.model" }      # "gpt-4"
+items: { $from: { workflow: input }, path: "items" }              # ["a", "b", "c"]
+```
+
+## HTTP Server Architecture
+
+### Python SDK HTTP Transport
+
+The Python SDK supports both STDIO and HTTP transports:
+
+**STDIO Transport** (default):
+```bash
+# Run Python component server in stdio mode
+uv run --project sdks/python stepflow_sdk
+
+# Used by Rust runtime via process spawning
+```
+
+**HTTP Transport** (streaming):
+```bash
+# Run Python component server in HTTP mode  
+uv run --project sdks/python --extra http stepflow_sdk --http --port 8080
+
+# Provides streamable HTTP transport with bidirectional communication
+```
+
+### HTTP Server Features
+
+1. **Health Endpoint**: `/health` - Returns server status for integration tests
+2. **Streamable Transport**: Supports both direct JSON and SSE streaming responses
+3. **Accept Header Support**: Requires `Accept: application/json` or `Accept: text/event-stream`
+4. **Bidirectional Communication**: Components with `StepflowContext` parameter trigger streaming mode
+5. **Session Management**: Automatic context management for bidirectional requests
+
+### Configuration for HTTP Transport
+
+```yaml
+plugins:
+  python_http:
+    type: stepflow
+    transport: http
+    url: "http://localhost:8080"
+
+routing:
+  - match: "/python/*"
+    target: python_http
+```
+
+### Architecture Changes (Recent)
+
+The Python SDK has undergone significant architectural improvements:
+
+1. **Unified Core Server**: Both HTTP and STDIO servers delegate to `StepflowServer`
+2. **Context Inheritance**: `StepflowStreamingContext` inherits from `StepflowContext`
+3. **MessageDecoder Consolidation**: Single request/response correlation system
+4. **Clean Test Separation**: Core functionality vs transport layer testing

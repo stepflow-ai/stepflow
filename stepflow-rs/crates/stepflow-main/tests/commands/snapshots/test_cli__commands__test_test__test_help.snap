@@ -11,13 +11,13 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Run tests defined in a workflow file or directory
+Run tests defined in workflow files or directories
 
-Usage: stepflow test [OPTIONS] <PATH>
+Usage: stepflow test [OPTIONS] [PATH]...
 
 Arguments:
-  <PATH>
-          Path to the workflow file or directory containing tests
+  [PATH]...
+          Paths to workflow files or directories containing tests
 
 Options:
       --config <FILE>

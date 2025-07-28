@@ -21,8 +21,48 @@ export type Method =
 
 // === Component and Value Types ===
 export type Component = string; // e.g., "/builtin/eval", "/python/udf"
-export type Value = any; // Any JSON value
 export type BlobId = string; // SHA-256 hash
+
+// === Value System Types (matching protocol schema) ===
+
+export interface WorkflowReference {
+  workflow: "input";
+}
+
+export interface StepReference {
+  step: string;
+}
+
+export type BaseRef = WorkflowReference | StepReference;
+
+export interface SkipAction {
+  type: 'fail' | 'skip' | 'retry' | 'default';
+  value?: any;
+  max_attempts?: number;
+}
+
+export interface ReferenceExpr {
+  $from: BaseRef;
+  path?: string;
+  onSkip?: SkipAction;
+}
+
+export interface EscapedLiteralExpr {
+  $literal: any;
+}
+
+export type Expr = ReferenceExpr | EscapedLiteralExpr | any;
+
+export type ValueTemplate = 
+  | Expr
+  | boolean
+  | number
+  | string
+  | null
+  | ValueTemplate[]
+  | { [key: string]: ValueTemplate };
+
+export type Value = any; // Any JSON value (for backward compatibility)
 
 // === Request Parameter Types ===
 export interface InitializeParams {

@@ -19,7 +19,7 @@ This module handles the two-stage deserialization of JSON-RPC messages,
 using RawMessage as an implementation detail for efficient parsing.
 """
 
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 import msgspec
 from msgspec import Raw, Struct
@@ -32,6 +32,8 @@ from .generated_protocol import (
     ComponentInfoResult,
     ComponentListParams,
     Error,
+    EvaluateFlowParams,
+    EvaluateFlowResult,
     GetBlobParams,
     GetBlobResult,
     Initialized,
@@ -63,7 +65,7 @@ class _RawMessage(Struct, omit_defaults=True, kw_only=True):
     method: Method | None = None  # None for responses
     params: Raw | msgspec.UnsetType = msgspec.UNSET  # Raw params for two-stage decode
     result: Raw | msgspec.UnsetType = msgspec.UNSET  # Raw result for two-stage decode
-    error: Error | None = None  # Error for failed responses
+    error: Error | msgspec.UnsetType = msgspec.UNSET  # Error for failed responses
 
 
 T = TypeVar("T")
@@ -133,83 +135,73 @@ class MessageDecoder(Generic[T]):
         self, raw_message: _RawMessage
     ) -> tuple[Message, T | None]:
         """Convert a raw message to a properly typed message."""
-        # Determine message type based on presence of id/method
-        if raw_message.id is not None and raw_message.method is not None:
-            # Method request
+        message: Message
+        if raw_message.id is None:
+            # No ID -> this must be a notification, which requires a method and params.
+            if raw_message.method is None:
+                raise StepflowProtocolError("Notification missing 'method' field")
             if raw_message.params is msgspec.UNSET:
-                raise StepflowProtocolError("Method request missing params field")
-
-            method = raw_message.method
-            params = _decode_params_for_method(method, raw_message.params)
-
-            message: Message = MethodRequest(
-                jsonrpc=raw_message.jsonrpc,
-                id=raw_message.id,
-                method=method,
-                params=params,
-            )
-            return (message, None)
-
-        elif raw_message.id is not None and raw_message.method is None:
-            # Method response
-            if raw_message.error is not None:
-                message = MethodError(
-                    jsonrpc=raw_message.jsonrpc,
-                    id=raw_message.id,
-                    error=raw_message.error,
-                )
-                # Look up and remove pending request if available
-                context = None
-                if raw_message.id in self._pending_requests:
-                    _, context = self._pending_requests.pop(raw_message.id)
-                return (message, context)
-            else:
-                if raw_message.result is msgspec.UNSET:
-                    raise StepflowProtocolError(
-                        "Method success response missing result field"
-                    )
-
-                # Look up pending request to get the correct result type
-                context = None
-                result_type = None
-                if raw_message.id in self._pending_requests:
-                    result_type, context = self._pending_requests.pop(raw_message.id)
-
-                # Decode result with the correct type if available, otherwise try all
-                # types
-                result: Any
-                if result_type:
-                    result = msgspec.json.decode(raw_message.result, type=result_type)
-                else:
-                    result = _decode_result(raw_message.result)
-
-                message = MethodSuccess(
-                    jsonrpc=raw_message.jsonrpc,
-                    id=raw_message.id,
-                    result=result,
-                )
-                return (message, context)
-
-        elif raw_message.method is not None and raw_message.id is None:
-            # Notification
-            if raw_message.params is msgspec.UNSET:
-                raise StepflowProtocolError("Notification missing params field")
-
-            method = raw_message.method
-            params = _decode_params_for_method(method, raw_message.params)
-
+                raise StepflowProtocolError("Notification missing 'params' field")
+            params = _decode_params_for_method(raw_message.method, raw_message.params)
             message = Notification(
                 jsonrpc=raw_message.jsonrpc,
-                method=method,
+                method=raw_message.method,
                 params=params,
             )
             return (message, None)
+        elif raw_message.method is not None:
+            # This has an ID and method, so it is a method request.
+            if raw_message.params is msgspec.UNSET:
+                raise StepflowProtocolError("Method request missing 'params' field")
+            params = _decode_params_for_method(raw_message.method, raw_message.params)
+            message = MethodRequest(
+                jsonrpc=raw_message.jsonrpc,
+                id=raw_message.id,
+                method=raw_message.method,
+                params=params,
+            )
+            return (message, None)
+        elif raw_message.result is not msgspec.UNSET:
+            if raw_message.error is not msgspec.UNSET:
+                raise StepflowProtocolError(
+                    f"Method response for id '{raw_message.id}' "
+                    "cannot have both 'result' and 'error' fields"
+                )
+
+            result_type, context = self._pending_requests.pop(
+                raw_message.id, (None, None)
+            )
+            if result_type is None:
+                raise StepflowProtocolError(
+                    f"Response with id '{raw_message.id}' has no pending request"
+                )
+
+            message = MethodSuccess(
+                jsonrpc=raw_message.jsonrpc,
+                id=raw_message.id,
+                result=msgspec.json.decode(raw_message.result, type=result_type),
+            )
+            return (message, context)
+
+        elif raw_message.error is not msgspec.UNSET:
+            result_type, context = self._pending_requests.pop(
+                raw_message.id, (None, None)
+            )
+            if result_type is None:
+                raise StepflowProtocolError(
+                    f"Response with id '{raw_message.id}' has no pending request"
+                )
+
+            message = MethodError(
+                jsonrpc=raw_message.jsonrpc,
+                id=raw_message.id,
+                error=raw_message.error,
+            )
+            return (message, context)
         else:
-            raise StepflowProtocolError("Invalid message: no id or method")
-
-
-# Note: Legacy decode_message function has been removed.
-# Use MessageDecoder class for all message decoding.
+            raise StepflowProtocolError(
+                "Invalid message: must have either 'id' or 'method'"
+            )
 
 
 def _decode_params_for_method(method: Method, params_raw: Raw):
@@ -228,8 +220,10 @@ def _decode_params_for_method(method: Method, params_raw: Raw):
         return msgspec.json.decode(params_raw, type=GetBlobParams)
     elif method == Method.blobs_put:
         return msgspec.json.decode(params_raw, type=PutBlobParams)
+    elif method == Method.flows_evaluate:
+        return msgspec.json.decode(params_raw, type=EvaluateFlowParams)
     else:
-        raise StepflowProtocolError(f"Unknown method: {method}")
+        raise StepflowProtocolError(f"Unknown method: {method.value}")
 
 
 def _get_result_type_for_method(method: Method) -> type:
@@ -246,32 +240,7 @@ def _get_result_type_for_method(method: Method) -> type:
         return GetBlobResult
     elif method == Method.blobs_put:
         return PutBlobResult
+    elif method == Method.flows_evaluate:
+        return EvaluateFlowResult
     else:
-        raise StepflowProtocolError(f"Unknown method: {method}")
-
-
-def _decode_result(result_raw: Raw):
-    """Decode result for method responses when no specific type is known."""
-    # Since we don't know the original method for responses, we try to decode
-    # as each possible result type. In practice, the caller should handle
-    # the union type appropriately.
-
-    # Try to decode as each possible result type
-    result_types = [
-        InitializeResult,
-        ComponentExecuteResult,
-        ListComponentsResult,
-        ComponentInfoResult,
-        GetBlobResult,
-        PutBlobResult,
-    ]
-
-    # Try each type until one works
-    for result_type in result_types:
-        try:
-            return msgspec.json.decode(result_raw, type=result_type)
-        except msgspec.DecodeError:
-            continue
-
-    # If none work, raise an error
-    raise StepflowProtocolError("Could not decode result to any known result type")
+        raise StepflowProtocolError(f"Unknown method: {method.value}")

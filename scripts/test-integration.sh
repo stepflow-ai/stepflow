@@ -38,12 +38,8 @@ cargo build
 # Test workflows using stepflow test command
 echo "🔗 Testing workflows..."
 
-# Test the main test workflows
-echo "  Testing stepflow-rs/tests directory..."
-./target/debug/stepflow test ../tests
-
-# Test the examples
-echo "  Testing examples directory..."
-./target/debug/stepflow test ../examples
+# Test both tests and examples directories together
+echo "  Testing both tests and examples directories..."
+./target/debug/stepflow test ../tests ../examples
 
 echo "✅ Integration tests completed successfully"

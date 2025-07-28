@@ -16,7 +16,7 @@
 import argparse
 import asyncio
 
-from stepflow_sdk.server import StepflowStdioServer
+from stepflow_sdk.stdio_server import StepflowStdioServer
 from stepflow_sdk.udf import udf
 
 # Create server instance

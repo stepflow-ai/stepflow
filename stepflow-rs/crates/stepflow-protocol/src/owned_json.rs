@@ -16,6 +16,7 @@ use error_stack::ResultExt as _;
 use crate::Message;
 use crate::error::{Result, TransportError};
 use crate::lazy_value::LazyValue;
+use crate::protocol::MethodResponse;
 
 /// Owned wrapper around a `Message` parsed from a `String`.
 ///
@@ -53,6 +54,17 @@ impl<T> OwnedJson<T> {
             value: f(self.value),
         }
     }
+
+    pub fn try_map<O, F>(self, f: F) -> Result<OwnedJson<O>>
+    where
+        F: FnOnce(T) -> Result<O>,
+    {
+        let value = f(self.value)?;
+        Ok(OwnedJson {
+            json: self.json,
+            value,
+        })
+    }
 }
 
 impl OwnedJson<Message<'static>> {
@@ -70,8 +82,43 @@ impl OwnedJson<Message<'static>> {
         })
     }
 
+    pub fn owned_response(self) -> Result<OwnedJson<MethodResponse<'static>>> {
+        self.try_map(|msg| {
+            let Message::Response(response) = msg else {
+                error_stack::bail!(TransportError::NotResponse(format!("{msg:?}")));
+            };
+            Ok(response)
+        })
+    }
+
     pub fn message(&self) -> &Message<'_> {
         &self.value
+    }
+}
+
+impl OwnedJson<MethodResponse<'static>> {
+    pub fn response(&self) -> &MethodResponse<'_> {
+        &self.value
+    }
+
+    pub fn into_success_value(self) -> Result<OwnedJson<LazyValue<'static>>> {
+        self.try_map(|response| match response {
+            MethodResponse::Success(success) => Ok(success.result),
+            MethodResponse::Error(e) => {
+                let error = &e.error;
+                let data: Option<serde_json::Value> = error
+                    .data
+                    .as_ref()
+                    .map(|v| v.deserialize_to())
+                    .transpose()
+                    .expect("all values should be decodable as serde_json::Value");
+                error_stack::bail!(TransportError::ServerError {
+                    code: error.code,
+                    message: error.message.as_ref().to_owned(),
+                    data,
+                })
+            }
+        })
     }
 }
 

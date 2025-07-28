@@ -212,4 +212,13 @@ export class BidirectionalTransport {
       }
     };
   }
+  
+  /**
+   * Register a message handler for incoming messages
+   */
+  onMessage(handler: (message: any) => void): void {
+    // For HTTP mode, we don't have incoming messages from stdin
+    // This is used by the HTTP server to forward messages via SSE
+    // The implementation here is a no-op for stdio mode
+  }
 }

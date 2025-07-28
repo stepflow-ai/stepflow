@@ -13,602 +13,597 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+"""Tests for the streamable HTTP server implementation."""
+
 import asyncio
+import json
 import uuid
 
 import msgspec
 import pytest
-from fastapi.testclient import TestClient
+import pytest_asyncio
 
 from stepflow_sdk.context import StepflowContext
 from stepflow_sdk.generated_protocol import (
     ComponentExecuteParams,
+    ComponentExecuteResult,
+    ComponentInfoParams,
     ComponentListParams,
+    Error,
+    Initialized,
     Method,
+    MethodError,
     MethodRequest,
+    MethodSuccess,
+    Notification,
 )
 from stepflow_sdk.http_server import StepflowHttpServer
 from stepflow_sdk.server import StepflowServer
 
+POST_HEADERS = {
+    "content-type": "application/json",
+    "accept": "application/json, text/event-stream",
+}
 
-@pytest.fixture
-def test_server():
-    """Create a test server with a simple component."""
 
-    # Define test message classes inside the fixture
-    class TestInput(msgspec.Struct):
+class ServerHelper:
+    """Helper class for HTTP server testing with live server."""
+
+    def __init__(self, http_server):
+        self.http_server = http_server
+        self.url = None
+        self._httpx_client = None
+        self._cleanup_func = None
+
+    async def send_request(
+        self, method, component=None, input_data=None, request_id=None, headers=None
+    ):
+        """Send a request to the live server."""
+        request = self._create_request(method, component, input_data, request_id)
+        assert self._httpx_client is not None, (
+            "Server not started - call _start_live_server() first"
+        )
+        return await self._httpx_client.post(
+            f"{self.url}/",
+            json=msgspec.to_builtins(request),
+            headers=headers or POST_HEADERS,
+        )
+
+    def stream_request(
+        self, method, component=None, input_data=None, request_id=None, headers=None
+    ):
+        """Send a streaming request and return the response stream context manager."""
+        request = self._create_request(method, component, input_data, request_id)
+        assert self._httpx_client is not None, (
+            "Server not started - call _start_live_server() first"
+        )
+        return self._httpx_client.stream(
+            "POST",
+            f"{self.url}/",
+            json=msgspec.to_builtins(request),
+            headers=headers or POST_HEADERS,
+        )
+
+    def parse_sse_events(self, response_text):
+        """Parse SSE response text and return list of JSON events."""
+        events = []
+        for line in response_text.strip().split("\n"):
+            if line.startswith("data: "):
+                try:
+                    data = json.loads(line[6:])  # Remove "data: " prefix
+                    events.append(data)
+                except json.JSONDecodeError:
+                    continue
+        return events
+
+    async def get_next_sse_event(self, stream_response):
+        """Get the next parsed SSE event from a streaming response."""
+        async for line in stream_response.aiter_lines():
+            if line.startswith("data: "):
+                try:
+                    return json.loads(line[6:])
+                except json.JSONDecodeError:
+                    continue
+        return None
+
+    def sse_events(self, stream_response):
+        """Create an SSE event helper for easier test writing."""
+        return SSEEventHelper(stream_response, self)
+
+    async def _start_live_server(self):
+        """Start a real uvicorn server for integration tests."""
+        import socket
+
+        import httpx
+        import uvicorn
+
+        # Find an available port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("localhost", 0))
+            port = s.getsockname()[1]
+
+        # Initialize the server
+        self.http_server.server.set_initialized(True)
+
+        config = uvicorn.Config(
+            app=self.http_server.app,
+            host="localhost",
+            port=port,
+            log_level="critical",  # Suppress all logs except critical errors
+            lifespan="off",  # Disable lifespan for tests to avoid cleanup issues
+            access_log=False,  # Disable access logging
+        )
+        server = uvicorn.Server(config)
+        server_task = asyncio.create_task(server.serve())
+        await asyncio.sleep(0.3)  # Wait for server to start
+
+        self.url = f"http://localhost:{port}"
+        self._httpx_client = httpx.AsyncClient(timeout=5.0)
+
+        async def cleanup():
+            # Close HTTP client first
+            if self._httpx_client:
+                await self._httpx_client.aclose()
+
+            # Signal server to shutdown
+            server.should_exit = True
+            if hasattr(server, "force_exit"):
+                server.force_exit = True
+
+            # Give server a moment to shutdown gracefully
+            await asyncio.sleep(0.1)
+
+            # Cancel server task if still running
+            if not server_task.done():
+                server_task.cancel()
+                # Wait for cancellation to complete, but don't wait too long
+                try:
+                    await asyncio.wait_for(server_task, timeout=0.2)
+                except (TimeoutError, asyncio.CancelledError):
+                    # Ignore cleanup timeouts - this is expected during test teardown
+                    pass
+
+        self._cleanup_func = cleanup
+
+    async def _cleanup(self):
+        """Clean up the live server."""
+        if self._cleanup_func:
+            await self._cleanup_func()
+
+    def _create_request(self, method, component=None, input_data=None, request_id=None):
+        """Create common JSON-RPC requests."""
+        if request_id is None:
+            request_id = f"{method.value.replace('/', '_')}-test"
+
+        if method == Method.components_list:
+            return MethodRequest(
+                jsonrpc="2.0",
+                id=request_id,
+                method=method,
+                params=ComponentListParams(),
+            )
+        elif method == Method.components_info:
+            return MethodRequest(
+                jsonrpc="2.0",
+                id=request_id,
+                method=method,
+                params=ComponentInfoParams(component=component or "/simple_component"),
+            )
+        elif method == Method.components_execute:
+            return MethodRequest(
+                jsonrpc="2.0",
+                id=request_id,
+                method=method,
+                params=ComponentExecuteParams(
+                    component=component or "/simple_component",
+                    input=input_data or {"message": "test"},
+                ),
+            )
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+
+
+class SSEEventHelper:
+    """Helper class for reading SSE events in tests with a clean API."""
+
+    def __init__(self, stream_response, server_helper):
+        self.stream_response = stream_response
+        self.server_helper = server_helper
+        self._line_iterator = None
+        self._done = False
+
+    async def next(self):
+        """Get the next SSE event, returning parsed JSON data."""
+        if self._done:
+            return None
+
+        if self._line_iterator is None:
+            self._line_iterator = self.stream_response.aiter_lines()
+
+        try:
+            async for line in self._line_iterator:
+                if line.startswith("data: "):
+                    try:
+                        return json.loads(line[6:])
+                    except json.JSONDecodeError:
+                        continue
+            # If we reach here, the stream ended
+            self._done = True
+            return None
+        except Exception:
+            self._done = True
+            return None
+
+    def done(self):
+        """Check if the SSE stream is complete."""
+        return self._done
+
+    async def post_response(self, request_id, result):
+        """Post a JSON-RPC response for bidirectional communication.
+
+        Args:
+            request_id: The ID of the request being responded to
+            result: The result data to send back
+
+        Raises:
+            httpx.HTTPStatusError: If the response status indicates an error
+        """
+        method_response = {"jsonrpc": "2.0", "id": request_id, "result": result}
+        post_response = await self.server_helper._httpx_client.post(
+            f"{self.server_helper.url}/",
+            json=method_response,
+            headers=POST_HEADERS,
+        )
+        post_response.raise_for_status()
+
+
+@pytest.fixture(scope="session")
+def core_server():
+    """Create a core server with simple and context-aware components."""
+
+    # Define test message classes
+    class SimpleInput(msgspec.Struct):
         message: str
 
-    class TestOutput(msgspec.Struct):
+    class SimpleOutput(msgspec.Struct):
         processed_message: str
-        request_id: str
-        session_id: str | None
+
+    class ContextInput(msgspec.Struct):
+        data: str
+
+    class ContextOutput(msgspec.Struct):
+        result: str
+        blob_id: str
 
     server = StepflowServer()
 
     @server.component
-    def test_component(input: TestInput, context: StepflowContext) -> TestOutput:
-        # Process the input - session information is handled by the context
-        return TestOutput(
-            processed_message=f"Processed: {input.message}",
-            request_id=str(uuid.uuid4()),
-            session_id=context.session_id,
+    def simple_component(input: SimpleInput) -> SimpleOutput:
+        """A simple component that doesn't need Context."""
+        return SimpleOutput(processed_message=f"Processed: {input.message}")
+
+    @server.component
+    async def context_component(
+        input: ContextInput, context: StepflowContext
+    ) -> ContextOutput:
+        """A component that uses Context for bidirectional communication."""
+        blob_id = await context.put_blob(input.data)
+        return ContextOutput(
+            result=f"Processed with context: {input.data}",
+            blob_id=blob_id,
         )
 
     return server
 
 
-@pytest.fixture
-def http_server(test_server):
-    """Create HTTP server with test component."""
-    return StepflowHttpServer(server=test_server)
+@pytest.fixture(scope="session")
+def http_server(core_server):
+    """Create streamable HTTP server with test components."""
+    return StepflowHttpServer(server=core_server)
 
 
-@pytest.fixture
-def client(http_server):
-    """Create test client."""
-    return TestClient(http_server.app)
+@pytest_asyncio.fixture
+async def test_server(http_server):
+    """Create a ServerHelper instance with live server automatically started."""
+    server = ServerHelper(http_server)
+    await server._start_live_server()
+    try:
+        yield server
+    finally:
+        await server._cleanup()
 
 
-class TestSessionIsolation:
-    """Test that sessions are properly isolated, especially with same request IDs."""
+@pytest.mark.asyncio
+async def test_invalid_json_request(test_server):
+    """Test that invalid JSON returns 400 with parse error."""
+    response = await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        content="invalid json {",
+        headers=POST_HEADERS,
+    )
 
-    def test_different_sessions_same_request_id(self, client):
-        """Test that requests with same ID in different sessions are handled correctly."""  # noqa: E501
-        # Test same request ID in different sessions
-        same_request_id = "test-request-123"
-        session1_id = "test-session-1"
-        session2_id = "test-session-2"
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "application/json"
 
-        # Request 1 to session 1 (non-existent session)
-        request1 = MethodRequest(
-            id=same_request_id,
-            method=Method.components_execute,
-            params=ComponentExecuteParams(
-                component="/test_component",
-                input={"message": "Session 1 message"},
-            ),
+    error_data = response.json()
+    assert error_data["error"]["code"] == -32600  # Parse error
+    assert "JSON is malformed" in error_data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_message_structure(test_server):
+    """Test that invalid message structure returns 400."""
+    # Send valid JSON but invalid Message structure
+    response = await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json={"invalid": "message"},
+        headers=POST_HEADERS,
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "application/json"
+
+    error_data = response.json()
+    assert error_data["error"]["code"] == -32600  # Invalid Request
+
+
+@pytest.mark.asyncio
+async def test_notification_handling(test_server):
+    """Test that notifications return 202 Accepted."""
+    notification = Notification(
+        jsonrpc="2.0", method=Method.initialized, params=Initialized()
+    )
+
+    response = await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json=msgspec.to_builtins(notification),
+        headers=POST_HEADERS,
+    )
+
+    assert response.status_code == 202
+    assert response.text == '""'  # Empty body
+
+
+@pytest.mark.asyncio
+async def test_unknown_method(test_server):
+    """Test that unknown methods return protocol error."""
+    # Create request with invalid method - this should be a protocol error
+    # since the method doesn't match any valid Method enum value
+    request_dict = {
+        "jsonrpc": "2.0",
+        "id": "test-123",
+        "method": "unknown_method",
+        "params": {},
+    }
+
+    response = await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json=request_dict,
+        headers=POST_HEADERS,
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "application/json"
+
+    error_data = response.json()
+    assert error_data["error"]["code"] == -32600  # Invalid Request
+
+
+@pytest.mark.asyncio
+async def test_method_response_handling(test_server):
+    """Test handling method responses without pending request."""
+    # Create a method response without a corresponding pending request
+    # This is an invalid scenario that should cause a protocol error
+    response_msg = MethodSuccess(
+        jsonrpc="2.0",
+        id="test-response-123",
+        result=ComponentExecuteResult(output="test result"),
+    )
+
+    response = await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json=msgspec.to_builtins(response_msg),
+        headers=POST_HEADERS,
+    )
+
+    # Should return 400 because MessageDecoder validates pending requests
+    assert response.status_code == 400
+    error_data = response.json()
+    assert error_data["error"]["code"] == -32600  # Invalid Request
+    assert "no pending request" in error_data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_method_error_handling(test_server):
+    """Test handling method error responses without pending request."""
+    # Create a method error without a corresponding pending request
+    # This is an invalid scenario that should cause a protocol error
+    error_msg = MethodError(
+        jsonrpc="2.0",
+        id="test-error-456",
+        error=Error(code=-32603, message="Test error", data=None),
+    )
+
+    response = await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json=msgspec.to_builtins(error_msg),
+        headers=POST_HEADERS,
+    )
+
+    # Should return 400 because MessageDecoder validates pending requests
+    assert response.status_code == 400
+    error_data = response.json()
+    assert error_data["error"]["code"] == -32600  # Invalid Request
+    assert "no pending request" in error_data["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_components_list(test_server):
+    """Test components_list method returns component information."""
+    response = await test_server.send_request(Method.components_list)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "components_list-test"
+    assert "result" in result
+
+    components = result["result"]["components"]
+    assert len(components) == 2
+
+    # Find our test components
+    component_names = [comp["component"] for comp in components]
+    assert "/simple_component" in component_names
+    assert "/context_component" in component_names
+
+
+@pytest.mark.asyncio
+async def test_components_info(test_server):
+    """Test components_info method returns component details."""
+    response = await test_server.send_request(
+        Method.components_info, component="/simple_component"
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "components_info-test"
+    assert "result" in result
+
+    info = result["result"]["info"]
+    assert info["component"] == "/simple_component"
+    assert "input_schema" in info
+    assert "output_schema" in info
+
+
+@pytest.mark.asyncio
+async def test_components_info_not_found(test_server):
+    """Test components_info with non-existent component."""
+    response = await test_server.send_request(
+        Method.components_info, component="/nonexistent"
+    )
+
+    # The server now returns 200 with JSON-RPC error response
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "components_info-test"
+    assert "error" in result
+    assert "not found" in result["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_simple_component_execution(test_server):
+    """Test executing a component without Context (direct JSON response)."""
+    response = await test_server.send_request(
+        Method.components_execute,
+        component="/simple_component",
+        input_data={"message": "Hello World"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "components_execute-test"
+    assert "result" in result
+
+    output = result["result"]["output"]
+    assert output["processed_message"] == "Processed: Hello World"
+
+
+@pytest.mark.asyncio
+async def test_component_execution_not_found(test_server):
+    """Test executing non-existent component."""
+    response = await test_server.send_request(
+        Method.components_execute,
+        component="/nonexistent",
+        input_data={"message": "test"},
+    )
+
+    # The server now returns 200 with JSON-RPC error response
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "components_execute-test"
+    assert "error" in result
+    assert "not found" in result["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_context_component_without_streaming(test_server):
+    """Test Context component without streaming accept header (406)."""
+    response = await test_server.send_request(
+        Method.components_execute,
+        component="/context_component",
+        input_data={"data": "test data"},
+        headers={
+            "content-type": "application/json",
+            "accept": "application/json",  # No streaming accept
+        },
+    )
+
+    # Should return 406 Not Acceptable because component needs Context
+    # but client doesn't accept streaming responses
+    assert response.status_code == 406
+    assert response.headers["content-type"] == "application/json"
+
+    error_response = response.json()
+    assert (
+        "Accept header must include application/json and text/event-stream"
+        in error_response["error"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_bidirectional(test_server):
+    """Test bidirectional component communication with SSE."""
+
+    async with test_server.stream_request(
+        Method.components_execute,
+        component="/context_component",
+        input_data={"data": "test bidirectional"},
+    ) as response:
+        # Should return streaming response
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+
+        # Create SSE event helper
+        sse_events = test_server.sse_events(response)
+
+        # First, we should get the blob put. Verify that.
+        blob_put = await sse_events.next()
+        assert blob_put is not None, "Should receive blobs/put request"
+        assert blob_put["jsonrpc"] == "2.0"
+        assert blob_put["method"] == "blobs/put"
+        assert "id" in blob_put
+        assert blob_put["params"]["data"] == "test bidirectional"
+
+        # Send the response to blob put.
+        blob_response_id = str(uuid.uuid4())
+        await sse_events.post_response(blob_put["id"], {"blob_id": blob_response_id})
+
+        # Then we should get the final response. Verify that.
+        final_response = await sse_events.next()
+        assert final_response is not None, "Should receive final component response"
+        assert final_response["jsonrpc"] == "2.0"
+        assert final_response["id"] == "components_execute-test"
+        assert "result" in final_response
+        assert (
+            final_response["result"]["output"]["result"]
+            == "Processed with context: test bidirectional"
         )
-        response1 = client.post(
-            "/",
-            params={"sessionId": session1_id},
-            json=msgspec.to_builtins(request1),
-        )
-
-        # Request 2 to session 2 with same request ID (non-existent session)
-        request2 = MethodRequest(
-            id=same_request_id,
-            method=Method.components_execute,
-            params=ComponentExecuteParams(
-                component="/test_component",
-                input={"message": "Session 2 message"},
-            ),
-        )
-        response2 = client.post(
-            "/",
-            params={"sessionId": session2_id},
-            json=msgspec.to_builtins(request2),
-        )
-
-        # Both requests should fail because sessions don't exist yet
-        # but they should fail with different session-specific errors
-        assert response1.status_code == 400
-        assert response2.status_code == 400
-
-        # Both should contain session-specific error messages
-        error1 = response1.json()
-        error2 = response2.json()
-
-        assert "session not found" in error1["error"]["message"]
-        assert "session not found" in error2["error"]["message"]
-
-        # The responses should be identical since both sessions don't exist
-        assert error1["error"]["code"] == error2["error"]["code"]
-        assert error1["id"] == error2["id"] == same_request_id
-
-    def test_session_creation_and_isolation(self, http_server):
-        """Test that sessions are created correctly and isolated."""
-        # Create two sessions manually
-        from stepflow_sdk.http_server import StepflowSession
-
-        session1_id = "session-1"
-        session2_id = "session-2"
-
-        session1 = StepflowSession(session1_id, http_server.server)
-        session2 = StepflowSession(session2_id, http_server.server)
-
-        # Add to the server's session registry
-        http_server.sessions[session1_id] = session1
-        http_server.sessions[session2_id] = session2
-
-        # Both sessions should be separate objects
-        assert session1 is not session2
-        assert session1.session_id != session2.session_id
-        assert session1.context is not session2.context
-
-        # Both sessions should have their own event queues
-        assert session1.event_queue is not session2.event_queue
-
-        # Both sessions should have their own message decoders
-        assert session1.message_decoder is not session2.message_decoder
-
-        # Sessions should be registered in the server
-        assert http_server.sessions[session1_id] is session1
-        assert http_server.sessions[session2_id] is session2
-
-    @pytest.mark.asyncio
-    async def test_concurrent_requests_same_id_different_sessions(self, http_server):
-        """Test concurrent requests with same ID in different sessions."""
-        # Create two sessions
-        session1_id = "concurrent-session-1"
-        session2_id = "concurrent-session-2"
-
-        from stepflow_sdk.http_server import StepflowSession
-
-        session1 = StepflowSession(session1_id, http_server.server)
-        session2 = StepflowSession(session2_id, http_server.server)
-
-        http_server.sessions[session1_id] = session1
-        http_server.sessions[session2_id] = session2
-
-        # Initialize the server
-        http_server.server.set_initialized(True)
-
-        # Same request ID for both sessions
-        same_request_id = "concurrent-request-456"
-
-        # Create request payloads
-        request1 = {
-            "jsonrpc": "2.0",
-            "method": Method.components_execute,
-            "id": same_request_id,
-            "params": {
-                "component": "/test_component",
-                "input": {"message": "Concurrent message 1"},
-            },
-        }
-
-        request2 = {
-            "jsonrpc": "2.0",
-            "method": Method.components_execute,
-            "id": same_request_id,
-            "params": {
-                "component": "/test_component",
-                "input": {"message": "Concurrent message 2"},
-            },
-        }
-
-        # Execute both requests concurrently
-        task1 = asyncio.create_task(http_server._handle_json_rpc(request1, session1))
-        task2 = asyncio.create_task(http_server._handle_json_rpc(request2, session2))
-
-        # Wait for both to complete
-        result1, result2 = await asyncio.gather(task1, task2)
-
-        # Both requests should return JSON-RPC responses
-        assert result1["jsonrpc"] == "2.0"
-        assert result2["jsonrpc"] == "2.0"
-        assert result1["id"] == same_request_id
-        assert result2["id"] == same_request_id
-
-        # Both should have successful results
-        assert "result" in result1
-        assert "result" in result2
-
-        # Verify the results contain the correct session information
-        output1 = result1["result"]["output"]
-        output2 = result2["result"]["output"]
-
-        # Each session should have its own session_id in the output
-        assert output1["session_id"] == session1_id
-        assert output2["session_id"] == session2_id
-
-        # Messages should be different (showing they were processed independently)
-        assert output1["processed_message"] == "Processed: Concurrent message 1"
-        assert output2["processed_message"] == "Processed: Concurrent message 2"
-
-        # The important thing is that both requests were processed independently
-        # and returned the same request ID, proving session isolation works
-
-    @pytest.mark.asyncio
-    async def test_session_cleanup(self, http_server):
-        """Test that sessions are properly cleaned up."""
-        # Create a session
-        session_id = "cleanup-session"
-
-        from stepflow_sdk.http_server import StepflowSession
-
-        session = StepflowSession(session_id, http_server.server)
-        http_server.sessions[session_id] = session
-
-        # Session should be registered
-        assert session_id in http_server.sessions
-        assert session.connected is True
-
-        # Mark session as disconnected
-        session.connected = False
-
-        # Remove from sessions (simulating cleanup)
-        del http_server.sessions[session_id]
-
-        # Session should be cleaned up
-        assert session_id not in http_server.sessions
-        assert session.connected is False
-
-    @pytest.mark.asyncio
-    async def test_request_id_uniqueness_per_session(self, http_server):
-        """Test that the same request ID can be used in different sessions without conflict."""  # noqa: E501
-        # Create multiple sessions
-        session_ids = ["unique-session-1", "unique-session-2", "unique-session-3"]
-        sessions = {}
-
-        from stepflow_sdk.http_server import StepflowSession
-
-        for session_id in session_ids:
-            session = StepflowSession(session_id, http_server.server)
-            sessions[session_id] = session
-            http_server.sessions[session_id] = session
-
-        # Initialize the server
-        http_server.server.set_initialized(True)
-
-        # Same request ID for all sessions
-        shared_request_id = "shared-request-789"
-
-        # Create tasks for all sessions with the same request ID
-        tasks = []
-        for i, session_id in enumerate(session_ids):
-            request = {
-                "jsonrpc": "2.0",
-                "method": Method.components_execute,
-                "id": shared_request_id,
-                "params": {
-                    "component": "/test_component",
-                    "input": {"message": f"Message from session {i + 1}"},
-                },
-            }
-            task = asyncio.create_task(
-                http_server._handle_json_rpc(request, sessions[session_id])
-            )
-            tasks.append(task)
-
-        # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks)
-
-        # All requests should return JSON-RPC responses
-        for i, result in enumerate(results):
-            assert result["jsonrpc"] == "2.0"
-            assert result["id"] == shared_request_id
-
-            # All should have successful results
-            assert "result" in result
-
-            # Verify the results contain the correct session information
-            output = result["result"]["output"]
-            assert output["session_id"] == session_ids[i]
-            assert f"Message from session {i + 1}" in output["processed_message"]
-
-        # All results should be processed independently
-        # The important thing is that all requests with the same ID
-        # in different sessions were handled correctly
-        assert len(results) == len(session_ids)
-
-        # Each result should have the same request ID
-        for result in results:
-            assert result["id"] == shared_request_id
-
-    def test_missing_session_id_parameter(self, client):
-        """Test that requests without sessionId parameter are rejected."""
-        request = MethodRequest(
-            id="test-request",
-            method=Method.components_list,
-            params=ComponentListParams(),
-        )
-        response = client.post(
-            "/",
-            json=msgspec.to_builtins(request),
-        )
-
-        assert response.status_code == 400
-        error = response.json()
-        assert "sessionId parameter required" in error["error"]["message"]
-        assert error["error"]["code"] == -32600
-
-    def test_invalid_session_id(self, client):
-        """Test that requests with invalid sessionId are rejected."""
-        request = MethodRequest(
-            id="test-request",
-            method=Method.components_list,
-            params=ComponentListParams(),
-        )
-        response = client.post(
-            "/",
-            params={"sessionId": "non-existent-session"},
-            json=msgspec.to_builtins(request),
-        )
-
-        assert response.status_code == 400
-        error = response.json()
-        assert "session not found" in error["error"]["message"]
-        assert error["error"]["code"] == -32600
-
-    @pytest.mark.asyncio
-    async def test_session_event_queue_isolation(self, http_server):
-        """Test that event queues are isolated between sessions."""
-        # Create two sessions
-        session1_id = "event-session-1"
-        session2_id = "event-session-2"
-
-        from stepflow_sdk.http_server import StepflowSession
-
-        session1 = StepflowSession(session1_id, http_server.server)
-        session2 = StepflowSession(session2_id, http_server.server)
-
-        http_server.sessions[session1_id] = session1
-        http_server.sessions[session2_id] = session2
-
-        # Add events to each session's queue
-        event1 = {"session": session1_id, "data": "event for session 1"}
-        event2 = {"session": session2_id, "data": "event for session 2"}
-
-        await session1.event_queue.put(event1)
-        await session2.event_queue.put(event2)
-
-        # Each session should only see its own events
-        retrieved_event1 = await session1.event_queue.get()
-        retrieved_event2 = await session2.event_queue.get()
-
-        assert retrieved_event1 == event1
-        assert retrieved_event2 == event2
-
-        # Queues should be empty after getting events
-        assert session1.event_queue.empty()
-        assert session2.event_queue.empty()
-
-        # Cross-session events should not be visible
-        await session1.event_queue.put({"cross": "session event"})
-        assert session2.event_queue.empty()
-
-        # Clean up
-        await session1.event_queue.get()  # Remove the cross-session event
-
-    @pytest.mark.asyncio
-    async def test_request_id_isolation_successful_execution(self, http_server):
-        """Test that successful component execution with same request ID in different sessions returns correct request IDs."""  # noqa: E501
-        # Create two sessions
-        session1_id = "success-session-1"
-        session2_id = "success-session-2"
-
-        from stepflow_sdk.http_server import StepflowSession
-
-        session1 = StepflowSession(session1_id, http_server.server)
-        session2 = StepflowSession(session2_id, http_server.server)
-
-        http_server.sessions[session1_id] = session1
-        http_server.sessions[session2_id] = session2
-
-        # Initialize the server
-        http_server.server.set_initialized(True)
-
-        # Use the same request ID for both sessions - this is the key test
-        same_request_id = "success-request-789"
-
-        # Create request payloads with the same request ID
-        request1 = {
-            "jsonrpc": "2.0",
-            "method": Method.components_execute,
-            "id": same_request_id,
-            "params": {
-                "component": "/test_component",
-                "input": {"message": "Success message 1"},
-            },
-        }
-
-        request2 = {
-            "jsonrpc": "2.0",
-            "method": Method.components_execute,
-            "id": same_request_id,
-            "params": {
-                "component": "/test_component",
-                "input": {"message": "Success message 2"},
-            },
-        }
-
-        # Execute both requests concurrently
-        task1 = asyncio.create_task(http_server._handle_json_rpc(request1, session1))
-        task2 = asyncio.create_task(http_server._handle_json_rpc(request2, session2))
-
-        # Wait for both to complete
-        result1, result2 = await asyncio.gather(task1, task2)
-
-        # Both requests should return JSON-RPC responses with the SAME request ID
-        assert result1["jsonrpc"] == "2.0"
-        assert result2["jsonrpc"] == "2.0"
-        assert result1["id"] == same_request_id
-        assert result2["id"] == same_request_id
-
-        # Both should have successful results (component execution succeeds)
-        assert "result" in result1
-        assert "result" in result2
-
-        # Verify the results contain the correct session information
-        output1 = result1["result"]["output"]
-        output2 = result2["result"]["output"]
-
-        # Each session should have its own session_id in the output
-        assert output1["session_id"] == session1_id
-        assert output2["session_id"] == session2_id
-
-        # Messages should be different (showing they were processed independently)
-        assert output1["processed_message"] == "Processed: Success message 1"
-        assert output2["processed_message"] == "Processed: Success message 2"
-
-        # This proves that:
-        # 1. Same request ID can be used in different sessions
-        # 2. Each session gets its own response with the correct request ID
-        # 3. No contamination between sessions
-        # 4. Request ID delivery is properly isolated
-
-    @pytest.mark.asyncio
-    async def test_request_id_isolation_with_rapid_sequential_requests(
-        self, http_server
-    ):
-        """Test rapid sequential requests with same ID in different sessions to check for race conditions."""  # noqa: E501
-        # Create two sessions
-        session1_id = "rapid-session-1"
-        session2_id = "rapid-session-2"
-
-        from stepflow_sdk.http_server import StepflowSession
-
-        session1 = StepflowSession(session1_id, http_server.server)
-        session2 = StepflowSession(session2_id, http_server.server)
-
-        http_server.sessions[session1_id] = session1
-        http_server.sessions[session2_id] = session2
-
-        # Initialize the server
-        http_server.server.set_initialized(True)
-
-        # Use the same request ID for rapid sequential requests
-        same_request_id = "rapid-request-999"
-
-        # Create multiple rapid requests alternating between sessions
-        requests_and_sessions = []
-        for i in range(10):  # 10 rapid requests
-            session = session1 if i % 2 == 0 else session2
-            session_id = session1_id if i % 2 == 0 else session2_id
-
-            request = {
-                "jsonrpc": "2.0",
-                "method": Method.components_execute,
-                "id": same_request_id,
-                "params": {
-                    "component": "/test_component",
-                    "input": {"message": f"Rapid message {i} for {session_id}"},
-                },
-            }
-            requests_and_sessions.append((request, session, session_id))
-
-        # Execute all requests concurrently
-        tasks = []
-        for request, session, session_id in requests_and_sessions:
-            task = asyncio.create_task(http_server._handle_json_rpc(request, session))
-            tasks.append((task, session_id))
-
-        # Wait for all to complete
-        results = await asyncio.gather(*[task for task, _ in tasks])
-
-        # Verify all responses have the correct request ID and session isolation
-        for i, result in enumerate(results):
-            expected_session_id = session1_id if i % 2 == 0 else session2_id
-
-            assert result["jsonrpc"] == "2.0"
-            assert result["id"] == same_request_id, f"Request {i} has wrong request ID"
-
-            # Check that the response contains the correct session info
-            if "result" in result:
-                output = result["result"]["output"]
-                assert output["session_id"] == expected_session_id, (
-                    f"Request {i} has wrong session ID in output"
-                )
-                assert f"Rapid message {i}" in output["processed_message"]
-            else:
-                # If there's an error, make sure it still has the correct request ID
-                assert "error" in result, (
-                    f"Request {i} should have either result or error"
-                )
-
-        # This test verifies that even with rapid sequential requests using the same
-        # request ID, there's no contamination between sessions
-
-    @pytest.mark.asyncio
-    async def test_request_id_isolation_with_mixed_success_and_failure(
-        self, http_server
-    ):
-        """Test request ID isolation when some requests succeed and others fail."""
-        # Create two sessions
-        session1_id = "mixed-session-1"
-        session2_id = "mixed-session-2"
-
-        from stepflow_sdk.http_server import StepflowSession
-
-        session1 = StepflowSession(session1_id, http_server.server)
-        session2 = StepflowSession(session2_id, http_server.server)
-
-        http_server.sessions[session1_id] = session1
-        http_server.sessions[session2_id] = session2
-
-        # Initialize the server
-        http_server.server.set_initialized(True)
-
-        # Use the same request ID for both requests
-        same_request_id = "mixed-request-555"
-
-        # Request 1: Valid component (should succeed)
-        request1 = {
-            "jsonrpc": "2.0",
-            "method": Method.components_execute,
-            "id": same_request_id,
-            "params": {
-                "component": "/test_component",
-                "input": {"message": "Valid request"},
-            },
-        }
-
-        # Request 2: Invalid component (should fail)
-        request2 = {
-            "jsonrpc": "2.0",
-            "method": Method.components_execute,
-            "id": same_request_id,
-            "params": {
-                "component": "/python/nonexistent_component",
-                "input": {"message": "Invalid request"},
-            },
-        }
-
-        # Execute both requests concurrently
-        task1 = asyncio.create_task(http_server._handle_json_rpc(request1, session1))
-        task2 = asyncio.create_task(http_server._handle_json_rpc(request2, session2))
-
-        # Wait for both to complete
-        result1, result2 = await asyncio.gather(task1, task2)
-
-        # Both should have the same request ID
-        assert result1["id"] == same_request_id
-        assert result2["id"] == same_request_id
-
-        # Result 1 should be success, result 2 should be error
-        assert "result" in result1
-        assert "error" in result2
-
-        # Verify the success result has correct session info
-        output1 = result1["result"]["output"]
-        assert output1["session_id"] == session1_id
-        assert "Valid request" in output1["processed_message"]
-
-        # Verify the error result has correct request ID
-        assert result2["error"]["code"] == -32001  # Component error
-        assert "not found" in result2["error"]["message"]
-
-        # This proves that success/failure of one session doesn't affect
-        # the request ID delivery of another session
+        assert final_response["result"]["output"]["blob_id"] == blob_response_id
+
+        # Verify the stream is closed (no more events)
+        next_event = await sse_events.next()
+        assert next_event is None, "Should not receive any more events"
