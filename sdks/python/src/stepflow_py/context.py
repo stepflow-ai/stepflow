@@ -20,7 +20,7 @@ import sys
 from typing import Any
 from uuid import uuid4
 
-from stepflow_sdk.generated_protocol import (
+from stepflow_py.generated_protocol import (
     EvaluateFlowResult,
     Flow,
     FlowResultFailed,
@@ -33,7 +33,7 @@ from stepflow_sdk.generated_protocol import (
     MethodSuccess,
     PutBlobResult,
 )
-from stepflow_sdk.message_decoder import MessageDecoder
+from stepflow_py.message_decoder import MessageDecoder
 
 """
 Context API for stepflow components to interact with the runtime.
@@ -143,7 +143,7 @@ class StepflowContext:
             StepflowFailed: If the flow execution failed with a business logic error
             Exception: For system/runtime errors
         """
-        from stepflow_sdk.exceptions import StepflowFailed, StepflowSkipped
+        from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
 
         # Convert Flow object to dict if needed
         if isinstance(flow, Flow):

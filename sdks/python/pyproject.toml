@@ -1,5 +1,5 @@
 [project]
-name = "stepflow-sdk"
+name = "stepflow-py"
 version = "0.1.0"
 description = "Python SDK for Stepflow components and workflows."
 readme = "README.md"
@@ -36,7 +36,7 @@ dev = [
 ]
 
 [project.scripts]
-stepflow_sdk = "stepflow_sdk.main:main"
+stepflow_py = "stepflow_py.main:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -153,11 +153,11 @@ module = "tests.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_sdk.generated_flow"
+module = "stepflow_py.generated_flow"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_sdk.generated_protocol"
+module = "stepflow_py.generated_protocol"
 ignore_errors = true
 
 [tool.pytest.ini_options]

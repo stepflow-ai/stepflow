@@ -13,7 +13,7 @@ interface CLIOptions {
 
 export async function runCLI(): Promise<void> {
   program
-    .name('stepflow-sdk')
+    .name('stepflow-py')
     .description('StepFlow TypeScript SDK Server')
     .option('--http', 'Run in HTTP mode instead of stdio mode', false)
     .option('--host <host>', 'Host to bind to (HTTP mode only)', 'localhost')
@@ -21,13 +21,13 @@ export async function runCLI(): Promise<void> {
     .parse();
 
   const options = program.opts<CLIOptions>();
-  
+
   // Create the stdio server (used by both modes)
   const server = new StepflowStdioServer();
-  
+
   // Register built-in components
   registerBuiltinComponents(server);
-  
+
   if (options.http) {
     // HTTP mode
     const httpServer = new StepflowHttpServer(
@@ -49,7 +49,7 @@ function registerBuiltinComponents(server: StepflowStdioServer): void {
     'udf',
     udfSchema.component
   );
-  
+
   // Register example components
   server.registerComponent(
     (input: { a: number; b: number }) => {

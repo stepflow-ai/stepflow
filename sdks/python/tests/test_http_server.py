@@ -23,8 +23,8 @@ import msgspec
 import pytest
 import pytest_asyncio
 
-from stepflow_sdk.context import StepflowContext
-from stepflow_sdk.generated_protocol import (
+from stepflow_py.context import StepflowContext
+from stepflow_py.generated_protocol import (
     ComponentExecuteParams,
     ComponentExecuteResult,
     ComponentInfoParams,
@@ -37,8 +37,8 @@ from stepflow_sdk.generated_protocol import (
     MethodSuccess,
     Notification,
 )
-from stepflow_sdk.http_server import StepflowHttpServer
-from stepflow_sdk.server import StepflowServer
+from stepflow_py.http_server import StepflowHttpServer
+from stepflow_py.server import StepflowServer
 
 POST_HEADERS = {
     "content-type": "application/json",

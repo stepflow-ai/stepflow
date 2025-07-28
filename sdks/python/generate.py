@@ -155,7 +155,7 @@ def generate_types_from_schema(
     """Generate types from a schema file."""
     # Get paths
     script_dir = Path(__file__).parent
-    output_path = script_dir / "src" / "stepflow_sdk" / output_filename
+    output_path = script_dir / "src" / "stepflow_py" / output_filename
 
     try:
         print(f"Generating {schema_name} types...")

@@ -14,7 +14,7 @@ A simple Python component server demonstrating the core patterns.
 
 ```python
 # my_components.py
-from stepflow_sdk import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowStdioServer, StepflowContext
 import msgspec
 import datetime
 import requests
@@ -334,7 +334,7 @@ test:
 
 ```python
 # database_components.py
-from stepflow_sdk import StepflowStdioServer
+from stepflow_py import StepflowStdioServer
 import msgspec
 import asyncio
 import asyncpg
@@ -975,7 +975,7 @@ stepflow-protocol = { path = "../../stepflow-rs/crates/stepflow-protocol" }
 import pytest
 import asyncio
 from my_components import process_data, ProcessDataInput, ProcessDataOutput
-from stepflow_sdk import StepflowContext
+from stepflow_py import StepflowContext
 
 class MockContext(StepflowContext):
     """Mock context for testing components."""
@@ -1113,7 +1113,7 @@ test:
 ### Error Handling
 
 ```python
-from stepflow_sdk import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowStdioServer, StepflowContext
 import msgspec
 from typing import Optional
 import logging
@@ -1283,7 +1283,7 @@ This example shows how to create a distributed component server using HTTP trans
 
 ```python
 # http_components.py
-from stepflow_sdk import StepflowServer
+from stepflow_py import StepflowServer
 import msgspec
 import uvicorn
 import argparse

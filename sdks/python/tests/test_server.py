@@ -25,8 +25,8 @@ This test file focuses on testing the core server functionality:
 import msgspec
 import pytest
 
-from stepflow_sdk import StepflowContext
-from stepflow_sdk.generated_protocol import (
+from stepflow_py import StepflowContext
+from stepflow_py.generated_protocol import (
     ComponentExecuteParams,
     ComponentInfoParams,
     ComponentListParams,
@@ -34,7 +34,7 @@ from stepflow_sdk.generated_protocol import (
     Method,
     MethodRequest,
 )
-from stepflow_sdk.server import ComponentEntry, StepflowServer
+from stepflow_py.server import ComponentEntry, StepflowServer
 
 
 # Test message classes

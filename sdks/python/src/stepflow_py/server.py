@@ -23,14 +23,14 @@ from typing import Any, assert_never
 
 import msgspec
 
-from stepflow_sdk.context import StepflowContext
-from stepflow_sdk.exceptions import (
+from stepflow_py.context import StepflowContext
+from stepflow_py.exceptions import (
     ComponentNotFoundError,
     StepflowError,
     StepflowExecutionError,
     StepflowProtocolError,
 )
-from stepflow_sdk.generated_protocol import (
+from stepflow_py.generated_protocol import (
     ComponentExecuteParams,
     ComponentExecuteResult,
     ComponentInfo,

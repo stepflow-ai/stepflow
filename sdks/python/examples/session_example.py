@@ -21,7 +21,7 @@ This shows how HTTP mode components can access their session ID.
 
 import msgspec
 
-from stepflow_sdk import StepflowContext, StepflowServer
+from stepflow_py import StepflowContext, StepflowServer
 
 # Create server instance
 server = StepflowServer()

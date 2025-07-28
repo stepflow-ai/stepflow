@@ -18,7 +18,7 @@ from uuid import UUID
 
 import msgspec
 
-from stepflow_sdk.generated_protocol import (
+from stepflow_py.generated_protocol import (
     Error,
     Initialized,
     InitializeParams,

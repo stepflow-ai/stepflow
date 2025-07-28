@@ -30,14 +30,14 @@ import time
 import uuid
 
 try:
-    from stepflow_sdk.server import StepflowServer
-    from stepflow_sdk.stdio_server import StepflowStdioServer
-    from stepflow_sdk.http_server import StepflowHttpServer
-    from stepflow_sdk import StepflowContext
+    from stepflow_py.server import StepflowServer
+    from stepflow_py.stdio_server import StepflowStdioServer
+    from stepflow_py.http_server import StepflowHttpServer
+    from stepflow_py import StepflowContext
     import msgspec
 except ImportError:
     print("Error: This test requires the Python SDK", file=sys.stderr)
-    print("Please install with: pip install stepflow-sdk[http]", file=sys.stderr)
+    print("Please install with: pip install stepflow-py[http]", file=sys.stderr)
     sys.exit(1)
 
 

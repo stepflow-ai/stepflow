@@ -41,12 +41,12 @@ import asyncio
 import msgspec
 import pytest
 
-from stepflow_sdk.generated_protocol import (
+from stepflow_py.generated_protocol import (
     InitializeParams,
     Method,
     MethodRequest,
 )
-from stepflow_sdk.stdio_server import StepflowStdioServer
+from stepflow_py.stdio_server import StepflowStdioServer
 
 
 @pytest.fixture

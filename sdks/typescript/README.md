@@ -31,7 +31,7 @@ A comprehensive TypeScript SDK for creating StepFlow component plugins and build
 ## Installation
 
 ```bash
-npm install stepflow-sdk
+npm install stepflow-py
 ```
 
 ## Quick Start
@@ -39,7 +39,7 @@ npm install stepflow-sdk
 ### Basic Component Server
 
 ```typescript
-import { StepflowStdioServer } from 'stepflow-sdk';
+import { StepflowStdioServer } from 'stepflow-py';
 
 const server = new StepflowStdioServer();
 
@@ -82,7 +82,7 @@ Create workflows programmatically with a fluent, type-safe API:
 ### Basic Flow Construction
 
 ```typescript
-import { createFlow, Value, input, OnError } from 'stepflow-sdk';
+import { createFlow, Value, input, OnError } from 'stepflow-py';
 
 // Create a new workflow
 const flow = createFlow('data-processing', 'Process user data with validation')
@@ -113,7 +113,7 @@ const fetchUser = flow.addStep({
 });
 
 const processData = flow.addStep({
-  id: 'process_data', 
+  id: 'process_data',
   component: '/python/transform',
   input: {
     user: fetchUser.ref,                     // Reference to entire step output
@@ -139,7 +139,7 @@ console.log(JSON.stringify(workflow, null, 2));
 The Value system provides powerful ways to reference data:
 
 ```typescript
-import { Value, input } from 'stepflow-sdk';
+import { Value, input } from 'stepflow-py';
 
 // Literal values (escaped in protocol)
 const config = {
@@ -174,7 +174,7 @@ const chainedRefs = {
 ### Error Handling Strategies
 
 ```typescript
-import { OnError } from 'stepflow-sdk';
+import { OnError } from 'stepflow-py';
 
 // Different error handling approaches
 flow.addStep({
@@ -185,7 +185,7 @@ flow.addStep({
 });
 
 flow.addStep({
-  id: 'optional_step', 
+  id: 'optional_step',
   component: '/optional/process',
   input: { data: 'test' },
   onError: OnError.skip()  // Skip on error
@@ -193,7 +193,7 @@ flow.addStep({
 
 flow.addStep({
   id: 'critical_step',
-  component: '/critical/process', 
+  component: '/critical/process',
   input: { data: 'test' },
   onError: OnError.fail()  // Fail entire workflow
 });
@@ -248,7 +248,7 @@ Execute dynamic JavaScript code stored as blobs:
 ### UDF Component Setup
 
 ```typescript
-import { StepflowStdioServer, udf, udfSchema } from 'stepflow-sdk';
+import { StepflowStdioServer, udf, udfSchema } from 'stepflow-py';
 
 const server = new StepflowStdioServer();
 
@@ -266,7 +266,7 @@ Store JavaScript code as blobs with this structure:
 {
   "code": "input.x * input.y + input.z",
   "input_schema": {
-    "type": "object", 
+    "type": "object",
     "properties": {
       "x": { "type": "number" },
       "y": { "type": "number" },
@@ -322,7 +322,7 @@ return { total, tax, grandTotal: total + tax };`
 Components can store and retrieve data using content-based addressing:
 
 ```typescript
-import { StepflowStdioServer, StepflowContext } from 'stepflow-sdk';
+import { StepflowStdioServer, StepflowContext } from 'stepflow-py';
 
 const server = new StepflowStdioServer();
 
@@ -330,11 +330,11 @@ const server = new StepflowStdioServer();
 server.registerComponent(
   async (input: { largeData: any }, context?: StepflowContext) => {
     if (!context) throw new Error('Context required');
-    
+
     // Store data as blob - returns SHA-256 hash
     const blobId = await context.putBlob(input.largeData);
-    
-    return { 
+
+    return {
       blobId,
       message: 'Data stored successfully',
       size: JSON.stringify(input.largeData).length
@@ -347,17 +347,17 @@ server.registerComponent(
 server.registerComponent(
   async (input: { blobId: string }, context?: StepflowContext) => {
     if (!context) throw new Error('Context required');
-    
+
     // Retrieve data by blob ID
     const data = await context.getBlob(input.blobId);
-    
+
     // Process the data
     const processed = data.map((item: any) => ({
       ...item,
       processed: true,
       timestamp: new Date().toISOString()
     }));
-    
+
     return { processed };
   },
   'process_blob_data'
@@ -398,7 +398,7 @@ curl -X POST "http://localhost:8080/?sessionId=abc-123-def" \
 curl -X POST "http://localhost:8080/?sessionId=abc-123-def" \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0", 
+    "jsonrpc": "2.0",
     "id": 2,
     "method": "components/execute",
     "params": {
@@ -419,16 +419,16 @@ curl -X POST "http://localhost:8080/?sessionId=abc-123-def" \
 
 ```bash
 # Stdio mode (default)
-npx stepflow-sdk
+npx stepflow-py
 
-# HTTP server mode  
-npx stepflow-sdk --http
+# HTTP server mode
+npx stepflow-py --http
 
 # Custom host and port
-npx stepflow-sdk --http --host 0.0.0.0 --port 3000
+npx stepflow-py --http --host 0.0.0.0 --port 3000
 
 # Show help
-npx stepflow-sdk --help
+npx stepflow-py --help
 ```
 
 ## API Reference
@@ -440,7 +440,7 @@ Available in component handlers for runtime operations:
 ```typescript
 interface StepflowContext {
   putBlob(data: any): Promise<string>;           // Store blob, returns SHA-256 ID
-  getBlob(blobId: string): Promise<any>;         // Retrieve blob by ID  
+  getBlob(blobId: string): Promise<any>;         // Retrieve blob by ID
   evaluateFlow(flow: any, input: any): Promise<any>; // Execute nested workflow
 }
 ```
@@ -453,7 +453,7 @@ class Value {
   static literal(value: any): Value;              // Escaped literal value
   static step(stepId: string, path?: string): Value;  // Step reference
   static input(path?: string): Value;             // Workflow input reference
-  
+
   get(key: string | number): Value;               // Bracket notation access
   toValueTemplate(): ValueTemplate;               // Convert to protocol format
 }
@@ -471,7 +471,7 @@ class FlowBuilder {
   setInputSchema(schema: Schema): FlowBuilder;
   setOutputSchema(schema: Schema): FlowBuilder;
   setOutput(output: Valuable): FlowBuilder;
-  
+
   // Step management
   addStep(options: {
     id: string;
@@ -482,13 +482,13 @@ class FlowBuilder {
     skipIf?: Valuable;
     onError?: OnErrorAction;
   }): StepHandle;
-  
+
   step(stepId: string): StepHandle | undefined;
-  
+
   // Analysis
   getReferences(): Array<StepReference | WorkflowInput>;
   getStepIds(): string[];
-  
+
   // Build
   build(): Flow;
 }
@@ -496,7 +496,7 @@ class FlowBuilder {
 // Error handling helpers
 class OnError {
   static fail(): OnErrorAction;
-  static skip(): OnErrorAction; 
+  static skip(): OnErrorAction;
   static retry(maxAttempts?: number): OnErrorAction;
   static default(value: any): OnErrorAction;
 }
@@ -514,7 +514,7 @@ The SDK generates protocol-compliant ValueTemplate structures:
 }
 ```
 
-### Workflow Input References  
+### Workflow Input References
 ```json
 {
   "$from": { "workflow": "input" },
@@ -565,7 +565,7 @@ Check out the `/examples` directory for:
 src/
 ├── cli.ts           # Command-line interface
 ├── flow-builder.ts  # Flow Builder API
-├── http-server.ts   # HTTP server implementation  
+├── http-server.ts   # HTTP server implementation
 ├── index.ts         # Main exports
 ├── main.ts          # Entry point
 ├── protocol.ts      # Protocol type definitions
@@ -580,7 +580,7 @@ src/
 ```bash
 # Development
 npm run build        # Compile TypeScript
-npm test            # Run test suite  
+npm test            # Run test suite
 npm run lint        # Check code style
 npm start           # Run in stdio mode
 npm start -- --http # Run in HTTP mode
@@ -667,7 +667,7 @@ server.registerComponent<MyInput, MyOutput>(
 
 ### HTTP Server
 - ⚠️ CORS enabled for all origins (configure for production)
-- ✅ Session isolation prevents cross-client data leaks  
+- ✅ Session isolation prevents cross-client data leaks
 - ✅ Automatic session cleanup on disconnect
 - ⚠️ No built-in authentication (add your own middleware)
 - ✅ Request/response validation

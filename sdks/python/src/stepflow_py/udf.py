@@ -19,7 +19,7 @@ from typing import Any
 
 import msgspec
 
-from stepflow_sdk.context import StepflowContext
+from stepflow_py.context import StepflowContext
 
 # Global cache for compiled functions by blob_id
 _function_cache: dict[str, Any] = {}

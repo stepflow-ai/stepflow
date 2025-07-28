@@ -25,7 +25,7 @@ This demonstrates:
 4. Working with complex flow control structures
 """
 
-from stepflow_sdk import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowStdioServer, StepflowContext
 import msgspec
 from typing import List, Any, Dict
 import asyncio
@@ -100,7 +100,7 @@ async def iterate(input: IterateInput, context: StepflowContext) -> IterateOutpu
 
         # Result doesn't have expected structure
         else:
-            from stepflow_sdk.exceptions import StepflowValueError
+            from stepflow_py.exceptions import StepflowValueError
 
             raise StepflowValueError(
                 "Iteration flow output must contain either 'result' or 'next' field"
