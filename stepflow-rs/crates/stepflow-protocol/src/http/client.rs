@@ -25,6 +25,7 @@ use futures::stream::StreamExt as _;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
+use super::bidirectional_driver::BidirectionalDriver;
 use crate::error::{Result, TransportError};
 use crate::protocol::{Method, MethodRequest, ProtocolMethod, ProtocolNotification};
 use crate::{LazyValue, Message, MessageHandlerRegistry, OwnedJson, RequestId};
@@ -196,8 +197,10 @@ impl HttpClientHandle {
             // Handle SSE streaming response - this means we need bidirectional communication
             tracing::debug!(request_id = %id, "Starting SSE stream processing for bidirectional communication");
 
-            // Process the SSE stream and handle bidirectional communication
-            self.handle_sse_stream(id, response).await
+            // Create a bidirectional driver to handle the SSE stream
+            let driver = BidirectionalDriver::new(self.clone());
+            let messages = self.sse_messages(response);
+            driver.drive_to_completion(id, messages).await
         } else {
             // Handle direct JSON response
             let response_text = response
@@ -214,58 +217,6 @@ impl HttpClientHandle {
 
             Ok(owned_json)
         }
-    }
-
-    /// Handle SSE stream and bidirectional communication
-    async fn handle_sse_stream(
-        &self,
-        expected_id: RequestId,
-        response: reqwest::Response,
-    ) -> Result<OwnedJson> {
-        let messages = self.sse_messages(response);
-        tokio::pin!(messages);
-
-        while let Some(owned_json) = messages.next().await {
-            match owned_json.message() {
-                Message::Request(request) => {
-                    let method = request.method;
-                    let request_id = request.id.clone();
-
-                    // Handle bidirectional request from server in background
-                    if let Err(e) = self
-                        .handle_incoming_request(method, request_id.clone(), owned_json)
-                        .await
-                    {
-                        tracing::error!(
-                            method = %method,
-                            request_id = %request_id,
-                            error = ?e,
-                            "Failed to handle bidirectional request"
-                        );
-                    }
-                }
-                Message::Response(response) => {
-                    // Check if this is the final response we were waiting for
-                    if response.id() == &expected_id {
-                        tracing::debug!(request_id = %expected_id, "Received final response, completing request");
-                        return Ok(owned_json);
-                    } else {
-                        tracing::warn!(
-                            expected_id = %expected_id,
-                            received_id = %response.id(),
-                            "Received response for unexpected request ID"
-                        );
-                    }
-                }
-                Message::Notification(notification) => {
-                    tracing::debug!(method = %notification.method, "Received notification from server");
-                    // Notifications are fire-and-forget, no response needed
-                }
-            }
-        }
-
-        Err(error_stack::Report::new(TransportError::Recv)
-            .attach_printable("SSE stream ended without receiving final response"))
     }
 
     /// Create a clean async stream of parsed SSE messages using async_stream
@@ -328,8 +279,8 @@ impl HttpClientHandle {
         None
     }
 
-    /// Handle a bidirectional request from the server during SSE streaming
-    async fn handle_incoming_request(
+    /// Handle a bidirectional request from the server during SSE streaming with concurrent message processing
+    pub(super) async fn handle_incoming_request(
         &self,
         incoming_method: Method,
         incoming_id: RequestId,
@@ -338,7 +289,7 @@ impl HttpClientHandle {
         tracing::debug!(
             method = %incoming_method,
             request_id = %incoming_id,
-            "Processing bidirectional request from server"
+            "Processing bidirectional request from server with concurrent message handling"
         );
 
         let Some(handler) = MessageHandlerRegistry::instance().get_method_handler(incoming_method)
@@ -357,14 +308,14 @@ impl HttpClientHandle {
             return Ok(());
         };
 
-        // Handle the request asynchronously and send response back to server
+        // Handle the request asynchronously with concurrent outgoing message processing
         let context = self.context.clone();
         let client_handle = self.clone();
 
         let future = async move {
             let (outgoing_tx, mut outgoing_rx) = mpsc::channel(100);
 
-            // Re-extract the request in the async block to avoid lifetime issues
+            // Extract the request from the owned message
             let request = match owned_message.message() {
                 Message::Request(req) => req,
                 _ => {
@@ -377,39 +328,48 @@ impl HttpClientHandle {
                 }
             };
 
-            // Handle the request
-            if let Err(e) = handler
-                .handle_message(request, outgoing_tx, context.clone())
-                .await
-            {
-                tracing::error!(
-                    method = %request.method,
-                    request_id = %request.id,
-                    error = ?e,
-                    "Handler execution failed for bidirectional request"
-                );
-
-                client_handle
-                    .send_error_response(
-                        &request.id,
-                        -32601,
-                        &format!("Failed to handle method {}: {:?}", request.method, e),
-                    )
-                    .await;
-                return;
+            // Start the handler and the message sender concurrently
+            let handler_future = handler.handle_message(request, outgoing_tx, context.clone());
+            let sender_future = async {
+                while let Some(outgoing_message) = outgoing_rx.recv().await {
+                    if let Err(e) = client_handle
+                        .send_response_to_server(&outgoing_message)
+                        .await
+                    {
+                        tracing::error!(
+                            request_id = %request.id,
+                            error = ?e,
+                            "Failed to send outgoing message"
+                        );
+                    }
+                }
             };
 
-            assert!(
-                outgoing_rx.is_closed(),
-                "Outgoing channel not closed after handler completion",
-            );
+            // Run handler and sender concurrently
+            let (handler_result, _) = tokio::join!(handler_future, sender_future);
 
-            while let Some(outgoing_message) = outgoing_rx.recv().await {
-                if let Err(e) = client_handle
-                    .send_response_to_server(&outgoing_message)
-                    .await
-                {
-                    tracing::error!(error = ?e, "Failed to send response back to server");
+            // Handle the result
+            match handler_result {
+                Ok(()) => {
+                    tracing::debug!(
+                        request_id = %request.id,
+                        "Handler completed successfully"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        method = %request.method,
+                        request_id = %request.id,
+                        error = ?e,
+                        "Handler execution failed for bidirectional request"
+                    );
+                    client_handle
+                        .send_error_response(
+                            &request.id,
+                            -32601,
+                            &format!("Failed to handle method {}: {:?}", request.method, e),
+                        )
+                        .await;
                 }
             }
         };
