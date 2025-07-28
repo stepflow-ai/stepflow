@@ -61,6 +61,49 @@ cargo run -- serve --port=7837 --config=<stepflow-config.yml>
 cargo run -- submit --url=http://localhost:7837/api/v1 --flow=<flow.yaml> --input=<input.json>
 ```
 
+### Validating Workflows and Configuration
+```bash
+# Validate both workflow and configuration files (run from stepflow-rs directory)
+cd stepflow-rs
+cargo run -- validate --flow ../examples/basic/workflow.yaml --config ../examples/basic/stepflow-config.yml
+
+# Validate only configuration file
+cargo run -- validate --config ../examples/basic/stepflow-config.yml --config-only
+
+# Validate only workflow file (uses default config resolution)
+cargo run -- validate --flow ../examples/basic/workflow.yaml --flow-only
+
+# Validate default configuration only (looks for stepflow-config.yml in current directory)
+cargo run -- validate --config-only
+
+# Quick validation check (validates config in current directory, warns if no flow specified)
+cargo run -- validate
+```
+
+**Validation Features:**
+- **Configuration validation**: Checks plugin definitions, routing rules, and plugin-route consistency
+- **Workflow validation**: Uses `stepflow-analysis` to validate workflow structure, step dependencies, and value references
+- **Schema validation**: Validates component schemas and input/output types when available
+- **User-friendly output**: Clear success/failure indicators with emoji icons and detailed error messages
+- **Exit codes**: Returns 0 for success, 1+ for validation failures (suitable for CI/CD pipelines)
+
+**When to use validate:**
+- Before committing workflow or configuration changes
+- In CI/CD pipelines to catch configuration errors early
+- When debugging workflow execution issues
+- After modifying plugin configurations or routing rules
+- Before deploying to production environments
+
+**Integration with development workflow:**
+```bash
+# Validate before running a workflow
+cargo run -- validate --flow my-workflow.yaml --config my-config.yml
+cargo run -- run --flow my-workflow.yaml --config my-config.yml --input input.json
+
+# Validate in CI/CD (exit code 0 = success, 1+ = failure)
+cargo run -- validate --flow workflows/production.yaml --config configs/prod-config.yml
+```
+
 ### Code Linting
 ```bash
 # Run clippy on all crates (run from stepflow-rs directory)
