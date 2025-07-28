@@ -6,8 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  dispatch-release:
-    name: Dispatch Release Build
+  dispatch-rust-release:
+    name: Dispatch Rust Release Build
     runs-on: ubuntu-22.04
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release:stepflow-rs')
 
@@ -46,4 +46,46 @@ jobs:
           echo "1. Build binaries for all platforms" >> $GITHUB_STEP_SUMMARY
           echo "2. Build and push Docker images" >> $GITHUB_STEP_SUMMARY
           echo "3. Verify all artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "4. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
+
+  dispatch-python-release:
+    name: Dispatch Python SDK Release
+    runs-on: ubuntu-22.04
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release:python-sdk')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Extract version from pyproject.toml
+        id: version
+        working-directory: sdks/python
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=stepflow-py-$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Dispatch Python release build
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{"event_type":"build-python-release","client_payload":{"version":"${{ steps.version.outputs.version }}","tag":"${{ steps.version.outputs.tag }}"}}'
+
+      - name: Summary
+        run: |
+          echo "## Python SDK Release Build Dispatched" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Dispatched release build for **stepflow-py v${{ steps.version.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Python release workflow will:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Build Python wheel and source distribution" >> $GITHUB_STEP_SUMMARY
+          echo "2. Run comprehensive tests" >> $GITHUB_STEP_SUMMARY
+          echo "3. Publish to PyPI using Trusted Publishing" >> $GITHUB_STEP_SUMMARY
           echo "4. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
