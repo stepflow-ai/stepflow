@@ -22,61 +22,31 @@ use stepflow_core::workflow::Flow;
 /// Validate workflow files and configuration
 ///
 /// Returns the number of validation failures (errors + fatal diagnostics).
-pub async fn validate(
-    flow_path: Option<&Path>,
-    config_path: Option<&Path>,
-    config_only: bool,
-    flow_only: bool,
-) -> Result<usize> {
+pub async fn validate(flow_path: &Path, config_path: Option<&Path>) -> Result<usize> {
     let mut failures = 0;
 
-    // Validate arguments
-    if config_only && flow_only {
-        return Err(MainError::InvalidArgument(
-            "Cannot specify both --config-only and --flow-only".to_string(),
-        )
-        .into());
-    }
-
-    if flow_only && flow_path.is_none() {
-        return Err(MainError::InvalidArgument(
-            "Must specify --flow when using --flow-only".to_string(),
-        )
-        .into());
-    }
-
-    // Validate configuration unless flow-only is specified
-    if !flow_only {
-        match validate_config(config_path).await {
-            Ok(config_failures) => {
-                failures += config_failures;
-            }
-            Err(e) => {
-                print_error("Configuration validation failed", &e);
-                failures += 1;
-            }
+    // Validate configuration
+    match validate_config(config_path).await {
+        Ok(config_failures) => {
+            failures += config_failures;
+        }
+        Err(e) => {
+            print_error("Configuration validation failed", &e);
+            failures += 1;
         }
     }
 
-    // Validate workflow unless config-only is specified
-    if !config_only {
-        if let Some(flow_path) = flow_path {
-            match validate_flow(flow_path).await {
-                Ok(flow_failures) => {
-                    failures += flow_failures;
-                }
-                Err(e) => {
-                    print_error(
-                        &format!("Workflow validation failed for {}", flow_path.display()),
-                        &e,
-                    );
-                    failures += 1;
-                }
-            }
-        } else if !config_only {
-            println!(
-                "Warning: No workflow file specified for validation. Use --flow to specify a workflow file."
+    // Validate workflow
+    match validate_flow(flow_path).await {
+        Ok(flow_failures) => {
+            failures += flow_failures;
+        }
+        Err(e) => {
+            print_error(
+                &format!("Workflow validation failed for {}", flow_path.display()),
+                &e,
             );
+            failures += 1;
         }
     }
 
@@ -194,7 +164,9 @@ async fn validate_flow(flow_path: &Path) -> Result<usize> {
     if diagnostics.is_empty() {
         println!("✅ Workflow is valid");
     } else {
-        println!("📊 Validation results: {fatal_count} fatal, {error_count} errors, {warning_count} warnings");
+        println!(
+            "📊 Validation results: {fatal_count} fatal, {error_count} errors, {warning_count} warnings"
+        );
 
         // Group diagnostics by level
         let fatal_diagnostics = diagnostics.at_level(DiagnosticLevel::Fatal);

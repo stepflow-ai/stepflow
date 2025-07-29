@@ -151,18 +151,10 @@ pub enum Command {
             value_name = "FILE",
             value_hint = clap::ValueHint::FilePath
         )]
-        flow_path: Option<PathBuf>,
+        flow_path: PathBuf,
 
         #[command(flatten)]
         config_args: ConfigArgs,
-
-        /// Only validate the configuration file, not the workflow.
-        #[arg(long)]
-        config_only: bool,
-
-        /// Only validate the workflow file, not the configuration.
-        #[arg(long)]
-        flow_only: bool,
     },
 }
 
@@ -247,16 +239,9 @@ impl Cli {
             Command::Validate {
                 flow_path,
                 config_args,
-                config_only,
-                flow_only,
             } => {
-                let failures = validate::validate(
-                    flow_path.as_deref(),
-                    config_args.config_path.as_deref(),
-                    config_only,
-                    flow_only,
-                )
-                .await?;
+                let failures =
+                    validate::validate(&flow_path, config_args.config_path.as_deref()).await?;
                 if failures > 0 {
                     std::process::exit(1);
                 }
