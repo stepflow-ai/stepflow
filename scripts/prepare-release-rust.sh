@@ -206,9 +206,9 @@ fi
 echo -e "${BLUE}Generating changelog (stepflow-rs changes only)${NC}"
 if [[ -n "$TAG_MESSAGE" ]]; then
     echo -e "${BLUE}Including custom message: ${GREEN}$TAG_MESSAGE${NC}"
-    git-cliff --config cliff.toml --tag "$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
+    git-cliff -v -v --config cliff.toml --tag "$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
 else
-    git-cliff --config cliff.toml --tag "$NEW_VERSION" -u --prepend CHANGELOG.md
+    git-cliff -v -v --config cliff.toml --tag "$NEW_VERSION" -u --prepend CHANGELOG.md
 fi
 
 echo -e "${GREEN}✅ Release preparation complete!${NC}"
