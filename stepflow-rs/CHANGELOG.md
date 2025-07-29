@@ -2,6 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.2.0"></a> [StepFlow 0.2.0](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.0) - 2025-07-29
 ## <a id="0.1.0"></a> [StepFlow 0.1.0](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.1.0) - 2025-06-27
 ### Bug Fixes
 
