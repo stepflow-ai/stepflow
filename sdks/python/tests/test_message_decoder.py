@@ -45,7 +45,7 @@ class TestMessageDecoder:
             "jsonrpc": "2.0",
             "id": "test-123",
             "method": "initialize",
-            "params": {"runtime_protocol_version": 1, "protocol_prefix": "python"},
+            "params": {"runtime_protocol_version": 1},
         }
         message_bytes = json.dumps(message_json).encode()
 
@@ -57,7 +57,6 @@ class TestMessageDecoder:
         assert message.method == Method.initialize
         assert isinstance(message.params, InitializeParams)
         assert message.params.runtime_protocol_version == 1
-        assert message.params.protocol_prefix == "python"
         assert message.jsonrpc == "2.0"
         assert context is None  # No context for requests
 

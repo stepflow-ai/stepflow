@@ -465,7 +465,7 @@ async def main():
         await http_server.run()
     else:
         # Create STDIO server wrapper
-        stdio_server = StepflowStdioServer(core_server, default_protocol_prefix="test")
+        stdio_server = StepflowStdioServer(core_server)
         print("Starting stdio test server", file=sys.stderr)
         stdio_server.run()
 

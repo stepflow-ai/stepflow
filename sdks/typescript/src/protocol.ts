@@ -9,7 +9,7 @@ export type JsonRpcVersion = "2.0";
 export type RequestId = string | number;
 
 // === Method Types ===
-export type Method = 
+export type Method =
   | "initialize"
   | "initialized"
   | "components/list"
@@ -53,7 +53,7 @@ export interface EscapedLiteralExpr {
 
 export type Expr = ReferenceExpr | EscapedLiteralExpr | any;
 
-export type ValueTemplate = 
+export type ValueTemplate =
   | Expr
   | boolean
   | number
@@ -67,7 +67,6 @@ export type Value = any; // Any JSON value (for backward compatibility)
 // === Request Parameter Types ===
 export interface InitializeParams {
   runtime_protocol_version: number;
-  protocol_prefix: string;
 }
 
 export interface ComponentExecuteParams {
@@ -148,15 +147,15 @@ export interface MethodRequest {
   jsonrpc: JsonRpcVersion;
   id: RequestId;
   method: Method;
-  params: InitializeParams | ComponentExecuteParams | ComponentInfoParams | 
-          ComponentListParams | GetBlobParams | PutBlobParams | EvaluateFlowParams;
+  params: InitializeParams | ComponentExecuteParams | ComponentInfoParams |
+  ComponentListParams | GetBlobParams | PutBlobParams | EvaluateFlowParams;
 }
 
 export interface MethodSuccess {
   jsonrpc: JsonRpcVersion;
   id: RequestId;
-  result: InitializeResult | ComponentExecuteResult | ComponentInfoResult | 
-          ListComponentsResult | GetBlobResult | PutBlobResult | EvaluateFlowResult;
+  result: InitializeResult | ComponentExecuteResult | ComponentInfoResult |
+  ListComponentsResult | GetBlobResult | PutBlobResult | EvaluateFlowResult;
 }
 
 export interface MethodError {
@@ -178,7 +177,7 @@ export type Message = MethodRequest | MethodSuccess | MethodError | Notification
 
 // === Legacy Interfaces for Backward Compatibility ===
 /** @deprecated Use ComponentInfoParams instead */
-export interface ComponentInfoRequest extends ComponentInfoParams {}
+export interface ComponentInfoRequest extends ComponentInfoParams { }
 
 /** @deprecated Use ComponentInfoResult instead */
 export interface ComponentInfoResponse {
@@ -187,7 +186,7 @@ export interface ComponentInfoResponse {
 }
 
 /** @deprecated Use ComponentExecuteParams instead */
-export interface ComponentExecuteRequest extends ComponentExecuteParams {}
+export interface ComponentExecuteRequest extends ComponentExecuteParams { }
 
 /** @deprecated Use ComponentExecuteResult instead */
 export interface ComponentExecuteResponse {
@@ -195,7 +194,7 @@ export interface ComponentExecuteResponse {
 }
 
 /** @deprecated Use ComponentListParams instead */
-export interface ListComponentsRequest extends ComponentListParams {}
+export interface ListComponentsRequest extends ComponentListParams { }
 
 /** @deprecated Use ListComponentsResult instead */
 export interface ListComponentsResponse {
@@ -203,7 +202,7 @@ export interface ListComponentsResponse {
 }
 
 /** @deprecated Use InitializeParams instead */
-export interface InitializeRequest extends InitializeParams {}
+export interface InitializeRequest extends InitializeParams { }
 
 /** @deprecated Use InitializeResult instead */
-export interface InitializeResponse extends InitializeResult {}
+export interface InitializeResponse extends InitializeResult { }

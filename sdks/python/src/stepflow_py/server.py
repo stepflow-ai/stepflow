@@ -206,7 +206,7 @@ class StepflowServer:
         self,
         message: MethodRequest | Notification,
         context: StepflowContext | None = None,
-    ) -> MethodResponse:
+    ) -> MethodResponse | None:
         """Central message handler for all JSON-RPC protocol methods.
 
         This method handles the core StepFlow protocol logic and should be called
@@ -227,7 +227,8 @@ class StepflowServer:
         if isinstance(message, MethodRequest):
             return await self._handle_request(message, context)
         elif isinstance(message, Notification):
-            return await self._handle_notification(message, context)
+            await self._handle_notification(message, context)
+            return None
         else:
             assert_never("Unexpected message type in handle_message")
 
@@ -260,7 +261,7 @@ class StepflowServer:
 
     async def _handle_notification(
         self, notification: Notification, context: StepflowContext | None = None
-    ) -> MethodResponse:
+    ):
         """Handle a JSON-RPC notification."""
         # For now, don't process notifications, could handle 'initialized' here
         # Return a success response (though notifications don't expect responses)
@@ -270,13 +271,7 @@ class StepflowServer:
             "Only '{Method.initialized.value}' is expected as a notification"
         )
 
-        result = InitializeResult(server_protocol_version=1)
         self.set_initialized(True)
-        return MethodSuccess(
-            jsonrpc="2.0",
-            id="notification",  # Notifications don't have IDs, MethodSuccess needs one
-            result=result,
-        )
 
     async def _handle_initialize(self, request: MethodRequest) -> MethodResponse:
         """Handle the initialize method."""

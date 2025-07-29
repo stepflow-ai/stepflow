@@ -106,7 +106,6 @@ impl PluginConfig for StepflowPluginConfig {
     async fn create_plugin(
         self,
         working_directory: &std::path::Path,
-        protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         match self.transport {
             StepflowTransport::Stdio { command, args, env } => {
@@ -114,12 +113,10 @@ impl PluginConfig for StepflowPluginConfig {
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedStdio(launcher),
-                    protocol_prefix.to_string(),
                 )))
             }
             StepflowTransport::Http { url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
                 StepflowPluginState::UninitializedHttp(url),
-                protocol_prefix.to_string(),
             ))),
         }
     }
@@ -127,14 +124,12 @@ impl PluginConfig for StepflowPluginConfig {
 
 pub struct StepflowPlugin {
     state: RwLock<StepflowPluginState>,
-    protocol_prefix: String,
 }
 
 impl StepflowPlugin {
-    fn new(state: StepflowPluginState, protocol_prefix: String) -> Self {
+    fn new(state: StepflowPluginState) -> Self {
         Self {
             state: RwLock::new(state),
-            protocol_prefix,
         }
     }
 }
@@ -189,7 +184,6 @@ impl Plugin for StepflowPlugin {
         client
             .method(&InitializeParams {
                 runtime_protocol_version: 1,
-                protocol_prefix: self.protocol_prefix.clone(),
             })
             .await
             .change_context(PluginError::Initializing)?;

@@ -40,8 +40,11 @@ async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepFlowExec
     // Register plugins from IndexMap
     for (plugin_name, plugin_config) in config.plugins {
         let plugin = plugin_config
-            .instantiate(working_directory, &plugin_name)
-            .await?;
+            .instantiate(working_directory)
+            .await
+            .attach_printable_lazy(|| {
+                format!("Failed to instantiate plugin for '{plugin_name}'")
+            })?;
         plugin_router_builder = plugin_router_builder.register_plugin(plugin_name, plugin);
     }
 

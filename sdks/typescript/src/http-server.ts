@@ -3,7 +3,7 @@ import { createSession } from 'better-sse';
 import { v4 as uuidv4 } from 'uuid';
 import { StepflowStdioServer, ComponentEntry } from './server';
 import { BidirectionalTransport, StepflowContext } from './transport';
-import { 
+import {
   MethodRequest,
   MethodSuccess,
   MethodError,
@@ -37,14 +37,14 @@ export class StepflowHttpServer {
     this.sessions = new Map();
     this.host = host;
     this.port = port;
-    
+
     this.setupMiddleware();
     this.setupRoutes();
   }
 
   private setupMiddleware(): void {
     this.app.use(express.json());
-    
+
     // Enable CORS for all origins
     this.app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*');
@@ -59,14 +59,14 @@ export class StepflowHttpServer {
     this.app.get('/runtime/events', async (req: Request, res: Response) => {
       const session = await createSession(req, res);
       const sessionId = uuidv4();
-      
+
       // Create transport and context for this session
       const transport = new BidirectionalTransport(
         // Write function - not used for HTTP mode
-        async (data: string) => {}
+        async (data: string) => { }
       );
       const context = transport.createContext();
-      
+
       // Store session
       const sessionData: Session = {
         id: sessionId,
@@ -75,13 +75,13 @@ export class StepflowHttpServer {
         context
       };
       this.sessions.set(sessionId, sessionData);
-      
+
       // Send endpoint event with session ID
       session.push({
         type: 'endpoint',
         data: JSON.stringify({ endpoint: `/?sessionId=${sessionId}` })
       });
-      
+
       // Setup event forwarding from transport to SSE
       transport.onMessage((message) => {
         sessionData.eventQueue.push(message);
@@ -90,39 +90,39 @@ export class StepflowHttpServer {
           data: JSON.stringify(message)
         });
       });
-      
+
       // Keepalive interval
       const keepaliveInterval = setInterval(() => {
         session.push({ type: 'keepalive' });
       }, 30000);
-      
+
       // Cleanup on disconnect
       session.on('disconnected', () => {
         clearInterval(keepaliveInterval);
         this.sessions.delete(sessionId);
       });
-      
+
       // Auto-initialize the server for HTTP mode
       await this.handleInitialize(sessionData);
     });
-    
+
     // JSON-RPC endpoint
     this.app.post('/', async (req: Request, res: Response) => {
       const sessionId = req.query.sessionId as string;
-      
+
       if (!sessionId) {
         res.json(this.createErrorResponse(null, -32600, 'Missing sessionId parameter'));
         return;
       }
-      
+
       const session = this.sessions.get(sessionId);
       if (!session) {
         res.json(this.createErrorResponse(null, -32600, 'Invalid sessionId'));
         return;
       }
-      
+
       const request = req.body as MethodRequest;
-      
+
       try {
         const response = await this.handleRequest(request, session);
         res.json(response);
@@ -130,7 +130,7 @@ export class StepflowHttpServer {
         res.json(this.createErrorResponse(request.id, -32603, error.message));
       }
     });
-    
+
     // Health check endpoint
     this.app.get('/health', (req: Request, res: Response) => {
       res.json({ status: 'ok' });
@@ -145,10 +145,9 @@ export class StepflowHttpServer {
       method: 'initialize',
       params: {
         runtime_protocol_version: 1,
-        protocol_prefix: 'stepflow://'
       } as InitializeParams
     };
-    
+
     await this.handleRequest(initRequest, session);
   }
 
@@ -156,13 +155,13 @@ export class StepflowHttpServer {
     switch (request.method) {
       case 'components/list':
         return this.handleComponentsList(request);
-        
+
       case 'components/info':
         return this.handleComponentsInfo(request);
-        
+
       case 'components/execute':
         return this.handleComponentsExecute(request, session);
-        
+
       case 'initialize':
         return {
           jsonrpc: '2.0',
@@ -171,7 +170,7 @@ export class StepflowHttpServer {
             server_protocol_version: 1
           }
         };
-        
+
       default:
         return this.createErrorResponse(request.id, -32601, `Method not found: ${request.method}`);
     }
@@ -179,7 +178,7 @@ export class StepflowHttpServer {
 
   private handleComponentsList(request: MethodRequest): MethodSuccess {
     const components = this.server.getComponents();
-    
+
     const result: ListComponentsResult = {
       components: components.map(name => {
         const comp = this.server.getComponent(name);
@@ -191,7 +190,7 @@ export class StepflowHttpServer {
         } as ComponentInfo;
       })
     };
-    
+
     return {
       jsonrpc: '2.0',
       id: request.id,
@@ -202,11 +201,11 @@ export class StepflowHttpServer {
   private handleComponentsInfo(request: MethodRequest): MethodSuccess | MethodError {
     const params = request.params as ComponentInfoParams;
     const component = this.server.getComponent(params.component);
-    
+
     if (!component) {
       return this.createErrorResponse(request.id, -32001, `Component not found: ${params.component}`);
     }
-    
+
     const result: ComponentInfoResult = {
       info: {
         component: params.component,
@@ -215,7 +214,7 @@ export class StepflowHttpServer {
         output_schema: component.options?.outputSchema
       }
     };
-    
+
     return {
       jsonrpc: '2.0',
       id: request.id,
@@ -224,24 +223,24 @@ export class StepflowHttpServer {
   }
 
   private async handleComponentsExecute(
-    request: MethodRequest, 
+    request: MethodRequest,
     session: Session
   ): Promise<MethodSuccess | MethodError> {
     const params = request.params as ComponentExecuteParams;
     const component = this.server.getComponent(params.component);
-    
+
     if (!component) {
       return this.createErrorResponse(request.id, -32001, `Component not found: ${params.component}`);
     }
-    
+
     try {
       // Execute the component with session-specific context
       const output = await component.handler(params.input, session.context);
-      
+
       const result: ComponentExecuteResult = {
         output
       };
-      
+
       return {
         jsonrpc: '2.0',
         id: request.id,

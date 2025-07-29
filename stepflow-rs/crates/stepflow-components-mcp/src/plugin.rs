@@ -51,12 +51,10 @@ impl PluginConfig for McpPluginConfig {
     async fn create_plugin(
         self,
         working_directory: &std::path::Path,
-        protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         Ok(DynPlugin::boxed(McpPlugin::new(
             self,
             working_directory.to_owned(),
-            protocol_prefix.to_string(),
         )))
     }
 }
@@ -65,7 +63,6 @@ pub struct McpPlugin {
     state: RwLock<McpPluginState>,
     config: McpPluginConfig,
     working_directory: std::path::PathBuf,
-    plugin_name: String,
 }
 
 /// Dedicated MCP client for handling JSON-RPC communication
@@ -288,11 +285,7 @@ struct McpPluginState {
 }
 
 impl McpPlugin {
-    pub fn new(
-        config: McpPluginConfig,
-        working_directory: std::path::PathBuf,
-        plugin_name: String,
-    ) -> Self {
+    pub fn new(config: McpPluginConfig, working_directory: std::path::PathBuf) -> Self {
         Self {
             state: RwLock::new(McpPluginState {
                 server_info: None,
@@ -302,7 +295,6 @@ impl McpPlugin {
             }),
             config,
             working_directory,
-            plugin_name,
         }
     }
 }
@@ -342,7 +334,7 @@ impl Plugin for McpPlugin {
                 .change_context(PluginError::ComponentInfo)?;
 
             // Update the component path to use plugin name as directory
-            let component_path = format!("/{}/{}", self.plugin_name, tool.name);
+            let component_path = format!("/{}", tool.name);
             info.component = Component::from_string(&component_path);
 
             components.push(info);

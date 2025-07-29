@@ -23,9 +23,6 @@ use super::{ProtocolMethod, ProtocolNotification};
 pub struct InitializeParams {
     /// Maximum version of the protocol being used by the StepFlow runtime.
     pub runtime_protocol_version: u32,
-
-    /// The protocol prefix for components served by this plugin (e.g., "python", "typescript")
-    pub protocol_prefix: String,
 }
 
 /// Sent from the component server back to StepFlow with the result of initialization.

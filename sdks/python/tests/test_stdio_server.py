@@ -66,6 +66,75 @@ def test_component_registration_delegation(server):
     assert "/test_component" in server._server.get_components()
 
 
+@pytest.mark.asyncio
+async def test_initialize_flow(server, capsys):
+    """Test that the server responds correctly to an initialize request."""
+    server._server.set_initialized(False)
+
+    request = MethodRequest(
+        jsonrpc="2.0",
+        id="init-req",
+        method=Method.initialize,
+        params=InitializeParams(runtime_protocol_version=1),
+    )
+
+    stdin_reader = asyncio.StreamReader()
+    stdout_writer = MockStreamWriter()
+    request_bytes = msgspec.json.encode(request) + b"\n"
+    stdin_reader.feed_data(request_bytes)
+
+    server_task = asyncio.create_task(
+        server.start(stdin=stdin_reader, stdout=stdout_writer)
+    )
+    await asyncio.sleep(0.1)
+    stdin_reader.feed_eof()
+
+    try:
+        await asyncio.wait_for(server_task, timeout=1.0)
+    except TimeoutError:
+        server_task.cancel()
+        await asyncio.gather(server_task, return_exceptions=True)
+
+    captured = capsys.readouterr()
+    assert len(captured.out) > 0
+    response_data = msgspec.json.decode(captured.out.strip())
+    assert response_data["id"] == "init-req"
+    assert response_data["jsonrpc"] == "2.0"
+
+
+@pytest.mark.asyncio
+async def test_no_response_to_initialized_notification(server, capsys):
+    """Test that the server does not respond to the 'initialized' notification."""
+    server._server.set_initialized(True)
+
+    # Notification: no id field
+    notification = {
+        "jsonrpc": "2.0",
+        "method": "initialized",
+        "params": {},
+    }
+    stdin_reader = asyncio.StreamReader()
+    stdout_writer = MockStreamWriter()
+    notification_bytes = msgspec.json.encode(notification) + b"\n"
+    stdin_reader.feed_data(notification_bytes)
+
+    server_task = asyncio.create_task(
+        server.start(stdin=stdin_reader, stdout=stdout_writer)
+    )
+    await asyncio.sleep(0.1)
+    stdin_reader.feed_eof()
+
+    try:
+        await asyncio.wait_for(server_task, timeout=1.0)
+    except TimeoutError:
+        server_task.cancel()
+        await asyncio.gather(server_task, return_exceptions=True)
+
+    captured = capsys.readouterr()
+    # Should be no output for notifications
+    assert captured.out.strip() == ""
+
+
 class MockStreamWriter:
     """Simple mock writer for testing."""
 
@@ -89,7 +158,7 @@ async def test_stdio(server, capsys):
         jsonrpc="2.0",
         id="test-injection",
         method=Method.initialize,
-        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python"),
+        params=InitializeParams(runtime_protocol_version=1),
     )
 
     # Create mock streams

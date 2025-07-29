@@ -50,6 +50,5 @@ pub trait PluginConfig: Serialize + DeserializeOwned {
     fn create_plugin(
         self,
         working_directory: &Path,
-        protocol_prefix: &str,
     ) -> impl Future<Output = error_stack::Result<Box<DynPlugin<'static>>, Self::Error>>;
 }

@@ -31,7 +31,6 @@ impl PluginConfig for MockPlugin {
     async fn create_plugin(
         self,
         _working_directory: &std::path::Path,
-        _protocol_prefix: &str,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         Ok(DynPlugin::boxed(self))
     }

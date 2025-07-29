@@ -31,7 +31,7 @@ from typing import List, Optional
 import asyncio
 
 # Create the server
-server = StepflowStdioServer(default_protocol_prefix="custom")
+server = StepflowStdioServer()
 
 
 # Business domain types
