@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 ## <a id="0.2.3"></a> [StepFlow Python SDK 0.2.3](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.3) - 2025-07-29
 ### Bug Fixes
 
-- Notification responses ([#184](https://github.com/riptano/stepflow/pull/184))
-- Registration of UDF component ([#185](https://github.com/riptano/stepflow/pull/185))
+- Don't send notification responses in stdio transport ([#184](https://github.com/riptano/stepflow/pull/184))
+- Register UDF component in sub-servers (and HTTP transport) ([#185](https://github.com/riptano/stepflow/pull/185))
 
 ## <a id="0.2.2"></a> [StepFlow Python SDK 0.2.2](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.2) - 2025-07-29
 ### Bug Fixes
