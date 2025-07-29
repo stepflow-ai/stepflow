@@ -2515,9 +2515,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.29"
+version = "0.23.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2491382039b29b9b11ff08b76ff6c97cf287671dbb74f0be44bda389fffe9bd1"
+checksum = "c0ebcbd2f03de0fc1122ad9bb24b127a5a6cd51d72604a3f3c50ac459762b6cc"
 dependencies = [
  "once_cell",
  "ring",
@@ -3118,7 +3118,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stepflow-analysis"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bit-set",
  "error-stack",
@@ -3133,7 +3133,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-builtins"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dynosaur",
  "error-stack",
@@ -3157,7 +3157,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-components-mcp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "error-stack",
  "futures",
@@ -3176,7 +3176,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "error-stack",
@@ -3199,7 +3199,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-execution"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "bit-set",
@@ -3221,7 +3221,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-main"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "error-stack",
@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-mock"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "error-stack",
  "serde",
@@ -3271,7 +3271,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-plugin"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dynosaur",
  "error-stack",
@@ -3291,7 +3291,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-protocol"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-stream",
  "erased-serde",
@@ -3318,7 +3318,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-server"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "chrono",
@@ -3348,7 +3348,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bit-set",
  "chrono",
@@ -3365,7 +3365,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state-sql"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bit-set",
  "chrono",
