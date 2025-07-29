@@ -267,9 +267,9 @@ class StepflowServer:
         # Return a success response (though notifications don't expect responses)
         # Create a dummy InitializeResult for notification response
         # (notifications don't typically expect responses)
-        assert (
-            notification.method == Method.initialized
-        ), "Only '{Method.initialized.value}' is expected as a notification"
+        assert notification.method == Method.initialized, (
+            "Only '{Method.initialized.value}' is expected as a notification"
+        )
 
         self.set_initialized(True)
 

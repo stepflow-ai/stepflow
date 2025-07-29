@@ -151,6 +151,6 @@ def test_all_message_types_have_jsonrpc():
 
         # Every message should have jsonrpc field
         assert "jsonrpc" in json_dict, f"Missing jsonrpc in {type(message).__name__}"
-        assert (
-            json_dict["jsonrpc"] == "2.0"
-        ), f"Wrong jsonrpc value in {type(message).__name__}"
+        assert json_dict["jsonrpc"] == "2.0", (
+            f"Wrong jsonrpc value in {type(message).__name__}"
+        )
