@@ -132,8 +132,11 @@ cargo check -p stepflow-protocol
 
 ### Python SDK Development
 ```bash
-# Test Python SDK
+# Test Python SDK with current Python version
 uv run --project sdks/python pytest
+
+# Test Python SDK across all supported versions (3.11, 3.12, 3.13)
+./scripts/test-python-versions.sh
 
 # Run Python SDK in stdio mode (default)
 uv run --project sdks/python stepflow_py
@@ -143,6 +146,26 @@ uv run --project sdks/python --extra http stepflow_py --http --port 8080
 
 # Run Python SDK with custom host and port
 uv run --project sdks/python --extra http stepflow_py --http --host 0.0.0.0 --port 8080
+```
+
+#### Python Version Compatibility
+
+The Python SDK supports Python 3.11, 3.12, and 3.13. All versions are tested in CI.
+
+**To test a specific Python version locally:**
+```bash
+cd sdks/python
+
+# Install specific Python version
+uv python install 3.11  # or 3.12, 3.13
+
+# Pin the version for testing
+uv python pin 3.11
+
+# Install dependencies and run tests
+uv sync --extra http
+uv run poe test
+uv run poe typecheck
 ```
 
 #### Python SDK HTTP Mode
