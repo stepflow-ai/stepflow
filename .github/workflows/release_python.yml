@@ -103,13 +103,6 @@ jobs:
         working-directory: sdks/python
         run: uv build
 
-      - name: Show Python version
-        run: |
-          which python
-          python --version
-          uv run which python
-          uv run python --version
-
       - name: Verify build
         working-directory: sdks/python
         run: |
@@ -117,7 +110,7 @@ jobs:
           ls -la dist/
 
           # Test that the built wheel can be imported
-          uv run pip install dist/*.whl --force-reinstall
+          uv pip install dist/*.whl --force-reinstall
           uv run python -c "import stepflow_py; print(f'stepflow_py version: {stepflow_py.__version__ if hasattr(stepflow_py, \"__version__\") else \"unknown\"}')"
 
       - name: Upload build artifacts
