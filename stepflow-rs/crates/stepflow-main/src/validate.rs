@@ -234,9 +234,9 @@ plugins:
   builtin:
     type: builtin
 
-routing:
-  - match: "*"
-    target: builtin
+routes:
+  "/{*component}":
+    - plugin: builtin
 "#;
         fs::write(&config_path, config_content).unwrap();
 
@@ -255,9 +255,9 @@ plugins:
   builtin:
     type: builtin
 
-routing:
-  - match: "*"
-    target: nonexistent
+routes:
+  "/{*component}":
+    - plugin: nonexistent
 "#;
         fs::write(&config_path, config_content).unwrap();
 
