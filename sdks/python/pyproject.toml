@@ -4,7 +4,7 @@ version = "0.2.0"
 description = "Python SDK for Stepflow components and workflows."
 readme = "README.md"
 authors = []
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "msgspec>=0.19.0",
     "jsonschema>=4.17.0",
