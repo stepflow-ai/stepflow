@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.11"
 
 jobs:
   determine-version:
@@ -66,7 +66,10 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
-        run: uv python install ${{ env.PYTHON_VERSION }}
+        working-directory: sdks/python
+        run: |
+          uv python install ${{ env.PYTHON_VERSION }}
+          uv python pin ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         working-directory: sdks/python
