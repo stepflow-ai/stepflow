@@ -22,6 +22,7 @@ mod stepflow_config;
 mod submit;
 pub mod test;
 mod test_server;
+mod validate;
 
 pub use cli::Cli;
 pub use error::*;

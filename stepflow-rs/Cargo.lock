@@ -3214,6 +3214,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "similar",
+ "stepflow-analysis",
  "stepflow-builtins",
  "stepflow-components-mcp",
  "stepflow-core",
