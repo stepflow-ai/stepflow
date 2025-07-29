@@ -416,8 +416,8 @@ jobs:
 
           ### 🐳 Docker Images
           Docker images are also available at `ghcr.io/${{ github.repository }}`:
-          - `ghcr.io/${{ github.repository }}:debian-v${{ needs.determine-version.outputs.version }}`
-          - `ghcr.io/${{ github.repository }}:alpine-v${{ needs.determine-version.outputs.version }}`
+          - `ghcr.io/${{ github.repository }}:debian-${{ needs.determine-version.outputs.version }}`
+          - `ghcr.io/${{ github.repository }}:alpine-${{ needs.determine-version.outputs.version }}`
 
           ### 📦 Installation
           1. Download the appropriate binary for your platform using the links above
@@ -493,7 +493,7 @@ jobs:
           echo "- **macOS**: x86_64, ARM64" >> $GITHUB_STEP_SUMMARY
           echo "- **Windows**: x86_64" >> $GITHUB_STEP_SUMMARY
           echo "- **Docker**: Debian + Alpine (multiplatform)" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
