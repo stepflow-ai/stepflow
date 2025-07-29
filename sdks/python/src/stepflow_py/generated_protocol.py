@@ -56,12 +56,6 @@ class InitializeParams(Struct, kw_only=True):
             ge=0,
         ),
     ]
-    protocol_prefix: Annotated[
-        str,
-        Meta(
-            description='The protocol prefix for components served by this plugin (e.g., "python", "typescript")'
-        ),
-    ]
 
 
 Component = Annotated[

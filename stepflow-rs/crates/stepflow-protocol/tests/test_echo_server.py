@@ -55,7 +55,7 @@ async def main():
     args = parser.parse_args()
 
     # Create core server instance
-    core_server = StepflowServer(default_protocol_prefix="test")
+    core_server = StepflowServer()
 
     # Register the echo component
     core_server.component(

@@ -106,15 +106,10 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0
-        },
-        "protocol_prefix": {
-          "description": "The protocol prefix for components served by this plugin (e.g., \"python\", \"typescript\")",
-          "type": "string"
         }
       },
       "required": [
-        "runtime_protocol_version",
-        "protocol_prefix"
+        "runtime_protocol_version"
       ]
     },
     "ComponentExecuteParams": {

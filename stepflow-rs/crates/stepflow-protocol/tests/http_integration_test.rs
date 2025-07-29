@@ -80,7 +80,7 @@ async fn test_http_plugin_creation_failure() {
     };
 
     let plugin = config
-        .create_plugin(std::path::Path::new("."), "test")
+        .create_plugin(std::path::Path::new("."))
         .await
         .expect("Should create HTTP plugin");
 
@@ -136,7 +136,7 @@ async fn test_http_protocol_integration() {
     };
 
     let plugin = config
-        .create_plugin(std::path::Path::new("."), "test")
+        .create_plugin(std::path::Path::new("."))
         .await
         .expect("Should create HTTP plugin");
 
@@ -275,7 +275,7 @@ async fn test_http_plugin_lifecycle() {
     };
 
     let plugin = config
-        .create_plugin(std::path::Path::new("."), "test")
+        .create_plugin(std::path::Path::new("."))
         .await
         .expect("Should create HTTP plugin");
 

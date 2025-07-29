@@ -108,7 +108,7 @@ The `custom_server.py` file demonstrates the Python SDK library usage:
 from stepflow_py import StepflowStdioServer, StepflowContext
 
 # Create server instance
-server = StepflowStdioServer(default_protocol_prefix="custom")
+server = StepflowStdioServer()
 
 # Register components with decorator
 @server.component

@@ -28,7 +28,7 @@ interface ComponentOptions {
 
 /**
  * StepflowStdioServer
- * 
+ *
  * Server implementation for Stepflow using stdio
  */
 export class StepflowStdioServer {
@@ -122,8 +122,6 @@ export class StepflowStdioServer {
 
     switch (request.method) {
       case 'initialize': {
-        const initRequest = request.params as protocol.InitializeParams;
-        this.protocolPrefix = initRequest.protocol_prefix;
         return createSuccessResponse(id, { server_protocol_version: 1 });
       }
 
@@ -166,7 +164,7 @@ export class StepflowStdioServer {
         try {
           // Create context for bidirectional communication
           const context = this.transport?.createContext();
-          
+
           // Execute the component function with the input and context
           const output = await component.handler(executeRequest.input, context);
 
@@ -188,7 +186,7 @@ export class StepflowStdioServer {
           input_schema: comp.options?.inputSchema,
           output_schema: comp.options?.outputSchema,
         }));
-        
+
         return createSuccessResponse(id, { components: componentInfos });
       }
 
@@ -295,14 +293,14 @@ export class StepflowStdioServer {
       };
     }
   }
-  
+
   /**
    * Get list of registered component names
    */
   public getComponents(): string[] {
     return Array.from(this.components.keys());
   }
-  
+
   /**
    * Get a specific component
    */

@@ -235,7 +235,6 @@ class StepflowHttpServer:
                 content="",
                 status_code=202,  # Empty body for 202 Accepted
             )
-
         else:
             assert_never("Unhandled message type: {type(message)}")
 
@@ -262,6 +261,7 @@ class StepflowHttpServer:
             else:
                 # No context needed - delegate to core server
                 result = await self.server.handle_message(request)
+                assert result is not None
 
                 # Return direct JSON response
                 return JSONResponse(
@@ -301,7 +301,9 @@ class StepflowHttpServer:
 
         async def execute_and_shutdown_queue():
             try:
-                return await self.server.handle_message(request, context)
+                result = await self.server.handle_message(request, context)
+                assert result is not None
+                return result
             finally:
                 # Signal end of queue by putting a sentinel value
                 await outgoing_queue.put(None)

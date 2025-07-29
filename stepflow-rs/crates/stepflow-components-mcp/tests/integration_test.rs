@@ -69,10 +69,7 @@ async fn test_mcp_plugin_initialization() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config
-        .create_plugin(&working_dir, "mock-server")
-        .await
-        .unwrap();
+    let plugin = config.create_plugin(&working_dir).await.unwrap();
 
     let (test_context, _exec_context) = create_test_context();
     plugin.init(&test_context).await.unwrap();
@@ -86,8 +83,8 @@ async fn test_mcp_plugin_initialization() {
         .iter()
         .map(|c| c.component.path().to_string())
         .collect();
-    assert!(paths.contains(&"/mock-server/echo".to_string()));
-    assert!(paths.contains(&"/mock-server/add".to_string()));
+    assert!(paths.contains(&"/echo".to_string()));
+    assert!(paths.contains(&"/add".to_string()));
 }
 
 #[tokio::test]
@@ -99,10 +96,7 @@ async fn test_mcp_tool_execution() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config
-        .create_plugin(&working_dir, "mock-server")
-        .await
-        .unwrap();
+    let plugin = config.create_plugin(&working_dir).await.unwrap();
 
     let (test_context, exec_context) = create_test_context();
     plugin.init(&test_context).await.unwrap();
@@ -164,10 +158,7 @@ async fn test_mcp_error_handling() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config
-        .create_plugin(&working_dir, "mock-server")
-        .await
-        .unwrap();
+    let plugin = config.create_plugin(&working_dir).await.unwrap();
 
     let (test_context, exec_context) = create_test_context();
     plugin.init(&test_context).await.unwrap();

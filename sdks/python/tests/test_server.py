@@ -380,9 +380,7 @@ def test_requires_context():
                 jsonrpc="2.0",
                 id="test1",
                 method=Method.initialize,
-                params=InitializeParams(
-                    runtime_protocol_version=1, protocol_prefix="python"
-                ),
+                params=InitializeParams(runtime_protocol_version=1),
             ),
             "expected": False,
         },
@@ -444,9 +442,9 @@ def test_requires_context():
         assert isinstance(request, MethodRequest)
         actual = server.requires_context(request)
         expected = test_case["expected"]
-        assert actual == expected, (
-            f"{test_case['name']}: got {actual}, expected {expected}"
-        )
+        assert (
+            actual == expected
+        ), f"{test_case['name']}: got {actual}, expected {expected}"
 
 
 def test_component_context_detection():

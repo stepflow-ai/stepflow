@@ -35,7 +35,7 @@ def test_method_request_default_jsonrpc():
     request = MethodRequest(
         id="test-123",
         method=Method.initialize,
-        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python"),
+        params=InitializeParams(runtime_protocol_version=1),
     )
 
     # Encode to JSON
@@ -100,7 +100,7 @@ def test_explicit_jsonrpc_override():
     request = MethodRequest(
         id="explicit-test",
         method=Method.initialize,
-        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="python"),
+        params=InitializeParams(runtime_protocol_version=1),
         jsonrpc="2.0",  # Explicitly set
     )
 
@@ -118,7 +118,7 @@ def test_round_trip_decoding():
     original_request = MethodRequest(
         id=12345,
         method=Method.components_list,
-        params=InitializeParams(runtime_protocol_version=1, protocol_prefix="test"),
+        params=InitializeParams(runtime_protocol_version=1),
     )
 
     # Encode to JSON
@@ -138,7 +138,7 @@ def test_all_message_types_have_jsonrpc():
         MethodRequest(
             id="req",
             method=Method.initialize,
-            params=InitializeParams(runtime_protocol_version=1, protocol_prefix="test"),
+            params=InitializeParams(runtime_protocol_version=1),
         ),
         MethodSuccess(id="success", result=InitializeResult(server_protocol_version=1)),
         MethodError(id="error", error=Error(code=-32000, message="Test error")),
@@ -151,6 +151,6 @@ def test_all_message_types_have_jsonrpc():
 
         # Every message should have jsonrpc field
         assert "jsonrpc" in json_dict, f"Missing jsonrpc in {type(message).__name__}"
-        assert json_dict["jsonrpc"] == "2.0", (
-            f"Wrong jsonrpc value in {type(message).__name__}"
-        )
+        assert (
+            json_dict["jsonrpc"] == "2.0"
+        ), f"Wrong jsonrpc value in {type(message).__name__}"

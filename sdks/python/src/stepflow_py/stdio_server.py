@@ -88,11 +88,15 @@ class StepflowStdioServer:
                 print(f"Unexpected message type: {type(message)}", file=sys.stderr)
                 return
 
-            # Encode and write response
-            print(f"Sending response: {response} to {message}", file=sys.stderr)
-            response_bytes = msgspec.json.encode(response) + b"\n"
-            sys.stdout.buffer.write(response_bytes)
-            sys.stdout.buffer.flush()
+            if response is not None:
+                assert isinstance(message, MethodRequest)
+                # Encode and write response
+                print(f"Sending response: {response} to {message}", file=sys.stderr)
+                response_bytes = msgspec.json.encode(response) + b"\n"
+                sys.stdout.buffer.write(response_bytes)
+                sys.stdout.buffer.flush()
+            else:
+                assert isinstance(message, Notification)
         except Exception as e:
             print(f"Error in _handle_incoming_message: {e}", file=sys.stderr)
             if request_id is not None:

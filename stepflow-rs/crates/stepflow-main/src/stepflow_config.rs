@@ -110,35 +110,21 @@ pub struct SupportedPluginConfig {
 async fn create_plugin<P: PluginConfig>(
     plugin: P,
     working_directory: &Path,
-    protocol_prefix: &str,
 ) -> Result<Box<DynPlugin<'static>>> {
     plugin
-        .create_plugin(working_directory, protocol_prefix)
+        .create_plugin(working_directory)
         .await
         .change_context(MainError::RegisterPlugin)
 }
 
 impl SupportedPluginConfig {
-    pub async fn instantiate(
-        self,
-        working_directory: &Path,
-        plugin_name: &str,
-    ) -> Result<Box<DynPlugin<'static>>> {
+    pub async fn instantiate(self, working_directory: &Path) -> Result<Box<DynPlugin<'static>>> {
         let plugin = match self.plugin {
-            SupportedPlugin::Stepflow(plugin) => {
-                create_plugin(plugin, working_directory, plugin_name).await
-            }
-            SupportedPlugin::Builtin(plugin) => {
-                create_plugin(plugin, working_directory, plugin_name).await
-            }
-            SupportedPlugin::Mock(plugin) => {
-                create_plugin(plugin, working_directory, plugin_name).await
-            }
-            SupportedPlugin::Mcp(plugin) => {
-                create_plugin(plugin, working_directory, plugin_name).await
-            }
+            SupportedPlugin::Stepflow(plugin) => create_plugin(plugin, working_directory).await?,
+            SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await?,
+            SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await?,
+            SupportedPlugin::Mcp(plugin) => create_plugin(plugin, working_directory).await?,
         };
-        let plugin = plugin.attach_printable_lazy(|| format!("plugin: {plugin_name}"))?;
         Ok(plugin)
     }
 }
