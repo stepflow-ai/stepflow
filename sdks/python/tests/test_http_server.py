@@ -60,9 +60,9 @@ class ServerHelper:
     ):
         """Send a request to the live server."""
         request = self._create_request(method, component, input_data, request_id)
-        assert self._httpx_client is not None, (
-            "Server not started - call _start_live_server() first"
-        )
+        assert (
+            self._httpx_client is not None
+        ), "Server not started - call _start_live_server() first"
         return await self._httpx_client.post(
             f"{self.url}/",
             json=msgspec.to_builtins(request),
@@ -74,9 +74,9 @@ class ServerHelper:
     ):
         """Send a streaming request and return the response stream context manager."""
         request = self._create_request(method, component, input_data, request_id)
-        assert self._httpx_client is not None, (
-            "Server not started - call _start_live_server() first"
-        )
+        assert (
+            self._httpx_client is not None
+        ), "Server not started - call _start_live_server() first"
         return self._httpx_client.stream(
             "POST",
             f"{self.url}/",
@@ -451,12 +451,13 @@ async def test_components_list(test_server):
     assert "result" in result
 
     components = result["result"]["components"]
-    assert len(components) == 2
+    assert len(components) == 3
 
     # Find our test components
     component_names = [comp["component"] for comp in components]
     assert "/simple_component" in component_names
     assert "/context_component" in component_names
+    assert "/udf" in component_names
 
 
 @pytest.mark.asyncio

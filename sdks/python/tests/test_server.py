@@ -116,15 +116,22 @@ def test_list_components(server):
         return ValidOutput(greeting="", age_next_year=0)
 
     components = server.get_components()
-    assert len(components) == 2
+    assert len(components) == 3
     assert "/component1" in components
     assert "/component2" in components
+    assert "/udf" in components
 
-    for name, component in components.items():
-        assert isinstance(component, ComponentEntry)
-        assert component.name == name
-        assert component.input_type == ValidInput
-        assert component.output_type == ValidOutput
+    component1 = components["/component1"]
+    assert isinstance(component1, ComponentEntry)
+    assert component1.name == "/component1"
+    assert component1.input_type == ValidInput
+    assert component1.output_type == ValidOutput
+
+    component2 = components["/component2"]
+    assert isinstance(component2, ComponentEntry)
+    assert component2.name == "/component2"
+    assert component2.input_type == ValidInput
+    assert component2.output_type == ValidOutput
 
 
 def test_initialization_state(server):
@@ -252,10 +259,11 @@ async def test_handle_list_components(server):
     response = await server.handle_message(request)
     assert response.id == request.id
     assert hasattr(response, "result")
-    assert len(response.result.components) == 2
+    assert len(response.result.components) == 3
     component_urls = [comp.component for comp in response.result.components]
     assert "/component1" in component_urls
     assert "/component2" in component_urls
+    assert "/udf" in component_urls
 
 
 @pytest.mark.asyncio
@@ -444,9 +452,9 @@ def test_requires_context():
         assert isinstance(request, MethodRequest)
         actual = server.requires_context(request)
         expected = test_case["expected"]
-        assert actual == expected, (
-            f"{test_case['name']}: got {actual}, expected {expected}"
-        )
+        assert (
+            actual == expected
+        ), f"{test_case['name']}: got {actual}, expected {expected}"
 
 
 def test_component_context_detection():
