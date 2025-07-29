@@ -44,10 +44,10 @@ split_commits = false
 # Only include commits that affect the Python SDK directory or root files that affect Python SDK
 filter_commits = true
 # Include commits that modify files in these paths
-include_path = [
+include_paths = [
     "sdks/python/**",
     "CLAUDE.md",
-    "CONTRIBUTING.md", 
+    "CONTRIBUTING.md",
     "README.md",
     ".github/workflows/release_python.yml",
     ".github/workflows/release_prepare.yml",

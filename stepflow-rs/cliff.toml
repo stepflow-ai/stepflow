@@ -44,7 +44,7 @@ split_commits = false
 # Only include commits that affect the stepflow-rs directory or root files that affect stepflow-rs
 filter_commits = true
 # Include commits that modify files in these paths
-include_path = [
+include_paths = [
     "stepflow-rs/**",
     "CLAUDE.md",
     "CONTRIBUTING.md",
