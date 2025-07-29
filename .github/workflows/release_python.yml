@@ -191,7 +191,7 @@ jobs:
 
           The following files are included in this release:
           - **Wheel**: `stepflow_py-${{ needs.determine-version.outputs.version }}-py3-none-any.whl`
-          - **Source Distribution**: `stepflow-py-${{ needs.determine-version.outputs.version }}.tar.gz`
+          - **Source Distribution**: `stepflow_py-${{ needs.determine-version.outputs.version }}.tar.gz`
 
           ### 🔗 Links
 
@@ -219,6 +219,24 @@ jobs:
           ```
           EOF
 
+      - name: Verify release artifacts
+        run: |
+          echo "Checking release artifacts in ./release-artifacts/"
+          ls -la ./release-artifacts/
+          
+          # Verify expected files exist
+          if ! ls ./release-artifacts/stepflow_py-*.whl 1> /dev/null 2>&1; then
+            echo "ERROR: No wheel file found matching stepflow_py-*.whl"
+            exit 1
+          fi
+          
+          if ! ls ./release-artifacts/stepflow_py-*.tar.gz 1> /dev/null 2>&1; then
+            echo "ERROR: No source distribution found matching stepflow_py-*.tar.gz"
+            exit 1
+          fi
+          
+          echo "✅ All expected artifacts found"
+
       - name: Create GitHub release with tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -228,7 +246,7 @@ jobs:
             --notes-file release-notes.md \
             sdks/python/CHANGELOG.md \
             ./release-artifacts/stepflow_py-*.whl \
-            ./release-artifacts/stepflow-py-*.tar.gz
+            ./release-artifacts/stepflow_py-*.tar.gz
 
   summary:
     name: Release Summary
