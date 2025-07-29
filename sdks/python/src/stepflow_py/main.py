@@ -17,13 +17,9 @@ import argparse
 import asyncio
 
 from stepflow_py.stdio_server import StepflowStdioServer
-from stepflow_py.udf import udf
 
 # Create server instance
 server = StepflowStdioServer()
-
-# Register the UDF component
-server.component(udf)
 
 
 def main():

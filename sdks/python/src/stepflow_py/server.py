@@ -49,6 +49,7 @@ from stepflow_py.generated_protocol import (
     Notification,
     RequestId,
 )
+from stepflow_py.udf import udf
 
 
 @dataclass
@@ -84,9 +85,13 @@ def _handle_exception(e: Exception, id: RequestId) -> MethodError:
 class StepflowServer:
     """Core StepFlow server with component registry and business logic."""
 
-    def __init__(self):
+    def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
         self._initialized = False
+
+        if include_builtins:
+            # Register the UDF component
+            self.component(udf)
 
     def is_initialized(self) -> bool:
         """Check if the server is initialized."""

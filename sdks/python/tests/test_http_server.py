@@ -451,12 +451,13 @@ async def test_components_list(test_server):
     assert "result" in result
 
     components = result["result"]["components"]
-    assert len(components) == 2
+    assert len(components) == 3
 
     # Find our test components
     component_names = [comp["component"] for comp in components]
     assert "/simple_component" in component_names
     assert "/context_component" in component_names
+    assert "/udf" in component_names
 
 
 @pytest.mark.asyncio
