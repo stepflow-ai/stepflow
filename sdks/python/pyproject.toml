@@ -1,15 +1,52 @@
 [project]
 name = "stepflow-py"
 version = "0.2.1"
-description = "Python SDK for Stepflow components and workflows."
+description = "Python SDK for building StepFlow components and workflows with support for STDIO and HTTP transports."
 readme = "README.md"
-authors = []
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "StepFlow Contributors"}
+]
+maintainers = [
+    {name = "StepFlow Contributors"}
+]
 requires-python = ">=3.11"
+keywords = [
+    "workflow",
+    "automation",
+    "ai",
+    "components",
+    "stepflow",
+    "orchestration",
+    "pipeline"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed"
+]
 dependencies = [
     "msgspec>=0.19.0",
     "jsonschema>=4.17.0",
     "types-jsonschema>=4.17.0",
 ]
+
+[project.urls]
+Homepage = "https://riptano.github.io/stepflow/"
+Documentation = "https://riptano.github.io/stepflow/"
+Repository = "https://github.com/riptano/stepflow"
+"Bug Tracker" = "https://github.com/riptano/stepflow/issues"
+Changelog = "https://github.com/riptano/stepflow/blob/main/sdks/python/CHANGELOG.md"
+"Source Code" = "https://github.com/riptano/stepflow/tree/main/sdks/python"
 
 [project.optional-dependencies]
 http = [
