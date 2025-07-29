@@ -247,7 +247,7 @@ class StepflowHttpServer:
 
             if needs_context:
                 # Create context for bidirectional communication, use streaming
-                outgoing_queue: asyncio.Queue[MethodRequest] = asyncio.Queue()
+                outgoing_queue: asyncio.Queue[MethodRequest | None] = asyncio.Queue()
                 context = StepflowContext(
                     outgoing_queue=outgoing_queue,
                     message_decoder=self.message_decoder,
@@ -290,7 +290,7 @@ class StepflowHttpServer:
         self,
         request: MethodRequest,
         context: StepflowContext,
-        outgoing_queue: asyncio.Queue[MethodRequest],
+        outgoing_queue: asyncio.Queue[MethodRequest | None],
     ) -> AsyncGenerator[str]:
         """Execute request with streaming context via SSE.
 
@@ -303,8 +303,8 @@ class StepflowHttpServer:
             try:
                 return await self.server.handle_message(request, context)
             finally:
-                # Close the outgoing queue to signal no more events.
-                outgoing_queue.shutdown()
+                # Signal end of queue by putting a sentinel value
+                await outgoing_queue.put(None)
 
         # Start component execution as a background task
         execution_task = asyncio.create_task(execute_and_shutdown_queue())
@@ -312,14 +312,13 @@ class StepflowHttpServer:
         try:
             # Continuously process bidirectional messages while component runs.
             # It will close the stream when it is done.
-            try:
-                while True:
-                    message = await outgoing_queue.get()
-                    sse_data = msgspec.json.encode(message).decode("utf-8")
-                    yield f"data: {sse_data}\n\n"
-            except asyncio.QueueShutDown:
-                # This means we're done processing events.
-                pass
+            while True:
+                message = await outgoing_queue.get()
+                if message is None:
+                    # Sentinel value indicates we're done processing events
+                    break
+                sse_data = msgspec.json.encode(message).decode("utf-8")
+                yield f"data: {sse_data}\n\n"
 
             # At this point, the queue should be closed, which means the task should be
             # complete. Get the result.

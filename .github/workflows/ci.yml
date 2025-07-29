@@ -88,10 +88,16 @@ jobs:
     name: Python SDK Checks
     needs: changes
     if: needs.changes.outputs.python == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/python-checks
+        with:
+          python-version: ${{ matrix.python-version }}
 
   # Documentation build validation
   docs-checks:
@@ -123,6 +129,10 @@ jobs:
     name: Integration Tests
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -141,9 +151,9 @@ jobs:
         with:
           version: "0.7.5"
           enable-cache: true
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         shell: bash
-        run: uv python install
+        run: uv python install ${{ matrix.python-version }}
         working-directory: sdks/python
       - name: Run integration tests
         shell: bash

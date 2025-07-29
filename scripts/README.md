@@ -34,6 +34,7 @@ This directory contains scripts that mirror the CI pipeline checks for local dev
 
 - **`test-integration.sh`** - Runs integration tests (existing)
 - **`test-all.sh`** - Runs all tests (existing)
+- **`test-python-versions.sh`** - Tests Python SDK across multiple Python versions (3.11, 3.12, 3.13)
 
 ### Complete CI Pipeline
 
@@ -76,8 +77,9 @@ The `check-all.sh` script runs individual checks in quiet mode by default for a 
 
 ### Run Tests
 ```bash
-./scripts/test-integration.sh  # Integration tests
-./scripts/test-all.sh          # All tests
+./scripts/test-integration.sh     # Integration tests
+./scripts/test-all.sh             # All tests
+./scripts/test-python-versions.sh # Test Python SDK across Python 3.11, 3.12, 3.13
 ```
 
 ## CI Integration
@@ -109,7 +111,7 @@ The CI workflow now calls these scripts directly, ensuring perfect consistency b
 
 ### Python Checks
 - `uv` package manager
-- Python 3.13+
+- Python 3.11+ (supports 3.11, 3.12, 3.13)
 
 ### Documentation Checks
 - Node.js

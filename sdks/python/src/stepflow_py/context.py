@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from typing import Any
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from stepflow_py.generated_protocol import (
@@ -39,6 +39,8 @@ from stepflow_py.message_decoder import MessageDecoder
 Context API for stepflow components to interact with the runtime.
 """
 
+T = TypeVar("T")
+
 
 class StepflowContext:
     """Context for stepflow components to make calls back to the runtime.
@@ -57,7 +59,7 @@ class StepflowContext:
         self._message_decoder = message_decoder
         self._session_id = session_id
 
-    async def _send_request[T](
+    async def _send_request(
         self, method: Method, params: Any, result_type: type[T]
     ) -> T:
         """Send a request to the stepflow runtime and wait for response."""
