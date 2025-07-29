@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.2.1"></a> [StepFlow 0.2.1](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.1) - 2025-07-29
+
+- Complete removal of plugin prefix (previously partly removed)
+- Fix docker image version names
+
 ## <a id="0.2.0"></a> [StepFlow 0.2.0](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.0) - 2025-07-29
 ### Bug Fixes
 
