@@ -68,8 +68,8 @@ jobs:
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         working-directory: sdks/python
         run: |
-          uv python install ${{ env.PYTHON_VERSION }}
-          uv python pin ${{ env.PYTHON_VERSION }}
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip install -U pip
 
       - name: Install dependencies
         working-directory: sdks/python
@@ -103,12 +103,19 @@ jobs:
         working-directory: sdks/python
         run: uv build
 
+      - name: Show Python version
+        run: |
+          which python
+          python --version
+          uv run which python
+          uv run python --version
+
       - name: Verify build
         working-directory: sdks/python
         run: |
           echo "Built packages:"
           ls -la dist/
-          
+
           # Test that the built wheel can be imported
           uv run pip install dist/*.whl --force-reinstall
           uv run python -c "import stepflow_py; print(f'stepflow_py version: {stepflow_py.__version__ if hasattr(stepflow_py, \"__version__\") else \"unknown\"}')"
@@ -277,7 +284,7 @@ jobs:
           echo "- **Package Management**: uv" >> $GITHUB_STEP_SUMMARY
           echo "- **HTTP Support**: Optional extra (stepflow-py[http])" >> $GITHUB_STEP_SUMMARY
           echo "- **Transport Modes**: STDIO and HTTP" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
