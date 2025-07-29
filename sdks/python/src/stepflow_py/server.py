@@ -20,10 +20,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, assert_never
+from xml.etree.ElementInclude import include
 
 import msgspec
 
 from stepflow_py.context import StepflowContext
+from stepflow_py.udf import udf
 from stepflow_py.exceptions import (
     ComponentNotFoundError,
     StepflowError,
@@ -84,9 +86,13 @@ def _handle_exception(e: Exception, id: RequestId) -> MethodError:
 class StepflowServer:
     """Core StepFlow server with component registry and business logic."""
 
-    def __init__(self):
+    def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
         self._initialized = False
+
+        if include_builtins:
+            # Register the UDF component
+            self.component(udf)
 
     def is_initialized(self) -> bool:
         """Check if the server is initialized."""
@@ -266,9 +272,9 @@ class StepflowServer:
         # Return a success response (though notifications don't expect responses)
         # Create a dummy InitializeResult for notification response
         # (notifications don't typically expect responses)
-        assert notification.method == Method.initialized, (
-            "Only '{Method.initialized.value}' is expected as a notification"
-        )
+        assert (
+            notification.method == Method.initialized
+        ), "Only '{Method.initialized.value}' is expected as a notification"
 
         result = InitializeResult(server_protocol_version=1)
         self.set_initialized(True)
