@@ -20,12 +20,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, assert_never
-from xml.etree.ElementInclude import include
 
 import msgspec
 
 from stepflow_py.context import StepflowContext
-from stepflow_py.udf import udf
 from stepflow_py.exceptions import (
     ComponentNotFoundError,
     StepflowError,
@@ -51,6 +49,7 @@ from stepflow_py.generated_protocol import (
     Notification,
     RequestId,
 )
+from stepflow_py.udf import udf
 
 
 @dataclass

@@ -452,9 +452,9 @@ def test_requires_context():
         assert isinstance(request, MethodRequest)
         actual = server.requires_context(request)
         expected = test_case["expected"]
-        assert (
-            actual == expected
-        ), f"{test_case['name']}: got {actual}, expected {expected}"
+        assert actual == expected, (
+            f"{test_case['name']}: got {actual}, expected {expected}"
+        )
 
 
 def test_component_context_detection():
