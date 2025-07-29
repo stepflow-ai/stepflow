@@ -1,7 +1,7 @@
 [project]
 name = "stepflow-py"
-version = "0.2.1"
-description = "Python SDK for building StepFlow components and workflows with support for STDIO and HTTP transports."
+version = "0.2.2"
+description = "Python SDK for Stepflow components and workflows."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
