@@ -282,7 +282,7 @@ PR_URL=$(gh pr create \
     --title "chore: release stepflow-py v$NEW_VERSION" \
     --body "$PR_BODY" \
     --label "release" \
-    --label "release:python-sdk")
+    --label "release:stepflow-py")
 
 echo -e "${GREEN}✅ Release PR created successfully!${NC}"
 echo -e "${BLUE}PR URL: $PR_URL${NC}"
