@@ -70,6 +70,7 @@ dev = [
     "sse-starlette>=1.6.5",
     "openai>=1.97.1",
     "httpx>=0.25.0",
+    "pytest-mock>=3.14.1",
 ]
 
 [project.scripts]

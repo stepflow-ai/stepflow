@@ -70,7 +70,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
             raise ValueError(f"Blob {input.blob_id} must contain 'input_schema' field")
 
         # Compile the function with validation built-in
-        compiled_func = _compile_function(code, function_name, input_schema, context)
+        compiled_func = _compile_function(code, function_name, input_schema)
 
         # Cache the compiled function
         _function_cache[input.blob_id] = {
@@ -81,10 +81,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
 
     # Execute the cached function (validation happens inside)
     try:
-        if inspect.iscoroutinefunction(compiled_func):
-            result = await compiled_func(input.input)
-        else:
-            result = compiled_func(input.input)
+        result = await compiled_func(input.input)
     except Exception as e:
         raise ValueError(f"Function execution failed: {e}") from e
 
@@ -112,9 +109,7 @@ class _InputWrapper:
         return getattr(self, item)
 
 
-def _compile_function(
-    code: str, function_name: str | None, input_schema: dict, context: StepflowContext
-):
+def _compile_function(code: str, function_name: str | None, input_schema: dict):
     """Compile a function from code string and return the callable with validation."""
     import json
 
@@ -154,7 +149,6 @@ def _compile_function(
         "json": json,
         "math": __import__("math"),
         "re": __import__("re"),
-        "context": context,
     }
 
     def validate_input(data):
@@ -187,7 +181,7 @@ def _compile_function(
 
         input_annotation = sig.parameters[params[0]].annotation
         wrap_input = (
-            input_annotation == inspect.Parameter.empty or input_annotation == dict
+            input_annotation == inspect.Parameter.empty or input_annotation is dict
         )
         use_context = len(params) == 2 and params[1] == "context"
 
@@ -201,7 +195,7 @@ def _compile_function(
                 return wrapper
             case (True, True, False):
 
-                async def wrapper(input_data):
+                async def wrapper(input_data, context):
                     validate_input(input_data)
                     return await func(_InputWrapper(input_data))
 
@@ -215,7 +209,7 @@ def _compile_function(
                 return wrapper
             case (True, False, False):
 
-                async def wrapper(input_data):
+                async def wrapper(input_data, context):
                     validate_input(input_data)
                     return await func(input_data)
 
@@ -229,7 +223,7 @@ def _compile_function(
                 return wrapper
             case (False, True, False):
 
-                async def wrapper(input_data):
+                async def wrapper(input_data, context):
                     validate_input(input_data)
                     return func(_InputWrapper(input_data))
 
@@ -243,7 +237,7 @@ def _compile_function(
                 return wrapper
             case (False, False, False):
 
-                async def wrapper(input_data):
+                async def wrapper(input_data, context):
                     validate_input(input_data)
                     return func(input_data)
 
@@ -255,7 +249,7 @@ def _compile_function(
             wrapped_code = f"lambda input: {code}"
             func = eval(wrapped_code, safe_globals)
 
-            async def wrapper(input_data):
+            async def wrapper(input_data, context):
                 validate_input(input_data)
                 return func(_InputWrapper(input_data))
 
@@ -278,7 +272,7 @@ def _compile_function(
                 temp_func = local_scope["_temp_func"]
 
                 # Wrap to always pass context and validate
-                async def wrapper(input_data):
+                async def wrapper(input_data, context):
                     validate_input(input_data)
                     return temp_func(_InputWrapper(input_data), context)
 
