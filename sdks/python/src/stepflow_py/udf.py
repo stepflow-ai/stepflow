@@ -85,7 +85,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
     except Exception as e:
         raise ValueError(f"Function execution failed: {e}") from e
 
-    print(f"Result: {result}", file=sys.stderr)
+    print(f"Result of {input.blob_id}: {result}", file=sys.stderr)
     return result
 
 
