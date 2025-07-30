@@ -81,7 +81,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
 
     # Execute the cached function (validation happens inside)
     try:
-        result = await compiled_func(input.input)
+        result = await compiled_func(input.input, context)
     except Exception as e:
         raise ValueError(f"Function execution failed: {e}") from e
 
