@@ -96,7 +96,7 @@ impl BidirectionalDriver {
         // Return the final response if we received it, otherwise error
         match final_response {
             Some(response) => {
-                tracing::info!(request_id = %expected_id, "All bidirectional requests completed, returning final response");
+                tracing::info!(request_id = %expected_id, ?response, "All bidirectional requests completed, returning final response");
                 Ok(response)
             }
             None => Err(error_stack::Report::new(TransportError::Recv)

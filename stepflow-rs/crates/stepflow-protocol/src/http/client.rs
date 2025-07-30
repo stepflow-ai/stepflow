@@ -218,6 +218,8 @@ impl HttpClientHandle {
                 .change_context(TransportError::Recv)
                 .attach_printable("Failed to parse response as JSON")?;
 
+            tracing::debug!(?owned_json, "Received JSON response");
+
             Ok(owned_json)
         }
     }
