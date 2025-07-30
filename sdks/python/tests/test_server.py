@@ -23,10 +23,10 @@ This test file focuses on testing the core server functionality:
 """
 
 import inspect
+
 import msgspec
 import pytest
 
-from stepflow_py.stdio_server import StepflowStdioServer
 from stepflow_py import StepflowContext
 from stepflow_py.generated_protocol import (
     ComponentExecuteParams,
@@ -37,6 +37,7 @@ from stepflow_py.generated_protocol import (
     MethodRequest,
 )
 from stepflow_py.server import ComponentEntry, StepflowServer
+from stepflow_py.stdio_server import StepflowStdioServer
 
 
 # Test message classes
@@ -452,9 +453,9 @@ def test_requires_context():
         assert isinstance(request, MethodRequest)
         actual = server.requires_context(request)
         expected = test_case["expected"]
-        assert (
-            actual == expected
-        ), f"{test_case['name']}: got {actual}, expected {expected}"
+        assert actual == expected, (
+            f"{test_case['name']}: got {actual}, expected {expected}"
+        )
 
 
 def test_component_context_detection():

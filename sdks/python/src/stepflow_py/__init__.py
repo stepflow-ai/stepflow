@@ -31,6 +31,7 @@ from .value import JsonPath, StepReference, Valuable, Value, WorkflowInput
 
 __all__ = [
     # Core classes
+    "StepflowServer",
     "StepflowStdioServer",
     "StepflowContext",
     "FlowBuilder",
