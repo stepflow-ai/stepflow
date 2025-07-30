@@ -14,6 +14,7 @@
 # the License.
 
 
+import msgspec
 import pytest
 from pytest_mock import MockerFixture
 
@@ -134,3 +135,10 @@ async def test_input_validation(mock_context):
         await func({"a": 1}, context=mock_context)  # missing 'b'
     with pytest.raises(ValueError):
         await func({"a": "bad", "b": 2}, context=mock_context)  # wrong type
+
+
+def test_input_wrapper_encoding():
+    data = {"a": 1, "b": {"c": 2}}
+    wrapper = _InputWrapper(data)
+    encoded = msgspec.json.encode(wrapper)
+    assert encoded == b'{"a":1,"b":{"c":2}}'

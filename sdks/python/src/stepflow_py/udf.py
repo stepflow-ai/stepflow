@@ -89,24 +89,24 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
     return result
 
 
-class _InputWrapper:
+class _InputWrapper(dict):
     def __init__(self, input_data: dict, path: list[str] | None = None):
-        self.input = input_data
+        super().__init__(input_data)
         self.path = path or []
 
     def __getattr__(self, item):
         """Allow attribute access to input data."""
-        if item in self.input:
-            value = self.input[item]
-            if isinstance(value, dict):
-                return _InputWrapper(value, self.path + [item])
-            else:
-                return self.input[item]
-        raise StepflowValueError(f"Input has no attribute '{item}'")
+        return self[item]
 
     def __getitem__(self, item):
         """Allow dictionary-like access to input data."""
-        return getattr(self, item)
+        if item in self:
+            value = super().__getitem__(item)
+            if isinstance(value, dict):
+                return _InputWrapper(value, self.path + [item])
+            else:
+                return value
+        raise StepflowValueError(f"Input has no attribute '{item}'")
 
 
 def _compile_function(code: str, function_name: str | None, input_schema: dict):
