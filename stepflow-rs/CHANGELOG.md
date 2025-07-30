@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.2.2"></a> [StepFlow 0.2.2](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.2) - 2025-07-30
+### Miscellaneous Tasks
+
+- Add response logging ([#191](https://github.com/riptano/stepflow/pull/191))
+
 ## <a id="0.2.1"></a> [StepFlow 0.2.1](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.1) - 2025-07-29
 
 - Complete removal of plugin prefix (previously partly removed)
