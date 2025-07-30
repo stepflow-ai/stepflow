@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.2.4"></a> [StepFlow Python SDK 0.2.4](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.4) - 2025-07-30
+### Bug Fixes
+
+- Enable attribute access in UDFs ([#188](https://github.com/riptano/stepflow/pull/188))
+
 ## <a id="0.2.3"></a> [StepFlow Python SDK 0.2.3](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.3) - 2025-07-29
 ### Bug Fixes
 
