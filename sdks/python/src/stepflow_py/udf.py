@@ -20,6 +20,7 @@ from typing import Any
 import msgspec
 
 from stepflow_py.context import StepflowContext
+from stepflow_py.exceptions import StepflowValueError
 
 # Global cache for compiled functions by blob_id
 _function_cache: dict[str, Any] = {}
@@ -91,6 +92,26 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
     return result
 
 
+class _InputWrapper:
+    def __init__(self, input_data: dict, path: list[str] | None = None):
+        self.input = input_data
+        self.path = path or []
+
+    def __getattr__(self, item):
+        """Allow attribute access to input data."""
+        if item in self.input:
+            value = self.input[item]
+            if isinstance(value, dict):
+                return _InputWrapper(value, self.path + [item])
+            else:
+                return self.input[item]
+        raise StepflowValueError(f"Input has no attribute '{item}'")
+
+    def __getitem__(self, item):
+        """Allow dictionary-like access to input data."""
+        return getattr(self, item)
+
+
 def _compile_function(
     code: str, function_name: str | None, input_schema: dict, context: StepflowContext
 ):
@@ -128,6 +149,7 @@ def _compile_function(
             "print": print,
             "isinstance": isinstance,
             "__import__": __import__,
+            "getattr": getattr,
         },
         "json": json,
         "math": __import__("math"),
@@ -162,23 +184,70 @@ def _compile_function(
 
         sig = inspect.signature(func)
         params = list(sig.parameters)
-        if len(params) == 2 and params[1] == "context":
-            # Function expects context as second parameter
-            async def wrapper(input_data):
-                validate_input(input_data)
-                if inspect.iscoroutinefunction(func):
+
+        input_annotation = sig.parameters[params[0]].annotation
+        wrap_input = (
+            input_annotation == inspect.Parameter.empty or input_annotation == dict
+        )
+        use_context = len(params) == 2 and params[1] == "context"
+
+        match (inspect.iscoroutinefunction(func), wrap_input, use_context):
+            case (True, True, True):
+
+                async def wrapper(input_data, context):
+                    validate_input(input_data)
+                    return await func(_InputWrapper(input_data), context)
+
+                return wrapper
+            case (True, True, False):
+
+                async def wrapper(input_data):
+                    validate_input(input_data)
+                    return await func(_InputWrapper(input_data))
+
+                return wrapper
+            case (True, False, True):
+
+                async def wrapper(input_data, context):
+                    validate_input(input_data)
                     return await func(input_data, context)
-                else:
+
+                return wrapper
+            case (True, False, False):
+
+                async def wrapper(input_data):
+                    validate_input(input_data)
+                    return await func(input_data)
+
+                return wrapper
+            case (False, True, True):
+
+                async def wrapper(input_data, context):
+                    validate_input(input_data)
+                    return func(_InputWrapper(input_data), context)
+
+                return wrapper
+            case (False, True, False):
+
+                async def wrapper(input_data):
+                    validate_input(input_data)
+                    return func(_InputWrapper(input_data))
+
+                return wrapper
+            case (False, False, True):
+
+                async def wrapper(input_data, context):
+                    validate_input(input_data)
                     return func(input_data, context)
 
-            return wrapper
-        else:
-            # Function only expects input data
-            def wrapper(input_data):
-                validate_input(input_data)
-                return func(input_data)
+                return wrapper
+            case (False, False, False):
 
-            return wrapper
+                async def wrapper(input_data):
+                    validate_input(input_data)
+                    return func(input_data)
+
+                return wrapper
     else:
         # Code is a function body - wrap it appropriately
         try:
@@ -186,9 +255,9 @@ def _compile_function(
             wrapped_code = f"lambda input: {code}"
             func = eval(wrapped_code, safe_globals)
 
-            def wrapper(input_data):
+            async def wrapper(input_data):
                 validate_input(input_data)
-                return func(input_data)
+                return func(_InputWrapper(input_data))
 
             return wrapper
         except Exception:
@@ -211,10 +280,7 @@ def _compile_function(
                 # Wrap to always pass context and validate
                 async def wrapper(input_data):
                     validate_input(input_data)
-                    if inspect.iscoroutinefunction(temp_func):
-                        return await temp_func(input_data, context)
-                    else:
-                        return temp_func(input_data, context)
+                    return temp_func(_InputWrapper(input_data), context)
 
                 return wrapper
             except Exception as e:
