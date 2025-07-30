@@ -25,6 +25,7 @@ from .generated_protocol import (
     OnSkipSkip,
     SkipAction,
 )
+from .server import StepflowServer
 from .stdio_server import StepflowStdioServer
 from .value import JsonPath, StepReference, Valuable, Value, WorkflowInput
 

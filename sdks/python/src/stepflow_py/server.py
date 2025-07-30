@@ -15,10 +15,12 @@
 
 from __future__ import annotations
 
+from asyncio import iscoroutinefunction
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
+import sys
 from typing import Any, assert_never
 
 import msgspec
@@ -154,9 +156,18 @@ class StepflowServer:
             # Store whether function expects context
             f._expects_context = expects_context  # type: ignore[attr-defined]
 
-            @wraps(f)
-            def wrapper(*args, **kwargs):
-                return f(*args, **kwargs)
+            if inspect.iscoroutinefunction(f):
+                # If function is async, wrap it to ensure it can be called
+                # with or without context
+                @wraps(f)
+                async def wrapper(*args, **kwargs):
+                    return await f(*args, **kwargs)
+
+            else:
+
+                @wraps(f)
+                def wrapper(*args, **kwargs):
+                    return f(*args, **kwargs)
 
             return wrapper
 
@@ -272,9 +283,9 @@ class StepflowServer:
         # Return a success response (though notifications don't expect responses)
         # Create a dummy InitializeResult for notification response
         # (notifications don't typically expect responses)
-        assert notification.method == Method.initialized, (
-            "Only '{Method.initialized.value}' is expected as a notification"
-        )
+        assert (
+            notification.method == Method.initialized
+        ), "Only '{Method.initialized.value}' is expected as a notification"
 
         self.set_initialized(True)
 
@@ -350,6 +361,10 @@ class StepflowServer:
                 output = component.function(*args)
 
             result = ComponentExecuteResult(output=output)
+            print(
+                f"Executed component {params.component} with input {input_value} produced {output}",
+                file=sys.stderr,
+            )
             return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
 
         except Exception as e:
