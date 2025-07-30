@@ -438,9 +438,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.41"
+version = "4.5.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be92d32e80243a54711e5d7ce823c35c41c9d929dc4ab58e1276f625841aadf9"
+checksum = "ed87a9d530bb41a67537289bafcac159cb3ee28460e0a4571123d2a778a6a882"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -448,9 +448,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.41"
+version = "4.5.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "707eab41e9622f9139419d573eca0900137718000c517d47da73045f54331c3d"
+checksum = "64f4f3f3c77c94aff3c7e9aac9a2ca1974a5adf392a8bb751e827d6d127ab966"
 dependencies = [
  "anstream",
  "anstyle",
@@ -3118,7 +3118,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stepflow-analysis"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bit-set",
  "error-stack",
@@ -3133,7 +3133,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-builtins"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "dynosaur",
  "error-stack",
@@ -3157,7 +3157,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-components-mcp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "error-stack",
  "futures",
@@ -3176,7 +3176,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "error-stack",
@@ -3199,7 +3199,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-execution"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "bit-set",
@@ -3221,7 +3221,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-main"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clap",
  "error-stack",
@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-mock"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "error-stack",
  "serde",
@@ -3271,7 +3271,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-plugin"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "dynosaur",
  "error-stack",
@@ -3291,7 +3291,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-protocol"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-stream",
  "erased-serde",
@@ -3318,7 +3318,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-server"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "axum",
  "chrono",
@@ -3348,7 +3348,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bit-set",
  "chrono",
@@ -3365,7 +3365,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state-sql"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bit-set",
  "chrono",
