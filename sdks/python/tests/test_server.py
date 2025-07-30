@@ -22,6 +22,8 @@ This test file focuses on testing the core server functionality:
 - Component execution with/without context
 """
 
+import inspect
+
 import msgspec
 import pytest
 
@@ -35,6 +37,7 @@ from stepflow_py.generated_protocol import (
     MethodRequest,
 )
 from stepflow_py.server import ComponentEntry, StepflowServer
+from stepflow_py.stdio_server import StepflowStdioServer
 
 
 # Test message classes
@@ -488,3 +491,51 @@ def test_component_context_detection():
 
     assert not getattr(no_context_func, "_expects_context", False)
     assert getattr(with_context_func, "_expects_context", False)
+
+
+@pytest.mark.asyncio
+async def test_decorator_sync():
+    server = StepflowServer()
+
+    @server.component
+    def sync_component(input: ValidInput) -> ValidOutput:
+        return ValidOutput(
+            greeting=f"Sync Hello {input.name}!", age_next_year=input.age + 1
+        )
+
+    component = server.get_component("/sync_component")
+    assert component is not None
+    result = component.function(ValidInput(name="Bob", age=30))
+    assert isinstance(result, ValidOutput)
+    assert result.greeting == "Sync Hello Bob!"
+    assert result.age_next_year == 31
+
+
+@pytest.mark.asyncio
+async def test_decorator_async():
+    server = StepflowStdioServer()
+
+    @server.component
+    async def async_component(input: ValidInput) -> ValidOutput:
+        return ValidOutput(
+            greeting=f"Sync Hello {input.name}!", age_next_year=input.age + 1
+        )
+
+    component = server.get_component("/async_component")
+    assert component is not None
+    assert inspect.iscoroutinefunction(component.function)
+    result = await component.function(ValidInput(name="Bob", age=30))
+    assert isinstance(result, ValidOutput)
+    assert result.greeting == "Sync Hello Bob!"
+    assert result.age_next_year == 31
+
+    server2 = StepflowServer()
+    server2.component(async_component, name="async_component2")
+
+    component2 = server2.get_component("/async_component2")
+    assert component2 is not None
+    assert inspect.iscoroutinefunction(component2.function)
+    result2 = await component2.function(ValidInput(name="Bob", age=30))
+    assert isinstance(result2, ValidOutput)
+    assert result2.greeting == "Sync Hello Bob!"
+    assert result2.age_next_year == 31

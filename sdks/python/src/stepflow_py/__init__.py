@@ -25,11 +25,13 @@ from .generated_protocol import (
     OnSkipSkip,
     SkipAction,
 )
+from .server import StepflowServer
 from .stdio_server import StepflowStdioServer
 from .value import JsonPath, StepReference, Valuable, Value, WorkflowInput
 
 __all__ = [
     # Core classes
+    "StepflowServer",
     "StepflowStdioServer",
     "StepflowContext",
     "FlowBuilder",
