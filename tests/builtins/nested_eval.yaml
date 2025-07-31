@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: nested_eval_test
 description: Test nested flow execution with eval component
 steps:
@@ -8,6 +9,7 @@ steps:
   input:
     workflow:
       $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
         name: simple_nested
         steps:
         - id: inner_step

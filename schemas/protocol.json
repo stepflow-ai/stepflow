@@ -208,84 +208,96 @@
     },
     "Flow": {
       "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.",
-      "type": "object",
-      "properties": {
-        "name": {
-          "description": "The name of the flow.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "description": {
-          "description": "The description of the flow.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "version": {
-          "description": "The version of the flow.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "inputSchema": {
-          "description": "The input schema of the flow.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "The name of the flow.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "outputSchema": {
-          "description": "The output schema of the flow.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
+            "description": {
+              "description": "The description of the flow.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
-            {
-              "type": "null"
+            "version": {
+              "description": "The version of the flow.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "inputSchema": {
+              "description": "The input schema of the flow.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Schema"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "outputSchema": {
+              "description": "The output schema of the flow.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Schema"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "steps": {
+              "description": "The steps to execute for the flow.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Step"
+              },
+              "default": []
+            },
+            "output": {
+              "description": "The outputs of the flow, mapping output names to their values.",
+              "$ref": "#/$defs/ValueTemplate"
+            },
+            "test": {
+              "description": "Test configuration for the flow.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TestConfig"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "examples": {
+              "description": "Example inputs for the workflow that can be used for testing and UI dropdowns.",
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "$ref": "#/$defs/ExampleInput"
+              }
+            },
+            "schema": {
+              "type": "string",
+              "const": "https://stepflow.org/schemas/v1/flow.json"
             }
-          ]
-        },
-        "steps": {
-          "description": "The steps to execute for the flow.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Step"
           },
-          "default": []
-        },
-        "output": {
-          "description": "The outputs of the flow, mapping output names to their values.",
-          "$ref": "#/$defs/ValueTemplate"
-        },
-        "test": {
-          "description": "Test configuration for the flow.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TestConfig"
-            },
-            {
-              "type": "null"
-            }
+          "required": [
+            "schema",
+            "steps"
           ]
-        },
-        "examples": {
-          "description": "Example inputs for the workflow that can be used for testing and UI dropdowns.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ExampleInput"
-          }
         }
-      },
-      "required": [
-        "steps"
       ]
     },
     "Schema": {

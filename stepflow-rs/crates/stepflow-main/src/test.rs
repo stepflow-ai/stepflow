@@ -17,9 +17,9 @@ use crate::test_server::TestServerManager;
 use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use clap::Args;
 use error_stack::ResultExt as _;
-use regex::Regex;
 use similar::{ChangeTag, TextDiff};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
@@ -124,7 +124,7 @@ pub fn load_test_config(
     }
 
     // 1. Check config in test section of this workflow (with server substitution)
-    if let Some(test_config) = &workflow.test {
+    if let Some(test_config) = workflow.test() {
         if let Some(config_value) = &test_config.config {
             return parse_stepflow_config_from_value(config_value, flow_path, server_manager);
         }
@@ -190,7 +190,7 @@ async fn apply_updates(flow_path: &Path, mut updates: HashMap<String, FlowResult
     let mut flow: Flow = load(flow_path)?;
 
     // Apply updates to the test cases using HashMap lookup
-    for test_case in flow.test.as_mut().unwrap().cases.iter_mut() {
+    for test_case in flow.test_mut().unwrap().cases.iter_mut() {
         if let Some(new_output) = updates.remove(&test_case.name) {
             test_case.output = Some(new_output);
         }
@@ -199,27 +199,21 @@ async fn apply_updates(flow_path: &Path, mut updates: HashMap<String, FlowResult
     output_args.write_output(flow)
 }
 
-/// Discover workflow files recursively in a directory.
-fn discover_workflow_files(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut workflows = Vec::new();
-    let pattern = Regex::new(r"^stepflow[-_]config\.ya?ml$").unwrap();
-
+/// Discover yaml files recursively in a directory.
+fn discover_yaml_files(workflow_files: &mut HashSet<PathBuf>, dir: &Path) -> Result<()> {
     for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.is_file() {
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                // Check if it's a YAML file but not a config file
-                if (filename.ends_with(".yaml") || filename.ends_with(".yml"))
-                    && !pattern.is_match(filename)
-                {
-                    workflows.push(path.to_owned());
+                // Check if it's a YAML file
+                if filename.ends_with(".yaml") || filename.ends_with(".yml") {
+                    workflow_files.insert(path.to_owned());
                 }
             }
         }
     }
 
-    workflows.sort(); // For consistent ordering
-    Ok(workflows)
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -249,13 +243,13 @@ pub async fn run_tests(
     config_path: Option<PathBuf>,
     options: TestOptions,
 ) -> Result<usize> {
-    let mut workflow_files = Vec::new();
+    let mut workflow_files = HashSet::new();
 
     for path in paths {
         if path.is_file() {
-            workflow_files.push(path.to_owned());
+            workflow_files.insert(path.to_owned());
         } else if path.is_dir() {
-            workflow_files.extend(discover_workflow_files(path)?);
+            discover_yaml_files(&mut workflow_files, path)?;
         } else {
             return Err(MainError::MissingFile(path.to_owned()).into());
         }
@@ -266,6 +260,9 @@ pub async fn run_tests(
         return Ok(0);
     }
 
+    let mut workflow_files: Vec<_> = workflow_files.into_iter().collect();
+    workflow_files.sort_unstable();
+
     // Run tests on all workflows and collect results
     let mut results = Vec::new();
 
@@ -274,10 +271,15 @@ pub async fn run_tests(
             .await
             .unwrap_or_else(|e| {
                 panic!(
-                    "Failed to execute tests in {}: {e:#}",
+                    "Failed to execute tests in {}: {e:#?}",
                     workflow_path.display()
                 )
             });
+
+        let Some(result) = result else {
+            continue;
+        };
+
         // Print immediate feedback
         println!(
             "{}: {}/{} passed",
@@ -297,21 +299,42 @@ pub async fn run_tests(
     print_summary(&results)
 }
 
+fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
+    let rdr = File::open(path).change_context_lazy(|| MainError::MissingFile(path.to_owned()))?;
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_reader(rdr)
+        .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
+
+    let Some(object) = value.as_mapping() else {
+        return Ok(None);
+    };
+
+    match object.get("schema").and_then(|s| s.as_str()) {
+        Some(schema) if Flow::supported_schema(schema) => {
+            let flow: Flow = serde_yaml_ng::from_value(value)
+                .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
+            Ok(Some(Arc::new(flow)))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Run tests on a single workflow file.
 async fn run_single_workflow_test(
     workflow_path: &Path,
     config_path: Option<PathBuf>,
     options: &TestOptions,
-) -> Result<WorkflowTestResult> {
+) -> Result<Option<WorkflowTestResult>> {
     // Try to load workflow
-    let flow: Arc<Flow> = load(workflow_path)?;
+    let Some(flow) = load_flow(workflow_path)? else {
+        return Ok(None);
+    };
 
     // Check if it has test cases and extract them
-    let test_cases = if let Some(config) = flow.test.as_ref() {
+    let test_cases = if let Some(config) = flow.test() {
         config.cases.as_slice()
     } else {
         // No test cases, skip.
-        return Ok(WorkflowTestResult {
+        return Ok(Some(WorkflowTestResult {
             file_status: FileStatus::NoTests,
             workflow_path: workflow_path.to_owned(),
             total_cases: 0,
@@ -319,12 +342,12 @@ async fn run_single_workflow_test(
             failed_cases: 0,
             execution_errors: 0,
             updates: HashMap::new(),
-        });
+        }));
     };
 
     // Initialize server manager and start any test servers
     let mut server_manager = TestServerManager::new();
-    if let Some(test_config) = &flow.test {
+    if let Some(test_config) = flow.test() {
         if !test_config.servers.is_empty() {
             println!("Starting {} test servers...", test_config.servers.len());
             let working_dir = workflow_path.parent().unwrap_or_else(|| Path::new("."));
@@ -350,7 +373,7 @@ async fn run_single_workflow_test(
 
     if cases_to_run.is_empty() {
         // No matching cases
-        return Ok(WorkflowTestResult {
+        return Ok(Some(WorkflowTestResult {
             file_status: FileStatus::NoTests,
             workflow_path: workflow_path.to_owned(),
             total_cases: 0,
@@ -358,7 +381,7 @@ async fn run_single_workflow_test(
             failed_cases: 0,
             execution_errors: 0,
             updates: HashMap::new(),
-        });
+        }));
     }
 
     // Run the tests
@@ -422,7 +445,7 @@ async fn run_single_workflow_test(
     // Clean up test servers
     server_manager.stop_all_servers().await?;
 
-    Ok(WorkflowTestResult {
+    Ok(Some(WorkflowTestResult {
         file_status: FileStatus::Run,
         workflow_path: workflow_path.to_owned(),
         total_cases,
@@ -430,7 +453,7 @@ async fn run_single_workflow_test(
         failed_cases,
         execution_errors,
         updates,
-    })
+    }))
 }
 
 /// Apply updates to all workflow files that have them.

@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: Simple SQL State Test
 description: Basic test to verify SQL state store is working with workflow execution
 
@@ -14,7 +15,7 @@ steps:
     input:
       value: {$from: { workflow: input }, path: message }
 
-output: 
+output:
   input_message: {$from: { workflow: input }, path: message }
   processed_result: { $from: { step: "process_message" }, path: result }
 

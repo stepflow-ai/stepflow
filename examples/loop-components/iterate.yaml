@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Iterate Example"
 description: "Example of using the Python iterate component with counter workflow"
 

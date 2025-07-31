@@ -58,7 +58,7 @@ pub(crate) async fn execute_workflow(
         .create_run(
             run_id,
             flow_hash.clone(),
-            flow.name.as_deref(),
+            flow.name(),
             None,  // No label for direct execution
             false, // Not debug mode
             input.clone(),
@@ -125,7 +125,7 @@ impl WorkflowExecutor {
         let tracker = analysis.new_dependency_tracker();
 
         // Create write cache and step ID mapping
-        let write_cache = WriteCache::new(flow.steps.len());
+        let write_cache = WriteCache::new(flow.steps().len());
 
         // Create state value loader and value resolver
         let state_loader = StateValueLoader::new(
@@ -206,10 +206,10 @@ impl WorkflowExecutor {
             tracing::debug!(
                 "Recovered step {} ({}), newly unblocked: [{}]",
                 step_index,
-                self.flow.steps[step_index].id,
+                self.flow.step(step_index).id,
                 newly_unblocked
                     .iter()
-                    .map(|idx| self.flow.steps[idx].id.as_str())
+                    .map(|idx| self.flow.step(idx).id.as_str())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -244,7 +244,7 @@ impl WorkflowExecutor {
                     tracing::info!(
                         "Recovery: fixing status for step {} ({}) from {:?} to Runnable",
                         step_index,
-                        self.flow.steps[step_index].id,
+                        self.flow.step(step_index).id,
                         current_status
                     );
                 }
@@ -288,7 +288,7 @@ impl WorkflowExecutor {
     pub async fn execute_to_completion(&mut self) -> Result<FlowResult> {
         let mut running_tasks = FuturesUnordered::new();
 
-        tracing::debug!("Starting execution of {} steps", self.flow.steps.len());
+        tracing::debug!("Starting execution of {} steps", self.flow.steps().len());
 
         // Start initial unblocked steps
         let initial_unblocked = self.tracker.unblocked_steps();
@@ -296,7 +296,7 @@ impl WorkflowExecutor {
             "Initially runnable steps: [{}]",
             initial_unblocked
                 .iter()
-                .map(|idx| self.flow.steps[idx].id.as_str())
+                .map(|idx| self.flow.step(idx).id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -312,13 +312,13 @@ impl WorkflowExecutor {
             let newly_unblocked = self.tracker.complete_step(completed_step_index);
 
             // Record the completed result in the state store (non-blocking)
-            let step_id = &self.flow.steps[completed_step_index].id;
+            let step_id = &self.flow.step(completed_step_index).id;
             tracing::debug!(
                 "Step {} completed, newly unblocked steps: [{}]",
                 step_id,
                 newly_unblocked
                     .iter()
-                    .map(|idx| self.flow.steps[idx].id.as_str())
+                    .map(|idx| self.flow.step(idx).id.as_str())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -379,7 +379,7 @@ impl WorkflowExecutor {
 
         // Build step execution list using cached workflow data + persistent status
         let mut step_statuses = Vec::new();
-        for (idx, step) in self.flow.steps.iter().enumerate() {
+        for (idx, step) in self.flow.steps().iter().enumerate() {
             let state = status_map.get(&idx).copied().unwrap_or_else(|| {
                 // Fallback: check if step is runnable using in-memory tracker
                 let runnable = self.tracker.unblocked_steps();
@@ -415,7 +415,7 @@ impl WorkflowExecutor {
         runnable_step_infos
             .iter()
             .map(|step_info| {
-                let step = &self.flow.steps[step_info.step_index];
+                let step = &self.flow.step(step_info.step_index);
                 StepExecution::new(
                     step_info.step_index,
                     step.id.clone(),
@@ -453,7 +453,7 @@ impl WorkflowExecutor {
         // Find the step by ID
         let step_index = self
             .flow
-            .steps
+            .steps()
             .iter()
             .position(|step| step.id == step_id)
             .ok_or_else(|| ExecutionError::StepNotFound {
@@ -474,7 +474,7 @@ impl WorkflowExecutor {
         // Find the target step index
         let target_step_index = self
             .flow
-            .steps
+            .steps()
             .iter()
             .position(|step| step.id == target_step_id)
             .ok_or_else(|| ExecutionError::StepNotFound {
@@ -519,9 +519,7 @@ impl WorkflowExecutor {
                 metadata: StepMetadata {
                     step_index: step_result.step_idx(),
                     step_id: step_result.step_id().to_string(),
-                    component: self.flow.steps[step_result.step_idx()]
-                        .component
-                        .to_string(),
+                    component: self.flow.step(step_result.step_idx()).component.to_string(),
                 },
                 result: step_result.into_result(),
             })
@@ -543,14 +541,14 @@ impl WorkflowExecutor {
     pub async fn inspect_step(&self, step_id: &str) -> Result<StepInspection> {
         let step_index = self
             .flow
-            .steps
+            .steps()
             .iter()
             .position(|step| step.id == step_id)
             .ok_or_else(|| ExecutionError::StepNotFound {
                 step: step_id.to_string(),
             })?;
 
-        let step = &self.flow.steps[step_index];
+        let step = &self.flow.step(step_index);
         let runnable = self.tracker.unblocked_steps();
 
         let state = if runnable.contains(step_index) {
@@ -589,7 +587,7 @@ impl WorkflowExecutor {
         &mut self,
         step_index: usize,
     ) -> Result<StepExecutionResult> {
-        let step = &self.flow.steps[step_index];
+        let step = &self.flow.step(step_index);
         let step_id = step.id.clone();
         let component_string = step.component.to_string();
 
@@ -685,7 +683,7 @@ impl WorkflowExecutor {
             .await;
 
         // Record in state store (non-blocking)
-        let step_id = &self.flow.steps[step_index].id;
+        let step_id = &self.flow.step(step_index).id;
         self.state_store
             .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
                 run_id: self.context.run_id(),
@@ -699,7 +697,7 @@ impl WorkflowExecutor {
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
         self.resolver
-            .resolve_template(&self.flow.output)
+            .resolve_template(self.flow.output())
             .await
             .change_context(ExecutionError::ValueResolverFailure)
     }
@@ -753,7 +751,7 @@ impl WorkflowExecutor {
             for step_index in steps_to_process.iter() {
                 // Extract step data to avoid borrowing issues
                 let (step_id, skip_if, step_input) = {
-                    let step = &self.flow.steps[step_index];
+                    let step = &self.flow.step(step_index);
                     (step.id.clone(), step.skip_if.clone(), step.input.clone())
                 };
 
@@ -833,7 +831,7 @@ impl WorkflowExecutor {
             step_id,
             newly_unblocked_from_skip
                 .iter()
-                .map(|idx| self.flow.steps[idx].id.as_str())
+                .map(|idx| self.flow.step(idx).id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -848,7 +846,7 @@ impl WorkflowExecutor {
         step_input: ValueRef,
         running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
     ) -> Result<()> {
-        let step = &self.flow.steps[step_index];
+        let step = self.flow.step(step_index);
         tracing::debug!("Starting execution of step {}", step.id);
 
         // Get plugin and resolved component name for this step
@@ -866,7 +864,7 @@ impl WorkflowExecutor {
         let plugin_clone = plugin.clone();
         let resolved_component_clone = resolved_component.clone();
         let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
-            let step = &flow.steps[step_index];
+            let step = flow.step(step_index);
             let result = execute_step_async(
                 &plugin_clone,
                 step,
@@ -1007,7 +1005,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::FlowError;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, Step, StepId};
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, Step, StepId};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
@@ -1118,7 +1116,7 @@ mod tests {
     }
 
     fn create_test_flow(steps: Vec<Step>, output: ValueTemplate) -> Flow {
-        Flow {
+        Flow::V1(FlowV1 {
             name: None,
             description: None,
             version: None,
@@ -1127,8 +1125,8 @@ mod tests {
             steps,
             output,
             test: None,
-            examples: vec![],
-        }
+            examples: None,
+        })
     }
 
     #[tokio::test]
@@ -1164,6 +1162,7 @@ mod tests {
     #[tokio::test]
     async fn test_simple_workflow_execution() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/simple
@@ -1196,6 +1195,7 @@ output:
     #[tokio::test]
     async fn test_step_dependencies() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/first
@@ -1242,6 +1242,7 @@ output:
     #[tokio::test]
     async fn test_workflow_executor_step_by_step() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/first
@@ -1323,6 +1324,7 @@ output:
     #[tokio::test]
     async fn test_workflow_recovery_logic() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/identity
@@ -1413,6 +1415,7 @@ output:
     #[tokio::test]
     async fn test_async_write_behavior() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/identity
@@ -1500,6 +1503,7 @@ output:
     #[tokio::test]
     async fn test_recovery_with_complex_dependencies() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/identity
@@ -1595,6 +1599,7 @@ output:
     #[tokio::test]
     async fn test_recovery_with_fresh_execution() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/identity
@@ -1636,6 +1641,7 @@ output:
     #[tokio::test]
     async fn test_workflow_executor_parallel_vs_sequential() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: step1
     component: /mock/parallel1
@@ -1739,6 +1745,7 @@ output:
     #[tokio::test]
     async fn test_error_handling_skip() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: failing_step
     component: /mock/error
@@ -1772,6 +1779,7 @@ output:
     #[tokio::test]
     async fn test_error_handling_use_default_with_value() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: failing_step
     component: /mock/error
@@ -1805,6 +1813,7 @@ output:
     #[tokio::test]
     async fn test_error_handling_use_default_without_value() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: failing_step
     component: /mock/error
@@ -1837,6 +1846,7 @@ output:
     #[tokio::test]
     async fn test_error_handling_fail() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: failing_step
     component: /mock/error
@@ -1870,6 +1880,7 @@ output:
     #[tokio::test]
     async fn test_error_handling_success_case() {
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: success_step
     component: /mock/success
@@ -1902,6 +1913,7 @@ output:
     async fn test_error_handling_skip_with_multi_step() {
         // Test that when a step is skipped, downstream steps handle it correctly
         let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: failing_step
     component: /mock/error

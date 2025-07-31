@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "HTTP Transport Basic Test"
 description: "Test basic HTTP transport functionality with non-bidirectional components"
 

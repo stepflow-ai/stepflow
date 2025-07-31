@@ -26,11 +26,127 @@ use schemars::JsonSchema;
 ///
 /// Flows should not be cloned. They should generally be stored and passed as a
 /// reference or inside an `Arc`.
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[serde(tag = "schema")]
+pub enum Flow {
+    #[serde(rename = "https://stepflow.org/schemas/v1/flow.json")]
+    V1(FlowV1),
+}
+
+impl Default for Flow {
+    fn default() -> Self {
+        Flow::V1(FlowV1::default())
+    }
+}
+
+impl Flow {
+    pub fn supported_schema(schema: &str) -> bool {
+        schema == "https://stepflow.org/schemas/v1/flow.json"
+    }
+
+    /// Upgrade the flow to the latest version.
+    pub fn upgrade(self) -> Self {
+        match self {
+            Flow::V1(flow_v1) => Flow::V1(flow_v1),
+        }
+    }
+
+    pub fn latest(&self) -> &FlowV1 {
+        match self {
+            Flow::V1(flow_v1) => flow_v1,
+        }
+    }
+
+    /// Return a hash of the workflow.
+    pub fn hash(workflow: &Self) -> FlowHash {
+        use sha2::{Digest as _, Sha256};
+        let mut hasher = Sha256::new();
+        serde_json::to_writer(&mut hasher, workflow).unwrap();
+        FlowHash(format!("{:x}", hasher.finalize()))
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.name.as_deref(),
+        }
+    }
+
+    pub fn description(&self) -> Option<&str> {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.description.as_deref(),
+        }
+    }
+
+    /// Returns a reference to all steps in the flow.
+    pub fn steps(&self) -> &[Step] {
+        &self.latest().steps
+    }
+
+    pub fn examples(&self) -> &[ExampleInput] {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.examples.as_deref().unwrap_or(&[]),
+        }
+    }
+
+    /// Returns a reference to the step at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub fn step(&self, index: usize) -> &Step {
+        &self.latest().steps[index]
+    }
+
+    /// Returns a mutable reference to the step at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub fn step_mut(&mut self, index: usize) -> &mut Step {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.steps.get_mut(index).expect("Index out of bounds"),
+        }
+    }
+
+    /// Returns a reference to the flow's output value.
+    pub fn output(&self) -> &ValueTemplate {
+        &self.latest().output
+    }
+
+    pub fn test(&self) -> Option<&TestConfig> {
+        self.latest().test.as_ref()
+    }
+
+    pub fn test_mut(&mut self) -> Option<&mut TestConfig> {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.test.as_mut(),
+        }
+    }
+
+    /// Get all example inputs, including those derived from test cases.
+    pub fn get_all_examples(&self) -> Vec<ExampleInput> {
+        let mut examples = self.examples().to_vec();
+
+        // Add examples from test cases if they exist
+        if let Some(test_config) = &self.latest().test {
+            for test_case in &test_config.cases {
+                // Only add if there isn't already an example with the same name
+                if !examples.iter().any(|ex| ex.name == test_case.name) {
+                    examples.push(ExampleInput::from(test_case));
+                }
+            }
+        }
+
+        examples
+    }
+}
+
 #[derive(
     Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema, utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]
-pub struct Flow {
+#[schemars(inline)]
+pub struct FlowV1 {
     /// The name of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -64,8 +180,8 @@ pub struct Flow {
     pub test: Option<TestConfig>,
 
     /// Example inputs for the workflow that can be used for testing and UI dropdowns.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub examples: Vec<ExampleInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub examples: Option<Vec<ExampleInput>>,
 }
 
 /// Wraper around a string that represents a hash of a workflow.
@@ -93,81 +209,6 @@ impl std::fmt::Display for FlowHash {
         write!(f, "{}", self.0)
     }
 }
-
-impl Flow {
-    /// Return a hash of the workflow.
-    pub fn hash(workflow: &Self) -> FlowHash {
-        use sha2::{Digest as _, Sha256};
-        let mut hasher = Sha256::new();
-        serde_json::to_writer(&mut hasher, workflow).unwrap();
-        FlowHash(format!("{:x}", hasher.finalize()))
-    }
-
-    /// Returns a reference to all steps in the flow.
-    pub fn steps(&self) -> &[Step] {
-        &self.steps
-    }
-
-    /// Returns a reference to the step at the given index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub fn step(&self, index: usize) -> &Step {
-        &self.steps[index]
-    }
-
-    /// Returns a reference to the flow's output value.
-    pub fn output(&self) -> &ValueTemplate {
-        &self.output
-    }
-
-    /// Parses a flow from a YAML string.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the YAML is invalid or cannot be deserialized into a Flow.
-    pub fn from_yaml_string(yaml: &str) -> serde_yaml_ng::Result<Self> {
-        serde_yaml_ng::from_str(yaml)
-    }
-
-    /// Parses a flow from a YAML reader.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the YAML is invalid or cannot be deserialized into a Flow.
-    pub fn from_yaml_reader(rdr: impl std::io::Read) -> serde_yaml_ng::Result<Self> {
-        serde_yaml_ng::from_reader(rdr)
-    }
-
-    /// Parses a flow from a JSON string.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the JSON is invalid or cannot be deserialized into a Flow.
-    pub fn from_json_string(json: &str) -> serde_json::Result<Self> {
-        serde_json::from_str(json)
-    }
-
-    /// Serializes the flow to a YAML string.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the flow cannot be serialized to YAML.
-    pub fn to_yaml_string(&self) -> serde_yaml_ng::Result<String> {
-        serde_yaml_ng::to_string(self)
-    }
-
-    /// Serializes the flow to a JSON string.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the flow cannot be serialized to JSON.
-    pub fn to_json_string(&self) -> serde_json::Result<String> {
-        serde_json::to_string(self)
-    }
-}
-
 /// A wrapper around `Arc<Flow>` to support poem-openapi traits.
 ///
 /// This wrapper exists to work around Rust's orphan rules which prevent
@@ -401,25 +442,6 @@ impl From<&TestCase> for ExampleInput {
     }
 }
 
-impl Flow {
-    /// Get all example inputs, including those derived from test cases.
-    pub fn get_all_examples(&self) -> Vec<ExampleInput> {
-        let mut examples = self.examples.clone();
-
-        // Add examples from test cases if they exist
-        if let Some(test_config) = &self.test {
-            for test_case in &test_config.cases {
-                // Only add if there isn't already an example with the same name
-                if !examples.iter().any(|ex| ex.name == test_case.name) {
-                    examples.push(ExampleInput::from(test_case));
-                }
-            }
-        }
-
-        examples
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::workflow::{Component, ErrorAction, Step};
@@ -429,6 +451,7 @@ mod tests {
     #[test]
     fn test_flow_from_yaml() {
         let yaml = r#"
+        schema: https://stepflow.org/schemas/v1/flow.json
         name: test
         description: test
         version: 1.0.0
@@ -467,32 +490,33 @@ mod tests {
         )
         .unwrap();
         // Verify basic flow properties
-        assert_eq!(flow.name, Some("test".to_owned()));
-        assert_eq!(flow.description, Some("test".to_owned()));
-        assert_eq!(flow.version, Some("1.0.0".to_owned()));
-        assert_eq!(flow.input_schema, Some(input_schema.clone()));
-        assert_eq!(flow.output_schema, Some(output_schema.clone()));
-        assert_eq!(flow.steps.len(), 2);
+        let latest = flow.latest();
+        assert_eq!(latest.name, Some("test".to_owned()));
+        assert_eq!(latest.description, Some("test".to_owned()));
+        assert_eq!(latest.version, Some("1.0.0".to_owned()));
+        assert_eq!(latest.input_schema, Some(input_schema.clone()));
+        assert_eq!(latest.output_schema, Some(output_schema.clone()));
+        assert_eq!(latest.steps.len(), 2);
 
         // Verify step details
-        assert_eq!(flow.steps[0].id, "s1");
-        assert_eq!(flow.steps[0].component.path(), "/langflow/echo");
-        assert_eq!(flow.steps[1].id, "s2");
-        assert_eq!(flow.steps[1].component.path(), "/mcp/foo/bar");
+        assert_eq!(latest.steps[0].id, "s1");
+        assert_eq!(latest.steps[0].component.path(), "/langflow/echo");
+        assert_eq!(latest.steps[1].id, "s2");
+        assert_eq!(latest.steps[1].component.path(), "/mcp/foo/bar");
 
         // Test round-trip serialization to ensure expressions are preserved
         let serialized = serde_json::to_string(&flow).unwrap();
         let deserialized: Flow = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(flow.name, deserialized.name);
-        assert_eq!(flow.steps.len(), deserialized.steps.len());
-        assert_eq!(flow.output, deserialized.output);
+        assert_eq!(latest.name, deserialized.latest().name);
+        assert_eq!(latest.steps.len(), deserialized.latest().steps.len());
+        assert_eq!(latest.output, deserialized.latest().output);
 
         // Verify that the output contains proper expression structures
         // The output should not be literal but should contain parsed expressions
-        assert!(!flow.output.is_literal());
+        assert!(!latest.output.is_literal());
 
         // Test full structural equality
-        let expected_flow = Flow {
+        let expected_flow = FlowV1 {
             name: Some("test".to_owned()),
             description: Some("test".to_owned()),
             version: Some("1.0.0".to_owned()),
@@ -528,10 +552,10 @@ mod tests {
             }))
             .unwrap(),
             test: None,
-            examples: vec![],
+            examples: None,
         };
 
-        similar_asserts::assert_serde_eq!(flow, expected_flow);
+        similar_asserts::assert_serde_eq!(latest, &expected_flow);
     }
 
     #[test]
@@ -540,7 +564,7 @@ mod tests {
         use serde_json::json;
 
         // Create a flow with both examples and test cases
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_flow".to_string()),
             description: None,
             version: None,
@@ -548,11 +572,11 @@ mod tests {
             output_schema: None,
             steps: vec![],
             output: ValueTemplate::literal(json!({})),
-            examples: vec![ExampleInput {
+            examples: Some(vec![ExampleInput {
                 name: "example1".to_string(),
                 description: Some("Direct example".to_string()),
                 input: ValueRef::new(json!({"input": "example"})),
-            }],
+            }]),
             test: Some(TestConfig {
                 config: None,
                 servers: HashMap::default(),
@@ -571,7 +595,7 @@ mod tests {
                     },
                 ],
             }),
-        };
+        });
 
         let all_examples = flow.get_all_examples();
 

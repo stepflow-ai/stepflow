@@ -55,6 +55,8 @@ pub enum MainError {
     ValidationError(String),
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+    #[error("Internal error with paths")]
+    Path,
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;

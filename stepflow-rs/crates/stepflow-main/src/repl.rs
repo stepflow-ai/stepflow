@@ -338,8 +338,8 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     println!("  Executor: {} plugins loaded", plugins.len());
 
     if let Some(last_run) = &state.last_run {
-        println!("  Workflow: {} steps", last_run.workflow.steps.len());
-        if let Some(name) = &last_run.workflow.name {
+        println!("  Workflow: {} steps", last_run.workflow.steps().len());
+        if let Some(name) = last_run.workflow.name() {
             println!("    Name: {name}");
         }
         println!("  Input: Loaded");

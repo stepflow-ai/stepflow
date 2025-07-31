@@ -51,7 +51,10 @@ where
         match params.deserialize_to() {
             Ok(request) => request,
             Err(e) => {
-                tracing::error!("Failed to deserialize request parameters: {e}");
+                tracing::error!(
+                    "Failed to deserialize request parameters for {}: {e:#}",
+                    request.method
+                );
                 return report_user_error(Error::invalid_parameters(&request.id)).await;
             }
         }

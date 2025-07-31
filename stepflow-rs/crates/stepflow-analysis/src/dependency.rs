@@ -60,7 +60,7 @@ pub fn validate_workflow_only(flow: &Flow) -> Result<AnalysisResult> {
 fn analyze_dependencies_internal(flow: Arc<Flow>, workflow_hash: FlowHash) -> Result<FlowAnalysis> {
     // Analyze each step for dependencies
     let steps = flow
-        .steps
+        .steps()
         .iter()
         .map(|step| {
             let step_analysis = analyze_step(step)?;
@@ -69,7 +69,7 @@ fn analyze_dependencies_internal(flow: Arc<Flow>, workflow_hash: FlowHash) -> Re
         .collect::<Result<IndexMap<_, _>>>()?;
 
     // Analyze workflow output dependencies
-    let output_depends = analyze_template_dependencies(&flow.output)?;
+    let output_depends = analyze_template_dependencies(flow.output())?;
 
     // Build dependency graph for execution
     let mut builder = DependenciesBuilder::new(steps.len());
@@ -196,7 +196,7 @@ mod tests {
     use super::*;
     use crate::dependencies::ValueDependencies;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, JsonPath, Step};
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, JsonPath, Step};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
@@ -211,7 +211,7 @@ mod tests {
     }
 
     fn create_test_flow() -> Flow {
-        Flow {
+        Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: None,
             version: None,
@@ -239,8 +239,8 @@ mod tests {
             ],
             output: ValueTemplate::step_ref("step2", JsonPath::default()),
             test: None,
-            examples: vec![],
-        }
+            examples: None,
+        })
     }
 
     #[test]
@@ -279,7 +279,7 @@ mod tests {
     fn test_analyze_with_skip_condition() {
         let mut flow = create_test_flow();
         // Add skip condition to step2 that depends on step1
-        flow.steps[1].skip_if = Some(Expr::Ref {
+        flow.step_mut(1).skip_if = Some(Expr::Ref {
             from: BaseRef::Step {
                 step: "step1".to_string(),
             },
@@ -330,7 +330,7 @@ mod tests {
     fn test_analyze_complex_input_object() {
         let mut flow = create_test_flow();
         // Give step2 a complex input object with multiple dependencies
-        flow.steps[1].input = ValueTemplate::parse_value(json!({
+        flow.step_mut(1).input = ValueTemplate::parse_value(json!({
             "data": {"$from": {"step": "step1"}},
             "config": {"$from": {"workflow": "input"}, "path": "config"},
             "literal_value": 42
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_new_validation_api_invalid_workflow() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("invalid_workflow".to_string()),
             description: None,
             version: None,
@@ -409,8 +409,8 @@ mod tests {
             ],
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
 

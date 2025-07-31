@@ -108,6 +108,7 @@ impl BuiltinComponent for EvalComponent {
 #[cfg(test)]
 mod tests {
     use stepflow_core::values::ValueTemplate;
+    use stepflow_core::workflow::FlowV1;
 
     use super::*;
     use crate::mock_context::MockContext;
@@ -117,14 +118,14 @@ mod tests {
         let component = EvalComponent::new();
 
         // Create a simple test workflow
-        let test_flow = Flow {
+        let test_flow = Flow::V1(FlowV1 {
             name: Some("test-nested".to_string()),
             steps: vec![],
             output: ValueTemplate::literal(serde_json::json!({
                 "result": "Hello from nested flow"
             })),
             ..Default::default()
-        };
+        });
 
         let input = EvalInput {
             workflow: test_flow,

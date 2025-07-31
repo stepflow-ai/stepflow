@@ -135,8 +135,8 @@ pub async fn create_run(
         .create_run(
             run_id,
             req.flow_hash.clone(),
-            flow.name.as_deref(), // Use flow name if available
-            None,                 // No flow label for hash-based execution
+            flow.name(), // Use flow name if available
+            None,        // No flow label for hash-based execution
             req.debug,
             req.input.clone(),
         )
@@ -357,7 +357,7 @@ pub async fn get_run_steps(
     };
 
     // Build unified responses
-    for (idx, step) in workflow.steps.iter().enumerate() {
+    for (idx, step) in workflow.steps().iter().enumerate() {
         let status = step_statuses
             .get(&idx)
             .copied()

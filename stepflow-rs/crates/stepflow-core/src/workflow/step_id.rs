@@ -44,7 +44,7 @@ impl std::hash::Hash for StepId {
 impl StepId {
     /// Get the step name/ID string from the flow
     pub fn step_name(&self) -> &str {
-        &self.flow.steps[self.index].id
+        &self.flow.latest().steps[self.index].id
     }
 }
 

@@ -3228,7 +3228,6 @@ dependencies = [
  "indexmap",
  "insta-cmd",
  "nix 0.29.0",
- "regex",
  "reqwest",
  "rustyline",
  "serde",

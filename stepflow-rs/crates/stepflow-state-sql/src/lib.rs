@@ -26,6 +26,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::values::ValueTemplate;
+    use stepflow_core::workflow::FlowV1;
     use stepflow_core::{FlowResult, workflow::ValueRef};
     use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
@@ -53,7 +54,7 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         // First store a workflow
-        let workflow = stepflow_core::workflow::Flow {
+        let workflow = stepflow_core::workflow::Flow::V1(FlowV1 {
             name: None,
             description: None,
             input_schema: None,
@@ -70,8 +71,8 @@ mod tests {
             }],
             version: None,
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
         let workflow_arc = std::sync::Arc::new(workflow);
         let workflow_hash = store.store_workflow(workflow_arc.clone()).await.unwrap();
 

@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 input_schema:
   type: object
 output_schema:

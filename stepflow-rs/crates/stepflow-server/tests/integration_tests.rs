@@ -17,6 +17,7 @@ use axum::http::{Request, StatusCode};
 use serde_json::json;
 use std::sync::Arc;
 use stepflow_core::values::ValueTemplate;
+use stepflow_core::workflow::FlowV1;
 use stepflow_core::{
     FlowResult,
     workflow::{Component, ErrorAction, Flow, Step},
@@ -165,7 +166,7 @@ async fn create_test_server_with_mocks() -> (Router, Arc<StepFlowExecutor>) {
 
 /// Helper to create a simple test workflow
 fn create_test_workflow() -> Flow {
-    Flow {
+    Flow::V1(FlowV1 {
         name: Some("test_workflow".to_string()),
         description: Some("Test workflow for integration testing".to_string()),
         version: None,
@@ -184,8 +185,8 @@ fn create_test_workflow() -> Flow {
         }],
         output: ValueTemplate::default(),
         test: None,
-        examples: vec![],
-    }
+        examples: None,
+    })
 }
 
 #[tokio::test]
@@ -548,7 +549,7 @@ async fn test_status_updates_during_regular_execution() {
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow for regular execution status testing
-    let workflow = Flow {
+    let workflow = Flow::V1(FlowV1 {
         name: Some("status_test_workflow".to_string()),
         description: Some("Test workflow for status tracking".to_string()),
         version: None,
@@ -586,8 +587,8 @@ async fn test_status_updates_during_regular_execution() {
         }))
         .unwrap(),
         test: None,
-        examples: vec![],
-    };
+        examples: None,
+    });
 
     // Store the workflow
     let store_request = Request::builder()
@@ -671,7 +672,7 @@ async fn test_status_updates_during_debug_execution() {
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow for debug execution status testing
-    let workflow = Flow {
+    let workflow = Flow::V1(FlowV1 {
         name: Some("debug_status_test".to_string()),
         description: Some("Test workflow for debug status tracking".to_string()),
         version: None,
@@ -708,8 +709,8 @@ async fn test_status_updates_during_debug_execution() {
         }))
         .unwrap(),
         test: None,
-        examples: vec![],
-    };
+        examples: None,
+    });
 
     // Store the workflow
     let store_request = Request::builder()
@@ -809,7 +810,7 @@ async fn test_status_transitions_with_error_handling() {
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow for error status testing
-    let workflow = Flow {
+    let workflow = Flow::V1(FlowV1 {
         name: Some("error_status_test".to_string()),
         description: Some("Test workflow for error status tracking".to_string()),
         version: None,
@@ -829,8 +830,8 @@ async fn test_status_transitions_with_error_handling() {
         }))
         .unwrap(),
         test: None,
-        examples: vec![],
-    };
+        examples: None,
+    });
 
     // Store the workflow
     let store_request = Request::builder()
