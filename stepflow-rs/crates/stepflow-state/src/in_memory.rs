@@ -312,11 +312,11 @@ impl StateStore for InMemoryStateStore {
             let workflows = workflows.read().await;
             let mut results = Vec::new();
 
-            for workflow in workflows.values() {
-                if workflow.name.as_ref() == Some(&name) {
+            for flow in workflows.values() {
+                if flow.name() == Some(&name) {
                     // Use current time for creation since we don't track it in in-memory
                     let created_at = chrono::Utc::now();
-                    let hash = Flow::hash(workflow);
+                    let hash = Flow::hash(flow);
                     results.push((hash, created_at));
                 }
             }
@@ -365,7 +365,7 @@ impl StateStore for InMemoryStateStore {
                     let workflows = workflows.read().await;
 
                     for workflow in workflows.values() {
-                        if workflow.name.as_ref() == Some(&name) {
+                        if workflow.name() == Some(&name) {
                             let created_at = chrono::Utc::now();
                             let hash = Flow::hash(workflow);
                             return Ok(Some(WorkflowWithMetadata {
@@ -438,8 +438,8 @@ impl StateStore for InMemoryStateStore {
             let mut names = std::collections::HashSet::new();
 
             for workflow in workflows.values() {
-                if let Some(name) = &workflow.name {
-                    names.insert(name.clone());
+                if let Some(name) = workflow.name() {
+                    names.insert(name.to_owned());
                 }
             }
 

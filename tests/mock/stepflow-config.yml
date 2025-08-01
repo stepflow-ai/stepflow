@@ -17,7 +17,7 @@ plugins:
           { input: "a" }:
             outcome: success
             result: {output: b}
-          { input: "hello"}:
+          { input: "hello" }:
             outcome: success
             result: {output: world}
       /two_outputs:

@@ -29,9 +29,9 @@ pub fn validate_workflow(flow: &Flow) -> Result<Diagnostics> {
     validate_step_ordering_and_references(flow, &mut diagnostics);
 
     // Validate workflow output
-    let all_step_ids: HashSet<String> = flow.steps.iter().map(|s| s.id.clone()).collect();
+    let all_step_ids: HashSet<String> = flow.steps().iter().map(|s| s.id.clone()).collect();
     validate_references(
-        &flow.output,
+        flow.output(),
         &["output".to_string()],
         &all_step_ids,
         "workflow_output",
@@ -48,7 +48,7 @@ pub fn validate_workflow(flow: &Flow) -> Result<Diagnostics> {
 fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
     // Check for duplicate step IDs
     let mut seen_ids = HashSet::new();
-    for (index, step) in flow.steps.iter().enumerate() {
+    for (index, step) in flow.steps().iter().enumerate() {
         if !seen_ids.insert(&step.id) {
             diagnostics.add(
                 DiagnosticMessage::DuplicateStepId {
@@ -60,7 +60,7 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
     }
 
     // Check for empty step IDs
-    for (index, step) in flow.steps.iter().enumerate() {
+    for (index, step) in flow.steps().iter().enumerate() {
         if step.id.trim().is_empty() {
             diagnostics.add(
                 DiagnosticMessage::EmptyStepId,
@@ -70,12 +70,12 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
     }
 
     // Warn if workflow has no steps
-    if flow.steps.is_empty() {
+    if flow.steps().is_empty() {
         diagnostics.add(DiagnosticMessage::EmptyWorkflow, vec!["steps".to_string()]);
     }
 
     // Warn if workflow has no name
-    if flow.name.is_none() || flow.name.as_ref().unwrap().trim().is_empty() {
+    if flow.name().is_none() || flow.name().unwrap().trim().is_empty() {
         diagnostics.add(
             DiagnosticMessage::MissingWorkflowName,
             vec!["name".to_string()],
@@ -83,7 +83,7 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
     }
 
     // Warn if workflow has no description
-    if flow.description.is_none() {
+    if flow.description().is_none() {
         diagnostics.add(
             DiagnosticMessage::MissingWorkflowDescription,
             vec!["description".to_string()],
@@ -95,7 +95,7 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
 fn validate_step_ordering_and_references(flow: &Flow, diagnostics: &mut Diagnostics) {
     let mut available_steps = HashSet::new();
 
-    for (index, step) in flow.steps.iter().enumerate() {
+    for (index, step) in flow.steps().iter().enumerate() {
         // Validate this step only references previously defined steps
         validate_step_references(step, index, &available_steps, diagnostics);
 
@@ -216,7 +216,7 @@ fn detect_unreachable_steps(flow: &Flow, diagnostics: &mut Diagnostics) -> Resul
     let mut referenced_steps = HashSet::new();
 
     // Collect steps referenced by other steps
-    for step in &flow.steps {
+    for step in flow.steps() {
         collect_step_dependencies(&step.input, &mut referenced_steps)?;
         if let Some(skip_if) = &step.skip_if {
             collect_expression_dependencies(skip_if, &mut referenced_steps);
@@ -224,10 +224,10 @@ fn detect_unreachable_steps(flow: &Flow, diagnostics: &mut Diagnostics) -> Resul
     }
 
     // Collect steps referenced by workflow output
-    collect_step_dependencies(&flow.output, &mut referenced_steps)?;
+    collect_step_dependencies(flow.output(), &mut referenced_steps)?;
 
     // Find unreachable steps
-    for (index, step) in flow.steps.iter().enumerate() {
+    for (index, step) in flow.steps().iter().enumerate() {
         if !referenced_steps.contains(&step.id) {
             diagnostics.add(
                 DiagnosticMessage::UnreachableStep {
@@ -350,7 +350,7 @@ mod tests {
     use super::*;
     use crate::diagnostics::DiagnosticMessage;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, JsonPath, Step};
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, JsonPath, Step};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
         Step {
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_valid_workflow() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: Some("A test workflow".to_string()),
             version: None,
@@ -378,8 +378,8 @@ mod tests {
             ],
             output: ValueTemplate::step_ref("step2", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_forward_reference_error() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: None,
             version: None,
@@ -400,8 +400,8 @@ mod tests {
             ],
             output: ValueTemplate::step_ref("step2", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_step_ids() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: None,
             version: None,
@@ -428,8 +428,8 @@ mod tests {
             ],
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -444,7 +444,7 @@ mod tests {
 
     #[test]
     fn test_self_reference() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: None,
             version: None,
@@ -456,8 +456,8 @@ mod tests {
             )],
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_unreachable_step() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: None,
             version: None,
@@ -484,8 +484,8 @@ mod tests {
             ],
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (_fatal, _error, warning) = diagnostics.counts();
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_workflow_with_no_name_and_description() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: None,        // Missing name
             description: None, // Missing description
             version: None,
@@ -512,8 +512,8 @@ mod tests {
             )],
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, warning) = diagnostics.counts();
@@ -535,7 +535,7 @@ mod tests {
 
     #[test]
     fn test_empty_component_name() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: None,
             version: None,
@@ -552,8 +552,8 @@ mod tests {
             }],
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
@@ -569,7 +569,7 @@ mod tests {
 
     #[test]
     fn test_valid_builtin_component() {
-        let flow = Flow {
+        let flow = Flow::V1(FlowV1 {
             name: Some("test_workflow".to_string()),
             description: None,
             version: None,
@@ -586,8 +586,8 @@ mod tests {
             }],
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
-            examples: vec![],
-        };
+            examples: None,
+        });
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();

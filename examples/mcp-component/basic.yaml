@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 # Example workflow using MCP filesystem tools
 # This workflow demonstrates how to use MCP tools within StepFlow
 
@@ -11,7 +12,7 @@ input:
       type: string
       description: "Name of the file to create"
     content:
-      type: string  
+      type: string
       description: "Content to write to the file"
   required: ["filename", "content"]
 

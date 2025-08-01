@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Test Builtin Iterate"
 description: "Test the builtin iterate component"
 

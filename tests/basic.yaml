@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: Basic Test Workflow
 description: Simple workflow to test the new test command
 steps:

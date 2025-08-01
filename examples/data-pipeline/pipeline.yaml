@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "AI-Powered Sales Analysis with Regional Breakdown"
 description: "Processes sales data, calculates metrics, analyzes regions using nested workflows, and generates AI insights"
 
@@ -77,6 +78,7 @@ steps:
     input:
       workflow:
         $literal:
+          schema: https://stepflow.org/schemas/v1/flow.json
           name: "West Region Analysis"
           steps:
             - id: filter_west_udf
@@ -133,6 +135,7 @@ steps:
     input:
       workflow:
         $literal:
+          schema: https://stepflow.org/schemas/v1/flow.json
           name: "East Region Analysis"
           steps:
             - id: filter_east_udf

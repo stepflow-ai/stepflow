@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "HTTP Transport Bidirectional Test"
 description: "Test HTTP transport with bidirectional (context-using) components"
 
@@ -58,7 +59,7 @@ test:
         retry_delay_ms: 500
       startup_timeout_ms: 10000
       shutdown_timeout_ms: 5000
-  
+
   config:
     plugins:
       builtin:

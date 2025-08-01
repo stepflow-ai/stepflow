@@ -85,6 +85,7 @@ pub struct ValueResolver<L: ValueLoader> {
 impl<L: ValueLoader> ValueResolver<L> {
     pub fn new(run_id: Uuid, input: ValueRef, loader: L, flow: Arc<Flow>) -> Self {
         let step_id_to_index = flow
+            .latest()
             .steps
             .iter()
             .enumerate()
@@ -269,7 +270,7 @@ impl<L: ValueLoader> ValueResolver<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::{Component, ErrorAction, JsonPath, Step};
+    use crate::workflow::{Component, ErrorAction, FlowV1, JsonPath, Step};
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -317,7 +318,7 @@ mod tests {
     }
 
     fn create_test_flow() -> Arc<Flow> {
-        Arc::new(Flow {
+        Arc::new(Flow::V1(FlowV1 {
             name: None,
             description: None,
             version: None,
@@ -334,8 +335,8 @@ mod tests {
             }],
             output: ValueTemplate::literal(json!(null)),
             test: None,
-            examples: vec![],
-        })
+            examples: None,
+        }))
     }
 
     #[tokio::test]

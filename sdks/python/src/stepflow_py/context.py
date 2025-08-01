@@ -21,8 +21,10 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 from stepflow_py.generated_protocol import (
+    EvaluateFlowParams,
     EvaluateFlowResult,
     Flow,
+    Flow1,
     FlowResultFailed,
     FlowResultSkipped,
     FlowResultSuccess,
@@ -148,15 +150,13 @@ class StepflowContext:
         from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
 
         # Convert Flow object to dict if needed
-        if isinstance(flow, Flow):
-            import msgspec
+        if isinstance(flow, dict):
+            flow = Flow1(schema_="https://stepflow.org/schemas/v1/flow.json", **flow)
 
-            flow_dict = msgspec.to_builtins(flow)
-        else:
-            flow_dict = flow
-
-        params = {"flow": flow_dict, "input": input}
-
+        params = EvaluateFlowParams(
+            flow=flow,
+            input=input,
+        )
         evaluate_result = await self._send_request(
             Method.flows_evaluate, params, EvaluateFlowResult
         )

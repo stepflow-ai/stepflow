@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
@@ -368,4 +369,6 @@ class StepflowServer:
             return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
 
         except Exception as e:
+            print("Error executing component:", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
             raise StepflowExecutionError(f"Component execution failed: {str(e)}") from e

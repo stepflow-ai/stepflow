@@ -546,8 +546,9 @@ class Step(Struct, kw_only=True):
     ) = None
 
 
-class Flow(Struct, kw_only=True):
+class Flow1(Struct, kw_only=True):
     steps: Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
+    schema_: Literal['https://stepflow.org/schemas/v1/flow.json'] = field(name='schema')
     name: Annotated[str | None, Meta(description='The name of the flow.')] | None = None
     description: (
         Annotated[str | None, Meta(description='The description of the flow.')] | None
@@ -587,6 +588,14 @@ class Flow(Struct, kw_only=True):
         ]
         | None
     ) = None
+
+
+Flow = Annotated[
+    Flow1,
+    Meta(
+        description='A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.'
+    ),
+]
 
 
 class EvaluateFlowParams(Struct, kw_only=True):

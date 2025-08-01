@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Math Eval Test"
 description: "Test eval with actual computation"
 
@@ -13,6 +14,7 @@ steps:
     input:
       workflow:
         $literal:
+          schema: https://stepflow.org/schemas/v1/flow.json
           name: "Nested Math Workflow"
           steps:
             - id: add_udf

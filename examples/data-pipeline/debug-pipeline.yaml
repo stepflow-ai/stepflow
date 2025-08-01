@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Sales Analysis Pipeline (Metrics)"
 description: "Processes sales data and calculates business metrics"
 

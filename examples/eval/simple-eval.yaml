@@ -1,3 +1,4 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Simple Eval Component Test"
 description: "Basic test of the eval builtin component"
 
@@ -7,6 +8,7 @@ steps:
     input:
       workflow:
         $literal:
+          schema: https://stepflow.org/schemas/v1/flow.json
           name: "Simple Nested Workflow"
           steps: []
           output:
