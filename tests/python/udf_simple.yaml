@@ -34,6 +34,7 @@ steps:
         - x
         - y
       code: input['x'] + input['y']
+    blob_type: "data"
 - id: create_multiplication_blob
   component: /builtin/put_blob
   input_schema: null
@@ -51,6 +52,7 @@ steps:
         - x
         - y
       code: input['x'] * input['y']
+    blob_type: "data"
 - id: create_complex_calculation_blob
   component: /builtin/put_blob
   input_schema: null
@@ -68,6 +70,7 @@ steps:
         - sum
         - product
       code: math.sqrt(input['sum'] ** 2 + input['product'] ** 2)
+    blob_type: "data"
 # Execute functions using blob_ids
 - id: simple_addition
   component: /python/udf

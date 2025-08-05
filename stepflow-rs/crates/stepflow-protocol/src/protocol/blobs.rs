@@ -13,8 +13,8 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use stepflow_core::blob::BlobId;
 use stepflow_core::workflow::ValueRef;
+use stepflow_core::{BlobId, BlobType};
 
 use crate::protocol::Method;
 
@@ -27,10 +27,11 @@ pub struct GetBlobParams {
     pub blob_id: BlobId,
 }
 
-/// Sent from the StepFlow back to the component server with the content of the requested blob.
+/// Sent from the StepFlow back to the component server with the blob data and metadata.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetBlobResult {
     pub data: ValueRef,
+    pub blob_type: BlobType,
 }
 
 impl ProtocolMethod for GetBlobParams {
@@ -42,6 +43,7 @@ impl ProtocolMethod for GetBlobParams {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct PutBlobParams {
     pub data: ValueRef,
+    pub blob_type: BlobType,
 }
 
 /// Sent from the StepFlow back to the component server with the ID of the stored blob.

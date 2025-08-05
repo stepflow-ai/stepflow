@@ -31,6 +31,7 @@ steps:
           workflow: input
         path: number
       timestamp: 2024-01-01T00:00:00Z
+    blob_type: "data"
 # Create blob for Python function definition
 - id: create_store_data_blob
   component: /builtin/put_blob
@@ -60,6 +61,7 @@ steps:
           blob_id = await context.put_blob(enhanced_data)
           return {'blob_id': blob_id, 'status': 'success'}
       function_name: store_data
+    blob_type: "data"
 - id: store_with_python
   component: /python/udf
   input_schema: null

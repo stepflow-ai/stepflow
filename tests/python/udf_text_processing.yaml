@@ -57,6 +57,7 @@ steps:
             'word_length_distribution': word_lengths,
             'most_common_words': [{'word': word, 'count': count} for word, count in most_common]
         }
+    blob_type: "data"
 - id: create_pattern_search_blob
   component: /builtin/put_blob
   input_schema: null
@@ -82,6 +83,7 @@ steps:
             return [{'match': match, 'index': i} for i, match in enumerate(matches)]
         except:
             return []
+    blob_type: "data"
 - id: create_sentiment_analysis_blob
   component: /builtin/put_blob
   input_schema: null
@@ -113,6 +115,7 @@ steps:
         # Return score between -1 (very negative) and 1 (very positive)
         sentiment_score = (positive_count - negative_count) / total_sentiment_words
         return round(sentiment_score, 2)
+    blob_type: "data"
 # Execute functions using blob_ids
 - id: word_analysis
   component: /python/udf

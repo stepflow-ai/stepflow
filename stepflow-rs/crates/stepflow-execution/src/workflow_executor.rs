@@ -16,8 +16,8 @@ use std::sync::Arc;
 use bit_set::BitSet;
 use error_stack::ResultExt as _;
 use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
+use stepflow_core::BlobId;
 use stepflow_core::status::{StepExecution, StepStatus};
-use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
     FlowResult,
     values::{ValueRef, ValueResolver, ValueTemplate},
@@ -33,22 +33,22 @@ use crate::{ExecutionError, Result, StateValueLoader, StepFlowExecutor, write_ca
 pub(crate) async fn execute_workflow(
     executor: Arc<StepFlowExecutor>,
     flow: Arc<Flow>,
-    flow_hash: FlowHash,
+    flow_id: BlobId,
     run_id: Uuid,
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
 ) -> Result<FlowResult> {
     // Store workflow first (this is idempotent if workflow already exists)
     let computed_hash = state_store
-        .store_workflow(flow.clone())
+        .store_flow(flow.clone())
         .await
         .change_context(ExecutionError::StateError)?;
 
     // Verify the hash matches (should be the same if workflow is deterministic)
-    if computed_hash != flow_hash {
+    if computed_hash != flow_id {
         tracing::warn!(
             "Flow hash mismatch: expected {}, computed {}",
-            flow_hash,
+            flow_id,
             computed_hash
         );
     }
@@ -57,7 +57,7 @@ pub(crate) async fn execute_workflow(
     state_store
         .create_run(
             run_id,
-            flow_hash.clone(),
+            flow_id.clone(),
             flow.name(),
             None,  // No label for direct execution
             false, // Not debug mode
@@ -67,7 +67,7 @@ pub(crate) async fn execute_workflow(
         .change_context(ExecutionError::StateError)?;
 
     let mut workflow_executor =
-        WorkflowExecutor::new(executor, flow, flow_hash, run_id, input, state_store)?;
+        WorkflowExecutor::new(executor, flow, flow_id, run_id, input, state_store)?;
 
     workflow_executor.execute_to_completion().await
 }
@@ -98,15 +98,14 @@ impl WorkflowExecutor {
     pub fn new(
         executor: Arc<StepFlowExecutor>,
         flow: Arc<Flow>,
-        flow_hash: FlowHash,
+        flow_id: BlobId,
         run_id: Uuid,
         input: ValueRef,
         state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
         // Build dependencies for the workflow using the analysis crate
-        let analysis_result =
-            stepflow_analysis::analyze_workflow_dependencies(flow.clone(), flow_hash)
-                .change_context(ExecutionError::AnalysisError)?;
+        let analysis_result = stepflow_analysis::analyze_flow_dependencies(flow.clone(), flow_id)
+            .change_context(ExecutionError::AnalysisError)?;
 
         let analysis = match analysis_result.analysis {
             Some(analysis) => analysis,
@@ -1014,7 +1013,7 @@ mod tests {
     pub async fn create_workflow_from_yaml_simple(
         yaml_str: &str,
         mock_behaviors: Vec<(&str, FlowResult)>,
-    ) -> (Arc<crate::executor::StepFlowExecutor>, Arc<Flow>, FlowHash) {
+    ) -> (Arc<crate::executor::StepFlowExecutor>, Arc<Flow>, BlobId) {
         // Parse the YAML workflow
         let flow: Flow = serde_yaml_ng::from_str(yaml_str).expect("Failed to parse YAML workflow");
         let flow = Arc::new(flow);
@@ -1069,8 +1068,9 @@ mod tests {
             plugin_router,
         );
 
-        let flow_hash = Flow::hash(flow.as_ref());
-        (executor, flow, flow_hash)
+        // Generate flow hash for testing
+        let flow_id = BlobId::from_flow(flow.as_ref()).unwrap();
+        (executor, flow, flow_id)
     }
 
     /// Execute a workflow from YAML string with given input
@@ -1079,13 +1079,13 @@ mod tests {
         input: serde_json::Value,
         mock_behaviors: Vec<(&str, FlowResult)>,
     ) -> Result<FlowResult> {
-        let (executor, flow, flow_hash) =
+        let (executor, flow, flow_id) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
         let run_id = Uuid::new_v4();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
-        execute_workflow(executor, flow, flow_hash, run_id, input_ref, state_store).await
+        execute_workflow(executor, flow, flow_id, run_id, input_ref, state_store).await
     }
 
     /// Create a WorkflowExecutor from YAML string for step-by-step testing
@@ -1094,13 +1094,13 @@ mod tests {
         input: serde_json::Value,
         mock_behaviors: Vec<(&str, FlowResult)>,
     ) -> Result<WorkflowExecutor> {
-        let (executor, flow, flow_hash) =
+        let (executor, flow, flow_id) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
         let run_id = Uuid::new_v4();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
-        WorkflowExecutor::new(executor, flow, flow_hash, run_id, input_ref, state_store)
+        WorkflowExecutor::new(executor, flow, flow_id, run_id, input_ref, state_store)
     }
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
@@ -1143,9 +1143,11 @@ mod tests {
         ));
 
         // Build dependencies using analysis crate
-        let analysis_result =
-            stepflow_analysis::analyze_workflow_dependencies(flow.clone(), "test_hash".into())
-                .unwrap();
+        let analysis_result = stepflow_analysis::analyze_flow_dependencies(
+            flow.clone(),
+            BlobId::new("a".repeat(64)).unwrap(),
+        )
+        .unwrap();
 
         // Create tracker from analysis
         let analysis = analysis_result.analysis.unwrap();
@@ -1339,7 +1341,7 @@ output:
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
-        let flow_hash = Flow::hash(&workflow);
+        let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepFlowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
@@ -1348,7 +1350,7 @@ output:
         let mut workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
-            flow_hash.clone(),
+            flow_id.clone(),
             run_id,
             input.clone(),
             executor.state_store(),
@@ -1434,7 +1436,7 @@ output:
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
-        let flow_hash = Flow::hash(&workflow);
+        let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepFlowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
@@ -1442,7 +1444,7 @@ output:
         let workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
-            flow_hash.clone(),
+            flow_id.clone(),
             run_id,
             input.clone(),
             executor.state_store(),
@@ -1530,7 +1532,7 @@ output:
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
-        let flow_hash = Flow::hash(&workflow);
+        let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepFlowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
@@ -1538,7 +1540,7 @@ output:
         let mut workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
-            flow_hash.clone(),
+            flow_id.clone(),
             run_id,
             input.clone(),
             executor.state_store(),
@@ -1610,7 +1612,7 @@ output:
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
-        let flow_hash = Flow::hash(&workflow);
+        let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepFlowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
@@ -1618,7 +1620,7 @@ output:
         let mut workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             workflow.clone(),
-            flow_hash.clone(),
+            flow_id.clone(),
             run_id,
             input.clone(),
             executor.state_store(),

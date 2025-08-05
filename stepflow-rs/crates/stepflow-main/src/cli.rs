@@ -11,8 +11,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use error_stack::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
-use stepflow_core::workflow::Flow;
+use stepflow_core::{BlobId, workflow::Flow};
 use url::Url;
 
 use crate::{
@@ -186,8 +187,9 @@ impl Cli {
 
                 let input = input_args.parse_input(true)?;
 
-                let workflow_hash = Flow::hash(&flow);
-                let output = run(executor, flow, workflow_hash, input).await?;
+                let flow_id =
+                    BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
+                let output = run(executor, flow, flow_id, input).await?;
                 output_args.write_output(output)?;
             }
             Command::Serve { port, config_args } => {

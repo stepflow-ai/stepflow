@@ -200,6 +200,8 @@ impl<'a> Iterator for ExpressionIterator<'a> {
         while let Some(template) = self.stack.pop() {
             match template.as_ref() {
                 ValueTemplateRepr::Expression(expr) => {
+                    // For expressions, return them normally.
+                    // Note: This does not recurse into expressions within an escaped literal.
                     return Some(expr);
                 }
                 ValueTemplateRepr::Object(obj) => {
@@ -771,5 +773,82 @@ mod tests {
         let result = serde_json::from_str::<ValueTemplate>(valid_with_path);
         assert!(result.is_ok(), "Should parse valid reference with path");
         assert!(!result.unwrap().is_literal(), "Should be an expression");
+    }
+
+    #[test]
+    fn test_expression_iterator_respects_escaped_literals() {
+        // Test that the expression iterator doesn't traverse into $literal blocks
+        // even when they contain objects with nested expressions
+        let template_json = r#"{
+            "regular_field": {"$from": {"step": "step1"}},
+            "literal_field": {
+                "$literal": {
+                    "nested_object": {
+                        "inner_ref": {"$from": {"step": "step2"}},
+                        "deep": {
+                            "another_ref": {"$from": {"workflow": "input"}}
+                        }
+                    }
+                }
+            },
+            "another_regular": {"$from": {"workflow": "input"}}
+        }"#;
+
+        let template: ValueTemplate = serde_json::from_str(template_json).unwrap();
+        let expressions: Vec<_> = template.expressions().collect();
+
+        // Should only find 3 expressions:
+        // 1. {"$from": {"step": "step1"}} in regular_field
+        // 2. The $literal expression itself (but not its content)
+        // 3. {"$from": {"workflow": "input"}} in another_regular
+        //
+        // Importantly, the expressions INSIDE the $literal block should NOT be found:
+        // - {"$from": {"step": "step2"}} should not appear
+        // - {"$from": {"workflow": "input"}} inside the literal should not appear
+        assert_eq!(expressions.len(), 3, "Should find exactly 3 expressions");
+
+        // Check that we have the expected expression types
+        let mut escaped_literal_count = 0;
+        let mut regular_ref_count = 0;
+
+        for expr in &expressions {
+            match expr {
+                crate::workflow::Expr::EscapedLiteral { .. } => {
+                    escaped_literal_count += 1;
+                }
+                crate::workflow::Expr::Ref { .. } => {
+                    regular_ref_count += 1;
+                }
+                _ => panic!("Unexpected expression type: {:?}", expr),
+            }
+        }
+
+        assert_eq!(
+            escaped_literal_count, 1,
+            "Should find exactly 1 escaped literal"
+        );
+        assert_eq!(
+            regular_ref_count, 2,
+            "Should find exactly 2 regular references"
+        );
+
+        // Verify that step "step2" is NOT found as a separate expression
+        // (it's inside the $literal block and should be treated as opaque data)
+        let step_refs: Vec<_> = expressions
+            .iter()
+            .filter_map(|expr| match expr {
+                crate::workflow::Expr::Ref {
+                    from: crate::workflow::BaseRef::Step { step },
+                    ..
+                } => Some(step.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(step_refs.len(), 1, "Should find exactly 1 step reference");
+        assert_eq!(
+            step_refs[0], "step1",
+            "Should only find reference to step1, not step2 from inside $literal"
+        );
     }
 }

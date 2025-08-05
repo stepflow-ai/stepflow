@@ -20,6 +20,7 @@ steps:
       data:
         $literal:
           code: "sum(item['revenue'] for item in input['sales_data'])"
+      blob_type: "data"
 
   - id: calculate_total_revenue
     component: "/python/udf"
@@ -34,6 +35,7 @@ steps:
       data:
         $literal:
           code: "len(input['sales_data'])"
+      blob_type: "data"
 
   - id: count_sales
     component: "/python/udf"
@@ -48,6 +50,7 @@ steps:
       data:
         $literal:
           code: "sum(item['revenue'] for item in input['sales_data']) / len(input['sales_data']) if input['sales_data'] else 0"
+      blob_type: "data"
 
   - id: calculate_average_sale
     component: "/python/udf"
@@ -63,6 +66,7 @@ steps:
       data:
         $literal:
           code: "input['a'] / input['b'] if input['b'] != 0 else 0"
+      blob_type: "data"
 
   - id: calculate_performance_ratio
     component: "/python/udf"

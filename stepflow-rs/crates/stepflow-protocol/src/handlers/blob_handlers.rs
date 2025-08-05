@@ -102,7 +102,7 @@ impl MethodHandler for PutBlobHandler {
             |request: crate::protocol::PutBlobParams| async move {
                 let blob_id = context
                     .state_store()
-                    .put_blob(request.data)
+                    .put_blob(request.data, request.blob_type)
                     .await
                     .map_err(|e| {
                         tracing::error!("Failed to put blob: {e}");
@@ -129,7 +129,7 @@ impl MethodHandler for GetBlobHandler {
             request,
             response_tx,
             |request: crate::protocol::GetBlobParams| async move {
-                let data = context
+                let blob_data = context
                     .state_store()
                     .get_blob(&request.blob_id)
                     .await
@@ -137,7 +137,10 @@ impl MethodHandler for GetBlobHandler {
                         tracing::error!("Failed to get blob: {e}");
                         Error::internal("Failed to get blob")
                     })?;
-                Ok(crate::protocol::GetBlobResult { data })
+                Ok(crate::protocol::GetBlobResult {
+                    data: blob_data.data(),
+                    blob_type: blob_data.blob_type(),
+                })
             },
         )
         .boxed()

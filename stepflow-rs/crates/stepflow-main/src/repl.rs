@@ -16,7 +16,10 @@ use clap::Parser as _;
 use error_stack::ResultExt as _;
 use rustyline::{DefaultEditor, error::ReadlineError};
 use std::{path::PathBuf, sync::Arc};
-use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
+use stepflow_core::{
+    BlobId,
+    workflow::{Flow, ValueRef},
+};
 use stepflow_execution::{StepFlowExecutor, WorkflowExecutor};
 use stepflow_plugin::Context as _;
 
@@ -28,17 +31,17 @@ use crate::{
 
 /// Information about the last workflow run
 pub struct LastRun {
-    pub workflow: Arc<Flow>,
-    pub workflow_hash: FlowHash,
+    pub flow: Arc<Flow>,
+    pub flow_id: BlobId,
     pub input: ValueRef,
     pub last_execution: Option<WorkflowExecutor>,
 }
 
 impl LastRun {
-    pub fn new(workflow: Arc<Flow>, workflow_hash: FlowHash, input: ValueRef) -> Self {
+    pub fn new(flow: Arc<Flow>, flow_id: BlobId, input: ValueRef) -> Self {
         Self {
-            workflow,
-            workflow_hash,
+            flow,
+            flow_id,
             input,
             last_execution: None,
         }
@@ -47,11 +50,7 @@ impl LastRun {
     /// Execute this workflow normally (non-debug mode)
     pub async fn execute_normal(&self, executor: &StepFlowExecutor) -> Result<()> {
         let run_id = executor
-            .submit_flow(
-                self.workflow.clone(),
-                self.workflow_hash.clone(),
-                self.input.clone(),
-            )
+            .submit_flow(self.flow.clone(), self.flow_id.clone(), self.input.clone())
             .await
             .change_context(MainError::FlowExecution)?;
 
@@ -77,8 +76,8 @@ impl LastRun {
         let run_id = uuid::Uuid::new_v4();
         let workflow_executor = WorkflowExecutor::new(
             executor.clone(),
-            self.workflow.clone(),
-            self.workflow_hash.clone(),
+            self.flow.clone(),
+            self.flow_id.clone(),
             run_id,
             self.input.clone(),
             state_store.clone(),
@@ -262,21 +261,21 @@ async fn handle_command(command: ReplCommand, state: &mut ReplState) -> Result<(
 
 /// Handle the run command
 async fn handle_run_command(
-    workflow_path: PathBuf,
+    flow_path: PathBuf,
     input_args: InputArgs,
     debug: bool,
     state: &mut ReplState,
 ) -> Result<()> {
-    // Load workflow
-    let workflow: Arc<Flow> = load(&workflow_path)?;
-    let workflow_hash = Flow::hash(workflow.as_ref());
-    println!("Loaded workflow: {}", workflow_path.display());
+    // Load flow
+    let flow: Arc<Flow> = load(&flow_path)?;
+    let flow_id = BlobId::from_flow(flow.as_ref()).change_context(MainError::Configuration)?;
+    println!("Loaded flow: {}", flow_path.display());
 
     // Parse input with flow context
     let input_value = input_args.parse_input(true)?;
 
     // Create LastRun structure
-    let mut last_run = LastRun::new(workflow, workflow_hash, input_value);
+    let mut last_run = LastRun::new(flow, flow_id, input_value);
     state.debug_mode = debug;
 
     if debug {
@@ -287,7 +286,7 @@ async fn handle_run_command(
         println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
         println!("Use 'run-step <step_id>' to execute a specific step, or 'continue' to run all.");
     } else {
-        // Execute workflow normally
+        // Execute flow normally
         last_run.execute_normal(&state.executor).await?;
     }
 
@@ -338,8 +337,8 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     println!("  Executor: {} plugins loaded", plugins.len());
 
     if let Some(last_run) = &state.last_run {
-        println!("  Workflow: {} steps", last_run.workflow.steps().len());
-        if let Some(name) = last_run.workflow.name() {
+        println!("  Workflow: {} steps", last_run.flow.steps().len());
+        if let Some(name) = last_run.flow.name() {
             println!("    Name: {name}");
         }
         println!("  Input: Loaded");
@@ -357,7 +356,7 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
 /// Handle the workflow command
 async fn handle_workflow_command(state: &ReplState) -> Result<()> {
     if let Some(last_run) = &state.last_run {
-        let workflow_json = serde_json::to_string_pretty(last_run.workflow.as_ref())
+        let workflow_json = serde_json::to_string_pretty(last_run.flow.as_ref())
             .change_context(MainError::FlowExecution)?;
         println!("Current workflow:\n{workflow_json}");
     } else {

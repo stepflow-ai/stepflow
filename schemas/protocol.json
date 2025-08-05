@@ -182,9 +182,21 @@
       "properties": {
         "data": {
           "$ref": "#/$defs/Value"
+        },
+        "blob_type": {
+          "$ref": "#/$defs/BlobType"
         }
       },
       "required": [
+        "data",
+        "blob_type"
+      ]
+    },
+    "BlobType": {
+      "description": "Type of blob stored in the blob store",
+      "type": "string",
+      "enum": [
+        "flow",
         "data"
       ]
     },
@@ -192,9 +204,9 @@
       "description": "Sent from the component server to the StepFlow to evaluate a flow with the provided input.",
       "type": "object",
       "properties": {
-        "flow": {
-          "description": "The flow to evaluate.",
-          "$ref": "#/$defs/Flow"
+        "flow_id": {
+          "description": "The ID of the flow to evaluate (blob ID of the flow).",
+          "$ref": "#/$defs/BlobId"
         },
         "input": {
           "description": "The input to provide to the flow.",
@@ -202,705 +214,7 @@
         }
       },
       "required": [
-        "flow",
-        "input"
-      ]
-    },
-    "Flow": {
-      "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "name": {
-              "description": "The name of the flow.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "description": {
-              "description": "The description of the flow.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "version": {
-              "description": "The version of the flow.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "inputSchema": {
-              "description": "The input schema of the flow.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Schema"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "outputSchema": {
-              "description": "The output schema of the flow.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Schema"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "steps": {
-              "description": "The steps to execute for the flow.",
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/Step"
-              },
-              "default": []
-            },
-            "output": {
-              "description": "The outputs of the flow, mapping output names to their values.",
-              "$ref": "#/$defs/ValueTemplate"
-            },
-            "test": {
-              "description": "Test configuration for the flow.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/TestConfig"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "examples": {
-              "description": "Example inputs for the workflow that can be used for testing and UI dropdowns.",
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "$ref": "#/$defs/ExampleInput"
-              }
-            },
-            "schema": {
-              "type": "string",
-              "const": "https://stepflow.org/schemas/v1/flow.json"
-            }
-          },
-          "required": [
-            "schema",
-            "steps"
-          ]
-        }
-      ]
-    },
-    "Schema": {
-      "description": "A JSON schema describing allowed JSON values.",
-      "type": "object",
-      "additionalProperties": true,
-      "example": "\n                {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"item\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                        \"label\": {\"type\": \"string\"},\n                    },\n                    \"required\": [\"label\"]\n                    }\n                },\n                \"required\": [\"item\"]\n                }\n            "
-    },
-    "Step": {
-      "description": "A step in a workflow that executes a component with specific arguments.",
-      "type": "object",
-      "properties": {
-        "id": {
-          "description": "Identifier for the step",
-          "type": "string"
-        },
-        "component": {
-          "description": "The component to execute in this step",
-          "$ref": "#/$defs/Component"
-        },
-        "inputSchema": {
-          "description": "The input schema for this step.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "outputSchema": {
-          "description": "The output schema for this step.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "skipIf": {
-          "description": "If set and the referenced value is truthy, this step will be skipped.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Expr"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "onError": {
-          "$ref": "#/$defs/ErrorAction"
-        },
-        "input": {
-          "description": "Arguments to pass to the component for this step",
-          "$ref": "#/$defs/ValueTemplate"
-        }
-      },
-      "required": [
-        "id",
-        "component"
-      ]
-    },
-    "Expr": {
-      "description": "An expression that can be either a literal value or a template expression.",
-      "anyOf": [
-        {
-          "title": "Reference",
-          "description": "Reference a value from a step, workflow, or other source.",
-          "type": "object",
-          "properties": {
-            "$from": {
-              "description": "The source of the reference.",
-              "$ref": "#/$defs/BaseRef"
-            },
-            "path": {
-              "description": "JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.",
-              "$ref": "#/$defs/JsonPath"
-            },
-            "onSkip": {
-              "$ref": "#/$defs/SkipAction"
-            }
-          },
-          "required": [
-            "$from"
-          ]
-        },
-        {
-          "title": "EscapedLiteral",
-          "description": "A literal value that was escaped.\n\nNo template expansion is performed within the value, allowing\nfor raw JSON values that include `$from` or other special characters.",
-          "type": "object",
-          "properties": {
-            "$literal": {
-              "description": "A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion.",
-              "$ref": "#/$defs/Value"
-            }
-          },
-          "required": [
-            "$literal"
-          ]
-        },
-        {
-          "title": "Literal",
-          "description": "A direct literal value that serializes naturally without special syntax",
-          "$ref": "#/$defs/Value"
-        }
-      ]
-    },
-    "BaseRef": {
-      "description": "An expression that can be either a literal value or a template expression.",
-      "anyOf": [
-        {
-          "title": "WorkflowReference",
-          "description": "Reference properties of the workflow.",
-          "type": "object",
-          "properties": {
-            "workflow": {
-              "$ref": "#/$defs/WorkflowRef"
-            }
-          },
-          "required": [
-            "workflow"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "title": "StepReference",
-          "description": "Reference the output of a step.",
-          "type": "object",
-          "properties": {
-            "step": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "step"
-          ]
-        }
-      ]
-    },
-    "WorkflowRef": {
-      "type": "string",
-      "enum": [
-        "input"
-      ]
-    },
-    "JsonPath": {
-      "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
-      "type": "string",
-      "examples": [
-        "field",
-        "$.field",
-        "$[\"field\"]",
-        "$[0]",
-        "$.field[0].nested"
-      ]
-    },
-    "SkipAction": {
-      "oneOf": [
-        {
-          "title": "OnSkipSkip",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "skip"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnSkipDefault",
-          "type": "object",
-          "properties": {
-            "defaultValue": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Value"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "action": {
-              "type": "string",
-              "const": "useDefault"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        }
-      ]
-    },
-    "ErrorAction": {
-      "oneOf": [
-        {
-          "title": "OnErrorFail",
-          "description": "If the step fails, the flow will fail.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "fail"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorSkip",
-          "description": "If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "skip"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorDefault",
-          "description": "If the step fails, use the `defaultValue` instead.",
-          "type": "object",
-          "properties": {
-            "defaultValue": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ValueTemplate"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "action": {
-              "type": "string",
-              "const": "useDefault"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorRetry",
-          "description": "If the step fails, retry it.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "retry"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        }
-      ]
-    },
-    "ValueTemplate": {
-      "description": "A value that can be either a literal JSON value or an expression that references other values using the $from syntax",
-      "anyOf": [
-        {
-          "description": "An expression with `$from` syntax for referencing other values",
-          "$ref": "#/$defs/Expr"
-        },
-        {
-          "description": "JSON null value",
-          "type": "null"
-        },
-        {
-          "description": "JSON boolean value",
-          "type": "boolean"
-        },
-        {
-          "description": "JSON numeric value",
-          "type": "number"
-        },
-        {
-          "description": "JSON string value",
-          "type": "string"
-        },
-        {
-          "description": "JSON array where each element can be a template",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ValueTemplate"
-          }
-        },
-        {
-          "description": "JSON object where each value can be a template",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/ValueTemplate"
-          }
-        }
-      ]
-    },
-    "TestConfig": {
-      "description": "Configuration for testing a workflow.",
-      "type": "object",
-      "properties": {
-        "servers": {
-          "description": "Test servers to start before running tests.\nKey is the server name, value is the server configuration.",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/TestServerConfig"
-          }
-        },
-        "config": {
-          "description": "Stepflow configuration specific to tests.\nCan reference server URLs using placeholders like {server_name.url}."
-        },
-        "cases": {
-          "description": "Test cases for the workflow.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/TestCase"
-          }
-        }
-      }
-    },
-    "TestServerConfig": {
-      "description": "Configuration for a test server.",
-      "type": "object",
-      "properties": {
-        "command": {
-          "description": "Command to start the server.",
-          "type": "string"
-        },
-        "args": {
-          "description": "Arguments for the server command.",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "env": {
-          "description": "Environment variables for the server process.\nValues can contain placeholders like {port} which will be substituted.",
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "workingDirectory": {
-          "description": "Working directory for the server process.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "portRange": {
-          "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used.",
-          "type": [
-            "array",
-            "null"
-          ],
-          "prefixItems": [
-            {
-              "type": "integer",
-              "format": "uint16",
-              "minimum": 0,
-              "maximum": 65535
-            },
-            {
-              "type": "integer",
-              "format": "uint16",
-              "minimum": 0,
-              "maximum": 65535
-            }
-          ],
-          "minItems": 2,
-          "maxItems": 2
-        },
-        "healthCheck": {
-          "description": "Health check configuration.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TestServerHealthCheck"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "startupTimeoutMs": {
-          "description": "Maximum time to wait for server startup (in milliseconds).",
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0,
-          "default": 10000
-        },
-        "shutdownTimeoutMs": {
-          "description": "Maximum time to wait for server shutdown (in milliseconds).",
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0,
-          "default": 5000
-        }
-      },
-      "required": [
-        "command"
-      ]
-    },
-    "TestServerHealthCheck": {
-      "description": "Health check configuration for test servers.",
-      "type": "object",
-      "properties": {
-        "path": {
-          "description": "Path for health check endpoint (e.g., \"/health\").",
-          "type": "string"
-        },
-        "timeoutMs": {
-          "description": "Timeout for health check requests (in milliseconds).",
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0,
-          "default": 5000
-        },
-        "retryAttempts": {
-          "description": "Number of retry attempts for health checks.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0,
-          "default": 3
-        },
-        "retryDelayMs": {
-          "description": "Delay between retry attempts (in milliseconds).",
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0,
-          "default": 1000
-        }
-      },
-      "required": [
-        "path"
-      ]
-    },
-    "TestCase": {
-      "description": "A single test case for a workflow.",
-      "type": "object",
-      "properties": {
-        "name": {
-          "description": "Unique identifier for the test case.",
-          "type": "string"
-        },
-        "description": {
-          "description": "Optional description of what this test case verifies.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "input": {
-          "description": "Input data for the workflow in this test case.",
-          "$ref": "#/$defs/Value"
-        },
-        "output": {
-          "description": "Expected output from the workflow for this test case.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/FlowResult"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "name",
-        "input"
-      ]
-    },
-    "FlowResult": {
-      "title": "FlowResult",
-      "description": "The results of a step execution.",
-      "oneOf": [
-        {
-          "$ref": "#/$defs/FlowResultSuccess"
-        },
-        {
-          "$ref": "#/$defs/FlowResultSkipped"
-        },
-        {
-          "$ref": "#/$defs/FlowResultFailed"
-        }
-      ],
-      "discriminator": {
-        "propertyName": "outcome",
-        "mapping": {
-          "success": "#/$defs/FlowResultSuccess",
-          "skipped": "#/$defs/FlowResultSkipped",
-          "failed": "#/$defs/FlowResultFailed"
-        }
-      }
-    },
-    "FlowError": {
-      "description": "An error reported from within a flow or step.",
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "message": {
-          "type": "string"
-        },
-        "data": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Value"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "message"
-      ]
-    },
-    "FlowResultSuccess": {
-      "type": "object",
-      "properties": {
-        "outcome": {
-          "title": "FlowOutcome",
-          "const": "success",
-          "default": "success"
-        },
-        "result": {
-          "$ref": "#/$defs/Value"
-        }
-      },
-      "required": [
-        "outcome",
-        "result"
-      ]
-    },
-    "FlowResultSkipped": {
-      "type": "object",
-      "properties": {
-        "outcome": {
-          "title": "FlowOutcome",
-          "const": "skipped",
-          "default": "skipped"
-        }
-      },
-      "required": [
-        "outcome"
-      ]
-    },
-    "FlowResultFailed": {
-      "type": "object",
-      "properties": {
-        "outcome": {
-          "title": "FlowOutcome",
-          "const": "failed",
-          "default": "failed"
-        },
-        "error": {
-          "$ref": "#/$defs/FlowError"
-        }
-      },
-      "required": [
-        "outcome",
-        "error"
-      ]
-    },
-    "ExampleInput": {
-      "description": "An example input for a workflow that can be used in UI dropdowns.",
-      "type": "object",
-      "properties": {
-        "name": {
-          "description": "Name of the example input for display purposes.",
-          "type": "string"
-        },
-        "description": {
-          "description": "Optional description of what this example demonstrates.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "input": {
-          "description": "The input data for this example.",
-          "$ref": "#/$defs/Value"
-        }
-      },
-      "required": [
-        "name",
+        "flow_id",
         "input"
       ]
     },
@@ -1041,6 +355,12 @@
         "component"
       ]
     },
+    "Schema": {
+      "description": "A JSON schema describing allowed JSON values.",
+      "type": "object",
+      "additionalProperties": true,
+      "example": "\n                {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"item\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                        \"label\": {\"type\": \"string\"},\n                    },\n                    \"required\": [\"label\"]\n                    }\n                },\n                \"required\": [\"item\"]\n                }\n            "
+    },
     "ListComponentsResult": {
       "description": "Sent from the component server back to StepFlow with a list of all available components.",
       "type": "object",
@@ -1058,15 +378,19 @@
       ]
     },
     "GetBlobResult": {
-      "description": "Sent from the StepFlow back to the component server with the content of the requested blob.",
+      "description": "Sent from the StepFlow back to the component server with the blob data and metadata.",
       "type": "object",
       "properties": {
         "data": {
           "$ref": "#/$defs/Value"
+        },
+        "blob_type": {
+          "$ref": "#/$defs/BlobType"
         }
       },
       "required": [
-        "data"
+        "data",
+        "blob_type"
       ]
     },
     "PutBlobResult": {
@@ -1092,6 +416,103 @@
       },
       "required": [
         "result"
+      ]
+    },
+    "FlowResult": {
+      "title": "FlowResult",
+      "description": "The results of a step execution.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/FlowResultSuccess"
+        },
+        {
+          "$ref": "#/$defs/FlowResultSkipped"
+        },
+        {
+          "$ref": "#/$defs/FlowResultFailed"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "outcome",
+        "mapping": {
+          "success": "#/$defs/FlowResultSuccess",
+          "skipped": "#/$defs/FlowResultSkipped",
+          "failed": "#/$defs/FlowResultFailed"
+        }
+      }
+    },
+    "FlowError": {
+      "description": "An error reported from within a flow or step.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Value"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "FlowResultSuccess": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "title": "FlowOutcome",
+          "const": "success",
+          "default": "success"
+        },
+        "result": {
+          "$ref": "#/$defs/Value"
+        }
+      },
+      "required": [
+        "outcome",
+        "result"
+      ]
+    },
+    "FlowResultSkipped": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "title": "FlowOutcome",
+          "const": "skipped",
+          "default": "skipped"
+        }
+      },
+      "required": [
+        "outcome"
+      ]
+    },
+    "FlowResultFailed": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "title": "FlowOutcome",
+          "const": "failed",
+          "default": "failed"
+        },
+        "error": {
+          "$ref": "#/$defs/FlowError"
+        }
+      },
+      "required": [
+        "outcome",
+        "error"
       ]
     },
     "MethodError": {

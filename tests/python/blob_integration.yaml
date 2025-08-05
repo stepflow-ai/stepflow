@@ -21,6 +21,7 @@ steps:
     component: /builtin/put_blob
     input:
       data: { $from: { workflow: input }, path: user_data }
+      blob_type: "data"
 
   # Step 2: Create blob for Python function definition
   - id: create_process_data_blob
@@ -59,6 +60,7 @@ steps:
                   'summary': f'Processed {len(original_data)} fields'
               }
         function_name: process_data
+      blob_type: "data"
 
   # Step 3: Python UDF retrieves blob and processes it
   - id: process_blob_data

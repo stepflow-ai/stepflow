@@ -38,8 +38,8 @@ server = StepflowStdioServer()
 class IterateInput(msgspec.Struct):
     """Input for the iterate component."""
 
-    flow: Dict[str, Any]
-    """Flow to apply for each iteration. Must return either {"result": value} or {"next": value}."""
+    flow_id: str
+    """Blob ID of the flow to apply for each iteration. Must return either {"result": value} or {"next": value}."""
 
     initial_input: Any  # Initial input to the workflow
     max_iterations: int = 1000  # Safety limit
@@ -57,8 +57,8 @@ class IterateOutput(msgspec.Struct):
 class MapInput(msgspec.Struct):
     """Input for the map component."""
 
-    flow: Dict[str, Any]
-    """Flow to apply to each item."""
+    flow_id: str
+    """Blob ID of the flow to apply to each item."""
 
     items: List[Any]  # Items to process
 
@@ -81,8 +81,8 @@ async def iterate(input: IterateInput, context: StepflowContext) -> IterateOutpu
     iterations = 0
 
     while iterations < input.max_iterations:
-        # Evaluate the workflow - exceptions will propagate and cause the whole iterate to skip/fail
-        result_value = await context.evaluate_flow(input.flow, current_input)
+        # Evaluate the workflow using the blob ID - exceptions will propagate and cause the whole iterate to skip/fail
+        result_value = await context.evaluate_flow_by_id(input.flow_id, current_input)
         iterations += 1
 
         # Check for "result" field (termination)
@@ -119,8 +119,9 @@ async def map(input: MapInput, context: StepflowContext) -> MapOutput:
     """
     if not input.items:
         return MapOutput(results=[])
+
     results = await asyncio.gather(
-        *[context.evaluate_flow(input.flow, item) for item in input.items]
+        *[context.evaluate_flow_by_id(input.flow_id, item) for item in input.items]
     )
 
     return MapOutput(results=results)

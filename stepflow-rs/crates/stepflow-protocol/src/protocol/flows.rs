@@ -13,8 +13,8 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use stepflow_core::FlowResult;
-use stepflow_core::workflow::{Flow, ValueRef};
+use stepflow_core::workflow::ValueRef;
+use stepflow_core::{BlobId, FlowResult};
 
 use crate::protocol::Method;
 
@@ -23,8 +23,8 @@ use super::ProtocolMethod;
 /// Sent from the component server to the StepFlow to evaluate a flow with the provided input.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct EvaluateFlowParams {
-    /// The flow to evaluate.
-    pub flow: Flow,
+    /// The ID of the flow to evaluate (blob ID of the flow).
+    pub flow_id: BlobId,
     /// The input to provide to the flow.
     pub input: ValueRef,
 }

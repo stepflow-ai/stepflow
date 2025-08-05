@@ -14,12 +14,10 @@
 use std::sync::Arc;
 
 use bit_set::BitSet;
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
-use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
-    FlowResult,
-    blob::BlobId,
+    BlobData, BlobId, BlobType, FlowResult,
     workflow::{Component, Flow, ValueRef},
 };
 use tokio::sync::oneshot;
@@ -83,22 +81,60 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Arguments
     /// * `data` - The JSON data to store as a blob
+    /// * `blob_type` - The type of blob being stored
     ///
     /// # Returns
     /// The blob ID for the stored data
-    fn put_blob(&self, data: ValueRef) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
+    fn put_blob(
+        &self,
+        data: ValueRef,
+        blob_type: BlobType,
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
 
-    /// Retrieve JSON data by blob ID.
+    /// Retrieve blob data with type information by blob ID.
     ///
     /// # Arguments
     /// * `blob_id` - The blob ID to retrieve
     ///
     /// # Returns
-    /// The JSON data associated with the blob ID, or an error if not found
+    /// The blob data with type information, or an error if not found
     fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<ValueRef, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>>;
+
+    /// Retrieve blob data only if it matches the expected type.
+    ///
+    /// # Arguments
+    /// * `blob_id` - The blob ID to retrieve
+    /// * `expected_type` - The expected blob type
+    ///
+    /// # Returns
+    /// The blob data if found and type matches, None if not found or type mismatch, or error
+    fn get_blob_of_type<'a>(
+        &'a self,
+        blob_id: &BlobId,
+        expected_type: BlobType,
+    ) -> BoxFuture<'a, error_stack::Result<Option<BlobData>, StateError>> {
+        let blob_id = blob_id.clone();
+        async move {
+            match self.get_blob(&blob_id).await {
+                Ok(blob_data) => {
+                    if blob_data.blob_type() == expected_type {
+                        Ok(Some(blob_data))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Err(e) => {
+                    // Check if it's a "not found" error - if so, return None instead of error
+                    // For now, we'll just propagate all errors
+                    Err(e)
+                }
+            }
+        }
+        .boxed()
+    }
 
     /// Retrieve the result of a step execution by step index.
     ///
@@ -131,45 +167,42 @@ pub trait StateStore: Send + Sync {
 
     // Workflow Management Methods
 
-    /// Store a workflow by its content hash.
+    /// Store a workflow as a blob and return its blob ID.
     ///
     /// # Arguments
     /// * `workflow` - The workflow to store
     ///
     /// # Returns
-    /// The content hash of the stored workflow
-    fn store_workflow(
+    /// The blob ID of the stored workflow
+    fn store_flow(
         &self,
         workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<FlowHash, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
 
-    /// Retrieve a workflow by its content hash.
+    /// Retrieve a workflow by its blob ID.
     ///
     /// # Arguments
-    /// * `workflow_hash` - The content hash of the workflow
+    /// * `flow_id` - The blob ID of the workflow
     ///
     /// # Returns
     /// The workflow if found, or an error if not found
-    fn get_workflow(
+    fn get_flow(
         &self,
-        workflow_hash: &FlowHash,
+        flow_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>>;
 
-    /// Get all workflows with a specific name, ordered by creation time (newest first).
+    /// Get all flows with a specific name, ordered by creation time (newest first).
     ///
     /// # Arguments
-    /// * `name` - The workflow name to search for
+    /// * `name` - The flow name to search for
     ///
     /// # Returns
-    /// A vector of (workflow_hash, created_at) tuples for workflows with the given name
+    /// A vector of (flow_id, created_at) tuples for flows with the given name
     #[allow(clippy::type_complexity)]
-    fn get_workflows_by_name(
+    fn get_flows(
         &self,
         name: &str,
-    ) -> BoxFuture<
-        '_,
-        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
-    >;
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(BlobId, chrono::DateTime<chrono::Utc>)>, StateError>>;
 
     /// Get a named workflow, optionally with a specific label.
     ///
@@ -183,7 +216,7 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// The workflow with metadata if found
-    fn get_named_workflow(
+    fn get_named_flow(
         &self,
         name: &str,
         label: Option<&str>,
@@ -194,7 +227,7 @@ pub trait StateStore: Send + Sync {
     /// # Arguments
     /// * `name` - The workflow name (from workflow.name field)
     /// * `label` - The label name (like "production", "staging")
-    /// * `workflow_hash` - The content hash of the workflow
+    /// * `flow_id` - The blob ID of the workflow
     ///
     /// # Returns
     /// Success if the label was created/updated
@@ -202,7 +235,7 @@ pub trait StateStore: Send + Sync {
         &self,
         name: &str,
         label: &str,
-        workflow_hash: FlowHash,
+        flow_id: BlobId,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// List all labels for a specific workflow name.
@@ -221,7 +254,7 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Returns
     /// A vector of all unique workflow names in the system
-    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>>;
+    fn list_flow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>>;
 
     /// Delete a workflow label.
     ///
@@ -241,7 +274,7 @@ pub trait StateStore: Send + Sync {
     ///
     /// # Arguments
     /// * `run_id` - The unique identifier for the run
-    /// * `workflow_hash` - Workflow hash
+    /// * `flow_id` - Workflow blob ID
     /// * `workflow_name` - Optional workflow name (from workflow.name field)
     /// * `workflow_label` - Optional workflow label used for execution
     /// * `debug_mode` - Whether run is in debug mode
@@ -252,7 +285,7 @@ pub trait StateStore: Send + Sync {
     fn create_run(
         &self,
         run_id: Uuid,
-        workflow_hash: FlowHash,
+        flow_id: BlobId,
         workflow_name: Option<&str>,
         workflow_label: Option<&str>,
         debug_mode: bool,
@@ -419,8 +452,8 @@ impl PartialOrd for StepResult {
 pub struct WorkflowWithMetadata {
     /// The workflow definition
     pub workflow: Arc<Flow>,
-    /// The workflow hash
-    pub workflow_hash: FlowHash,
+    /// The workflow blob ID
+    pub flow_id: BlobId,
     /// When this workflow was created/stored
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// Optional label information if accessed via label
@@ -432,7 +465,7 @@ pub struct WorkflowWithMetadata {
 pub struct WorkflowLabelMetadata {
     pub name: String,
     pub label: String,
-    pub workflow_hash: FlowHash,
+    pub flow_id: BlobId,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -442,7 +475,7 @@ pub struct WorkflowLabelMetadata {
 #[serde(rename_all = "camelCase")]
 pub struct RunSummary {
     pub run_id: Uuid,
-    pub flow_hash: FlowHash,
+    pub flow_id: BlobId,
     pub flow_name: Option<String>,
     pub flow_label: Option<String>,
     pub status: ExecutionStatus,
@@ -465,8 +498,8 @@ pub struct RunDetails {
 #[derive(Debug, Clone, Default)]
 pub struct RunFilters {
     pub status: Option<ExecutionStatus>,
-    pub workflow_name: Option<String>,
-    pub workflow_label: Option<String>,
+    pub flow_name: Option<String>,
+    pub flow_label: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -521,19 +554,18 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::status::ExecutionStatus;
-    use stepflow_core::workflow::FlowHash;
     use uuid::Uuid;
 
     #[test]
     fn test_run_details_serde_flatten() {
         let now = chrono::Utc::now();
         let run_id = Uuid::new_v4();
-        let workflow_hash = FlowHash::from("test-hash");
+        let flow_id = BlobId::new("a".repeat(64)).unwrap();
 
         let details = RunDetails {
             summary: RunSummary {
                 run_id,
-                flow_hash: workflow_hash,
+                flow_id: flow_id.clone(),
                 flow_name: Some("test-workflow".to_string()),
                 flow_label: Some("production".to_string()),
                 status: ExecutionStatus::Completed,
@@ -555,6 +587,7 @@ mod tests {
 
         // Verify that summary fields are flattened to the top level
         assert_eq!(value["runId"], json!(run_id));
+        assert_eq!(value["flowId"], json!(flow_id.as_str()));
         assert_eq!(value["flowName"], json!("test-workflow"));
         assert_eq!(value["flowLabel"], json!("production"));
         assert_eq!(value["status"], json!("completed"));

@@ -21,6 +21,7 @@ steps:
       $from:
         workflow: input
       path: data
+    blob_type: "data"
 - id: get_blob
   component: /builtin/get_blob
   input_schema: null

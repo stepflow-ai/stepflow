@@ -20,3 +20,6 @@ pub mod workflow;
 
 mod flow_result;
 pub use flow_result::*;
+
+// Re-export commonly used types
+pub use blob::{BlobData, BlobId, BlobType};

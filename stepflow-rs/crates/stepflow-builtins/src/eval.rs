@@ -13,19 +13,15 @@
 
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use stepflow_core::workflow::{Component, FlowHash};
+use stepflow_core::workflow::Component;
 use stepflow_core::{
-    FlowResult,
-    component::ComponentInfo,
-    schema::SchemaRef,
-    workflow::{Flow, ValueRef},
+    BlobId, FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef,
 };
 use stepflow_plugin::{Context as _, ExecutionContext};
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
-/// Component for executing nested workflows.
+/// Component for executing nested flows.
 pub struct EvalComponent;
 
 impl EvalComponent {
@@ -43,11 +39,8 @@ impl Default for EvalComponent {
 /// Input for the eval component
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct EvalInput {
-    /// The workflow to execute
-    workflow: Flow,
-
-    /// Precomputed hash of the workflow.
-    workflow_hash: Option<FlowHash>,
+    /// The ID of the workflow to execute (blob ID)
+    flow_id: BlobId,
 
     /// The input to pass to the workflow
     input: ValueRef,
@@ -84,13 +77,10 @@ impl BuiltinComponent for EvalComponent {
         let input: EvalInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
-        let flow = Arc::new(input.workflow);
-        let workflow_hash = input.workflow_hash.unwrap_or_else(|| Flow::hash(&flow));
+        // Execute the nested workflow using the shared utility
         let workflow_input = input.input;
-
-        // Execute the nested workflow
         let flow_result = context
-            .execute_flow(flow, workflow_hash, workflow_input)
+            .execute_flow_by_id(&input.flow_id, workflow_input)
             .await
             .change_context(BuiltinError::Internal)?;
 
@@ -108,7 +98,7 @@ impl BuiltinComponent for EvalComponent {
 #[cfg(test)]
 mod tests {
     use stepflow_core::values::ValueTemplate;
-    use stepflow_core::workflow::FlowV1;
+    use stepflow_core::workflow::{Flow, FlowV1};
 
     use super::*;
     use crate::mock_context::MockContext;
@@ -116,6 +106,7 @@ mod tests {
     #[tokio::test]
     async fn test_eval_component() {
         let component = EvalComponent::new();
+        let mock = MockContext::new();
 
         // Create a simple test workflow
         let test_flow = Flow::V1(FlowV1 {
@@ -127,14 +118,21 @@ mod tests {
             ..Default::default()
         });
 
+        // Store the flow as a blob first
+        let flow_data = ValueRef::new(serde_json::to_value(&test_flow).unwrap());
+        let flow_id = mock
+            .execution_context()
+            .state_store()
+            .put_blob(flow_data, stepflow_core::BlobType::Flow)
+            .await
+            .unwrap();
+
         let input = EvalInput {
-            workflow: test_flow,
-            workflow_hash: None,
+            flow_id,
             input: serde_json::json!({}).into(),
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
 
         let result = component
             .execute(mock.execution_context(), input_value.into())

@@ -20,11 +20,11 @@ import sys
 from typing import Any, TypeVar
 from uuid import uuid4
 
+from stepflow_py.generated_flow import Flow
 from stepflow_py.generated_protocol import (
+    BlobType,
     EvaluateFlowParams,
     EvaluateFlowResult,
-    Flow,
-    Flow1,
     FlowResultFailed,
     FlowResultSkipped,
     FlowResultSuccess,
@@ -33,6 +33,7 @@ from stepflow_py.generated_protocol import (
     Method,
     MethodError,
     MethodSuccess,
+    PutBlobParams,
     PutBlobResult,
 )
 from stepflow_py.message_decoder import MessageDecoder
@@ -101,16 +102,17 @@ class StepflowContext:
                 f"Unexpected response type: {type(response_message)} {response_message}"
             )
 
-    async def put_blob(self, data: Any) -> str:
+    async def put_blob(self, data: Any, blob_type: BlobType = BlobType.data) -> str:
         """Store JSON data as a blob and return its content-based ID.
 
         Args:
             data: The JSON-serializable data to store
+            blob_type: The type of blob to store (flow or data)
 
         Returns:
             The blob ID (SHA-256 hash) for the stored data
         """
-        params = {"data": data}
+        params = PutBlobParams(data=data, blob_type=blob_type)
         response = await self._send_request(Method.blobs_put, params, PutBlobResult)
         return response.blob_id
 
@@ -132,11 +134,37 @@ class StepflowContext:
         """Get the session ID for HTTP mode, or None for STDIO mode."""
         return self._session_id
 
-    async def evaluate_flow(self, flow: Flow | dict, input: Any) -> Any:
+    async def evaluate_flow(self, flow: Flow, input: Any) -> Any:
         """Evaluate a flow with the given input.
 
         Args:
-            flow: The flow definition (as a Flow object or dictionary)
+            flow: The flow definition
+            input: The input to provide to the flow
+
+        Returns:
+            The result value on success
+
+        Raises:
+            StepflowSkipped: If the flow execution was skipped
+            StepflowFailed: If the flow execution failed with a business logic error
+            Exception: For system/runtime errors
+        """
+        # Convert Flow object to dict for blob storage
+        import msgspec
+
+        flow_dict = msgspec.to_builtins(flow)
+
+        # Store flow as a blob first
+        flow_id = await self.put_blob(flow_dict, BlobType.flow)
+
+        # Delegate to evaluate_flow_by_id for the actual evaluation
+        return await self.evaluate_flow_by_id(flow_id, input)
+
+    async def evaluate_flow_by_id(self, flow_id: str, input: Any) -> Any:
+        """Evaluate a flow by its blob ID with the given input.
+
+        Args:
+            flow_id: The blob ID of the flow to evaluate
             input: The input to provide to the flow
 
         Returns:
@@ -149,12 +177,8 @@ class StepflowContext:
         """
         from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
 
-        # Convert Flow object to dict if needed
-        if isinstance(flow, dict):
-            flow = Flow1(schema_="https://stepflow.org/schemas/v1/flow.json", **flow)
-
         params = EvaluateFlowParams(
-            flow=flow,
+            flow_id=flow_id,
             input=input,
         )
         evaluate_result = await self._send_request(

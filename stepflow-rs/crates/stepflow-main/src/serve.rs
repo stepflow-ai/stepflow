@@ -45,9 +45,9 @@ use stepflow_execution::StepFlowExecutor;
 /// ### 3. Flow Management
 /// Store and retrieve workflow definitions by content-based hash:
 /// ```
-/// POST /flows                        # Store workflow definition, get hash
-/// GET  /flows/{flow_hash}            # Retrieve workflow by hash
-/// DELETE /flows/{flow_hash}          # Delete workflow (placeholder)
+/// POST /flows                        # Store workflow definition, get id
+/// GET  /flows/{flow_id}              # Retrieve workflow by id
+/// DELETE /flows/{flow_id}            # Delete workflow (placeholder)
 /// ```
 ///
 /// ### 4. Execution Management

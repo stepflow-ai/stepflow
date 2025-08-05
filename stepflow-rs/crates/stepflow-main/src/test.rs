@@ -22,8 +22,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use stepflow_core::FlowResult;
 use stepflow_core::workflow::Flow;
+use stepflow_core::{BlobId, FlowResult};
 use walkdir::WalkDir;
 
 /// Normalize run_id fields in FlowResult for consistent testing
@@ -131,7 +131,7 @@ pub fn load_test_config(
     }
 
     // TODO: 2. Check stepflow_config in test section of enclosing workflow (if any)
-    // This would require parsing parent workflows, which is complex
+    // This would require parsing parent flows, which is complex
 
     // 3. Look for stepflow-config.test.yml in workflow directory
     let flow_dir = flow_path.parent().expect("flow_path should have a parent");
@@ -260,20 +260,17 @@ pub async fn run_tests(
         return Ok(0);
     }
 
-    let mut workflow_files: Vec<_> = workflow_files.into_iter().collect();
-    workflow_files.sort_unstable();
+    let mut flow_files: Vec<_> = workflow_files.into_iter().collect();
+    flow_files.sort_unstable();
 
-    // Run tests on all workflows and collect results
-    let mut results = Vec::new();
+    // Run tests on all flows and collect results
+    let mut results: Vec<WorkflowTestResult> = Vec::new();
 
-    for workflow_path in workflow_files {
-        let result = run_single_workflow_test(&workflow_path, config_path.clone(), &options)
+    for flow_path in flow_files {
+        let result = run_single_flow_test(&flow_path, config_path.clone(), &options)
             .await
             .unwrap_or_else(|e| {
-                panic!(
-                    "Failed to execute tests in {}: {e:#?}",
-                    workflow_path.display()
-                )
+                panic!("Failed to execute tests in {}: {e:#?}", flow_path.display())
             });
 
         let Some(result) = result else {
@@ -283,7 +280,7 @@ pub async fn run_tests(
         // Print immediate feedback
         println!(
             "{}: {}/{} passed",
-            workflow_path.display(),
+            flow_path.display(),
             result.passed_cases,
             result.total_cases
         );
@@ -319,13 +316,13 @@ fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
 }
 
 /// Run tests on a single workflow file.
-async fn run_single_workflow_test(
-    workflow_path: &Path,
+async fn run_single_flow_test(
+    flow_path: &Path,
     config_path: Option<PathBuf>,
     options: &TestOptions,
 ) -> Result<Option<WorkflowTestResult>> {
     // Try to load workflow
-    let Some(flow) = load_flow(workflow_path)? else {
+    let Some(flow) = load_flow(flow_path)? else {
         return Ok(None);
     };
 
@@ -336,7 +333,7 @@ async fn run_single_workflow_test(
         // No test cases, skip.
         return Ok(Some(WorkflowTestResult {
             file_status: FileStatus::NoTests,
-            workflow_path: workflow_path.to_owned(),
+            workflow_path: flow_path.to_owned(),
             total_cases: 0,
             passed_cases: 0,
             failed_cases: 0,
@@ -350,7 +347,7 @@ async fn run_single_workflow_test(
     if let Some(test_config) = flow.test() {
         if !test_config.servers.is_empty() {
             println!("Starting {} test servers...", test_config.servers.len());
-            let working_dir = workflow_path.parent().unwrap_or_else(|| Path::new("."));
+            let working_dir = flow_path.parent().unwrap_or_else(|| Path::new("."));
             server_manager
                 .start_servers(&test_config.servers, working_dir)
                 .await?;
@@ -358,7 +355,7 @@ async fn run_single_workflow_test(
     }
 
     // Set up executor with server-aware config
-    let config = load_test_config(workflow_path, config_path, &flow, Some(&server_manager))?;
+    let config = load_test_config(flow_path, config_path, &flow, Some(&server_manager))?;
     let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
     // Filter test cases if specific cases requested
@@ -375,7 +372,7 @@ async fn run_single_workflow_test(
         // No matching cases
         return Ok(Some(WorkflowTestResult {
             file_status: FileStatus::NoTests,
-            workflow_path: workflow_path.to_owned(),
+            workflow_path: flow_path.to_owned(),
             total_cases: 0,
             passed_cases: 0,
             failed_cases: 0,
@@ -388,13 +385,13 @@ async fn run_single_workflow_test(
     let mut updates = HashMap::new();
     let mut execution_errors = 0;
 
-    let workflow_hash = Flow::hash(&flow);
+    let flow_id = BlobId::from_flow(&flow).change_context(MainError::Configuration)?;
     for test_case in &cases_to_run {
         println!("----------\nRunning Test Case {}", test_case.name);
         let result = crate::run::run(
             executor.clone(),
             flow.clone(),
-            workflow_hash.clone(),
+            flow_id.clone(),
             test_case.input.clone(),
         )
         .await;
@@ -447,7 +444,7 @@ async fn run_single_workflow_test(
 
     Ok(Some(WorkflowTestResult {
         file_status: FileStatus::Run,
-        workflow_path: workflow_path.to_owned(),
+        workflow_path: flow_path.to_owned(),
         total_cases,
         passed_cases,
         failed_cases,

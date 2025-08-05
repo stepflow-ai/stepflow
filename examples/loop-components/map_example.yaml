@@ -19,17 +19,24 @@ output_schema:
   description: "Array of doubled numbers"
 
 steps:
-  - id: double_all
-    component: "/python/map"
+  - id: create_doubler_flow
+    component: "/builtin/put_blob"
     input:
-      flow:
+      data:
         $literal:
+          schema: "https://stepflow.org/schemas/v1/flow.json"
           steps:
             - id: doubler
               component: "/python/double_value"
               input:
                 value: { $from: { workflow: input } }
           output: { $from: { step: "doubler" }, path: "result" }
+      blob_type: "flow"
+  
+  - id: double_all
+    component: "/python/map"
+    input:
+      flow_id: { $from: { step: "create_doubler_flow" }, path: "blob_id" }
       items: { $from: { workflow: input }, path: "items" }
 
 output: { $from: { step: "double_all" }, path: "results" }

@@ -14,7 +14,10 @@
 use crate::dependencies::Dependency;
 use indexmap::IndexMap;
 use std::sync::Arc;
-use stepflow_core::workflow::{BaseRef, Expr, Flow, FlowHash, Step, ValueTemplate, WorkflowRef};
+use stepflow_core::{
+    BlobId,
+    workflow::{BaseRef, Expr, Flow, Step, ValueTemplate, WorkflowRef},
+};
 
 use crate::{
     Result,
@@ -26,10 +29,7 @@ use crate::{
 /// Analyze a workflow for step dependencies
 /// Returns Ok(AnalysisResult) with analysis (if no fatal diagnostics) and all diagnostics
 /// Returns Err(AnalysisError) for internal/unexpected errors
-pub fn analyze_workflow_dependencies(
-    flow: Arc<Flow>,
-    workflow_hash: FlowHash,
-) -> Result<AnalysisResult> {
+pub fn analyze_flow_dependencies(flow: Arc<Flow>, flow_id: BlobId) -> Result<AnalysisResult> {
     // 1. Run validation first
     let diagnostics = validate_workflow(&flow)?;
 
@@ -39,7 +39,7 @@ pub fn analyze_workflow_dependencies(
     }
 
     // 3. Proceed with dependency analysis (should not fail on user errors now)
-    let analysis = analyze_dependencies_internal(flow.clone(), workflow_hash)?;
+    let analysis = analyze_dependencies_internal(flow.clone(), flow_id)?;
 
     // 4. Return analysis with diagnostics
     Ok(AnalysisResult::with_analysis(analysis, diagnostics))
@@ -57,7 +57,7 @@ pub fn validate_workflow_only(flow: &Flow) -> Result<AnalysisResult> {
 }
 
 /// Internal dependency analysis - assumes validation has already passed
-fn analyze_dependencies_internal(flow: Arc<Flow>, workflow_hash: FlowHash) -> Result<FlowAnalysis> {
+fn analyze_dependencies_internal(flow: Arc<Flow>, flow_id: BlobId) -> Result<FlowAnalysis> {
     // Analyze each step for dependencies
     let steps = flow
         .steps()
@@ -80,7 +80,7 @@ fn analyze_dependencies_internal(flow: Arc<Flow>, workflow_hash: FlowHash) -> Re
     let dependencies = builder.finish();
 
     Ok(FlowAnalysis {
-        flow_hash: workflow_hash,
+        flow_id,
         flow,
         steps,
         output_depends,
@@ -246,7 +246,14 @@ mod tests {
     #[test]
     fn test_analyze_simple_chain() {
         let flow = create_test_flow();
-        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_flow_dependencies(
+            Arc::new(flow),
+            stepflow_core::BlobId::new(
+                "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let analysis = result.analysis.unwrap(); // Should succeed without validation errors
 
         // Should have 2 steps: step1 and step2
@@ -289,7 +296,14 @@ mod tests {
             },
         });
 
-        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_flow_dependencies(
+            Arc::new(flow),
+            stepflow_core::BlobId::new(
+                "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let analysis = result.analysis.unwrap(); // Should succeed without validation errors
 
         // Should have 2 steps: step1 and step2
@@ -337,7 +351,14 @@ mod tests {
         }))
         .unwrap();
 
-        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_flow_dependencies(
+            Arc::new(flow),
+            stepflow_core::BlobId::new(
+                "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let analysis = result.analysis.unwrap(); // Should succeed without validation errors
 
         // step2 should have dependencies parsed as an object
@@ -373,7 +394,14 @@ mod tests {
     #[test]
     fn test_new_validation_api_valid_workflow() {
         let flow = create_test_flow();
-        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_flow_dependencies(
+            Arc::new(flow),
+            stepflow_core::BlobId::new(
+                "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         // Valid workflow should have analysis
         assert!(result.has_analysis(), "Expected analysis to be present");
@@ -412,7 +440,14 @@ mod tests {
             examples: None,
         });
 
-        let result = analyze_workflow_dependencies(Arc::new(flow), "test_hash".into()).unwrap();
+        let result = analyze_flow_dependencies(
+            Arc::new(flow),
+            stepflow_core::BlobId::new(
+                "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         // Invalid workflow should not have analysis
         assert!(
@@ -485,7 +520,8 @@ mod tests {
 
         // Test with analysis
         let flow = create_test_flow();
-        let analysis_result = analyze_dependencies_internal(Arc::new(flow), "test".into()).unwrap();
+        let test_blob_id = BlobId::new("a".repeat(64)).unwrap();
+        let analysis_result = analyze_dependencies_internal(Arc::new(flow), test_blob_id).unwrap();
         let mut diagnostics = Diagnostics::new();
         diagnostics.add(
             DiagnosticMessage::MockComponent {

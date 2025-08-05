@@ -57,14 +57,6 @@ impl Flow {
         }
     }
 
-    /// Return a hash of the workflow.
-    pub fn hash(workflow: &Self) -> FlowHash {
-        use sha2::{Digest as _, Sha256};
-        let mut hasher = Sha256::new();
-        serde_json::to_writer(&mut hasher, workflow).unwrap();
-        FlowHash(format!("{:x}", hasher.finalize()))
-    }
-
     pub fn name(&self) -> Option<&str> {
         match self {
             Flow::V1(flow_v1) => flow_v1.name.as_deref(),
@@ -141,6 +133,7 @@ impl Flow {
     }
 }
 
+/// # FlowV1
 #[derive(
     Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema, utoipa::ToSchema,
 )]
@@ -184,31 +177,6 @@ pub struct FlowV1 {
     pub examples: Option<Vec<ExampleInput>>,
 }
 
-/// Wraper around a string that represents a hash of a workflow.
-#[derive(
-    Eq,
-    Debug,
-    PartialEq,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-    utoipa::ToSchema,
-    schemars::JsonSchema,
-)]
-#[repr(transparent)]
-pub struct FlowHash(#[schema(inline)] String);
-
-impl From<&str> for FlowHash {
-    fn from(hash: &str) -> Self {
-        FlowHash(hash.to_owned())
-    }
-}
-
-impl std::fmt::Display for FlowHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 /// A wrapper around `Arc<Flow>` to support poem-openapi traits.
 ///
 /// This wrapper exists to work around Rust's orphan rules which prevent
@@ -615,5 +583,49 @@ mod tests {
             all_examples[1].description,
             Some("Test case as example".to_string())
         );
+    }
+
+    #[test]
+    fn test_schema_comparison_with_flow_json() {
+        use std::env;
+
+        // Generate schema from Rust types
+        let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
+        let generated_schema = generator.root_schema_for::<Flow>();
+        let generated_json = serde_json::to_value(&generated_schema)
+            .expect("Failed to convert generated schema to JSON");
+
+        let generated_schema_str = serde_json::to_string_pretty(&generated_json).unwrap();
+
+        let flow_schema_path = format!("{}/../../../schemas/flow.json", env!("CARGO_MANIFEST_DIR"));
+
+        // Check if we should overwrite the reference schema or if it doesn't exist
+        if env::var("STEPFLOW_OVERWRITE_SCHEMA").is_ok() {
+            // Ensure the directory exists
+            if let Some(parent) = std::path::Path::new(&flow_schema_path).parent() {
+                std::fs::create_dir_all(parent).expect("Failed to create schema directory");
+            }
+
+            std::fs::write(&flow_schema_path, &generated_schema_str)
+                .expect("Failed to write updated schema");
+        } else {
+            match std::fs::read_to_string(&flow_schema_path) {
+                Ok(expected_schema_str) => {
+                    // Use similar_asserts for better diff output when schemas don't match
+                    assert_eq!(
+                        generated_schema_str, expected_schema_str,
+                        "Generated schema does not match the reference schema at {}. \
+                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-core' to update.",
+                        flow_schema_path
+                    );
+                }
+                Err(_) => {
+                    // File doesn't exist, fail the test with helpful message
+                    panic!(
+                        "Flow schema file not found at {flow_schema_path}. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-core' to create it."
+                    );
+                }
+            }
+        }
     }
 }

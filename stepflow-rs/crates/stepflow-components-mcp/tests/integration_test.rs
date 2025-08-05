@@ -33,7 +33,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
         fn submit_flow(
             &self,
             _flow: Arc<stepflow_core::workflow::Flow>,
-            _workflow_hash: stepflow_core::workflow::FlowHash,
+            _flow_id: stepflow_core::BlobId,
             _input: ValueRef,
         ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<uuid::Uuid>> {
             async move { Ok(Uuid::new_v4()) }.boxed()

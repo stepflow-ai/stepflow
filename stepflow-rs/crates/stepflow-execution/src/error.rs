@@ -11,7 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-use stepflow_core::workflow::{BaseRef, FlowHash, ValueRef};
+use stepflow_core::BlobId;
+use stepflow_core::workflow::{BaseRef, ValueRef};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -58,7 +59,7 @@ pub enum ExecutionError {
     #[error("execution '{0}' not found")]
     ExecutionNotFound(Uuid),
     #[error("workflow '{0}' not found")]
-    WorkflowNotFound(FlowHash),
+    WorkflowNotFound(BlobId),
     #[error("failed to resolve value")]
     ValueResolverFailure,
 }

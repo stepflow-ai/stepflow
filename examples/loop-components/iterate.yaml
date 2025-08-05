@@ -30,11 +30,12 @@ output_schema:
           description: "Whether iteration was terminated by max_iterations"
 
 steps:
-  - id: count_to_target
-    component: "/python/iterate"
+  - id: create_counter_flow
+    component: "/builtin/put_blob"
     input:
-      flow:
+      data:
         $literal:
+          schema: "https://stepflow.org/schemas/v1/flow.json"
           steps:
             - id: counter
               component: "/python/counter_step"
@@ -42,6 +43,12 @@ steps:
                 current: { $from: { workflow: input }, path: "current" }
                 target: { $from: { workflow: input }, path: "target" }
           output: { $from: { step: "counter" } }
+      blob_type: "flow"
+  
+  - id: count_to_target
+    component: "/python/iterate"
+    input:
+      flow_id: { $from: { step: "create_counter_flow" }, path: "blob_id" }
       initial_input:
         current: { $from: { workflow: input }, path: "current" }
         target: { $from: { workflow: input }, path: "target" }

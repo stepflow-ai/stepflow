@@ -33,9 +33,6 @@ pub enum StateError {
     #[error("Step result not found for run {run_id}, step id '{step_id}'")]
     StepResultNotFoundById { run_id: Uuid, step_id: String },
 
-    #[error("Workflow not found: {workflow_hash}")]
-    WorkflowNotFound { workflow_hash: String },
-
     #[error("Run not found: {run_id}")]
     RunNotFound { run_id: Uuid },
 
