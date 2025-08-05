@@ -41,6 +41,8 @@ impl Default for PutBlobComponent {
 struct PutBlobInput {
     /// The JSON data to store as a blob
     data: serde_json::Value,
+    /// The type of blob to store
+    blob_type: stepflow_core::BlobType,
 }
 
 /// Output from the put_blob component
@@ -77,7 +79,7 @@ impl BuiltinComponent for PutBlobComponent {
         // Create the blob through the execution context
         let blob_id = context
             .state_store()
-            .put_blob(data_ref)
+            .put_blob(data_ref, input.blob_type)
             .await
             .change_context(BuiltinError::Internal)?;
 
@@ -152,10 +154,10 @@ impl BuiltinComponent for GetBlobComponent {
             .await
             .change_context(BuiltinError::Internal)?;
 
-        tracing::debug!("get_blob retrieved data: {:?}", data_ref.as_ref());
+        tracing::debug!("get_blob retrieved data: {:?}", data_ref.data().as_ref());
 
         let output = GetBlobOutput {
-            data: data_ref.as_ref().clone(),
+            data: data_ref.data().as_ref().clone(),
         };
 
         tracing::debug!("get_blob output structure: {:?}", output);
@@ -179,6 +181,7 @@ mod tests {
 
         let input = PutBlobInput {
             data: test_data.clone(),
+            blob_type: stepflow_core::BlobType::Data,
         };
 
         let input_value = serde_json::to_value(input).unwrap();
@@ -214,7 +217,10 @@ mod tests {
         let blob_id = mock
             .execution_context()
             .state_store()
-            .put_blob(ValueRef::new(test_data.clone()))
+            .put_blob(
+                ValueRef::new(test_data.clone()),
+                stepflow_core::BlobType::Data,
+            )
             .await
             .unwrap();
 
@@ -254,6 +260,7 @@ mod tests {
         // Create blob
         let create_input = PutBlobInput {
             data: test_data.clone(),
+            blob_type: stepflow_core::BlobType::Data,
         };
         let create_input_value = serde_json::to_value(create_input).unwrap();
 

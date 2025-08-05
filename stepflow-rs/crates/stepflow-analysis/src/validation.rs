@@ -281,16 +281,26 @@ fn validate_references(
     diagnostics: &mut Diagnostics,
 ) {
     use stepflow_core::values::ValueTemplateRepr;
+    use stepflow_core::workflow::Expr;
 
     match template.as_ref() {
         ValueTemplateRepr::Expression(expr) => {
-            validate_expression_references(
-                expr,
-                path,
-                available_steps,
-                current_step_id,
-                diagnostics,
-            );
+            // Check if this is an EscapedLiteral - if so, don't validate its contents
+            match expr {
+                Expr::EscapedLiteral { .. } => {
+                    // EscapedLiteral expressions are opaque - don't validate their internal structure
+                    // against the outer flow's context
+                }
+                _ => {
+                    validate_expression_references(
+                        expr,
+                        path,
+                        available_steps,
+                        current_step_id,
+                        diagnostics,
+                    );
+                }
+            }
         }
         ValueTemplateRepr::Object(obj) => {
             // Recursively validate object fields

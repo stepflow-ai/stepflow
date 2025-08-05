@@ -18,7 +18,130 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
-use crate::workflow::ValueRef;
+use crate::workflow::{Flow, ValueRef};
+use std::sync::Arc;
+
+/// Typed blob value that keeps the data in a convenient form based on type.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BlobValue {
+    /// Generic JSON data
+    Json(ValueRef),
+    /// A workflow/flow definition  
+    Flow(Arc<Flow>),
+}
+
+impl BlobValue {
+    /// Get the blob type for this value
+    pub fn blob_type(&self) -> BlobType {
+        match self {
+            BlobValue::Json(_) => BlobType::Data,
+            BlobValue::Flow(_) => BlobType::Flow,
+        }
+    }
+
+    /// Convert to ValueRef for serialization
+    pub fn to_value_ref(&self) -> ValueRef {
+        match self {
+            BlobValue::Json(value_ref) => value_ref.clone(),
+            BlobValue::Flow(flow) => ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap()),
+        }
+    }
+
+    /// Try to create a BlobValue from ValueRef and type
+    pub fn from_value_ref(data: ValueRef, blob_type: BlobType) -> Result<Self, BlobValueError> {
+        match blob_type {
+            BlobType::Data => Ok(BlobValue::Json(data)),
+            BlobType::Flow => {
+                let flow: Flow = serde_json::from_value(data.as_ref().clone())
+                    .map_err(|_| BlobValueError::InvalidFlowData)?;
+                Ok(BlobValue::Flow(Arc::new(flow)))
+            }
+        }
+    }
+}
+
+/// Error type for BlobValue operations
+#[derive(Debug, thiserror::Error)]
+pub enum BlobValueError {
+    #[error("Invalid flow data - could not deserialize")]
+    InvalidFlowData,
+}
+
+/// Structured blob data containing both the content and metadata.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlobData {
+    /// The blob content in typed form
+    pub value: BlobValue,
+    /// The blob ID (for convenience)
+    pub blob_id: BlobId,
+}
+
+impl BlobData {
+    /// Create new blob data with typed value
+    pub fn new(value: BlobValue, blob_id: BlobId) -> Self {
+        Self { value, blob_id }
+    }
+
+    /// Create blob data from ValueRef and type
+    pub fn from_value_ref(
+        data: ValueRef,
+        blob_type: BlobType,
+        blob_id: BlobId,
+    ) -> Result<Self, BlobValueError> {
+        let value = BlobValue::from_value_ref(data, blob_type)?;
+        Ok(Self::new(value, blob_id))
+    }
+
+    /// Get the blob type
+    pub fn blob_type(&self) -> BlobType {
+        self.value.blob_type()
+    }
+
+    /// Get the data as ValueRef for backward compatibility
+    pub fn data(&self) -> ValueRef {
+        self.value.to_value_ref()
+    }
+
+    /// Get a reference to the typed value
+    pub fn as_flow(&self) -> Option<&Arc<Flow>> {
+        match &self.value {
+            BlobValue::Flow(flow) => Some(flow),
+            _ => None,
+        }
+    }
+
+    /// Get a reference to the JSON data
+    pub fn as_json(&self) -> Option<&ValueRef> {
+        match &self.value {
+            BlobValue::Json(data) => Some(data),
+            _ => None,
+        }
+    }
+}
+
+/// Type of blob stored in the blob store.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BlobType {
+    /// A workflow/flow definition
+    Flow,
+    /// Generic data blob
+    Data,
+}
+
+impl schemars::JsonSchema for BlobType {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("BlobType")
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "Type of blob stored in the blob store",
+            "type": "string",
+            "enum": ["flow", "data"]
+        })
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlobIdError {
@@ -39,7 +162,7 @@ pub enum BlobIdError {
 ///
 /// Blob IDs are SHA-256 hashes of the content, providing deterministic
 /// identification and automatic deduplication.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[repr(transparent)]
 pub struct BlobId(String);
 
@@ -92,6 +215,13 @@ impl BlobId {
     /// Get the inner hash string.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Generate a content-based blob ID from a Flow using SHA-256.
+    pub fn from_flow(flow: &crate::workflow::Flow) -> error_stack::Result<Self, BlobIdError> {
+        let flow_data =
+            ValueRef::new(serde_json::to_value(flow).change_context(BlobIdError::SerializeFailed)?);
+        Self::from_content(&flow_data)
     }
 }
 

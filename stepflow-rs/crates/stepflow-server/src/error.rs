@@ -13,8 +13,8 @@
 
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use stepflow_core::BlobId;
 use stepflow_core::status::ExecutionStatus;
-use stepflow_core::workflow::FlowHash;
 use uuid::Uuid;
 
 /// Error response structure.
@@ -36,7 +36,7 @@ pub enum ServerError {
     #[error("Execution '{0}' not found")]
     ExecutionNotFound(Uuid),
     #[error("Workflow '{0}' not found")]
-    WorkflowNotFound(FlowHash),
+    WorkflowNotFound(BlobId),
     #[error("Run '{run_id}' cannot be cancelled (status: {status:?})")]
     ExecutionNotCancellable {
         run_id: Uuid,

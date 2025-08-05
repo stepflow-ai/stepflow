@@ -26,6 +26,7 @@ steps:
       data:
         $literal:
           code: "input['file_data']['sales_data']"
+      blob_type: "data"
 
   - id: extract_sales_array
     component: "/python/udf"
@@ -41,6 +42,7 @@ steps:
       data:
         $literal:
           code: "sum(item['revenue'] for item in input['sales_data'])"
+      blob_type: "data"
 
   - id: calculate_total_revenue
     component: "/python/udf"

@@ -18,10 +18,8 @@ use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
-use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
-    FlowResult,
-    blob::BlobId,
+    BlobData, BlobId, BlobType, FlowResult,
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
@@ -134,25 +132,25 @@ impl SqliteStateStore {
         }
     }
 
-    /// Synchronous version of create_execution for background worker
-    async fn create_execution_sync(
+    /// Synchronous version of create_run for background worker
+    async fn create_run_sync(
         pool: &SqlitePool,
         run_id: Uuid,
-        workflow_hash: FlowHash,
-        workflow_name: Option<String>,
-        workflow_label: Option<String>,
+        flow_id: BlobId,
+        flow_name: Option<String>,
+        flow_label: Option<String>,
         debug_mode: bool,
         input: ValueRef,
     ) -> Result<(), StateError> {
         let input_json =
             serde_json::to_string(input.as_ref()).change_context(StateError::Serialization)?;
-        let sql = "INSERT INTO executions (id, workflow_hash, workflow_name, workflow_label, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
+        let sql = "INSERT INTO runs (id, flow_id, flow_name, flow_label, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
 
         sqlx::query(sql)
             .bind(run_id.to_string())
-            .bind(workflow_hash.to_string())
-            .bind(workflow_name)
-            .bind(workflow_label)
+            .bind(flow_id.to_string())
+            .bind(flow_name)
+            .bind(flow_label)
             .bind(debug_mode)
             .bind(&input_json)
             .execute(pool)
@@ -237,7 +235,7 @@ impl SqliteStateStore {
         pool: &SqlitePool,
         run_id: Uuid,
     ) -> Result<(), StateError> {
-        let sql = "SELECT 1 FROM executions WHERE id = ? LIMIT 1";
+        let sql = "SELECT 1 FROM runs WHERE id = ? LIMIT 1";
         let exists = sqlx::query(sql)
             .bind(run_id.to_string())
             .fetch_optional(pool)
@@ -259,7 +257,11 @@ impl SqliteStateStore {
 }
 
 impl StateStore for SqliteStateStore {
-    fn put_blob(&self, data: ValueRef) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+    fn put_blob(
+        &self,
+        data: ValueRef,
+        blob_type: BlobType,
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
             // Generate content-based ID
             let blob_id = BlobId::from_content(&data).change_context(StateError::Internal)?;
@@ -267,13 +269,18 @@ impl StateStore for SqliteStateStore {
             // Serialize data to JSON string
             let json_str =
                 serde_json::to_string(data.as_ref()).change_context(StateError::Serialization)?;
+            let type_str = match blob_type {
+                BlobType::Flow => "flow",
+                BlobType::Data => "data",
+            };
 
-            // Simple INSERT OR IGNORE approach
-            let sql = "INSERT OR IGNORE INTO blobs (id, data) VALUES (?, ?)";
+            // Store blob with type information
+            let sql = "INSERT OR IGNORE INTO blobs (id, data, blob_type) VALUES (?, ?, ?)";
 
             sqlx::query(sql)
                 .bind(blob_id.as_str())
                 .bind(&json_str)
+                .bind(type_str)
                 .execute(&self.pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -286,10 +293,10 @@ impl StateStore for SqliteStateStore {
     fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<ValueRef, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>> {
         let blob_id = blob_id.clone();
         async move {
-            let sql = "SELECT data FROM blobs WHERE id = ?";
+            let sql = "SELECT data, blob_type FROM blobs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(blob_id.as_str())
@@ -307,7 +314,21 @@ impl StateStore for SqliteStateStore {
             let value: serde_json::Value =
                 serde_json::from_str(&json_str).change_context(StateError::Serialization)?;
 
-            Ok(ValueRef::new(value))
+            // Get blob type from database
+            let type_str: String = row.get("blob_type");
+            let blob_type = match type_str.as_str() {
+                "flow" => BlobType::Flow,
+                "data" => BlobType::Data,
+                _ => {
+                    // Default to data for unknown types
+                    tracing::warn!("Unknown blob type '{}', defaulting to 'data'", type_str);
+                    BlobType::Data
+                }
+            };
+
+            let blob_data = BlobData::from_value_ref(ValueRef::new(value), blob_type, blob_id)
+                .change_context(StateError::Internal)?;
+            Ok(blob_data)
         }
         .boxed()
     }
@@ -378,55 +399,32 @@ impl StateStore for SqliteStateStore {
         }.boxed()
     }
 
-    // Workflow Management Methods
+    // Workflow Management Methods using unified blob storage
 
-    fn store_workflow(
+    fn store_flow(
         &self,
         workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<FlowHash, StateError>> {
-        let pool = self.pool.clone();
-        let workflow_json = serde_json::to_string(workflow.as_ref());
-        let workflow_hash = Flow::hash(workflow.as_ref());
-
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        // Use the unified blob storage
+        let workflow_json = serde_json::to_value(workflow.as_ref());
         async move {
-            let workflow_json = workflow_json.change_context(StateError::Serialization)?;
-
-            // Store the workflow (INSERT OR IGNORE for deduplication)
-            let sql = "INSERT OR IGNORE INTO workflows (hash, content) VALUES (?, ?)";
-
-            sqlx::query(sql)
-                .bind(workflow_hash.to_string())
-                .bind(&workflow_json)
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(workflow_hash)
+            let flow_data = workflow_json.change_context(StateError::Serialization)?;
+            let flow_value = ValueRef::new(flow_data);
+            self.put_blob(flow_value, BlobType::Flow).await
         }
         .boxed()
     }
 
-    fn get_workflow(
+    fn get_flow(
         &self,
-        workflow_hash: &FlowHash,
+        flow_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
-        let pool = self.pool.clone();
-        let hash = workflow_hash.to_string();
-
+        let flow_id = flow_id.clone();
         async move {
-            let sql = "SELECT content FROM workflows WHERE hash = ?";
-
-            let row = sqlx::query(sql)
-                .bind(&hash)
-                .fetch_optional(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            match row {
-                Some(row) => {
-                    let content: String = row.get("content");
-                    let workflow: Flow =
-                        serde_json::from_str(&content).change_context(StateError::Serialization)?;
+            match self.get_blob_of_type(&flow_id, BlobType::Flow).await? {
+                Some(blob_data) => {
+                    let workflow: Flow = serde_json::from_value(blob_data.data().as_ref().clone())
+                        .change_context(StateError::Serialization)?;
                     Ok(Some(Arc::new(workflow)))
                 }
                 None => Ok(None),
@@ -435,18 +433,27 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn get_workflows_by_name(
+    fn get_flows(
         &self,
         name: &str,
-    ) -> BoxFuture<
-        '_,
-        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
-    > {
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(BlobId, chrono::DateTime<chrono::Utc>)>, StateError>>
+    {
         let pool = self.pool.clone();
         let name = name.to_string();
 
         async move {
-            let sql = "SELECT hash, first_seen FROM workflows w WHERE EXISTS (SELECT 1 FROM workflow_labels l WHERE l.workflow_hash = w.hash AND l.name = ?) OR w.hash IN (SELECT w2.hash FROM workflows w2 WHERE json_extract(w2.content, '$.name') = ?) ORDER BY first_seen DESC";
+            // Query both labeled flows and flows with matching names directly from blob data
+            let sql = r#"
+                SELECT DISTINCT b.id, b.created_at 
+                FROM blobs b 
+                LEFT JOIN flow_labels l ON l.flow_id = b.id 
+                WHERE b.blob_type = 'flow' 
+                AND (
+                    l.name = ? 
+                    OR json_extract(b.data, '$.name') = ?
+                )
+                ORDER BY b.created_at DESC
+            "#;
 
             let rows = sqlx::query(sql)
                 .bind(&name)
@@ -457,18 +464,21 @@ impl StateStore for SqliteStateStore {
 
             let mut results = Vec::new();
             for row in rows {
-                let workflow_hash = FlowHash::from(row.get::<String, _>("hash").as_str());
-                let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("first_seen"))
-                    .change_context(StateError::Internal)?
-                    .with_timezone(&chrono::Utc);
-                results.push((workflow_hash, created_at));
+                let flow_id =
+                    BlobId::new(row.get::<String, _>("id")).change_context(StateError::Internal)?;
+                let created_at =
+                    chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("created_at"))
+                        .change_context(StateError::Internal)?
+                        .with_timezone(&chrono::Utc);
+                results.push((flow_id, created_at));
             }
 
             Ok(results)
-        }.boxed()
+        }
+        .boxed()
     }
 
-    fn get_named_workflow(
+    fn get_named_flow(
         &self,
         name: &str,
         label: Option<&str>,
@@ -481,7 +491,13 @@ impl StateStore for SqliteStateStore {
             match label {
                 Some(label_str) => {
                     // Get workflow by label
-                    let sql = "SELECT l.name, l.label, l.workflow_hash, l.created_at, l.updated_at, w.content, w.first_seen FROM workflow_labels l JOIN workflows w ON l.workflow_hash = w.hash WHERE l.name = ? AND l.label = ?";
+                    let sql = r#"
+                        SELECT l.name, l.label, l.flow_id, l.created_at, l.updated_at, 
+                               b.data, b.created_at as flow_created_at
+                        FROM flow_labels l 
+                        JOIN blobs b ON l.flow_id = b.id 
+                        WHERE l.name = ? AND l.label = ? AND b.blob_type = 'flow'
+                    "#;
 
                     let row = sqlx::query(sql)
                         .bind(&name)
@@ -492,14 +508,15 @@ impl StateStore for SqliteStateStore {
 
                     match row {
                         Some(row) => {
-                            let workflow_content: String = row.get("content");
+                            let workflow_content: String = row.get("data");
                             let workflow: Flow = serde_json::from_str(&workflow_content)
                                 .change_context(StateError::Internal)?;
-                            let workflow_hash = FlowHash::from(row.get::<String, _>("workflow_hash").as_str());
+                            let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
+                                .change_context(StateError::Internal)?;
                             let label_metadata = WorkflowLabelMetadata {
                                 name: row.get("name"),
                                 label: row.get("label"),
-                                workflow_hash: workflow_hash.clone(),
+                                flow_id: flow_id.clone(),
                                 created_at: chrono::DateTime::parse_from_rfc3339(
                                     &row.get::<String, _>("created_at"),
                                 )
@@ -511,23 +528,36 @@ impl StateStore for SqliteStateStore {
                                 .change_context(StateError::Internal)?
                                 .with_timezone(&chrono::Utc),
                             };
-                            let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("first_seen"))
-                                .change_context(StateError::Internal)?
-                                .with_timezone(&chrono::Utc);
+                            let created_at = chrono::DateTime::parse_from_rfc3339(
+                                &row.get::<String, _>("flow_created_at"),
+                            )
+                            .change_context(StateError::Internal)?
+                            .with_timezone(&chrono::Utc);
 
                             Ok(Some(WorkflowWithMetadata {
                                 workflow: Arc::new(workflow),
-                                workflow_hash,
+                                flow_id,
                                 created_at,
                                 label_info: Some(label_metadata),
                             }))
-                        },
+                        }
                         None => Ok(None),
                     }
-                },
+                }
                 None => {
                     // Get latest workflow by name
-                    let sql = "SELECT hash, content, first_seen FROM workflows w WHERE EXISTS (SELECT 1 FROM workflow_labels l WHERE l.workflow_hash = w.hash AND l.name = ?) OR w.hash IN (SELECT w2.hash FROM workflows w2 WHERE json_extract(w2.content, '$.name') = ?) ORDER BY first_seen DESC LIMIT 1";
+                    let sql = r#"
+                        SELECT DISTINCT b.id, b.data, b.created_at 
+                        FROM blobs b 
+                        LEFT JOIN flow_labels l ON l.flow_id = b.id 
+                        WHERE b.blob_type = 'flow' 
+                        AND (
+                            l.name = ? 
+                            OR json_extract(b.data, '$.name') = ?
+                        )
+                        ORDER BY b.created_at DESC 
+                        LIMIT 1
+                    "#;
 
                     let row = sqlx::query(sql)
                         .bind(&name)
@@ -538,45 +568,49 @@ impl StateStore for SqliteStateStore {
 
                     match row {
                         Some(row) => {
-                            let workflow_content: String = row.get("content");
+                            let workflow_content: String = row.get("data");
                             let workflow: Flow = serde_json::from_str(&workflow_content)
                                 .change_context(StateError::Internal)?;
-                            let workflow_hash = FlowHash::from(row.get::<String, _>("hash").as_str());
-                            let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<String, _>("first_seen"))
-                                .change_context(StateError::Internal)?
-                                .with_timezone(&chrono::Utc);
+                            let flow_id = BlobId::new(row.get::<String, _>("id"))
+                                .change_context(StateError::Internal)?;
+                            let created_at = chrono::DateTime::parse_from_rfc3339(
+                                &row.get::<String, _>("created_at"),
+                            )
+                            .change_context(StateError::Internal)?
+                            .with_timezone(&chrono::Utc);
 
                             Ok(Some(WorkflowWithMetadata {
                                 workflow: Arc::new(workflow),
-                                workflow_hash,
+                                flow_id,
                                 created_at,
                                 label_info: None,
                             }))
-                        },
+                        }
                         None => Ok(None),
                     }
                 }
             }
-        }.boxed()
+        }
+        .boxed()
     }
 
     fn create_or_update_label(
         &self,
         name: &str,
         label: &str,
-        workflow_hash: FlowHash,
+        flow_id: BlobId,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
         let name = name.to_string();
         let label = label.to_string();
 
         async move {
-            let sql = "INSERT OR REPLACE INTO workflow_labels (name, label, workflow_hash, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
+            let sql = "INSERT OR REPLACE INTO flow_labels (name, label, flow_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
 
             sqlx::query(sql)
                 .bind(&name)
                 .bind(&label)
-                .bind(workflow_hash.to_string())
+                .bind(flow_id.to_string())
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -593,7 +627,7 @@ impl StateStore for SqliteStateStore {
         let name = name.to_string();
 
         async move {
-            let sql = "SELECT name, label, workflow_hash, created_at, updated_at FROM workflow_labels WHERE name = ? ORDER BY created_at DESC";
+            let sql = "SELECT name, label, flow_id, created_at, updated_at FROM flow_labels WHERE name = ? ORDER BY created_at DESC";
 
             let rows = sqlx::query(sql)
                 .bind(&name)
@@ -606,7 +640,7 @@ impl StateStore for SqliteStateStore {
                 let workflow_label = WorkflowLabelMetadata {
                     name: row.get("name"),
                     label: row.get("label"),
-                    workflow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
+                    flow_id: BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?,
                     created_at: chrono::DateTime::parse_from_rfc3339(
                         &row.get::<String, _>("created_at"),
                     )
@@ -626,11 +660,19 @@ impl StateStore for SqliteStateStore {
         }.boxed()
     }
 
-    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
+    fn list_flow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT DISTINCT name FROM workflow_labels UNION SELECT DISTINCT json_extract(content, '$.name') as name FROM workflows WHERE json_extract(content, '$.name') IS NOT NULL ORDER BY name";
+            let sql = r#"
+                SELECT DISTINCT name FROM flow_labels 
+                UNION 
+                SELECT DISTINCT json_extract(data, '$.name') as name 
+                FROM blobs 
+                WHERE blob_type = 'flow' 
+                AND json_extract(data, '$.name') IS NOT NULL 
+                ORDER BY name
+            "#;
 
             let rows = sqlx::query(sql)
                 .fetch_all(&pool)
@@ -644,7 +686,8 @@ impl StateStore for SqliteStateStore {
             }
 
             Ok(names)
-        }.boxed()
+        }
+        .boxed()
     }
 
     fn delete_label(
@@ -657,7 +700,7 @@ impl StateStore for SqliteStateStore {
         let label = label.to_string();
 
         async move {
-            let sql = "DELETE FROM workflow_labels WHERE name = ? AND label = ?";
+            let sql = "DELETE FROM flow_labels WHERE name = ? AND label = ?";
 
             sqlx::query(sql)
                 .bind(&name)
@@ -674,22 +717,22 @@ impl StateStore for SqliteStateStore {
     fn create_run(
         &self,
         run_id: Uuid,
-        workflow_hash: FlowHash,
-        workflow_name: Option<&str>,
-        workflow_label: Option<&str>,
+        flow_id: BlobId,
+        flow_name: Option<&str>,
+        flow_label: Option<&str>,
         debug_mode: bool,
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         // Execute synchronously to avoid race condition with step results
         let pool = self.pool.clone();
-        let workflow_name = workflow_name.map(|s| s.to_string());
-        let workflow_label = workflow_label.map(|s| s.to_string());
+        let workflow_name = flow_name.map(|s| s.to_string());
+        let workflow_label = flow_label.map(|s| s.to_string());
 
         async move {
-            Self::create_execution_sync(
+            Self::create_run_sync(
                 &pool,
                 run_id,
-                workflow_hash,
+                flow_id,
                 workflow_name,
                 workflow_label,
                 debug_mode,
@@ -741,7 +784,7 @@ impl StateStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT id, workflow_name, workflow_label, workflow_hash, status, debug_mode, input_json, result_json, created_at, completed_at FROM executions WHERE id = ?";
+            let sql = "SELECT id, flow_name, flow_label, flow_id, status, debug_mode, input_json, result_json, created_at, completed_at FROM runs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(run_id.to_string())
@@ -763,8 +806,9 @@ impl StateStore for SqliteStateStore {
                         }
                     };
 
-                    let workflow_name = row.get::<Option<String>, _>("workflow_name");
-                    let workflow_label = row.get::<Option<String>, _>("workflow_label");
+                    let flow_name = row.get::<Option<String>, _>("flow_name");
+                    let flow_label = row.get::<Option<String>, _>("flow_label");
+                    let flow_id = BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?;
 
                     // Parse input JSON
                     let input_json: String = row.get("input_json");
@@ -799,9 +843,9 @@ impl StateStore for SqliteStateStore {
                     let details = RunDetails {
                         summary: RunSummary {
                             run_id,
-                            flow_name: workflow_name,
-                            flow_label: workflow_label,
-                            flow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
+                            flow_name,
+                            flow_label,
+                            flow_id,
                             status,
                             debug_mode: row.get("debug_mode"),
                             created_at,
@@ -826,7 +870,7 @@ impl StateStore for SqliteStateStore {
         let filters = filters.clone();
 
         async move {
-            let mut sql = "SELECT id, workflow_name, workflow_label, workflow_hash, status, debug_mode, created_at, completed_at FROM executions".to_string();
+            let mut sql = "SELECT id, flow_name, flow_label, flow_id, status, debug_mode, created_at, completed_at FROM runs".to_string();
             let mut conditions = Vec::new();
             let mut bind_values: Vec<String> = Vec::new();
 
@@ -842,9 +886,9 @@ impl StateStore for SqliteStateStore {
                 bind_values.push(status_str.to_string());
             }
 
-            if let Some(ref workflow_name) = filters.workflow_name {
-                conditions.push("workflow_name = ?".to_string());
-                bind_values.push(workflow_name.clone());
+            if let Some(ref flow_name) = filters.flow_name {
+                conditions.push("flow_name = ?".to_string());
+                bind_values.push(flow_name.clone());
             }
 
             if !conditions.is_empty() {
@@ -889,14 +933,15 @@ impl StateStore for SqliteStateStore {
                     _ => ExecutionStatus::Running,
                 };
 
-                let workflow_name = row.get::<Option<String>, _>("workflow_name");
-                let workflow_label = row.get::<Option<String>, _>("workflow_label");
+                let flow_name = row.get::<Option<String>, _>("workflow_name");
+                let flow_label = row.get::<Option<String>, _>("workflow_label");
+                let flow_id = BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?;
 
                 let summary = RunSummary {
                     run_id,
-                    flow_name: workflow_name,
-                    flow_label: workflow_label,
-                    flow_hash: FlowHash::from(row.get::<String, _>("workflow_hash").as_str()),
+                    flow_name,
+                    flow_label,
+                    flow_id,
                     status,
                     debug_mode: row.get("debug_mode"),
                     created_at: chrono::DateTime::parse_from_rfc3339(

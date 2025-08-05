@@ -2,12 +2,10 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: nested_eval_test
 description: Test nested flow execution with eval component
 steps:
-- id: nested_flow
-  component: /builtin/eval
-  inputSchema: null
-  outputSchema: null
+- id: create_nested_flow
+  component: /builtin/put_blob
   input:
-    workflow:
+    data:
       $literal:
         schema: https://stepflow.org/schemas/v1/flow.json
         name: simple_nested
@@ -20,6 +18,14 @@ steps:
           result:
             $from:
               step: inner_step
+    blob_type: "flow"
+
+- id: nested_flow
+  component: /builtin/eval
+  inputSchema: null
+  outputSchema: null
+  input:
+    flow_id: { $from: { step: create_nested_flow }, path: "blob_id" }
     input: {}
 output:
   nested_result:

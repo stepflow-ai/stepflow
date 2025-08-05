@@ -16,7 +16,7 @@ use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::workflow::{Flow, FlowHash};
+use stepflow_core::{BlobId, workflow::Flow};
 
 use crate::{
     diagnostics::Diagnostics,
@@ -71,8 +71,8 @@ impl AnalysisResult {
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowAnalysis {
-    /// The workflow hash for this analysis
-    pub flow_hash: FlowHash,
+    /// The workflow ID for this analysis
+    pub flow_id: BlobId,
     /// The workflow reference
     pub flow: Arc<Flow>,
     /// Step-by-step analysis keyed by step ID for easy lookup

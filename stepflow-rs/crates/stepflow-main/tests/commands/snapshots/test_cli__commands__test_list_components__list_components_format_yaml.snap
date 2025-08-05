@@ -50,19 +50,14 @@ components:
     description: Input for the eval component
     type: object
     properties:
-      workflow:
-        description: The workflow to execute
-        $ref: '#/$defs/Flow'
-      workflow_hash:
-        description: Precomputed hash of the workflow.
-        anyOf:
-        - $ref: '#/$defs/FlowHash'
-        - type: 'null'
+      flow_id:
+        description: The ID of the workflow to execute (blob ID)
+        $ref: '#/$defs/BlobId'
       input:
         description: The input to pass to the workflow
         $ref: '#/$defs/Value'
     required:
-    - workflow
+    - flow_id
     - input
   output_schema:
     description: |-
@@ -294,8 +289,12 @@ components:
     properties:
       data:
         description: The JSON data to store as a blob
+      blob_type:
+        description: The type of blob to store
+        $ref: '#/$defs/BlobType'
     required:
     - data
+    - blob_type
   output_schema:
     description: Output from the put_blob component
     type: object

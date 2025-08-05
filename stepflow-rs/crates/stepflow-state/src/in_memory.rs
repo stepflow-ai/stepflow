@@ -15,7 +15,6 @@ use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
 use stepflow_core::status::ExecutionStatus;
-use stepflow_core::workflow::FlowHash;
 
 use crate::{
     StateStore,
@@ -26,7 +25,7 @@ use crate::{
 };
 use stepflow_core::{
     FlowResult,
-    blob::BlobId,
+    blob::{BlobData, BlobId, BlobType},
     workflow::{Flow, ValueRef},
 };
 use uuid::Uuid;
@@ -70,16 +69,16 @@ impl Default for ExecutionState {
 ///
 /// This provides a simple, fast storage implementation suitable for
 /// single-process execution. In the future, this can be extended with
-/// persistent storage backends for distributed or long-running workflows.
+/// persistent storage backends for distributed or long-running flows.
 pub struct InMemoryStateStore {
     /// Map from blob ID (SHA-256 hash) to stored JSON data
-    blobs: Arc<RwLock<HashMap<String, ValueRef>>>,
+    blobs: Arc<RwLock<HashMap<String, BlobData>>>,
     /// Map from run_id to execution-specific state
     executions: Arc<RwLock<HashMap<Uuid, ExecutionState>>>,
-    /// Map from workflow hash to workflow content
-    workflows: Arc<RwLock<HashMap<String, Arc<Flow>>>>,
-    /// Map from (workflow_name, label) to workflow label metadata
-    workflow_labels: WorkflowLabelsMap,
+    /// Map from flow hash to flow content
+    flows: Arc<RwLock<HashMap<String, Arc<Flow>>>>,
+    /// Map from (flow_name, label) to flow label metadata
+    flow_labels: WorkflowLabelsMap,
     /// Map from run_id to execution details
     execution_metadata: Arc<RwLock<HashMap<Uuid, RunDetails>>>,
     /// Map from run_id to step info
@@ -92,8 +91,8 @@ impl InMemoryStateStore {
         Self {
             blobs: Arc::new(RwLock::new(HashMap::new())),
             executions: Arc::new(RwLock::new(HashMap::new())),
-            workflows: Arc::new(RwLock::new(HashMap::new())),
-            workflow_labels: Arc::new(RwLock::new(HashMap::new())),
+            flows: Arc::new(RwLock::new(HashMap::new())),
+            flow_labels: Arc::new(RwLock::new(HashMap::new())),
             execution_metadata: Arc::new(RwLock::new(HashMap::new())),
             step_info: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -169,16 +168,22 @@ impl Default for InMemoryStateStore {
 }
 
 impl StateStore for InMemoryStateStore {
-    fn put_blob(&self, data: ValueRef) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+    fn put_blob(
+        &self,
+        data: ValueRef,
+        blob_type: BlobType,
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         let blobs = self.blobs.clone();
 
         async move {
             let blob_id = BlobId::from_content(&data).change_context(StateError::Internal)?;
+            let blob_data = BlobData::from_value_ref(data, blob_type, blob_id.clone())
+                .change_context(StateError::Internal)?;
 
             // Store the data (overwrites are fine since content is identical)
             {
                 let mut blobs = blobs.write().await;
-                blobs.insert(blob_id.as_str().to_string(), data);
+                blobs.insert(blob_id.as_str().to_string(), blob_data);
             }
 
             Ok(blob_id)
@@ -189,7 +194,7 @@ impl StateStore for InMemoryStateStore {
     fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<ValueRef, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>> {
         let blobs = self.blobs.clone();
         let blob_id_str = blob_id.as_str().to_string();
 
@@ -263,78 +268,65 @@ impl StateStore for InMemoryStateStore {
 
     // Workflow Management Methods
 
-    fn store_workflow(
+    fn store_flow(
         &self,
         workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<FlowHash, StateError>> {
-        let workflows = self.workflows.clone();
-        let workflow_hash = Flow::hash(workflow.as_ref());
-
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
-            // Store the workflow directly (overwrites are fine since content is identical)
-            {
-                let mut workflows = workflows.write().await;
-                workflows.insert(workflow_hash.to_string(), workflow.clone());
-            }
+            // Serialize the workflow as blob data
+            let flow_data = ValueRef::new(serde_json::to_value(workflow.as_ref()).unwrap());
 
-            Ok(workflow_hash)
+            // Store as a blob with Flow type
+            self.put_blob(flow_data, BlobType::Flow).await
         }
         .boxed()
     }
 
-    fn get_workflow(
+    fn get_flow(
         &self,
-        workflow_hash: &FlowHash,
+        flow_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
-        let workflows = self.workflows.clone();
-        let hash = workflow_hash.to_string();
+        let flow_id = flow_id.clone();
+        let blobs = self.blobs.clone();
 
         async move {
-            let workflows = workflows.read().await;
-            let workflow = workflows.get(&hash).cloned();
-
-            Ok(workflow)
-        }
-        .boxed()
-    }
-
-    fn get_workflows_by_name(
-        &self,
-        name: &str,
-    ) -> BoxFuture<
-        '_,
-        error_stack::Result<Vec<(FlowHash, chrono::DateTime<chrono::Utc>)>, StateError>,
-    > {
-        let workflows = self.workflows.clone();
-        let name = name.to_string();
-
-        async move {
-            let workflows = workflows.read().await;
-            let mut results = Vec::new();
-
-            for flow in workflows.values() {
-                if flow.name() == Some(&name) {
-                    // Use current time for creation since we don't track it in in-memory
-                    let created_at = chrono::Utc::now();
-                    let hash = Flow::hash(flow);
-                    results.push((hash, created_at));
+            // Try to get the blob data directly
+            let blobs = blobs.read().await;
+            match blobs.get(flow_id.as_str()) {
+                Some(blob_data) => {
+                    // Use the typed accessor
+                    if let Some(flow) = blob_data.as_flow() {
+                        Ok(Some(flow.clone()))
+                    } else {
+                        Ok(None) // Not a flow blob
+                    }
                 }
+                None => Ok(None), // Blob not found
             }
-
-            // Sort by creation time (newest first)
-            results.sort_by(|a, b| b.1.cmp(&a.1));
-            Ok(results)
         }
         .boxed()
     }
 
-    fn get_named_workflow(
+    fn get_flows(
+        &self,
+        _name: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(BlobId, chrono::DateTime<chrono::Utc>)>, StateError>>
+    {
+        async move {
+            // TODO: Implement workflow name tracking in blob-based storage
+            // For now, return empty list since we no longer track workflow names separately
+            Ok(Vec::new())
+        }
+        .boxed()
+    }
+
+    fn get_named_flow(
         &self,
         name: &str,
         label: Option<&str>,
     ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>> {
-        let workflows = self.workflows.clone();
-        let workflow_labels = self.workflow_labels.clone();
+        let flows = self.flows.clone();
+        let flow_labels = self.flow_labels.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
 
@@ -342,17 +334,15 @@ impl StateStore for InMemoryStateStore {
             match label {
                 Some(label_str) => {
                     // Get workflow by label
-                    let labels = workflow_labels.read().await;
+                    let labels = flow_labels.read().await;
                     let key = (name, label_str);
 
                     if let Some(label_metadata) = labels.get(&key) {
-                        let workflows = workflows.read().await;
-                        if let Some(workflow) =
-                            workflows.get(&label_metadata.workflow_hash.to_string())
-                        {
+                        let flows = flows.read().await;
+                        if let Some(workflow) = flows.get(&label_metadata.flow_id.to_string()) {
                             return Ok(Some(WorkflowWithMetadata {
                                 workflow: workflow.clone(),
-                                workflow_hash: label_metadata.workflow_hash.clone(),
+                                flow_id: label_metadata.flow_id.clone(),
                                 created_at: label_metadata.created_at,
                                 label_info: Some(label_metadata.clone()),
                             }));
@@ -361,21 +351,8 @@ impl StateStore for InMemoryStateStore {
                     Ok(None)
                 }
                 None => {
-                    // Get latest workflow by name
-                    let workflows = workflows.read().await;
-
-                    for workflow in workflows.values() {
-                        if workflow.name() == Some(&name) {
-                            let created_at = chrono::Utc::now();
-                            let hash = Flow::hash(workflow);
-                            return Ok(Some(WorkflowWithMetadata {
-                                workflow: workflow.clone(),
-                                workflow_hash: hash,
-                                created_at,
-                                label_info: None,
-                            }));
-                        }
-                    }
+                    // TODO: Implement name-based workflow lookup with blob storage
+                    // For now, return None since we no longer maintain a separate workflow index
                     Ok(None)
                 }
             }
@@ -387,9 +364,9 @@ impl StateStore for InMemoryStateStore {
         &self,
         name: &str,
         label: &str,
-        workflow_hash: FlowHash,
+        flow_id: BlobId,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let workflow_labels = self.workflow_labels.clone();
+        let workflow_labels = self.flow_labels.clone();
         let name = name.to_string();
         let label = label.to_string();
 
@@ -398,7 +375,7 @@ impl StateStore for InMemoryStateStore {
             let workflow_label = WorkflowLabelMetadata {
                 name: name.clone(),
                 label: label.clone(),
-                workflow_hash,
+                flow_id,
                 created_at: now,
                 updated_at: now,
             };
@@ -415,7 +392,7 @@ impl StateStore for InMemoryStateStore {
         &self,
         name: &str,
     ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>> {
-        let workflow_labels = self.workflow_labels.clone();
+        let workflow_labels = self.flow_labels.clone();
         let name = name.to_string();
 
         async move {
@@ -430,15 +407,15 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn list_workflow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
-        let workflows = self.workflows.clone();
+    fn list_flow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
+        let flows = self.flows.clone();
 
         async move {
-            let workflows = workflows.read().await;
+            let flows = flows.read().await;
             let mut names = std::collections::HashSet::new();
 
-            for workflow in workflows.values() {
-                if let Some(name) = workflow.name() {
+            for flow in flows.values() {
+                if let Some(name) = flow.name() {
                     names.insert(name.to_owned());
                 }
             }
@@ -455,7 +432,7 @@ impl StateStore for InMemoryStateStore {
         name: &str,
         label: &str,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let workflow_labels = self.workflow_labels.clone();
+        let workflow_labels = self.flow_labels.clone();
         let name = name.to_string();
         let label = label.to_string();
 
@@ -472,7 +449,7 @@ impl StateStore for InMemoryStateStore {
     fn create_run(
         &self,
         run_id: Uuid,
-        workflow_hash: FlowHash,
+        flow_id: BlobId,
         workflow_name: Option<&str>,
         workflow_label: Option<&str>,
         debug_mode: bool,
@@ -483,7 +460,7 @@ impl StateStore for InMemoryStateStore {
         let execution_details = RunDetails {
             summary: RunSummary {
                 run_id,
-                flow_hash: workflow_hash,
+                flow_id,
                 flow_name: workflow_name.map(|s| s.to_string()),
                 flow_label: workflow_label.map(|s| s.to_string()),
                 status: ExecutionStatus::Running,
@@ -564,14 +541,14 @@ impl StateStore for InMemoryStateStore {
                     }
 
                     // Apply workflow name filter
-                    if let Some(ref workflow_name) = filters.workflow_name {
+                    if let Some(ref workflow_name) = filters.flow_name {
                         if exec.summary.flow_name.as_ref() != Some(workflow_name) {
                             return false;
                         }
                     }
 
                     // Apply workflow label filter
-                    if let Some(ref workflow_label) = filters.workflow_label {
+                    if let Some(ref workflow_label) = filters.flow_label {
                         if exec.summary.flow_label.as_ref() != Some(workflow_label) {
                             return false;
                         }
@@ -753,18 +730,24 @@ mod tests {
         let value_ref = ValueRef::new(test_data.clone());
 
         // Create blob
-        let blob_id = store.put_blob(value_ref.clone()).await.unwrap();
+        let blob_id = store
+            .put_blob(value_ref.clone(), stepflow_core::BlobType::Data)
+            .await
+            .unwrap();
 
         // Blob ID should be deterministic (SHA-256 hash)
         assert_eq!(blob_id.as_str().len(), 64); // SHA-256 produces 64 hex characters
 
         // Retrieve blob
         let retrieved = store.get_blob(&blob_id).await.unwrap();
-        assert_eq!(retrieved.as_ref(), &test_data);
+        assert_eq!(retrieved.data().as_ref(), &test_data);
 
         // Same content should produce same blob ID
         let value_ref2 = ValueRef::new(test_data.clone());
-        let blob_id2 = store.put_blob(value_ref2).await.unwrap();
+        let blob_id2 = store
+            .put_blob(value_ref2, stepflow_core::BlobType::Data)
+            .await
+            .unwrap();
         assert_eq!(blob_id, blob_id2);
 
         // Non-existent blob should return error

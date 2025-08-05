@@ -13,9 +13,8 @@
 
 use std::path::Path;
 use std::{pin::Pin, sync::Arc};
-use stepflow_core::workflow::FlowHash;
 use stepflow_core::{
-    FlowResult,
+    BlobId, FlowResult,
     workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::ExecutionContext;
@@ -61,7 +60,7 @@ impl stepflow_plugin::Context for MockExecutor {
     fn submit_flow(
         &self,
         _flow: Arc<Flow>,
-        _workflow_hash: FlowHash,
+        _flow_id: BlobId,
         _input: ValueRef,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
         Box::pin(async { Ok(Uuid::new_v4()) })

@@ -15,7 +15,7 @@
 
 from .context import StepflowContext
 from .flow_builder import FlowBuilder, StepHandle
-from .generated_protocol import (
+from .generated_flow import (
     ErrorAction,
     OnErrorDefault,
     OnErrorFail,

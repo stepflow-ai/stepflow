@@ -13,7 +13,6 @@
 
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
-use stepflow_core::workflow::Flow;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
@@ -36,11 +35,9 @@ impl MethodHandler for EvaluateFlowHandler {
             request,
             response_tx,
             |request: crate::protocol::EvaluateFlowParams| async move {
-                let flow = Arc::new(request.flow);
-                let workflow_hash = Flow::hash(&flow);
-
+                // Execute the flow using the shared utility
                 let result = context
-                    .execute_flow(flow, workflow_hash, request.input)
+                    .execute_flow_by_id(&request.flow_id, request.input)
                     .await
                     .map_err(|e| {
                         tracing::error!("Failed to evaluate flow: {e}");

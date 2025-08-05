@@ -38,6 +38,7 @@ steps:
             b: { type: integer }
           required: [a, b]
         code: "input['a'] + input['b']"
+      blob_type: "data"
 
   # Create UDF for multiplication
   - id: create_multiplication_udf
@@ -51,6 +52,7 @@ steps:
             b: { type: integer }
           required: [a, b]
         code: "input['a'] * input['b']"
+      blob_type: "data"
 
   # Calculate m + n using UDF
   - id: m_plus_n

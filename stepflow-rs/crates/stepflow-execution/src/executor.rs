@@ -17,7 +17,7 @@ use crate::workflow_executor::{WorkflowExecutor, execute_workflow};
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
-use stepflow_core::workflow::FlowHash;
+use stepflow_core::BlobId;
 use stepflow_core::{
     FlowError, FlowResult,
     workflow::{Component, Flow, ValueRef},
@@ -29,12 +29,12 @@ use uuid::Uuid;
 
 type FutureFlowResult = futures::future::Shared<oneshot::Receiver<FlowResult>>;
 
-/// Main executor of StepFlow workflows.
+/// Main executor of StepFlow flows.
 pub struct StepFlowExecutor {
     state_store: Arc<dyn StateStore>,
     working_directory: PathBuf,
     plugin_router: PluginRouter,
-    /// Pending workflows and their result futures.
+    /// Pending flows and their result futures.
     // TODO: Should treat this as a cache and evict old executions.
     // TODO: Should write execution state to the state store for persistence.
     pending: Arc<RwLock<HashMap<Uuid, FutureFlowResult>>>,
@@ -146,22 +146,22 @@ impl StepFlowExecutor {
             .ok_or_else(|| error_stack::report!(ExecutionError::ExecutionNotFound(run_id)))?;
 
         // Extract workflow hash from execution details
-        let flow_hash = execution.summary.flow_hash;
+        let flow_id = execution.summary.flow_id;
 
         let workflow = self
             .state_store
-            .get_workflow(&flow_hash)
+            .get_flow(&flow_id)
             .await
             .change_context(ExecutionError::StateError)?
             .ok_or_else(|| {
-                error_stack::report!(ExecutionError::WorkflowNotFound(flow_hash.clone()))
+                error_stack::report!(ExecutionError::WorkflowNotFound(flow_id.clone()))
             })?;
 
         // Create a new WorkflowExecutor for this debug session
         let mut workflow_executor = WorkflowExecutor::new(
             self.executor(),
             workflow,
-            flow_hash,
+            flow_id,
             run_id,
             execution.input,
             self.state_store.clone(),
@@ -189,7 +189,7 @@ impl Context for StepFlowExecutor {
     ///
     /// # Arguments
     /// * `flow` - The workflow to execute
-    /// * 'flow_hash` - Hash of the workflow
+    /// * 'flow_id` - ID of the workflow
     /// * `input` - The input value for the workflow
     ///
     /// # Returns
@@ -197,7 +197,7 @@ impl Context for StepFlowExecutor {
     fn submit_flow(
         &self,
         flow: Arc<Flow>,
-        flow_hash: FlowHash,
+        flow_id: BlobId,
         input: ValueRef,
     ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
         let executor = self.executor();
@@ -218,7 +218,7 @@ impl Context for StepFlowExecutor {
                 let state_store = executor.state_store.clone();
 
                 let result =
-                    execute_workflow(executor, flow, flow_hash, run_id, input, state_store).await;
+                    execute_workflow(executor, flow, flow_id, run_id, input, state_store).await;
 
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,
@@ -310,13 +310,17 @@ mod tests {
         let value_ref = ValueRef::new(test_data.clone());
 
         // Create blob through executor context
-        let blob_id = executor.state_store().put_blob(value_ref).await.unwrap();
+        let blob_id = executor
+            .state_store()
+            .put_blob(value_ref, stepflow_core::BlobType::Data)
+            .await
+            .unwrap();
 
         // Retrieve blob through executor context
         let retrieved = executor.state_store().get_blob(&blob_id).await.unwrap();
 
         // Verify data matches
-        assert_eq!(retrieved.as_ref(), &test_data);
+        assert_eq!(retrieved.data().as_ref(), &test_data);
     }
 
     #[tokio::test]
@@ -332,16 +336,19 @@ mod tests {
         let test_data = json!({"custom": "state store test"});
         let blob_id = executor
             .state_store()
-            .put_blob(ValueRef::new(test_data.clone()))
+            .put_blob(
+                ValueRef::new(test_data.clone()),
+                stepflow_core::BlobType::Data,
+            )
             .await
             .unwrap();
 
         // Verify we can retrieve through the direct state store
         let retrieved_direct = state_store.get_blob(&blob_id).await.unwrap();
-        assert_eq!(retrieved_direct.as_ref(), &test_data);
+        assert_eq!(retrieved_direct.data().as_ref(), &test_data);
 
         // And through the executor context
         let retrieved_executor = executor.state_store().get_blob(&blob_id).await.unwrap();
-        assert_eq!(retrieved_executor.as_ref(), &test_data);
+        assert_eq!(retrieved_executor.data().as_ref(), &test_data);
     }
 }

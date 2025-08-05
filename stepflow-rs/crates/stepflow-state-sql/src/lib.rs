@@ -27,7 +27,7 @@ mod tests {
     use serde_json::json;
     use stepflow_core::values::ValueTemplate;
     use stepflow_core::workflow::FlowV1;
-    use stepflow_core::{FlowResult, workflow::ValueRef};
+    use stepflow_core::{BlobType, FlowResult, workflow::ValueRef};
     use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
 
@@ -40,12 +40,15 @@ mod tests {
         let value_ref = ValueRef::new(test_data.clone());
 
         // Store blob
-        let blob_id = store.put_blob(value_ref.clone()).await.unwrap();
+        let blob_id = store
+            .put_blob(value_ref.clone(), stepflow_core::BlobType::Data)
+            .await
+            .unwrap();
 
         // Retrieve blob
         let retrieved = store.get_blob(&blob_id).await.unwrap();
 
-        assert_eq!(retrieved.as_ref(), &test_data);
+        assert_eq!(retrieved.data().as_ref(), &test_data);
     }
 
     #[tokio::test]
@@ -54,7 +57,7 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         // First store a workflow
-        let workflow = stepflow_core::workflow::Flow::V1(FlowV1 {
+        let flow = stepflow_core::workflow::Flow::V1(FlowV1 {
             name: None,
             description: None,
             input_schema: None,
@@ -73,16 +76,17 @@ mod tests {
             test: None,
             examples: None,
         });
-        let workflow_arc = std::sync::Arc::new(workflow);
-        let workflow_hash = store.store_workflow(workflow_arc.clone()).await.unwrap();
+        let flow_arc = std::sync::Arc::new(flow);
+        let flow_data = ValueRef::new(serde_json::to_value(flow_arc.as_ref()).unwrap());
+        let flow_id = store.put_blob(flow_data, BlobType::Flow).await.unwrap();
 
         // Then create the execution
         store
             .create_run(
                 run_id,
-                workflow_hash,
-                None,                     // workflow_name
-                None,                     // workflow_label
+                flow_id,
+                None,                     // flow_name
+                None,                     // flow_label
                 false,                    // debug_mode
                 ValueRef::new(json!({})), // input
             )
@@ -124,8 +128,14 @@ mod tests {
         let value_ref = ValueRef::new(test_data);
 
         // Store the same data twice
-        let blob_id1 = store.put_blob(value_ref.clone()).await.unwrap();
-        let blob_id2 = store.put_blob(value_ref).await.unwrap();
+        let blob_id1 = store
+            .put_blob(value_ref.clone(), stepflow_core::BlobType::Data)
+            .await
+            .unwrap();
+        let blob_id2 = store
+            .put_blob(value_ref, stepflow_core::BlobType::Data)
+            .await
+            .unwrap();
 
         // Should get the same ID (deduplication)
         assert_eq!(blob_id1, blob_id2);

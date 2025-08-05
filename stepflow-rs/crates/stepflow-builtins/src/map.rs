@@ -82,7 +82,9 @@ impl BuiltinComponent for MapComponent {
             .change_context(BuiltinError::InvalidInput)?;
 
         let flow = Arc::new(input.workflow);
-        let workflow_hash = Flow::hash(&flow);
+        // Generate flow ID from content
+        let flow_id =
+            stepflow_core::BlobId::from_flow(&flow).change_context(BuiltinError::Internal)?;
 
         let mut successful = 0u32;
         let mut failed = 0u32;
@@ -92,11 +94,11 @@ impl BuiltinComponent for MapComponent {
         let tasks = input.items.into_iter().map(|item| {
             let context = context.clone();
             let flow = flow.clone();
-            let workflow_hash = workflow_hash.clone();
+            let flow_id = flow_id.clone();
 
             tokio::spawn(async move {
                 context
-                    .execute_flow(flow, workflow_hash, item)
+                    .execute_flow(flow, flow_id, item)
                     .await
                     .change_context(BuiltinError::Internal)
             })

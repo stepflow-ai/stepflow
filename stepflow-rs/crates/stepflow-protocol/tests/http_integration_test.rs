@@ -21,7 +21,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use stepflow_core::FlowResult;
-use stepflow_core::workflow::{Flow, FlowHash, ValueRef};
+use stepflow_core::{
+    BlobId,
+    workflow::{Flow, ValueRef},
+};
 use stepflow_plugin::{Context, ExecutionContext, Plugin as _, PluginConfig as _, PluginError};
 use stepflow_protocol::{StepflowPluginConfig, StepflowTransport};
 use stepflow_state::{InMemoryStateStore, StateStore};
@@ -54,7 +57,7 @@ impl Context for MockContext {
     fn submit_flow(
         &self,
         _flow: Arc<Flow>,
-        _flow_hash: FlowHash,
+        _flow_id: BlobId,
         _input: ValueRef,
     ) -> Pin<Box<dyn Future<Output = Result<Uuid, error_stack::Report<PluginError>>> + Send>> {
         Box::pin(async { Err(PluginError::Execution.into()) })

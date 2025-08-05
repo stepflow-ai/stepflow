@@ -20,14 +20,11 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     // Create migration tracking table first
     create_migrations_table(pool).await?;
 
-    // Apply the collapsed schema migration
-    apply_migration(pool, "001_create_initial_schema", || {
-        create_complete_schema(pool)
+    // Apply the unified schema migration
+    apply_migration(pool, "001_create_unified_schema", || {
+        create_unified_schema(pool)
     })
     .await?;
-
-    // Apply the step info migration
-    apply_migration(pool, "002_add_step_info", || add_step_info_table(pool)).await?;
 
     Ok(())
 }
@@ -88,43 +85,36 @@ where
     Ok(())
 }
 
-/// Create the complete database schema in one migration
-async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
+/// Create the unified database schema in one migration
+async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
     // Create all tables with their final schema
     let table_commands = vec![
-        // Blobs table for content-addressable storage
+        // Unified blobs table for content-addressable storage (both data and flows)
         r#"
             CREATE TABLE IF NOT EXISTS blobs (
                 id TEXT PRIMARY KEY,
                 data TEXT NOT NULL,
+                blob_type TEXT NOT NULL DEFAULT 'data',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         "#,
-        // Workflows table for content-addressable workflow storage
+        // Runs table with flow metadata
         r#"
-            CREATE TABLE IF NOT EXISTS workflows (
-                hash TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                first_seen DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        "#,
-        // Executions table with workflow metadata
-        r#"
-            CREATE TABLE IF NOT EXISTS executions (
+            CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
-                workflow_hash TEXT,
-                workflow_name TEXT,        -- from workflow.name field for display
-                workflow_label TEXT,       -- label used for execution (if any)
+                flow_id TEXT,
+                flow_name TEXT,        -- from flow.name field for display
+                flow_label TEXT,       -- label used for execution (if any)
                 status TEXT DEFAULT 'running',
                 debug_mode BOOLEAN DEFAULT FALSE,
                 input_json TEXT,
                 result_json TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 completed_at DATETIME,
-                FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
+                FOREIGN KEY (flow_id) REFERENCES blobs(id)
             )
         "#,
-        // Step results table for workflow step execution results
+        // Step results table for flow step execution results
         r#"
             CREATE TABLE IF NOT EXISTS step_results (
                 run_id TEXT NOT NULL,
@@ -133,19 +123,33 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 result TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (run_id, step_index),
-                FOREIGN KEY (run_id) REFERENCES executions(id)
+                FOREIGN KEY (run_id) REFERENCES runs(id)
             )
         "#,
-        // Workflow labels table for named workflow versions
+        // Step info table for tracking step execution metadata
         r#"
-            CREATE TABLE IF NOT EXISTS workflow_labels (
-                name TEXT NOT NULL,  -- from workflow.name field
+            CREATE TABLE IF NOT EXISTS step_info (
+                run_id TEXT NOT NULL,
+                step_index INTEGER NOT NULL,
+                step_id TEXT NOT NULL,
+                component TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (run_id, step_index),
+                FOREIGN KEY (run_id) REFERENCES runs(id)
+            )
+        "#,
+        // Flow labels table for named flow versions
+        r#"
+            CREATE TABLE IF NOT EXISTS flow_labels (
+                name TEXT NOT NULL,  -- from flow.name field
                 label TEXT NOT NULL, -- like "production", "staging", "latest"
-                workflow_hash TEXT NOT NULL,
+                flow_id TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (name, label),
-                FOREIGN KEY (workflow_hash) REFERENCES workflows(hash)
+                FOREIGN KEY (flow_id) REFERENCES blobs(id)
             )
         "#,
     ];
@@ -160,57 +164,24 @@ async fn create_complete_schema(pool: &SqlitePool) -> Result<(), StateError> {
 
     // Create all indexes for optimal performance
     let index_commands = vec![
+        // Blob indexes
+        "CREATE INDEX IF NOT EXISTS idx_blobs_type ON blobs(blob_type)",
         // Step results indexes
         "CREATE INDEX IF NOT EXISTS idx_step_results_step_id ON step_results(run_id, step_id)",
-        // Executions indexes
-        "CREATE INDEX IF NOT EXISTS idx_executions_workflow_hash ON executions(workflow_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status)",
-        "CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions(created_at)",
+        // Step info indexes
+        "CREATE INDEX IF NOT EXISTS idx_step_info_run_id ON step_info(run_id)",
+        "CREATE INDEX IF NOT EXISTS idx_step_info_status ON step_info(run_id, status)",
+        // Run indexes
+        "CREATE INDEX IF NOT EXISTS idx_runs_flow_id ON runs(flow_id)",
+        "CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)",
+        "CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at)",
         // Workflow labels indexes
-        "CREATE INDEX IF NOT EXISTS idx_workflow_labels_name ON workflow_labels(name)",
-        "CREATE INDEX IF NOT EXISTS idx_workflow_labels_workflow_hash ON workflow_labels(workflow_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_workflow_labels_created_at ON workflow_labels(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_flow_labels_name ON flow_labels(name)",
+        "CREATE INDEX IF NOT EXISTS idx_flow_labels_flow_id ON flow_labels(flow_id)",
+        "CREATE INDEX IF NOT EXISTS idx_flow_labels_created_at ON flow_labels(created_at)",
     ];
 
     // Execute index creation commands
-    for sql in index_commands {
-        sqlx::query(sql)
-            .execute(pool)
-            .await
-            .change_context(StateError::Initialization)?;
-    }
-
-    Ok(())
-}
-
-/// Create step info table
-async fn add_step_info_table(pool: &SqlitePool) -> Result<(), StateError> {
-    // Create step info table
-    let step_info_sql = r#"
-        CREATE TABLE IF NOT EXISTS step_info (
-            run_id TEXT NOT NULL,
-            step_index INTEGER NOT NULL,
-            step_id TEXT NOT NULL,
-            component TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (run_id, step_index),
-            FOREIGN KEY (run_id) REFERENCES executions(id)
-        )
-    "#;
-
-    sqlx::query(step_info_sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    // Create indexes for performance
-    let index_commands = vec![
-        "CREATE INDEX IF NOT EXISTS idx_step_info_run_id ON step_info(run_id)",
-        "CREATE INDEX IF NOT EXISTS idx_step_info_status ON step_info(run_id, status)",
-    ];
-
     for sql in index_commands {
         sqlx::query(sql)
             .execute(pool)

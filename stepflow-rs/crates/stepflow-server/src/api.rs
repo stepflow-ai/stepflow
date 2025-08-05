@@ -36,7 +36,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
 #[openapi(
     info(
         title = "StepFlow API",
-        description = "API for StepFlow workflows and executions",
+        description = "API for StepFlow flows and runs",
         version = env!("CARGO_PKG_VERSION")
     ),
     tags(

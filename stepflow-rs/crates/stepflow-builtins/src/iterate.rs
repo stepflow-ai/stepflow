@@ -91,7 +91,9 @@ impl BuiltinComponent for IterateComponent {
             .change_context(BuiltinError::InvalidInput)?;
 
         let flow = Arc::new(input.flow);
-        let workflow_hash = Flow::hash(&flow);
+        // Generate flow ID from content
+        let flow_id =
+            stepflow_core::BlobId::from_flow(&flow).change_context(BuiltinError::Internal)?;
         let mut current_input = input.initial_input;
         let mut iterations = 0;
 
@@ -110,7 +112,7 @@ impl BuiltinComponent for IterateComponent {
 
             // Execute the workflow
             let result = context
-                .execute_flow(flow.clone(), workflow_hash.clone(), current_input)
+                .execute_flow(flow.clone(), flow_id.clone(), current_input)
                 .await
                 .change_context(BuiltinError::Internal)?;
 

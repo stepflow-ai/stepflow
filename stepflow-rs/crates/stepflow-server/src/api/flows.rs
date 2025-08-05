@@ -17,12 +17,15 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_analysis::{AnalysisResult, FlowAnalysis, analyze_workflow_dependencies};
-use stepflow_core::workflow::{Flow, FlowHash};
+use stepflow_analysis::{AnalysisResult, FlowAnalysis, analyze_flow_dependencies};
+use stepflow_core::{
+    BlobId, BlobType,
+    workflow::{Flow, ValueRef},
+};
 use stepflow_execution::StepFlowExecutor;
 use utoipa::ToSchema;
 
-use crate::error::{ErrorResponse, ServerError};
+use crate::error::ErrorResponse;
 
 /// Request to store a flow
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -36,22 +39,22 @@ pub struct StoreFlowRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreFlowResponse {
-    /// The hash of the stored flow (only present if no fatal diagnostics)
+    /// The ID of the stored flow (only present if no fatal diagnostics)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_hash: Option<FlowHash>,
+    pub flow_id: Option<BlobId>,
     /// Analysis result with diagnostics and optional analysis
     #[serde(flatten)]
     pub analysis_result: AnalysisResult,
 }
 
-/// Response containing a flow definition and its hash
+/// Response containing a flow definition and its ID
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowResponse {
     /// The flow definition
     pub flow: Arc<Flow>,
-    /// The flow hash
-    pub flow_hash: FlowHash,
+    /// The flow ID
+    pub flow_id: BlobId,
     /// All available examples (includes both examples and test cases)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub all_examples: Vec<stepflow_core::workflow::ExampleInput>,
@@ -75,34 +78,41 @@ pub async fn store_flow(
     Json(req): Json<StoreFlowRequest>,
 ) -> Result<Json<StoreFlowResponse>, ErrorResponse> {
     let flow = req.flow;
-    let flow_hash = Flow::hash(&flow);
 
-    // First validate the workflow
-    let analysis_result = analyze_workflow_dependencies(flow.clone(), flow_hash.clone())?;
+    // First validate the workflow - we need a temporary ID for analysis
+    let temp_flow_id = BlobId::from_flow(flow.as_ref()).unwrap();
+    let analysis_result = analyze_flow_dependencies(flow.clone(), temp_flow_id.clone())?;
 
     // Determine if we can store the flow (no fatal diagnostics)
-    let stored_flow_hash = if analysis_result.has_fatal_diagnostics() {
+    let stored_flow_id = if analysis_result.has_fatal_diagnostics() {
         // Validation failed: don't store the flow
         None
     } else {
-        // Store the flow
+        // Store the flow as a blob
         let state_store = executor.state_store();
-        state_store.store_workflow(flow.clone()).await?;
-        Some(flow_hash)
+        let flow_data = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
+        let flow_id = state_store
+            .put_blob(flow_data, BlobType::Flow)
+            .await
+            .map_err(|_| ErrorResponse {
+                code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                message: "Failed to store flow".to_string(),
+            })?;
+        Some(flow_id)
     };
 
     Ok(Json(StoreFlowResponse {
-        flow_hash: stored_flow_hash,
+        flow_id: stored_flow_id,
         analysis_result,
     }))
 }
 
-/// Get a flow by its hash
+/// Get a flow by its ID
 #[utoipa::path(
     get,
-    path = "/flows/{flow_hash}",
+    path = "/flows/{flow_id}",
     params(
-        ("flow_hash" = String, Path, description = "Flow hash to retrieve")
+        ("flow_id" = String, Path, description = "Flow ID to retrieve")
     ),
     responses(
         (status = 200, description = "Flow retrieved successfully", body = FlowResponse),
@@ -112,18 +122,38 @@ pub async fn store_flow(
 )]
 pub async fn get_flow(
     State(executor): State<Arc<StepFlowExecutor>>,
-    Path(flow_hash): Path<FlowHash>,
+    Path(flow_id): Path<BlobId>,
 ) -> Result<Json<FlowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
-    let flow = state_store
-        .get_workflow(&flow_hash)
-        .await?
-        .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(flow_hash.clone())))?;
+    // Retrieve the flow from the blob store
+    let blob_data = state_store
+        .get_blob(&flow_id)
+        .await
+        .map_err(|_| ErrorResponse {
+            code: axum::http::StatusCode::NOT_FOUND,
+            message: "Flow not found".to_string(),
+        })?;
+
+    // Check if it's a flow blob and deserialize
+    if blob_data.blob_type() != BlobType::Flow {
+        return Err(ErrorResponse {
+            code: axum::http::StatusCode::BAD_REQUEST,
+            message: "Blob is not a flow".to_string(),
+        });
+    }
+
+    let flow: Flow =
+        serde_json::from_value(blob_data.data().as_ref().clone()).map_err(|_| ErrorResponse {
+            code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Failed to deserialize flow".to_string(),
+        })?;
+
+    let flow = Arc::new(flow);
 
     // Generate analysis for the flow.
     // TODO: Cache this to avoid re-analysis.
-    let analysis_result = analyze_workflow_dependencies(flow.clone(), flow_hash.clone())?;
+    let analysis_result = analyze_flow_dependencies(flow.clone(), flow_id.clone())?;
 
     let analysis = match &analysis_result.analysis {
         Some(analysis) => analysis.clone(),
@@ -142,17 +172,17 @@ pub async fn get_flow(
     Ok(Json(FlowResponse {
         all_examples: flow.get_all_examples(),
         flow,
-        flow_hash,
+        flow_id,
         analysis,
     }))
 }
 
-/// Delete a flow by hash
+/// Delete a flow by ID
 #[utoipa::path(
     delete,
-    path = "/flows/{flow_hash}",
+    path = "/flows/{flow_id}",
     params(
-        ("flow_hash" = String, Path, description = "Flow hash to delete")
+        ("flow_id" = String, Path, description = "Flow ID to delete")
     ),
     responses(
         (status = 204, description = "Flow deleted successfully"),
@@ -163,9 +193,9 @@ pub async fn get_flow(
 )]
 pub async fn delete_flow(
     State(_executor): State<Arc<StepFlowExecutor>>,
-    Path(_flow_hash): Path<FlowHash>,
+    Path(_flow_id): Path<BlobId>,
 ) -> Result<(), ErrorResponse> {
     // TODO: Implement proper flow deletion with run checks
-    // For now, just return success since the state store doesn't have delete_workflow method
+    // For now, just return success since blobs are content-addressed and can't be easily deleted
     Ok(())
 }

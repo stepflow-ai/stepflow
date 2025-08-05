@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{
-    FlowResult,
-    workflow::{Flow, FlowHash, ValueRef},
+    BlobId, FlowResult,
+    workflow::{Flow, ValueRef},
 };
 use stepflow_execution::StepFlowExecutor;
 use stepflow_state::{RunDetails, RunSummary};
@@ -35,7 +35,7 @@ use crate::error::{ErrorResponse, ServerError};
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunRequest {
     /// The flow hash to execute
-    pub flow_hash: FlowHash,
+    pub flow_id: BlobId,
     /// Input data for the flow
     pub input: ValueRef,
     /// Whether to run in debug mode (pauses execution for step-by-step control)
@@ -99,7 +99,7 @@ pub struct RunFlowResponse {
     /// The flow definition
     pub flow: Arc<Flow>,
     /// The flow hash
-    pub flow_hash: FlowHash,
+    pub flow_id: BlobId,
 }
 
 /// Create and execute a flow by hash
@@ -124,17 +124,15 @@ pub async fn create_run(
 
     // Get the flow from the state store
     let flow = state_store
-        .get_workflow(&req.flow_hash)
+        .get_flow(&req.flow_id)
         .await?
-        .ok_or_else(|| {
-            error_stack::report!(ServerError::WorkflowNotFound(req.flow_hash.clone()))
-        })?;
+        .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
 
     // Create execution record
     state_store
         .create_run(
             run_id,
-            req.flow_hash.clone(),
+            req.flow_id.clone(),
             flow.name(), // Use flow name if available
             None,        // No flow label for hash-based execution
             req.debug,
@@ -144,7 +142,7 @@ pub async fn create_run(
 
     let debug_mode = req.debug;
     let input = req.input;
-    let flow_hash = req.flow_hash;
+    let flow_id = req.flow_id;
 
     if debug_mode {
         // In debug mode, pause execution by default
@@ -165,7 +163,7 @@ pub async fn create_run(
     use stepflow_plugin::Context as _;
 
     // Submit the flow for execution
-    let submitted_run_id = executor.submit_flow(flow, flow_hash, input).await?;
+    let submitted_run_id = executor.submit_flow(flow, flow_id, input).await?;
 
     // Wait for the result (synchronous execution for the HTTP endpoint)
     let flow_result = executor.flow_result(submitted_run_id).await?;
@@ -258,18 +256,16 @@ pub async fn get_run_flow(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
-    let workflow_hash = execution.summary.flow_hash;
+    let workflow_id = execution.summary.flow_id;
     // Get the workflow from the state store
     let workflow = state_store
-        .get_workflow(&workflow_hash)
+        .get_flow(&workflow_id)
         .await?
-        .ok_or_else(|| {
-            error_stack::report!(ServerError::WorkflowNotFound(workflow_hash.clone()))
-        })?;
+        .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(workflow_id.clone())))?;
 
     Ok(Json(RunFlowResponse {
         flow: workflow,
-        flow_hash: workflow_hash,
+        flow_id: workflow_id,
     }))
 }
 
@@ -325,15 +321,13 @@ pub async fn get_run_steps(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
-    let workflow_hash = execution.summary.flow_hash;
+    let workflow_id = execution.summary.flow_id;
 
     // Get the workflow from the state store
     let workflow = state_store
-        .get_workflow(&workflow_hash)
+        .get_flow(&workflow_id)
         .await?
-        .ok_or_else(|| {
-            error_stack::report!(ServerError::WorkflowNotFound(workflow_hash.clone()))
-        })?;
+        .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(workflow_id.clone())))?;
 
     // Get step results for completed steps
     let step_results = state_store.list_step_results(run_id).await?;

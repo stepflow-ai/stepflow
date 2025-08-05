@@ -242,12 +242,12 @@ async fn test_flow_crud_operations() {
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    let flow_hash = store_response["flowHash"].as_str().unwrap();
-    assert!(!flow_hash.is_empty());
+    let flow_id = store_response["flowId"].as_str().unwrap();
+    assert!(!flow_id.is_empty());
 
     // Get flow
     let get_request = Request::builder()
-        .uri(format!("/api/v1/flows/{flow_hash}"))
+        .uri(format!("/api/v1/flows/{flow_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -259,12 +259,12 @@ async fn test_flow_crud_operations() {
         .unwrap();
     let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(get_response["flowHash"], flow_hash);
+    assert_eq!(get_response["flowId"], flow_id);
     assert_eq!(get_response["flow"]["name"], "test_workflow");
 
     // Check that analysis is included in the get_flow response
     assert!(get_response["analysis"].is_object());
-    assert_eq!(get_response["analysis"]["flowHash"], flow_hash);
+    assert_eq!(get_response["analysis"]["flowId"], flow_id);
     assert!(get_response["analysis"]["steps"].is_object());
 }
 
@@ -295,7 +295,7 @@ async fn test_hash_based_execution() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let flow_hash = store_response["flowHash"].as_str().unwrap();
+    let flow_id = store_response["flowId"].as_str().unwrap();
 
     // Execute flow using hash (non-debug mode)
     let execute_request = Request::builder()
@@ -304,7 +304,7 @@ async fn test_hash_based_execution() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "flowHash": flow_hash,
+                "flowId": flow_id,
                 "input": {"message": "test input"},
                 "debug": false
             }))
@@ -353,7 +353,7 @@ async fn test_run_details() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let flow_hash = store_response["flowHash"].as_str().unwrap();
+    let flow_id = store_response["flowId"].as_str().unwrap();
 
     let execute_request = Request::builder()
         .uri("/api/v1/runs")
@@ -361,7 +361,7 @@ async fn test_run_details() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "flowHash": flow_hash,
+                "flowId": flow_id,
                 "input": {"message": "test input"},
                 "debug": false
             }))
@@ -391,7 +391,7 @@ async fn test_run_details() {
     let details_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(details_response["runId"], run_id);
-    assert_eq!(details_response["flowHash"], flow_hash);
+    assert_eq!(details_response["flowId"], flow_id);
     assert_eq!(details_response["status"], "completed");
     assert!(details_response["input"].is_object());
 
@@ -409,7 +409,7 @@ async fn test_run_details() {
         .unwrap();
     let flow_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(flow_response["flowHash"], flow_hash);
+    assert_eq!(flow_response["flowId"], flow_id);
     assert_eq!(flow_response["flow"]["name"], "test_workflow");
 
     // Get run steps
@@ -608,7 +608,7 @@ async fn test_status_updates_during_regular_execution() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let flow_hash = store_response["flowHash"].as_str().unwrap();
+    let flow_id = store_response["flowId"].as_str().unwrap();
 
     // Execute workflow in regular mode
     let execute_request = Request::builder()
@@ -617,7 +617,7 @@ async fn test_status_updates_during_regular_execution() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "flowHash": flow_hash,
+                "flowId": flow_id,
                 "input": {},
                 "debug": false
             }))
@@ -730,7 +730,7 @@ async fn test_status_updates_during_debug_execution() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let flow_hash = store_response["flowHash"].as_str().unwrap();
+    let flow_id = store_response["flowId"].as_str().unwrap();
 
     // Execute workflow in debug mode
     let execute_request = Request::builder()
@@ -739,7 +739,7 @@ async fn test_status_updates_during_debug_execution() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "flowHash": flow_hash,
+                "flowId": flow_id,
                 "input": {},
                 "debug": true
             }))
@@ -851,7 +851,7 @@ async fn test_status_transitions_with_error_handling() {
         .await
         .unwrap();
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let flow_hash = store_response["flowHash"].as_str().unwrap();
+    let flow_id = store_response["flowId"].as_str().unwrap();
 
     // Execute workflow (should fail)
     let execute_request = Request::builder()
@@ -860,7 +860,7 @@ async fn test_status_transitions_with_error_handling() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
-                "flowHash": flow_hash,
+                "flowId": flow_id,
                 "input": {},
                 "debug": false
             }))

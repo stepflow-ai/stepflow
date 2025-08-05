@@ -11,7 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Value handling and resolution for StepFlow workflows.
+//! Value handling and resolution for StepFlow flows.
 //!
 //! This module contains all value-related functionality including:
 //! - `ValueRef`: References to concrete JSON values
