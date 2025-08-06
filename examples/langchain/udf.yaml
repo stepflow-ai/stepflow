@@ -29,6 +29,12 @@ steps:
     component: /builtin/put_blob
     input:
       data:
+        input_schema:
+          type: object
+          properties:
+            text:
+              type: string
+          required: [text]
         # Python code that creates a LangChain runnable for text processing
         code: |
           from langchain_core.runnables import RunnableLambda
@@ -57,6 +63,7 @@ steps:
           
           # The UDF must assign the runnable to 'result'
           result = RunnableLambda(process_text)
+      blob_type: "data"
 
   # Execute the UDF code that creates a LangChain runnable
   - id: process_text_with_udf
@@ -86,9 +93,9 @@ test:
         outcome: success
         result:
           text_processing_result:
-            processed_text: "THIS DEMONSTRATES self-contained USER-DEFINED LANGCHAIN runnables!"
-            word_count: 7
-            long_word_count: 4
-            short_word_count: 3
+            processed_text: "THIS DEMONSTRATES SELF-CONTAINED USER-DEFINED LANGCHAIN RUNNABLES!"
+            word_count: 6
+            long_word_count: 6
+            short_word_count: 0
             processed_by: "custom_udf_processor"
             original_length: 66

@@ -17,6 +17,15 @@ excludes:
   - py.typed
   - uv.lock
   - Cargo.lock
+  - __pycache__/.*
+  - .*\.pyc
+  - .*\.pyo
+  - .*\.pyd
+  - .*\.egg-info/.*
+  - \.pytest_cache/.*
+  - \.mypy_cache/.*
+  - \.venv/.*
+  - venv/.*
 
 licenses:
   - files: any

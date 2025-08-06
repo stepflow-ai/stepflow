@@ -65,7 +65,7 @@ class StepflowStdioServer:
 
     def __getattr__(self, name):
         """Delegate any unknown attribute access to the underlying server.
-        
+
         This allows LangChain methods like langchain_component to work
         even if they're added dynamically to the server class.
         """
@@ -75,7 +75,9 @@ class StepflowStdioServer:
             if callable(attr):
                 return attr
             return attr
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{name}'"
+        )
 
     async def _handle_incoming_message(self, request_bytes: bytes):
         """Handle an incoming message in a separate task."""

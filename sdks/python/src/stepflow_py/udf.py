@@ -112,6 +112,7 @@ class _InputWrapper(dict):
 def _compile_function(code: str, function_name: str | None, input_schema: dict):
     """Compile a function from code string and return the callable with validation."""
     import json
+    import sys
 
     import jsonschema
 
@@ -150,6 +151,23 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
         "math": __import__("math"),
         "re": __import__("re"),
     }
+
+    # Add LangChain imports if available
+    try:
+        from langchain_core.runnables import RunnableLambda, RunnableParallel
+
+        safe_globals["RunnableLambda"] = RunnableLambda
+        safe_globals["RunnableParallel"] = RunnableParallel
+
+        # Also add the langchain_core.runnables module for more comprehensive access
+        import langchain_core.runnables as langchain_runnables
+
+        safe_globals["langchain_core"] = type(
+            "langchain_core", (), {"runnables": langchain_runnables}
+        )
+    except ImportError:
+        # LangChain not available, continue without it
+        pass
 
     def validate_input(data):
         """Validate input data against the schema."""
@@ -255,7 +273,72 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
 
             return wrapper
         except Exception:
-            # If that fails, try as statements in a function body
+            # If that fails, check if it's a script that creates a 'result' variable
+            # Only do this if code doesn't contain 'return' (indicates function body)
+            if "return" not in code:
+                try:
+                    print(
+                        "Executing code as script to find result variable",
+                        file=sys.stderr,
+                    )
+                    local_scope = {}
+                    exec(code, safe_globals, local_scope)
+                    print(
+                        f"Script completed. Variables: {list(local_scope.keys())}",
+                        file=sys.stderr,
+                    )
+
+                    # Check if there's a 'result' variable (for LangChain runnables)
+                    if "result" in local_scope:
+                        result_obj = local_scope["result"]
+
+                        # If result is a LangChain runnable, create wrapper to invoke it
+                        try:
+                            # Check if it has an invoke method (LangChain runnable)
+                            if hasattr(result_obj, "invoke"):
+
+                                async def wrapper(input_data, context):
+                                    validate_input(input_data)
+                                    print(
+                                        f"Invoking LangChain runnable: {input_data}",
+                                        file=sys.stderr,
+                                    )
+                                    try:
+                                        result = result_obj.invoke(input_data)
+                                        print(
+                                            f"LangChain runnable result: {result}",
+                                            file=sys.stderr,
+                                        )
+                                        return result
+                                    except Exception as e:
+                                        print(
+                                            f"LangChain runnable failed: {e}",
+                                            file=sys.stderr,
+                                        )
+                                        import traceback
+
+                                        traceback.print_exc(file=sys.stderr)
+                                        return None
+
+                                return wrapper
+                            else:
+                                # If result is not a runnable, treat it as static value
+                                async def wrapper(input_data, context):
+                                    validate_input(input_data)
+                                    return result_obj
+
+                                return wrapper
+                        except Exception:
+                            # Fallback: treat result as static value
+                            async def wrapper(input_data, context):
+                                validate_input(input_data)
+                                return result_obj
+
+                            return wrapper
+                except Exception:
+                    pass  # Fall through to function body approach
+
+            # Try as statements in a function body
             try:
                 # Properly indent each line of the code
                 indented_lines = []

@@ -63,10 +63,18 @@ class ComponentEntry:
     description: str | None = None
 
     def input_schema(self):
-        return msgspec.json.schema(self.input_type)
+        try:
+            return msgspec.json.schema(self.input_type)
+        except Exception:
+            # Handle cases where schema generation fails (e.g., forward references)
+            return {"type": "object", "title": str(self.input_type)}
 
     def output_schema(self):
-        return msgspec.json.schema(self.output_type)
+        try:
+            return msgspec.json.schema(self.output_type)
+        except Exception:
+            # Handle cases where schema generation fails (e.g., forward references)
+            return {"type": "object", "title": str(self.output_type)}
 
 
 def _handle_exception(e: Exception, id: RequestId) -> MethodError:
@@ -90,7 +98,7 @@ class StepflowServer:
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
         self._initialized = False
-        
+
         # Add LangChain registry functionality
         self._add_langchain_support()
 
@@ -379,15 +387,15 @@ class StepflowServer:
     def _add_langchain_support(self):
         """Add LangChain integration support to the server."""
         try:
-            from stepflow_py.langchain_registry import add_langchain_component_method
             from stepflow_py.langchain_components import register_langchain_components
-            
+            from stepflow_py.langchain_registry import add_langchain_component_method
+
             # Add the langchain_component decorator method
             add_langchain_component_method(self.__class__)
-            
+
             # Register built-in LangChain components
             register_langchain_components(self)
-            
+
         except ImportError:
             # LangChain not available, skip adding support
             pass
