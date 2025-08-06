@@ -60,9 +60,9 @@ class ServerHelper:
     ):
         """Send a request to the live server."""
         request = self._create_request(method, component, input_data, request_id)
-        assert (
-            self._httpx_client is not None
-        ), "Server not started - call _start_live_server() first"
+        assert self._httpx_client is not None, (
+            "Server not started - call _start_live_server() first"
+        )
         return await self._httpx_client.post(
             f"{self.url}/",
             json=msgspec.to_builtins(request),
@@ -74,9 +74,9 @@ class ServerHelper:
     ):
         """Send a streaming request and return the response stream context manager."""
         request = self._create_request(method, component, input_data, request_id)
-        assert (
-            self._httpx_client is not None
-        ), "Server not started - call _start_live_server() first"
+        assert self._httpx_client is not None, (
+            "Server not started - call _start_live_server() first"
+        )
         return self._httpx_client.stream(
             "POST",
             f"{self.url}/",
