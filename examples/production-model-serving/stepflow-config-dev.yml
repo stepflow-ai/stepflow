@@ -1,0 +1,81 @@
+# Development Configuration for Production Model Serving Demo
+#
+# This configuration demonstrates local development with subprocess-based
+# component servers. Each model server runs as a separate process, allowing:
+#
+# 1. Independent development and debugging of each server
+# 2. Process isolation for stability during development
+# 3. Easy restart of individual servers without affecting others
+# 4. Local resource management and monitoring
+#
+# In development, both text and vision model servers run on the same machine
+# but in separate processes, simulating the distributed architecture used
+# in production.
+
+plugins:
+  # Built-in components for core StepFlow functionality
+  builtin:
+    type: builtin
+
+  # Python SDK Server - provides UDF functionality
+  # This gives us access to the Python UDF component for embedded Python code
+  python_sdk:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "stepflow_py"]
+    env:
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+
+  # Text Models Server - runs via subprocess with full Python environment
+  # In development, this spawns a local Python process running the text models server
+  text_models:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "python", "text_models_server.py"]
+    env:
+      # Development environment variables for debugging and local testing
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      # Disable GPU in development to ensure CPU compatibility
+      CUDA_VISIBLE_DEVICES: ""
+      # Development flags for faster iteration
+      TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-0}"
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+
+  # Vision Models Server - runs via subprocess with full Python environment
+  # Separate process for vision models allows independent scaling and resource allocation
+  vision_models:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "python", "vision_models_server.py"]
+    env:
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      # Keep GPU available for vision models if present
+      CUDA_VISIBLE_DEVICES: "${CUDA_VISIBLE_DEVICES:-}"
+      TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-0}"
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+
+routes:
+  # Route text model requests to the text models server
+  # This allows all text processing to be handled by specialized hardware/processes
+  "/models/text/{*component}":
+    - plugin: text_models
+
+  # Route vision model requests to the vision models server
+  # Vision models typically require different resources (GPU memory, specialized libraries)
+  "/models/vision/{*component}":
+    - plugin: vision_models
+
+  # Route Python UDF requests to the dedicated Python SDK server
+  "/python/{*component}":
+    - plugin: python_sdk
+
+  # Route all other components to built-in implementations
+  "/{*component}":
+    - plugin: builtin
+
+# Development state store - uses SQLite for persistence during testing
+stateStore:
+  type: inMemory

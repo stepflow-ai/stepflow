@@ -206,7 +206,7 @@ steps:
       type: object
       # Schema for this step's output
 
-    skip_if: { $from: { workflow: input }, path: "skip_condition" }
+    skipIf: { $from: { workflow: input }, path: "skip_condition" }
 
     on_error:
       action: continue
@@ -504,7 +504,7 @@ steps:
   # Different processing based on environment
   - id: production_processing
     component: /production/processor
-    skip_if:
+    skipIf:
       $from: { step: check_environment }
       path: "is_development"
     input:
@@ -512,7 +512,7 @@ steps:
 
   - id: development_processing
     component: /development/processor
-    skip_if:
+    skipIf:
       $from: { step: check_environment }
       path: "is_production"
     input:

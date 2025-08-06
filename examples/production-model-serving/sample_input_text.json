@@ -1,0 +1,6 @@
+{
+  "user_text": "I'm really excited about the new AI capabilities in our product! The team has done amazing work integrating these features seamlessly.",
+  "processing_mode": "accurate",
+  "batch_size": 4,
+  "prefer_gpu": false
+}

@@ -363,7 +363,7 @@ class StepflowServer:
             result = ComponentExecuteResult(output=output)
             print(
                 f"Executed component {params.component} "
-                "with input {input_value} produced {output}",
+                f"with input {input_value} produced {output}",
                 file=sys.stderr,
             )
             return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)

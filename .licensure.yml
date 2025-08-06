@@ -54,3 +54,11 @@ comments:
       type: line
       comment_char: "#"
       trailing_lines: 1
+  - columns: 80
+    extension: any
+    files:
+      - "[^/]+/Dockerfile[.a-zA-Z_-]*"
+    commenter:
+      type: line
+      comment_char: "#"
+      trailing_lines: 1

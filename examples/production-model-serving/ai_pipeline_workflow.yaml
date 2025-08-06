@@ -1,0 +1,312 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "Production AI Pipeline"
+description: |
+  Demonstrates production-ready AI model serving with:
+  1. Resource-aware model routing (CPU vs GPU models)
+  2. Health checks and monitoring
+  3. Batch processing for efficiency
+  4. Multi-modal AI processing (text + vision)
+
+  This workflow showcases how StepFlow enables:
+  - Independent scaling of different model types
+  - Resource optimization through intelligent routing
+  - Production monitoring and observability
+  - Graceful error handling and fallbacks
+
+input_schema:
+  type: object
+  properties:
+    # User content to process
+    user_text:
+      type: string
+      description: "Text content to analyze"
+    user_image:
+      type: string
+      description: "Base64 encoded image to classify"
+
+    # Processing configuration
+    processing_mode:
+      type: string
+      enum: ["fast", "accurate", "batch"]
+      default: "fast"
+    batch_size:
+      type: integer
+      default: 4
+      description: "Batch size for processing"
+
+    # Model selection preferences
+    prefer_gpu:
+      type: boolean
+      default: false
+      description: "Prefer GPU models when available"
+  required: ["user_text"]
+
+output_schema:
+  type: object
+  properties:
+    content_analysis:
+      type: object
+    processing_summary:
+      type: object
+    text_analysis:
+      type: object
+    image_analysis:
+      type: object
+
+steps:
+  # Step 1: Health check both model servers
+  - id: text_health_check
+    component: /models/text/model_health_check
+    input:
+      detailed: true
+    on_error:
+      action: fail
+      message: "Text model server unavailable"
+
+  - id: vision_health_check
+    component: /models/vision/vision_health_check
+    input:
+      detailed: true
+    on_error:
+      action: skip  # Vision is optional
+
+  # Step 2: Analyze user input to determine optimal processing strategy
+  - id: content_analysis_udf
+    component: /put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            user_text:
+              type: string
+            user_image:
+              type: string
+            prefer_gpu:
+              type: boolean
+            processing_mode:
+              type: string
+        code: |
+          return {
+              "no_text": len(input.user_text) == 0,
+              "no_image": len(input.get("user_image", None) or "") == 0,
+              "prefer_gpu": input.prefer_gpu,
+              "processing_mode": input.processing_mode,
+              "not_fast": input.processing_mode != "fast",
+              "not_batch": input.processing_mode != "batch",
+              "suggested_text_model": "distilbert-sentiment",
+          }
+      blob_type: "data"
+  - id: content_analysis
+    component: /python/udf
+    input:
+      blob_id: { $from: { step: content_analysis_udf }, path: "blob_id" }
+      input: { $from: { workflow: input } }
+
+  # Step 3: Process text content with sentiment analysis
+  - id: sentiment_analysis
+    component: /models/text/analyze_sentiment
+    input:
+      text: { $from: { workflow: input }, path: "user_text" }
+      model_name: { $from: { step: content_analysis }, path: "suggested_text_model" }
+    skipIf: { $from: { step: content_analysis }, path: "no_text" }
+
+  # Step 4: Generate text response based on sentiment
+  - id: text_generation
+    component: /models/text/generate_text
+    input:
+      prompt: |
+        Based on the sentiment analysis ({{ sentiment_analysis.label }} with confidence {{ sentiment_analysis.score }}),
+        generate a thoughtful response to: {{ input.user_text }}
+      model_name: "gpt2-small"
+      max_length: 150
+      temperature: 0.7
+      sentiment_analysis: { $from: { step: sentiment_analysis } }
+    skipIf:
+      $from: { step: content_analysis }
+      path: "not_fast"
+
+  # Step 5: Process image if provided
+  - id: image_classification
+    component: /models/vision/classify_image
+    input:
+      image_data: { $from: { workflow: input }, path: "user_image" }
+      model_name: { $from: { step: content_analysis }, path: "suggested_vision_model" }
+      top_k: 5
+    skipIf:
+      $from: { step: content_analysis }
+      path: "no_image"
+    on_error:
+      action: skip
+      message: "Image processing failed, continuing without image analysis"
+
+  # Step 6: Get image metrics and recommendations
+  - id: image_analysis
+    component: /models/vision/analyze_image_metrics
+    input:
+      image_data: { $from: { workflow: input }, path: "user_image" }
+    skipIf:
+      $from: { step: content_analysis }
+      path: "no_image"
+
+  # Step 7: Demonstrate batch processing capabilities
+  - id: batch_demo
+    component: /models/text/batch_process_text
+    input:
+      texts:
+        - { $from: { workflow: input }, path: "user_text" }
+        - "Additional sample text for batch processing"
+        - "Another example to show batching efficiency"
+      model_name: "distilbert-sentiment"
+      task: "sentiment"
+      batch_size: { $from: { workflow: input }, path: "batch_size" }
+    skipIf:
+      $from: { step: content_analysis }
+      path: "not_batch"
+
+  # Step 8: Compile comprehensive results with performance metrics
+  - id: final_results_udf
+    component: /put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            content_analysis:
+              type: object
+              properties:
+                no_text:
+                  type: boolean
+                no_image:
+                  type: boolean
+                prefer_gpu:
+                  type: boolean
+                processing_mode:
+                  type: string
+                not_fast:
+                  type: boolean
+                not_batch:
+                  type: boolean
+                suggested_text_model:
+                  type: string
+            processing_summary:
+              type: object
+              properties:
+                mode:
+                  type: string
+                text_processed:
+                  type: boolean
+                image_processed:
+                  type: boolean
+                batch_processing_used:
+                  type: boolean
+                total_processing_time_ms:
+                  type: integer
+            text_analysis:
+              type: object
+              properties:
+                sentiment:
+                  type: string
+                confidence:
+                  type: number
+                model_used:
+                  type: string
+                generated_response:
+                  type: string
+            image_analysis:
+              type: object
+              properties:
+                classifications:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      class:
+                        type: string
+                      confidence:
+                        type: number
+                image_properties:
+                  type: object
+                  properties:
+                    dimensions:
+                      type: array
+                      items:
+                        type: integer
+                    format:
+                      type: string
+                    size_bytes:
+                      type: integer
+                    recommended_model:
+                      type: string
+                resource_tier_used:
+                  type: string
+        code: |
+            sentiment_analysis = input.get("sentiment_analysis", None)
+            text_generation = input.get("text_generation", None)
+            image_classification = input.get("image_classification", None)
+            image_analysis = input.get("image_analysis", None)
+            batch_demo = input.get("batch_demo", None)
+            return {
+              "content_analysis": input.get("content_analysis", None),
+              "processing_summary": {
+                "mode": input.processing_mode,
+                "text_processed": sentiment_analysis is not None,
+                "image_processed": image_classification is not None,
+                "batch_processing_used": batch_demo is not None,
+                "total_processing_time_ms": (
+                  (sentiment_analysis.inference_time.ms if sentiment_analysis else 0) +
+                  (text_generation.generation_time_ms if text_generation else 0) +
+                  (image_classification.inference_time_ms if image_classification else 0)
+                )
+              },
+              "text_analysis": {
+                "sentiment": sentiment_analysis.label if sentiment_analysis else None,
+                "confidence": sentiment_analysis.score if sentiment_analysis else None,
+                "model_used": sentiment_analysis.model_used if sentiment_analysis else None,
+                "generated_response": text_generation.generated_text if text_generation else None
+              },
+              "image_analysis": {
+                "classifications": image_classification.predictions if image_classification else None,
+                "image_properties": {
+                  "dimensions": [image_analysis.width, image_analysis.height],
+                  "format": image_analysis.format,
+                  "size_bytes": image_analysis.size_bytes,
+                  "recommended_model": image_analysis.recommended_model
+                } if image_analysis else None,
+                "resource_tier_used": image_classification.resource_tier if image_classification else None
+              },
+            }
+      blob_type: "data"
+
+  - id: final_results
+    component: /python/udf
+    input:
+      blob_id: { $from: { step: final_results_udf }, path: "blob_id" }
+      input: { $from: { workflow: input } }
+      content_analysis:
+        $from: { step: content_analysis }
+        onSkip:
+          action: useDefault
+      sentiment_analysis:
+        $from: { step: sentiment_analysis }
+        onSkip:
+          action: useDefault
+      batch_demo:
+        $from: { step: batch_demo }
+        onSkip:
+          action: useDefault
+      text_generation:
+        $from: { step: text_generation }
+        onSkip:
+          action: useDefault
+      image_classification:
+        $from: { step: image_classification }
+        onSkip:
+          action: useDefault
+      image_analysis:
+        $from: { step: image_analysis }
+        onSkip:
+          action: useDefault
+
+
+output: { $from: { step: final_results } }

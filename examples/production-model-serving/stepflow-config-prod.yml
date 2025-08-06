@@ -1,0 +1,106 @@
+# Production Configuration for Model Serving Demo
+#
+# This configuration demonstrates production deployment with HTTP-based
+# component servers running in separate containers/machines. This setup provides:
+#
+# 1. **Horizontal Scalability**: Each model server can be scaled independently
+#    based on demand and workload characteristics
+# 2. **Resource Optimization**: Text and vision models can run on different
+#    hardware (CPU vs GPU instances) for cost efficiency
+# 3. **High Availability**: Servers can be load-balanced and replicated
+#    across multiple instances/zones for fault tolerance
+# 4. **Independent Deployment**: Model servers can be updated and deployed
+#    independently without affecting the workflow runtime
+# 5. **Network Isolation**: Services communicate over HTTP, enabling
+#    deployment across network boundaries with proper security
+
+plugins:
+  # Built-in components for core StepFlow functionality
+  builtin:
+    type: builtin
+
+  # Text Models Server Cluster - HTTP-based communication
+  # In production, this would point to a load balancer fronting multiple
+  # text model server instances, potentially running on CPU-optimized nodes
+  text_models_cluster:
+    type: stepflow
+    transport: http
+    url: "http://text-models:8080"
+    # In a real production setup, this might be:
+    # url: "https://text-models.production.company.com"
+    # with load balancing, SSL termination, and service discovery
+
+  # Vision Models Server Cluster - HTTP-based communication
+  # Points to GPU-enabled instances optimized for computer vision workloads
+  # These might run on different instance types with specialized hardware
+  vision_models_cluster:
+    type: stepflow
+    transport: http
+    url: "http://vision-models:8081"
+    # In production:
+    # url: "https://vision-models.production.company.com"
+    # Often running on GPU-enabled instances (e.g., AWS p3, GCP n1-gpu)
+
+routes:
+  # Route text processing to dedicated text model cluster
+  # This enables:
+  # - Automatic load balancing across text model instances
+  # - Independent scaling based on text processing demand
+  # - Resource optimization (CPU-focused instances)
+  "/models/text/{*component}":
+    - plugin: text_models_cluster
+
+  # Route vision processing to dedicated vision model cluster
+  # This enables:
+  # - GPU-optimized instances for compute-intensive vision tasks
+  # - Separate scaling policies for vision workloads
+  # - Cost optimization by running vision models only when needed
+  "/models/vision/{*component}":
+    - plugin: vision_models_cluster
+
+  # Route basic Python requests to the text models server
+  # This allows basic Python components to be handled by the text model server.
+  # We could have a separate pool of servers for Python components if needed.
+  "/python/{*component}":
+    - plugin: text_models_cluster
+
+  # Fallback to built-in components for core workflow functionality
+  "/{*component}":
+    - plugin: builtin
+
+# Production state store - using managed database service
+# In real production, this might be:
+# - PostgreSQL RDS/Cloud SQL for transactional workloads
+# - DynamoDB/Firestore for serverless architectures
+# - Redis Cluster for high-throughput caching
+stateStore:
+  type: sqlite
+  databaseUrl: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
+  autoMigrate: true
+  maxConnections: 20  # Higher connection pool for production load
+
+# Production considerations not shown in this demo config:
+#
+# 1. **Authentication & Authorization**:
+#    - API keys, OAuth tokens, or mutual TLS for service-to-service auth
+#    - Role-based access control for different model tiers
+#
+# 2. **Observability & Monitoring**:
+#    - Prometheus metrics collection from model servers
+#    - Distributed tracing across workflow execution and model calls
+#    - Structured logging with correlation IDs
+#
+# 3. **Error Handling & Circuit Breakers**:
+#    - Retry policies with exponential backoff
+#    - Circuit breakers to prevent cascading failures
+#    - Graceful degradation to fallback models
+#
+# 4. **Resource Management**:
+#    - Auto-scaling policies based on queue depth and latency
+#    - Resource quotas and rate limiting per tenant/user
+#    - Model warming strategies to reduce cold start latency
+#
+# 5. **Security**:
+#    - Network policies and VPC isolation
+#    - Secrets management for model credentials
+#    - Input validation and sanitization

@@ -1,0 +1,6 @@
+{
+  "user_text": "Performance test input 1\nPerformance test input 2\nPerformance test input 3\nPerformance test input 4",
+  "processing_mode": "batch",
+  "batch_size": 8,
+  "prefer_gpu": false
+}

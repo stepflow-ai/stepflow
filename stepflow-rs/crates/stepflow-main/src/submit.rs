@@ -12,6 +12,7 @@
 // the License.
 
 use crate::{Result, error::MainError};
+use error_stack::ResultExt as _;
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Flow, ValueRef};
@@ -53,12 +54,12 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
             error_text
         );
         return Err(MainError::Configuration.into());
-    }
+    };
 
-    let store_result: StoreFlowResponse = store_response.json().await.map_err(|e| {
-        tracing::error!("Failed to parse store response: {}", e);
-        MainError::Configuration
-    })?;
+    let store_result: StoreFlowResponse = store_response
+        .json()
+        .await
+        .change_context(MainError::ServerError)?;
 
     // Check if the workflow was stored successfully
     let flow_id = store_result.flow_id.ok_or_else(|| {

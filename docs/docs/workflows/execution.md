@@ -171,7 +171,7 @@ steps:
   # Only run for premium users
   - id: premium_analysis
     component: /analytics/premium
-    skip_if:
+    skipIf:
       $from: { step: check_user_level }
       path: "is_basic_user"
     input:
@@ -180,7 +180,7 @@ steps:
   # Only run for basic users
   - id: basic_analysis
     component: /analytics/basic
-    skip_if:
+    skipIf:
       $from: { step: check_user_level }
       path: "is_premium_user"
     input:

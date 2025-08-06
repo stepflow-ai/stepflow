@@ -1,0 +1,17 @@
+# Core StepFlow SDK
+stepflow-py>=0.2.4
+
+# Machine Learning Libraries
+torch>=2.0.0
+transformers>=4.30.0
+pillow>=9.0.0
+
+# Optional: for better performance and monitoring
+psutil>=5.9.0
+
+# Optional: for advanced vision models
+# torchvision>=0.15.0
+
+# Optional: for quantization and optimization
+# accelerate>=0.20.0
+# bitsandbytes>=0.39.0
