@@ -20,7 +20,7 @@ from pytest_mock import MockerFixture
 
 from stepflow_py.context import StepflowContext
 from stepflow_py.exceptions import StepflowValueError
-from stepflow_py.udf import _compile_function, _InputWrapper, UdfCompilationError
+from stepflow_py.udf import UdfCompilationError, _compile_function, _InputWrapper
 
 
 class DummyContext:
@@ -274,7 +274,7 @@ return RunnableLambda(simple_processor)
     assert udf_result == {"result": "Processed: hello world"}
 
 
-@pytest.mark.asyncio  
+@pytest.mark.asyncio
 async def test_udf_pattern_search_like_integration_test(mock_context):
     """Test UDF compilation that matches the failing integration test pattern."""
     # This reproduces the pattern_search function from udf_text_processing.yaml
@@ -290,24 +290,21 @@ except:
 """
 
     schema = {
-        "type": "object", 
-        "properties": {
-            "text": {"type": "string"},
-            "pattern": {"type": "string"}
-        },
-        "required": ["text", "pattern"]
+        "type": "object",
+        "properties": {"text": {"type": "string"}, "pattern": {"type": "string"}},
+        "required": ["text", "pattern"],
     }
 
     # This should compile successfully since it has a return statement
     func = _compile_function(code, None, schema)
-    
+
     test_input = {
-        "text": "The weather today is terrible and I hate it", 
-        "pattern": r"\b(weather|today|terrible|hate|awful)\b"
+        "text": "The weather today is terrible and I hate it",
+        "pattern": r"\b(weather|today|terrible|hate|awful)\b",
     }
-    
+
     result = await func(test_input, context=mock_context)
-    
+
     # Verify the result structure
     assert isinstance(result, list)
     assert len(result) == 4  # weather, today, terrible, hate
@@ -317,7 +314,9 @@ except:
 
 @pytest.mark.asyncio
 async def test_udf_word_analysis_like_integration_test(mock_context):
-    """Test UDF compilation that matches the word_analysis function from integration test."""
+    """
+    Test UDF compilation that matches the word_analysis function from integration test.
+    """
     # This reproduces the word_analysis function from udf_text_processing.yaml
     code = """
 text = input['text'].lower()
@@ -351,20 +350,20 @@ return {
     schema = {
         "type": "object",
         "properties": {"text": {"type": "string"}},
-        "required": ["text"]
+        "required": ["text"],
     }
 
     # This should compile successfully
     func = _compile_function(code, None, schema)
-    
+
     test_input = {"text": "This is a great example"}
-    
+
     result = await func(test_input, context=mock_context)
-    
+
     # Verify the result structure
     assert isinstance(result, dict)
     assert "word_count" in result
-    assert "char_count" in result 
+    assert "char_count" in result
     assert "avg_word_length" in result
     assert result["word_count"] == 5
 
@@ -383,12 +382,12 @@ word_count = len(words)
     schema = {
         "type": "object",
         "properties": {"text": {"type": "string"}},
-        "required": ["text"]
+        "required": ["text"],
     }
 
     with pytest.raises(UdfCompilationError) as exc_info:
         _compile_function(invalid_code, None, schema)
-    
+
     # Check that the error contains the expected message
     error = exc_info.value
     assert "Unable to compile code as function body" in str(error)
@@ -398,27 +397,27 @@ word_count = len(words)
 
 @pytest.mark.asyncio
 async def test_udf_compilation_error_includes_blob_context():
-    """Test that UdfCompilationError includes blob_id context when called through udf()."""
-    from stepflow_py.udf import udf, UdfInput
-    
+    """
+    Test that UdfCompilationError includes blob_id context when called through udf().
+    """
+    from stepflow_py.udf import UdfInput, udf
+
     # Create a mock context
     async def mock_get_blob(self, blob_id):
         return {
-            'code': 'invalid code without return statement',
-            'input_schema': {'type': 'object'},
-            'function_name': None
+            "code": "invalid code without return statement",
+            "input_schema": {"type": "object"},
+            "function_name": None,
         }
-    
-    mock_context = type('MockContext', (), {
-        'get_blob': mock_get_blob
-    })()
-    
+
+    mock_context = type("MockContext", (), {"get_blob": mock_get_blob})()
+
     test_blob_id = "test_blob_123"
     udf_input = UdfInput(blob_id=test_blob_id, input={})
-    
+
     with pytest.raises(UdfCompilationError) as exc_info:
         await udf(udf_input, mock_context)
-    
+
     # Check that blob_id context is properly added
     error = exc_info.value
     assert error.blob_id == test_blob_id

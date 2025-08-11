@@ -20,18 +20,18 @@ from typing import Any
 import msgspec
 
 from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import StepflowValueError, CodeCompilationError
+from stepflow_py.exceptions import CodeCompilationError, StepflowValueError
 
 
 class UdfCompilationError(CodeCompilationError):
     """Raised when UDF code compilation fails."""
-    
+
     def __init__(self, message: str, code: str, blob_id: str | None = None):
         super().__init__(message, code)
         self.blob_id = blob_id
         if blob_id:
             self.data["blob_id"] = blob_id
-    
+
     def __str__(self):
         msg = super().__str__()
         if self.blob_id:
@@ -524,10 +524,7 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
         # Check if the code contains any return statements - this suggests it's meant
         # to be a function body rather than an expression
         lines = [line for line in code.split("\n") if line.strip()]
-        has_return_statement = any(
-            line.strip().startswith("return ") 
-            for line in lines
-        )
+        has_return_statement = any(line.strip().startswith("return ") for line in lines)
 
         if has_return_statement:
             try:
@@ -596,8 +593,9 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
 
         # If we reach here, none of the compilation approaches worked
         raise UdfCompilationError(
-            "Unable to compile code as function body with return statement or lambda expression. "
-            "Code must either: (1) contain return statements for function body compilation, or "
-            "(2) be a valid expression for lambda compilation.",
-            code
+            "Unable to compile code as function body with return statement or "
+            "lambda expression. Code must either: (1) contain return statements "
+            "for function body compilation, or (2) be a valid expression for "
+            "lambda compilation.",
+            code,
         )
