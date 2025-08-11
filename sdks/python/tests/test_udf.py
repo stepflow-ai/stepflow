@@ -211,7 +211,7 @@ async def test_langchain_runnable_lambda_expression(mock_context):
     # This tests a simple lambda expression pattern
     code = (
         "RunnableLambda(lambda data: "
-        '{"simple_result": f"Lambda processed: {data[\'text\']}"})'
+        '''RunnableLambda(lambda data: {"simple_result": f"Lambda processed: {data['text']}"})'''
     )
 
     schema = {

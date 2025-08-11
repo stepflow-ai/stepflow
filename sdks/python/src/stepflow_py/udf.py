@@ -291,7 +291,7 @@ def _detect_runnable_at_compile_time(func, is_async, use_wrapper, use_context):
         if use_wrapper:
             test_input = _ThrowingInputWrapper()
         else:
-            test_input = _ThrowingInputWrapper()
+        test_input = _ThrowingInputWrapper()
 
         # Create a mock context
         mock_context = type("MockContext", (), {})()
@@ -524,7 +524,11 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
         # Check if the code contains any return statements - this suggests it's meant
         # to be a function body rather than an expression
         lines = [line for line in code.split("\n") if line.strip()]
-        has_return_statement = any(line.strip().startswith("return ") for line in lines)
+        try:
+            tree = ast.parse(code)
+            has_return_statement = any(isinstance(node, ast.Return) for node in ast.walk(tree))
+        except SyntaxError:
+            has_return_statement = False
 
         if has_return_statement:
             try:

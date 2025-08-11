@@ -446,7 +446,8 @@ class StepflowServer:
                 runnable = f()
             except Exception as e:
                 raise StepflowExecutionError(
-                    f"Failed to create LangChain runnable: {e}"
+                    f"Failed to create LangChain runnable: {e}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
                 ) from e
 
             # Validate that it's actually a runnable
