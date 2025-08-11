@@ -71,182 +71,170 @@ class _ThrowingInputWrapper(dict):
         )
 
 
-# Pre-built wrapper factories to eliminate runtime conditionals
-def _create_async_wrapped_context_wrapper(func, validate_input):
-    """Async function with InputWrapper and context."""
+# Helper functions to reduce wrapper duplication
+def _create_standard_wrapper(
+    func, validate_input, is_async, use_input_wrapper, use_context
+):
+    """Create a standard wrapper function based on configuration."""
 
     async def wrapper(input_data, context):
         validate_input(input_data)
-        return await func(_InputWrapper(input_data), context)
+
+        # Prepare arguments based on configuration
+        args = []
+        if use_input_wrapper:
+            args.append(_InputWrapper(input_data))
+        else:
+            args.append(input_data)
+
+        if use_context:
+            args.append(context)
+
+        # Call function based on whether it's async or sync
+        if is_async:
+            return await func(*args)
+        else:
+            return func(*args)
 
     return wrapper
+
+
+async def _invoke_runnable_result(result, input_data):
+    """Helper to invoke a runnable result with proper async handling."""
+    return await result.ainvoke(input_data)
+
+
+# Specific runnable wrapper factories (no runtime conditionals for performance)
+def _create_async_wrapped_context_runnable_wrapper(func, validate_input):
+    """Async function with InputWrapper and context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = await func(_InputWrapper(input_data), context)
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+def _create_async_wrapped_no_context_runnable_wrapper(func, validate_input):
+    """Async function with InputWrapper, no context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = await func(_InputWrapper(input_data))
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+def _create_async_direct_context_runnable_wrapper(func, validate_input):
+    """Async function with direct input and context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = await func(input_data, context)
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+def _create_async_direct_no_context_runnable_wrapper(func, validate_input):
+    """Async function with direct input, no context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = await func(input_data)
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+def _create_sync_wrapped_context_runnable_wrapper(func, validate_input):
+    """Sync function with InputWrapper and context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = func(_InputWrapper(input_data), context)
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+def _create_sync_wrapped_no_context_runnable_wrapper(func, validate_input):
+    """Sync function with InputWrapper, no context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = func(_InputWrapper(input_data))
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+def _create_sync_direct_context_runnable_wrapper(func, validate_input):
+    """Sync function with direct input and context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = func(input_data, context)
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+def _create_sync_direct_no_context_runnable_wrapper(func, validate_input):
+    """Sync function with direct input, no context that returns runnables."""
+
+    async def wrapper(input_data, context):
+        validate_input(input_data)
+        result = func(input_data)
+        return await result.ainvoke(input_data)
+
+    return wrapper
+
+
+# Pre-built wrapper factories to eliminate runtime conditionals
+def _create_async_wrapped_context_wrapper(func, validate_input):
+    """Async function with InputWrapper and context."""
+    return _create_standard_wrapper(func, validate_input, True, True, True)
 
 
 def _create_async_wrapped_no_context_wrapper(func, validate_input):
     """Async function with InputWrapper, no context."""
-
-    async def wrapper(input_data, context):
-        validate_input(input_data)
-        return await func(_InputWrapper(input_data))
-
-    return wrapper
+    return _create_standard_wrapper(func, validate_input, True, True, False)
 
 
 def _create_async_direct_context_wrapper(func, validate_input):
     """Async function with direct input and context."""
-
-    async def wrapper(input_data, context):
-        validate_input(input_data)
-        return await func(input_data, context)
-
-    return wrapper
+    return _create_standard_wrapper(func, validate_input, True, False, True)
 
 
 def _create_async_direct_no_context_wrapper(func, validate_input):
     """Async function with direct input, no context."""
-
-    async def wrapper(input_data, context):
-        validate_input(input_data)
-        return await func(input_data)
-
-    return wrapper
+    return _create_standard_wrapper(func, validate_input, True, False, False)
 
 
 def _create_sync_wrapped_context_wrapper(func, validate_input):
     """Sync function with InputWrapper and context."""
-
-    async def wrapper(input_data, context):
-        validate_input(input_data)
-        return func(_InputWrapper(input_data), context)
-
-    return wrapper
+    return _create_standard_wrapper(func, validate_input, False, True, True)
 
 
 def _create_sync_wrapped_no_context_wrapper(func, validate_input):
     """Sync function with InputWrapper, no context."""
-
-    async def wrapper(input_data, context):
-        validate_input(input_data)
-        return func(_InputWrapper(input_data))
-
-    return wrapper
+    return _create_standard_wrapper(func, validate_input, False, True, False)
 
 
 def _create_sync_direct_context_wrapper(func, validate_input):
     """Sync function with direct input and context."""
-
-    async def wrapper(input_data, context):
-        validate_input(input_data)
-        return func(input_data, context)
-
-    return wrapper
+    return _create_standard_wrapper(func, validate_input, False, False, True)
 
 
 def _create_sync_direct_no_context_wrapper(func, validate_input):
     """Sync function with direct input, no context."""
-
-    async def wrapper(input_data, context):
-        validate_input(input_data)
-        return func(input_data)
-
-    return wrapper
+    return _create_standard_wrapper(func, validate_input, False, False, False)
 
 
-def _create_runnable_wrapper(func, validate_input, is_async, use_wrapper, use_context):
-    """Create wrapper for LangChain runnables with compilation-time detection."""
-    if is_async:
-        if use_wrapper and use_context:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = await func(_InputWrapper(input_data), context)
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-        elif use_wrapper and not use_context:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = await func(_InputWrapper(input_data))
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-        elif not use_wrapper and use_context:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = await func(input_data, context)
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-        else:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = await func(input_data)
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-    else:
-        if use_wrapper and use_context:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = func(_InputWrapper(input_data), context)
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-        elif use_wrapper and not use_context:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = func(_InputWrapper(input_data))
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-        elif not use_wrapper and use_context:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = func(input_data, context)
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-        else:
-
-            async def wrapper(input_data, context):
-                validate_input(input_data)
-                result = func(input_data)
-                if hasattr(result, "ainvoke"):
-                    return await result.ainvoke(input_data)
-                else:
-                    return result.invoke(input_data)
-
-            return wrapper
-
-
-# Lookup table for non-runnable wrapper factories
+# Lookup tables for wrapper factories (eliminates runtime conditionals)
 _WRAPPER_FACTORIES = {
     WrapperConfig(
         is_async=True, use_input_wrapper=True, use_context=True
@@ -274,6 +262,33 @@ _WRAPPER_FACTORIES = {
     ): _create_sync_direct_no_context_wrapper,
 }
 
+_RUNNABLE_WRAPPER_FACTORIES = {
+    WrapperConfig(
+        is_async=True, use_input_wrapper=True, use_context=True
+    ): _create_async_wrapped_context_runnable_wrapper,
+    WrapperConfig(
+        is_async=True, use_input_wrapper=True, use_context=False
+    ): _create_async_wrapped_no_context_runnable_wrapper,
+    WrapperConfig(
+        is_async=True, use_input_wrapper=False, use_context=True
+    ): _create_async_direct_context_runnable_wrapper,
+    WrapperConfig(
+        is_async=True, use_input_wrapper=False, use_context=False
+    ): _create_async_direct_no_context_runnable_wrapper,
+    WrapperConfig(
+        is_async=False, use_input_wrapper=True, use_context=True
+    ): _create_sync_wrapped_context_runnable_wrapper,
+    WrapperConfig(
+        is_async=False, use_input_wrapper=True, use_context=False
+    ): _create_sync_wrapped_no_context_runnable_wrapper,
+    WrapperConfig(
+        is_async=False, use_input_wrapper=False, use_context=True
+    ): _create_sync_direct_context_runnable_wrapper,
+    WrapperConfig(
+        is_async=False, use_input_wrapper=False, use_context=False
+    ): _create_sync_direct_no_context_runnable_wrapper,
+}
+
 
 def _detect_runnable_at_compile_time(func, is_async, use_wrapper, use_context):
     """Test if function returns a runnable without accessing input data.
@@ -291,7 +306,7 @@ def _detect_runnable_at_compile_time(func, is_async, use_wrapper, use_context):
         if use_wrapper:
             test_input = _ThrowingInputWrapper()
         else:
-        test_input = _ThrowingInputWrapper()
+            test_input = _ThrowingInputWrapper()
 
         # Create a mock context
         mock_context = type("MockContext", (), {})()
@@ -503,74 +518,22 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
             func, is_async, wrap_input, use_context
         )
 
+        wrapper_config = WrapperConfig(
+            is_async=is_async, use_input_wrapper=wrap_input, use_context=use_context
+        )
         if is_runnable:
-            # Function creates runnables - use runnable wrapper
-            return _create_runnable_wrapper(
-                func, validate_input, is_async, wrap_input, use_context
-            )
+            # Function creates runnables - use runnable wrapper factory
+            wrapper_factory = _RUNNABLE_WRAPPER_FACTORIES[wrapper_config]
+            return wrapper_factory(func, validate_input)
         else:
-            # Function doesn't create runnables - use optimized lookup
-            wrapper_config = WrapperConfig(
-                is_async=is_async, use_input_wrapper=wrap_input, use_context=use_context
-            )
             wrapper_factory = _WRAPPER_FACTORIES[wrapper_config]
             return wrapper_factory(func, validate_input)
     else:
-        # Code is a function body - two supported patterns:
-        # 1. Try as statements in a function body with return (preferred pattern)
-        # 2. Try as lambda expression
+        # Code is a function body - try multiple approaches in order:
+        # 1. Try as a lambda expression (most common for simple expressions)
+        # 2. Try as function body with return statements (for more complex code)
 
-        # First, try as statements in a function body (handles return statements)
-        # Check if the code contains any return statements - this suggests it's meant
-        # to be a function body rather than an expression
-        lines = [line for line in code.split("\n") if line.strip()]
-        try:
-            tree = ast.parse(code)
-            has_return_statement = any(isinstance(node, ast.Return) for node in ast.walk(tree))
-        except SyntaxError:
-            has_return_statement = False
-
-        if has_return_statement:
-            try:
-                # Properly indent each line of the code
-                indented_lines = []
-                for line in code.split("\n"):
-                    if line.strip():  # Only indent non-empty lines
-                        indented_lines.append("    " + line)
-                    else:
-                        indented_lines.append("")  # Keep empty lines as-is
-
-                func_code = f"""def _temp_func(input, context):
-{chr(10).join(indented_lines)}"""
-                local_scope = {}
-                exec(func_code, safe_globals, local_scope)
-                temp_func = local_scope["_temp_func"]
-
-                # Test if this function creates input-independent runnables
-                is_runnable = _detect_runnable_at_compile_time(
-                    temp_func, False, True, True
-                )
-
-                if is_runnable:
-                    # Function creates runnables - use runnable wrapper
-                    async def wrapper(input_data, context):
-                        validate_input(input_data)
-                        result = temp_func(_InputWrapper(input_data), context)
-                        if hasattr(result, "ainvoke"):
-                            return await result.ainvoke(input_data)
-                        else:
-                            return result.invoke(input_data)
-
-                    return wrapper
-                else:
-                    # Standard function - use optimized wrapper
-                    return _create_sync_wrapped_context_wrapper(
-                        temp_func, validate_input
-                    )
-            except Exception:
-                pass  # Fall through to other approaches
-
-        # Second, try as a lambda expression
+        # First, try as a lambda expression
         try:
             wrapped_code = f"lambda input: {code}"
             func = eval(wrapped_code, safe_globals)
@@ -578,28 +541,67 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
             # Test if this lambda creates input-independent runnables
             is_runnable = _detect_runnable_at_compile_time(func, False, True, False)
 
+            wrapper_config = WrapperConfig(
+                is_async=False, use_input_wrapper=True, use_context=False
+            )
             if is_runnable:
-                # Lambda creates runnables - use runnable wrapper
-                async def wrapper(input_data, context):
-                    validate_input(input_data)
-                    result = func(_InputWrapper(input_data))
-                    if hasattr(result, "ainvoke"):
-                        return await result.ainvoke(input_data)
-                    else:
-                        return result.invoke(input_data)
-
-                return wrapper
+                # Lambda creates runnables - use runnable wrapper factory
+                wrapper_factory = _RUNNABLE_WRAPPER_FACTORIES[wrapper_config]
+                return wrapper_factory(func, validate_input)
             else:
-                # Standard lambda - use optimized wrapper
-                return _create_sync_wrapped_no_context_wrapper(func, validate_input)
+                # Standard lambda - use standard wrapper factory
+                wrapper_factory = _WRAPPER_FACTORIES[wrapper_config]
+                return wrapper_factory(func, validate_input)
         except Exception:
-            pass
+            pass  # Fall through to function body approach
+
+        # Second, try as function body - use runtime detection instead of AST parsing
+        try:
+            # Properly indent each line of the code
+            indented_lines = []
+            for line in code.split("\n"):
+                if line.strip():  # Only indent non-empty lines
+                    indented_lines.append("    " + line)
+                else:
+                    indented_lines.append("")  # Keep empty lines as-is
+
+            # Check if the code contains actual return statements (not just in comments)
+            # This is a simple heuristic - look for 'return' at the start of
+            # lines (after whitespace)
+            import re
+
+            if not re.search(r"^\s*return\b", code, re.MULTILINE):
+                raise Exception("Function body must contain return statements")
+
+            # Try to create the function - if it compiles, it's valid
+            func_code = f"""def _temp_func(input, context):
+{chr(10).join(indented_lines)}"""
+
+            local_scope = {}
+            exec(func_code, safe_globals, local_scope)
+            temp_func = local_scope["_temp_func"]
+
+            # Test if this function creates input-independent runnables
+            is_runnable = _detect_runnable_at_compile_time(temp_func, False, True, True)
+
+            wrapper_config = WrapperConfig(
+                is_async=False, use_input_wrapper=True, use_context=True
+            )
+            if is_runnable:
+                # Function creates runnables - use runnable wrapper factory
+                wrapper_factory = _RUNNABLE_WRAPPER_FACTORIES[wrapper_config]
+                return wrapper_factory(temp_func, validate_input)
+            else:
+                # Standard function - use standard wrapper factory
+                wrapper_factory = _WRAPPER_FACTORIES[wrapper_config]
+                return wrapper_factory(temp_func, validate_input)
+        except Exception:
+            pass  # Fall through to error
 
         # If we reach here, none of the compilation approaches worked
         raise UdfCompilationError(
-            "Unable to compile code as function body with return statement or "
-            "lambda expression. Code must either: (1) contain return statements "
-            "for function body compilation, or (2) be a valid expression for "
-            "lambda compilation.",
+            "Unable to compile code as lambda expression or function body. "
+            "Code must be either: (1) a valid Python expression, or "
+            "(2) valid function body statements with return statements.",
             code,
         )

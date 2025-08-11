@@ -210,8 +210,8 @@ async def test_langchain_runnable_lambda_expression(mock_context):
 
     # This tests a simple lambda expression pattern
     code = (
-        "RunnableLambda(lambda data: "
-        '''RunnableLambda(lambda data: {"simple_result": f"Lambda processed: {data['text']}"})'''
+        "RunnableLambda(lambda data: {"
+        "'simple_result': f'Lambda processed: {data[\"text\"]}'})"
     )
 
     schema = {
@@ -390,7 +390,7 @@ word_count = len(words)
 
     # Check that the error contains the expected message
     error = exc_info.value
-    assert "Unable to compile code as function body" in str(error)
+    assert "Unable to compile code as lambda expression or function body" in str(error)
     assert error.data["code"] == invalid_code  # Code is stored in data dict now
     assert error.blob_id is None  # No blob_id when called directly
 
