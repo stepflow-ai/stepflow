@@ -54,6 +54,29 @@ __all__ = [
     "OnSkipDefault",
 ]
 
+# Add LangChain exports if available
+# LangChain integration (optional)
+try:
+    from .langchain_integration import (
+        InvokeNamedInput,  # noqa: F401
+        clear_import_cache,  # noqa: F401
+        create_invoke_named_component,  # noqa: F401
+        get_runnable_from_import_path,  # noqa: F401
+        invoke_named_runnable,  # noqa: F401
+    )
+
+    __all__.extend(
+        [
+            "get_runnable_from_import_path",
+            "invoke_named_runnable",
+            "clear_import_cache",
+            "create_invoke_named_component",
+            "InvokeNamedInput",
+        ]
+    )
+except ImportError:
+    pass
+
 if __name__ == "__main__":
     from . import main
 

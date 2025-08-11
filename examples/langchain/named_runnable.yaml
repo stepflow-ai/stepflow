@@ -1,0 +1,119 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "LangChain Named Runnable Example"
+description: "Demonstrates using /invoke_named component to directly execute LangChain runnables from Python import paths"
+
+# Named Runnable: Direct Invocation with Import Paths (via /invoke_named)
+#
+# This workflow demonstrates using LangChain runnables imported from Python import paths
+# and executed directly via the /invoke_named component. This approach allows users
+# to specify runnables using standard Python import syntax and execute them in a single step.
+
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+      description: "Text to process"
+    numbers:
+      type: array
+      items:
+        type: number
+      description: "Numbers for statistical calculations"
+    template:
+      type: string
+      description: "String template for formatting"
+      default: "Hello {name}!"
+    values:
+      type: object
+      description: "Values for template formatting"
+      default: {"name": "World"}
+
+output_schema:
+  type: object
+  properties:
+    text_processing:
+      type: object
+      description: "Text processing results"
+    stats_calculation:
+      type: object
+      description: "Statistical calculation results"
+    string_formatting:
+      type: object
+      description: "String formatting results"
+
+steps:
+  # Directly invoke text processor runnable from import path
+  - id: process_text
+    component: /invoke_named
+    input:
+      import_path: example_runnables.text_processor
+      input:
+        text:
+          $from:
+            workflow: input
+          path: text
+
+  # Directly invoke stats calculator runnable from import path
+  - id: calculate_stats
+    component: /invoke_named
+    input:
+      import_path: example_runnables.stats_calculator
+      input:
+        numbers:
+          $from:
+            workflow: input
+          path: numbers
+
+  # Directly invoke string formatter runnable from import path
+  - id: format_string
+    component: /invoke_named
+    input:
+      import_path: example_runnables.string_formatter
+      input:
+        template:
+          $from:
+            workflow: input
+          path: template
+        values:
+          $from:
+            workflow: input
+          path: values
+
+output:
+  text_processing:
+    $from:
+      step: process_text
+    path: result
+
+  stats_calculation:
+    $from:
+      step: calculate_stats
+    path: result
+
+  string_formatting:
+    $from:
+      step: format_string
+    path: result
+
+test:
+  cases:
+    - name: import_path_components
+      input:
+        text: "This is an amazing example of import path LangChain components!"
+        numbers: [1, 2, 3, 4, 5, 10, 15]
+        template: "Processing {item} with {method}"
+        values: {"item": "text", "method": "LangChain"}
+      output:
+        outcome: success
+        result:
+          text_processing:
+            processed_text: "This Is An Amazing Example Of Import Path Langchain Components!"
+            word_count: 10
+            original_length: 63
+          stats_calculation:
+            sum: 40
+            mean: 5.714285714285714
+            median: 4
+            range: 14
+          string_formatting:
+            formatted: "Processing text with LangChain"

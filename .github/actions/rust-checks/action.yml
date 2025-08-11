@@ -71,9 +71,9 @@ runs:
       run: uv python install
       working-directory: sdks/python
 
-    - name: Install HTTP optional dependencies
+    - name: Install Dependencies
       shell: bash
-      run: uv sync --extra http
+      run: uv sync --all-extras
       working-directory: sdks/python
 
     # Run Rust build and test checks using the shared script

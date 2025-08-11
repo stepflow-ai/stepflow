@@ -451,13 +451,21 @@ async def test_components_list(test_server):
     assert "result" in result
 
     components = result["result"]["components"]
-    assert len(components) == 3
+
+    expected_components = ["/simple_component", "/context_component", "/udf"]
+    try:
+        import langchain_core  # noqa: F401
+
+        expected_components.extend(["/langchain/invoke"])
+    except ImportError:
+        pass
+
+    assert len(components) == len(expected_components)
 
     # Find our test components
     component_names = [comp["component"] for comp in components]
-    assert "/simple_component" in component_names
-    assert "/context_component" in component_names
-    assert "/udf" in component_names
+    for name in expected_components:
+        assert name in component_names, f"Expected component {name} not found"
 
 
 @pytest.mark.asyncio

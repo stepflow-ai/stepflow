@@ -1,0 +1,94 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "LangChain Decorated Runnable Example"
+description: "Demonstrates using @server.langchain_component decorator to register LangChain runnables as StepFlow components"
+
+# Decorated Runnable: Registered Components (@server.langchain_component decorator)
+# 
+# This workflow demonstrates using LangChain components that are registered 
+# directly with the server using the @server.langchain_component decorator.
+# These components are the most straightforward to use and have the best performance.
+
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+      description: "Text to analyze and process"
+
+output_schema:
+  type: object
+  properties:
+    text_analysis:
+      type: object
+      description: "Text analysis results"
+    sentiment:
+      type: object
+      description: "Sentiment analysis results"
+    math_results:
+      type: object
+      description: "Mathematical operation results"
+
+steps:
+  # Text analysis using registered component
+  - id: analyze_text
+    component: /text_analyzer
+    input:
+      input:
+        text:
+          $from:
+            workflow: input
+          path: text
+      execution_mode: invoke
+
+  # Sentiment classification using registered component
+  - id: classify_sentiment
+    component: /sentiment_classifier
+    input:
+      input:
+        text:
+          $from:
+            workflow: input
+          path: text
+
+  # Math operations using registered component
+  - id: math_operations
+    component: /math_operations
+    input:
+      input:
+        a: 10
+        b: 3
+
+output:
+  text_analysis:
+    $from:
+      step: analyze_text
+
+  sentiment:
+    $from:
+      step: classify_sentiment
+
+  math_results:
+    $from:
+      step: math_operations
+
+test:
+  cases:
+    - name: registered_components
+      input:
+        text: "This is a fantastic example of registered LangChain components!"
+      output:
+        outcome: success
+        result:
+          text_analysis:
+            word_count: 9
+            char_count: 63
+            char_count_no_spaces: 55
+            sentence_count: 1
+            uppercase_ratio: 0.047619047619047616
+          sentiment:
+            sentiment: positive
+            confidence: 0.5
+          math_results:
+            sum: 13
+            product: 30
+            power: 1000

@@ -54,6 +54,9 @@ http = [
     "uvicorn>=0.24.0",
     "sse-starlette>=1.6.5",
 ]
+langchain = [
+    "langchain-core>=0.3",
+]
 
 [dependency-groups]
 dev = [
@@ -71,6 +74,7 @@ dev = [
     "openai>=1.97.1",
     "httpx>=0.25.0",
     "pytest-mock>=3.14.1",
+    "langchain-core>=0.3.72",
 ]
 
 [project.scripts]

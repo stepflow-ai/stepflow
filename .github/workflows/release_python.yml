@@ -74,8 +74,7 @@ jobs:
       - name: Install dependencies
         working-directory: sdks/python
         run: |
-          uv sync --extra http
-          uv sync --group dev
+          uv sync --all-extras --group dev
 
       - name: Run code generation check
         working-directory: sdks/python
@@ -223,18 +222,18 @@ jobs:
         run: |
           echo "Checking release artifacts in ./release-artifacts/"
           ls -la ./release-artifacts/
-          
+
           # Verify expected files exist
           if ! ls ./release-artifacts/stepflow_py-*.whl 1> /dev/null 2>&1; then
             echo "ERROR: No wheel file found matching stepflow_py-*.whl"
             exit 1
           fi
-          
+
           if ! ls ./release-artifacts/stepflow_py-*.tar.gz 1> /dev/null 2>&1; then
             echo "ERROR: No source distribution found matching stepflow_py-*.tar.gz"
             exit 1
           fi
-          
+
           echo "✅ All expected artifacts found"
 
       - name: Create GitHub release with tag

@@ -79,12 +79,12 @@ else
 fi
 
 if [ "$QUIET" = true ]; then
-    if ! uv sync --extra http >/dev/null 2>&1; then
+    if ! uv sync --all-extras --group dev >/dev/null 2>&1; then
         echo "❌ Failed to install dependencies"
         FAILED_CHECKS+=("dependencies")
     fi
 else
-    if ! uv sync --extra http; then
+    if ! uv sync --all-extras --group dev; then
         echo "❌ Failed to install dependencies"
         FAILED_CHECKS+=("dependencies")
     fi
@@ -205,7 +205,7 @@ else
                 echo "  - Ensure uv is installed and working"
                 ;;
             "dependencies")
-                echo "  - Run: uv sync --extra http"
+                echo "  - Run: uv sync --all-extras"
                 ;;
             "codegen")
                 echo "  - Run: uv run poe codegen-fix"

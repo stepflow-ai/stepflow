@@ -27,7 +27,7 @@ cd "$PROJECT_ROOT"
 # Setup Python environment
 echo "🐍 Setting up Python environment..."
 cd sdks/python
-uv sync
+uv sync --all-extras --group dev
 cd ../..
 
 # Build stepflow binary

@@ -18,42 +18,42 @@ NC='\033[0m' # No Color
 test_python_version() {
     local version=$1
     echo -e "\n${YELLOW}Testing Python ${version}...${NC}"
-    
+
     # Install the specific Python version
     echo "Installing Python ${version}..."
     if ! uv python install "$version"; then
         echo -e "${RED}Failed to install Python ${version}${NC}"
         return 1
     fi
-    
+
     # Use the specific Python version
     echo "Using Python ${version}..."
     if ! uv python pin "$version"; then
         echo -e "${RED}Failed to pin Python ${version}${NC}"
         return 1
     fi
-    
+
     # Install dependencies
     echo "Installing dependencies for Python ${version}..."
-    if ! uv sync --extra http; then
+    if ! uv sync --all-extras; then
         echo -e "${RED}Failed to install dependencies for Python ${version}${NC}"
         return 1
     fi
-    
+
     # Run tests
     echo "Running tests with Python ${version}..."
     if ! uv run poe test; then
         echo -e "${RED}Tests failed for Python ${version}${NC}"
         return 1
     fi
-    
+
     # Run type checking
     echo "Running type checking with Python ${version}..."
     if ! uv run poe typecheck; then
         echo -e "${RED}Type checking failed for Python ${version}${NC}"
         return 1
     fi
-    
+
     echo -e "${GREEN}Python ${version} tests passed!${NC}"
 }
 

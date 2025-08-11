@@ -59,6 +59,14 @@ class StepflowStdioServer:
         """Get a registered component by path."""
         return self._server.get_component(component_path)
 
+    def get_components(self):
+        """Get all registered components."""
+        return self._server.get_components()
+
+    def langchain_component(self, *args, **kwargs):
+        """Delegate langchain_component registration to the underlying server."""
+        return self._server.langchain_component(*args, **kwargs)
+
     async def _handle_incoming_message(self, request_bytes: bytes):
         """Handle an incoming message in a separate task."""
         request_id = None

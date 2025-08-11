@@ -119,10 +119,19 @@ def test_list_components(server):
         return ValidOutput(greeting="", age_next_year=0)
 
     components = server.get_components()
-    assert len(components) == 3
-    assert "/component1" in components
-    assert "/component2" in components
-    assert "/udf" in components
+    expected_components = ["/component1", "/component2", "/udf"]
+
+    # LangChain components may be registered if langchain is available
+    try:
+        import langchain_core  # noqa: F401
+
+        expected_components.extend(["/langchain/invoke"])
+    except ImportError:
+        pass
+
+    assert len(components) == len(expected_components)
+    for expected in expected_components:
+        assert expected in components
 
     component1 = components["/component1"]
     assert isinstance(component1, ComponentEntry)
@@ -262,11 +271,18 @@ async def test_handle_list_components(server):
     response = await server.handle_message(request)
     assert response.id == request.id
     assert hasattr(response, "result")
-    assert len(response.result.components) == 3
-    component_urls = [comp.component for comp in response.result.components]
-    assert "/component1" in component_urls
-    assert "/component2" in component_urls
-    assert "/udf" in component_urls
+
+    expected = ["/component1", "/component2", "/udf"]
+    try:
+        import langchain_core  # noqa: F401
+
+        expected.append("/langchain/invoke")
+    except ImportError:
+        pass
+
+    assert len(response.result.components) == len(expected)
+    for comp in response.result.components:
+        assert comp.component in expected
 
 
 @pytest.mark.asyncio

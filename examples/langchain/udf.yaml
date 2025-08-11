@@ -1,0 +1,100 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "LangChain UDF Example"
+description: "Demonstrates using /udf component with self-contained Python code to create and execute LangChain runnables dynamically"
+
+# UDF: User-Defined Functions with Code (Python code that creates runnables)
+#
+# This workflow demonstrates using Python code to create LangChain runnables
+# dynamically. The workflow first creates a blob containing the Python code,
+# then executes it via the /udf component. This provides maximum flexibility
+# for custom runnable creation while being completely self-contained.
+
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+      description: "Text to process"
+
+output_schema:
+  type: object
+  properties:
+    text_processing_result:
+      type: object
+      description: "Result from user-defined text processing runnable"
+
+steps:
+  # First, create a blob containing Python code that creates a LangChain runnable
+  - id: create_text_processor_blob
+    component: /builtin/put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            text:
+              type: string
+          required: [text]
+        # Python code that creates a LangChain runnable for text processing
+        code: |
+          from langchain_core.runnables import RunnableLambda
+
+          def process_text(data):
+              """Custom text processing function created via UDF."""
+              text = data["text"]
+              words = text.split()
+
+              # Custom processing logic
+              processed_words = []
+              for word in words:
+                  if len(word) > 3:
+                      processed_words.append(word.upper())
+                  else:
+                      processed_words.append(word.lower())
+
+              return {
+                  "processed_text": " ".join(processed_words),
+                  "word_count": len(words),
+                  "long_word_count": sum(1 for w in words if len(w) > 3),
+                  "short_word_count": sum(1 for w in words if len(w) <= 3),
+                  "processed_by": "custom_udf_processor",
+                  "original_length": len(text)
+              }
+
+          return RunnableLambda(process_text)
+      blob_type: "data"
+
+  # Execute the UDF code that creates a LangChain runnable
+  - id: process_text_with_udf
+    component: /python/udf
+    input:
+      blob_id:
+        $from:
+          step: create_text_processor_blob
+        path: blob_id
+      input:
+        text:
+          $from:
+            workflow: input
+          path: text
+
+output:
+  text_processing_result:
+    $from:
+      step: process_text_with_udf
+
+test:
+  cases:
+    - name: self_contained_udf_example
+      input:
+        text: "This demonstrates self-contained user-defined LangChain runnables!"
+      output:
+        outcome: success
+        result:
+          text_processing_result:
+            processed_text: "THIS DEMONSTRATES SELF-CONTAINED USER-DEFINED LANGCHAIN RUNNABLES!"
+            word_count: 6
+            long_word_count: 6
+            short_word_count: 0
+            processed_by: "custom_udf_processor"
+            original_length: 66
