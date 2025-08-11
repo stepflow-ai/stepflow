@@ -25,9 +25,9 @@ runs:
       run: uv python install ${{ inputs.python-version }}
       working-directory: sdks/python
 
-    - name: Install HTTP optional dependencies
+    - name: Install Dependencies
       shell: bash
-      run: uv sync --extra http
+      run: uv sync --all-extras
       working-directory: sdks/python
 
     # Run Python SDK checks using the shared script

@@ -31,7 +31,6 @@ import msgspec
 # Only run examples if LangChain is available
 try:
     from langchain_core.runnables import RunnableLambda, RunnableParallel
-    from stepflow_py.langchain_integration import serialize_runnable
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
@@ -144,7 +143,6 @@ if LANGCHAIN_AVAILABLE:
         result = await invoke_named_runnable(
             import_path=input.import_path,
             input_data=input.input,
-            execution_mode=input.execution_mode,
             config=input.config,
             context=context,
             use_cache=True,

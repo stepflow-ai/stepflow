@@ -161,10 +161,11 @@ from stepflow_py import (
 
 # Use in your own components
 result = await invoke_named_runnable(
-    import_path="mymodule.my_runnable",
-    input_data={"key": "value"},
-    execution_mode="invoke",
-    context=stepflow_context
+    import_path=input.import_path,
+    input_data=input.input,
+    config=input.config,
+    context=context,
+    use_cache=True,
 )
 ```
 
@@ -180,7 +181,7 @@ Python code is created as a blob and executed via the `/udf` component. The work
     data:
       code: |
         from langchain_core.runnables import RunnableLambda
-        
+
         def process_text(data):
             text = data["text"]
             # Custom processing logic here
@@ -189,7 +190,7 @@ Python code is created as a blob and executed via the `/udf` component. The work
                 "word_count": len(text.split()),
                 "processed_by": "user_udf"
             }
-        
+
         # UDF must assign the runnable to 'result'
         result = RunnableLambda(process_text)
 
@@ -222,7 +223,7 @@ Each approach has different input requirements:
 }
 ```
 
-### Named Runnable  
+### Named Runnable
 ```json
 {
   "text": "Process this text",
@@ -259,7 +260,7 @@ The `langchain_server.py` file demonstrates:
 ### Key Features
 
 1. **Multiple Integration Patterns**: Three practical ways to achieve the same goals
-2. **Async Compatibility**: Both StepFlow and LangChain use async/await patterns  
+2. **Async Compatibility**: Both StepFlow and LangChain use async/await patterns
 3. **Type Safety**: msgspec integration with JSON Schema support
 4. **Bidirectional Communication**: Components access StepFlow runtime via `StepflowContext`
 5. **Flexible Execution**: Support for different runnable creation and execution patterns
@@ -310,7 +311,7 @@ The `langchain_server.py` file demonstrates:
 ### Performance Considerations
 
 - **Decorated runnable** has the best performance (pre-registered, no overhead)
-- **Named runnable** has excellent performance (cached imports, no serialization overhead)  
+- **Named runnable** has excellent performance (cached imports, no serialization overhead)
 - **UDF** has compilation overhead but is very flexible
 
 ## Next Steps

@@ -456,7 +456,7 @@ async def test_components_list(test_server):
     try:
         import langchain_core  # noqa: F401
 
-        expected_components.extend(["/langchain/invoke", "/langchain/udf"])
+        expected_components.extend(["/langchain/invoke"])
     except ImportError:
         pass
 

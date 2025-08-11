@@ -19,7 +19,6 @@ Core utilities for LangChain integration with StepFlow.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import msgspec
@@ -32,7 +31,6 @@ _import_cache: dict[str, Any] = {}
 
 try:
     from langchain_core.load import load
-    from langchain_core.load.dump import dumpd
     from langchain_core.runnables import Runnable
     from langchain_core.runnables.config import RunnableConfig
 
@@ -90,94 +88,6 @@ def create_runnable_config(
         config["metadata"]["stepflow_context"] = context
 
     return config
-
-
-async def execute_runnable(
-    runnable: Runnable,
-    input_data: Any,
-    config: RunnableConfig | None = None,
-    execution_mode: str = "invoke",
-) -> Any:
-    """
-    Execute a LangChain runnable with proper async handling.
-
-    Args:
-        runnable: The LangChain runnable to execute
-        input_data: Input data for the runnable
-        config: Optional runnable configuration
-        execution_mode: Execution mode ("invoke", "batch", "stream")
-
-    Returns:
-        The result of runnable execution
-
-    Raises:
-        StepflowExecutionError: If execution fails
-    """
-    check_langchain_available()
-
-    try:
-        if execution_mode == "invoke":
-            # Use ainvoke if available, otherwise run invoke in thread pool
-            if hasattr(runnable, "ainvoke"):
-                return await runnable.ainvoke(input_data, config=config)
-            else:
-                loop = asyncio.get_event_loop()
-                return await loop.run_in_executor(
-                    None, lambda: runnable.invoke(input_data, config=config)
-                )
-
-        elif execution_mode == "batch":
-            # Handle batch execution
-            if hasattr(runnable, "abatch"):
-                return await runnable.abatch(input_data, config=config)
-            else:
-                loop = asyncio.get_event_loop()
-                return await loop.run_in_executor(
-                    None, lambda: runnable.batch(input_data, config=config)
-                )
-
-        elif execution_mode == "stream":
-            # Handle streaming execution
-            if hasattr(runnable, "astream"):
-                result = []
-                async for chunk in runnable.astream(input_data, config=config):
-                    result.append(chunk)
-                return result
-            else:
-                # Fallback to sync stream in thread pool
-                def sync_stream():
-                    return list(runnable.stream(input_data, config=config))
-
-                loop = asyncio.get_event_loop()
-                return await loop.run_in_executor(None, sync_stream)
-
-        else:
-            raise StepflowExecutionError(
-                f"Unsupported execution mode: {execution_mode}"
-            )
-
-    except Exception as e:
-        raise StepflowExecutionError(
-            f"LangChain runnable execution failed: {str(e)}"
-        ) from e
-
-
-def serialize_runnable(runnable: Runnable) -> dict[str, Any]:
-    """
-    Serialize a LangChain runnable to a dictionary for blob storage.
-
-    Args:
-        runnable: The runnable to serialize
-
-    Returns:
-        Dictionary representation of the runnable
-    """
-    check_langchain_available()
-
-    try:
-        return dumpd(runnable)  # type: ignore[no-any-return]
-    except Exception as e:
-        raise StepflowExecutionError(f"Failed to serialize runnable: {str(e)}") from e
 
 
 def deserialize_runnable(runnable_data: dict[str, Any]) -> Runnable:
@@ -346,7 +256,6 @@ def clear_import_cache() -> None:
 async def invoke_named_runnable(
     import_path: str,
     input_data: Any,
-    execution_mode: str = "invoke",
     config: dict[str, Any] | None = None,
     context: StepflowContext | None = None,
     use_cache: bool = True,
@@ -360,7 +269,6 @@ async def invoke_named_runnable(
     Args:
         import_path: Python import path like "mymodule.my_runnable"
         input_data: Input data for the runnable
-        execution_mode: Execution mode ("invoke", "batch", "stream")
         config: Optional runnable configuration
         context: Optional StepFlow context for runtime services
         use_cache: Whether to use the import cache (default: True)
@@ -383,14 +291,7 @@ async def invoke_named_runnable(
         )
 
         # Execute the runnable directly
-        result = await execute_runnable(
-            runnable=runnable,
-            input_data=input_data,
-            config=runnable_config,
-            execution_mode=execution_mode,
-        )
-
-        return result
+        return await runnable.ainvoke(input_data, config=runnable_config)
 
     except Exception as e:
         raise StepflowExecutionError(
@@ -403,7 +304,6 @@ class InvokeNamedInput(msgspec.Struct):
 
     import_path: str
     input: dict
-    execution_mode: str = "invoke"
     config: dict | None = None
 
 
@@ -429,7 +329,6 @@ def create_invoke_named_component(server):
         result = await invoke_named_runnable(
             import_path=input.import_path,
             input_data=input.input,
-            execution_mode=input.execution_mode,
             config=input.config,
             context=context,
             use_cache=True,

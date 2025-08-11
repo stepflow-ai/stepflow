@@ -30,7 +30,6 @@ from stepflow_py.langchain_integration import (
     check_langchain_available,
     create_runnable_config,
     deserialize_runnable,
-    execute_runnable,
 )
 
 
@@ -67,11 +66,11 @@ async def langchain_invoke(
     """
     check_langchain_available()
 
-    # Validate execution mode
-    if input.execution_mode not in ["invoke", "batch", "stream"]:
+    # Validate execution mode (only invoke is supported)
+    if input.execution_mode != "invoke":
         raise StepflowExecutionError(
             f"Invalid execution_mode '{input.execution_mode}'. "
-            "Must be 'invoke', 'batch', or 'stream'"
+            "Only 'invoke' mode is supported."
         )
 
     # Deserialize the runnable
@@ -91,15 +90,7 @@ async def langchain_invoke(
 
     # Execute the runnable
     try:
-        result = await execute_runnable(
-            runnable,
-            langchain_input,
-            config=runnable_config,
-            execution_mode=input.execution_mode,
-        )
-
-        return result
-
+        return await runnable.ainvoke(langchain_input, config=runnable_config)
     except Exception as e:
         if isinstance(e, StepflowExecutionError):
             raise
@@ -125,8 +116,3 @@ def register_langchain_components(server):
 
     # Register the invoke component
     server.component(langchain_invoke, name="/langchain/invoke")
-
-    # Import and register the UDF component
-    from stepflow_py.langchain_udf import langchain_udf
-
-    server.component(langchain_udf, name="/langchain/udf")

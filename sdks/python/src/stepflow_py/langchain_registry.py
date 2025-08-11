@@ -33,7 +33,6 @@ from stepflow_py.exceptions import StepflowExecutionError
 from stepflow_py.langchain_integration import (
     check_langchain_available,
     create_runnable_config,
-    execute_runnable,
     get_runnable_schemas,
 )
 
@@ -138,12 +137,12 @@ def add_langchain_component_method(server_class):
             ) -> Any:
                 """Execute the registered LangChain runnable."""
 
-                # Validate execution mode (allow override from input)
+                # Validate execution mode (only invoke is supported)
                 exec_mode = component_input.execution_mode or execution_mode
-                if exec_mode not in ["invoke", "batch", "stream"]:
+                if exec_mode != "invoke":
                     raise StepflowExecutionError(
                         f"Invalid execution_mode '{exec_mode}'. "
-                        "Must be 'invoke', 'batch', or 'stream'"
+                        "Only 'invoke' mode is supported."
                     )
 
                 # Prepare input for LangChain runnable
@@ -157,12 +156,7 @@ def add_langchain_component_method(server_class):
                 runnable_config = create_runnable_config(stepflow_input_dict, context)
 
                 # Execute the runnable
-                return await execute_runnable(
-                    runnable,
-                    langchain_input,
-                    config=runnable_config,
-                    execution_mode=exec_mode,
-                )
+                return await runnable.ainvoke(langchain_input, config=runnable_config)
 
             # Set up the component input/output types and description
             langchain_component_executor.__annotations__ = {

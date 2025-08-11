@@ -125,7 +125,7 @@ def test_list_components(server):
     try:
         import langchain_core  # noqa: F401
 
-        expected_components.extend(["/langchain/invoke", "/langchain/udf"])
+        expected_components.extend(["/langchain/invoke"])
     except ImportError:
         pass
 
@@ -271,19 +271,18 @@ async def test_handle_list_components(server):
     response = await server.handle_message(request)
     assert response.id == request.id
     assert hasattr(response, "result")
-    # Check that we have the expected components (may include LangChain if available)
-    expected_count = 3  # /component1, /component2, /udf
+
+    expected = ["/component1", "/component2", "/udf"]
     try:
         import langchain_core  # noqa: F401
 
-        expected_count = 5  # Add /langchain/invoke and /langchain/udf
+        expected.append("/langchain/invoke")
     except ImportError:
         pass
-    assert len(response.result.components) == expected_count
-    component_urls = [comp.component for comp in response.result.components]
-    assert "/component1" in component_urls
-    assert "/component2" in component_urls
-    assert "/udf" in component_urls
+
+    assert len(response.result.components) == len(expected)
+    for comp in response.result.components:
+        assert comp.component in expected
 
 
 @pytest.mark.asyncio
