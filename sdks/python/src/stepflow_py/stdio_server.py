@@ -63,21 +63,9 @@ class StepflowStdioServer:
         """Get all registered components."""
         return self._server.get_components()
 
-    def __getattr__(self, name):
-        """Delegate any unknown attribute access to the underlying server.
-
-        This allows LangChain methods like langchain_component to work
-        even if they're added dynamically to the server class.
-        """
-        if hasattr(self._server, name):
-            attr = getattr(self._server, name)
-            # If it's a method, return a bound method
-            if callable(attr):
-                return attr
-            return attr
-        raise AttributeError(
-            f"'{self.__class__.__name__}' object has no attribute '{name}'"
-        )
+    def langchain_component(self, *args, **kwargs):
+        """Delegate langchain_component registration to the underlying server."""
+        return self._server.langchain_component(*args, **kwargs)
 
     async def _handle_incoming_message(self, request_bytes: bytes):
         """Handle an incoming message in a separate task."""
