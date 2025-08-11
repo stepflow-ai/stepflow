@@ -2,72 +2,80 @@
 sidebar_position: 1
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # StepFlow Introduction
 
-StepFlow is an open protocol and runtime for building, executing, and scaling GenAI workflows across local and cloud environments.
+StepFlow allows you to create and execute AI workflows combining components from different tools and services, both locally and in the cloud.
+With StepFlow, components may execute locally or remotely, allowing simple development while providing isolation and resource management for production scale.
+
+StepFlow defines a protocol for component servers, allowing a combination of custom and off-the-shelf components to be combined within a single workflow.
+By routing specific component servers to different StepFlow runtimes, you can create workflows that run across multiple machines, containers, or cloud services.
 Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production.
-With durability, fault-tolerance, and an open specification, StepFlow empowers anyone to create, share, and run AI workflows across platforms and tools.
 
-## Local Architecture
+StepFlow further solves for production problems like durability and fault-tolerance by journalling the results of each component execution, allowing workflows to be resumed from the last successful step in the event of a failure without adding complexity to component servers.
 
-```mermaid
-flowchart LR
-    Workflows["Workflows"]@{ shape: docs }
-    Workflows <-->|"Workflow YAML"| Host
-    subgraph "Local"
-        Host["Stepflow Runtime"]
-        S1["Component Server A"]
-        S2["MCP Tool Server B"]
-        S3["Component Server C"]
-        Host <-->|"StepFlow Protocol"| S1
-        Host <-->|"MCP Protocol"| S2
-        Host <-->|"StepFlow Protocol"| S3
-        S1 <--> D1[("Local<br>Data Source A")]
-        S2 <--> D2[("Local<br>Data Source B")]
-    end
-    subgraph "Internet"
-        S3 <-->|"Web APIs"| D3[("Remote<br>Service C")]
-    end
-```
+## Architecture
 
-- **StepFlow Runtime**: Where the workflow is executed.
-- **Component Servers**: Lightweight programs that each expose specific workflow components through the standardized StepFlow Protocol.
-- **MCP Servers**: MCP servers can be used as component servers, with each tool treated as a component.
-- **Local Data Sources**: Files, databases and services that Component Servers can securely access.
-- **Remote Services**: External systems available over the internet (e.g., through APIs) that Copmonent Servers servers can connect to.
+StepFlow consists of a runtime that manages the execution of workflows and servers that provide components and tools using the StepFlow protocol or Model Context Protocol.
 
-## Production Architecture
+<Tabs>
+  <TabItem value="local" label="Local" default>
+    During development, the StepFlow runtime can manage the component servers and MCP servers in subprocesses, communicating over stdio.
 
-This same architecture allows separating the component servers into separate containers or k8s nodes for production deployment.
-The same component server could be used by multiple runtimes, each with a different set of components available.
-This provides efficient resource and the ability to isolate different security concerns.
+    ```mermaid
+    flowchart LR
+        Workflows["Workflows"]@{ shape: docs }
+        Workflows <-->|"Workflow YAML"| Host
+        subgraph "Local"
+            Host["Stepflow Runtime"]
+            S1["Component Server A"]
+            S2["MCP Tool Server B"]
+            S3["Component Server C"]
+            Host <-->|"StepFlow Protocol"| S1
+            Host <-->|"MCP Protocol"| S2
+            Host <-->|"StepFlow Protocol"| S3
+            S1 <--> D1[("Local<br>Data Source A")]
+            S2 <--> D2[("Local<br>Data Source B")]
+        end
+        subgraph "Internet"
+            S3 <-->|"Web APIs"| D3[("Remote<br>Service C")]
+        end
+    ```
+  </TabItem>
+  <TabItem value="production" label="Production">
+    In production, the StepFlow runtime can communicate with remote servers in separate containers or k8s nodes.
+    This allows sharing a server across multiple runtimes and isolating specific components on dedicated servers for better security and resource management.
 
-```mermaid
-flowchart LR
-    Workflows["Workflows"]@{ shape: docs }
-    Workflows <-->|"Workflow YAML"| Host
-    subgraph "Runtime Node"
-        Host["Stepflow Runtime"]
-    end
-    subgraph "Components A+B node"
-        S1["Component Server A"]
-        S2["MCP Tool Server B"]
-        S1 <--> D1[("Local<br>Data Source A")]
-        S2 <--> D2[("Local<br>Data Source B")]
-    end
-    subgraph "Components C node"
-        S3["Component Server C"]
-        Host <-->|"StepFlow Protocol"| S1
-        Host <-->|"MCP Protocol"| S2
-        Host <-->|"StepFlow Protocol"| S3
-    end
-    subgraph "Internet"
-        S3 <-->|"Web APIs"| D3[("Remote<br>Service C")]
-    end
-```
+    ```mermaid
+    flowchart LR
+        Workflows["Workflows"]@{ shape: docs }
+        Workflows <-->|"Workflow YAML"| Host
+        subgraph "Runtime Node"
+            Host["Stepflow Runtime"]
+        end
+        subgraph "Components A+B node"
+            S1["Component Server A"]
+            S2["MCP Tool Server B"]
+            S1 <--> D1[("Local<br>Data Source A")]
+            S2 <--> D2[("Local<br>Data Source B")]
+        end
+        subgraph "Components C node"
+            S3["Component Server C"]
+            Host <-->|"StepFlow Protocol"| S1
+            Host <-->|"MCP Protocol"| S2
+            Host <-->|"StepFlow Protocol"| S3
+        end
+        subgraph "Internet"
+            S3 <-->|"Web APIs"| D3[("Remote<br>Service C")]
+        end
+    ```
+  </TabItem>
+</Tabs>
 
 ## Next Steps
 
-* See [Getting Started](./getting_started.md) for installation and running your first workflows.
+* [Get Started](./getting_started.md) by installing StepFlow and running your first flow.
 * Read more about writing your own [Workflows](./workflows/index.md).
 * Learn how to create your own components using the [StepFlow Protocol](./protocol/index.md).
