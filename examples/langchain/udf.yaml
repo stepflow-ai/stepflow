@@ -1,10 +1,10 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "LangChain UDF Example" 
+name: "LangChain UDF Example"
 description: "Demonstrates using /udf component with self-contained Python code to create and execute LangChain runnables dynamically"
 
 # UDF: User-Defined Functions with Code (Python code that creates runnables)
 #
-# This workflow demonstrates using Python code to create LangChain runnables 
+# This workflow demonstrates using Python code to create LangChain runnables
 # dynamically. The workflow first creates a blob containing the Python code,
 # then executes it via the /udf component. This provides maximum flexibility
 # for custom runnable creation while being completely self-contained.
@@ -13,7 +13,7 @@ input_schema:
   type: object
   properties:
     text:
-      type: string 
+      type: string
       description: "Text to process"
 
 output_schema:
@@ -38,12 +38,12 @@ steps:
         # Python code that creates a LangChain runnable for text processing
         code: |
           from langchain_core.runnables import RunnableLambda
-          
+
           def process_text(data):
               """Custom text processing function created via UDF."""
               text = data["text"]
               words = text.split()
-              
+
               # Custom processing logic
               processed_words = []
               for word in words:
@@ -51,7 +51,7 @@ steps:
                       processed_words.append(word.upper())
                   else:
                       processed_words.append(word.lower())
-              
+
               return {
                   "processed_text": " ".join(processed_words),
                   "word_count": len(words),
@@ -60,9 +60,8 @@ steps:
                   "processed_by": "custom_udf_processor",
                   "original_length": len(text)
               }
-          
-          # The UDF must assign the runnable to 'result'
-          result = RunnableLambda(process_text)
+
+          return RunnableLambda(process_text)
       blob_type: "data"
 
   # Execute the UDF code that creates a LangChain runnable

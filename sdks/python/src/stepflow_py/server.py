@@ -63,18 +63,10 @@ class ComponentEntry:
     description: str | None = None
 
     def input_schema(self):
-        try:
-            return msgspec.json.schema(self.input_type)
-        except Exception:
-            # Handle cases where schema generation fails (e.g., forward references)
-            return {"type": "object", "title": str(self.input_type)}
+        return msgspec.json.schema(self.input_type)
 
     def output_schema(self):
-        try:
-            return msgspec.json.schema(self.output_type)
-        except Exception:
-            # Handle cases where schema generation fails (e.g., forward references)
-            return {"type": "object", "title": str(self.output_type)}
+        return msgspec.json.schema(self.output_type)
 
 
 def _handle_exception(e: Exception, id: RequestId) -> MethodError:

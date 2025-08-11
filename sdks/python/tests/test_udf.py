@@ -142,3 +142,132 @@ def test_input_wrapper_encoding():
     wrapper = _InputWrapper(data)
     encoded = msgspec.json.encode(wrapper)
     assert encoded == b'{"a":1,"b":{"c":2}}'
+
+
+# LangChain-specific tests
+@pytest.mark.asyncio
+async def test_langchain_runnable_return_pattern(mock_context):
+    """Test UDF with LangChain runnable using return statement (preferred pattern)."""
+    pytest.importorskip("langchain_core")
+    
+    # This uses the new cleaner return pattern
+    code = '''
+from langchain_core.runnables import RunnableLambda
+
+def process_text(data):
+    """Custom text processing function created via UDF."""
+    text = data["text"]
+    words = text.split()
+    
+    # Custom processing logic
+    processed_words = []
+    for word in words:
+        if len(word) > 3:
+            processed_words.append(word.upper())
+        else:
+            processed_words.append(word.lower())
+    
+    return {
+        "processed_text": " ".join(processed_words),
+        "word_count": len(words),
+        "long_word_count": sum(1 for w in words if len(w) > 3),
+        "short_word_count": sum(1 for w in words if len(w) <= 3),
+        "processed_by": "custom_udf_processor",
+        "original_length": len(text)
+    }
+
+# UDF returns the runnable directly - simpler and cleaner
+return RunnableLambda(process_text)
+'''
+    
+    schema = {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"]
+    }
+    
+    func = _compile_function(code, None, schema)
+    test_input = {"text": "This demonstrates self-contained user-defined LangChain runnables!"}
+    result = await func(test_input, context=mock_context)
+    
+    # The result should not be None
+    assert result is not None
+    
+    # Check expected structure
+    assert isinstance(result, dict)
+    assert "processed_text" in result
+    assert "word_count" in result
+    assert result["word_count"] == 6
+    assert result["processed_by"] == "custom_udf_processor"
+
+
+@pytest.mark.asyncio
+async def test_langchain_runnable_lambda_expression(mock_context):
+    """Test UDF with LangChain runnable using lambda expression pattern."""
+    pytest.importorskip("langchain_core")
+    
+    # This tests a simple lambda expression pattern
+    code = '''RunnableLambda(lambda data: {"simple_result": f"Lambda processed: {data['text']}"})'''
+    
+    schema = {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"]
+    }
+    
+    func = _compile_function(code, None, schema)
+    test_input = {"text": "This is a lambda test!"}
+    result = await func(test_input, context=mock_context)
+    
+    # The result should not be None
+    assert result is not None
+    
+    # Check expected structure
+    assert isinstance(result, dict)
+    assert "simple_result" in result
+    assert result["simple_result"] == "Lambda processed: This is a lambda test!"
+
+
+@pytest.mark.asyncio
+async def test_simple_langchain_runnable_direct_invoke(mock_context):
+    """Test direct LangChain runnable invocation to isolate the issue."""
+    pytest.importorskip("langchain_core")
+    
+    from langchain_core.runnables import RunnableLambda
+    
+    def simple_processor(data):
+        return {"result": f"Processed: {data['text']}"}
+    
+    # Test direct runnable invocation
+    runnable = RunnableLambda(simple_processor)
+    test_input = {"text": "hello world"}
+    
+    # This should work
+    direct_result = runnable.invoke(test_input)
+    assert direct_result == {"result": "Processed: hello world"}
+    
+    # Now test through UDF compilation using return pattern
+    code = '''
+from langchain_core.runnables import RunnableLambda
+
+def simple_processor(data):
+    return {"result": f"Processed: {data['text']}"}
+
+return RunnableLambda(simple_processor)
+'''
+    
+    schema = {
+        "type": "object", 
+        "properties": {"text": {"type": "string"}}, 
+        "required": ["text"]
+    }
+    
+    func = _compile_function(code, None, schema)
+    udf_result = await func(test_input, context=mock_context)
+    
+    # This should match the direct invocation result
+    assert udf_result == {"result": "Processed: hello world"}
+
+
+
+
