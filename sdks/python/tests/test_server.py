@@ -120,14 +120,15 @@ def test_list_components(server):
 
     components = server.get_components()
     expected_components = ["/component1", "/component2", "/udf"]
-    
+
     # LangChain components may be registered if langchain is available
     try:
         import langchain_core  # noqa: F401
+
         expected_components.extend(["/langchain/invoke", "/langchain/udf"])
     except ImportError:
         pass
-    
+
     assert len(components) == len(expected_components)
     for expected in expected_components:
         assert expected in components
@@ -274,6 +275,7 @@ async def test_handle_list_components(server):
     expected_count = 3  # /component1, /component2, /udf
     try:
         import langchain_core  # noqa: F401
+
         expected_count = 5  # Add /langchain/invoke and /langchain/udf
     except ImportError:
         pass
