@@ -20,8 +20,6 @@ This module provides built-in components for executing LangChain runnables
 directly without requiring blob storage.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import msgspec

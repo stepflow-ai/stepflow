@@ -20,10 +20,26 @@ from typing import Any
 import msgspec
 
 from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import StepflowValueError
+from stepflow_py.exceptions import StepflowValueError, CodeCompilationError
 
 
-class WrapperConfig(msgspec.Struct):
+class UdfCompilationError(CodeCompilationError):
+    """Raised when UDF code compilation fails."""
+    
+    def __init__(self, message: str, code: str, blob_id: str | None = None):
+        super().__init__(message, code)
+        self.blob_id = blob_id
+        if blob_id:
+            self.data["blob_id"] = blob_id
+    
+    def __str__(self):
+        msg = super().__str__()
+        if self.blob_id:
+            msg = f"Blob '{self.blob_id}': {msg}"
+        return msg
+
+
+class WrapperConfig(msgspec.Struct, frozen=True):
     """Configuration for selecting the appropriate wrapper function."""
 
     is_async: bool
@@ -342,7 +358,14 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
             raise ValueError(f"Blob {input.blob_id} must contain 'input_schema' field")
 
         # Compile the function with validation built-in
-        compiled_func = _compile_function(code, function_name, input_schema)
+        try:
+            compiled_func = _compile_function(code, function_name, input_schema)
+        except UdfCompilationError as e:
+            # Re-raise with blob context for better tracing
+            e.blob_id = input.blob_id
+            if input.blob_id:
+                e.data["blob_id"] = input.blob_id
+            raise
 
         # Cache the compiled function with metadata
         _function_cache[input.blob_id] = {
@@ -498,15 +521,15 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
         # 2. Try as lambda expression
 
         # First, try as statements in a function body (handles return statements)
-        # Only attempt this if the code contains a top-level 'return' keyword
-        # (not inside function definitions - check for no indentation)
+        # Check if the code contains any return statements - this suggests it's meant
+        # to be a function body rather than an expression
         lines = [line for line in code.split("\n") if line.strip()]
-        has_top_level_return = any(
-            line.strip().startswith("return ") and not line.startswith((" ", "\t"))
+        has_return_statement = any(
+            line.strip().startswith("return ") 
             for line in lines
         )
 
-        if has_top_level_return:
+        if has_return_statement:
             try:
                 # Properly indent each line of the code
                 indented_lines = []
@@ -572,7 +595,9 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
             pass
 
         # If we reach here, none of the compilation approaches worked
-        raise ValueError(
-            "Code compilation failed - unable to compile as function body "
-            "with return statement or lambda expression"
+        raise UdfCompilationError(
+            "Unable to compile code as function body with return statement or lambda expression. "
+            "Code must either: (1) contain return statements for function body compilation, or "
+            "(2) be a valid expression for lambda compilation.",
+            code
         )

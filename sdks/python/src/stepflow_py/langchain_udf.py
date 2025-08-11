@@ -20,8 +20,6 @@ This extends the existing UDF pattern to support LangChain runnables that are
 serialized and stored in StepFlow's blob system.
 """
 
-from __future__ import annotations
-
 import sys
 from typing import Any
 
