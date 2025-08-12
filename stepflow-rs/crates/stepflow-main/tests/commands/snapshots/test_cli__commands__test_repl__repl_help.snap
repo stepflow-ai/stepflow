@@ -11,7 +11,23 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Start an interactive REPL for workflow development and debugging
+Start an interactive REPL for workflow development and debugging.
+
+Start an interactive REPL (Read-Eval-Print Loop) for workflow development and debugging. The REPL provides an interactive environment for testing workflow fragments, debugging step execution, exploring component capabilities, and iterative workflow development.
+
+# Examples
+
+```bash
+
+# Start REPL with default config
+
+stepflow repl
+
+# Start REPL with custom config
+
+stepflow repl --config=development-config.yml
+
+```
 
 Usage: stepflow repl [OPTIONS]
 

@@ -12,7 +12,31 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-List all available components from a stepflow config
+List all available components from a stepflow config.
+
+List all available components from the configured plugins.
+
+# Examples
+
+```bash
+
+# List components in pretty format
+
+stepflow list-components
+
+# List components with JSON output including schemas
+
+stepflow list-components --format=json
+
+# List components from specific config without schemas
+
+stepflow list-components --config=my-config.yml --format=yaml --schemas=false
+
+# Show all components including unreachable ones
+
+stepflow list-components --hide-unreachable=false
+
+```
 
 Usage: stepflow list-components [OPTIONS]
 

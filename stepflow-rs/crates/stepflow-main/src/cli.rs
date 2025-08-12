@@ -69,9 +69,9 @@ pub enum Command {
     /// Run a workflow directly.
     ///
     /// Execute a workflow directly and return the result.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```bash
     ///
     /// # Run with input file
@@ -112,9 +112,9 @@ pub enum Command {
     /// Start a StepFlow service.
     ///
     /// Start a StepFlow service that can accept workflow submissions via HTTP API.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```bash
     ///
     /// # Start server on default port (7837)
@@ -137,9 +137,9 @@ pub enum Command {
     /// Submit a workflow to a StepFlow service.
     ///
     /// Submit a workflow to a running StepFlow service.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```bash
     ///
     /// # Submit to local server
@@ -173,9 +173,9 @@ pub enum Command {
     /// Run tests defined in workflow files or directories.
     ///
     /// Run test cases defined in workflow files.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```bash
     ///
     /// # Run all tests in a workflow file
@@ -217,9 +217,9 @@ pub enum Command {
     /// List all available components from a stepflow config.
     ///
     /// List all available components from the configured plugins.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```bash
     ///
     /// # List components in pretty format
@@ -264,9 +264,9 @@ pub enum Command {
     /// Start an interactive REPL (Read-Eval-Print Loop) for workflow development and debugging.
     /// The REPL provides an interactive environment for testing workflow fragments, debugging
     /// step execution, exploring component capabilities, and iterative workflow development.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```bash
     ///
     /// # Start REPL with default config
@@ -288,9 +288,9 @@ pub enum Command {
     /// validation (structure, step dependencies, value references), configuration validation
     /// (plugin definitions, routing rules), component routing validation, and schema validation.
     /// Returns 0 for success, 1+ for validation failures (suitable for CI/CD pipelines).
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```bash
     ///
     /// # Validate workflow with auto-detected config
