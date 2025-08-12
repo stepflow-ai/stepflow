@@ -162,6 +162,6 @@ This workflow demonstrates StepFlow's key concepts:
 Choose your learning path based on your goals:
 
 - **Build workflows**: Learn about [Flows](./flows/index.md) - steps, expressions, and control flow
-- **Create components**: Explore [Components](./components/index.md) - built-ins, Python SDK, and other language SDKs
+- **Use and create components**: Explore [Components](./components/index.md) - built-ins, Python SDK, and other language SDKs
 - **Test workflows**: Check out [Testing Best Practices](./best-practices/testing.md) for validation and testing strategies
-- **See examples**: Browse [Workflow Examples](./examples/) for real-world use cases
+- **See more examples**: Browse [Workflow Examples](./examples/) for real-world use cases
