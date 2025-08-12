@@ -14,7 +14,7 @@ describe('ZodError Regression Test', () => {
       status: 'completed',
       debug: false,
       workflowName: null, // This was causing "Expected string, received null"
-      flowHash: 'sha256-abc123def456'
+      flowId: 'sha256-abc123def456'
     }
 
     // This should NOT throw a ZodError anymore
@@ -38,7 +38,7 @@ describe('ZodError Regression Test', () => {
       status: 'completed',
       debug: true,
       workflowName: 'my-data-pipeline', // String value for named workflows
-      flowHash: 'sha256-def456ghi789'
+      flowId: 'sha256-def456ghi789'
     }
 
     const result = ExecuteWorkflowResponseSchema.safeParse(namedWorkflowResponse)

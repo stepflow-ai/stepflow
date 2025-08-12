@@ -74,7 +74,7 @@ describe('End-to-End Workflow Tests', () => {
             id: 1,
             name: 'data-processing',
             description: 'Process data',
-            flowHash: 'hash1',
+            flowId: 'hash1',
             createdAt: '2024-01-15T10:30:00Z',
             updatedAt: '2024-01-15T10:30:00Z',
             labelCount: 1,
@@ -84,7 +84,7 @@ describe('End-to-End Workflow Tests', () => {
             id: 2,
             name: 'email-sender',
             description: 'Send emails',
-            flowHash: 'hash2',
+            flowId: 'hash2',
             createdAt: '2024-01-15T11:00:00Z',
             updatedAt: '2024-01-15T11:00:00Z',
             labelCount: 0,
@@ -97,12 +97,12 @@ describe('End-to-End Workflow Tests', () => {
         id: 1,
         name: 'data-processing',
         description: 'Process data workflow',
-        flowHash: 'hash1',
+        flowId: 'hash1',
         createdAt: '2024-01-15T10:30:00Z',
         updatedAt: '2024-01-15T10:30:00Z',
         labels: [{
           label: 'latest',
-          flowHash: 'hash1',
+          flowId: 'hash1',
           createdAt: '2024-01-15T10:30:00Z',
           updatedAt: '2024-01-15T10:30:00Z'
         }],
@@ -130,14 +130,14 @@ describe('End-to-End Workflow Tests', () => {
         status: 'running' as const,
         debug: false,
         workflowName: 'data-processing',
-        flowHash: 'hash1'
+        flowId: 'hash1'
       }
 
       const mockRunDetails = {
         runId: 'run123',
         flowName: 'data-processing',
         flowLabel: 'latest',
-        flowHash: 'hash1',
+        flowId: 'hash1',
         status: 'completed' as const,
         debugMode: false,
         createdAt: '2023-01-01T00:00:00Z',
@@ -234,7 +234,7 @@ describe('End-to-End Workflow Tests', () => {
         id: 1,
         name: 'test-flow',
         description: 'A test flow',
-        flowHash: 'new-hash-123',
+        flowId: 'new-hash-123',
         createdAt: '2023-01-01T00:00:00Z',
         updatedAt: '2023-01-01T00:00:00Z',
         labelCount: 0,
@@ -244,21 +244,21 @@ describe('End-to-End Workflow Tests', () => {
       const mockFlowVersions = [
         {
           label: 'production',
-          flowHash: 'hash1',
+          flowId: 'hash1',
           createdAt: '2023-01-01T00:00:00Z',
           updatedAt: '2023-01-01T00:00:00Z',
           workflowName: 'test-flow'
         },
         {
           label: 'staging',
-          flowHash: 'hash2',
+          flowId: 'hash2',
           createdAt: '2023-01-01T01:00:00Z',
           updatedAt: '2023-01-01T01:00:00Z',
           workflowName: 'test-flow'
         },
         {
           label: 'latest',
-          flowHash: 'new-hash-123',
+          flowId: 'new-hash-123',
           createdAt: '2023-01-01T02:00:00Z',
           updatedAt: '2023-01-01T02:00:00Z',
           workflowName: 'test-flow'
@@ -287,14 +287,14 @@ describe('End-to-End Workflow Tests', () => {
       const mockDebugRun = {
         runId: 'debug-run-123',
         status: 'paused' as const,
-        flowHash: 'hash123',
+        flowId: 'hash123',
         debug: true,
         workflowName: 'test-debug-flow'
       }
 
       const mockRunnableSteps = {
         status: 'paused' as const,
-        flowHash: 'hash123',
+        flowId: 'hash123',
         createdAt: '2023-01-01T00:00:00Z',
         completedAt: null,
         input: {},
@@ -306,7 +306,7 @@ describe('End-to-End Workflow Tests', () => {
 
       const mockStepExecution = {
         status: 'completed' as const,
-        flowHash: 'hash123',
+        flowId: 'hash123',
         createdAt: '2023-01-01T00:00:00Z',
         completedAt: '2023-01-01T00:02:30Z',
         input: {},

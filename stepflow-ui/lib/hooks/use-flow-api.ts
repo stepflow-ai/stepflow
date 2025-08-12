@@ -145,8 +145,8 @@ export const useCreateFlowLabel = () => {
   
   return useMutation({
     mutationKey: ['createFlowLabel'],
-    mutationFn: ({ name, label, flowHash }: { name: string; label: string; flowHash: string }) =>
-      uiApi.createFlowLabel(name, label, { flowHash }),
+    mutationFn: ({ name, label, flowId }: { name: string; label: string; flowId: string }) =>
+      uiApi.createFlowLabel(name, label, { flowId }),
     onSuccess: (_, variables) => {
       // Invalidate related queries
       queryClient.invalidateQueries({ queryKey: ['flow-labels', variables.name] })

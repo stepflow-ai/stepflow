@@ -12,7 +12,7 @@ describe('Run Details Page ToString Fix', () => {
       runId: 'run-123',
       flowName: null, // Ad-hoc workflow
       flowLabel: null,
-      flowHash: 'sha256-abc123',
+      flowId: 'sha256-abc123',
       status: 'completed',
       debugMode: false,
       createdAt: '2024-01-15T10:30:00Z', // String, not Date
@@ -38,7 +38,7 @@ describe('Run Details Page ToString Fix', () => {
       runId: 'run-456',
       flowName: null,
       flowLabel: null,
-      flowHash: 'sha256-def456',
+      flowId: 'sha256-def456',
       status: 'running',
       debugMode: true,
       createdAt: '2024-01-15T10:30:00Z',
@@ -60,7 +60,7 @@ describe('Run Details Page ToString Fix', () => {
       runId: 'run-789',
       flowName: 'test-workflow',
       flowLabel: 'latest',
-      flowHash: 'sha256-ghi789',
+      flowId: 'sha256-ghi789',
       status: 'completed',
       debugMode: false,
       createdAt: '2024-01-15T10:30:00Z',

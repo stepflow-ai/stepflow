@@ -5,22 +5,8 @@ import { AnalysisResult } from '@/stepflow-api-client'
 // Core StepFlow Types (mirrored from Rust)
 // ============================================================================
 
-export const FlowResultSchema = z.discriminatedUnion('outcome', [
-  z.object({
-    outcome: z.literal('success'),
-    result: z.any(),
-  }),
-  z.object({
-    outcome: z.literal('failed'),
-    error: z.object({
-      code: z.number(),
-      message: z.string(),
-    }),
-  }),
-  z.object({
-    outcome: z.literal('skipped'),
-  }),
-])
+// FlowResult schema compatible with generated API types  
+export const FlowResultSchema = z.any() // Use generated FlowResult type directly
 
 export const ExecutionStatusSchema = z.enum([
   'running',
@@ -45,7 +31,7 @@ export const WorkflowSummarySchema = z.object({
   id: z.number(),
   name: z.string(),
   description: z.string().nullable(),
-  flowHash: z.string(),
+  flowId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
   labelCount: z.number(),
@@ -56,14 +42,14 @@ export const WorkflowDetailSchema = z.object({
   id: z.number(),
   name: z.string(),
   description: z.string().nullable(),
-  flowHash: z.string(),
+  flowId: z.string(),
   flow: z.any(), // The actual workflow definition from core server
   analysis: z.any().optional(), // FlowAnalysis from core server
   createdAt: z.string(),
   updatedAt: z.string(),
   labels: z.array(z.object({
     label: z.string(),
-    flowHash: z.string(),
+    flowId: z.string(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })),
@@ -78,13 +64,13 @@ export const WorkflowDetailSchema = z.object({
 
 // Label Management
 export const CreateLabelRequestSchema = z.object({
-  flowHash: z.string(),
+  flowId: z.string(),
 })
 
 export const LabelResponseSchema = z.object({
   workflowName: z.string(),
   label: z.string(),
-  flowHash: z.string(),
+  flowId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -108,7 +94,7 @@ export const ExecuteWorkflowResponseSchema = z.object({
   status: ExecutionStatusSchema,
   debug: z.boolean(),
   workflowName: z.string().nullable(), // Allow null for ad-hoc workflows
-  flowHash: z.string(),
+  flowId: z.string(),
 })
 
 // List Responses
@@ -125,7 +111,7 @@ export const RunDetailsResponseSchema = z.object({
   runId: z.string(),
   flowName: z.string().nullable(),
   flowLabel: z.string().nullable(),
-  flowHash: z.string(),
+  flowId: z.string(),
   status: ExecutionStatusSchema,
   debugMode: z.boolean(),
   createdAt: z.string(),
@@ -229,10 +215,18 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>
 // Extended Types (fixes for OpenAPI generator issues)
 // ============================================================================
 
-// StoreFlowResponse should be AnalysisResult + optional flowHash
+// StoreFlowResponse should be AnalysisResult + optional flowId and workflow metadata
 // The OpenAPI generator simplified this incorrectly
 export interface StoreFlowResponse extends AnalysisResult {
-  flowHash?: string | null
+  flowId?: string | null
+  workflow?: {
+    id: number
+    name: string
+    description: string | null
+    flowId: string
+    createdAt: string
+    updatedAt: string
+  }
 }
 
 // Re-export commonly used types for convenience

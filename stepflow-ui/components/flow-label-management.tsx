@@ -35,7 +35,7 @@ interface FlowLabelManagementProps {
 export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementProps) {
   const [open, setOpen] = useState(false)
   const [newLabelName, setNewLabelName] = useState('')
-  const [selectedFlowHash, setSelectedFlowHash] = useState('')
+  const [selectedFlowId, setSelectedFlowId] = useState('')
 
   // API hooks
   const { data: labels, isLoading: labelsLoading, refetch: refetchLabels } = useFlowLabels(flowName)
@@ -46,15 +46,15 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
   // Get available flow versions (current flow + versions referenced by existing labels)
   const getAvailableVersions = () => {
     const versions: Array<{
-      flowHash: string
+      flowId: string
       description: string
       createdAt: string
     }> = []
     
     // Add current flow version
-    if (flow?.flowHash) {
+    if (flow?.flowId) {
       versions.push({
-        flowHash: flow.flowHash,
+        flowId: flow.flowId,
         description: 'Current version',
         createdAt: flow.updatedAt,
       })
@@ -62,9 +62,9 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
     
     // Add versions from existing labels (if different from current)
     labels?.forEach(label => {
-      if (label.flowHash !== flow?.flowHash && !versions.find(v => v.flowHash === label.flowHash)) {
+      if (label.flowId !== flow?.flowId && !versions.find(v => v.flowId === label.flowId)) {
         versions.push({
-          flowHash: label.flowHash,
+          flowId: label.flowId,
           description: `Referenced by "${label.label}"`,
           createdAt: label.createdAt,
         })
@@ -84,7 +84,7 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
       return
     }
     
-    if (!selectedFlowHash) {
+    if (!selectedFlowId) {
       toast.error('Please select a flow version')
       return
     }
@@ -93,12 +93,12 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
       await createLabelMutation.mutateAsync({
         name: flowName,
         label: newLabelName.trim(),
-        flowHash: selectedFlowHash,
+        flowId: selectedFlowId,
       })
 
       toast.success(`Label "${newLabelName}" created successfully!`)
       setNewLabelName('')
-      setSelectedFlowHash('')
+      setSelectedFlowId('')
     } catch (error) {
       console.error('Failed to create label:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to create label')
@@ -176,8 +176,8 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
                 <div className="space-y-2">
                   <Label htmlFor="flow-version">Flow Version</Label>
                   <Select 
-                    value={selectedFlowHash} 
-                    onValueChange={setSelectedFlowHash}
+                    value={selectedFlowId} 
+                    onValueChange={setSelectedFlowId}
                     disabled={flowLoading || createLabelMutation.isPending}
                   >
                     <SelectTrigger>
@@ -197,11 +197,11 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
                         </SelectItem>
                       ) : (
                         availableVersions.map((version) => (
-                          <SelectItem key={version.flowHash} value={version.flowHash}>
+                          <SelectItem key={version.flowId} value={version.flowId}>
                             <div className="flex flex-col">
                               <div className="flex items-center justify-between w-full">
                                 <span className="font-mono text-sm">
-                                  {version.flowHash.substring(0, 12)}...
+                                  {version.flowId.substring(0, 12)}...
                                 </span>
                                 <span className="text-xs text-muted-foreground ml-2">
                                   {formatDate(version.createdAt)}
@@ -220,7 +220,7 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
               </div>
               <Button
                 type="submit"
-                disabled={createLabelMutation.isPending || !newLabelName.trim() || !selectedFlowHash}
+                disabled={createLabelMutation.isPending || !newLabelName.trim() || !selectedFlowId}
                 size="sm"
               >
                 {createLabelMutation.isPending ? (
@@ -282,7 +282,7 @@ export function FlowLabelManagement({ flowName, trigger }: FlowLabelManagementPr
                       </TableCell>
                       <TableCell>
                         <code className="text-sm bg-muted px-2 py-1 rounded">
-                          {label.flowHash.substring(0, 12)}...
+                          {label.flowId.substring(0, 12)}...
                         </code>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

@@ -6,8 +6,8 @@ import {
   ListWorkflowsResponseSchema,
   ErrorResponseSchema,
   type WorkflowSummary,
-  type StoreFlowResponse,
 } from '@/lib/api-types'
+import type { AnalysisResult } from '@/stepflow-api-client'
 
 // GET /api/flows - List all flows
 export async function GET() {
@@ -26,7 +26,7 @@ export async function GET() {
       id: workflow.id,
       name: workflow.name,
       description: workflow.description,
-      flowHash: workflow.flowHash,
+      flowId: workflow.flowId,
       createdAt: workflow.createdAt.toISOString(),
       updatedAt: workflow.updatedAt.toISOString(),
       labelCount: workflow.labels.length,
@@ -60,11 +60,11 @@ export async function POST(request: NextRequest) {
     const stepflowClient = getStepFlowClient()
 
     // Store the flow in the core server to get its hash
-    const storeResult = await stepflowClient.storeFlow(flow) as StoreFlowResponse
-    const flowHash = storeResult.flowHash
+    const storeResult = await stepflowClient.storeFlow(flow) as AnalysisResult
+    const flowId = storeResult.analysis?.flowId
     
-    if (!flowHash) {
-      throw new Error('Failed to store flow: no flow hash returned')
+    if (!flowId) {
+      throw new Error('Failed to store flow: no flow ID returned')
     }
 
     // Store in our database with metadata
@@ -72,23 +72,30 @@ export async function POST(request: NextRequest) {
       where: { name },
       update: {
         description,
-        flowHash,
+        flowId: flowId,
         updatedAt: new Date(),
       },
       create: {
         name,
         description,
-        flowHash,
+        flowId: flowId,
       },
     })
 
+    // Return a StoreFlowResponse that includes the original analysis result
     const response = {
-      id: workflow.id,
-      name: workflow.name,
-      description: workflow.description,
-      flowHash: workflow.flowHash,
-      createdAt: workflow.createdAt.toISOString(),
-      updatedAt: workflow.updatedAt.toISOString(),
+      analysis: storeResult.analysis,
+      diagnostics: storeResult.diagnostics || { diagnostics: [] },
+      flowId: flowId,
+      // Include workflow metadata for the UI
+      workflow: {
+        id: workflow.id,
+        name: workflow.name,
+        description: workflow.description,
+        flowId: workflow.flowId,
+        createdAt: workflow.createdAt.toISOString(),
+        updatedAt: workflow.updatedAt.toISOString(),
+      }
     }
 
     return NextResponse.json(response, { status: 201 })

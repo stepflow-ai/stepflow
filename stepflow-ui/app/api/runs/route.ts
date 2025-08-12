@@ -4,8 +4,8 @@ import {
   ErrorResponseSchema,
   ExecuteAdHocWorkflowRequestSchema,
   ExecuteWorkflowResponseSchema,
-  type StoreFlowResponse,
 } from '@/lib/api-types'
+import type { AnalysisResult } from '@/stepflow-api-client'
 
 // GET /api/runs - List all runs (proxy to core server)  
 export async function GET() {
@@ -69,18 +69,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 400 })
     }
     
-    const storeResponse = storeResult as StoreFlowResponse
-    const flowHash = storeResponse.flowHash
+    const storeResponse = storeResult as AnalysisResult
+    const flowId = storeResponse.analysis?.flowId
     
-    if (!flowHash) {
-      throw new Error('Failed to store workflow: no flow hash returned')
+    if (!flowId) {
+      throw new Error('Failed to store workflow: no flow ID returned')
     }
     
     // Execute the workflow directly by hash
     let runResult
     try {
       runResult = await stepflowClient.createRun({
-        flowHash,
+        flowId,
         input,
         debug,
       })
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     const response = ExecuteWorkflowResponseSchema.parse({
       runId: runResult.runId,
       status: runResult.status,
-      flowHash: flowHash, // We have the flowHash from the store operation
+      flowId: flowId, // We have the flowId from the store operation
       debug: runResult.debug,
       workflowName: null, // Ad-hoc workflows don't have names
       result: runResult.result,

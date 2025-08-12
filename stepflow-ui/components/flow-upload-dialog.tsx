@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import * as yaml from 'js-yaml'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -227,33 +228,11 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
         if (flowFormat === 'json') {
           flow = JSON.parse(flowContent) as Record<string, unknown>
         } else {
-          // Simple YAML parsing (similar to execution dialog)
-          const yamlLines = flowContent.split('\n').filter(line => line.trim())
-          flow = {}
-          yamlLines.forEach(line => {
-            const colonIndex = line.indexOf(':')
-            if (colonIndex > 0) {
-              const key = line.substring(0, colonIndex).trim()
-              let value = line.substring(colonIndex + 1).trim()
-
-              // Remove quotes if present
-              if ((value.startsWith('"') && value.endsWith('"')) ||
-                (value.startsWith("'") && value.endsWith("'"))) {
-                value = value.slice(1, -1)
-              }
-
-              // Try to parse as number or boolean
-              if (value === 'true') {
-                flow[key] = true
-              } else if (value === 'false') {
-                flow[key] = false
-              } else if (!isNaN(Number(value)) && value !== '') {
-                flow[key] = Number(value)
-              } else {
-                flow[key] = value
-              }
-            }
-          })
+          // Use proper YAML parsing
+          flow = yaml.load(flowContent) as Record<string, unknown>
+          if (!flow || typeof flow !== 'object') {
+            throw new Error('YAML must parse to an object')
+          }
         }
       } catch (error) {
         throw new Error(`Invalid ${flowFormat.toUpperCase()} format: ${error}`)
@@ -271,7 +250,7 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
       setValidationDiagnostics(diagnostics)
 
       // Check if workflow was successfully stored
-      if (result.flowHash) {
+      if (result.flowId) {
         // Workflow was stored successfully
         const errorCount = diagnostics.filter(d => d.level === DiagnosticLevel.Error).length
         const warningCount = diagnostics.filter(d => d.level === DiagnosticLevel.Warning).length
@@ -501,8 +480,28 @@ export function FlowUploadDialog({ trigger, onSuccess }: FlowUploadDialogProps) 
                 className="min-h-[300px] font-mono text-sm"
                 value={flowContent}
                 onChange={(e) => {
-                  setFlowContent(e.target.value)
+                  const content = e.target.value
+                  setFlowContent(content)
                   setSelectedExample('') // Clear template selection when manually editing
+                  
+                  // Auto-detect format based on content
+                  if (content.trim()) {
+                    try {
+                      JSON.parse(content)
+                      // If JSON parsing succeeds, it's likely JSON
+                      if (flowFormat === 'yaml') {
+                        setFlowFormat('json')
+                      }
+                    } catch {
+                      // If JSON parsing fails but content has YAML indicators, switch to YAML
+                      if (content.includes('schema:') || content.includes('name:') || content.includes('steps:')) {
+                        if (flowFormat === 'json') {
+                          setFlowFormat('yaml')
+                        }
+                      }
+                    }
+                  }
+                  
                   // Clear validation when user is actively editing
                   if (showValidation) {
                     setShowValidation(false)

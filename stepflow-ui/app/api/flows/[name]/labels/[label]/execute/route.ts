@@ -39,10 +39,10 @@ export async function POST(
       return NextResponse.json(errorResponse, { status: 404 })
     }
 
-    // Execute on core server using the labeled flow hash
+    // Execute on core server using the labeled flow ID
     const stepflowClient = getStepFlowClient()
     const runResult = await stepflowClient.createRun({
-      flowHash: label.flowHash,
+      flowId: label.flowId, // flowId in DB maps to flowId in API
       input,
       debug,
     })
@@ -53,7 +53,7 @@ export async function POST(
         id: runResult.runId,
         workflowName,
         label: labelName,
-        flowHash: label.flowHash,
+        flowId: label.flowId,
         status: runResult.status,
         debug: runResult.debug,
         input: JSON.stringify(input),
@@ -70,7 +70,7 @@ export async function POST(
       status: runResult.status,
       debug: runResult.debug,
       workflowName,
-      flowHash: label.flowHash,
+      flowId: label.flowId,
     }
 
     const validatedResponse = ExecuteWorkflowResponseSchema.parse(response)

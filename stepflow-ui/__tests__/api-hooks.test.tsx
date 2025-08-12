@@ -101,7 +101,7 @@ describe('API Hooks', () => {
           id: 1,
           name: 'workflow1', 
           description: null,
-          flowHash: 'hash1',
+          flowId: 'hash1',
           createdAt: '2024-01-15T10:30:00Z',
           updatedAt: '2024-01-15T10:30:00Z',
           labelCount: 0,
@@ -111,7 +111,7 @@ describe('API Hooks', () => {
           id: 2,
           name: 'workflow2', 
           description: 'Test workflow 2',
-          flowHash: 'hash2',
+          flowId: 'hash2',
           createdAt: '2024-01-15T11:00:00Z',
           updatedAt: '2024-01-15T11:00:00Z',
           labelCount: 2,
@@ -154,13 +154,13 @@ describe('API Hooks', () => {
         id: 1,
         name: 'test-workflow',
         description: 'Test workflow description',
-        flowHash: 'sha256-test123',
+        flowId: 'sha256-test123',
         createdAt: '2024-01-15T10:30:00Z',
         updatedAt: '2024-01-15T10:30:00Z',
         labels: [
           {
             label: 'latest',
-            flowHash: 'sha256-test123',
+            flowId: 'sha256-test123',
             createdAt: '2024-01-15T10:30:00Z',
             updatedAt: '2024-01-15T10:30:00Z'
           }
@@ -215,7 +215,7 @@ describe('API Hooks', () => {
         runId: 'run123',
         flowName: 'test-workflow',
         flowLabel: 'latest',
-        flowHash: 'sha256-abc123',
+        flowId: 'sha256-abc123',
         status: 'completed' as const,
         debugMode: false,
         createdAt: '2023-01-01T00:00:00Z',
@@ -280,14 +280,14 @@ describe('API Hooks', () => {
     it('should fetch run workflow successfully', async () => {
       const mockWorkflowData = {
         runId: 'run123',
-        flowHash: 'sha256-abc123',
+        flowId: 'sha256-abc123',
         debugMode: false,
         workflowName: 'test-workflow',
         workflowDescription: 'Test workflow description',
         workflowLabels: [
           {
             label: 'latest',
-            flowHash: 'sha256-abc123',
+            flowId: 'sha256-abc123',
             createdAt: '2024-01-15T10:30:00Z',
             updatedAt: '2024-01-15T10:30:00Z'
           }
@@ -372,7 +372,7 @@ describe('API Hooks', () => {
         status: 'running' as const,
         debug: false,
         workflowName: 'test-flow',
-        flowHash: 'sha256-abc123'
+        flowId: 'sha256-abc123'
       }
 
       mockUiApi.executeFlow.mockResolvedValue(mockExecuteResponse)

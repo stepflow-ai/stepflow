@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
+import * as yaml from 'js-yaml'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -69,6 +70,7 @@ function ExecutePageContent() {
   const [flowContent, setFlowContent] = useState(EXAMPLE_WORKFLOW)
   const [inputContent, setInputContent] = useState(EXAMPLE_INPUT_JSON)
   const [inputFormat, setInputFormat] = useState<'json' | 'yaml'>('json')
+  const [workflowFormat, setWorkflowFormat] = useState<'json' | 'yaml'>('json')
   const [debugMode, setDebugMode] = useState(false)
 
   // API hooks
@@ -106,17 +108,11 @@ function ExecutePageContent() {
         if (inputFormat === 'json') {
           parsedInput = JSON.parse(inputContent)
         } else {
-          // For YAML, we'll need to parse it - for now, convert simple YAML to JSON
-          const yamlLines = inputContent.split('\n').filter(line => line.trim())
-          parsedInput = {}
-          yamlLines.forEach(line => {
-            const [key, value] = line.split(':').map(s => s.trim())
-            if (key && value) {
-              // Try to parse as number, otherwise keep as string
-              const numValue = Number(value)
-              parsedInput[key] = isNaN(numValue) ? value : numValue
-            }
-          })
+          // Parse YAML properly
+          parsedInput = yaml.load(inputContent) as Record<string, unknown>
+          if (!parsedInput || typeof parsedInput !== 'object') {
+            throw new Error('YAML must parse to an object')
+          }
         }
       } catch {
         throw new Error(`Invalid ${inputFormat.toUpperCase()} format in input`)
@@ -134,15 +130,23 @@ function ExecutePageContent() {
         // Execute ad-hoc workflow
         let workflow: Record<string, unknown>
         try {
-          workflow = JSON.parse(flowContent)
+          if (workflowFormat === 'json') {
+            workflow = JSON.parse(flowContent)
+          } else {
+            // Parse YAML
+            workflow = yaml.load(flowContent) as Record<string, unknown>
+            if (!workflow || typeof workflow !== 'object') {
+              throw new Error('YAML must parse to an object')
+            }
+          }
           
           // Basic validation - workflow should be an object
           if (typeof workflow !== 'object' || workflow === null || Array.isArray(workflow)) {
-            throw new Error('Workflow definition must be a JSON object, not an array or primitive value')
+            throw new Error('Workflow definition must be an object, not an array or primitive value')
           }
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown JSON parsing error'
-          throw new Error(`Invalid JSON format in workflow definition: ${errorMessage}`)
+          const errorMessage = error instanceof Error ? error.message : 'Unknown parsing error'
+          throw new Error(`Invalid ${workflowFormat.toUpperCase()} format in workflow definition: ${errorMessage}`)
         }
 
         result = await executeAdHocMutation.mutateAsync({
@@ -274,13 +278,51 @@ function ExecutePageContent() {
 
               <TabsContent value="upload" className="space-y-4 flex-1 flex flex-col">
                 <div className="space-y-2 flex-1 flex flex-col">
-                  <Label htmlFor="flow-content">Flow Definition (JSON)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="flow-content">Flow Definition</Label>
+                    <div className="flex items-center space-x-2">
+                      <Label htmlFor="workflow-format" className="text-sm">Format:</Label>
+                      <Select
+                        value={workflowFormat}
+                        onValueChange={(value) => setWorkflowFormat(value as 'json' | 'yaml')}
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="json">JSON</SelectItem>
+                          <SelectItem value="yaml">YAML</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <Textarea
                     id="flow-content"
-                    placeholder="Paste your flow JSON here..."
+                    placeholder={`Paste your flow ${workflowFormat.toUpperCase()} here...`}
                     className="flex-1 font-mono text-sm resize-none"
                     value={flowContent}
-                    onChange={(e) => setFlowContent(e.target.value)}
+                    onChange={(e) => {
+                      const content = e.target.value
+                      setFlowContent(content)
+                      
+                      // Auto-detect format based on content
+                      if (content.trim()) {
+                        try {
+                          JSON.parse(content)
+                          // If JSON parsing succeeds, it's likely JSON
+                          if (workflowFormat === 'yaml') {
+                            setWorkflowFormat('json')
+                          }
+                        } catch {
+                          // If JSON parsing fails but content has YAML indicators, switch to YAML
+                          if (content.includes('schema:') || content.includes('name:') || content.includes('steps:')) {
+                            if (workflowFormat === 'json') {
+                              setWorkflowFormat('yaml')
+                            }
+                          }
+                        }
+                      }
+                    }}
                   />
                 </div>
                 <div className="flex items-center space-x-2">

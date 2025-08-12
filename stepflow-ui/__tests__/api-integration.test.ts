@@ -156,7 +156,7 @@ describe('StepFlow Client API Integration', () => {
   describe('storeFlow response handling', () => {
     it('should return StoreFlowResponse directly', async () => {
       const mockStoreResponse = {
-        flowHash: 'abc123def456'
+        flowId: 'abc123def456'
       }
 
       mockFlowApi.storeFlow.mockResolvedValue({
@@ -166,7 +166,7 @@ describe('StepFlow Client API Integration', () => {
       const result = await client.storeFlow({ name: 'test-flow', steps: [] })
 
       expect(result).toEqual(mockStoreResponse)
-      expect(result.flowHash).toBe('abc123def456')
+      expect(result.flowId).toBe('abc123def456')
     })
   })
 
@@ -183,7 +183,7 @@ describe('StepFlow Client API Integration', () => {
       })
 
       const result = await client.createRun({
-        flowHash: 'abc123',
+        flowId: 'abc123',
         input: { test: 'data' },
         debug: false
       })
@@ -200,7 +200,7 @@ describe('StepFlow Client API Integration', () => {
         steps: [{ id: 'step1', component: 'eval', inputs: { expr: '1 + 1' } }]
       }
 
-      const mockStoreResponse = { flowHash: 'abc123def456' }
+      const mockStoreResponse = { flowId: 'abc123def456' }
       const mockRunResponse = { runId: 'run123', status: 'running', debug: false }
 
       mockFlowApi.storeFlow.mockResolvedValue({ data: mockStoreResponse })
@@ -208,11 +208,11 @@ describe('StepFlow Client API Integration', () => {
 
       // Store workflow
       const storeResult = await client.storeFlow(workflow)
-      expect(storeResult.flowHash).toBe('abc123def456')
+      expect(storeResult.flowId).toBe('abc123def456')
 
       // Execute by hash
       const runResult = await client.createRun({
-        flowHash: storeResult.flowHash,
+        flowId: storeResult.flowId,
         input: { test: 'input' },
         debug: false
       })
@@ -221,7 +221,7 @@ describe('StepFlow Client API Integration', () => {
       // Verify API calls
       expect(mockFlowApi.storeFlow).toHaveBeenCalledWith({ flow: workflow })
       expect(mockRunApi.createRun).toHaveBeenCalledWith({
-        flowHash: 'abc123def456',
+        flowId: 'abc123def456',
         input: { test: 'input' },
         debug: false
       })

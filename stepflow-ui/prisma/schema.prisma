@@ -15,7 +15,7 @@ model Workflow {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   description String?
-  flowHash    String   @map("flow_hash") // Latest version flow hash
+  flowId      String   @map("flow_id") // Latest version flow ID (BlobId)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -31,7 +31,7 @@ model WorkflowLabel {
   id           Int      @id @default(autoincrement())
   workflowName String   @map("workflow_name")
   label        String
-  flowHash     String   @map("flow_hash")
+  flowId       String   @map("flow_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -47,7 +47,7 @@ model WorkflowExecution {
   id           String   @id // UUID from core server
   workflowName String   @map("workflow_name")
   label        String?  // Which label was used (if any)
-  flowHash     String   @map("flow_hash")
+  flowId       String   @map("flow_id")
   status       String   // running, completed, failed, cancelled
   debug        Boolean  @default(false)
   input        String   // JSON string of input data
@@ -63,7 +63,7 @@ model WorkflowExecution {
 
 // Store flow definitions locally for caching (optional optimization)
 model FlowCache {
-  flowHash    String   @id @map("flow_hash")
+  flowId      String   @id @map("flow_id")
   definition  String   // JSON string of flow definition
   createdAt   DateTime @default(now()) @map("created_at")
   accessedAt  DateTime @updatedAt @map("accessed_at")

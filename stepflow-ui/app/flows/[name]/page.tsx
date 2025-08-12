@@ -27,7 +27,7 @@ import { WorkflowVisualizerBase } from '@/components/workflow-visualizer-base'
 import {
   useFlow
 } from '@/lib/hooks/use-flow-api'
-import { extractStepDependencies, type ValidationMessage } from '@/lib/dependency-types'
+import { extractStepDependencies } from '@/lib/dependency-types'
 
 // Helper functions
 const formatDate = (dateString: string) => {
@@ -277,16 +277,16 @@ export default function FlowDetailsPage() {
                 </div>
                 {(flowData.analysis.validationErrors?.length > 0 || flowData.analysis.validationWarnings?.length > 0) && (
                   <div className="mt-4 space-y-2">
-                    {flowData.analysis.validationErrors?.map((error: ValidationMessage, index: number) => (
+                    {flowData.analysis.validationErrors?.map((error: unknown, index: number) => (
                       <div key={`error-${index}`} className="flex items-center text-sm text-red-600 bg-red-50 p-2 rounded">
                         <XCircle className="h-4 w-4 mr-2" />
-                        {error.message}
+                        {(error as { message?: string })?.message || 'Unknown error'}
                       </div>
                     ))}
-                    {flowData.analysis.validationWarnings?.map((warning: ValidationMessage, index: number) => (
+                    {flowData.analysis.validationWarnings?.map((warning: unknown, index: number) => (
                       <div key={`warning-${index}`} className="flex items-center text-sm text-yellow-600 bg-yellow-50 p-2 rounded">
                         <AlertCircle className="h-4 w-4 mr-2" />
-                        {warning.message}
+                        {(warning as { message?: string })?.message || 'Unknown warning'}
                       </div>
                     ))}
                   </div>
@@ -315,10 +315,10 @@ export default function FlowDetailsPage() {
                       <span className="text-sm text-muted-foreground">Description:</span>
                       <div className="text-sm">{flow?.description || 'No description available'}</div>
                     </div>
-                    {flowData?.flowHash && (
+                    {flowData?.flowId && (
                       <div>
-                        <span className="text-sm text-muted-foreground">Flow Hash:</span>
-                        <div className="font-mono text-sm">{flowData.flowHash.substring(0, 12)}...</div>
+                        <span className="text-sm text-muted-foreground">Flow ID:</span>
+                        <div className="font-mono text-sm">{flowData.flowId.substring(0, 12)}...</div>
                       </div>
                     )}
                     <div>

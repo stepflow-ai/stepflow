@@ -36,27 +36,27 @@ export class StepFlowClient {
     return response.data
   }
 
-  async getFlow(flowHash: string) {
-    const response = await this.flowApi.getFlow(flowHash)
+  async getFlow(flowId: string) {
+    const response = await this.flowApi.getFlow(flowId)
     return response.data
   }
 
-  async deleteFlow(flowHash: string) {
-    const response = await this.flowApi.deleteFlow(flowHash)
+  async deleteFlow(flowId: string) {
+    const response = await this.flowApi.deleteFlow(flowId)
     return response.data
   }
 
   // Note: getFlowDependencies was removed - dependencies are now included in getFlow response
-  async getFlowDependencies(flowHash: string) {
+  async getFlowDependencies(flowId: string) {
     // Dependencies are now included in the FlowResponse.analysis field from getFlow
-    const flowResponse = await this.getFlow(flowHash)
+    const flowResponse = await this.getFlow(flowId)
     return flowResponse.analysis
   }
 
   // Run management
-  async createRun(request: { flowHash: string; input: unknown; debug?: boolean }) {
+  async createRun(request: { flowId: string; input: unknown; debug?: boolean }) {
     const response = await this.runApi.createRun({
-      flowHash: request.flowHash,
+      flowId: request.flowId,
       input: request.input,
       debug: request.debug,
     })

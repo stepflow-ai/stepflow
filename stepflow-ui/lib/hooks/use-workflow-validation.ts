@@ -1,5 +1,4 @@
 import { useMutation } from '@tanstack/react-query'
-import { StoreFlowRequest, FlowApi } from '@/stepflow-api-client'
 import { StoreFlowResponse } from '@/lib/api-types'
 
 export interface WorkflowValidationRequest {
@@ -8,30 +7,32 @@ export interface WorkflowValidationRequest {
 }
 
 export const useWorkflowValidation = () => {
-  const flowApi = new FlowApi()
-
   return useMutation({
     mutationKey: ['validateWorkflow'],
     mutationFn: async (request: WorkflowValidationRequest): Promise<StoreFlowResponse> => {
-      try {
-        const storeRequest: StoreFlowRequest = {
-          flow: request.workflow
-        }
-
-        const response = await flowApi.storeFlow(storeRequest)
-        return response.data
-      } catch (error: unknown) {
-        // Parse error response and create a diagnostic response
-        throw error
+      const response = await fetch('/api/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflow: request.workflow,
+        }),
+      })
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || error.error || `HTTP ${response.status}`)
       }
+      
+      const result = await response.json()
+      return result as StoreFlowResponse
     },
   })
 }
 
 // Enhanced validation hook that can handle both validation-only and store operations
 export const useStoreFlowWithValidation = () => {
-  const flowApi = new FlowApi()
-
   return useMutation({
     mutationKey: ['storeFlowWithValidation'],
     mutationFn: async (request: {
@@ -40,21 +41,61 @@ export const useStoreFlowWithValidation = () => {
       description?: string
       checkOnly?: boolean
     }): Promise<StoreFlowResponse> => {
-      try {
-        if (request.checkOnly) {
-          // For validation-only mode, we could create a temporary flow just for analysis
-          // For now, we'll store it and ignore the hash in the UI
+      if (request.checkOnly) {
+        // For validation-only, use the validation API
+        const response = await fetch('/api/validate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workflow: request.flow,
+          }),
+        })
+        
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.message || error.error || `HTTP ${response.status}`)
         }
-
-        const storeRequest: StoreFlowRequest = {
-          flow: request.flow
+        
+        const result = await response.json()
+        return result as StoreFlowResponse
+      } else {
+        // For actual storage, use the flows API
+        if (!request.name) {
+          throw new Error('Name is required for storing flows')
         }
-
-        const response = await flowApi.storeFlow(storeRequest)
-        return response.data
-      } catch (error: unknown) {
-        // Parse error response for diagnostics
-        throw error
+        
+        const response = await fetch('/api/flows', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: request.name,
+            description: request.description,
+            flow: request.flow,
+          }),
+        })
+        
+        if (!response.ok) {
+          let errorMessage = `HTTP ${response.status}`
+          try {
+            const error = await response.json()
+            errorMessage = error.message || error.error || errorMessage
+          } catch (parseError) {
+            try {
+              const text = await response.text()
+              errorMessage = `${errorMessage}: ${text}`
+            } catch (textError) {
+              errorMessage = `${errorMessage} (Failed to read response)`
+            }
+          }
+          throw new Error(errorMessage)
+        }
+        
+        const result = await response.json()
+        return result as StoreFlowResponse
       }
     },
   })

@@ -140,7 +140,8 @@ export function extractDiagnostics(analysis: AnalysisResult | unknown): Diagnost
           text: typeof errorObj.message === 'string' ? errorObj.message : 'Unknown error',
           path: [], // Legacy format doesn't have path information
           ignore: false,
-          message: error as Record<string, unknown>, // DiagnosticMessage is complex, using original for now
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          message: error as any, // DiagnosticMessage is complex, using original for now
         })
       }
     })
@@ -155,7 +156,8 @@ export function extractDiagnostics(analysis: AnalysisResult | unknown): Diagnost
           text: typeof warningObj.message === 'string' ? warningObj.message : 'Unknown warning',
           path: [], // Legacy format doesn't have path information
           ignore: false,
-          message: warning as Record<string, unknown>, // DiagnosticMessage is complex, using original for now
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          message: warning as any, // DiagnosticMessage is complex, using original for now
         })
       }
     })

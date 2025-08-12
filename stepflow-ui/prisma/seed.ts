@@ -10,7 +10,7 @@ async function main() {
     {
       name: 'example-workflow',
       description: 'A sample workflow for demonstration',
-      flowHash: 'sample-hash-1',
+      flowId: 'sample-hash-1',
     },
   ]
 
@@ -30,7 +30,7 @@ async function main() {
         data: {
           workflowName: created.name,
           label: 'latest',
-          flowHash: workflow.flowHash,
+          flowId: workflow.flowId,
         },
       })
       console.log(`📋 Created label 'latest' for ${created.name}`)
