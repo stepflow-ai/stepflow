@@ -4,91 +4,78 @@ sidebar_position: 1
 
 # Flows Overview
 
-Workflows are the core abstraction in StepFlow that describe sequences of operations and data flow between them. StepFlow is specifically designed to express GenAI and agentic workflows, providing powerful capabilities for orchestrating AI models, tools, and data processing tasks.
+Flows are the core abstraction in StepFlow.
+Some of the most important parts of a flow are:
 
-## What are Workflows?
+- **Input** - The schema for the input to the flow
+- **Steps** - The steps to perform for the flow
+- **Output** - The output the flow should produce
 
-A workflow in StepFlow is a declarative specification that defines:
-- **Input requirements** - What data the workflow needs to start
-- **Processing steps** - The sequence of operations to perform
-- **Data flow** - How information moves between steps
-- **Output structure** - What the workflow produces
+The steps and output are able to reference the input and the results of previous steps.
+This creates data dependencies between steps, determining which steps must run in sequence and which can run in parallel.
 
-Workflows are typically defined in YAML files and can be executed by the StepFlow runtime either locally or as a service.
+Flows are typically defined in YAML files and can be executed by the StepFlow runtime either locally or as a service.
 
-## Core Concepts
+:::note
+Flows conform to a [JSON schema](../reference/flow-schema.mdx) that defines the structure and requirements for flow definitions.
+:::
 
-### Steps
-A workflow consists of a sequence of **steps**, each with:
+## Input and Output
+
+A flow defines an **input schema** that describes the expected structure of input data and an **output** describing how to create the output.
+There is also an optional **output schema** that describes the structure of the output data.
+
+Like steps, the output description uses [Expressions](#expressions) to reference input data and step outputs.
+
+Learn more about [Input and Output](./input-output.md).
+
+## Steps
+A flow consists of a sequence of **steps**, each with:
 - A unique identifier
 - A component that provides the execution logic
-- Input data derived from workflow inputs, previous steps, or literal values
+- Input data consisting of flow inputs, previous steps, or literal values
 - Optional error handling and skip conditions
 
-Learn more: [Steps Guide](./steps.md)
+Learn more about [Steps](./steps.md).
 
-### Components
+## Components
 Components provide the actual logic executed by steps. They can be:
 - **Built-in components** - Provided by StepFlow for common operations
 - **External components** - Implemented using the StepFlow protocol
 - **MCP tools** - Model Context Protocol server tools
 
-Learn more: [Components Documentation](../components/)
+Learn more about [Components](../components/index.md).
 
-### Expressions
+## Expressions {#expressions}
 StepFlow's expression system enables dynamic data references and transformations:
-- Reference workflow inputs and step outputs
+- Reference flow inputs and step outputs
 - Extract specific fields from complex data
 - Handle missing data with defaults
 - Support conditional logic
 
-Learn more: [Expressions Reference](./expressions.md)
+Learn more about [Expressions](./expressions.md)
 
-## Workflow Capabilities
+## Control Flow
 
-### Control Flow
-- **Conditional execution** - Skip steps based on runtime conditions
-- **Error handling** - Graceful failure recovery with fallbacks
-- **Parallel execution** - Automatic parallelization of independent steps
-- **Sub-workflows** - Compose complex workflows from simpler ones
+Control flow is determined by dependencies between steps.
+By default, if a step is skipped or fails to execute, subsequent steps that depend on it will also be skipped.
+However, you can define custom error handling and fallback logic to control how failures are managed.
 
-Learn more: [Control Flow Patterns](./control-flow.md)
+Learn more about [Control Flow](./control-flow.md).
 
-### Data Management
-- **Input/Output schemas** - Define and validate data structures
-- **Blob storage** - Efficient handling of large data objects
-- **Data transformations** - Reshape and combine data between steps
+## Metadata
 
-Learn more: [Input/Output Management](./input_output.md)
+Flows and steps may contain additional metadata that is used in StepFlow or by external tools. Currently, this includes:
 
-### Development Support
-- **Testing framework** - Built-in test case support
-- **Schema validation** - Ensure data integrity
-- **Performance optimization** - Guidelines for efficient workflows
+- `name`: A human-readable name for the flow
+- `description`: A description of the flow's purpose
+- `version`: The version of the flow definition
 
-Learn more: [Testing Workflows](./testing.md) | [Performance Guide](./performance.md)
-
-## Documentation Structure
-
-### Getting Started
-1. [Workflow Specification](./specification.md) - Complete reference for workflow syntax
-2. [Steps](./steps.md) - Understanding and configuring workflow steps
-3. [Expressions](./expressions.md) - Data references and transformations
-
-### Core Features
-4. [Control Flow](./control-flow.md) - Conditional execution and error handling
-5. [Input/Output](./input_output.md) - Managing workflow data
-6. [Schema Validation](../reference/flow-schema.mdx) - Ensuring data integrity
-
-### Advanced Topics
-7. [Execution Model](./execution.md) - How workflows run
-8. [Testing](./testing.md) - Writing and running tests
-9. [Performance](./performance.md) - Optimization guidelines
-10. [Best Practices](./best-practices.md) - Patterns and recommendations
+These will likely be extended in the future to allow an arbitrary `metadata` dictionary on the flow, steps, or both.
 
 ## Next Steps
 
-- **New to StepFlow?** Start with the [Getting Started Guide](../getting_started.md)
+- **New to StepFlow?** Start with the [Getting Started Guide](../getting-started.md)
 - **Ready to build?** Check out [Workflow Examples](../examples/)
 - **Need components?** Explore [Built-in Components](../components/builtins/index.md)
 - **Building integrations?** Learn about the [StepFlow Protocol](../protocol/)

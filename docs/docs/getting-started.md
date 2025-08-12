@@ -169,7 +169,7 @@ This AI Q&A workflow demonstrates several key StepFlow concepts:
 
 - **Input/Output Schemas**: Define the structure of questions, context, and answers
 - **AI Integration**: Use [`openai`](./components/builtins/openai.md) and [`create_messages`](./components/builtins/create_messages.md) for natural language processing
-- **Data References**: Use [`$from`](./flows/expressions.md#1-data-references-from) to pass data between steps
+- **Data References**: Use [`$from`](./flows/expressions.md#references) to pass data between steps
 - **Blob Storage**: Store context and metadata for reuse with [`put_blob`](./components/builtins/put_blob.md)
 - **Multi-step Processing**: Orchestrate data storage, prompt formatting, and AI generation
 
@@ -218,48 +218,11 @@ Run tests with:
 cargo run -- test ai_qa_workflow.yaml
 ```
 
-For more advanced testing patterns and configuration options, see the [Testing Guide](./flows/testing.md).
+For more advanced testing patterns and configuration options, see the [Testing Guide](./best-practices/testing.md).
 
 ## Next Steps
 
 Now that you've run your first RAG workflow, explore these topics to build more sophisticated applications:
 
-### Workflow Development
-* **[Workflow Fundamentals](./flows/steps.md)** - Understanding steps, execution order, and dependencies
-* **[Input & Output](./flows/input_output.md)** - Data flow patterns and schema validation
-* **[Expression System](./flows/expressions.md)** - Advanced data references and transformations
-* **[Testing](./flows/testing.md)** - Comprehensive testing patterns and CI/CD integration
-* **[Workflow Specification](./flows/specification.md)** - Complete workflow file format reference
-
-### Components & Integration
-* **[Builtin Components](./components/builtins/index.md)** - Complete reference for OpenAI, blob storage, and other builtins
-* **[Custom Components](./components/index.md)** - Build your own components in Python, TypeScript, or Rust
-* **[Protocol Documentation](./protocol/components.mdx)** - Understanding the component communication protocol
-
-### Runtime & Deployment
-* **[CLI Reference](./cli.md)** - Complete command-line interface documentation
-* **[Configuration](./config.md)** - Plugin setup, state stores, and environment configuration
-* **[Runtime Options](./runtime/index.md)** - Local execution, service mode, and deployment patterns
-
-### More Examples
-
-You've just built a simple AI Q&A application! Check out the `examples/` directory in the repository for more sophisticated workflows:
-
-- **Data Pipeline** (`examples/data-pipeline/`) - Multi-step data processing with AI insights
-- **Advanced RAG** (`examples/openai/`) - Full retrieval-augmented generation with document search
-- **Custom Components** (`examples/custom-python-components/`) - Build your own components (requires Python SDK)
-
-### AI-Free Workflows
-
-The example above requires an OpenAI API key. For workflows that don't require AI, you can use:
-- Data transformation workflows with just `put_blob`
-- HTTP API integrations with `http_request`
-- File processing and validation workflows
-
-### Key Concepts to Explore
-
-- **Parallel Execution**: Steps run in parallel when possible
-- **Conditional Logic**: Skip steps based on conditions
-- **Error Handling**: Graceful failure handling with fallbacks
-- **Nested Workflows**: Execute sub-workflows within steps
-- **Component Servers**: Create reusable components in any language
+* Details on [Flows](./flows/index.md) and how you can write your own
+* [Available components and how to create your own](./components/index.md) you can use

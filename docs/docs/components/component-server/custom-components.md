@@ -84,7 +84,7 @@ routes:
     - plugin: my_components
 ```
 
-See the [Configuration Guide](../../config.md) for more details.
+See the [Configuration Guide](../../configuration.md) for more details.
 
 ### Using in Workflows
 
@@ -113,7 +113,7 @@ output:
     path: message
 ```
 
-See [Steps](../../steps/index.md) for more details on using components in steps within a flow.
+See [Steps](../../flows/steps.md) for more details on using components in steps within a flow.
 
 ## Component Development
 
