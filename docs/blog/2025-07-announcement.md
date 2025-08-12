@@ -51,8 +51,7 @@ this release include:
 
 ### Secure Component Isolation
 
-GenAI in the modern enterprise requires workflow
-isolation for security and resource control. StepFlow builds this in at the
+GenAI in the modern enterprise requires workflow isolation for security and resource control. StepFlow builds this in at the
 core:
 
 - Process isolation: Each component runs in its own sandboxed process or node
@@ -66,8 +65,10 @@ wire protocol. This means that you are in complete control of all aspects of
 runtime execution:
 
 - Language agnostic: Write components in Python, TypeScript, or any language
+- Well defined protocol and routing rules: Supports bidirectional communication with local or remote processes
 - Plugin architecture: Easy integration with existing tools and services
 - MCP support: Use Model Context Protocol tools as workflow components
+- Lang Chain component Support: Use Lang Chain tools as workflow components
 - Built-in components: OpenAI integration, file operations, and more out of the
   box
 - User Defined Functions: Take control of your workflow via providing your own
