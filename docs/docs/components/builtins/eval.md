@@ -10,14 +10,11 @@ Execute nested workflows with isolated execution contexts.
 
 ```yaml
 input:
-  workflow:
-    inputs: { }
-    steps: [ ]
-    output: { }
+  flow_id: "sha256:abc123..."  # Blob ID of stored workflow
   input: <data for nested workflow>
 ```
 
-- **`workflow`** (required): Complete workflow definition to execute
+- **`flow_id`** (required): Blob ID of the workflow to execute (must be stored as a blob first)
 - **`input`** (required): Input data for the nested workflow
 
 #### Output
@@ -28,32 +25,40 @@ output:
   run_id: "uuid-of-execution"
 ```
 
-- **`result`**: The output produced by the nested workflow
+- **`result`**: The result from executing the nested workflow (FlowResult type)
 - **`run_id`**: Unique identifier for the nested execution
 
 #### Example
 
 ```yaml
 steps:
+  - id: store_workflow
+    component: /builtin/put_blob
+    input:
+      data:
+        $literal:
+          schema: https://stepflow.org/schemas/v1/flow.json
+          input:
+            type: object
+            properties:
+              data: { type: array }
+          steps:
+            - id: process
+              component: /data/analyze
+              input:
+                data: { $from: { workflow: input }, path: "data" }
+            - id: summarize
+              component: /data/summarize
+              input:
+                analysis: { $from: { step: process } }
+          output:
+            summary: { $from: { step: summarize } }
+      blob_type: "flow"
+
   - id: run_analysis
     component: /builtin/eval
     input:
-      workflow:
-        input_schema:
-          type: object
-          properties:
-            data: { type: array }
-        steps:
-          - id: process
-            component: /data/analyze
-            input:
-              data: { $from: { workflow: input }, path: "data" }
-          - id: summarize
-            component: /data/summarize
-            input:
-              analysis: { $from: { step: process } }
-        output:
-          summary: { $from: { step: summarize } }
+      flow_id: { $from: { step: store_workflow }, path: "blob_id" }
       input:
         data: { $from: { step: load_data } }
 ```

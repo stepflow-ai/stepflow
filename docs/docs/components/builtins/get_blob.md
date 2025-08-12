@@ -29,7 +29,7 @@ output:
 ```yaml
 steps:
   - id: retrieve_user_data
-    component: /builtin/et_blob
+    component: /builtin/get_blob
     input:
       blob_id: { $from: { step: store_user_data }, path: "blob_id" }
 ```

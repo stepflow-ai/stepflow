@@ -40,6 +40,8 @@ Each message must have:
 - **`role`**: "system", "user", or "assistant"
 - **`content`**: Text content of the message
 
+**Note**: The role field uses camelCase serialization internally, but accepts both formats.
+
 #### Example
 
 ```yaml

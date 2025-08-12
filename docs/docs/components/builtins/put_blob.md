@@ -11,9 +11,11 @@ Store JSON data as content-addressable blobs for efficient reuse across workflow
 ```yaml
 input:
   data: <any JSON data>
+  blob_type: "data"  # or "flow"
 ```
 
 - **`data`** (required): Any JSON data to store as a blob
+- **`blob_type`** (required): Type of blob - "data" for general data, "flow" for workflow definitions
 
 #### Output
 
@@ -35,4 +37,5 @@ steps:
         user_id: { $from: { workflow: input }, path: "user_id" }
         profile: { $from: { step: load_profile } }
         preferences: { $from: { step: load_preferences } }
+      blob_type: "data"
 ```
