@@ -36,7 +36,7 @@ const COMMAND_ORDER: &[(&str, u32)] = &[
 
 /// Generate custom CLI index documentation with command list and links
 pub fn generate_cli_docs() -> String {
-    use clap::CommandFactory;
+    use clap::CommandFactory as _;
 
     let frontmatter = "---\nsidebar_position: 1\n---\n\n";
 
@@ -73,7 +73,7 @@ pub fn generate_cli_docs() -> String {
             .get_about()
             .map(|s| s.to_string())
             .unwrap_or_default();
-        content.push_str(&format!("- **[`{}`](./{}.md)** - {}\n", name, name, about));
+        content.push_str(&format!("- **[`{name}`](./{name}.md)** - {about}\n"));
     }
 
     content.push_str("\n## Global Options\n\n");
@@ -87,9 +87,9 @@ pub fn generate_cli_docs() -> String {
 
             // Format the argument name
             let arg_display = if let Some(long) = arg.get_long() {
-                format!("--{}", long)
+                format!("--{long}")
             } else if let Some(short) = arg.get_short() {
-                format!("-{}", short)
+                format!("-{short}")
             } else {
                 arg.get_id().as_str().to_string()
             };
@@ -101,16 +101,16 @@ pub fn generate_cli_docs() -> String {
                 .map(|name| format!(" <{}>", name.as_str()))
                 .unwrap_or_default();
 
-            content.push_str(&format!("- `{}{}` - {}\n", arg_display, value_name, help));
+            content.push_str(&format!("- `{arg_display}{value_name}` - {help}\n"));
         }
     }
 
-    format!("{}{}", frontmatter, content)
+    format!("{frontmatter}{content}")
 }
 
 /// Generate documentation for a specific subcommand with frontmatter
 pub fn generate_subcommand_docs() -> HashMap<String, String> {
-    use clap::CommandFactory;
+    use clap::CommandFactory as _;
 
     let mut docs = HashMap::new();
     let app = Cli::command();
@@ -127,11 +127,11 @@ pub fn generate_subcommand_docs() -> HashMap<String, String> {
         }
 
         let position = command_positions.get(name.as_str())
-            .unwrap_or_else(|| panic!("Command '{}' not found in COMMAND_ORDER. Please add it with an appropriate sidebar_position.", name));
+            .unwrap_or_else(|| panic!("Command '{name}' not found in COMMAND_ORDER. Please add it with an appropriate sidebar_position."));
 
-        let frontmatter = format!("---\nsidebar_position: {}\n---\n\n", position);
+        let frontmatter = format!("---\nsidebar_position: {position}\n---\n\n");
         let content = clap_markdown::help_markdown_command_custom(subcommand, &options);
-        let full_content = format!("{}{}", frontmatter, content);
+        let full_content = format!("{frontmatter}{content}");
 
         docs.insert(name, full_content);
     }
@@ -161,7 +161,7 @@ pub fn write_cli_docs_to_files(base_path: &Path) -> std::io::Result<()> {
     // Write subcommand documentation (without cli- prefix)
     let subcommand_docs = generate_subcommand_docs();
     for (command_name, docs) in subcommand_docs {
-        let filename = format!("{}.md", command_name);
+        let filename = format!("{command_name}.md");
         fs::write(base_path.join(filename), docs)?;
     }
 
@@ -181,7 +181,7 @@ pub fn read_existing_cli_docs(base_path: &Path) -> std::io::Result<HashMap<Strin
 
     // Read subcommand documentation (without cli- prefix)
     for (command_name, _) in COMMAND_ORDER {
-        let filename = format!("{}.md", command_name);
+        let filename = format!("{command_name}.md");
         if let Ok(content) = fs::read_to_string(base_path.join(&filename)) {
             docs.insert(command_name.to_string(), content);
         }
@@ -209,7 +209,6 @@ mod tests {
         if should_overwrite {
             // Write generated documentation to files
             write_cli_docs_to_files(docs_path).expect("Failed to write CLI docs");
-            println!("CLI documentation files have been updated");
             return;
         }
 
@@ -283,8 +282,7 @@ mod tests {
         for command in &expected_commands {
             assert!(
                 docs.contains_key(command),
-                "Missing documentation for command '{}'",
-                command
+                "Missing documentation for command '{command}'"
             );
         }
 
@@ -292,14 +290,9 @@ mod tests {
         for (command, doc) in &docs {
             assert!(
                 doc.contains("---\nsidebar_position:"),
-                "Command '{}' missing frontmatter",
-                command
+                "Command '{command}' missing frontmatter"
             );
-            assert!(
-                doc.contains("Usage:"),
-                "Command '{}' missing usage",
-                command
-            );
+            assert!(doc.contains("Usage:"), "Command '{command}' missing usage");
         }
 
         // Verify we have exactly the expected commands (no more, no less)
@@ -316,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_command_order_validation() {
-        use clap::CommandFactory;
+        use clap::CommandFactory as _;
 
         let app = Cli::command();
         let mut actual_commands: Vec<String> = app
@@ -344,8 +337,7 @@ mod tests {
         for (command, doc) in subcommand_docs {
             assert!(
                 doc.starts_with("---\nsidebar_position:"),
-                "Command '{}' doesn't start with frontmatter",
-                command
+                "Command '{command}' doesn't start with frontmatter"
             );
         }
     }

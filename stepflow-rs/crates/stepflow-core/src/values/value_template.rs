@@ -819,7 +819,7 @@ mod tests {
                 crate::workflow::Expr::Ref { .. } => {
                     regular_ref_count += 1;
                 }
-                _ => panic!("Unexpected expression type: {:?}", expr),
+                _ => panic!("Unexpected expression type: {expr:?}"),
             }
         }
 
