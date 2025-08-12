@@ -60,7 +60,7 @@ steps:
           # Store as blob using context
           blob_id = await context.put_blob(enhanced_data)
           return {'blob_id': blob_id, 'status': 'success'}
-      function_name: store_data
+        store_data
     blob_type: "data"
 - id: store_with_python
   component: /python/udf

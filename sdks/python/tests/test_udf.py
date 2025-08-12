@@ -67,7 +67,7 @@ def test_input_wrapper_access():
 async def test_compile_lambda_body(mock_context):
     code = "input.a + input.b"
 
-    func = _compile_function(code, None, make_schema())
+    func = _compile_function(code, make_schema())
     result = await func({"a": 2, "b": 3}, context=mock_context)
     assert result == 5
 
@@ -78,7 +78,7 @@ async def test_compile_function_body(mock_context):
 res = input.a * input.b
 return res
 """
-    func = _compile_function(code, None, make_schema())
+    func = _compile_function(code, make_schema())
     result = await func({"a": 2, "b": 4}, context=mock_context)
     assert result == 8
 
@@ -88,8 +88,9 @@ async def test_compile_function_def_sync(mock_context):
     code = """
 def myfunc(input):
     return input.a - input.b
+myfunc
 """
-    func = _compile_function(code, "myfunc", make_schema())
+    func = _compile_function(code, make_schema())
     result = await func({"a": 5, "b": 3}, context=mock_context)
     assert result == 2
 
@@ -99,8 +100,9 @@ async def test_compile_function_def_sync_context(mock_context):
     code = """
 def myfunc(input, context):
     return f"{input.a} + {input.b}: {context.session_id}"
+myfunc
 """
-    func = _compile_function(code, "myfunc", make_schema())
+    func = _compile_function(code, make_schema())
     result = await func({"a": 1, "b": 2}, context=mock_context)
     assert result == "1 + 2: test_session"
 
@@ -110,8 +112,9 @@ async def test_compile_function_def_async_context(mock_context):
     code = """
 async def myfunc(input, context):
     return f"{input.a} + {input.b}: {context.session_id}"
+myfunc
 """
-    func = _compile_function(code, "myfunc", make_schema())
+    func = _compile_function(code, make_schema())
     result = await func({"a": 1, "b": 2}, context=mock_context)
     assert result == "1 + 2: test_session"
 
@@ -121,8 +124,9 @@ async def test_compile_function_def_async(mock_context):
     code = """
 async def myfunc(input):
     return input.a * 2
+myfunc
 """
-    func = _compile_function(code, "myfunc", make_schema())
+    func = _compile_function(code, make_schema())
     result = await func({"a": 7, "b": 1}, context=mock_context)
     assert result == 14
 
@@ -130,7 +134,7 @@ async def myfunc(input):
 @pytest.mark.asyncio
 async def test_input_validation(mock_context):
     code = "input.a + input.b"
-    func = _compile_function(code, None, make_schema())
+    func = _compile_function(code, make_schema())
     with pytest.raises(ValueError):
         await func({"a": 1}, context=mock_context)  # missing 'b'
     with pytest.raises(ValueError):
@@ -186,7 +190,7 @@ return RunnableLambda(process_text)
         "required": ["text"],
     }
 
-    func = _compile_function(code, None, schema)
+    func = _compile_function(code, schema)
     test_input = {
         "text": "This demonstrates self-contained user-defined LangChain runnables!"
     }
@@ -220,7 +224,7 @@ async def test_langchain_runnable_lambda_expression(mock_context):
         "required": ["text"],
     }
 
-    func = _compile_function(code, None, schema)
+    func = _compile_function(code, schema)
     test_input = {"text": "This is a lambda test!"}
     result = await func(test_input, context=mock_context)
 
@@ -267,7 +271,7 @@ return RunnableLambda(simple_processor)
         "required": ["text"],
     }
 
-    func = _compile_function(code, None, schema)
+    func = _compile_function(code, schema)
     udf_result = await func(test_input, context=mock_context)
 
     # This should match the direct invocation result
@@ -296,7 +300,7 @@ except:
     }
 
     # This should compile successfully since it has a return statement
-    func = _compile_function(code, None, schema)
+    func = _compile_function(code, schema)
 
     test_input = {
         "text": "The weather today is terrible and I hate it",
@@ -354,7 +358,7 @@ return {
     }
 
     # This should compile successfully
-    func = _compile_function(code, None, schema)
+    func = _compile_function(code, schema)
 
     test_input = {"text": "This is a great example"}
 
@@ -386,11 +390,11 @@ word_count = len(words)
     }
 
     with pytest.raises(UdfCompilationError) as exc_info:
-        _compile_function(invalid_code, None, schema)
+        _compile_function(invalid_code, schema)
 
     # Check that the error contains the expected message
     error = exc_info.value
-    assert "Unable to compile code as lambda expression or function body" in str(error)
+    assert "Unable to compile code" in str(error)
     assert error.data["code"] == invalid_code  # Code is stored in data dict now
     assert error.blob_id is None  # No blob_id when called directly
 
@@ -407,7 +411,6 @@ async def test_udf_compilation_error_includes_blob_context():
         return {
             "code": "invalid code without return statement",
             "input_schema": {"type": "object"},
-            "function_name": None,
         }
 
     mock_context = type("MockContext", (), {"get_blob": mock_get_blob})()

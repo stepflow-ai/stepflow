@@ -365,7 +365,6 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
 
         code = blob_data.get("code")
         input_schema = blob_data.get("input_schema")
-        function_name = blob_data.get("function_name")
 
         if not code:
             raise ValueError(f"Blob {input.blob_id} must contain 'code' field")
@@ -374,7 +373,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
 
         # Compile the function with validation built-in
         try:
-            compiled_func = _compile_function(code, function_name, input_schema)
+            compiled_func = _compile_function(code, input_schema)
         except UdfCompilationError as e:
             # Re-raise with blob context for better tracing
             e.blob_id = input.blob_id
@@ -386,7 +385,6 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
         _function_cache[input.blob_id] = {
             "function": compiled_func,
             "input_schema": input_schema,
-            "function_name": function_name,
         }
 
     # Execute the cached function (validation happens inside)
@@ -418,7 +416,7 @@ class _InputWrapper(dict):
         raise StepflowValueError(f"Input has no attribute '{item}'")
 
 
-def _compile_function(code: str, function_name: str | None, input_schema: dict):
+def _compile_function(code: str, input_schema: dict):
     """Compile a function from code string and return the callable with validation."""
     import json
 
@@ -487,121 +485,127 @@ def _compile_function(code: str, function_name: str | None, input_schema: dict):
         except jsonschema.SchemaError as e:
             raise ValueError(f"Invalid schema: {e.message}") from e
 
-    if function_name is not None:
-        # Code contains function definition(s)
+    # Try different patterns in order of preference
+    func = None
+
+    # 1. Try to execute as a complete code block (for function definitions)
+    try:
         local_scope: dict[str, Any] = {}
+        exec(code, safe_globals, local_scope)
+
+        # If we got here, check if there's exactly one item defined that's callable
+        # This covers the case: def foo(input): return input["a"]\nfoo
+        callables = [
+            (name, obj)
+            for name, obj in local_scope.items()
+            if callable(obj) and not name.startswith("_")
+        ]
+
+        if len(callables) == 1:
+            # Found exactly one callable - use it
+            _, func = callables[0]
+
+    except Exception:
+        pass
+
+    # 2. If we don't have a function yet, try as expression
+    if func is None:
         try:
-            exec(code, safe_globals, local_scope)
-        except Exception as e:
-            raise ValueError(f"Code execution failed: {e}") from e
+            func = eval(code, safe_globals)
+            if not callable(func):
+                func = None
+        except Exception:
+            pass
 
-        # Look for the specified function
-        if function_name not in local_scope:
-            raise ValueError(f"Function '{function_name}' not found in code")
-
-        func = local_scope[function_name]
-        if not callable(func):
-            raise ValueError(f"'{function_name}' is not a function")
-
-        sig = inspect.signature(func)
-        params = list(sig.parameters)
-
-        input_annotation = sig.parameters[params[0]].annotation
-        wrap_input = (
-            input_annotation == inspect.Parameter.empty or input_annotation is dict
-        )
-        use_context = len(params) == 2 and params[1] == "context"
-        is_async = inspect.iscoroutinefunction(func)
-
-        # Test if function creates input-independent runnables at compile time
-        is_runnable = _detect_runnable_at_compile_time(
-            func, is_async, wrap_input, use_context
-        )
-
-        wrapper_config = WrapperConfig(
-            is_async=is_async, use_input_wrapper=wrap_input, use_context=use_context
-        )
-        if is_runnable:
-            # Function creates runnables - use runnable wrapper factory
-            wrapper_factory = _RUNNABLE_WRAPPER_FACTORIES[wrapper_config]
-            return wrapper_factory(func, validate_input)
-        else:
-            wrapper_factory = _WRAPPER_FACTORIES[wrapper_config]
-            return wrapper_factory(func, validate_input)
-    else:
-        # Code is a function body - try multiple approaches in order:
-        # 1. Try as a lambda expression (most common for simple expressions)
-        # 2. Try as function body with return statements (for more complex code)
-
-        # First, try as a lambda expression
+    # 3. If still no function, try lambda pattern
+    if func is None:
         try:
             wrapped_code = f"lambda input: {code}"
             func = eval(wrapped_code, safe_globals)
-
-            # Test if this lambda creates input-independent runnables
-            is_runnable = _detect_runnable_at_compile_time(func, False, True, False)
-
-            wrapper_config = WrapperConfig(
-                is_async=False, use_input_wrapper=True, use_context=False
-            )
-            if is_runnable:
-                # Lambda creates runnables - use runnable wrapper factory
-                wrapper_factory = _RUNNABLE_WRAPPER_FACTORIES[wrapper_config]
-                return wrapper_factory(func, validate_input)
-            else:
-                # Standard lambda - use standard wrapper factory
-                wrapper_factory = _WRAPPER_FACTORIES[wrapper_config]
-                return wrapper_factory(func, validate_input)
         except Exception:
-            pass  # Fall through to function body approach
+            pass
 
-        # Second, try as function body - use runtime detection instead of AST parsing
+    # 4. If still no function, try function body pattern
+    if func is None:
         try:
-            # Properly indent each line of the code
-            indented_lines = []
-            for line in code.split("\n"):
-                if line.strip():  # Only indent non-empty lines
-                    indented_lines.append("    " + line)
-                else:
-                    indented_lines.append("")  # Keep empty lines as-is
-
-            # Check if the code contains actual return statements (not just in comments)
-            # This is a simple heuristic - look for 'return' at the start of
-            # lines (after whitespace)
+            # Check if the code contains return statements (required for function body)
             import re
 
-            if not re.search(r"^\s*return\b", code, re.MULTILINE):
-                raise Exception("Function body must contain return statements")
+            if re.search(r"^\s*return\b", code, re.MULTILINE):
+                # Try as function body with input/context detection
+                # Properly indent each line of the code
+                indented_lines = []
+                for line in code.split("\n"):
+                    if line.strip():  # Only indent non-empty lines
+                        indented_lines.append("    " + line)
+                    else:
+                        indented_lines.append("")  # Keep empty lines as-is
 
-            # Try to create the function - if it compiles, it's valid
-            func_code = f"""def _temp_func(input, context):
-{chr(10).join(indented_lines)}"""
-
-            local_scope = {}
-            exec(func_code, safe_globals, local_scope)
-            temp_func = local_scope["_temp_func"]
-
-            # Test if this function creates input-independent runnables
-            is_runnable = _detect_runnable_at_compile_time(temp_func, False, True, True)
-
-            wrapper_config = WrapperConfig(
-                is_async=False, use_input_wrapper=True, use_context=True
-            )
-            if is_runnable:
-                # Function creates runnables - use runnable wrapper factory
-                wrapper_factory = _RUNNABLE_WRAPPER_FACTORIES[wrapper_config]
-                return wrapper_factory(temp_func, validate_input)
-            else:
-                # Standard function - use standard wrapper factory
-                wrapper_factory = _WRAPPER_FACTORIES[wrapper_config]
-                return wrapper_factory(temp_func, validate_input)
+                test_code_for_input = f"""def _test_func(input, context):
+{chr(10).join(indented_lines)}
+_test_func"""
+                local_scope = {}
+                exec(test_code_for_input, safe_globals, local_scope)
+                func = local_scope["_test_func"]
         except Exception:
-            pass  # Fall through to error
+            pass
 
-        # If we reach here, none of the compilation approaches worked
+    # If we still don't have a callable, raise an error
+    if func is None or not callable(func):
         raise UdfCompilationError(
-            "Unable to compile code as lambda expression or function body. "
-            "Code must be either: (1) a valid Python expression, or "
-            "(2) valid function body statements with return statements.",
+            "Unable to compile code. Code must be one of: "
+            "(1) A Python expression, "
+            "(2) A function definition followed by the function name, "
+            "(3) Code that results in a callable object, "
+            "(4) Function body statements with return statements.",
             code,
         )
+
+    # Now analyze the function to determine how to wrap it
+    sig = inspect.signature(func)
+    params = list(sig.parameters.keys())
+    is_async = inspect.iscoroutinefunction(func)
+
+    # Determine parameter usage by trying to call with test parameters
+    use_input_wrapper = True
+    use_context = False
+
+    if len(params) >= 1:
+        # Check if function accesses input or context by testing parameter
+        # names and doing runtime detection
+        try:
+            # Try to determine input wrapper usage from annotation or name
+            first_param = list(sig.parameters.values())[0]
+            if (
+                first_param.annotation != inspect.Parameter.empty
+                and first_param.annotation is not dict
+            ):
+                use_input_wrapper = False
+        except:  # noqa: E722
+            pass
+
+    if len(params) >= 2:
+        # Check if second parameter is context
+        if params[1] == "context":
+            use_context = True
+        elif len(params) == 2:
+            # Try runtime detection for context usage
+            use_context = True
+
+    # Test if function returns a runnable by trying to execute it
+    is_runnable = _detect_runnable_at_compile_time(
+        func, is_async, use_input_wrapper, use_context
+    )
+
+    wrapper_config = WrapperConfig(
+        is_async=is_async, use_input_wrapper=use_input_wrapper, use_context=use_context
+    )
+
+    if is_runnable:
+        # Function creates runnables - use runnable wrapper factory
+        wrapper_factory = _RUNNABLE_WRAPPER_FACTORIES[wrapper_config]
+        return wrapper_factory(func, validate_input)
+    else:
+        # Standard function - use standard wrapper factory
+        wrapper_factory = _WRAPPER_FACTORIES[wrapper_config]
+        return wrapper_factory(func, validate_input)

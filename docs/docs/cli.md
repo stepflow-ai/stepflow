@@ -1,8 +1,8 @@
 ---
-sidebar_position: 2
+sidebar_position: 8
 ---
 
-# Commands
+# CLI Reference
 
 StepFlow provides several commands for executing workflows in different ways. This reference covers all available commands and their options.
 
@@ -259,7 +259,7 @@ StepFlow uses a hierarchical approach to find configuration files:
 
 1. **Explicit path**: Use `--config` option if provided
 2. **Workflow directory**: Look for `stepflow-config.yml`, `stepflow-config.yaml`, `stepflow_config.yml`, or `stepflow_config.yaml` in the workflow file's directory
-3. **Current directory**: Look for same files in current working directory  
+3. **Current directory**: Look for same files in current working directory
 4. **Default**: Use built-in configuration with builtin components only
 
 ## Input Format Detection
