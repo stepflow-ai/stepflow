@@ -4,225 +4,164 @@ sidebar_position: 2
 
 # Getting Started
 
-This guide will help you install StepFlow and run your first workflow.
+This guide will help you install StepFlow and run your first workflow in just a few minutes.
 
-## Installation
+## Setup
 
-### Prerequisites
+### 1. Download StepFlow
 
-- **Rust** (only if building from source)
+Download the latest pre-built binary from [GitHub Releases](https://github.com/riptano/stepflow/releases) for your platform.
 
-### Pre-built Binaries (Recommended)
+### 2. Install Python SDK (Recommended)
 
-Download the latest release from [GitHub Releases](https://github.com/riptano/stepflow/releases).
-
-### Building from Source
-
-If you prefer to build from source or need the latest development version:
+Most workflows use custom Python components for data processing and integrations:
 
 ```bash
-git clone https://github.com/riptano/stepflow.git
-cd stepflow/stepflow-rs
-cargo build --release
+# Install Python 3.11+ and uv (Python package manager)
+pip install uv
+
+# The Python SDK will be automatically available when needed
 ```
 
-The binary will be available at `target/release/stepflow`.
+:::note
+The Python SDK is technically optional if you plan to use only built-in components or other language SDKs.
+See [Components](./components/index.md) for alternatives.
+:::
 
-### Optional: Python SDK
+### 3. Set up OpenAI API
 
-If you want to create custom components using Python, you'll need:
-
-- **Python 3.8+**
-- **uv** (Python package manager)
-
-The Python SDK is not required for basic StepFlow usage.
-
-## Your First Workflow
-
-Let's create a simple AI-powered question answering application that demonstrates how StepFlow can orchestrate AI workflows using simple schema definitions and builtin components.
-
-### 1. Create a Workflow File
-
-From the `stepflow` project directory, create a file called `ai_qa_workflow.yaml`:
-
-```yaml
-name: "AI Question Answering"
-description: "Demonstrates a simple AI workflow with context and generation"
-
-input_schema:
-  type: object
-  properties:
-    question:
-      type: string
-      description: "User's question"
-    context:
-      type: string
-      description: "Context information to help answer the question"
-  required: [question, context]
-
-output_schema:
-  type: object
-  properties:
-    answer:
-      type: string
-      description: "AI-generated answer"
-    metadata:
-      type: object
-      description: "Processing metadata"
-
-steps:
-  # Store the context as a blob for potential reuse
-  - id: store_context
-    component: /builtin/put_blob
-    input:
-      data:
-        context: { $from: { workflow: input }, path: "context" }
-        question: { $from: { workflow: input }, path: "question" }
-
-    # Format the context and question into a clear prompt
-  - id: format_prompt
-    component: /builtin/put_blob
-    input:
-      data:
-        context: { $from: { workflow: input }, path: "context" }
-        question: { $from: { workflow: input }, path: "question" }
-
-  # Get the formatted prompt from the blob
-  - id: get_prompt
-    component: /builtin/get_blob
-    input:
-      blob_id: { $from: { step: format_prompt }, path: "blob_id" }
-
-  # Create messages for OpenAI
-  - id: create_messages
-    component: /builtin/create_messages
-    input:
-      system_instructions: "You are a helpful assistant. Answer the user's question based on the provided context. If the context doesn't contain enough information, say so and provide your best general answer."
-      user_prompt: { $from: { step: get_prompt }, path: "$.data.question" }
-
-  # Generate AI response using OpenAI
-  - id: generate_answer
-    component: /builtin/openai
-    input:
-      messages: { $from: { step: create_messages }, path: "messages" }
-      temperature: 0.3
-      max_tokens: 150
-
-  # Create response metadata
-  - id: create_metadata
-    component: /builtin/put_blob
-    input:
-      data:
-        processed_at: "2024-01-15T10:30:00Z"
-        model_used: "gpt-3.5-turbo"
-        workflow_version: "1.0"
-        question_length: 25
-        context_provided: true
-
-output:
-  answer: { $from: { step: generate_answer }, path: "response" }
-  metadata: { $from: { step: create_metadata } }
-```
-
-### 2. Create an Input File
-
-Similarly, create `input.json` with the `question` and `context` properties defined in the `input_schema` of the YAML file:
-
-```json
-{
-  "question": "What is the capital of France?",
-  "context": "Paris is the capital and largest city of France, located in northern France on the river Seine. It's known for landmarks like the Eiffel Tower and Louvre Museum."
-}
-```
-
-### 3. Set Up OpenAI API
-
-You'll need an OpenAI API key. Set it as an environment variable:
+This example uses OpenAI's GPT models via the built-in OpenAI component.
+You'll need to configure an OpenAI API key for this, as shown below.
 
 ```bash
 export OPENAI_API_KEY="your-api-key-here"
 ```
 
-### 4. Run the Workflow
+## Your First Workflow
 
-Now we call `cargo run -- run` from the `stepflow-rs` directory with the path to the workflow and input file:
+Let's create a simple workflow that combines built-in components with a custom Python function.
 
-```bash
-cd stepflow-rs
-cargo run -- run --flow=ai_qa_workflow.yaml --input=input.json
+### 1. Create `hello-workflow.yaml`
+
+```yaml
+name: "Hello StepFlow"
+description: "A simple workflow combining built-in and Python components"
+
+input_schema:
+  type: object
+  properties:
+    name:
+      type: string
+      description: "User's name"
+  required: [name]
+
+steps:
+  # Step 1: Use Python component to format greeting
+  - id: format_greeting
+    component: /python/hello_formatter
+    input:
+      name: { $from: { workflow: input }, path: "name" }
+
+  # Step 2: Use built-in component to create AI messages
+  - id: create_messages
+    component: /builtin/create_messages
+    input:
+      system_instructions: "You are a friendly assistant. Respond enthusiastically to greetings."
+      user_prompt: { $from: { step: format_greeting }, path: "greeting" }
+
+  # Step 3: Generate AI response
+  - id: ai_response
+    component: /builtin/openai
+    input:
+      messages: { $from: { step: create_messages }, path: "messages" }
+      temperature: 0.7
+      max_tokens: 100
+
+output:
+  greeting: { $from: { step: format_greeting }, path: "greeting" }
+  ai_response: { $from: { step: ai_response }, path: "response" }
 ```
 
-You should see output with the `answer` and `metadata` properties as defined in the `output_schema` of the YAML file:
+### 2. Create `hello_formatter.py` (Python Component)
+
+```python
+from stepflow_py import StepflowStdioServer
+import msgspec
+
+class Input(msgspec.Struct):
+    name: str
+
+class Output(msgspec.Struct):
+    greeting: str
+
+server = StepflowStdioServer()
+
+@server.component
+def hello_formatter(input: Input) -> Output:
+    greeting = f"Hello, {input.name}! Welcome to StepFlow."
+    return Output(greeting=greeting)
+
+if __name__ == "__main__":
+    server.run()
+```
+
+
+### 3. Create `stepflow-config.yml` (Configuration)
+
+```yaml
+plugins:
+  builtin:
+    type: builtin
+  python:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["run", "python", "hello_formatter.py"]
+
+routes:
+  "/python/{*component}":
+    - plugin: python
+  "/builtin/{*component}":
+    - plugin: builtin
+```
+
+### 4. Create `input.json`
 
 ```json
 {
-  "answer": "Based on the provided context, the capital of France is Paris. It is the largest city in France and is located in northern France on the river Seine. Paris is famous for its landmarks including the Eiffel Tower and the Louvre Museum.",
-  "metadata": {
-    "blob_id": "sha256:a1b2c3d4..."
-  }
+  "name": "World"
 }
 ```
 
-### 5. Understanding the Workflow
-
-This AI Q&A workflow demonstrates several key StepFlow concepts:
-
-- **Input/Output Schemas**: Define the structure of questions, context, and answers
-- **AI Integration**: Use [`openai`](./components/builtins/openai.md) and [`create_messages`](./components/builtins/create_messages.md) for natural language processing
-- **Data References**: Use [`$from`](./flows/expressions.md#references) to pass data between steps
-- **Blob Storage**: Store context and metadata for reuse with [`put_blob`](./components/builtins/put_blob.md)
-- **Multi-step Processing**: Orchestrate data storage, prompt formatting, and AI generation
-
-The workflow follows this pattern:
-1. **Store Context**: Input data is stored as blobs for efficient reuse
-2. **Format Prompt**: Context and question are formatted into a clear prompt
-3. **Create Messages**: System instructions and user prompts are structured for OpenAI
-4. **AI Generation**: OpenAI generates answers based on the provided context
-5. **Metadata Tracking**: Processing information is captured for observability
-
-## Alternative Input Methods
-
-You can provide input in several ways:
+### 5. Run the Workflow
 
 ```bash
-# Using inline JSON
-cargo run -- run --flow=ai_qa_workflow.yaml --input-json='{"question": "What is AI?", "context": "Artificial Intelligence is the simulation of human intelligence in machines..."}'
-
-# Using stdin
-echo '{"question": "What is machine learning?", "context": "Machine learning is..."}' | cargo run -- run --flow=ai_qa_workflow.yaml --stdin-format=json
+stepflow run --flow=hello-workflow.yaml --input=input.json
 ```
 
-## Testing Your Workflow
+You should see output like:
 
-You can add test cases directly to your workflow file:
-
-```yaml
-test:
-  cases:
-  - name: basic_qa_test
-    description: Test AI Q&A with a simple geography question
-    input:
-      question: "What is the capital of France?"
-      context: "Paris is the capital and largest city of France, located in northern France on the river Seine."
-    output:
-      outcome: success
-      result:
-        answer: "*Paris*"  # Answer should contain "Paris"
-        metadata:
-          blob_id: "sha256:*"
+```json
+{
+  "greeting": "Hello, World! Welcome to StepFlow.",
+  "ai_response": "Hello, World! Welcome to StepFlow! 🎉 It's wonderful to meet you..."
+}
 ```
 
-Run tests with:
+## What Just Happened?
 
-```bash
-cargo run -- test ai_qa_workflow.yaml
-```
+This workflow demonstrates StepFlow's key concepts:
 
-For more advanced testing patterns and configuration options, see the [Testing Guide](./best-practices/testing.md).
+- **Input/Output Schemas**: Define the structure of your data using JSON Schema
+- **Steps**: Each step uses a component to process data and pass results to the next step
+- **Components**: Built-in components (`/builtin/openai`, `/builtin/create_messages`) and custom Python components (`/python/hello_formatter`)
+- **Data Flow**: Use `$from` expressions to pass data between steps
 
 ## Next Steps
 
-Now that you've run your first RAG workflow, explore these topics to build more sophisticated applications:
+Choose your learning path based on your goals:
 
-* Details on [Flows](./flows/index.md) and how you can write your own
-* [Available components and how to create your own](./components/index.md) you can use
+- **Build workflows**: Learn about [Flows](./flows/index.md) - steps, expressions, and control flow
+- **Create components**: Explore [Components](./components/index.md) - built-ins, Python SDK, and other language SDKs
+- **Test workflows**: Check out [Testing Best Practices](./best-practices/testing.md) for validation and testing strategies
+- **See examples**: Browse [Workflow Examples](./examples/) for real-world use cases
