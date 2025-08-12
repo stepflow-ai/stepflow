@@ -76,7 +76,12 @@ runtime execution:
 
 ## Geting Started
 
-Our comprehensive [getting started](/docs/getting_started) guide and usage [examples](/docs/examples) should give you everything you need to get going with your own workflows. 
+Our comprehensive [getting started](/docs/getting_started) guide and usage [examples](/docs/examples) should give you everything you need to get going with your own workflows. Specific examples include:
+
+- Simple AI Chat Workflow: How to use [OpenAI chat integration](/docs/examples/ai-workflows)
+- Data Processing Workflow: Build a custom pipeline to [process sales data](/docs/examples/data-processing)
+- MCP tool integration: Use [MCP tools as workflow components](/docs/examples/mcp-tools)
+- Custom component development: [Build your own components and UDFs](/docs/examples/custom-components)
 
 ## What's Next?
 
