@@ -86,4 +86,4 @@ flowchart TB
 
 - [Explore built-in components](./builtins/index.md) for common operations
 - [Learn how to create custom components](./component-server/custom-components.md) using StepFlow SDKs
-- [Create steps](../steps/index.md) to use components in a flow
+- [Create steps](../flows/steps.md) to use components in a flow
