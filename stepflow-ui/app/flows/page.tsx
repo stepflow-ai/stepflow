@@ -110,7 +110,7 @@ export default function FlowsPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Latest Version:</span>
-                  <div className="font-mono text-xs">{workflow.flowHash.substring(0, 12)}...</div>
+                  <div className="font-mono text-xs">{workflow.flowId.substring(0, 12)}...</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Last Updated:</span>

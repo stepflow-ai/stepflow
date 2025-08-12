@@ -18,7 +18,7 @@ export async function POST(
     const workflowName = decodeURIComponent(resolvedParams.name)
     const labelName = decodeURIComponent(resolvedParams.label)
     const body = await request.json()
-    const { flowHash } = CreateLabelRequestSchema.parse(body)
+    const { flowId } = CreateLabelRequestSchema.parse(body)
 
     // Check if workflow exists
     const workflow = await prisma.workflow.findUnique({
@@ -37,11 +37,11 @@ export async function POST(
     // Verify the flow exists in core server
     const stepflowClient = getStepFlowClient()
     try {
-      await stepflowClient.getFlow(flowHash)
+      await stepflowClient.getFlow(flowId)
     } catch {
       const errorResponse = ErrorResponseSchema.parse({
         error: 'Flow not found',
-        message: `Flow with hash ${flowHash} not found in core server`,
+        message: `Flow with hash ${flowId} not found in core server`,
         code: 404,
       })
       return NextResponse.json(errorResponse, { status: 404 })
@@ -56,20 +56,20 @@ export async function POST(
         },
       },
       update: {
-        flowHash,
+        flowId,
         updatedAt: new Date(),
       },
       create: {
         workflowName,
         label: labelName,
-        flowHash,
+        flowId,
       },
     })
 
     const response: LabelResponse = {
       workflowName: label.workflowName,
       label: label.label,
-      flowHash: label.flowHash,
+      flowId: label.flowId,
       createdAt: label.createdAt.toISOString(),
       updatedAt: label.updatedAt.toISOString(),
     }

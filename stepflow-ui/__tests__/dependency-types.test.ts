@@ -80,7 +80,7 @@ describe('Dependency Extraction Functions', () => {
     it('should convert flow analysis to step dependencies', () => {
       const analysis: FlowAnalysis = {
         flow: {} as any,
-        flowHash: 'test-hash',
+        flowId: 'test-hash',
         outputDepends: {} as any,
         validationErrors: [],
         validationWarnings: [],
@@ -118,7 +118,7 @@ describe('Dependency Extraction Functions', () => {
     it('should return empty array for missing steps', () => {
       const analysis: FlowAnalysis = {
         flow: {} as any,
-        flowHash: 'test-hash',
+        flowId: 'test-hash',
         outputDepends: {} as any,
         validationErrors: [],
         validationWarnings: [],
@@ -131,7 +131,7 @@ describe('Dependency Extraction Functions', () => {
     it('should filter out steps with no dependencies', () => {
       const analysis: FlowAnalysis = {
         flow: {} as any,
-        flowHash: 'test-hash',
+        flowId: 'test-hash',
         outputDepends: {} as any,
         validationErrors: [],
         validationWarnings: [],
@@ -158,7 +158,7 @@ describe('Dependency Extraction Functions', () => {
     it('should handle complex dependency structures', () => {
       const analysis: FlowAnalysis = {
         flow: {} as any,
-        flowHash: 'test-hash',
+        flowId: 'test-hash',
         outputDepends: {} as any,
         validationErrors: [],
         validationWarnings: [],

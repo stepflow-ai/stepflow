@@ -13,13 +13,13 @@ export async function GET(
     const runId = resolvedParams.id
     const stepflowClient = getStepFlowClient()
     
-    // Get run details to get the flow hash
+    // Get run details to get the flow ID
     const runDetails = await stepflowClient.getRun(runId)
-    const flowHash = runDetails.flowHash
+    const flowId = runDetails.flowId
     
-    // Try to find workflow in our database by flow hash
+    // Try to find workflow in our database by flow ID
     const workflow = await prisma.workflow.findFirst({
-      where: { flowHash },
+      where: { flowId },
       include: {
         labels: {
           orderBy: { updatedAt: 'desc' },
@@ -28,12 +28,12 @@ export async function GET(
     })
     
     // Get flow definition from core server
-    const flowData = await stepflowClient.getFlow(flowHash)
+    const flowData = await stepflowClient.getFlow(flowId)
     
     const response = {
       // Run information
       runId: runDetails.runId,
-      flowHash: runDetails.flowHash,
+      flowId: runDetails.flowId,
       debugMode: runDetails.debugMode,
       
       // Workflow metadata (may be null for ad-hoc workflows)
@@ -41,7 +41,7 @@ export async function GET(
       workflowDescription: workflow?.description || null,
       workflowLabels: workflow?.labels.map(label => ({
         label: label.label,
-        flowHash: label.flowHash,
+        flowId: label.flowId,
         createdAt: label.createdAt.toISOString(),
         updatedAt: label.updatedAt.toISOString(),
       })) || [],

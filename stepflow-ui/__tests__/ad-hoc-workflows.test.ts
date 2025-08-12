@@ -78,7 +78,7 @@ describe('Ad-hoc Workflow Support', () => {
         status: 'completed',
         debug: false,
         workflowName: 'my-workflow',
-        flowHash: 'abc123'
+        flowId: 'abc123'
       }
 
       const result = ExecuteWorkflowResponseSchema.safeParse(responseWithWorkflowName)
@@ -98,7 +98,7 @@ describe('Ad-hoc Workflow Support', () => {
         status: 'completed',
         debug: true,
         workflowName: null, // Ad-hoc workflows don't have names
-        flowHash: 'def456'
+        flowId: 'def456'
       }
 
       const result = ExecuteWorkflowResponseSchema.safeParse(adHocResponse)
@@ -117,7 +117,7 @@ describe('Ad-hoc Workflow Support', () => {
         status: 'running',
         debug: false,
         workflowName: null,
-        flowHash: 'ghi789'
+        flowId: 'ghi789'
       }
 
       const result = ExecuteWorkflowResponseSchema.safeParse(responseWithoutResult)
@@ -135,7 +135,7 @@ describe('Ad-hoc Workflow Support', () => {
         status: 'invalid-status',
         debug: false,
         workflowName: 'test',
-        flowHash: 'invalid123'
+        flowId: 'invalid123'
       }
 
       const result = ExecuteWorkflowResponseSchema.safeParse(invalidResponse)
@@ -145,7 +145,7 @@ describe('Ad-hoc Workflow Support', () => {
     it('should reject response missing required fields', () => {
       const incompleteResponse = {
         runId: 'run-incomplete'
-        // Missing status, debug, workflowName, flowHash
+        // Missing status, debug, workflowName, flowId
       }
 
       const result = ExecuteWorkflowResponseSchema.safeParse(incompleteResponse)
@@ -188,7 +188,7 @@ describe('Ad-hoc Workflow Support', () => {
         status: 'completed',
         debug: false,
         workflowName: 'my-workflow', // string for named workflows
-        flowHash: 'hash001'
+        flowId: 'hash001'
       }
 
       const adHocWorkflowResponse: ExecuteWorkflowResponse = {
@@ -196,7 +196,7 @@ describe('Ad-hoc Workflow Support', () => {
         status: 'completed',
         debug: false,
         workflowName: null, // null for ad-hoc workflows
-        flowHash: 'hash002'
+        flowId: 'hash002'
       }
 
       // These should compile without TypeScript errors

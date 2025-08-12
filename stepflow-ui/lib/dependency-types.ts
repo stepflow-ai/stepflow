@@ -2,7 +2,6 @@
 import type {
   FlowAnalysis,
   StepAnalysis,
-  ValidationMessage,
   ValueDependencies,
   Dependency,
   DependencyOneOf1
@@ -11,7 +10,6 @@ import type {
 export type {
   FlowAnalysis,
   StepAnalysis,
-  ValidationMessage,
   ValueDependencies,
   Dependency
 }

@@ -142,7 +142,7 @@ describe('WorkflowExecutionDialog', () => {
     await user.click(executeButton)
 
     expect(mockExecuteMutation.mutate).toHaveBeenCalledWith({
-      flowHash: expect.any(String),
+      flowId: expect.any(String),
       input: {
         message: 'Hello, World!',
         count: 5
@@ -200,7 +200,7 @@ describe('WorkflowExecutionDialog', () => {
     await user.click(executeButton)
 
     expect(mockExecuteMutation.mutate).toHaveBeenCalledWith({
-      flowHash: expect.any(String),
+      flowId: expect.any(String),
       input: {
         message: 'Hello from JSON',
         count: 3
@@ -288,7 +288,7 @@ describe('WorkflowExecutionDialog', () => {
       data: { 
         runId: 'run123', 
         status: 'running' as const,
-        flowHash: 'hash123',
+        flowId: 'hash123',
         debug: false,
         workflowName: 'test-workflow'
       }

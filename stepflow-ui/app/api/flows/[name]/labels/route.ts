@@ -38,7 +38,7 @@ export async function GET(
     const labelResponses: LabelResponse[] = labels.map(label => ({
       workflowName: label.workflowName,
       label: label.label,
-      flowHash: label.flowHash,
+      flowId: label.flowId,
       createdAt: label.createdAt.toISOString(),
       updatedAt: label.updatedAt.toISOString(),
     }))

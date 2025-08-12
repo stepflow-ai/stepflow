@@ -50,12 +50,12 @@ export async function GET(
     const stepflowClient = getStepFlowClient()
     let flowData
     try {
-      flowData = await stepflowClient.getFlow(workflow.flowHash)
+      flowData = await stepflowClient.getFlow(workflow.flowId)
     } catch (error) {
-      console.error(`Failed to fetch flow ${workflow.flowHash} from core server:`, error)
+      console.error(`Failed to fetch flow ${workflow.flowId} from core server:`, error)
       const errorResponse = ErrorResponseSchema.parse({
         error: 'Flow definition not found',
-        message: `Flow definition with hash ${workflow.flowHash} not found in core server`,
+        message: `Flow definition with hash ${workflow.flowId} not found in core server`,
         code: 422,
       })
       return NextResponse.json(errorResponse, { status: 422 })
@@ -65,14 +65,14 @@ export async function GET(
       id: workflow.id,
       name: workflow.name,
       description: workflow.description,
-      flowHash: workflow.flowHash,
+      flowId: workflow.flowId,
       flow: flowData.flow,
       analysis: flowData.analysis, // Include dependency analysis data
       createdAt: workflow.createdAt.toISOString(),
       updatedAt: workflow.updatedAt.toISOString(),
       labels: workflow.labels.map(label => ({
         label: label.label,
-        flowHash: label.flowHash,
+        flowId: label.flowId,
         createdAt: label.createdAt.toISOString(),
         updatedAt: label.updatedAt.toISOString(),
       })),
@@ -125,10 +125,10 @@ export async function PUT(
     const stepflowClient = getStepFlowClient()
     const storeResult = await stepflowClient.storeFlow(flow) as StoreFlowResponse
     
-    // Extract flow hash from the new response format
-    const flowHash = storeResult.flowHash
-    if (!flowHash) {
-      throw new Error('Failed to store flow: no flow hash returned')
+    // Extract flow ID from the new response format
+    const flowId = storeResult.flowId
+    if (!flowId) {
+      throw new Error('Failed to store flow: no flow ID returned')
     }
 
     // Update in our database
@@ -136,7 +136,7 @@ export async function PUT(
       where: { name: workflowName },
       data: {
         description,
-        flowHash,
+        flowId,
         updatedAt: new Date(),
       },
     })
@@ -145,7 +145,7 @@ export async function PUT(
       id: workflow.id,
       name: workflow.name,
       description: workflow.description,
-      flowHash: workflow.flowHash,
+      flowId: workflow.flowId,
       createdAt: workflow.createdAt.toISOString(),
       updatedAt: workflow.updatedAt.toISOString(),
     }

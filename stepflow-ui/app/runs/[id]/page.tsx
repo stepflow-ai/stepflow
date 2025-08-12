@@ -29,6 +29,7 @@ import {
 import { WorkflowVisualizer } from '@/components/workflow-visualizer'
 import { useRun, useRunSteps, useRunWorkflow, useFlow } from '@/lib/hooks/use-flow-api'
 import type { StepExecution } from '@/lib/api-types'
+import type { Flow } from '@/stepflow-api-client'
 import { convertAnalysisToDependencies, type FlowAnalysis, type StepDependency } from '@/lib/dependency-types'
 
 // Helper functions
@@ -61,7 +62,12 @@ const transformStepsForVisualizer = (steps: StepExecution[], workflow?: { steps?
     if (stepExecution) {
       switch (stepExecution.state) {
         case 'completed':
-          status = stepExecution.result?.outcome === 'failed' ? 'failed' : 'completed'
+          // Check if result has Failed property for new API structure
+          if (stepExecution.result && typeof stepExecution.result === 'object' && 'Failed' in stepExecution.result) {
+            status = 'failed'
+          } else {
+            status = 'completed'
+          }
           break
         case 'running':
           status = 'running'
@@ -88,10 +94,10 @@ const transformStepsForVisualizer = (steps: StepExecution[], workflow?: { steps?
         duration = `${(durationMs / 1000).toFixed(2)}s`
       }
       
-      if (stepExecution.result && stepExecution.result.outcome === 'success') {
-        output = JSON.stringify(stepExecution.result.result)
-      } else if (stepExecution.result && stepExecution.result.outcome === 'failed') {
-        output = JSON.stringify(stepExecution.result.error)
+      if (stepExecution.result && typeof stepExecution.result === 'object' && 'Success' in stepExecution.result) {
+        output = JSON.stringify(stepExecution.result.Success)
+      } else if (stepExecution.result && typeof stepExecution.result === 'object' && 'Failed' in stepExecution.result) {
+        output = JSON.stringify(stepExecution.result.Failed)
       }
     }
     
@@ -212,7 +218,7 @@ function WorkflowVisualization({
     output: string | null
   }>,
   dependencies?: StepDependency[],
-  workflow?: unknown,
+  workflow?: Flow,
   analysisData?: FlowAnalysis,
   isDebugMode: boolean,
   isLoading: boolean
@@ -321,8 +327,13 @@ export default function RunDetailsPage() {
   const isDebugMode = execution?.debugMode || false
   const totalSteps = workflowData?.flow?.steps?.length || 0
   const completedSteps = steps?.filter(step => {
-    const result = step.result as { outcome?: string; result?: unknown; error?: unknown } | null;
-    return result?.outcome === 'success' || result?.outcome === 'failed' || result?.outcome === 'skipped';
+    const result = step.result;
+    if (!result) return false;
+    if (typeof result === 'string') return true;
+    if (typeof result === 'object') {
+      return 'Success' in result || 'Failed' in result;
+    }
+    return false;
   }).length || 0
   const runningSteps = steps?.filter(step =>
     step.state === 'running'
@@ -529,10 +540,10 @@ export default function RunDetailsPage() {
                       <span className="text-sm text-muted-foreground">Description:</span>
                       <div className="text-sm">{workflowData?.flow?.description || 'No description available'}</div>
                     </div>
-                    {execution?.flowHash && (
+                    {execution?.flowId && (
                       <div>
-                        <span className="text-sm text-muted-foreground">Flow Hash:</span>
-                        <div className="font-mono text-sm">{execution.flowHash.substring(0, 12)}...</div>
+                        <span className="text-sm text-muted-foreground">Flow ID:</span>
+                        <div className="font-mono text-sm">{execution.flowId.substring(0, 12)}...</div>
                       </div>
                     )}
                     <div>
@@ -618,16 +629,16 @@ export default function RunDetailsPage() {
                         let output = null
 
                         if (stepExecution?.result) {
-                          const result = stepExecution.result as { outcome?: string; result?: unknown; error?: unknown };
-                          if (result.outcome === 'success') {
+                          const result = stepExecution.result;
+                          if (typeof result === 'object' && 'Success' in result) {
                             status = 'completed'
-                            output = JSON.stringify(result.result)
-                          } else if (result.outcome === 'failed') {
+                            output = JSON.stringify(result.Success)
+                          } else if (typeof result === 'object' && 'Failed' in result) {
                             status = 'failed'
-                            output = JSON.stringify(result.error)
-                          } else if (result.outcome === 'skipped') {
+                            output = JSON.stringify(result.Failed)
+                          } else if (typeof result === 'string') {
                             status = 'completed'
-                            output = 'Skipped'
+                            output = result
                           }
                         } else if (stepExecution?.state === 'running') {
                           status = 'running'
