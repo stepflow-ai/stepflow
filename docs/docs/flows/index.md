@@ -2,7 +2,7 @@
 sidebar_position: 1
 ---
 
-# Workflows
+# Flows Overview
 
 Workflows are the core abstraction in StepFlow that describe sequences of operations and data flow between them. StepFlow is specifically designed to express GenAI and agentic workflows, providing powerful capabilities for orchestrating AI models, tools, and data processing tasks.
 

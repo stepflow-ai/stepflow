@@ -8,7 +8,8 @@ const destDir = path.join(__dirname, '../static/schemas');
 
 // Schema files to copy (keeping original names)
 const schemaFiles = [
-  'protocol.json'
+  'protocol.json',
+  'flow.json',
 ];
 
 // Ensure destination directory exists
@@ -22,7 +23,7 @@ console.log('Copying schemas from source to docs...');
 schemaFiles.forEach(schemaFile => {
   const sourcePath = path.join(sourceDir, schemaFile);
   const destPath = path.join(destDir, schemaFile);
-  
+
   if (fs.existsSync(sourcePath)) {
     fs.copyFileSync(sourcePath, destPath);
     console.log(`✓ Copied ${schemaFile}`);
