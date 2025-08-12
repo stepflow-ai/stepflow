@@ -15,7 +15,7 @@ However, the pattern described below should be possible in any language that sup
 
 UDFs operate using a two-step process:
 
-1. **Code Storage**: Python code and its input schema are stored as blobs using [`put_blob`](../builts/put_blob.md)
+1. **Code Storage**: Python code and its input schema are stored as blobs using [`put_blob`](../builtins/put_blob.md)
 2. **Code Execution**: The stored code is executed using `udf` with input data
 
 This approach provides several advantages:

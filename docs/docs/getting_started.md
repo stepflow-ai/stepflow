@@ -168,9 +168,9 @@ You should see output with the `answer` and `metadata` properties as defined in 
 This AI Q&A workflow demonstrates several key StepFlow concepts:
 
 - **Input/Output Schemas**: Define the structure of questions, context, and answers
-- **AI Integration**: Use [`openai`](./components/builtins.md#builtinopenai) and [`create_messages`](./components/builtins.md#builtincreate_messages) for natural language processing
-- **Data References**: Use [`$from`](./workflows/expressions.md#data-references-from) to pass data between steps
-- **Blob Storage**: Store context and metadata for reuse with [`put_blob`](./components/builtins.md#builtinput_blob)
+- **AI Integration**: Use [`openai`](./components/builtins/openai.md) and [`create_messages`](./components/builtins/create_messages.md) for natural language processing
+- **Data References**: Use [`$from`](./flows/expressions.md#1-data-references-from) to pass data between steps
+- **Blob Storage**: Store context and metadata for reuse with [`put_blob`](./components/builtins/put_blob.md)
 - **Multi-step Processing**: Orchestrate data storage, prompt formatting, and AI generation
 
 The workflow follows this pattern:
@@ -218,27 +218,27 @@ Run tests with:
 cargo run -- test ai_qa_workflow.yaml
 ```
 
-For more advanced testing patterns and configuration options, see the [Testing Guide](./workflows/testing.md).
+For more advanced testing patterns and configuration options, see the [Testing Guide](./flows/testing.md).
 
 ## Next Steps
 
 Now that you've run your first RAG workflow, explore these topics to build more sophisticated applications:
 
 ### Workflow Development
-* **[Workflow Fundamentals](./workflows/steps.md)** - Understanding steps, execution order, and dependencies
-* **[Input & Output](./workflows/input_output.md)** - Data flow patterns and schema validation
-* **[Expression System](./workflows/expressions.md)** - Advanced data references and transformations
-* **[Testing](./workflows/testing.md)** - Comprehensive testing patterns and CI/CD integration
-* **[Workflow Specification](./workflows/specification.md)** - Complete workflow file format reference
+* **[Workflow Fundamentals](./flows/steps.md)** - Understanding steps, execution order, and dependencies
+* **[Input & Output](./flows/input_output.md)** - Data flow patterns and schema validation
+* **[Expression System](./flows/expressions.md)** - Advanced data references and transformations
+* **[Testing](./flows/testing.md)** - Comprehensive testing patterns and CI/CD integration
+* **[Workflow Specification](./flows/specification.md)** - Complete workflow file format reference
 
 ### Components & Integration
-* **[Builtin Components](./components/builtins.md)** - Complete reference for OpenAI, blob storage, and other builtins
+* **[Builtin Components](./components/builtins/index.md)** - Complete reference for OpenAI, blob storage, and other builtins
 * **[Custom Components](./components/index.md)** - Build your own components in Python, TypeScript, or Rust
 * **[Protocol Documentation](./protocol/components.mdx)** - Understanding the component communication protocol
 
 ### Runtime & Deployment
-* **[CLI Reference](./runtime/commands.md)** - Complete command-line interface documentation
-* **[Configuration](./runtime/config.md)** - Plugin setup, state stores, and environment configuration
+* **[CLI Reference](./cli.md)** - Complete command-line interface documentation
+* **[Configuration](./config.md)** - Plugin setup, state stores, and environment configuration
 * **[Runtime Options](./runtime/index.md)** - Local execution, service mode, and deployment patterns
 
 ### More Examples

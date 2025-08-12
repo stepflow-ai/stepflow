@@ -78,7 +78,7 @@ Learn more: [Testing Workflows](./testing.md) | [Performance Guide](./performanc
 ### Core Features
 4. [Control Flow](./control-flow.md) - Conditional execution and error handling
 5. [Input/Output](./input_output.md) - Managing workflow data
-6. [Schema Validation](./schema.mdx) - Ensuring data integrity
+6. [Schema Validation](../reference/flow-schema.mdx) - Ensuring data integrity
 
 ### Advanced Topics
 7. [Execution Model](./execution.md) - How workflows run
@@ -90,5 +90,5 @@ Learn more: [Testing Workflows](./testing.md) | [Performance Guide](./performanc
 
 - **New to StepFlow?** Start with the [Getting Started Guide](../getting_started.md)
 - **Ready to build?** Check out [Workflow Examples](../examples/)
-- **Need components?** Explore [Built-in Components](../components/builtins.md)
+- **Need components?** Explore [Built-in Components](../components/builtins/index.md)
 - **Building integrations?** Learn about the [StepFlow Protocol](../protocol/)

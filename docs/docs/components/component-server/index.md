@@ -19,4 +19,4 @@ Component servers are standalone processes that communicate with the StepFlow ru
 
 * [Create custom components](./custom-components.md) using the Python SDK
 * [Use user-defined functions (UDFs)](./udfs.md) to execute code dynamically within workflows
-* [Use the Stepflow Protocol to create components in other languages](../protocol/index.md)
+* [Use the Stepflow Protocol to create components in other languages](../../protocol/index.md)

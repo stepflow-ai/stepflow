@@ -77,5 +77,5 @@ StepFlow consists of a runtime that manages the execution of workflows and serve
 ## Next Steps
 
 * [Get Started](./getting_started.md) by installing StepFlow and running your first flow.
-* Read more about writing your own [Workflows](./workflows/index.md).
+* Read more about writing your own [Workflows](./flows/index.md).
 * Learn how to create your own components using the [StepFlow Protocol](./protocol/index.md).
