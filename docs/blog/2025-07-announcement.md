@@ -76,35 +76,7 @@ runtime execution:
 
 ## Geting Started
 
-Get the latest release from GitHub https://github.com/riptano/stepflow/releases.
-
-Here's a simple workflow to try to get started.
-
-```yaml
-# math-workflow.yaml
-input_schema:
-  type: object
-  properties:
-    numbers:
-      type: array
-      items:
-        type: number
-
-steps:
-  - id: sum_numbers
-    component: python://sum
-    args:
-      values: { $from: $input, path: numbers }
-
-  - id: square_result
-    component: python://square
-    args:
-      value: { $from: sum_numbers, path: result }
-
-outputs:
-  sum: { $from: sum_numbers, path: result }
-  squared: { $from: square_result, path: result }
-```
+Our comprehensive [getting started](/docs/getting_started) guide and usage [examples](/docs/examples) should give you everything you need to get going with your own workflows. 
 
 ## What's Next?
 
