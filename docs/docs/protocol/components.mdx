@@ -20,11 +20,11 @@ sequenceDiagram
 
 ### Request Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentListParams"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentListParams"/>
 
 ### Response Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentListResult"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentListResult"/>
 
 ### Usage Examples
 
@@ -82,11 +82,11 @@ sequenceDiagram
 
 ### Request Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentInfoParams"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentInfoParams"/>
 
 ### Response Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentInfoResult"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentInfoResult"/>
 
 :::note
 Components should also have fields for describing the UI aspects of providing their input.
@@ -109,7 +109,7 @@ sequenceDiagram
 
 ### Request Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentExecuteParams"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentExecuteParams"/>
 
 :::note
 The `workflow_id` and `step_id` parameter likely won't be needed by all components.
@@ -124,7 +124,7 @@ An alternative could be allowing these to be inputs to the component, configured
 
 ### Response Format
 
-<SchemaDisplay schema="https://stepflow.org/schemas/protocol.json" path="$defs/ComponentExecuteResult"/>
+<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentExecuteResult"/>
 
 
 ### Error Handling
