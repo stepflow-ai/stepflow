@@ -29,16 +29,7 @@ scale in production? How do you maintain security and isolation when executing
 untrusted code? How do you parallelise your workflows to maximise resource
 utilization?
 
-LangFlow - one of our other projects - meets (exceeds even!) most of these
-requirements with both a visual authoring experience and a built-in API server
-that turns every agent into an API endpoint. These endpoints can then be
-integrated into applications built on any framework or stack, supporting all
-major vector databases, LLMs, and a variety of other AI tools.
-
-However, it became clear to us that a pure server implementation for running
-“flows” was necessary to really scale and provide isolation for security and
-resource consumption. StepFlow was designed to fill this gap, not only for
-LangFlow but every other workflow system, and address these challenges with a
+StepFlow was designed to fill these gaps for AI workflows, and address these challenges with a
 simple yet powerful approach: define your workflows in YAML or JSON, and let the
 runtime handle the complexity of execution, scaling, and security.
 
