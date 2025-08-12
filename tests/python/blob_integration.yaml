@@ -59,7 +59,7 @@ steps:
                   'processed_blob_id': new_blob_id,
                   'summary': f'Processed {len(original_data)} fields'
               }
-        function_name: process_data
+          process_data
       blob_type: "data"
 
   # Step 3: Python UDF retrieves blob and processes it
