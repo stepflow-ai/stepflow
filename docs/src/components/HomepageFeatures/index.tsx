@@ -12,32 +12,29 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: '⚙️ Reliable, Scalable Execution',
+    title: '⚙️ Build Locally, Scale Safely',
     Svg: require("@site/static/img/ProductionWorkflows.svg").default,
     description: (
       <>
-        Run workflows locally with confidence they’ll scale.
-        Stepflow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
+        Develop and test workflows locally with confidence they’ll run reliably at enterprise scale without architectural changes.
       </>
     ),
   },
   {
-    title: '🔐 Secure, Isolated Components',
+    title: '🔐 Secure, Scalable Components',
     Svg: require("@site/static/img/SecureWorkflows.svg").default,
     description: (
       <>
-        Each workflow step runs in a sandboxed process or container with strict resource and environment controls.
-        Stepflow's design prioritizes security, reproducibility, and platform independence.
+        Configurable isolation for component execution provides security, resource controls, and production scalability.
       </>
     ),
   },
   {
-    title: '🌐 Open, Portable Standard',
+    title: '🌐 Tool-Agnostic Workflows',
     Svg: require("@site/static/img/OpenWorkflows.svg").default,
     description: (
       <>
-        Build once, run anywhere.
-        The Stepflow protocol defines an open workflow format that any framework or editor can use—enabling true portability and ecosystem integration.
+        Build and execute workflows using any editor, framework, or AI assistant without being locked into specific platforms.
       </>
     ),
   },
