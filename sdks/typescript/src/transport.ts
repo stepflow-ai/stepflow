@@ -1,4 +1,4 @@
-// Transport layer for StepFlow TypeScript SDK
+// Transport layer for Stepflow TypeScript SDK
 // Handles JSON-RPC message parsing and bidirectional communication
 
 import { v4 as uuidv4 } from 'uuid';
@@ -143,7 +143,7 @@ export class BidirectionalTransport {
     reject: (error: any) => void;
   }>();
 
-  constructor(private sendMessage: (message: string) => void) {}
+  constructor(private sendMessage: (message: string) => void) { }
 
   /**
    * Send a request and wait for response
@@ -159,7 +159,7 @@ export class BidirectionalTransport {
 
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject });
-      
+
       // Set timeout to avoid hanging forever
       setTimeout(() => {
         if (this.pendingRequests.has(id)) {
@@ -212,7 +212,7 @@ export class BidirectionalTransport {
       }
     };
   }
-  
+
   /**
    * Register a message handler for incoming messages
    */

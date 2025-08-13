@@ -46,7 +46,7 @@ try:
 
     SDK_AVAILABLE = True
 except ImportError as e:
-    print(f"StepFlow SDK not available: {e}")
+    print(f"Stepflow SDK not available: {e}")
     print(
         "Please install stepflow-py or run from the project root with proper PYTHONPATH"
     )
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 # Early exit if SDK not available
 if not SDK_AVAILABLE:
-    logger.error("Cannot start server without StepFlow SDK")
+    logger.error("Cannot start server without Stepflow SDK")
     sys.exit(1)
 
 # Try to import transformers, fallback to mock implementations for demo

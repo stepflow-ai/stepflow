@@ -60,7 +60,7 @@ pub async fn validate(flow_path: &Path, config_path: Option<&Path>) -> Result<us
     Ok(failures)
 }
 
-/// Validate a StepFlow configuration file
+/// Validate a Stepflow configuration file
 async fn validate_config(config_path: Option<&Path>) -> Result<usize> {
     println!("🔧 Validating configuration...");
 

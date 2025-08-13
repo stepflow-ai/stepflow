@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Performance Optimization
 
-This guide covers strategies for optimizing StepFlow workflow performance, including parallelism patterns, resource management, and component selection.
+This guide covers strategies for optimizing Stepflow workflow performance, including parallelism patterns, resource management, and component selection.
 
 ## Maximizing Parallelism
 
@@ -526,4 +526,4 @@ When optimizing workflow performance, check:
 - [ ] Efficient workflow patterns (fan-out/fan-in, pipeline)
 - [ ] Performance monitoring and testing
 
-Following these optimization strategies will help you build high-performance StepFlow workflows that scale efficiently and provide fast response times.
+Following these optimization strategies will help you build high-performance Stepflow workflows that scale efficiently and provide fast response times.

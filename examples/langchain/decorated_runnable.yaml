@@ -1,10 +1,10 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: "LangChain Decorated Runnable Example"
-description: "Demonstrates using @server.langchain_component decorator to register LangChain runnables as StepFlow components"
+description: "Demonstrates using @server.langchain_component decorator to register LangChain runnables as Stepflow components"
 
 # Decorated Runnable: Registered Components (@server.langchain_component decorator)
-# 
-# This workflow demonstrates using LangChain components that are registered 
+#
+# This workflow demonstrates using LangChain components that are registered
 # directly with the server using the @server.langchain_component decorator.
 # These components are the most straightforward to use and have the best performance.
 

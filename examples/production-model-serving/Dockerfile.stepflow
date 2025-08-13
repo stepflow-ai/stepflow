@@ -13,10 +13,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Dockerfile for StepFlow Runtime Service
+# Dockerfile for Stepflow Runtime Service
 # Central workflow orchestration service
 
-# Use the official released StepFlow Docker image
+# Use the official released Stepflow Docker image
 FROM ghcr.io/riptano/stepflow:debian-0.2.2
 
 # Create application directory
@@ -35,5 +35,5 @@ EXPOSE 7837
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:7837/health || exit 1
 
-# Run StepFlow server
+# Run Stepflow server
 CMD ["--log-level", "trace", "serve", "--port", "7837", "--config", "/app/stepflow-config.yml"]

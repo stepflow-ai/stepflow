@@ -23,7 +23,7 @@ export function Navbar() {
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <Workflow className="h-6 w-6" />
             <span className="hidden font-bold sm:inline-block">
-              StepFlow
+              Stepflow
             </span>
           </Link>
           <nav className="flex items-center space-x-6 text-sm font-medium">
@@ -41,12 +41,12 @@ export function Navbar() {
             ))}
           </nav>
         </div>
-        
+
         {/* Mobile Navigation */}
         <div className="flex flex-1 items-center space-x-2 md:hidden">
           <Link href="/" className="flex items-center space-x-2">
             <Workflow className="h-6 w-6" />
-            <span className="font-bold">StepFlow</span>
+            <span className="font-bold">Stepflow</span>
           </Link>
         </div>
 

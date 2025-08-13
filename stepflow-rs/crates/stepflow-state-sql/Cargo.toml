@@ -1,6 +1,6 @@
 [package]
 name = "stepflow-state-sql"
-description = "SQL-based StateStore implementation for StepFlow"
+description = "SQL-based StateStore implementation for Stepflow"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

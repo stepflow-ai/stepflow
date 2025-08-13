@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Message",
-  "description": "The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.",
+  "description": "The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.",
   "oneOf": [
     {
       "$ref": "#/$defs/MethodRequest"
@@ -98,11 +98,11 @@
       ]
     },
     "InitializeParams": {
-      "description": "Sent from StepFlow to the component server to begin the initialization process.",
+      "description": "Sent from Stepflow to the component server to begin the initialization process.",
       "type": "object",
       "properties": {
         "runtime_protocol_version": {
-          "description": "Maximum version of the protocol being used by the StepFlow runtime.",
+          "description": "Maximum version of the protocol being used by the Stepflow runtime.",
           "type": "integer",
           "format": "uint32",
           "minimum": 0
@@ -113,7 +113,7 @@
       ]
     },
     "ComponentExecuteParams": {
-      "description": "Sent from StepFlow to the component server to execute a specific component with the provided input.",
+      "description": "Sent from Stepflow to the component server to execute a specific component with the provided input.",
       "type": "object",
       "properties": {
         "component": {
@@ -143,7 +143,7 @@
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "ComponentInfoParams": {
-      "description": "Sent from StepFlow to the component server to request information about a specific component.",
+      "description": "Sent from Stepflow to the component server to request information about a specific component.",
       "type": "object",
       "properties": {
         "component": {
@@ -156,11 +156,11 @@
       ]
     },
     "ComponentListParams": {
-      "description": "Sent from StepFlow to the component server to request a list of all available components.",
+      "description": "Sent from Stepflow to the component server to request a list of all available components.",
       "type": "object"
     },
     "GetBlobParams": {
-      "description": "Sent from the component server to the StepFlow to retrieve the content of a specific blob.",
+      "description": "Sent from the component server to the Stepflow to retrieve the content of a specific blob.",
       "type": "object",
       "properties": {
         "blob_id": {
@@ -177,7 +177,7 @@
       "type": "string"
     },
     "PutBlobParams": {
-      "description": "Sent from the component server to the StepFlow to store a blob with the provided content.",
+      "description": "Sent from the component server to the Stepflow to store a blob with the provided content.",
       "type": "object",
       "properties": {
         "data": {
@@ -201,7 +201,7 @@
       ]
     },
     "EvaluateFlowParams": {
-      "description": "Sent from the component server to the StepFlow to evaluate a flow with the provided input.",
+      "description": "Sent from the component server to the Stepflow to evaluate a flow with the provided input.",
       "type": "object",
       "properties": {
         "flow_id": {
@@ -274,7 +274,7 @@
       ]
     },
     "InitializeResult": {
-      "description": "Sent from the component server back to StepFlow with the result of initialization.\nThe component server will not be initialized until it receives the `initialized` notification.",
+      "description": "Sent from the component server back to Stepflow with the result of initialization.\nThe component server will not be initialized until it receives the `initialized` notification.",
       "type": "object",
       "properties": {
         "server_protocol_version": {
@@ -289,7 +289,7 @@
       ]
     },
     "ComponentExecuteResult": {
-      "description": "Sent from the component server back to StepFlow with the result of the component execution.",
+      "description": "Sent from the component server back to Stepflow with the result of the component execution.",
       "type": "object",
       "properties": {
         "output": {
@@ -302,7 +302,7 @@
       ]
     },
     "ComponentInfoResult": {
-      "description": "Sent from the component server back to StepFlow with information about the requested component.",
+      "description": "Sent from the component server back to Stepflow with information about the requested component.",
       "type": "object",
       "properties": {
         "info": {
@@ -362,7 +362,7 @@
       "example": "\n                {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"item\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                        \"label\": {\"type\": \"string\"},\n                    },\n                    \"required\": [\"label\"]\n                    }\n                },\n                \"required\": [\"item\"]\n                }\n            "
     },
     "ListComponentsResult": {
-      "description": "Sent from the component server back to StepFlow with a list of all available components.",
+      "description": "Sent from the component server back to Stepflow with a list of all available components.",
       "type": "object",
       "properties": {
         "components": {
@@ -378,7 +378,7 @@
       ]
     },
     "GetBlobResult": {
-      "description": "Sent from the StepFlow back to the component server with the blob data and metadata.",
+      "description": "Sent from the Stepflow back to the component server with the blob data and metadata.",
       "type": "object",
       "properties": {
         "data": {
@@ -394,7 +394,7 @@
       ]
     },
     "PutBlobResult": {
-      "description": "Sent from the StepFlow back to the component server with the ID of the stored blob.",
+      "description": "Sent from the Stepflow back to the component server with the ID of the stored blob.",
       "type": "object",
       "properties": {
         "blob_id": {
@@ -406,7 +406,7 @@
       ]
     },
     "EvaluateFlowResult": {
-      "description": "Sent from the StepFlow back to the component server with the result of the flow evaluation.",
+      "description": "Sent from the Stepflow back to the component server with the result of the flow evaluation.",
       "type": "object",
       "properties": {
         "result": {
@@ -593,7 +593,7 @@
       ]
     },
     "Initialized": {
-      "description": "Sent from StepFlow to the component server after initialization is complete.",
+      "description": "Sent from Stepflow to the component server after initialization is complete.",
       "type": "object"
     }
   }

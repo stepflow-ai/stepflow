@@ -14,7 +14,7 @@ interface CLIOptions {
 export async function runCLI(): Promise<void> {
   program
     .name('stepflow-py')
-    .description('StepFlow TypeScript SDK Server')
+    .description('Stepflow TypeScript SDK Server')
     .option('--http', 'Run in HTTP mode instead of stdio mode', false)
     .option('--host <host>', 'Host to bind to (HTTP mode only)', 'localhost')
     .option('--port <port>', 'Port to bind to (HTTP mode only)', '8080')

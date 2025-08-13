@@ -1,4 +1,4 @@
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 
 // Create mock API instances
 const mockFlowApi = {
@@ -35,11 +35,11 @@ jest.mock('../stepflow-api-client', () => ({
   DebugApi: jest.fn().mockImplementation(() => mockDebugApi),
 }))
 
-describe('StepFlow Client API Integration', () => {
-  let client: ReturnType<typeof getStepFlowClient>
+describe('Stepflow Client API Integration', () => {
+  let client: ReturnType<typeof getStepflowClient>
 
   beforeEach(() => {
-    client = getStepFlowClient()
+    client = getStepflowClient()
   })
 
   afterEach(() => {

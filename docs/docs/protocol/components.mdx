@@ -8,11 +8,11 @@ import SchemaDisplay from "@site/src/components/SchemaDisplay";
 
 ## Component Discovery
 
-The component discovery process allows StepFlow to enumerate all available components from a component server. This is used for validation, tooling, and user interfaces.
+The component discovery process allows Stepflow to enumerate all available components from a component server. This is used for validation, tooling, and user interfaces.
 
 ```mermaid
 sequenceDiagram
-    participant SF as StepFlow
+    participant SF as Stepflow
     participant CS as Component Server
     SF-)+CS: components/list request
     CS--)-SF: components/list response
@@ -74,7 +74,7 @@ The component information request is used to retrieve metadata about a specific 
 
 ```mermaid
 sequenceDiagram
-    participant SF as StepFlow
+    participant SF as Stepflow
     participant CS as Component Server
     SF-)+CS: component_info request
     CS--)-SF: component_info response
@@ -101,7 +101,7 @@ The component execution request is used to run a specific component with provide
 
 ```mermaid
 sequenceDiagram
-    participant SF as StepFlow
+    participant SF as Stepflow
     participant CS as Component Server
     SF-)+CS: component_execute request
     CS--)-SF: component_execute response
@@ -129,7 +129,7 @@ An alternative could be allowing these to be inputs to the component, configured
 
 ### Error Handling
 
-Component servers should return appropriate JSON-RPC error responses for various failure conditions. StepFlow defines standard error codes for consistent error handling across all components.
+Component servers should return appropriate JSON-RPC error responses for various failure conditions. Stepflow defines standard error codes for consistent error handling across all components.
 
 #### Standard Error Codes
 
@@ -270,7 +270,7 @@ except ExternalServiceError as e:
     )
 ```
 
-**For StepFlow Runtime:**
+**For Stepflow Runtime:**
 
 1. **Parse Error Details**: Extract actionable information from error responses
 2. **Retry Logic**: Implement appropriate retry behavior based on error types

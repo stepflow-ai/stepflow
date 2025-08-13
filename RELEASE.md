@@ -1,6 +1,6 @@
 # Release Process
 
-This document describes how to perform releases and how the release machinery works for the StepFlow project.
+This document describes how to perform releases and how the release machinery works for the Stepflow project.
 
 ## How to Perform a Release
 

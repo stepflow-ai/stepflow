@@ -23,7 +23,7 @@ use crate::protocol::{Method, method_params, method_result, notification_params}
 
 #[derive(Serialize, Debug, JsonSchema)]
 #[serde(untagged)]
-/// The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.
+/// The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.
 ///
 /// Note that this defines a superset containing both client-sent and server-sent messages.
 #[schemars(schema_with = "message_schema")]

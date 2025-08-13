@@ -1,6 +1,6 @@
 # Eval Component Examples
 
-This directory demonstrates the `eval` component, which enables **nested workflow execution** within StepFlow. The eval component allows you to define complete workflows as steps, enabling powerful composition and reusability patterns.
+This directory demonstrates the `eval` component, which enables **nested workflow execution** within Stepflow. The eval component allows you to define complete workflows as steps, enabling powerful composition and reusability patterns.
 
 ## What is the Eval Component?
 

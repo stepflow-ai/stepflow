@@ -1,6 +1,6 @@
 # HTTP Transport Tests
 
-This directory contains tests for StepFlow's HTTP transport implementation, validating both the streamable HTTP protocol and bidirectional communication capabilities.
+This directory contains tests for Stepflow's HTTP transport implementation, validating both the streamable HTTP protocol and bidirectional communication capabilities.
 
 ## Test Components
 
@@ -80,7 +80,7 @@ The `stepflow-config.yml` file configures:
 # HTTP mode (for transport testing)
 python ../tests/test_python_server.py --http --port 8080
 
-# STDIO mode (for comparison testing)  
+# STDIO mode (for comparison testing)
 python ../tests/test_python_server.py
 ```
 
@@ -101,7 +101,7 @@ output: { result: 15.0, operation_performed: "10.0 add 5.0 = 15.0" }
 **Data Analysis Component (Bidirectional):**
 ```yaml
 input: { data: [1,2,3,4,5], analysis_type: "statistics" }
-output: { 
+output: {
   analysis_blob_id: "sha256:abc123...",
   summary: "Statistics for 5 data points: mean=3.00, std_dev=1.41"
 }
@@ -117,7 +117,7 @@ These tests validate:
 - ✅ **Content Negotiation**: Accept headers for streaming vs direct responses
 - ✅ **Error Handling**: HTTP status codes and JSON-RPC errors
 
-### StepFlow Integration  
+### Stepflow Integration
 - ✅ **Blob Operations**: `context.put_blob()` and `/builtin/get_blob`
 - ✅ **Component Discovery**: Automatic component registration
 - ✅ **Schema Validation**: Input/output type checking
@@ -168,7 +168,7 @@ RUST_LOG=stepflow_protocol::http=debug cargo run -- test ...
 
 The test server logs all component executions and can help identify issues with:
 - Request/response serialization
-- Blob storage operations  
+- Blob storage operations
 - Component execution errors
 - Transport-level communication
 

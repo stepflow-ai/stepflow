@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# StepFlow UI Development Environment Setup
+# Stepflow UI Development Environment Setup
 # This script helps set up a complete development environment
 
 set -e
@@ -68,7 +68,7 @@ quick_setup() {
 # Database - SQLite for development
 DATABASE_URL="file:./dev.db"
 
-# StepFlow Core Server URL
+# Stepflow Core Server URL
 STEPFLOW_SERVER_URL="http://localhost:7837/api/v1"
 
 # Environment
@@ -110,9 +110,9 @@ EOF
     # Optional: Check core server connection
     STEPFLOW_URL="${STEPFLOW_SERVER_URL:-http://localhost:7837}/api/v1"
     if command_exists curl && curl -s --connect-timeout 2 "$STEPFLOW_URL/health" >/dev/null 2>&1; then
-        print_success "Connected to StepFlow core server at $STEPFLOW_URL"
+        print_success "Connected to Stepflow core server at $STEPFLOW_URL"
     else
-        print_warning "Cannot connect to StepFlow core server at $STEPFLOW_URL"
+        print_warning "Cannot connect to Stepflow core server at $STEPFLOW_URL"
         print_warning "Make sure the core server is running for full functionality"
     fi
 
@@ -238,7 +238,7 @@ cleanup() {
 
 # Show help
 show_help() {
-    echo "StepFlow UI Development Environment Setup"
+    echo "Stepflow UI Development Environment Setup"
     echo ""
     echo "Usage: $0 [COMMAND]"
     echo ""

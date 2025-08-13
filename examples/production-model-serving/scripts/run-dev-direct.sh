@@ -41,7 +41,7 @@ cd "$EXAMPLE_DIR"
 
 echo "🔧 Configuration: Development (direct run with subprocesses)"
 echo "📂 Working directory: $EXAMPLE_DIR"
-echo "🏗️  StepFlow source: $STEPFLOW_DIR"
+echo "🏗️  Stepflow source: $STEPFLOW_DIR"
 
 # Choose input file
 INPUT_FILE="sample_input_text.json"

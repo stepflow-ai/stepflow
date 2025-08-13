@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# StepFlow UI Database Setup Script
-# This script sets up the database for the StepFlow UI server
+# Stepflow UI Database Setup Script
+# This script sets up the database for the Stepflow UI server
 
 set -e
 
@@ -142,7 +142,7 @@ reset_database() {
 
 # Function to show help
 show_help() {
-    echo "StepFlow UI Database Setup Script"
+    echo "Stepflow UI Database Setup Script"
     echo ""
     echo "Usage: $0 [COMMAND]"
     echo ""
@@ -159,7 +159,7 @@ show_help() {
     echo ""
     echo "Environment Variables:"
     echo "  DATABASE_URL        PostgreSQL connection string (required for prod)"
-    echo "  STEPFLOW_SERVER_URL StepFlow core server URL (default: http://localhost:7837)"
+    echo "  STEPFLOW_SERVER_URL Stepflow core server URL (default: http://localhost:7837)"
     echo ""
 }
 

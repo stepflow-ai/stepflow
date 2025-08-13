@@ -20,7 +20,7 @@ use stepflow_core::{
     BlobId,
     workflow::{Flow, ValueRef},
 };
-use stepflow_execution::{StepFlowExecutor, WorkflowExecutor};
+use stepflow_execution::{StepflowExecutor, WorkflowExecutor};
 use stepflow_plugin::Context as _;
 
 use crate::{
@@ -48,7 +48,7 @@ impl LastRun {
     }
 
     /// Execute this workflow normally (non-debug mode)
-    pub async fn execute_normal(&self, executor: &StepFlowExecutor) -> Result<()> {
+    pub async fn execute_normal(&self, executor: &StepflowExecutor) -> Result<()> {
         let run_id = executor
             .submit_flow(self.flow.clone(), self.flow_id.clone(), self.input.clone())
             .await
@@ -70,7 +70,7 @@ impl LastRun {
     /// Create a debug execution for this workflow
     pub async fn create_debug_execution(
         &mut self,
-        executor: &Arc<StepFlowExecutor>,
+        executor: &Arc<StepflowExecutor>,
     ) -> Result<&mut WorkflowExecutor> {
         let state_store = executor.state_store();
         let run_id = uuid::Uuid::new_v4();
@@ -102,7 +102,7 @@ impl LastRun {
 
 /// State maintained by the REPL
 pub struct ReplState {
-    executor: Arc<StepFlowExecutor>,
+    executor: Arc<StepflowExecutor>,
     last_run: Option<LastRun>,
     config_path: Option<PathBuf>,
     debug_mode: bool,
@@ -770,7 +770,7 @@ fn print_help() {
     cmd.set_bin_name(""); // Remove binary name from help output
 
     // Print a custom header
-    println!("StepFlow REPL Commands:");
+    println!("Stepflow REPL Commands:");
     println!();
 
     // Use clap's help generation
@@ -789,7 +789,7 @@ pub async fn run_repl(config_path: Option<PathBuf>) -> Result<()> {
 
     let mut state = ReplState::new(config_path).await?;
 
-    println!("StepFlow REPL v{}", env!("CARGO_PKG_VERSION"));
+    println!("Stepflow REPL v{}", env!("CARGO_PKG_VERSION"));
     println!("Type 'help' for available commands, 'quit' to exit");
 
     loop {

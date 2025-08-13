@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Examples Overview
 
-This section provides comprehensive examples of StepFlow workflows, from simple operations to complex AI-powered applications. Each example includes complete workflow definitions, explanations, and best practices.
+This section provides comprehensive examples of Stepflow workflows, from simple operations to complex AI-powered applications. Each example includes complete workflow definitions, explanations, and best practices.
 
 ## Example Categories
 
@@ -18,7 +18,7 @@ This section provides comprehensive examples of StepFlow workflows, from simple 
 
 ### Running Examples
 
-All examples can be run from the StepFlow repository:
+All examples can be run from the Stepflow repository:
 
 ```bash
 # Clone the repository

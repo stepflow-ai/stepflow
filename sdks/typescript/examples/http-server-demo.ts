@@ -2,9 +2,9 @@
 
 /**
  * HTTP Server Demo
- * 
- * This example demonstrates how to run the StepFlow TypeScript SDK in HTTP mode.
- * 
+ *
+ * This example demonstrates how to run the Stepflow TypeScript SDK in HTTP mode.
+ *
  * To run this example:
  * 1. Start the server: ts-node examples/http-server-demo.ts
  * 2. In another terminal, connect with SSE:

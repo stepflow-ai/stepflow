@@ -42,7 +42,7 @@ pub fn generate_cli_docs() -> String {
 
     let mut content = String::new();
     content.push_str("# CLI Reference\n\n");
-    content.push_str("StepFlow provides several commands for executing workflows in different ways. This reference covers all available commands and their options.\n\n");
+    content.push_str("Stepflow provides several commands for executing workflows in different ways. This reference covers all available commands and their options.\n\n");
     content.push_str("## Commands\n\n");
 
     let app = Cli::command();

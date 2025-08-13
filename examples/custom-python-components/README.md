@@ -1,10 +1,10 @@
 # Custom Python Components Example
 
-This example demonstrates how to use the StepFlow Python SDK as a **library** to create custom component servers with domain-specific business logic.
+This example demonstrates how to use the Stepflow Python SDK as a **library** to create custom component servers with domain-specific business logic.
 
 ## What This Example Shows
 
-- **Custom Component Server**: How to create a standalone Python server using the StepFlow SDK
+- **Custom Component Server**: How to create a standalone Python server using the Stepflow SDK
 - **Business Logic Components**: Domain-specific components for customer analysis
 - **Typed Interfaces**: Using `msgspec` for type-safe component inputs and outputs
 - **Async Context Usage**: Using `StepflowContext` for blob operations
@@ -14,7 +14,7 @@ This example demonstrates how to use the StepFlow Python SDK as a **library** to
 
 This example includes:
 
-1. **`custom_server.py`**: A custom Python component server built with the StepFlow SDK
+1. **`custom_server.py`**: A custom Python component server built with the Stepflow SDK
 2. **`workflow.yaml`**: A workflow that uses the custom components
 3. **Business Logic**: Customer analysis, report generation, and recommendations
 
@@ -37,7 +37,7 @@ This example demonstrates when to use **custom components** instead of **UDFs**:
 ## Requirements
 
 1. **Python 3.8+** with the dependencies listed in `requirements.txt`
-2. **StepFlow Rust CLI** (built from the project root)
+2. **Stepflow Rust CLI** (built from the project root)
 
 ## Setup
 
@@ -149,4 +149,4 @@ steps:
 4. **Performance**: Persistent server avoids startup costs
 5. **Integration**: Seamless blob storage and context operations
 
-This pattern is ideal for teams that want to build reusable business logic components while leveraging StepFlow's workflow orchestration capabilities.
+This pattern is ideal for teams that want to build reusable business logic components while leveraging Stepflow's workflow orchestration capabilities.

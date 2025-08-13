@@ -1,6 +1,6 @@
 # Loop Components Example
 
-This example demonstrates looping functionality in StepFlow, including both built-in components and Python implementations that use the new `evaluate_flow` method.
+This example demonstrates looping functionality in Stepflow, including both built-in components and Python implementations that use the new `evaluate_flow` method.
 
 ## Components
 

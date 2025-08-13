@@ -27,11 +27,11 @@ use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
 
-use crate::{ExecutionError, Result, StateValueLoader, StepFlowExecutor, write_cache::WriteCache};
+use crate::{ExecutionError, Result, StateValueLoader, StepflowExecutor, write_cache::WriteCache};
 
 /// Execute a workflow and return the result.
 pub(crate) async fn execute_workflow(
-    executor: Arc<StepFlowExecutor>,
+    executor: Arc<StepflowExecutor>,
     flow: Arc<Flow>,
     flow_id: BlobId,
     run_id: Uuid,
@@ -84,7 +84,7 @@ pub struct WorkflowExecutor {
     /// State store for step results
     state_store: Arc<dyn StateStore>,
     /// Executor for getting plugins and execution context
-    executor: Arc<StepFlowExecutor>,
+    executor: Arc<StepflowExecutor>,
     /// The workflow being executed
     flow: Arc<Flow>,
     /// Execution context for this session
@@ -96,7 +96,7 @@ pub struct WorkflowExecutor {
 impl WorkflowExecutor {
     /// Create a new workflow executor for the given workflow and input.
     pub fn new(
-        executor: Arc<StepFlowExecutor>,
+        executor: Arc<StepflowExecutor>,
         flow: Arc<Flow>,
         flow_id: BlobId,
         run_id: Uuid,
@@ -1019,7 +1019,7 @@ mod tests {
     pub async fn create_workflow_from_yaml_simple(
         yaml_str: &str,
         mock_behaviors: Vec<(&str, FlowResult)>,
-    ) -> (Arc<crate::executor::StepFlowExecutor>, Arc<Flow>, BlobId) {
+    ) -> (Arc<crate::executor::StepflowExecutor>, Arc<Flow>, BlobId) {
         // Parse the YAML workflow
         let flow: Flow = serde_yaml_ng::from_str(yaml_str).expect("Failed to parse YAML workflow");
         let flow = Arc::new(flow);
@@ -1068,7 +1068,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let executor = crate::executor::StepFlowExecutor::new(
+        let executor = crate::executor::StepflowExecutor::new(
             Arc::new(InMemoryStateStore::new()),
             std::path::PathBuf::from("."),
             plugin_router,
@@ -1348,7 +1348,7 @@ output:
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
-        let executor = StepFlowExecutor::new_in_memory();
+        let executor = StepflowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 
@@ -1443,7 +1443,7 @@ output:
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
-        let executor = StepFlowExecutor::new_in_memory();
+        let executor = StepflowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 
@@ -1539,7 +1539,7 @@ output:
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
-        let executor = StepFlowExecutor::new_in_memory();
+        let executor = StepflowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 
@@ -1619,7 +1619,7 @@ output:
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
-        let executor = StepFlowExecutor::new_in_memory();
+        let executor = StepflowExecutor::new_in_memory();
         let run_id = Uuid::new_v4();
         let input = ValueRef::new(json!({}));
 

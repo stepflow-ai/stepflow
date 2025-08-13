@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::status::ExecutionStatus;
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -67,7 +67,7 @@ pub struct DebugRunnableResponse {
     tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_execute_step(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
     Json(req): Json<DebugStepRequest>,
 ) -> Result<Json<DebugStepResponse>, ErrorResponse> {
@@ -105,7 +105,7 @@ pub async fn debug_execute_step(
     tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_continue(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<super::runs::CreateRunResponse>, ErrorResponse> {
     // Get the debug session for this run
@@ -150,7 +150,7 @@ pub async fn debug_continue(
     tag = crate::api::DEBUG_TAG,
 )]
 pub async fn debug_get_runnable(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<DebugRunnableResponse>, ErrorResponse> {
     // Get the debug session for this run

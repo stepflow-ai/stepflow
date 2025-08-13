@@ -11,7 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! HTTP client implementation for StepFlow protocol.
+//! HTTP client implementation for Stepflow protocol.
 //!
 //! This module implements the Streamable HTTP transport where:
 //! - Send JSON-RPC requests to the main endpoint

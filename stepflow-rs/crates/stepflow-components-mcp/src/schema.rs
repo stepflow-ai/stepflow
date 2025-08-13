@@ -12,7 +12,7 @@
 // the License.
 
 // Schema conversion utilities for MCP tools
-// This module handles converting MCP tool schemas to StepFlow ComponentInfo
+// This module handles converting MCP tool schemas to Stepflow ComponentInfo
 
 use crate::error::{McpError, Result};
 use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::Component};
@@ -20,7 +20,7 @@ use stepflow_core::{component::ComponentInfo, schema::SchemaRef, workflow::Compo
 // Import the official Tool struct from rust-mcp-schema
 use crate::protocol::Tool;
 
-/// Convert MCP tool to StepFlow ComponentInfo
+/// Convert MCP tool to Stepflow ComponentInfo
 pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
     // Use the description from the tool, or default
     let description = tool
@@ -58,7 +58,7 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
     })
 }
 
-/// Convert StepFlow Component path to MCP tool name
+/// Convert Stepflow Component path to MCP tool name
 pub fn component_path_to_tool_name(component_path: &str) -> Option<String> {
     // Expected format: /plugin_name/tool_name
     if let Some(without_leading_slash) = component_path.strip_prefix('/')

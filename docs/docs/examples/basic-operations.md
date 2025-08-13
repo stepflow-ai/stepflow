@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Basic Operations
 
-These fundamental examples demonstrate core StepFlow concepts including data flow, blob storage, file operations, and error handling. Perfect for getting started with workflow development.
+These fundamental examples demonstrate core Stepflow concepts including data flow, blob storage, file operations, and error handling. Perfect for getting started with workflow development.
 
 ## Simple Data Transformation
 
@@ -338,7 +338,7 @@ This example requires creating test files:
 
 ## Parallel Processing Pattern
 
-Demonstrate how StepFlow automatically parallelizes independent operations.
+Demonstrate how Stepflow automatically parallelizes independent operations.
 
 ```yaml
 name: "Parallel Data Processing"
@@ -542,7 +542,7 @@ test:
 
 ### Parallel Execution Benefits
 
-This workflow demonstrates how StepFlow automatically:
+This workflow demonstrates how Stepflow automatically:
 1. **Identifies independent steps**: The three processing steps have no dependencies on each other
 2. **Executes in parallel**: All three processing steps run simultaneously
 3. **Synchronizes results**: The combination step waits for all parallel steps to complete
@@ -680,4 +680,4 @@ Now that you understand the basics, explore more advanced patterns:
 - **[Data Processing](./data-processing.md)** - Handle complex data transformation pipelines
 - **[Custom Components](./custom-components.md)** - Build your own reusable components
 
-These basic patterns form the foundation for all StepFlow workflows. Master these concepts and you'll be ready to build sophisticated, reliable workflow applications.
+These basic patterns form the foundation for all Stepflow workflows. Master these concepts and you'll be ready to build sophisticated, reliable workflow applications.

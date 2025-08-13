@@ -4,11 +4,11 @@ sidebar_position: 5
 
 # Bidirectional Communication
 
-StepFlow's protocol supports bidirectional communication, allowing component servers to make requests back to the StepFlow runtime. This enables powerful patterns like blob storage, state management, and runtime introspection.
+Stepflow's protocol supports bidirectional communication, allowing component servers to make requests back to the Stepflow runtime. This enables powerful patterns like blob storage, state management, and runtime introspection.
 
 ## Overview
 
-While the primary communication flow is from StepFlow → Component Server, components can also initiate requests back to the runtime for:
+While the primary communication flow is from Stepflow → Component Server, components can also initiate requests back to the runtime for:
 
 - **Blob Storage**: Store and retrieve persistent data
 - **Runtime Queries**: Access workflow metadata and execution state
@@ -16,7 +16,7 @@ While the primary communication flow is from StepFlow → Component Server, comp
 
 ```mermaid
 sequenceDiagram
-    participant SF as StepFlow Runtime
+    participant SF as Stepflow Runtime
     participant CS as Component Server
 
     Note over SF,CS: Primary Communication Flow

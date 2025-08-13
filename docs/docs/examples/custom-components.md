@@ -4,7 +4,7 @@ sidebar_position: 5
 
 # Custom Components
 
-Building custom components is key to extending StepFlow's capabilities. These examples demonstrate how to create reusable components using the Python SDK, TypeScript SDK, and other languages.
+Building custom components is key to extending Stepflow's capabilities. These examples demonstrate how to create reusable components using the Python SDK, TypeScript SDK, and other languages.
 
 ## Python SDK Components
 
@@ -98,7 +98,7 @@ def http_request(input: HttpRequestInput, context: StepflowContext) -> HttpReque
     start_time = time.time()
 
     headers = input.headers or {}
-    headers.setdefault('User-Agent', 'StepFlow-Component/1.0')
+    headers.setdefault('User-Agent', 'Stepflow-Component/1.0')
 
     last_error = None
 
@@ -159,7 +159,7 @@ class CacheDataOutput(msgspec.Struct):
 
 @server.component
 async def cache_data(input: CacheDataInput, context: StepflowContext) -> CacheDataOutput:
-    """Cache data using StepFlow's blob storage with metadata."""
+    """Cache data using Stepflow's blob storage with metadata."""
 
     # Create cache entry with metadata
     cache_entry = {
@@ -1517,7 +1517,7 @@ test:
 
 ## Next Steps
 
-Custom components are the key to extending StepFlow's capabilities:
+Custom components are the key to extending Stepflow's capabilities:
 
 - **Start Simple**: Begin with basic data processing components
 - **Choose Transport**: Use STDIO for simple local components, HTTP for distributed systems

@@ -2,17 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## <a id="0.2.2"></a> [StepFlow 0.2.2](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.2) - 2025-07-30
+## <a id="0.2.2"></a> [Stepflow 0.2.2](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.2) - 2025-07-30
 ### Miscellaneous Tasks
 
 - Add response logging ([#191](https://github.com/riptano/stepflow/pull/191))
 
-## <a id="0.2.1"></a> [StepFlow 0.2.1](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.1) - 2025-07-29
+## <a id="0.2.1"></a> [Stepflow 0.2.1](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.1) - 2025-07-29
 
 - Complete removal of plugin prefix (previously partly removed)
 - Fix docker image version names
 
-## <a id="0.2.0"></a> [StepFlow 0.2.0](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.0) - 2025-07-29
+## <a id="0.2.0"></a> [Stepflow 0.2.0](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.2.0) - 2025-07-29
 ### Bug Fixes
 
 - Verify status reported during execution ([#117](https://github.com/riptano/stepflow/pull/117))
@@ -69,7 +69,7 @@ All notable changes to this project will be documented in this file.
 - Update config to camel case consistently ([#170](https://github.com/riptano/stepflow/pull/170))
 - Rename stepflow-sdk to stepflow-py ([#172](https://github.com/riptano/stepflow/pull/172))
 
-## <a id="0.1.0"></a> [StepFlow 0.1.0](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.1.0) - 2025-06-27
+## <a id="0.1.0"></a> [Stepflow 0.1.0](https://github.com/riptano/stepflow/releases/tag/stepflow-rs-0.1.0) - 2025-06-27
 ### Bug Fixes
 
 - Input search path and remove unneeded flow_dir variable ([#74](https://github.com/riptano/stepflow/pull/74))
@@ -86,5 +86,5 @@ All notable changes to this project will be documented in this file.
 
 - Standardize on `input` naming ([#77](https://github.com/riptano/stepflow/pull/77))
 
-## <a id="0.0.1"></a> StepFlow 0.0.1 - 2025-06-25
-Initial, unreleased version of StepFlow.
+## <a id="0.0.1"></a> Stepflow 0.0.1 - 2025-06-25
+Initial, unreleased version of Stepflow.

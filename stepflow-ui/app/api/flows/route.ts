@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import {
   StoreWorkflowRequestSchema,
   ListWorkflowsResponseSchema,
@@ -40,13 +40,13 @@ export async function GET() {
     return NextResponse.json(response)
   } catch (error) {
     console.error('Failed to list flows:', error)
-    
+
     const errorResponse = ErrorResponseSchema.parse({
       error: 'Failed to list flows',
       message: error instanceof Error ? error.message : 'Unknown error',
       code: 500,
     })
-    
+
     return NextResponse.json(errorResponse, { status: 500 })
   }
 }
@@ -57,12 +57,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { name, flow, description } = StoreWorkflowRequestSchema.parse(body)
 
-    const stepflowClient = getStepFlowClient()
+    const stepflowClient = getStepflowClient()
 
     // Store the flow in the core server to get its hash
     const storeResult = await stepflowClient.storeFlow(flow) as AnalysisResult
     const flowId = storeResult.analysis?.flowId
-    
+
     if (!flowId) {
       throw new Error('Failed to store flow: no flow ID returned')
     }

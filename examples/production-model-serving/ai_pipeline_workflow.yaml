@@ -7,7 +7,7 @@ description: |
   3. Batch processing for efficiency
   4. Multi-modal AI processing (text + vision)
 
-  This workflow showcases how StepFlow enables:
+  This workflow showcases how Stepflow enables:
   - Independent scaling of different model types
   - Resource optimization through intelligent routing
   - Production monitoring and observability

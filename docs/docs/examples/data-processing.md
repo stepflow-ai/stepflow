@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Data Processing
 
-StepFlow excels at building robust data processing pipelines. These examples demonstrate ETL operations, data validation, transformation workflows, and integration with external data sources.
+Stepflow excels at building robust data processing pipelines. These examples demonstrate ETL operations, data validation, transformation workflows, and integration with external data sources.
 
 ## ETL Pipeline Example
 
@@ -97,7 +97,7 @@ steps:
       url: { $from: { workflow: input }, path: "data_sources.product_api_url" }
       headers:
         Accept: "application/json"
-        User-Agent: "StepFlow-ETL/1.0"
+        User-Agent: "Stepflow-ETL/1.0"
       timeout: 15
 
   # VALIDATION PHASE - Validate extracted data
@@ -963,7 +963,7 @@ test:
 ```
 
 :::tip Community Opportunity
-Data quality monitoring components would be valuable additions to the StepFlow ecosystem. Consider implementing components for:
+Data quality monitoring components would be valuable additions to the Stepflow ecosystem. Consider implementing components for:
 - Database profiling with libraries like `pandas-profiling` or `great-expectations`
 - Data drift detection using statistical methods
 - Automated data lineage tracking
@@ -972,7 +972,7 @@ Data quality monitoring components would be valuable additions to the StepFlow e
 
 ## Next Steps
 
-These data processing examples demonstrate StepFlow's capabilities for:
+These data processing examples demonstrate Stepflow's capabilities for:
 
 - **ETL Pipelines**: Robust extract, transform, load operations
 - **Real-time Processing**: Stream processing with analytics and alerting

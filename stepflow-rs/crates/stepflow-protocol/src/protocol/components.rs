@@ -20,7 +20,7 @@ use crate::protocol::Method;
 
 use super::ProtocolMethod;
 
-/// Sent from StepFlow to the component server to execute a specific component with the provided input.
+/// Sent from Stepflow to the component server to execute a specific component with the provided input.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentExecuteParams {
     /// The component to execute.
@@ -29,7 +29,7 @@ pub struct ComponentExecuteParams {
     pub input: ValueRef,
 }
 
-/// Sent from the component server back to StepFlow with the result of the component execution.
+/// Sent from the component server back to Stepflow with the result of the component execution.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentExecuteResult {
     /// The result of the component execution.
@@ -41,14 +41,14 @@ impl ProtocolMethod for ComponentExecuteParams {
     type Response = ComponentExecuteResult;
 }
 
-/// Sent from StepFlow to the component server to request information about a specific component.
+/// Sent from Stepflow to the component server to request information about a specific component.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentInfoParams {
     /// The component to get information about.
     pub component: Component,
 }
 
-/// Sent from the component server back to StepFlow with information about the requested component.
+/// Sent from the component server back to Stepflow with information about the requested component.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentInfoResult {
     /// Information about the component.
@@ -60,11 +60,11 @@ impl ProtocolMethod for ComponentInfoParams {
     type Response = ComponentInfoResult;
 }
 
-/// Sent from StepFlow to the component server to request a list of all available components.
+/// Sent from Stepflow to the component server to request a list of all available components.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentListParams {}
 
-/// Sent from the component server back to StepFlow with a list of all available components.
+/// Sent from the component server back to Stepflow with a list of all available components.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ListComponentsResult {
     /// A list of all available components.

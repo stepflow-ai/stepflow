@@ -4,14 +4,14 @@ sidebar_position: 3
 
 # Expressions
 
-StepFlow's expression system enables dynamic data references within flows.
+Stepflow's expression system enables dynamic data references within flows.
 Expressions are used to specify the input and skip condition of steps as well as the output of workflows and in various other places.
 They allow creating a value that is entirely or partially derived from other data in the workflow.
 
 ## Bare Literals
 
 The simplest expression is a bare literal.
-Every valid JSON value is a valid value in StepFlow.
+Every valid JSON value is a valid value in Stepflow.
 
 :::note
 Depending on the flow format, this may be written in YAML syntax.

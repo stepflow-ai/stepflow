@@ -1,10 +1,10 @@
-# Using MCP Tools in StepFlow
+# Using MCP Tools in Stepflow
 
-[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) provides a standard way for AI systems to interact with external tools and data sources. StepFlow's MCP integration allows you to use any MCP-compatible server as a source of components in your workflows.
+[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) provides a standard way for AI systems to interact with external tools and data sources. Stepflow's MCP integration allows you to use any MCP-compatible server as a source of components in your workflows.
 
 ## What is MCP?
 
-MCP is an open protocol that standardizes how AI systems connect to external tools. With MCP support in StepFlow, you can:
+MCP is an open protocol that standardizes how AI systems connect to external tools. With MCP support in Stepflow, you can:
 
 - Access file systems, databases, and APIs through a unified interface
 - Use the growing ecosystem of MCP tools without writing custom components

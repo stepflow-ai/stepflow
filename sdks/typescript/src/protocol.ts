@@ -1,4 +1,4 @@
-// Protocol definitions for StepFlow TypeScript SDK
+// Protocol definitions for Stepflow TypeScript SDK
 // Based on the JSON schema in ../../schemas/protocol.json
 
 // Note: Import from schemas when available

@@ -28,13 +28,13 @@ use crate::{
     validate,
 };
 
-/// StepFlow command line application.
+/// Stepflow command line application.
 ///
 /// Allows running a flow directly (with run)
 #[derive(clap::Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
-    /// Set the log level for StepFlow.
+    /// Set the log level for Stepflow.
     #[arg(
         long = "log-level",
         value_name = "LEVEL",
@@ -43,7 +43,7 @@ pub struct Cli {
     )]
     pub log_level: LogLevel,
 
-    /// Set the log level for other parts of StepFlow.
+    /// Set the log level for other parts of Stepflow.
     #[arg(
         long = "other-log-level",
         value_name = "LEVEL",
@@ -109,9 +109,9 @@ pub enum Command {
         #[command(flatten)]
         output_args: OutputArgs,
     },
-    /// Start a StepFlow service.
+    /// Start a Stepflow service.
     ///
-    /// Start a StepFlow service that can accept workflow submissions via HTTP API.
+    /// Start a Stepflow service that can accept workflow submissions via HTTP API.
     ///
     /// # Examples
     ///
@@ -134,9 +134,9 @@ pub enum Command {
         #[command(flatten)]
         config_args: ConfigArgs,
     },
-    /// Submit a workflow to a StepFlow service.
+    /// Submit a workflow to a Stepflow service.
     ///
-    /// Submit a workflow to a running StepFlow service.
+    /// Submit a workflow to a running Stepflow service.
     ///
     /// # Examples
     ///
@@ -156,7 +156,7 @@ pub enum Command {
     ///
     /// ```
     Submit {
-        /// The URL of the StepFlow service to submit the workflow to.
+        /// The URL of the Stepflow service to submit the workflow to.
         #[arg(long, value_name = "URL", default_value = "http://localhost:7837", value_hint = clap::ValueHint::Url)]
         url: Url,
 

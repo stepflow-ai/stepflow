@@ -13,7 +13,7 @@
 
 use axum::Router;
 use std::sync::Arc;
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -37,7 +37,7 @@ impl Default for AppConfig {
 
 impl AppConfig {
     /// Create the application router with the current configuration
-    pub fn create_app_router(&self, executor: Arc<StepFlowExecutor>, port: u16) -> Router {
+    pub fn create_app_router(&self, executor: Arc<StepflowExecutor>, port: u16) -> Router {
         // Create the main API router with state using utoipa-axum for consistency
         let (api_router, mut api_doc) = create_api_router().split_for_parts();
 
@@ -84,14 +84,14 @@ impl AppConfig {
 /// Start the HTTP server using axum + utoipa
 pub async fn start_server(
     port: u16,
-    executor: Arc<StepFlowExecutor>,
+    executor: Arc<StepflowExecutor>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create the app with default configuration (includes swagger and CORS)
     let app = AppConfig::default().create_app_router(executor, port);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
-    tracing::info!("🚀 StepFlow server starting on http://localhost:{}", port);
+    tracing::info!("🚀 Stepflow server starting on http://localhost:{}", port);
     tracing::info!(
         "📖 Swagger UI available at http://localhost:{}/swagger-ui",
         port

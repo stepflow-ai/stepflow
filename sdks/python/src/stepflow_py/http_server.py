@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Streamable HTTP server implementation for the StepFlow Python SDK.
+"""Streamable HTTP server implementation for the Stepflow Python SDK.
 
 This module implements the Streamable HTTP transport according to the MCP spec,
 replacing the previous HTTP + SSE session-based approach with simpler request/response.
@@ -56,7 +56,7 @@ except ImportError:
 
 
 class StepflowHttpServer:
-    """Streamable HTTP server for StepFlow components.
+    """Streamable HTTP server for Stepflow components.
 
     Implements the Streamable HTTP transport specification:
     - Single POST endpoint accepting JSON-RPC Message objects
@@ -75,7 +75,7 @@ class StepflowHttpServer:
         self.server = server or StepflowServer()
         self.host = host
         self.port = port
-        self.app = FastAPI(title="StepFlow Streamable HTTP Server")
+        self.app = FastAPI(title="Stepflow Streamable HTTP Server")
         self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
         self._setup_routes()
 
@@ -269,7 +269,7 @@ class StepflowHttpServer:
                 )
 
         except StepflowError as e:
-            # Handle known StepFlow errors
+            # Handle known Stepflow errors
             return self._create_error_response(
                 request_id=request.id,
                 status_code=400,
@@ -346,7 +346,7 @@ class StepflowHttpServer:
     async def run(self):
         """Start the HTTP server."""
         print(
-            f"Starting StepFlow Streamable HTTP server on {self.host}:{self.port}",
+            f"Starting Stepflow Streamable HTTP server on {self.host}:{self.port}",
             file=sys.stderr,
         )
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import {
   ExecuteWorkflowRequestSchema,
   ExecuteWorkflowResponseSchema,
@@ -34,7 +34,7 @@ export async function POST(
     }
 
     // Execute on core server using the latest flow ID
-    const stepflowClient = getStepFlowClient()
+    const stepflowClient = getStepflowClient()
     const runResult = await stepflowClient.createRun({
       flowId: workflow.flowId, // flowId in DB maps to flowId in API
       input,
@@ -52,8 +52,8 @@ export async function POST(
         debug: runResult.debug,
         input: JSON.stringify(input),
         result: runResult.result ? JSON.stringify(runResult.result) : null,
-        completedAt: runResult.status === 'completed' || runResult.status === 'failed' 
-          ? new Date() 
+        completedAt: runResult.status === 'completed' || runResult.status === 'failed'
+          ? new Date()
           : null,
       },
     })

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import { ErrorResponseSchema } from '@/lib/api-types'
 
 // GET /api/runs/[id]/workflow - Get workflow info for a run
@@ -11,12 +11,12 @@ export async function GET(
   const resolvedParams = await params
   try {
     const runId = resolvedParams.id
-    const stepflowClient = getStepFlowClient()
-    
+    const stepflowClient = getStepflowClient()
+
     // Get run details to get the flow ID
     const runDetails = await stepflowClient.getRun(runId)
     const flowId = runDetails.flowId
-    
+
     // Try to find workflow in our database by flow ID
     const workflow = await prisma.workflow.findFirst({
       where: { flowId },
@@ -26,16 +26,16 @@ export async function GET(
         },
       },
     })
-    
+
     // Get flow definition from core server
     const flowData = await stepflowClient.getFlow(flowId)
-    
+
     const response = {
       // Run information
       runId: runDetails.runId,
       flowId: runDetails.flowId,
       debugMode: runDetails.debugMode,
-      
+
       // Workflow metadata (may be null for ad-hoc workflows)
       workflowName: workflow?.name || runDetails.flowName || null,
       workflowDescription: workflow?.description || null,
@@ -45,11 +45,11 @@ export async function GET(
         createdAt: label.createdAt.toISOString(),
         updatedAt: label.updatedAt.toISOString(),
       })) || [],
-      
+
       // Flow definition from core server
       flow: flowData.flow,
     }
-    
+
     return NextResponse.json(response)
   } catch (error) {
     console.error('Failed to get run workflow:', error)

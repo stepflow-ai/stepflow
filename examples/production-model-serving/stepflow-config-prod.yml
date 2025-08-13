@@ -15,7 +15,7 @@
 #    deployment across network boundaries with proper security
 
 plugins:
-  # Built-in components for core StepFlow functionality
+  # Built-in components for core Stepflow functionality
   builtin:
     type: builtin
 

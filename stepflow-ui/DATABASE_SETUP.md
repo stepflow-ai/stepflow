@@ -1,10 +1,10 @@
 # Database Setup Guide
 
-This guide explains how to set up and manage the database for the StepFlow UI server.
+This guide explains how to set up and manage the database for the Stepflow UI server.
 
 ## Overview
 
-The StepFlow UI uses Prisma ORM with support for both SQLite (development) and PostgreSQL (production) databases. The database stores workflow metadata, version labels, and execution tracking.
+The Stepflow UI uses Prisma ORM with support for both SQLite (development) and PostgreSQL (production) databases. The database stores workflow metadata, version labels, and execution tracking.
 
 ## Quick Start (Development)
 
@@ -302,7 +302,7 @@ DATABASE_URL="postgresql://stepflow:password@localhost:6432/stepflow_ui"
 
 ## Integration with Core Server
 
-The UI database works alongside the StepFlow core server:
+The UI database works alongside the Stepflow core server:
 
 1. **Workflow Storage**: UI stores metadata, core server stores flow definitions
 2. **Execution Tracking**: UI tracks high-level execution status, core server handles step details

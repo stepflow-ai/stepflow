@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # User-Defined Functions (UDFs)
 
-User-Defined Functions (UDFs) allow you to execute custom Python code dynamically within StepFlow workflows. UDFs are particularly powerful because the code is stored as blobs and can be reused across multiple workflow steps, enabling flexible and maintainable data transformations.
+User-Defined Functions (UDFs) allow you to execute custom Python code dynamically within Stepflow workflows. UDFs are particularly powerful because the code is stored as blobs and can be reused across multiple workflow steps, enabling flexible and maintainable data transformations.
 
 :::note
 Currently, UDFs are only supported in the Python component server.

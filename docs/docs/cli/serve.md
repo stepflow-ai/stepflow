@@ -12,9 +12,9 @@ This document contains the help content for the `serve` command-line program.
 
 ## `serve`
 
-Start a StepFlow service.
+Start a Stepflow service.
 
-Start a StepFlow service that can accept workflow submissions via HTTP API.
+Start a Stepflow service that can accept workflow submissions via HTTP API.
 
 # Examples
 

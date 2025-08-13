@@ -331,7 +331,7 @@ impl Plugin for McpPlugin {
         let state = self.state.read().await;
         let mut components = Vec::new();
 
-        // Convert MCP tools to StepFlow components
+        // Convert MCP tools to Stepflow components
         for tool in &state.available_tools {
             let mut info = crate::schema::mcp_tool_to_component_info(tool)
                 .change_context(PluginError::ComponentInfo)?;

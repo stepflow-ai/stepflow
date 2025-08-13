@@ -163,11 +163,11 @@ jobs:
       - name: Create release notes
         run: |
           cat > release-notes.md << 'EOF'
-          ## StepFlow Python SDK v${{ needs.determine-version.outputs.version }}
+          ## Stepflow Python SDK v${{ needs.determine-version.outputs.version }}
 
           📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/sdks/python/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[PyPI Package](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)**
 
-          This release includes the Python SDK for StepFlow with the following distribution files:
+          This release includes the Python SDK for Stepflow with the following distribution files:
 
           ### 📥 Installation
 
@@ -241,7 +241,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ needs.determine-version.outputs.tag }}" \
-            --title "StepFlow Python SDK v${{ needs.determine-version.outputs.version }}" \
+            --title "Stepflow Python SDK v${{ needs.determine-version.outputs.version }}" \
             --notes-file release-notes.md \
             sdks/python/CHANGELOG.md \
             ./release-artifacts/stepflow_py-*.whl \
@@ -300,5 +300,5 @@ jobs:
             echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
             echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
             echo "**PyPI:** [stepflow-py v${{ needs.determine-version.outputs.version }}](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)" >> $GITHUB_STEP_SUMMARY
-            echo "**GitHub Release:** [StepFlow Python SDK v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+            echo "**GitHub Release:** [Stepflow Python SDK v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
           fi

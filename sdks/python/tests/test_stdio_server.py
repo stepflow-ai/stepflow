@@ -28,7 +28,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Tests for the StepFlow STDIO transport layer.
+"""Tests for the Stepflow STDIO transport layer.
 
 This test file focuses on testing the STDIO transport wrapper functionality:
 - Basic initialization and delegation

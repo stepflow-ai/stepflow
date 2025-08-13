@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import { ErrorResponseSchema } from '@/lib/api-types'
 
 // POST /api/runs/[id]/cancel - Cancel run (proxy to core server)
@@ -10,8 +10,8 @@ export async function POST(
   const resolvedParams = await params
   try {
     const runId = resolvedParams.id
-    const stepflowClient = getStepFlowClient()
-    
+    const stepflowClient = getStepflowClient()
+
     const result = await stepflowClient.cancelRun(runId)
     return NextResponse.json(result)
   } catch (error) {

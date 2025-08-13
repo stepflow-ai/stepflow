@@ -20,7 +20,7 @@ use crate::protocol::Method;
 
 use super::ProtocolMethod;
 
-/// Sent from the component server to the StepFlow to evaluate a flow with the provided input.
+/// Sent from the component server to the Stepflow to evaluate a flow with the provided input.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct EvaluateFlowParams {
     /// The ID of the flow to evaluate (blob ID of the flow).
@@ -29,7 +29,7 @@ pub struct EvaluateFlowParams {
     pub input: ValueRef,
 }
 
-/// Sent from the StepFlow back to the component server with the result of the flow evaluation.
+/// Sent from the Stepflow back to the component server with the result of the flow evaluation.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct EvaluateFlowResult {
     /// The result of the flow evaluation.

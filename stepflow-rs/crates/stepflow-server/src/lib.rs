@@ -11,9 +11,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! StepFlow HTTP server library
+//! Stepflow HTTP server library
 //!
-//! This crate provides the core HTTP server functionality for StepFlow.
+//! This crate provides the core HTTP server functionality for Stepflow.
 //! It contains all the API endpoints, request/response types, and server startup logic.
 
 mod api;
