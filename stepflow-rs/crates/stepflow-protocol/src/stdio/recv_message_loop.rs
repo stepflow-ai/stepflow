@@ -67,10 +67,11 @@ impl ReceiveMessageLoop {
             .child
             .try_wait()
             .change_context(TransportError::Spawn)?
-            && !status.success() {
-                tracing::error!("Child process exited with status {status}");
-                return Err(TransportError::Spawn.into());
-            }
+            && !status.success()
+        {
+            tracing::error!("Child process exited with status {status}");
+            return Err(TransportError::Spawn.into());
+        }
         Ok(())
     }
 

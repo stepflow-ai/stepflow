@@ -535,21 +535,24 @@ impl StateStore for InMemoryStateStore {
                 .filter(|exec| {
                     // Apply status filter
                     if let Some(ref status) = filters.status
-                        && &exec.summary.status != status {
-                            return false;
-                        }
+                        && &exec.summary.status != status
+                    {
+                        return false;
+                    }
 
                     // Apply workflow name filter
                     if let Some(ref workflow_name) = filters.flow_name
-                        && exec.summary.flow_name.as_ref() != Some(workflow_name) {
-                            return false;
-                        }
+                        && exec.summary.flow_name.as_ref() != Some(workflow_name)
+                    {
+                        return false;
+                    }
 
                     // Apply workflow label filter
                     if let Some(ref workflow_label) = filters.flow_label
-                        && exec.summary.flow_label.as_ref() != Some(workflow_label) {
-                            return false;
-                        }
+                        && exec.summary.flow_label.as_ref() != Some(workflow_label)
+                    {
+                        return false;
+                    }
 
                     true
                 })
@@ -612,10 +615,11 @@ impl StateStore for InMemoryStateStore {
         let mut step_info_guard = futures::executor::block_on(self.step_info.write());
 
         if let Some(execution_steps) = step_info_guard.get_mut(&run_id)
-            && let Some(step_info) = execution_steps.get_mut(&step_index) {
-                step_info.status = status;
-                step_info.updated_at = chrono::Utc::now();
-            }
+            && let Some(step_info) = execution_steps.get_mut(&step_index)
+        {
+            step_info.status = status;
+            step_info.updated_at = chrono::Utc::now();
+        }
     }
 
     fn queue_write(
