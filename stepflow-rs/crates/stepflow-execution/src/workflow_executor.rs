@@ -599,17 +599,17 @@ impl WorkflowExecutor {
         }
 
         // Check skip condition if present
-        if let Some(skip_if) = &step.skip_if {
-            if self.should_skip_step(skip_if).await? {
-                let result = FlowResult::Skipped;
-                self.record_step_completion(step_index, &result).await?;
-                return Ok(StepExecutionResult::new(
-                    step_index,
-                    step_id,
-                    component_string,
-                    result,
-                ));
-            }
+        if let Some(skip_if) = &step.skip_if
+            && self.should_skip_step(skip_if).await?
+        {
+            let result = FlowResult::Skipped;
+            self.record_step_completion(step_index, &result).await?;
+            return Ok(StepExecutionResult::new(
+                step_index,
+                step_id,
+                component_string,
+                result,
+            ));
         }
 
         // Resolve step inputs

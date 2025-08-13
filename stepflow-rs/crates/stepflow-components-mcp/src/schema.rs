@@ -61,10 +61,10 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
 /// Convert StepFlow Component path to MCP tool name
 pub fn component_path_to_tool_name(component_path: &str) -> Option<String> {
     // Expected format: /plugin_name/tool_name
-    if let Some(without_leading_slash) = component_path.strip_prefix('/') {
-        if let Some(pos) = without_leading_slash.find('/') {
-            return Some(without_leading_slash[pos + 1..].to_string());
-        }
+    if let Some(without_leading_slash) = component_path.strip_prefix('/')
+        && let Some(pos) = without_leading_slash.find('/')
+    {
+        return Some(without_leading_slash[pos + 1..].to_string());
     }
     None
 }

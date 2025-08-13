@@ -11,7 +11,27 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Submit a workflow to a StepFlow service
+Submit a workflow to a StepFlow service.
+
+Submit a workflow to a running StepFlow service.
+
+# Examples
+
+```bash
+
+# Submit to local server
+
+stepflow submit --flow=workflow.yaml --input=input.json
+
+# Submit to remote server
+
+stepflow submit --url=http://production-server:7837 --flow=workflow.yaml --input-json='{"key": "value"}'
+
+# Submit with inline YAML input
+
+stepflow submit --flow=workflow.yaml --input-yaml='param: value'
+
+```
 
 Usage: stepflow submit [OPTIONS] --flow <FILE>
 

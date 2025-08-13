@@ -11,7 +11,39 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Run tests defined in workflow files or directories
+Run tests defined in workflow files or directories.
+
+Run test cases defined in workflow files.
+
+# Examples
+
+```bash
+
+# Run all tests in a workflow file
+
+stepflow test examples/basic/workflow.yaml
+
+# Run tests in a directory
+
+stepflow test examples/
+
+# Run specific test case
+
+stepflow test workflow.yaml --case=calculate_with_8_and_5
+
+# Run multiple specific test cases
+
+stepflow test workflow.yaml --case=test1 --case=test2
+
+# Update expected outputs (snapshot testing)
+
+stepflow test workflow.yaml --update
+
+# Show detailed diff on test failures
+
+stepflow test workflow.yaml --diff
+
+```
 
 Usage: stepflow test [OPTIONS] [PATH]...
 

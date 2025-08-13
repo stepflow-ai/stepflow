@@ -124,10 +124,10 @@ pub fn load_test_config(
     }
 
     // 1. Check config in test section of this workflow (with server substitution)
-    if let Some(test_config) = workflow.test() {
-        if let Some(config_value) = &test_config.config {
-            return parse_stepflow_config_from_value(config_value, flow_path, server_manager);
-        }
+    if let Some(test_config) = workflow.test()
+        && let Some(config_value) = &test_config.config
+    {
+        return parse_stepflow_config_from_value(config_value, flow_path, server_manager);
     }
 
     // TODO: 2. Check stepflow_config in test section of enclosing workflow (if any)
@@ -203,12 +203,12 @@ async fn apply_updates(flow_path: &Path, mut updates: HashMap<String, FlowResult
 fn discover_yaml_files(workflow_files: &mut HashSet<PathBuf>, dir: &Path) -> Result<()> {
     for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.is_file() {
-            if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                // Check if it's a YAML file
-                if filename.ends_with(".yaml") || filename.ends_with(".yml") {
-                    workflow_files.insert(path.to_owned());
-                }
+        if path.is_file()
+            && let Some(filename) = path.file_name().and_then(|n| n.to_str())
+        {
+            // Check if it's a YAML file
+            if filename.ends_with(".yaml") || filename.ends_with(".yml") {
+                workflow_files.insert(path.to_owned());
             }
         }
     }
@@ -344,14 +344,14 @@ async fn run_single_flow_test(
 
     // Initialize server manager and start any test servers
     let mut server_manager = TestServerManager::new();
-    if let Some(test_config) = flow.test() {
-        if !test_config.servers.is_empty() {
-            println!("Starting {} test servers...", test_config.servers.len());
-            let working_dir = flow_path.parent().unwrap_or_else(|| Path::new("."));
-            server_manager
-                .start_servers(&test_config.servers, working_dir)
-                .await?;
-        }
+    if let Some(test_config) = flow.test()
+        && !test_config.servers.is_empty()
+    {
+        println!("Starting {} test servers...", test_config.servers.len());
+        let working_dir = flow_path.parent().unwrap_or_else(|| Path::new("."));
+        server_manager
+            .start_servers(&test_config.servers, working_dir)
+            .await?;
     }
 
     // Set up executor with server-aware config

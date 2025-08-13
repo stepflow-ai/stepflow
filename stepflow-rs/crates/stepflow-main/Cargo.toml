@@ -49,6 +49,7 @@ uuid.workspace = true
 [dev-dependencies]
 insta-cmd.workspace = true
 tempfile.workspace = true
+clap-markdown = "0.1.4"
 
 [[bin]]
 name = "stepflow"

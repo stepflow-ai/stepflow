@@ -614,9 +614,8 @@ mod tests {
                     // Use similar_asserts for better diff output when schemas don't match
                     assert_eq!(
                         generated_schema_str, expected_schema_str,
-                        "Generated schema does not match the reference schema at {}. \
-                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-core' to update.",
-                        flow_schema_path
+                        "Generated schema does not match the reference schema at {flow_schema_path}. \
+                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-core' to update."
                     );
                 }
                 Err(_) => {

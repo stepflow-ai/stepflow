@@ -11,7 +11,35 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Run a workflow directly
+Run a workflow directly.
+
+Execute a workflow directly and return the result.
+
+# Examples
+
+```bash
+
+# Run with input file
+
+stepflow run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json
+
+# Run with inline JSON input
+
+stepflow run --flow=workflow.yaml --input-json='{"m": 3, "n": 4}'
+
+# Run with inline YAML input
+
+stepflow run --flow=workflow.yaml --input-yaml='m: 2\nn: 7'
+
+# Run with stdin input
+
+echo '{"m": 1, "n": 2}' | stepflow run --flow=workflow.yaml --stdin-format=json
+
+# Run with custom config and output to file
+
+stepflow run --flow=workflow.yaml --input=input.json --config=my-config.yml --output=result.json
+
+```
 
 Usage: stepflow run [OPTIONS] --flow <FILE>
 

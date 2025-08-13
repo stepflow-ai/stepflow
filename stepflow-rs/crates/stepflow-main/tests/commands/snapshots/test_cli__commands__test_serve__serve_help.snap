@@ -11,7 +11,23 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Start a StepFlow service
+Start a StepFlow service.
+
+Start a StepFlow service that can accept workflow submissions via HTTP API.
+
+# Examples
+
+```bash
+
+# Start server on default port (7837)
+
+stepflow serve
+
+# Start server on custom port with config
+
+stepflow serve --port=8080 --config=production-config.yml
+
+```
 
 Usage: stepflow serve [OPTIONS]
 
