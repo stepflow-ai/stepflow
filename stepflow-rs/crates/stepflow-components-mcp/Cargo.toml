@@ -16,7 +16,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-# Core StepFlow dependencies
+# Core Stepflow dependencies
 stepflow-core.workspace = true
 stepflow-plugin.workspace = true
 

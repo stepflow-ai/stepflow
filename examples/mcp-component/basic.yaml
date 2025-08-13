@@ -1,6 +1,6 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 # Example workflow using MCP filesystem tools
-# This workflow demonstrates how to use MCP tools within StepFlow
+# This workflow demonstrates how to use MCP tools within Stepflow
 
 name: "MCP Filesystem Example"
 description: "Demonstrates using MCP filesystem tools to read and write files"

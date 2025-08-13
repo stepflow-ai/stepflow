@@ -11,19 +11,39 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Submit a workflow to a StepFlow service
+Submit a workflow to a Stepflow service.
+
+Submit a workflow to a running Stepflow service.
+
+# Examples
+
+```bash
+
+# Submit to local server
+
+stepflow submit --flow=workflow.yaml --input=input.json
+
+# Submit to remote server
+
+stepflow submit --url=http://production-server:7837 --flow=workflow.yaml --input-json='{"key": "value"}'
+
+# Submit with inline YAML input
+
+stepflow submit --flow=workflow.yaml --input-yaml='param: value'
+
+```
 
 Usage: stepflow submit [OPTIONS] --flow <FILE>
 
 Options:
       --log-level <LEVEL>
-          Set the log level for StepFlow
+          Set the log level for Stepflow
           
           [default: info]
           [possible values: trace, debug, info, warn, error]
 
       --url <URL>
-          The URL of the StepFlow service to submit the workflow to
+          The URL of the Stepflow service to submit the workflow to
           
           [default: http://localhost:7837]
 
@@ -31,7 +51,7 @@ Options:
           Path to the workflow file to submit
 
       --other-log-level <LEVEL>
-          Set the log level for other parts of StepFlow
+          Set the log level for other parts of Stepflow
           
           [default: warn]
           [possible values: trace, debug, info, warn, error]

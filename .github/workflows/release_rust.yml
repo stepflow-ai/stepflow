@@ -391,7 +391,7 @@ jobs:
       - name: Create release notes
         run: |
           cat > release-notes.md << 'EOF'
-          ## StepFlow Rust Binary Release v${{ needs.determine-version.outputs.version }}
+          ## Stepflow Rust Binary Release v${{ needs.determine-version.outputs.version }}
 
           📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[Full Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md)**
 
@@ -431,7 +431,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ needs.determine-version.outputs.tag }}" \
-            --title "StepFlow Rust v${{ needs.determine-version.outputs.version }}" \
+            --title "Stepflow Rust v${{ needs.determine-version.outputs.version }}" \
             --notes-file release-notes.md \
             stepflow-rs/CHANGELOG.md \
             ./archives/stepflow-*.tar.gz \
@@ -498,5 +498,5 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
             echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Release:** [StepFlow Rust v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+            echo "**Release:** [Stepflow Rust v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
           fi

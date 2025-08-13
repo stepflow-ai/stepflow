@@ -195,11 +195,14 @@ impl McpClient {
             })?;
 
         // Validate response ID matches request
-        if let Some(response_id) = response.get("id") {
-            if response_id.as_u64() != Some(id) {
-                return Err(error_stack::Report::new(McpError::InvalidResponse)
-                    .attach_printable(format!("Response ID mismatch for method '{method}': expected {id}, got {response_id}")));
-            }
+        if let Some(response_id) = response.get("id")
+            && response_id.as_u64() != Some(id)
+        {
+            return Err(
+                error_stack::Report::new(McpError::InvalidResponse).attach_printable(format!(
+                    "Response ID mismatch for method '{method}': expected {id}, got {response_id}"
+                )),
+            );
         }
 
         // Check for JSON-RPC errors
@@ -328,7 +331,7 @@ impl Plugin for McpPlugin {
         let state = self.state.read().await;
         let mut components = Vec::new();
 
-        // Convert MCP tools to StepFlow components
+        // Convert MCP tools to Stepflow components
         for tool in &state.available_tools {
             let mut info = crate::schema::mcp_tool_to_component_info(tool)
                 .change_context(PluginError::ComponentInfo)?;
@@ -382,14 +385,14 @@ impl Plugin for McpPlugin {
             Ok(result) => result,
             Err(err) => {
                 // Check if this is an MCP tool execution error that should be treated as a business logic failure
-                if let Some(mcp_error) = err.downcast_ref::<McpError>() {
-                    if matches!(mcp_error, McpError::ToolExecution) {
-                        // This is a tool execution failure, not an implementation failure
-                        return Ok(FlowResult::Failed(FlowError::new(
-                            500,
-                            format!("Tool '{tool_name}' execution failed"),
-                        )));
-                    }
+                if let Some(mcp_error) = err.downcast_ref::<McpError>()
+                    && matches!(mcp_error, McpError::ToolExecution)
+                {
+                    // This is a tool execution failure, not an implementation failure
+                    return Ok(FlowResult::Failed(FlowError::new(
+                        500,
+                        format!("Tool '{tool_name}' execution failed"),
+                    )));
                 }
                 // For other errors (timeouts, connection issues, etc.), propagate as implementation errors
                 return Err(err.change_context(PluginError::Execution));

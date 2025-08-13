@@ -29,8 +29,8 @@ use uuid::Uuid;
 
 type FutureFlowResult = futures::future::Shared<oneshot::Receiver<FlowResult>>;
 
-/// Main executor of StepFlow flows.
-pub struct StepFlowExecutor {
+/// Main executor of Stepflow flows.
+pub struct StepflowExecutor {
     state_store: Arc<dyn StateStore>,
     working_directory: PathBuf,
     plugin_router: PluginRouter,
@@ -44,7 +44,7 @@ pub struct StepFlowExecutor {
     self_weak: std::sync::Weak<Self>,
 }
 
-impl StepFlowExecutor {
+impl StepflowExecutor {
     /// Create a new stepflow executor with a custom state store and plugin router.
     pub fn new(
         state_store: Arc<dyn StateStore>,
@@ -181,7 +181,7 @@ impl StepFlowExecutor {
     }
 }
 
-impl Context for StepFlowExecutor {
+impl Context for StepflowExecutor {
     /// Submits a nested workflow for execution and returns it's execution ID.
     ///
     /// This method starts the workflow execution in the background and immediately
@@ -303,7 +303,7 @@ mod tests {
     #[tokio::test]
     async fn test_executor_context_blob_operations() {
         // Create executor with default state store
-        let executor = StepFlowExecutor::new_in_memory();
+        let executor = StepflowExecutor::new_in_memory();
 
         // Test data
         let test_data = json!({"message": "Hello from executor!", "count": 123});
@@ -330,7 +330,7 @@ mod tests {
         use stepflow_plugin::routing::PluginRouter;
         let plugin_router = PluginRouter::builder().build().unwrap();
         let executor =
-            StepFlowExecutor::new(state_store.clone(), PathBuf::from("."), plugin_router);
+            StepflowExecutor::new(state_store.clone(), PathBuf::from("."), plugin_router);
 
         // Create blob through executor context
         let test_data = json!({"custom": "state store test"});

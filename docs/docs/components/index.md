@@ -7,15 +7,15 @@ sidebar_position: 1
 Components are the building blocks of flows.
 Each step in a flow executes a specific component that implements a specific operation.
 
-StepFlow provides a set of built-in components for common tasks, and the ability to create custom components using StepFlow SDKs or the Model Context Protocol (MCP).
+Stepflow provides a set of built-in components for common tasks, and the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP).
 
 ## Types of Components
 
 ### 1. Built-in Components
 
-StepFlow provides a variety of built-in components that handle common operations:
+Stepflow provides a variety of built-in components that handle common operations:
 
-- **Data Storage**: `/put_blob`, `/get_blob` for storing and retrieving data managed by the StepFlow runtime
+- **Data Storage**: `/put_blob`, `/get_blob` for storing and retrieving data managed by the Stepflow runtime
 - **AI Integration**: `/openai`, `/create_messages` demonstrating interaction with AI APIs
 - **File Operations**: `/load_file` demonstrating interaction with the local file system
 - **Workflow Control**: `/eval` for executing nested workflows
@@ -24,11 +24,11 @@ StepFlow provides a variety of built-in components that handle common operations
 
 ### 2. Stepflow Component Server
 
-Use existing copmonent servers or create your own custom components using StepFlow SDKs:
+Use existing copmonent servers or create your own custom components using Stepflow SDKs:
 
 - **Python SDK**: Build components in Python with full async support
 - **TypeScript SDK**: Create high-performance Node.js components (coming soon)
-- **Any Language**: Implement the StepFlow Protocol directly
+- **Any Language**: Implement the Stepflow Protocol directly
 
 [Learn more about component servers →](./component-server/index.md).
 
@@ -51,15 +51,15 @@ Use tools from Model Context Protocol (MCP) servers as components:
 ## Component Architecture
 
 Most components run in separate processes, ensuring security and stability.
-During development, these processes can be managed by the StepFlow runtime.
+During development, these processes can be managed by the Stepflow runtime.
 In production, these component servers can be separately managed and scaled.
 For instance, the component server applying specific models can run on a dedicated machine keeping the model in memory for better resource usage.
 
-The diagram below shows how the StepFlow runtime interacts with multiple component servers.
+The diagram below shows how the Stepflow runtime interacts with multiple component servers.
 
 ```mermaid
 flowchart TB
-    subgraph "StepFlow Runtime"
+    subgraph "Stepflow Runtime"
         W[Workflow Engine]
         S1[Step 1]
         S2[Step 2]
@@ -85,5 +85,5 @@ flowchart TB
 ## Next Steps
 
 - [Explore built-in components](./builtins/index.md) for common operations
-- [Learn how to create custom components](./component-server/custom-components.md) using StepFlow SDKs
-- [Create steps](../steps/index.md) to use components in a flow
+- [Learn how to create custom components](./component-server/custom-components.md) using Stepflow SDKs
+- [Create steps](../flows/steps.md) to use components in a flow

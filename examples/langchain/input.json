@@ -1,4 +1,12 @@
 {
-  "text": "This is a great example of LangChain integration with StepFlow! It's amazing how well these systems work together.",
-  "numbers": [1, 2, 3, 4, 5, 10, 15]
+  "text": "This is a great example of LangChain integration with Stepflow! It's amazing how well these systems work together.",
+  "numbers": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    10,
+    15
+  ]
 }

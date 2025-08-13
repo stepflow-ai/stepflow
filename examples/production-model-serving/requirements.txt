@@ -1,4 +1,4 @@
-# Core StepFlow SDK
+# Core Stepflow SDK
 stepflow-py>=0.2.4
 
 # Machine Learning Libraries

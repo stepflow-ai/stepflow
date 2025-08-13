@@ -15,9 +15,9 @@
 # the License.
 
 """
-LangChain Integration Examples for StepFlow.
+LangChain Integration Examples for Stepflow.
 
-This demonstrates three practical approaches to using LangChain with StepFlow:
+This demonstrates three practical approaches to using LangChain with Stepflow:
 1. Decorated runnable: Using @server.langchain_component decorator
 2. Named runnable: Using /invoke_named with import paths (cached, single-step)
 3. UDF: Using /udf with user-provided Python code (via blob_id, self-contained)
@@ -152,7 +152,7 @@ if LANGCHAIN_AVAILABLE:
 
 
 if __name__ == "__main__":
-    print("LangChain StepFlow Integration Examples")
+    print("LangChain Stepflow Integration Examples")
     print("======================================")
     print()
     print(
@@ -169,5 +169,5 @@ if __name__ == "__main__":
         print(f"  - {name}: {component.description or 'No description'}")
 
     print()
-    print("Starting StepFlow server...")
+    print("Starting Stepflow server...")
     server.run()

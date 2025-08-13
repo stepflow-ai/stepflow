@@ -1,6 +1,6 @@
-# Contributing to StepFlow
+# Contributing to Stepflow
 
-Thank you for your interest in contributing to StepFlow! This guide will help you get started with development and ensure your contributions align with our project standards.
+Thank you for your interest in contributing to Stepflow! This guide will help you get started with development and ensure your contributions align with our project standards.
 
 ## Table of Contents
 
@@ -135,7 +135,7 @@ The main `stepflow-rs/` directory contains a Rust workspace with multiple crates
 
 ### Error Handling
 
-StepFlow uses two distinct error types:
+Stepflow uses two distinct error types:
 
 1. **Flow Errors** (`FlowError`): Business logic failures that are part of normal workflow execution
 2. **System Errors** (`Result::Err`): Implementation or infrastructure failures
@@ -197,7 +197,7 @@ internal_method()
 #### Common Patterns to Avoid
 
 - ❌ Redundant error attachments when type + line number suffice
-- ❌ Using `Report::new()` instead of `report!` macro  
+- ❌ Using `Report::new()` instead of `report!` macro
 - ❌ Deep error conversion chains (convert once at boundaries)
 - ❌ Adding `attach_printable` that just restates the error type
 
@@ -209,7 +209,7 @@ internal_method()
 pub enum MyError {
     #[error("Connection failed to {host}")]
     ConnectionFailed { host: String },
-    
+
     #[error("Invalid configuration: {0}")]
     InvalidConfig(&'static str),
 }
@@ -217,8 +217,8 @@ pub enum MyError {
 // 2. Use domain-specific errors internally
 async fn connect_internal(&self, host: &str) -> MyResult<Connection> {
     client.connect(host)
-        .change_context(MyError::ConnectionFailed { 
-            host: host.to_string() 
+        .change_context(MyError::ConnectionFailed {
+            host: host.to_string()
         })
 }
 
@@ -376,4 +376,4 @@ For VS Code users, we recommend:
 - `Better TOML` extension
 - Configure format-on-save for consistent formatting
 
-Thank you for contributing to StepFlow! 🚀
+Thank you for contributing to Stepflow! 🚀

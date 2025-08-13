@@ -1,6 +1,6 @@
 [package]
 name = "stepflow-analysis"
-description = "Workflow dependency analysis for StepFlow"
+description = "Workflow dependency analysis for Stepflow"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

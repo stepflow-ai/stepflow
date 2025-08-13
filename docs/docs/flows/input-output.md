@@ -1,19 +1,22 @@
 ---
-sidebar_position: 2
+sidebar_position: 4
 ---
 
 # Input and Output
 
-StepFlow workflows define clear input and output contracts using JSON Schema. This ensures data validation, type safety, and clear documentation of what data flows into and out of your workflows.
+Stepflow flows define clear input and output contracts using JSON Schema.
+This ensures data validation, type safety, and clear documentation of what data flows into and out of your flows.
 
-## Workflow Input
+* The [Input Schema](#input-schema) describes the expected structure of input data.
+* The [Output](#output) section maps step results to the flow output.
+* The [Output Schema](#output-schema) defines the structure of the output data.
 
-### Input Schema Definition
+## Flow Input Schema {#input-schema}
 
-Every workflow should define an input schema that describes the expected structure of input data:
+Every flow should define an input schema that describes the expected structure of input data:
 
 ```yaml
-input_schema:
+inputSchema:
   type: object
   properties:
     user_id:
@@ -36,23 +39,27 @@ input_schema:
   required: ["user_id"]
 ```
 
-### Input Validation
+## Flow Output {#output}
 
-StepFlow validates input data against the schema before workflow execution:
+Map workflow output to step results:
 
-- **Type checking**: Ensures data types match schema definitions
-- **Required fields**: Validates that all required fields are present
-- **Constraints**: Enforces enums, patterns, and other constraints
-- **Clear errors**: Provides detailed error messages for validation failures
+```yaml
+output:
+  summary:
+    total_processed: { $from: { step: count_items } }
+    success_count: { $from: { step: analyze_results }, path: "success_count" }
+    error_count: { $from: { step: analyze_results }, path: "error_count" }
+  results: { $from: { step: collect_results } }
+```
 
-## Workflow Output
+The output section uses [Expressions](./expressions.md) to reference data from steps within the flow.
 
-### Output Schema Definition
+### Flow Output Schema {#output-schema}
 
 Define the structure of data your workflow produces:
 
 ```yaml
-output_schema:
+outputSchema:
   type: object
   properties:
     summary:
@@ -79,17 +86,4 @@ output_schema:
             type: object
         required: ["id", "status"]
   required: ["summary", "results"]
-```
-
-### Output Definition
-
-Map workflow output to step results:
-
-```yaml
-output:
-  summary:
-    total_processed: { $from: { step: count_items } }
-    success_count: { $from: { step: analyze_results }, path: "success_count" }
-    error_count: { $from: { step: analyze_results }, path: "error_count" }
-  results: { $from: { step: collect_results } }
 ```

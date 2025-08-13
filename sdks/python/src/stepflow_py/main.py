@@ -23,7 +23,7 @@ server = StepflowStdioServer()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="StepFlow Python SDK Server")
+    parser = argparse.ArgumentParser(description="Stepflow Python SDK Server")
     parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
     parser.add_argument(
         "--port", type=int, default=8080, help="HTTP port (default: 8080)"

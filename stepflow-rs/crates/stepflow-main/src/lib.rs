@@ -13,6 +13,8 @@
 
 pub mod args;
 pub mod cli;
+#[cfg(test)]
+mod cli_docs;
 mod error;
 mod list_components;
 mod repl;

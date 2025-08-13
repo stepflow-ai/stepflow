@@ -1,13 +1,13 @@
-# StepFlow TypeScript SDK
+# Stepflow TypeScript SDK
 
-A comprehensive TypeScript SDK for creating StepFlow component plugins and building workflows programmatically. This SDK provides complete feature parity with the Python SDK, including support for bidirectional communication, blob operations, user-defined functions (UDF), HTTP server mode, and a powerful Flow Builder API.
+A comprehensive TypeScript SDK for creating Stepflow component plugins and building workflows programmatically. This SDK provides complete feature parity with the Python SDK, including support for bidirectional communication, blob operations, user-defined functions (UDF), HTTP server mode, and a powerful Flow Builder API.
 
 ## 🚀 Features
 
 ### Component Development
 - 🔧 **User-Defined Functions (UDF)** - Execute dynamic JavaScript code stored as blobs
 - 💾 **Blob Operations** - Store and retrieve data using content-based SHA-256 addressing
-- 🔄 **Bidirectional Communication** - Components can make requests back to the StepFlow runtime
+- 🔄 **Bidirectional Communication** - Components can make requests back to the Stepflow runtime
 - 🏗️ **Type-Safe Development** - Full TypeScript support with comprehensive type inference
 
 ### Server Modes

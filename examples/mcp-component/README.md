@@ -1,6 +1,6 @@
 # MCP Component Example
 
-This example demonstrates how to use Model Context Protocol (MCP) tools within StepFlow workflows.
+This example demonstrates how to use Model Context Protocol (MCP) tools within Stepflow workflows.
 
 ## Prerequisites
 
@@ -30,12 +30,12 @@ cargo run -- run --flow=../examples/mcp-component/basic.yaml --input=../examples
 
 ## Understanding MCP Component Paths
 
-MCP tools are referenced using StepFlow's plugin-based path format:
+MCP tools are referenced using Stepflow's plugin-based path format:
 ```
 /plugin_name/tool_name
 ```
 
-Where `plugin_name` corresponds to the name configured in the StepFlow config file. This follows StepFlow's standard plugin architecture where each plugin registers with a name that becomes part of the path.
+Where `plugin_name` corresponds to the name configured in the Stepflow config file. This follows Stepflow's standard plugin architecture where each plugin registers with a name that becomes part of the path.
 
 For example:
 - `/filesystem/write_file` - The `write_file` tool from the `filesystem` MCP server
@@ -73,7 +73,7 @@ Then use it in workflows like:
 search_step:
   component: "/brave-search/brave_web_search"
   input:
-    query: "StepFlow workflow engine"
+    query: "Stepflow workflow engine"
 ```
 
 ## Troubleshooting

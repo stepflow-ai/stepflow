@@ -19,7 +19,7 @@ function HomepageHeader() {
         <p className="hero__subtitle">{siteConfig.tagline}</p>
         <div className={styles.buttons}>
           <Link className="button button--secondary button--lg" to="/docs/introduction">
-            StepFlow Introduction - 5min ⏱️
+            Stepflow Introduction - 5min ⏱️
           </Link>
         </div>
       </div>
@@ -31,7 +31,7 @@ export default function Home(): ReactNode {
   const { siteConfig } = useDocusaurusContext();
   return (
     <Layout
-      title={`StepFlow - Agentic Workflows`}
+      title={`Stepflow - Agentic Workflows`}
       description="Description will go into a meta tag in <head />">
       <HomepageHeader />
       <main>

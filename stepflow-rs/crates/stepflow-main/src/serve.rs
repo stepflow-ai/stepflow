@@ -15,13 +15,13 @@ use std::sync::Arc;
 
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 
-/// Start the StepFlow HTTP server
+/// Start the Stepflow HTTP server
 ///
-/// # StepFlow Server API Documentation
+/// # Stepflow Server API Documentation
 ///
-/// The StepFlow server provides a comprehensive REST API for workflow execution and management.
+/// The Stepflow server provides a comprehensive REST API for workflow execution and management.
 /// The API follows RESTful principles and provides OpenAPI documentation.
 ///
 /// ## Base URL
@@ -168,7 +168,7 @@ use stepflow_execution::StepFlowExecutor;
 /// - **Scaling**: Stateless design supports horizontal scaling
 /// - **Performance**: Content-based caching and efficient execution engine
 ///
-pub async fn serve(executor: Arc<StepFlowExecutor>, port: u16) -> Result<()> {
+pub async fn serve(executor: Arc<StepflowExecutor>, port: u16) -> Result<()> {
     // Use the experimental utoipa version for testing
     stepflow_server::start_server(port, executor)
         .await

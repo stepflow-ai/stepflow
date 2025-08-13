@@ -15,7 +15,7 @@
 # the License.
 
 """
-Mock MCP server for testing the StepFlow MCP plugin.
+Mock MCP server for testing the Stepflow MCP plugin.
 This server implements the basic MCP protocol over stdio.
 """
 

@@ -1,8 +1,8 @@
-# Production Model Serving with StepFlow
+# Production Model Serving with Stepflow
 
 **🚀 Experience Production-Ready AI Workflows in Minutes**
 
-This demo shows how StepFlow transforms AI workflow serving from monolithic deployments to scalable, cost-effective microservices. In just one command, you'll see:
+This demo shows how Stepflow transforms AI workflow serving from monolithic deployments to scalable, cost-effective microservices. In just one command, you'll see:
 
 - **Independent model scaling** - Text and vision models scale separately based on demand
 - **Smart resource allocation** - CPU instances for text, GPU for vision, lightweight orchestration
@@ -25,7 +25,7 @@ Perfect for learning, experimentation and development:
 
 ### 🏭 Production Mode (Docker Compose)
 See real production architecture:
-- **Containerized services** - StepFlow runtime + separate AI model servers
+- **Containerized services** - Stepflow runtime + separate AI model servers
 - **Service orchestration** - Health checks, dependencies, monitoring
 - **HTTP communication** - Production-ready service-to-service calls
 - **Independent deployment** - Each service can be updated separately
@@ -56,7 +56,7 @@ cd examples/production-model-serving
 
 ### 💰 Save Money on AI Infrastructure
 **Problem**: Traditional AI deployments waste expensive GPU resources on simple tasks.
-**Solution**: StepFlow routes text processing to cheap CPU instances, reserves GPUs for vision work.
+**Solution**: Stepflow routes text processing to cheap CPU instances, reserves GPUs for vision work.
 
 ```yaml
 # Text models: $0.10/hour CPU instances
@@ -114,7 +114,7 @@ kubectl rollout restart deployment text-models
 - **Service communication**: Understand HTTP vs process-based model server integration
 - **Health monitoring**: Implement production-ready AI system observability
 
-### 🔧 StepFlow Development Patterns
+### 🔧 Stepflow Development Patterns
 - **Serve/Submit vs Direct Run**: Compare development speed vs production realism
 - **Configuration management**: Environment-specific configs for dev/staging/prod
 - **Component routing**: Dynamic service discovery and load balancing
@@ -140,7 +140,7 @@ cd examples/production-model-serving
 ./scripts/run-dev-direct.sh batch       # Batch processing demo
 ```
 
-**Best for**: Quick iterations, debugging workflows, learning StepFlow
+**Best for**: Quick iterations, debugging workflows, learning Stepflow
 
 ### 🖥️ Development Mode: Serve/Submit (Production-like)
 Test production patterns locally:
@@ -165,7 +165,7 @@ cd examples/production-model-serving
 ```
 
 **What you get:**
-- **StepFlow Runtime**: Central orchestration server
+- **Stepflow Runtime**: Central orchestration server
 - **Text Models Service**: CPU-optimized text processing
 - **Vision Models Service**: GPU-ready image processing
 - **Monitoring Stack**: Prometheus + Redis for production observability
@@ -375,7 +375,7 @@ To adapt this demo for production:
 
 ## 🎯 Key Takeaways
 
-After running this demo, you'll understand how StepFlow transforms AI from prototype to production:
+After running this demo, you'll understand how Stepflow transforms AI from prototype to production:
 
 ### For Engineering Teams
 - **Microservice patterns**: Break monolithic AI systems into scalable, maintainable services
@@ -389,7 +389,7 @@ After running this demo, you'll understand how StepFlow transforms AI from proto
 - **Risk mitigation**: Service isolation prevents AI failures from cascading
 - **Competitive advantage**: Production-ready AI architecture from day one
 
-### The StepFlow Advantage
+### The Stepflow Advantage
 This isn't just another workflow engine - it's **production-ready AI infrastructure** that scales from prototype to enterprise. In one demo, you've seen patterns that typically take months to build and validate.
 
-**Ready to apply this to your AI workloads?** This example shows you exactly how to architect, deploy, and scale production AI systems using StepFlow's proven patterns.
+**Ready to apply this to your AI workloads?** This example shows you exactly how to architect, deploy, and scale production AI systems using Stepflow's proven patterns.

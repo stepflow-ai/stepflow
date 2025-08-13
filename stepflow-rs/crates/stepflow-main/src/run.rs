@@ -16,11 +16,11 @@ use std::sync::Arc;
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use stepflow_core::{BlobId, FlowResult, workflow::Flow};
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use stepflow_plugin::Context as _;
 
 pub async fn run(
-    executor: Arc<StepFlowExecutor>,
+    executor: Arc<StepflowExecutor>,
     flow: Arc<Flow>,
     flow_id: BlobId,
     input: stepflow_core::workflow::ValueRef,

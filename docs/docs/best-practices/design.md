@@ -1,10 +1,10 @@
 ---
-sidebar_position: 10
+sidebar_position: 2
 ---
 
 # Best Practices
 
-This guide covers best practices for designing, implementing, and maintaining StepFlow workflows that are reliable, maintainable, and performant.
+This guide covers best practices for designing, implementing, and maintaining Stepflow workflows that are reliable, maintainable, and performant.
 
 ## Workflow Design Principles
 
@@ -641,4 +641,78 @@ steps:
       path: "user.email"
 ```
 
-Following these best practices will help you create robust, maintainable, and efficient StepFlow workflows that scale well and are easy to debug and modify.
+Following these best practices will help you create robust, maintainable, and efficient Stepflow workflows that scale well and are easy to debug and modify.
+
+# STEPS?
+## Best Practices
+
+### Step Naming
+
+- Use descriptive, action-oriented names
+- Follow consistent naming conventions
+- Avoid generic names like `step1`, `process`
+
+```yaml
+# Good
+- id: load_user_data
+- id: validate_email_format
+- id: send_welcome_email
+
+# Avoid
+- id: step1
+- id: process
+- id: do_stuff
+```
+
+### Input Organization
+
+- Group related inputs logically
+- Use meaningful parameter names
+- Provide default values where appropriate
+
+```yaml
+# Good organization
+input:
+  # Data inputs
+  user_data: { $from: { step: load_user } }
+  settings: { $from: { step: load_settings } }
+
+  # Configuration
+  timeout: { $literal: 30 }
+  retries: { $literal: 3 }
+
+  # Optional parameters with defaults
+  debug_mode:
+    $from: { workflow: input }
+    path: "debug"
+    $on_skip: "use_default"
+    $default: false
+```
+
+### Error Handling Strategy
+
+- Use `terminate` for critical failures
+- Use `continue` for recoverable errors with meaningful defaults
+- Use `skip` for optional operations
+
+```yaml
+# Critical operation - must succeed
+- id: authenticate_user
+  component: /auth/verify
+  # on_error defaults to terminate
+
+# Optional enhancement - can fail gracefully
+- id: enrich_profile
+  component: /data/enrich
+  on_error:
+    action: continue
+    default_output:
+      enriched: false
+      metadata: {}
+
+# Completely optional - skip if fails
+- id: log_analytics
+  component: /analytics/track
+  on_error:
+    action: skip
+```

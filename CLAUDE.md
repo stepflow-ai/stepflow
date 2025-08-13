@@ -427,7 +427,7 @@ fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>> {
 ### Error Handling Patterns
 
 #### Dual Error System
-StepFlow uses a dual error approach to distinguish between business logic and system failures:
+Stepflow uses a dual error approach to distinguish between business logic and system failures:
 
 1. **FlowError**: Business logic failures that are part of normal workflow execution
    - Used for validation failures, missing data, expected conditions
@@ -562,7 +562,7 @@ plugins:
 ### Plugin Types
 
 - **builtin**: Built-in components (OpenAI, create_messages, eval, etc.)
-- **stepflow**: StepFlow component servers with configurable transport
+- **stepflow**: Stepflow component servers with configurable transport
   - **stdio transport**: JSON-RPC over stdio communication with external processes
   - **http transport**: JSON-RPC over HTTP with Server-Sent Events for bidirectional communication
 - **mcp**: Model Context Protocol servers
@@ -583,13 +583,13 @@ filesystem:
 ```
 
 **MCP Environment Variable Features:**
-- Same substitution syntax as StepFlow plugins: `${VAR}` and `${VAR:-default}`
+- Same substitution syntax as Stepflow plugins: `${VAR}` and `${VAR:-default}`
 - Environment variables are substituted when the MCP server process is launched
 - Both `args` and `env` fields support full substitution
 - Useful for configuring MCP servers with user-specific paths and settings
 - Command arguments can include environment variables for flexible server configuration
 
-### StepFlow Plugin Transport Options
+### Stepflow Plugin Transport Options
 
 The `stepflow` plugin type supports two transport methods:
 
@@ -656,7 +656,7 @@ The HTTP transport implements MCP-style session negotiation for proper connectio
 
 ### Routes Configuration
 
-StepFlow uses routes to map component paths to specific plugins. **Route rules are required** - components will not be accessible without appropriate route rules.
+Stepflow uses routes to map component paths to specific plugins. **Route rules are required** - components will not be accessible without appropriate route rules.
 
 ```yaml
 routes:
@@ -777,7 +777,7 @@ stateStore:
 
 ### State Store Configuration
 
-StepFlow supports multiple state storage backends for persisting workflow execution state and blobs:
+Stepflow supports multiple state storage backends for persisting workflow execution state and blobs:
 
 #### In-Memory State Store (Default)
 ```yaml

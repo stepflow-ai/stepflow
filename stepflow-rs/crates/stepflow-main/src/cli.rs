@@ -28,13 +28,13 @@ use crate::{
     validate,
 };
 
-/// StepFlow command line application.
+/// Stepflow command line application.
 ///
 /// Allows running a flow directly (with run)
 #[derive(clap::Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
-    /// Set the log level for StepFlow.
+    /// Set the log level for Stepflow.
     #[arg(
         long = "log-level",
         value_name = "LEVEL",
@@ -43,7 +43,7 @@ pub struct Cli {
     )]
     pub log_level: LogLevel,
 
-    /// Set the log level for other parts of StepFlow.
+    /// Set the log level for other parts of Stepflow.
     #[arg(
         long = "other-log-level",
         value_name = "LEVEL",
@@ -67,6 +67,34 @@ pub struct Cli {
 #[derive(clap::Subcommand, Debug)]
 pub enum Command {
     /// Run a workflow directly.
+    ///
+    /// Execute a workflow directly and return the result.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Run with input file
+    ///
+    /// stepflow run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json
+    ///
+    /// # Run with inline JSON input
+    ///
+    /// stepflow run --flow=workflow.yaml --input-json='{"m": 3, "n": 4}'
+    ///
+    /// # Run with inline YAML input
+    ///
+    /// stepflow run --flow=workflow.yaml --input-yaml='m: 2\nn: 7'
+    ///
+    /// # Run with stdin input
+    ///
+    /// echo '{"m": 1, "n": 2}' | stepflow run --flow=workflow.yaml --stdin-format=json
+    ///
+    /// # Run with custom config and output to file
+    ///
+    /// stepflow run --flow=workflow.yaml --input=input.json --config=my-config.yml --output=result.json
+    ///
+    /// ```
     Run {
         /// Path to the workflow file to execute.
         #[arg(long="flow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
@@ -81,7 +109,23 @@ pub enum Command {
         #[command(flatten)]
         output_args: OutputArgs,
     },
-    /// Start a StepFlow service.
+    /// Start a Stepflow service.
+    ///
+    /// Start a Stepflow service that can accept workflow submissions via HTTP API.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Start server on default port (7837)
+    ///
+    /// stepflow serve
+    ///
+    /// # Start server on custom port with config
+    ///
+    /// stepflow serve --port=8080 --config=production-config.yml
+    ///
+    /// ```
     Serve {
         /// Port to run the service on.
         #[arg(long, value_name = "PORT", default_value = "7837")]
@@ -90,9 +134,29 @@ pub enum Command {
         #[command(flatten)]
         config_args: ConfigArgs,
     },
-    /// Submit a workflow to a StepFlow service.
+    /// Submit a workflow to a Stepflow service.
+    ///
+    /// Submit a workflow to a running Stepflow service.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Submit to local server
+    ///
+    /// stepflow submit --flow=workflow.yaml --input=input.json
+    ///
+    /// # Submit to remote server
+    ///
+    /// stepflow submit --url=http://production-server:7837 --flow=workflow.yaml --input-json='{"key": "value"}'
+    ///
+    /// # Submit with inline YAML input
+    ///
+    /// stepflow submit --flow=workflow.yaml --input-yaml='param: value'
+    ///
+    /// ```
     Submit {
-        /// The URL of the StepFlow service to submit the workflow to.
+        /// The URL of the Stepflow service to submit the workflow to.
         #[arg(long, value_name = "URL", default_value = "http://localhost:7837", value_hint = clap::ValueHint::Url)]
         url: Url,
 
@@ -107,6 +171,38 @@ pub enum Command {
         output_args: OutputArgs,
     },
     /// Run tests defined in workflow files or directories.
+    ///
+    /// Run test cases defined in workflow files.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Run all tests in a workflow file
+    ///
+    /// stepflow test examples/basic/workflow.yaml
+    ///
+    /// # Run tests in a directory
+    ///
+    /// stepflow test examples/
+    ///
+    /// # Run specific test case
+    ///
+    /// stepflow test workflow.yaml --case=calculate_with_8_and_5
+    ///
+    /// # Run multiple specific test cases
+    ///
+    /// stepflow test workflow.yaml --case=test1 --case=test2
+    ///
+    /// # Update expected outputs (snapshot testing)
+    ///
+    /// stepflow test workflow.yaml --update
+    ///
+    /// # Show detailed diff on test failures
+    ///
+    /// stepflow test workflow.yaml --diff
+    ///
+    /// ```
     Test {
         /// Paths to workflow files or directories containing tests.
         #[arg(value_name = "PATH", value_hint = clap::ValueHint::AnyPath)]
@@ -119,6 +215,30 @@ pub enum Command {
         test_options: TestOptions,
     },
     /// List all available components from a stepflow config.
+    ///
+    /// List all available components from the configured plugins.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # List components in pretty format
+    ///
+    /// stepflow list-components
+    ///
+    /// # List components with JSON output including schemas
+    ///
+    /// stepflow list-components --format=json
+    ///
+    /// # List components from specific config without schemas
+    ///
+    /// stepflow list-components --config=my-config.yml --format=yaml --schemas=false
+    ///
+    /// # Show all components including unreachable ones
+    ///
+    /// stepflow list-components --hide-unreachable=false
+    ///
+    /// ```
     ListComponents {
         #[command(flatten)]
         config_args: ConfigArgs,
@@ -140,11 +260,46 @@ pub enum Command {
         hide_unreachable: bool,
     },
     /// Start an interactive REPL for workflow development and debugging.
+    ///
+    /// Start an interactive REPL (Read-Eval-Print Loop) for workflow development and debugging.
+    /// The REPL provides an interactive environment for testing workflow fragments, debugging
+    /// step execution, exploring component capabilities, and iterative workflow development.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Start REPL with default config
+    ///
+    /// stepflow repl
+    ///
+    /// # Start REPL with custom config
+    ///
+    /// stepflow repl --config=development-config.yml
+    ///
+    /// ```
     Repl {
         #[command(flatten)]
         config_args: ConfigArgs,
     },
     /// Validate workflow files and configuration.
+    ///
+    /// Validate workflow files and configuration without executing them. This performs workflow
+    /// validation (structure, step dependencies, value references), configuration validation
+    /// (plugin definitions, routing rules), component routing validation, and schema validation.
+    /// Returns 0 for success, 1+ for validation failures (suitable for CI/CD pipelines).
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Validate workflow with auto-detected config
+    /// stepflow validate --flow=examples/basic/workflow.yaml
+    ///
+    /// # Validate with specific config
+    /// stepflow validate --flow=workflow.yaml --config=my-config.yml
+    ///
+    /// ```
     Validate {
         /// Path to the workflow file to validate.
         #[arg(

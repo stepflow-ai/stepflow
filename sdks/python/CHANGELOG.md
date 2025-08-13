@@ -2,18 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## <a id="0.2.4"></a> [StepFlow Python SDK 0.2.4](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.4) - 2025-07-30
+## <a id="0.2.4"></a> [Stepflow Python SDK 0.2.4](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.4) - 2025-07-30
 ### Bug Fixes
 
 - Enable attribute access in UDFs ([#188](https://github.com/riptano/stepflow/pull/188))
 
-## <a id="0.2.3"></a> [StepFlow Python SDK 0.2.3](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.3) - 2025-07-29
+## <a id="0.2.3"></a> [Stepflow Python SDK 0.2.3](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.3) - 2025-07-29
 ### Bug Fixes
 
 - Don't send notification responses in stdio transport ([#184](https://github.com/riptano/stepflow/pull/184))
 - Register UDF component in sub-servers (and HTTP transport) ([#185](https://github.com/riptano/stepflow/pull/185))
 
-## <a id="0.2.2"></a> [StepFlow Python SDK 0.2.2](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.2) - 2025-07-29
+## <a id="0.2.2"></a> [Stepflow Python SDK 0.2.2](https://github.com/riptano/stepflow/releases/tag/stepflow-py-0.2.2) - 2025-07-29
 ### Bug Fixes
 
 - Input search path and remove unneeded flow_dir variable ([#74](https://github.com/riptano/stepflow/pull/74))

@@ -15,7 +15,7 @@
 # the License.
 
 """
-Example of using the StepFlow Python SDK to create a custom component server
+Example of using the Stepflow Python SDK to create a custom component server
 with domain-specific business logic.
 
 This demonstrates:

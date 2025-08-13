@@ -93,7 +93,7 @@ def _handle_exception(e: Exception, id: RequestId) -> MethodError:
 
 
 class StepflowServer:
-    """Core StepFlow server with component registry and business logic."""
+    """Core Stepflow server with component registry and business logic."""
 
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
@@ -237,7 +237,7 @@ class StepflowServer:
     ) -> MethodResponse | None:
         """Central message handler for all JSON-RPC protocol methods.
 
-        This method handles the core StepFlow protocol logic and should be called
+        This method handles the core Stepflow protocol logic and should be called
         by transport servers (HTTP, STDIO) after they parse incoming messages.
 
         Args:
@@ -394,7 +394,7 @@ class StepflowServer:
         execution_mode: str = "invoke",
     ):
         """
-        Decorator to register a LangChain runnable factory as a StepFlow component.
+        Decorator to register a LangChain runnable factory as a Stepflow component.
 
         The decorated function should return a LangChain Runnable instance.
         The resulting component will execute the runnable with the provided input.
@@ -496,7 +496,7 @@ class StepflowServer:
                 # Prepare input for LangChain runnable
                 langchain_input = component_input.input
 
-                # Create runnable config from StepFlow input
+                # Create runnable config from Stepflow input
                 stepflow_input_dict = {
                     "input": component_input.input,
                     "config": component_input.config or {},

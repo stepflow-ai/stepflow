@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import { ErrorResponseSchema } from '@/lib/api-types'
 
 // GET /api/runs/[id]/steps - Get run step executions (proxy to core server)
@@ -10,8 +10,8 @@ export async function GET(
   const resolvedParams = await params
   try {
     const runId = resolvedParams.id
-    const stepflowClient = getStepFlowClient()
-    
+    const stepflowClient = getStepflowClient()
+
     const stepExecutions = await stepflowClient.getRunSteps(runId)
     return NextResponse.json(stepExecutions)
   } catch (error) {

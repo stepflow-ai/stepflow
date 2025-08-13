@@ -55,7 +55,7 @@ pub trait Context: Send + Sync {
     ///
     /// This is a convenience method that handles the common pattern of:
     /// 1. Retrieving a flow blob by ID from the state store
-    /// 2. Deserializing the flow from blob data  
+    /// 2. Deserializing the flow from blob data
     /// 3. Executing the flow with given input
     ///
     /// # Arguments
@@ -95,7 +95,7 @@ pub trait Context: Send + Sync {
     /// Get the state store for this executor.
     fn state_store(&self) -> &Arc<dyn StateStore>;
 
-    /// Working directory of the StepFlow Config.
+    /// Working directory of the Stepflow Config.
     fn working_directory(&self) -> &Path;
 }
 

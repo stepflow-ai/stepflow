@@ -1,6 +1,6 @@
-# StepFlow Python SDK
+# Stepflow Python SDK
 
-Python SDK for building StepFlow components and workflows.
+Python SDK for building Stepflow components and workflows.
 
 ## Installation
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
 ### Using the Context API
 
-The `StepflowContext` provides bidirectional communication with the StepFlow runtime:
+The `StepflowContext` provides bidirectional communication with the Stepflow runtime:
 
 ```python
 # Store JSON data as a blob
@@ -98,7 +98,7 @@ The generation script automatically handles the generation and applies necessary
 
 The SDK uses a hybrid approach for protocol handling:
 
-1. **Generated Types** (`generated_protocol.py`) - Auto-generated from the StepFlow JSON schema using `datamodel-code-generator`
+1. **Generated Types** (`generated_protocol.py`) - Auto-generated from the Stepflow JSON schema using `datamodel-code-generator`
 2. **Protocol Layer** (`protocol.py`) - Combines generated types with manual envelope patterns for two-stage deserialization using `msgspec.Raw`
 3. **Server Implementation** - Uses the protocol layer for efficient JSON-RPC message handling
 

@@ -1,30 +1,56 @@
+---
+sidebar_position: 5
+---
+
 # Control Flow
 
-This document describes the implementation of control flow features in Step Flow, including conditional execution, error handling, and nested workflow evaluation.
+Control flow in Stepflow determines how workflow execution proceeds - from basic step execution order to conditional execution, skipping, and error handling.
 
-## Overview
+## Execution
 
-Step Flow supports advanced control flow patterns through:
-- **Conditional Execution**: Steps can be skipped based on runtime conditions
-- **Error Handling**: Steps can handle failures gracefully with fallback values
-- **Nested Workflows**: Sub-workflows can be executed within steps
+Step execution order is determined by data dependencies, not the order in the YAML file. Stepflow automatically analyzes references between steps to determine optimal execution order and enables parallel execution when possible.
 
-## Step States
+```yaml
+steps:
+  # Steps 1 & 2: No dependencies - run in parallel
+  - id: load_config
+    component: /builtin/load_file
+    input:
+      path: "config.json"
 
-Steps in Step Flow have the following states:
+  - id: load_data
+    component: /builtin/load_file
+    input:
+      path: "data.json"
 
-### Execution States (tracked by execution engine)
-- **Pending**: Not yet executed, waiting for inputs or resources
+  # Step 3: Depends on both above steps
+  - id: validate_data
+    component: /data/validate
+    input:
+      data: { $from: { step: load_data } }
+      schema: { $from: { step: load_config }, path: "validation_schema" }
+```
+
+**Execution flow**: `load_config` and `load_data` start simultaneously, then `validate_data` waits for both to complete.
+
+### Step States
+
+During exuecution, steps transition through a variety of states, as shown below:
+
+**Runtime States:**
+- **Pending**: Waiting for dependencies or resources
 - **Running**: Currently executing
 
-### Terminal States (returned in FlowResult)
-- **Success**: Completed successfully and produced output
-- **Skipped**: Skipped due to conditions or dependencies, with optional reason
-- **Failed**: Completed with a business logic error (FlowError)
+**Terminal States:**
+- **Success**: Completed successfully with output
+- **Skipped**: Skipped due to conditions or failed dependencies
+- **Failed**: Business logic error (not infrastructure failures)
 
-Note: Internal errors (infrastructure failures, plugin communication issues) are handled by the workflow runtime and are not represented as step failures.
+## Skipping
 
-## Conditional Execution
+Steps can be skipped either conditionally (or due to failures) or when their dependencies are skipped.
+
+### Skip Conditions
 
 Steps can be conditionally skipped using the `skip` field:
 
@@ -32,51 +58,66 @@ Steps can be conditionally skipped using the `skip` field:
 steps:
   - id: expensive_analysis
     component: /ai/analyze
-    skip: { $from: { workflow: input }, path: is_premium_user }
+    skip: { $from: { workflow: input }, path: "skip_analysis" }
     input:
-      data: { $from: { step: previous_step } }
+      data: { $from: { step: load_data } }
 ```
 
-### Skip Conditions
-- **Reference**: Must be a workflow input or output from an earlier step
-- **Evaluation**: Evaluated at runtime when step dependencies are ready
-- **Logic**: If the referenced value is truthy, the step is skipped
+- **Reference**: Must reference workflow input or earlier step output
+- **Evaluation**: If the referenced value is truthy, step is skipped
 - **Default**: `skip: false` (step executes normally)
 
 ### Skip Propagation
 
-By default, if any inputs to a step are unavailable because the producing step was skipped, the consuming step is also skipped.
-This propagation can be interrupted by configuring how an input should be computed when the producer was skipped:
+When a step is skipped, dependent steps are also skipped by default:
+
+```yaml
+steps:
+  - id: optional_step
+    component: /data/process
+    skip: { $from: { workflow: input }, path: "skip_optional" }
+
+  # This step skips if optional_step is skipped
+  - id: dependent_step
+    component: /data/analyze
+    input:
+      data: { $from: { step: optional_step } }
+```
+
+### Handling Skipped Dependencies
+
+Use `$on_skip` to provide fallback behavior when referenced steps are skipped:
 
 ```yaml
 steps:
   - id: consumer_step
     component: /data/process
     input:
-      required_data: { $from: { step: step1 } }
-      optional_enhancement:
-        $from: { step: step2 }
-        $on_skip: "use_default"
-        $default: "no_enhancement"
+      required_data: { $from: { step: required_step } }
+      optional_data:
+        $from: { step: optional_step }
+        onSkip:
+          action: useDefault
+          defaultValue: it was skipped
 ```
 
-The `$on_skip` field configures what to do when the referenced step was skipped.
-It defaults to `skip_step` which causes the entire consuming step to be skipped.
-It can be set to `use_default` which causes a default value to be used instead.
+**Actions:**
+- **`skip_step`** (default): Skip the consuming step
+- **`use_default`**: Use the provided `$default` value
 
-The `$default` field is required if `$on_skip` is set to `use_default` and the type of the argument does not have a natural default value.
+## Errors
 
-## Error Handling
+### Error Handling
 
-Steps can handle their own failures using the `on_error` field:
+Steps can handle failures gracefully using `on_error`:
 
 ```yaml
 steps:
   - id: risky_operation
     component: /external/api_call
-    on_error:
-      action: continue
-      default_output:
+    onError:
+      action: useDefault
+      defaultValue:
         result: "fallback_value"
         status: "error_handled"
     input:
@@ -84,59 +125,64 @@ steps:
 ```
 
 ### Error Actions
-- **terminate**: Terminate the workflow (default behavior)
-- **continue**: Use `default_output` as the step result (Success state)
-- **skip**: Mark the step as Skipped
+
+- **`terminate`** (default): Stop workflow execution
+- **`useDefault`**: Use `defaultValue` and mark step as successful
+- **`skip`**: Mark step as skipped (triggers skip propagation)
 
 ### Default Output Requirements
-- Must conform to the component's output schema
-- Required fields must be present
-- Optional fields may be omitted
-- Type compatibility is enforced during validation
 
-## Nested Workflows (Eval)
+When using `action: useDefault`, the `defaultValue` must:
+- Conform to the component's output schema
+- Include all required fields
+- Use compatible data types
 
-Sub-workflows can be executed using the built-in `eval` component:
+## Advanced Patterns
+
+### Conditional Logic
 
 ```yaml
 steps:
-  - id: sub_process
-    component: /builtin/eval
+  - id: check_user_level
+    component: /user/check_level
     input:
-      workflow:
-        $literal:
-          inputs:
-            data: { type: string }
-          steps:
-            - id: process
-              component: /data/transform
-              input:
-                input: { $from: { workflow: input }, path: data }
-          output:
-            result: { $from: { step: process } }
-      input:
-        data: { $from: { step: previous_step }, path: processed_data }
+      user_id: { $from: { workflow: input }, path: "user_id" }
+
+  # Different processing based on user level
+  - id: premium_analysis
+    component: /analytics/premium
+    skip: { $from: { step: check_user_level }, path: "is_basic_user" }
+    input:
+      user_data: { $from: { step: check_user_level } }
+
+  - id: basic_analysis
+    component: /analytics/basic
+    skip: { $from: { step: check_user_level }, path: "is_premium_user" }
+    input:
+      user_data: { $from: { step: check_user_level } }
 ```
 
-### Sub-workflow Execution
-- **Isolation**: Each sub-workflow gets a unique execution ID
-- **Context**: Completely isolated from parent workflow state
-- **Resources**: Count against parent workflow resource limits
-- **Errors**: Sub-workflow failures propagate as eval step failures
+### Graceful Degradation
 
-### Use Cases
-- Factoring complex workflows into reusable components
-- Dynamic workflow execution based on runtime data
-- Implementing complex looping and branching logic
+```yaml
+steps:
+  - id: critical_data
+    component: /data/load_critical
+    # No error handling - must succeed
 
-### Resource Management
-- Sub-workflows inherit resource limits from parent
-- Failed sub-workflows don't consume additional resources
-- Skipped steps don't consume execution resources
+  - id: enhancement_data
+    component: /data/load_enhancement
+    onError:
+      action: useDefault
+      defaultValue: { enhanced: false }
 
-## Future Enhancements
-
-- **Retry Logic**: `on_error: {action: retry, max_attempts: 3}`
-- **Time Limits**: Step- or edge-level timeouts with skip behavior
-- **Loop Primitives**: Tail-eval for iterative workflows
-- **Fuel/Resource System**: Execution step limits for loop termination
+  - id: process_data
+    component: /data/process
+    input:
+      critical: { $from: { step: critical_data } }
+      enhanced:
+        $from: { step: enhancement_data }
+        onSkip:
+          action: useDefault
+          defaultValue: { enhanced: false }
+```

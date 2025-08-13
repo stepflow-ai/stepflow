@@ -1,5 +1,5 @@
 /**
- * Flow Builder API for programmatically creating StepFlow workflows.
+ * Flow Builder API for programmatically creating Stepflow workflows.
  * This provides a TypeScript implementation of the Python SDK's FlowBuilder.
  */
 
@@ -58,10 +58,10 @@ export class StepHandle {
    */
   getReferences(): Array<StepReference | WorkflowInput> {
     const references: Array<StepReference | WorkflowInput> = [];
-    
+
     const extractFromValueTemplate = (template: ValueTemplate | undefined): void => {
       if (!template) return;
-      
+
       if (typeof template === 'object' && template !== null) {
         if ('$from' in template && template.$from) {
           const ref = template.$from as any;
@@ -75,7 +75,7 @@ export class StepHandle {
             references.push(new WorkflowInput(new JsonPath([path]), onSkip));
           }
         }
-        
+
         if (Array.isArray(template)) {
           template.forEach(item => extractFromValueTemplate(item));
         } else {
@@ -86,7 +86,7 @@ export class StepHandle {
 
     extractFromValueTemplate(this.step.input);
     extractFromValueTemplate(this.step.skip_if);
-    
+
     if (this.step.on_error?.type === 'default' && this.step.on_error.value) {
       extractFromValueTemplate(Value.convertToValueTemplate(this.step.on_error.value));
     }
@@ -122,13 +122,13 @@ function createStepHandleProxy(handle: StepHandle): StepHandle {
       if (prop in target || typeof prop === 'symbol') {
         return (target as any)[prop];
       }
-      
+
       // For string properties that don't exist on target and don't start with underscore
       if (typeof prop === 'string' && !prop.startsWith('_')) {
         // Delegate to the underlying StepReference
         return (target.ref as any)[prop];
       }
-      
+
       return (target as any)[prop];
     }
   });
@@ -202,7 +202,7 @@ export class FlowBuilder {
     this._steps.push(step);
     const handle = createStepHandleProxy(new StepHandle(options.id, step, this));
     this._stepHandles.set(options.id, handle);
-    
+
     return handle;
   }
 
@@ -218,12 +218,12 @@ export class FlowBuilder {
    */
   getReferences(): Array<StepReference | WorkflowInput> {
     const references: Array<StepReference | WorkflowInput> = [];
-    
+
     // Extract references from all steps
     this._stepHandles.forEach(handle => {
       references.push(...handle.getReferences());
     });
-    
+
     // Extract references from workflow output
     if (this._output) {
       const extractFromValueTemplate = (template: ValueTemplate): void => {
@@ -240,7 +240,7 @@ export class FlowBuilder {
               references.push(new WorkflowInput(new JsonPath([path]), onSkip));
             }
           }
-          
+
           if (Array.isArray(template)) {
             template.forEach(item => extractFromValueTemplate(item));
           } else {
@@ -252,10 +252,10 @@ export class FlowBuilder {
           }
         }
       };
-      
+
       extractFromValueTemplate(this._output);
     }
-    
+
     return references;
   }
 
@@ -283,18 +283,18 @@ export class FlowBuilder {
    */
   static load(flow: Flow): FlowBuilder {
     const builder = new FlowBuilder(flow.name, flow.description, flow.version);
-    
+
     builder._inputSchema = flow.input_schema;
     builder._outputSchema = flow.output_schema;
     builder._output = flow.output;
-    
+
     // Recreate steps and handles
     flow.steps.forEach(step => {
       builder._steps.push({ ...step });
       const handle = createStepHandleProxy(new StepHandle(step.id, step, builder));
       builder._stepHandles.set(step.id, handle);
     });
-    
+
     return builder;
   }
 

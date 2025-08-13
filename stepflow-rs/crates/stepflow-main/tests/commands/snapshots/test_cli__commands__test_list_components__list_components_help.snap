@@ -12,7 +12,31 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-List all available components from a stepflow config
+List all available components from a stepflow config.
+
+List all available components from the configured plugins.
+
+# Examples
+
+```bash
+
+# List components in pretty format
+
+stepflow list-components
+
+# List components with JSON output including schemas
+
+stepflow list-components --format=json
+
+# List components from specific config without schemas
+
+stepflow list-components --config=my-config.yml --format=yaml --schemas=false
+
+# Show all components including unreachable ones
+
+stepflow list-components --hide-unreachable=false
+
+```
 
 Usage: stepflow list-components [OPTIONS]
 
@@ -23,7 +47,7 @@ Options:
           If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
 
       --log-level <LEVEL>
-          Set the log level for StepFlow
+          Set the log level for Stepflow
           
           [default: info]
           [possible values: trace, debug, info, warn, error]
@@ -35,7 +59,7 @@ Options:
           [possible values: pretty, json, yaml]
 
       --other-log-level <LEVEL>
-          Set the log level for other parts of StepFlow
+          Set the log level for other parts of Stepflow
           
           [default: warn]
           [possible values: trace, debug, info, warn, error]

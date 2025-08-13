@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StepFlow Dashboard",
-  description: "Dashboard for managing StepFlow workflows, executions, and components",
+  title: "Stepflow Dashboard",
+  description: "Dashboard for managing Stepflow workflows, executions, and components",
 };
 
 export default function RootLayout({

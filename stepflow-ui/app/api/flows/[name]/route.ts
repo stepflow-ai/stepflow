@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import {
   WorkflowDetailSchema,
   ErrorResponseSchema,
@@ -47,7 +47,7 @@ export async function GET(
     }
 
     // Get the flow definition from core server
-    const stepflowClient = getStepFlowClient()
+    const stepflowClient = getStepflowClient()
     let flowData
     try {
       flowData = await stepflowClient.getFlow(workflow.flowId)
@@ -118,13 +118,13 @@ export async function PUT(
   try {
     const workflowName = decodeURIComponent(resolvedParams.name)
     const body = await request.json()
-    
+
     const { flow, description } = body
 
     // Store the updated flow in core server
-    const stepflowClient = getStepFlowClient()
+    const stepflowClient = getStepflowClient()
     const storeResult = await stepflowClient.storeFlow(flow) as StoreFlowResponse
-    
+
     // Extract flow ID from the new response format
     const flowId = storeResult.flowId
     if (!flowId) {

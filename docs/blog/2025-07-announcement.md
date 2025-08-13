@@ -1,6 +1,6 @@
 ---
 date: 2025-07-25
-title: "Announcing StepFlow: An Open Protocol and Runtime for GenAI Workflows"
+title: "Announcing Stepflow: An Open Protocol and Runtime for GenAI Workflows"
 description: "Open Workflow Protocol and Runtime with JSON-RPC protocol for component servers."
 slug: announcing-stepflow
 authors:
@@ -9,17 +9,17 @@ authors:
 tags: [announcements]
 ---
 
-# Announcing StepFlow: An Open Protocol and Runtime for GenAI Workflows
+# Announcing Stepflow: An Open Protocol and Runtime for GenAI Workflows
 
-We're excited to announce the initial release of StepFlow, an open-source
+We're excited to announce the initial release of Stepflow, an open-source
 protocol and runtime designed to make building, executing, and scaling GenAI
 workflows simple, secure, and portable. Whether you're prototyping locally or
-deploying to production, StepFlow provides the foundation for reliable AI
+deploying to production, Stepflow provides the foundation for reliable AI
 workflow execution.
 
 <!-- truncate -->
 
-## Why StepFlow?
+## Why Stepflow?
 
 The rapid evolution of GenAI over the past couple of years has created an
 explosion of tools, models, and APIs. While this diversity has powered some
@@ -29,7 +29,7 @@ scale in production? How do you maintain security and isolation when executing
 untrusted code? How do you parallelise your workflows to maximise resource
 utilization?
 
-StepFlow was designed to fill these gaps for AI workflows, and address these challenges with a
+Stepflow was designed to fill these gaps for AI workflows, and address these challenges with a
 simple yet powerful approach: define your workflows in YAML or JSON, and let the
 runtime handle the complexity of execution, scaling, and security.
 
@@ -37,7 +37,7 @@ runtime handle the complexity of execution, scaling, and security.
 
 ### Reliable Workflow Execution for Everyone
 
-StepFlow focuses on three core users: workflow creators, workflow frameworks,
+Stepflow focuses on three core users: workflow creators, workflow frameworks,
 and workflow platforms. Workflow creators can use more components, run in more
 places, and scale more reliably. Workflow frameworks can leverage all the
 existing components without the need to deal with scale and durability. Workflow
@@ -51,9 +51,7 @@ this release include:
 
 ### Secure Component Isolation
 
-GenAI in the modern enterprise requires workflow isolation for security and resource control. StepFlow builds this in at the
-core:
-
+GenAI in the modern enterprise requires workflow isolation for security and resource control. Stepflow builds this in at the core:
 - Process isolation: Each component runs in its own sandboxed process or node
 - JSON-RPC protocol: Clean separation between workflow runtime and components
 - Resource controls: Strict environment and resource management for each step
@@ -96,7 +94,7 @@ This is just the beginning! Our roadmap includes:
 
 ## Join the Community
 
-StepFlow is open source and we welcome contributions! Whether you want to:
+Stepflow is open source and we welcome contributions! Whether you want to:
 
 - Build new components
 - Improve documentation
@@ -109,7 +107,7 @@ involved.
 ## Acknowledgments
 
 Special thanks to all our early contributors and testers who helped shape
-StepFlow. Your feedback and contributions have been invaluable in getting us to
+Stepflow. Your feedback and contributions have been invaluable in getting us to
 this first release.
 
 ## Next Steps
@@ -119,4 +117,4 @@ join us in making AI workflows accessible, reliable, and secure for everyone.
 
 **Happy workflow building!**
 
-The StepFlow Team
+The Stepflow Team

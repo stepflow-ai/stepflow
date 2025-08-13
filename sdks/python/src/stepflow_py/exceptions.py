@@ -30,7 +30,7 @@ class ErrorCode(IntEnum):
 
 
 class StepflowError(Exception):
-    """Base exception for all StepFlow SDK errors."""
+    """Base exception for all Stepflow SDK errors."""
 
     def __init__(self, message: str, code: ErrorCode = None, data: dict = None):
         super().__init__(message)
@@ -89,7 +89,7 @@ class StepflowExecutionError(StepflowError):
 
 
 class StepflowRuntimeError(StepflowError):
-    """Errors from the StepFlow runtime."""
+    """Errors from the Stepflow runtime."""
 
     @property
     def default_code(self) -> ErrorCode:

@@ -1,4 +1,4 @@
--- Initialize PostgreSQL database for StepFlow UI
+-- Initialize PostgreSQL database for Stepflow UI
 -- This script is run automatically when the PostgreSQL container starts
 
 -- Ensure the database exists (should be created by POSTGRES_DB env var)

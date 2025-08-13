@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Message reading and decoding for the StepFlow Python SDK.
+"""Message reading and decoding for the Stepflow Python SDK.
 
 This module handles the two-stage deserialization of JSON-RPC messages,
 using RawMessage as an implementation detail for efficient parsing.

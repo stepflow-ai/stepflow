@@ -18,7 +18,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::component::ComponentInfo;
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use stepflow_plugin::Plugin as _;
 use utoipa::{IntoParams, ToSchema};
 
@@ -57,7 +57,7 @@ fn default_include_schemas() -> bool {
     tag = crate::api::COMPONENT_TAG,
 )]
 pub async fn list_components(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Query(query): Query<ListComponentsQuery>,
 ) -> Result<Json<ListComponentsResponse>, ErrorResponse> {
     let include_schemas = query.include_schemas;
