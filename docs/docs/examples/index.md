@@ -8,38 +8,12 @@ This section provides comprehensive examples of Stepflow workflows, from simple 
 
 ## Example Categories
 
-### 🚀 **Getting Started Examples**
-- **[Basic Operations](./basic-operations.md)** - Simple workflows demonstrating core concepts
-- **[AI Workflows](./ai-workflows.md)** - OpenAI integration, prompt engineering, and AI-powered analysis
-- **[Data Processing](./data-processing.md)** - File handling, transformation, and validation patterns
-- **[Custom Components](./custom-components.md)** - Building reusable components in Python and other languages
+### 🤖 **AI and Machine Learning Examples**
+- **[OpenAI Workflows](./openai-workflows.mdx)** - OpenAI integration and prompt engineering
+- **[LangChain Integration](./langchain-integration.mdx)** - Comprehensive LangChain integration patterns
+- **[Production Model Serving](./production-model-serving.mdx)** - Production-ready AI infrastructure patterns
 
-## How to Use These Examples
-
-### Running Examples
-
-All examples can be run from the Stepflow repository:
-
-```bash
-# Clone the repository
-git clone https://github.com/riptano/stepflow.git
-cd stepflow/stepflow-rs
-
-# Run a basic example
-cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json
-
-# Run with test cases
-cargo run -- test examples/basic/workflow.yaml
-```
-
-### Example Structure
-
-Each example includes:
-
-- **📄 Workflow Definition**: Complete YAML workflow file
-- **📝 Step-by-Step Explanation**: How each part works
-- **🧪 Test Cases**: Sample inputs and expected outputs
-- **⚙️ Configuration**: Required plugins and settings
-- **💡 Variations**: Alternative approaches and extensions
-
-Ready to dive in? Start with [Basic Operations](./basic-operations.md) to learn the fundamentals, or jump to a specific example that interests you!
+### 🔧 **Advanced Examples**
+- **[Custom Components](./custom-components.mdx)** - Building reusable components in Python
+- **[Loop Components](./loop-components.mdx)** - Implementing iteration and mapping patterns
+- **[MCP Tools](./mcp-tools.mdx)** - Model Context Protocol integration
