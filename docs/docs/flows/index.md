@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Flows Overview
 
-Flows are the core abstraction in StepFlow.
+Flows are the core abstraction in Stepflow.
 Some of the most important parts of a flow are:
 
 - **Input** - The schema for the input to the flow
@@ -14,7 +14,7 @@ Some of the most important parts of a flow are:
 The steps and output are able to reference the input and the results of previous steps.
 This creates data dependencies between steps, determining which steps must run in sequence and which can run in parallel.
 
-Flows are typically defined in YAML files and can be executed by the StepFlow runtime either locally or as a service.
+Flows are typically defined in YAML files and can be executed by the Stepflow runtime either locally or as a service.
 
 :::note
 Flows conform to a [JSON schema](../reference/flow-schema.mdx) that defines the structure and requirements for flow definitions.
@@ -40,14 +40,14 @@ Learn more about [Steps](./steps.md).
 
 ## Components
 Components provide the actual logic executed by steps. They can be:
-- **Built-in components** - Provided by StepFlow for common operations
-- **External components** - Implemented using the StepFlow protocol
+- **Built-in components** - Provided by Stepflow for common operations
+- **External components** - Implemented using the Stepflow protocol
 - **MCP tools** - Model Context Protocol server tools
 
 Learn more about [Components](../components/index.md).
 
 ## Expressions {#expressions}
-StepFlow's expression system enables dynamic data references and transformations:
+Stepflow's expression system enables dynamic data references and transformations:
 - Reference flow inputs and step outputs
 - Extract specific fields from complex data
 - Handle missing data with defaults
@@ -65,7 +65,7 @@ Learn more about [Control Flow](./control-flow.md).
 
 ## Metadata
 
-Flows and steps may contain additional metadata that is used in StepFlow or by external tools. Currently, this includes:
+Flows and steps may contain additional metadata that is used in Stepflow or by external tools. Currently, this includes:
 
 - `name`: A human-readable name for the flow
 - `description`: A description of the flow's purpose
@@ -75,7 +75,7 @@ These will likely be extended in the future to allow an arbitrary `metadata` dic
 
 ## Next Steps
 
-- **New to StepFlow?** Start with the [Getting Started Guide](../getting-started.md)
+- **New to Stepflow?** Start with the [Getting Started Guide](../getting-started.md)
 - **Ready to build?** Check out [Workflow Examples](../examples/)
 - **Need components?** Explore [Built-in Components](../components/builtins/index.md)
-- **Building integrations?** Learn about the [StepFlow Protocol](../protocol/)
+- **Building integrations?** Learn about the [Stepflow Protocol](../protocol/)

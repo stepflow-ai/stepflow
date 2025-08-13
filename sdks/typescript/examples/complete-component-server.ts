@@ -2,8 +2,8 @@
 
 /**
  * Complete Component Server Example
- * 
- * This example demonstrates a full-featured StepFlow component server with:
+ *
+ * This example demonstrates a full-featured Stepflow component server with:
  * - Multiple component types (math, string, data processing)
  * - Blob storage and retrieval
  * - UDF integration
@@ -13,8 +13,8 @@
  * - Real-world use cases
  */
 
-import { 
-  StepflowStdioServer, 
+import {
+  StepflowStdioServer,
   StepflowHttpServer,
   StepflowContext,
   udf,
@@ -68,9 +68,9 @@ server.registerComponent(
 
 // Calculator component with multiple operations
 server.registerComponent(
-  (input: { 
-    a: number; 
-    b: number; 
+  (input: {
+    a: number;
+    b: number;
     operation: 'add' | 'subtract' | 'multiply' | 'divide' | 'power' | 'mod';
   }) => {
     let result: number;
@@ -149,10 +149,10 @@ server.registerComponent(
     const sum = numbers.reduce((a, b) => a + b, 0);
     const mean = sum / numbers.length;
     const sorted = [...numbers].sort((a, b) => a - b);
-    const median = sorted.length % 2 === 0 
+    const median = sorted.length % 2 === 0
       ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
       : sorted[Math.floor(sorted.length / 2)];
-    
+
     const variance = numbers.reduce((acc, n) => acc + Math.pow(n - mean, 2), 0) / numbers.length;
     const stdDev = Math.sqrt(variance);
 
@@ -194,8 +194,8 @@ console.log('📝 Registering String Components...');
 
 // Text transformer
 server.registerComponent(
-  (input: { 
-    text: string; 
+  (input: {
+    text: string;
     operations: Array<'uppercase' | 'lowercase' | 'capitalize' | 'reverse' | 'trim'>;
   }) => {
     let result = input.text;
@@ -287,9 +287,9 @@ server.registerComponent(
       words.forEach(word => {
         wordFreq[word] = (wordFreq[word] || 0) + 1;
       });
-      
+
       result.wordFrequency = Object.entries(wordFreq)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([, a], [, b]) => b - a)
         .slice(0, 10)
         .reduce((obj, [word, count]) => {
           obj[word] = count;
@@ -306,8 +306,8 @@ server.registerComponent(
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to analyze' },
-        includeWordFrequency: { 
-          type: 'boolean', 
+        includeWordFrequency: {
+          type: 'boolean',
           default: false,
           description: 'Include word frequency analysis'
         }
@@ -325,8 +325,8 @@ console.log('🗄️  Registering Data Components...');
 
 // Array processor
 server.registerComponent(
-  (input: { 
-    data: any[]; 
+  (input: {
+    data: any[];
     operation: 'filter' | 'map' | 'sort' | 'unique' | 'group' | 'chunk';
     config?: any;
   }) => {
@@ -590,7 +590,7 @@ server.registerComponent(
 
     try {
       const blobData = await context.getBlob(input.blobId);
-      
+
       return {
         blobId: input.blobId,
         data: blobData.data,
@@ -742,9 +742,9 @@ server.registerComponent(
       type: 'object',
       properties: {
         message: { description: 'Message to echo back' },
-        delay: { 
-          type: 'number', 
-          minimum: 0, 
+        delay: {
+          type: 'number',
+          minimum: 0,
           maximum: 5000,
           description: 'Delay in milliseconds (max 5000)'
         }

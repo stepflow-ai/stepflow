@@ -19,7 +19,7 @@ use stepflow_core::workflow::{Flow, ValueRef};
 use stepflow_server::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
 use url::Url;
 
-/// Submit a workflow to a StepFlow service for execution
+/// Submit a workflow to a Stepflow service for execution
 pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<FlowResult> {
     let client = reqwest::Client::new();
 

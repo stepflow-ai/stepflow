@@ -48,7 +48,7 @@ Options:
           Path to the workflow file to execute
 
       --log-level <LEVEL>
-          Set the log level for StepFlow
+          Set the log level for Stepflow
           
           [default: info]
           [possible values: trace, debug, info, warn, error]
@@ -59,7 +59,7 @@ Options:
           If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
 
       --other-log-level <LEVEL>
-          Set the log level for other parts of StepFlow
+          Set the log level for other parts of Stepflow
           
           [default: warn]
           [possible values: trace, debug, info, warn, error]

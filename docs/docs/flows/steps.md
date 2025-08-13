@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Steps
 
-Steps are the fundamental building blocks of StepFlow workflows.
+Steps are the fundamental building blocks of Stepflow workflows.
 Each step executes a specific component and produces output that can be used by subsequent steps.
 
 The following example is a minimal step -- a name for referencing it's results, the component to execute, and a description of the input to the component.

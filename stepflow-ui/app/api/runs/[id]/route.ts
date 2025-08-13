@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import { ErrorResponseSchema } from '@/lib/api-types'
 
 // GET /api/runs/[id] - Get run details (proxy to core server)
@@ -10,8 +10,8 @@ export async function GET(
   const resolvedParams = await params
   try {
     const runId = resolvedParams.id
-    const stepflowClient = getStepFlowClient()
-    
+    const stepflowClient = getStepflowClient()
+
     const runDetails = await stepflowClient.getRun(runId)
     return NextResponse.json(runDetails)
   } catch (error) {
@@ -35,8 +35,8 @@ export async function DELETE(
   const resolvedParams = await params
   try {
     const runId = resolvedParams.id
-    const stepflowClient = getStepFlowClient()
-    
+    const stepflowClient = getStepflowClient()
+
     await stepflowClient.deleteRun(runId)
     return new NextResponse(null, { status: 204 })
   } catch (error) {

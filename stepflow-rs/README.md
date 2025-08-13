@@ -1,6 +1,6 @@
-# StepFlow Rust Engine
+# Stepflow Rust Engine
 
-The core Rust-based execution engine and runtime for StepFlow workflows.
+The core Rust-based execution engine and runtime for Stepflow workflows.
 
 ## Quick Start
 
@@ -88,7 +88,7 @@ cargo check
 
 ## Configuration
 
-StepFlow supports flexible plugin configuration with environment variable substitution:
+Stepflow supports flexible plugin configuration with environment variable substitution:
 
 ```yaml
 # stepflow-config.yml
@@ -101,7 +101,7 @@ plugins:
     env:
       PYTHONPATH: "${HOME}/custom/path"
       USER_CONFIG: "${USER:-anonymous}"
-  
+
   filesystem:
     type: mcp
     command: npx
@@ -114,7 +114,7 @@ plugins:
 - Shell-like substitution with `${VAR}` syntax
 - Default values using `${VAR:-default}` syntax
 - Nested substitution: `${HOME}/projects/${USER}`
-- Works with both StepFlow and MCP plugins
+- Works with both Stepflow and MCP plugins
 - Applies to both command arguments (`args`) and environment variables (`env`)
 
 ## Project Structure
@@ -136,7 +136,7 @@ This is a Rust workspace containing multiple crates:
 
 ## Documentation
 
-For comprehensive documentation, examples, and guides, visit the [StepFlow Documentation](https://fuzzy-journey-4j3y1we.pages.github.io/).
+For comprehensive documentation, examples, and guides, visit the [Stepflow Documentation](https://fuzzy-journey-4j3y1we.pages.github.io/).
 
 See also:
 - [CLAUDE.md](../CLAUDE.md) - Development guide for contributors

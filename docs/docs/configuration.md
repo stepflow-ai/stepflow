@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # Configuration
 
-StepFlow configuration controls which plugins and components are available to workflows, state storage backends, and other runtime settings. Configuration is defined in YAML files and follows a hierarchical resolution system.
+Stepflow configuration controls which plugins and components are available to workflows, state storage backends, and other runtime settings. Configuration is defined in YAML files and follows a hierarchical resolution system.
 
 ## Configuration File Structure
 
@@ -46,7 +46,7 @@ stateStore:
 
 ## Configuration Resolution
 
-StepFlow uses a hierarchical approach to find configuration files:
+Stepflow uses a hierarchical approach to find configuration files:
 
 1. **Explicit path**: Use `--config` CLI option if provided
 2. **Workflow directory**: Look for config files in the same directory as the workflow file
@@ -55,7 +55,7 @@ StepFlow uses a hierarchical approach to find configuration files:
 
 ### Config File Names
 
-StepFlow looks for these filenames in order:
+Stepflow looks for these filenames in order:
 - `stepflow-config.yml`
 - `stepflow-config.yaml`
 - `stepflow_config.yml`
@@ -67,7 +67,7 @@ StepFlow looks for these filenames in order:
 
 #### Builtin Plugins
 
-Built-in components provided by StepFlow itself:
+Built-in components provided by Stepflow itself:
 
 ```yaml
 plugins:
@@ -146,7 +146,7 @@ plugins:
 
 ## Routing Configuration
 
-**Routing rules are required** for components to be accessible. StepFlow uses routing rules to map component paths to specific plugins.
+**Routing rules are required** for components to be accessible. Stepflow uses routing rules to map component paths to specific plugins.
 
 ### Basic Routing
 
@@ -244,7 +244,7 @@ plugins:
 ```
 
 **MCP Plugin Features:**
-- **Environment Variable Substitution**: Same substitution syntax as StepFlow plugins
+- **Environment Variable Substitution**: Same substitution syntax as Stepflow plugins
 - **Command Arguments**: Environment variables can be used in both `args` and `env` fields
 - **Tool Access**: MCP tools are accessed with format: `/server/tool_name`
 - **Process Management**: MCP servers run as separate processes with isolated environments
@@ -252,7 +252,7 @@ plugins:
 
 ## State Store Configuration
 
-StepFlow supports multiple backends for storing workflow state and blobs.
+Stepflow supports multiple backends for storing workflow state and blobs.
 
 ### In-Memory State Store (Default)
 
@@ -433,7 +433,7 @@ stateStore:
 
 ## Environment Variables
 
-StepFlow respects these environment variables:
+Stepflow respects these environment variables:
 
 ### Global Settings
 
@@ -599,7 +599,7 @@ Error: Failed to initialize plugin 'python'
 **For HTTP Transport:**
 - Verify server is running and accessible at the configured URL
 - Check network connectivity and firewall settings
-- Verify server supports the StepFlow protocol
+- Verify server supports the Stepflow protocol
 - Check server logs for initialization errors
 
 #### State Store Connection Failed
@@ -616,7 +616,7 @@ Error: Failed to connect to state store
 Error: HTTP request failed or timed out
 ```
 - Verify the component server is running on the specified URL
-- Check network connectivity between StepFlow and the server
+- Check network connectivity between Stepflow and the server
 - Increase timeout values if requests are timing out
 - Verify the server supports JSON-RPC over HTTP POST
 - Check if MCP-style session negotiation is working correctly

@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # StepFlow Runtime Service - Central workflow orchestration
+  # Stepflow Runtime Service - Central workflow orchestration
   stepflow-server:
     build:
       context: .

@@ -34,25 +34,25 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Build StepFlow binary first
-echo "🔨 Building StepFlow binary..."
+# Build Stepflow binary first
+echo "🔨 Building Stepflow binary..."
 cd "$STEPFLOW_DIR"
 cargo build --release
 
 STEPFLOW_BINARY="$STEPFLOW_DIR/target/release/stepflow"
 if [ ! -f "$STEPFLOW_BINARY" ]; then
-    echo "❌ Failed to build StepFlow binary"
+    echo "❌ Failed to build Stepflow binary"
     exit 1
 fi
 
-echo "✅ StepFlow binary built successfully"
+echo "✅ Stepflow binary built successfully"
 
 # Navigate to example directory for model server execution
 cd "$EXAMPLE_DIR"
 
 echo "🔧 Configuration: Development (subprocess-based serve/submit)"
 echo "📂 Working directory: $EXAMPLE_DIR"
-echo "🏗️  StepFlow binary: $STEPFLOW_BINARY"
+echo "🏗️  Stepflow binary: $STEPFLOW_BINARY"
 
 # Choose input file
 INPUT_FILE="sample_input_text.json"
@@ -65,13 +65,13 @@ fi
 echo "📄 Using input: $INPUT_FILE"
 echo ""
 
-# Start StepFlow server in background
+# Start Stepflow server in background
 SERVER_PORT=7837
 SERVER_PID=""
 
 cleanup() {
     if [ ! -z "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
-        echo "🛑 Stopping StepFlow server (PID: $SERVER_PID)..."
+        echo "🛑 Stopping Stepflow server (PID: $SERVER_PID)..."
         kill "$SERVER_PID"
         wait "$SERVER_PID" 2>/dev/null || true
     fi
@@ -79,7 +79,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-echo "🌐 Starting StepFlow server on port $SERVER_PORT..."
+echo "🌐 Starting Stepflow server on port $SERVER_PORT..."
 "$STEPFLOW_BINARY" serve \
     --port="$SERVER_PORT" \
     --log-file="stepflow-server-dev.log" \
@@ -93,12 +93,12 @@ attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
     if curl -s "http://localhost:$SERVER_PORT/health" >/dev/null 2>&1; then
-        echo "✅ StepFlow server is ready!"
+        echo "✅ Stepflow server is ready!"
         break
     fi
 
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-        echo "❌ StepFlow server failed to start"
+        echo "❌ Stepflow server failed to start"
         exit 1
     fi
 

@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Testing Workflows
 
-StepFlow provides comprehensive testing capabilities built directly into workflow files. This guide covers everything from basic test cases to advanced testing patterns and CI/CD integration.
+Stepflow provides comprehensive testing capabilities built directly into workflow files. This guide covers everything from basic test cases to advanced testing patterns and CI/CD integration.
 
 ## Test Configuration Overview
 
@@ -392,7 +392,7 @@ stepflow test workflow.yaml --tags="critical"
 
 ```yaml
 # .github/workflows/test.yml
-name: StepFlow Tests
+name: Stepflow Tests
 
 on: [push, pull_request]
 
@@ -403,7 +403,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Install StepFlow
+    - name: Install Stepflow
       run: |
         curl -L https://github.com/riptano/stepflow/releases/latest/download/stepflow-linux.tar.gz | tar xz
         sudo mv stepflow /usr/local/bin/

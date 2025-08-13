@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Custom Components
 
-Custom components allow you to extend StepFlow with your own business logic, integrations, and data processing capabilities. This guide shows you how to create custom components using the Python SDK.
+Custom components allow you to extend Stepflow with your own business logic, integrations, and data processing capabilities. This guide shows you how to create custom components using the Python SDK.
 
 ## Quick Start
 
@@ -230,7 +230,7 @@ async def process_with_validation(input: ProcessInput) -> ProcessOutput:
 
 ### Using StepflowContext
 
-Components can access the StepFlow runtime through the `StepflowContext` parameter.
+Components can access the Stepflow runtime through the `StepflowContext` parameter.
 This can be used to store and retrieve data using blob storage or execute sub-workflows.
 
 ### Blob Storage Operations

@@ -14,7 +14,7 @@
 # the License.
 
 """
-Direct LangChain components for StepFlow.
+Direct LangChain components for Stepflow.
 
 This module provides built-in components for executing LangChain runnables
 directly without requiring blob storage.
@@ -59,7 +59,7 @@ async def langchain_invoke(
 
     Args:
         input: Contains runnable definition, input data, and optional config
-        context: StepFlow context for runtime services
+        context: Stepflow context for runtime services
 
     Returns:
         The result of executing the LangChain runnable
@@ -84,7 +84,7 @@ async def langchain_invoke(
     # Prepare input for LangChain runnable
     langchain_input = input.input
 
-    # Create runnable config from StepFlow input
+    # Create runnable config from Stepflow input
     stepflow_input_dict = {"input": input.input, "config": input.config or {}}
     runnable_config = create_runnable_config(stepflow_input_dict, context)
 
@@ -99,13 +99,13 @@ async def langchain_invoke(
 
 def register_langchain_components(server):
     """
-    Register all built-in LangChain components with a StepFlow server.
+    Register all built-in LangChain components with a Stepflow server.
 
     This function registers the following components:
     - /langchain/invoke: Execute LangChain runnables directly
 
     Args:
-        server: The StepFlow server instance to register components with
+        server: The Stepflow server instance to register components with
     """
     # Only register if LangChain is available
     try:

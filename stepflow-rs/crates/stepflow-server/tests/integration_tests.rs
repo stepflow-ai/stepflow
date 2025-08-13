@@ -22,7 +22,7 @@ use stepflow_core::{
     FlowResult,
     workflow::{Component, ErrorAction, Flow, Step},
 };
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use stepflow_mock::MockPlugin;
 use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
@@ -48,7 +48,7 @@ pub fn init_test_logging() {
 }
 
 /// Helper to create a test server with in-memory state and optional mock plugins
-async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecutor>) {
+async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowExecutor>) {
     use stepflow_core::FlowError;
     use stepflow_mock::MockComponentBehavior;
 
@@ -139,7 +139,7 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
     plugin_router_builder = plugin_router_builder.with_routing_config(routing_config);
 
     let plugin_router = plugin_router_builder.build().unwrap();
-    let executor = StepFlowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router);
+    let executor = StepflowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router);
     executor.initialize_plugins().await.unwrap();
 
     // Use the real startup logic but without swagger UI for tests
@@ -155,12 +155,12 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepFlowExecuto
 }
 
 /// Helper to create a test server with only builtin components
-async fn create_basic_test_server() -> (Router, Arc<StepFlowExecutor>) {
+async fn create_basic_test_server() -> (Router, Arc<StepflowExecutor>) {
     create_test_server(false).await
 }
 
 /// Helper to create a test server with both builtin and mock components
-async fn create_test_server_with_mocks() -> (Router, Arc<StepFlowExecutor>) {
+async fn create_test_server_with_mocks() -> (Router, Arc<StepflowExecutor>) {
     create_test_server(true).await
 }
 

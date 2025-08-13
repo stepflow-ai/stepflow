@@ -12,9 +12,9 @@ This document contains the help content for the `submit` command-line program.
 
 ## `submit`
 
-Submit a workflow to a StepFlow service.
+Submit a workflow to a Stepflow service.
 
-Submit a workflow to a running StepFlow service.
+Submit a workflow to a running Stepflow service.
 
 # Examples
 
@@ -38,7 +38,7 @@ stepflow submit --flow=workflow.yaml --input-yaml='param: value'
 
 ###### **Options:**
 
-* `--url <URL>` — The URL of the StepFlow service to submit the workflow to
+* `--url <URL>` — The URL of the Stepflow service to submit the workflow to
 
   Default value: `http://localhost:7837`
 * `--flow <FILE>` — Path to the workflow file to submit

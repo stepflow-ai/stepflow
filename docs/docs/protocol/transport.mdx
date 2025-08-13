@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Transport
 
-StepFlow protocol supports two transport mechanisms for communicating with component servers:
+Stepflow protocol supports two transport mechanisms for communicating with component servers:
 
 1. **STDIO Transport** - JSON-RPC over stdin/stdout with subprocess communication
 2. **HTTP Transport** - JSON-RPC over HTTP with optional MCP-style session negotiation
@@ -93,7 +93,7 @@ plugins:
 ```
 
 **Communication Flow:**
-- StepFlow launches the component server as a subprocess
+- Stepflow launches the component server as a subprocess
 - JSON-RPC messages are sent via stdin
 - Responses are received via stdout
 - Bidirectional communication is supported through the same channels
@@ -119,11 +119,11 @@ plugins:
 
 #### MCP-Style Session Negotiation
 
-For HTTP transport, StepFlow supports optional MCP (Model Context Protocol) style session negotiation to isolate multiple client connections:
+For HTTP transport, Stepflow supports optional MCP (Model Context Protocol) style session negotiation to isolate multiple client connections:
 
 ```mermaid
 sequenceDiagram
-    participant C as StepFlow Client
+    participant C as Stepflow Client
     participant S as Component Server
 
     C->>S: GET /runtime/events (SSE)
@@ -139,7 +139,7 @@ sequenceDiagram
 4. Each session is isolated with its own request/response handling
 
 **Fallback Behavior:**
-If the server doesn't support MCP-style negotiation, StepFlow will fall back to direct JSON-RPC communication with the configured base URL after a timeout period.
+If the server doesn't support MCP-style negotiation, Stepflow will fall back to direct JSON-RPC communication with the configured base URL after a timeout period.
 
 #### Starting HTTP Component Servers
 

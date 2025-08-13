@@ -52,7 +52,7 @@ class InitializeParams(Struct, kw_only=True):
     runtime_protocol_version: Annotated[
         int,
         Meta(
-            description='Maximum version of the protocol being used by the StepFlow runtime.',
+            description='Maximum version of the protocol being used by the Stepflow runtime.',
             ge=0,
         ),
     ]
@@ -297,7 +297,7 @@ class MethodSuccess(Struct, kw_only=True):
 Message = Annotated[
     MethodRequest | MethodSuccess | MethodError | Notification,
     Meta(
-        description='The messages supported by the StepFlow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.',
+        description='The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.',
         title='Message',
     ),
 ]

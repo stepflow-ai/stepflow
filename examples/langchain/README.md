@@ -1,18 +1,18 @@
 # LangChain Integration Example
 
-This example demonstrates comprehensive integration of LangChain with StepFlow, showcasing **three practical approaches** for using LangChain runnables as StepFlow components.
+This example demonstrates comprehensive integration of LangChain with Stepflow, showcasing **three practical approaches** for using LangChain runnables as Stepflow components.
 
 ## Overview
 
 The LangChain integration provides three different ways to use LangChain runnables:
 
-1. **Decorated Runnable**: Use `@server.langchain_component` decorator to register factories as StepFlow components
+1. **Decorated Runnable**: Use `@server.langchain_component` decorator to register factories as Stepflow components
 2. **Named Runnable**: Execute runnables directly by import path using `/invoke_named` component
 3. **UDF**: Store Python code in blobs that creates LangChain runnables, executed via `/udf`
 
 ## Prerequisites
 
-- Rust (for building StepFlow)
+- Rust (for building Stepflow)
 - Python 3.11+ with uv
 - LangChain core library
 
@@ -24,7 +24,7 @@ The LangChain integration provides three different ways to use LangChain runnabl
    uv add --group dev langchain-core
    ```
 
-2. **Build StepFlow**:
+2. **Build Stepflow**:
    ```bash
    cd ../../stepflow-rs
    cargo build
@@ -254,15 +254,15 @@ The `stepflow-config.yml` configures:
 The `langchain_server.py` file demonstrates:
 - All three integration approaches in one server
 - Component registration using different patterns
-- Integration with StepFlow's bidirectional communication
+- Integration with Stepflow's bidirectional communication
 - Type-safe component definitions with msgspec
 
 ### Key Features
 
 1. **Multiple Integration Patterns**: Three practical ways to achieve the same goals
-2. **Async Compatibility**: Both StepFlow and LangChain use async/await patterns
+2. **Async Compatibility**: Both Stepflow and LangChain use async/await patterns
 3. **Type Safety**: msgspec integration with JSON Schema support
-4. **Bidirectional Communication**: Components access StepFlow runtime via `StepflowContext`
+4. **Bidirectional Communication**: Components access Stepflow runtime via `StepflowContext`
 5. **Flexible Execution**: Support for different runnable creation and execution patterns
 6. **Schema Generation**: Automatic schema extraction where applicable
 
@@ -289,7 +289,7 @@ The `langchain_server.py` file demonstrates:
 ### Core Files
 - `langchain_server.py`: Python server demonstrating all three approaches
 - `example_runnables.py`: Example module with importable runnables
-- `stepflow-config.yml`: StepFlow configuration
+- `stepflow-config.yml`: Stepflow configuration
 - `input.json`: Sample input data
 - `README.md`: This documentation
 
@@ -304,7 +304,7 @@ The `langchain_server.py` file demonstrates:
 ### Common Issues
 
 1. **Missing LangChain**: Install with `uv add langchain-core`
-2. **Import errors**: Ensure StepFlow Python SDK is properly installed
+2. **Import errors**: Ensure Stepflow Python SDK is properly installed
 3. **Serialization issues**: Some complex runnables may not serialize properly
 4. **Type annotation issues**: Check that all msgspec structs are properly defined
 

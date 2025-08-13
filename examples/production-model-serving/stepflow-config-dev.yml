@@ -13,7 +13,7 @@
 # in production.
 
 plugins:
-  # Built-in components for core StepFlow functionality
+  # Built-in components for core Stepflow functionality
   builtin:
     type: builtin
 

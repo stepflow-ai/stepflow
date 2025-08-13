@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import { ErrorResponseSchema } from '@/lib/api-types'
 
 // GET /api/components - List components (proxy to core server)
@@ -7,10 +7,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const includeSchemas = searchParams.get('include_schemas') === 'true'
-    
-    const stepflowClient = getStepFlowClient()
+
+    const stepflowClient = getStepflowClient()
     const components = await stepflowClient.listComponents(includeSchemas)
-    
+
     return NextResponse.json(components)
   } catch (error) {
     console.error('Failed to list components:', error)

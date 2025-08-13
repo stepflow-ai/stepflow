@@ -4,11 +4,11 @@ sidebar_position: 2
 
 # Getting Started
 
-This guide will help you install StepFlow and run your first workflow in just a few minutes.
+This guide will help you install Stepflow and run your first workflow in just a few minutes.
 
 ## Setup
 
-### 1. Download StepFlow
+### 1. Download Stepflow
 
 Download the latest pre-built binary from [GitHub Releases](https://github.com/riptano/stepflow/releases) for your platform.
 
@@ -44,7 +44,7 @@ Let's create a simple workflow that combines built-in components with a custom P
 ### 1. Create `hello-workflow.yaml`
 
 ```yaml
-name: "Hello StepFlow"
+name: "Hello Stepflow"
 description: "A simple workflow combining built-in and Python components"
 
 input_schema:
@@ -98,7 +98,7 @@ server = StepflowStdioServer()
 
 @server.component
 def hello_formatter(input: Input) -> Output:
-    greeting = f"Hello, {input.name}! Welcome to StepFlow."
+    greeting = f"Hello, {input.name}! Welcome to Stepflow."
     return Output(greeting=greeting)
 
 if __name__ == "__main__":
@@ -143,14 +143,14 @@ You should see output like:
 
 ```json
 {
-  "greeting": "Hello, World! Welcome to StepFlow.",
-  "ai_response": "Hello, World! Welcome to StepFlow! 🎉 It's wonderful to meet you..."
+  "greeting": "Hello, World! Welcome to Stepflow.",
+  "ai_response": "Hello, World! Welcome to Stepflow! 🎉 It's wonderful to meet you..."
 }
 ```
 
 ## What Just Happened?
 
-This workflow demonstrates StepFlow's key concepts:
+This workflow demonstrates Stepflow's key concepts:
 
 - **Input/Output Schemas**: Define the structure of your data using JSON Schema
 - **Steps**: Each step uses a component to process data and pass results to the next step

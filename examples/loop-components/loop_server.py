@@ -15,7 +15,7 @@
 # the License.
 
 """
-Example of using the StepFlow Python SDK to create loop-based components
+Example of using the Stepflow Python SDK to create loop-based components
 that demonstrate the new flow evaluation capabilities.
 
 This demonstrates:

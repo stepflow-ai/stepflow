@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # AI Workflows
 
-StepFlow excels at orchestrating AI-powered workflows. These examples demonstrate how to integrate large language models, build multi-step AI reasoning, and create intelligent document processing pipelines.
+Stepflow excels at orchestrating AI-powered workflows. These examples demonstrate how to integrate large language models, build multi-step AI reasoning, and create intelligent document processing pipelines.
 
 ## Simple AI Chat Workflow
 

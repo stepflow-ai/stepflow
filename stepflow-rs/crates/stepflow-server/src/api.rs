@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -35,8 +35,8 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "StepFlow API",
-        description = "API for StepFlow flows and runs",
+        title = "Stepflow API",
+        description = "API for Stepflow flows and runs",
         version = env!("CARGO_PKG_VERSION")
     ),
     tags(
@@ -92,7 +92,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
 )]
 struct StepflowApi;
 
-pub fn create_api_router() -> OpenApiRouter<Arc<StepFlowExecutor>> {
+pub fn create_api_router() -> OpenApiRouter<Arc<StepflowExecutor>> {
     OpenApiRouter::with_openapi(StepflowApi::openapi())
         .routes(routes!(health::health_check))
         .routes(routes!(components::list_components))

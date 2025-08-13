@@ -265,7 +265,7 @@ export class StepflowHttpServer {
   public async start(): Promise<void> {
     return new Promise((resolve) => {
       this.app.listen(this.port, this.host, () => {
-        console.error(`StepFlow HTTP server running at http://${this.host}:${this.port}`);
+        console.error(`Stepflow HTTP server running at http://${this.host}:${this.port}`);
         resolve();
       });
     });

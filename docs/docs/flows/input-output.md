@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Input and Output
 
-StepFlow flows define clear input and output contracts using JSON Schema.
+Stepflow flows define clear input and output contracts using JSON Schema.
 This ensures data validation, type safety, and clear documentation of what data flows into and out of your flows.
 
 * The [Input Schema](#input-schema) describes the expected structure of input data.

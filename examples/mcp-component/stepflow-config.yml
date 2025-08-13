@@ -1,8 +1,8 @@
-# Example StepFlow configuration with MCP plugin
+# Example Stepflow configuration with MCP plugin
 # This shows how to configure an MCP server as a plugin
 
 plugins:
-  # Built-in StepFlow components
+  # Built-in Stepflow components
   builtin:
     type: builtin
 

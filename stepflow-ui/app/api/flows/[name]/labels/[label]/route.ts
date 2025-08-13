@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getStepFlowClient } from '@/lib/stepflow-client'
+import { getStepflowClient } from '@/lib/stepflow-client'
 import {
   CreateLabelRequestSchema,
   LabelResponseSchema,
@@ -35,7 +35,7 @@ export async function POST(
     }
 
     // Verify the flow exists in core server
-    const stepflowClient = getStepFlowClient()
+    const stepflowClient = getStepflowClient()
     try {
       await stepflowClient.getFlow(flowId)
     } catch {

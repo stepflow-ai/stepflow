@@ -14,7 +14,7 @@
 # the License.
 
 """
-Core utilities for LangChain integration with StepFlow.
+Core utilities for LangChain integration with Stepflow.
 """
 
 from __future__ import annotations
@@ -54,11 +54,11 @@ def create_runnable_config(
     stepflow_input: dict[str, Any], context: StepflowContext | None = None
 ) -> RunnableConfig:
     """
-    Create a RunnableConfig from StepFlow input and context.
+    Create a RunnableConfig from Stepflow input and context.
 
     Args:
-        stepflow_input: The StepFlow component input
-        context: Optional StepFlow context for runtime services
+        stepflow_input: The Stepflow component input
+        context: Optional Stepflow context for runtime services
 
     Returns:
         RunnableConfig object for LangChain execution
@@ -81,7 +81,7 @@ def create_runnable_config(
         if "max_concurrency" in config_data:
             config["max_concurrency"] = config_data["max_concurrency"]
 
-    # Add StepFlow context to config for advanced use cases
+    # Add Stepflow context to config for advanced use cases
     if context:
         if "metadata" not in config:
             config["metadata"] = {}
@@ -155,13 +155,13 @@ def get_runnable_schemas(runnable: Runnable) -> tuple[dict[str, Any], dict[str, 
 
 def convert_stepflow_to_langchain_input(stepflow_input: dict[str, Any]) -> Any:
     """
-    Convert StepFlow input format to LangChain runnable input.
+    Convert Stepflow input format to LangChain runnable input.
 
-    For most cases, this extracts the 'input' field from the StepFlow component input.
+    For most cases, this extracts the 'input' field from the Stepflow component input.
     The 'config' field is handled separately by create_runnable_config.
 
     Args:
-        stepflow_input: The StepFlow component input
+        stepflow_input: The Stepflow component input
 
     Returns:
         The input data for the LangChain runnable
@@ -270,7 +270,7 @@ async def invoke_named_runnable(
         import_path: Python import path like "mymodule.my_runnable"
         input_data: Input data for the runnable
         config: Optional runnable configuration
-        context: Optional StepFlow context for runtime services
+        context: Optional Stepflow context for runtime services
         use_cache: Whether to use the import cache (default: True)
 
     Returns:
@@ -309,7 +309,7 @@ class InvokeNamedInput(msgspec.Struct):
 
 def create_invoke_named_component(server):
     """
-    Create the /invoke_named component for a StepFlow server.
+    Create the /invoke_named component for a Stepflow server.
 
     This function adds the /invoke_named component to the provided server,
     allowing users to directly invoke runnables from import paths.

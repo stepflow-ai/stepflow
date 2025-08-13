@@ -47,18 +47,18 @@ cd "$EXAMPLE_DIR"
 echo "🔧 Configuration: Production (containerized serve/submit)"
 echo "📂 Working directory: $EXAMPLE_DIR"
 
-# Build StepFlow binary for submit command
-echo "🔨 Building StepFlow binary for client operations..."
+# Build Stepflow binary for submit command
+echo "🔨 Building Stepflow binary for client operations..."
 cd "$STEPFLOW_DIR"
 cargo build --release
 
 STEPFLOW_BINARY="$STEPFLOW_DIR/target/release/stepflow"
 if [ ! -f "$STEPFLOW_BINARY" ]; then
-    echo "❌ Failed to build StepFlow binary"
+    echo "❌ Failed to build Stepflow binary"
     exit 1
 fi
 
-echo "✅ StepFlow binary built successfully"
+echo "✅ Stepflow binary built successfully"
 
 # Return to example directory
 cd "$EXAMPLE_DIR"
@@ -73,11 +73,11 @@ fi
 
 echo "📄 Using input: $INPUT_FILE"
 
-# Build and start all services including StepFlow server
+# Build and start all services including Stepflow server
 echo ""
 echo "🏗️  Building and starting production services..."
-echo "   - StepFlow Runtime Server"
-echo "   - Text Models Server"  
+echo "   - Stepflow Runtime Server"
+echo "   - Text Models Server"
 echo "   - Vision Models Server"
 echo "   - Monitoring (Prometheus, Redis)"
 
@@ -90,12 +90,12 @@ max_attempts=60  # Increased for Docker builds
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    # Check if StepFlow server is healthy
+    # Check if Stepflow server is healthy
     if curl -s "http://localhost:7837/health" >/dev/null 2>&1; then
         echo "✅ All services are healthy and ready!"
         break
     fi
-    
+
     echo "   Attempt $((attempt + 1))/$max_attempts - waiting for services to start..."
     sleep 5
     attempt=$((attempt + 1))
@@ -113,13 +113,13 @@ echo "📊 Service Status:"
 docker-compose ps
 
 echo ""
-echo "🌐 StepFlow Server Running:"
+echo "🌐 Stepflow Server Running:"
 echo "   - URL: http://localhost:7837"
 echo "   - Health: http://localhost:7837/health"
 echo "   - API: http://localhost:7837/api/v1"
 
 echo ""
-echo "▶️  Submitting workflow to production StepFlow server..."
+echo "▶️  Submitting workflow to production Stepflow server..."
 
 "$STEPFLOW_BINARY" submit \
     --url="http://localhost:7837/api/v1" \
@@ -130,12 +130,12 @@ echo ""
 echo "✅ Production mode execution completed!"
 echo ""
 echo "🔍 Production services are still running. To view logs:"
-echo "   docker-compose logs stepflow-server  # StepFlow runtime logs"
+echo "   docker-compose logs stepflow-server  # Stepflow runtime logs"
 echo "   docker-compose logs text-models      # Text model server logs"
 echo "   docker-compose logs vision-models    # Vision model server logs"
 echo ""
 echo "📊 Service endpoints:"
-echo "   - StepFlow API: http://localhost:7837/api/v1"
+echo "   - Stepflow API: http://localhost:7837/api/v1"
 echo "   - Text Models: http://localhost:8080"
 echo "   - Vision Models: http://localhost:8081"
 echo "   - Prometheus: http://localhost:9090"

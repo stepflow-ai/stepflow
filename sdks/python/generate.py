@@ -14,7 +14,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Type generation script for StepFlow Python SDK.
+"""Type generation script for Stepflow Python SDK.
 
 This script generates the protocol and flow types from the JSON schemas.
 """
@@ -190,7 +190,7 @@ def generate_types_from_schema(
 def main():
     """Generate protocol and flow types from JSON schemas."""
     parser = argparse.ArgumentParser(
-        description="Generate StepFlow Python SDK types from JSON schemas"
+        description="Generate Stepflow Python SDK types from JSON schemas"
     )
     parser.add_argument(
         "--check", action="store_true", help="Check if generated files are up to date"

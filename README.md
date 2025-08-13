@@ -14,7 +14,7 @@
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
 
-  <h3 align="center">StepFlow</h3>
+  <h3 align="center">Stepflow</h3>
 
   <p align="center">
     Open protocol and runtime for building GenAI workflows
@@ -55,18 +55,18 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-StepFlow is an open protocol and runtime for building, executing, and scaling GenAI workflows across local and cloud environments. Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production. With durability, fault-tolerance, and an open specification, StepFlow empowers anyone to create, share, and run AI workflows across platforms and tools.
+Stepflow is an open protocol and runtime for building, executing, and scaling GenAI workflows across local and cloud environments. Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production. With durability, fault-tolerance, and an open specification, Stepflow empowers anyone to create, share, and run AI workflows across platforms and tools.
 
 ### Key Features
 
 - **⚙️ Reliable, Scalable Workflow Execution**
-   Run workflows locally with confidence they'll scale. StepFlow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
+   Run workflows locally with confidence they'll scale. Stepflow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
 - **🔐 Secure, Isolated Components**
-   Each workflow step runs in a sandboxed process or container with strict resource and environment controls. StepFlow's design prioritizes security, reproducibility, and platform independence.
+   Each workflow step runs in a sandboxed process or container with strict resource and environment controls. Stepflow's design prioritizes security, reproducibility, and platform independence.
 - **🌐 Open, Portable Workflow Standard**
-   Build once, run anywhere. The StepFlow protocol is open and extensible, enabling workflow portability across different environments and platforms.
+   Build once, run anywhere. The Stepflow protocol is open and extensible, enabling workflow portability across different environments and platforms.
 
-### What StepFlow Enables
+### What Stepflow Enables
 
 - Define AI workflows using YAML or JSON
 - Execute workflows with built-in support for parallel execution
@@ -119,7 +119,7 @@ To get a local copy up and running quickly follow these simple steps.
 
 ### Quick Start Example
 
-Here's a simple workflow that demonstrates basic StepFlow usage:
+Here's a simple workflow that demonstrates basic Stepflow usage:
 
 **workflow.yaml:**
 ```yaml

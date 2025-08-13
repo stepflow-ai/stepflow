@@ -23,7 +23,7 @@ use stepflow_core::{
     BlobId, FlowResult,
     workflow::{Flow, ValueRef},
 };
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use stepflow_state::{RunDetails, RunSummary};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -116,7 +116,7 @@ pub struct RunFlowResponse {
     tag = crate::api::RUN_TAG,
 )]
 pub async fn create_run(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Json(req): Json<CreateRunRequest>,
 ) -> Result<Json<CreateRunResponse>, ErrorResponse> {
     let run_id = Uuid::new_v4();
@@ -215,7 +215,7 @@ pub async fn create_run(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn get_run(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunDetails>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -245,7 +245,7 @@ pub async fn get_run(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn get_run_flow(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunFlowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -280,7 +280,7 @@ pub async fn get_run_flow(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn list_runs(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
 ) -> Result<Json<ListRunsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
@@ -308,7 +308,7 @@ pub async fn list_runs(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn get_run_steps(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<ListStepRunsResponse>, ErrorResponse> {
     use std::collections::HashMap;
@@ -391,7 +391,7 @@ pub async fn get_run_steps(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn cancel_run(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunSummary>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -446,7 +446,7 @@ pub async fn cancel_run(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn delete_run(
-    State(executor): State<Arc<StepFlowExecutor>>,
+    State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<(), ErrorResponse> {
     let state_store = executor.state_store();

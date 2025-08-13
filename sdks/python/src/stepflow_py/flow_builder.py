@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Flow builder for creating StepFlow workflows programmatically."""
+"""Flow builder for creating Stepflow workflows programmatically."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class StepHandle:
 
 
 class FlowBuilder:
-    """Builder for creating StepFlow workflows.
+    """Builder for creating Stepflow workflows.
 
     This class provides methods for building workflows programmatically using the
     Value API. All input_data parameters accept Valuable types (Value, StepReference,

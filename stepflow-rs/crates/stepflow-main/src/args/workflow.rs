@@ -14,7 +14,7 @@
 use error_stack::ResultExt as _;
 use std::{path::Path, sync::Arc};
 use stepflow_core::workflow::Flow;
-use stepflow_execution::StepFlowExecutor;
+use stepflow_execution::StepflowExecutor;
 use stepflow_plugin::routing::PluginRouter;
 
 use crate::{
@@ -24,7 +24,7 @@ use crate::{
 };
 
 /// Create executor from StepflowConfig
-async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepFlowExecutor>> {
+async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepflowExecutor>> {
     // Create state store from configuration
     let state_store = config.state_store.create_state_store().await?;
 
@@ -52,7 +52,7 @@ async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepFlowExec
         .build()
         .change_context(MainError::Configuration)?;
 
-    let executor = StepFlowExecutor::new(state_store, working_directory.clone(), plugin_router);
+    let executor = StepflowExecutor::new(state_store, working_directory.clone(), plugin_router);
 
     // Initialize all plugins
     executor
@@ -75,7 +75,7 @@ impl WorkflowLoader {
     /// Create an executor from a StepflowConfig
     pub async fn create_executor_from_config(
         config: StepflowConfig,
-    ) -> Result<Arc<StepFlowExecutor>> {
+    ) -> Result<Arc<StepflowExecutor>> {
         create_executor_impl(config).await
     }
 
@@ -83,7 +83,7 @@ impl WorkflowLoader {
     pub async fn load_and_create_executor(
         flow_path: Option<&Path>,
         config_path: Option<std::path::PathBuf>,
-    ) -> Result<Arc<StepFlowExecutor>> {
+    ) -> Result<Arc<StepflowExecutor>> {
         let config_args = ConfigArgs::with_path(config_path);
         let config = config_args.load_config(flow_path)?;
         create_executor_impl(config).await
@@ -93,7 +93,7 @@ impl WorkflowLoader {
     pub async fn setup_workflow_execution(
         workflow_path: &Path,
         config_path: Option<std::path::PathBuf>,
-    ) -> Result<(Arc<Flow>, Arc<StepFlowExecutor>)> {
+    ) -> Result<(Arc<Flow>, Arc<StepflowExecutor>)> {
         let workflow = Self::load_workflow(workflow_path)?;
         let executor = Self::load_and_create_executor(Some(workflow_path), config_path).await?;
         Ok((workflow, executor))

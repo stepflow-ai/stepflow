@@ -9,7 +9,7 @@ export default function Dashboard() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">
-          Welcome to StepFlow - manage your flows, runs, and components
+          Welcome to Stepflow - manage your flows, runs, and components
         </p>
       </div>
 

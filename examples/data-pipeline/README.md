@@ -13,7 +13,7 @@ This example demonstrates a complete data processing pipeline that:
 
 To run these examples, you need:
 - The `uv` package manager installed
-- The StepFlow Python SDK set up in `../../sdks/python`
+- The Stepflow Python SDK set up in `../../sdks/python`
 
 If you don't have these prerequisites, the examples will fail with "No such file or directory" errors.
 
@@ -112,18 +112,18 @@ sales_data ──┬── sum_field ──────┐
 target_revenue ──────────────────┴── divide ──► performance_ratio
 ```
 
-This demonstrates how StepFlow automatically handles dependencies and runs independent steps in parallel.
+This demonstrates how Stepflow automatically handles dependencies and runs independent steps in parallel.
 
 ## Files in this Example
 
 - `pipeline.yaml` - Full AI-powered pipeline with OpenAI integration and regional analysis using eval components
 - `debug-pipeline.yaml` - Metrics-only version (no OpenAI required, already uses correct syntax)
-- `sales-data.json` - Sample sales data input  
+- `sales-data.json` - Sample sales data input
 - `stepflow-config.yml` - Plugin configuration for Python and builtin components
 
 ## Syntax Notes
 
-The examples have been updated to use the correct StepFlow syntax:
+The examples have been updated to use the correct Stepflow syntax:
 - Use `input` instead of `args` for step inputs
 - Use `output` (singular) instead of `outputs` (plural)
 - Use proper reference format: `{ $from: { step: step_id }, path: "field" }` or `{ $from: { workflow: input }, path: "field" }`

@@ -12,7 +12,7 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # StepFlow model servers
+  # Stepflow model servers
   - job_name: "text-models"
     static_configs:
       - targets: ["text-models:8080"]

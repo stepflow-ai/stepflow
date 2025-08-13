@@ -4,11 +4,11 @@ sidebar_position: 5
 
 # Control Flow
 
-Control flow in StepFlow determines how workflow execution proceeds - from basic step execution order to conditional execution, skipping, and error handling.
+Control flow in Stepflow determines how workflow execution proceeds - from basic step execution order to conditional execution, skipping, and error handling.
 
 ## Execution
 
-Step execution order is determined by data dependencies, not the order in the YAML file. StepFlow automatically analyzes references between steps to determine optimal execution order and enables parallel execution when possible.
+Step execution order is determined by data dependencies, not the order in the YAML file. Stepflow automatically analyzes references between steps to determine optimal execution order and enables parallel execution when possible.
 
 ```yaml
 steps:

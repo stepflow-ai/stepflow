@@ -1,6 +1,6 @@
-# StepFlow UI
+# Stepflow UI
 
-A modern web interface for the StepFlow workflow execution engine. Built with Next.js, React, and TypeScript.
+A modern web interface for the Stepflow workflow execution engine. Built with Next.js, React, and TypeScript.
 
 ## Features
 
@@ -10,7 +10,7 @@ A modern web interface for the StepFlow workflow execution engine. Built with Ne
 - ⚡ **Ad-hoc Execution**: Execute workflows directly without storing (great for testing)
 - 🏷️ **Version Labels**: Tag workflows with semantic versions (production, staging, etc.)
 - 💾 **Persistent Storage**: SQLite for development, PostgreSQL for production
-- 🔌 **Plugin Integration**: Seamless integration with StepFlow components and plugins
+- 🔌 **Plugin Integration**: Seamless integration with Stepflow components and plugins
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ A modern web interface for the StepFlow workflow execution engine. Built with Ne
 
 - Node.js 18+
 - pnpm (recommended) or npm
-- StepFlow core server running on localhost:7837
+- Stepflow core server running on localhost:7837
 
 ### Quick Start (Recommended)
 
@@ -62,7 +62,7 @@ pnpm dev
 
 ## Database Setup
 
-StepFlow UI supports both SQLite (development) and PostgreSQL (production).
+Stepflow UI supports both SQLite (development) and PostgreSQL (production).
 
 ### SQLite (Development)
 ```bash
@@ -109,7 +109,7 @@ pnpm db:seed          # Seed database with sample data
 pnpm db:reset         # Reset database (development only)
 
 # API Client
-pnpm generate:api-client  # Regenerate StepFlow API client
+pnpm generate:api-client  # Regenerate Stepflow API client
 ```
 
 ### Project Structure
@@ -131,15 +131,15 @@ stepflow-ui/
 
 ## Architecture
 
-StepFlow UI uses a three-tier architecture:
+Stepflow UI uses a three-tier architecture:
 
 ```
-Browser → UI Server → StepFlow Core Server
+Browser → UI Server → Stepflow Core Server
 ```
 
 1. **Browser**: React frontend with Next.js
 2. **UI Server**: Next.js API routes providing business logic
-3. **Core Server**: StepFlow execution engine
+3. **Core Server**: Stepflow execution engine
 
 ### Key Components
 
@@ -157,7 +157,7 @@ Browser → UI Server → StepFlow Core Server
 DATABASE_URL="file:./dev.db"                              # SQLite
 # DATABASE_URL="postgresql://user:pass@localhost:5432/db" # PostgreSQL
 
-# StepFlow Core Server
+# Stepflow Core Server
 STEPFLOW_SERVER_URL="http://localhost:7837/api/v1"
 
 # Environment
@@ -308,4 +308,4 @@ For detailed troubleshooting, see [DATABASE_SETUP.md](DATABASE_SETUP.md).
 
 ## License
 
-This project is part of the StepFlow workflow engine. See the main repository for license information.
+This project is part of the Stepflow workflow engine. See the main repository for license information.

@@ -8,7 +8,7 @@ sidebar_position: 3
 
 ```mermaid
 sequenceDiagram
-    participant SF as StepFlow
+    participant SF as Stepflow
     participant CS as Component Server
     SF-)+CS: initialize request
     CS--)-SF: initialize response

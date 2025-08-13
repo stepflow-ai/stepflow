@@ -17,7 +17,7 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Run workflows locally with confidence they’ll scale.
-        StepFlow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
+        Stepflow provides built-in durability and fault tolerance—ready for seamless transition to production-scale deployments.
       </>
     ),
   },
@@ -27,7 +27,7 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Each workflow step runs in a sandboxed process or container with strict resource and environment controls.
-        StepFlow's design prioritizes security, reproducibility, and platform independence.
+        Stepflow's design prioritizes security, reproducibility, and platform independence.
       </>
     ),
   },
@@ -37,7 +37,7 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Build once, run anywhere.
-        The StepFlow protocol defines an open workflow format that any framework or editor can use—enabling true portability and ecosystem integration.
+        The Stepflow protocol defines an open workflow format that any framework or editor can use—enabling true portability and ecosystem integration.
       </>
     ),
   },

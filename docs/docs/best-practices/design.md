@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Best Practices
 
-This guide covers best practices for designing, implementing, and maintaining StepFlow workflows that are reliable, maintainable, and performant.
+This guide covers best practices for designing, implementing, and maintaining Stepflow workflows that are reliable, maintainable, and performant.
 
 ## Workflow Design Principles
 
@@ -641,7 +641,7 @@ steps:
       path: "user.email"
 ```
 
-Following these best practices will help you create robust, maintainable, and efficient StepFlow workflows that scale well and are easy to debug and modify.
+Following these best practices will help you create robust, maintainable, and efficient Stepflow workflows that scale well and are easy to debug and modify.
 
 # STEPS?
 ## Best Practices

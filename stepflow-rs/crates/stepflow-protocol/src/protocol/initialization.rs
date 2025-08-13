@@ -18,14 +18,14 @@ use crate::protocol::Method;
 
 use super::{ProtocolMethod, ProtocolNotification};
 
-/// Sent from StepFlow to the component server to begin the initialization process.
+/// Sent from Stepflow to the component server to begin the initialization process.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct InitializeParams {
-    /// Maximum version of the protocol being used by the StepFlow runtime.
+    /// Maximum version of the protocol being used by the Stepflow runtime.
     pub runtime_protocol_version: u32,
 }
 
-/// Sent from the component server back to StepFlow with the result of initialization.
+/// Sent from the component server back to Stepflow with the result of initialization.
 /// The component server will not be initialized until it receives the `initialized` notification.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct InitializeResult {
@@ -38,7 +38,7 @@ impl ProtocolMethod for InitializeParams {
     type Response = InitializeResult;
 }
 
-/// Sent from StepFlow to the component server after initialization is complete.
+/// Sent from Stepflow to the component server after initialization is complete.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Initialized {}
 
