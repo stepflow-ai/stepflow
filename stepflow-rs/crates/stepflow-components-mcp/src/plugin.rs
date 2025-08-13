@@ -195,12 +195,11 @@ impl McpClient {
             })?;
 
         // Validate response ID matches request
-        if let Some(response_id) = response.get("id") {
-            if response_id.as_u64() != Some(id) {
+        if let Some(response_id) = response.get("id")
+            && response_id.as_u64() != Some(id) {
                 return Err(error_stack::Report::new(McpError::InvalidResponse)
                     .attach_printable(format!("Response ID mismatch for method '{method}': expected {id}, got {response_id}")));
             }
-        }
 
         // Check for JSON-RPC errors
         if let Some(error) = response.get("error") {
@@ -382,15 +381,14 @@ impl Plugin for McpPlugin {
             Ok(result) => result,
             Err(err) => {
                 // Check if this is an MCP tool execution error that should be treated as a business logic failure
-                if let Some(mcp_error) = err.downcast_ref::<McpError>() {
-                    if matches!(mcp_error, McpError::ToolExecution) {
+                if let Some(mcp_error) = err.downcast_ref::<McpError>()
+                    && matches!(mcp_error, McpError::ToolExecution) {
                         // This is a tool execution failure, not an implementation failure
                         return Ok(FlowResult::Failed(FlowError::new(
                             500,
                             format!("Tool '{tool_name}' execution failed"),
                         )));
                     }
-                }
                 // For other errors (timeouts, connection issues, etc.), propagate as implementation errors
                 return Err(err.change_context(PluginError::Execution));
             }

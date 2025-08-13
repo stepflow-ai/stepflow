@@ -245,13 +245,12 @@ impl<'de> Deserialize<'de> for ValueTemplateRepr {
         let value = serde_json::Value::deserialize(deserializer)?;
 
         // Check if it's an expression by looking for $from or $literal
-        if let serde_json::Value::Object(ref map) = value {
-            if map.contains_key("$from") || map.contains_key("$literal") {
+        if let serde_json::Value::Object(ref map) = value
+            && (map.contains_key("$from") || map.contains_key("$literal")) {
                 // Try to deserialize as an expression - must succeed or it's an error
                 let expr = Expr::deserialize(value).map_err(D::Error::custom)?;
                 return Ok(ValueTemplateRepr::Expression(expr));
             }
-        }
 
         // Otherwise, convert the JSON value to our template representation
         let template_repr = json_value_to_template_repr(value).map_err(D::Error::custom)?;

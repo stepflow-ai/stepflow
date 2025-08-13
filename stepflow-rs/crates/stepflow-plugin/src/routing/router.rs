@@ -262,20 +262,18 @@ impl RouteInfo {
     }
 
     fn is_allowed(&self, component: &str) -> bool {
-        if let Some(deny_list) = &self.rule.component_deny {
-            if deny_list.iter().any(|denied| denied.as_ref() == component) {
+        if let Some(deny_list) = &self.rule.component_deny
+            && deny_list.iter().any(|denied| denied.as_ref() == component) {
                 return false;
             }
-        }
 
-        if let Some(allow_list) = &self.rule.component_allow {
-            if !allow_list
+        if let Some(allow_list) = &self.rule.component_allow
+            && !allow_list
                 .iter()
                 .any(|allowed| allowed.as_ref() == component)
             {
                 return false;
             }
-        }
 
         true
     }
