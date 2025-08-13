@@ -79,17 +79,18 @@ Our comprehensive [getting started](/docs/getting-started) guide and usage [exam
 - Simple AI Chat Workflow: How to use [OpenAI chat integration](/docs/examples/openai-workflows)
 - MCP tool integration: Use [MCP tools as workflow components](/docs/examples/mcp-tools)
 - Custom component development: [Build your own components and UDFs](/docs/examples/custom-components)
+- Integrate with Lang Chain: [Use Lang Chain tools as workflow components](/docs/examples/langchain-integration)
+- Production model serving: [Deploy a model to Stepflow](/docs/examples/production-model-serving)
 
 ## What's Next?
 
 This is just the beginning! Our roadmap includes:
 
-- Container-based components: Run components in Docker containers for ultimate
-  isolation
+- Serverless component execution: Run components in environments like AWS Fargate and Beam.cloud 
 - Distributed execution: Scale workflows across multiple machines
 - Enhanced Python SDK: Simplified component development
 - Richer component library: Pre-built components for common tasks
-- Kubernetes integration: Native deployment to cloud environments
+- Integration with other AI frameworks: Provide a runtime for popular agent frameworks like Langflow, Flowise, and n8n
 
 ## Join the Community
 
