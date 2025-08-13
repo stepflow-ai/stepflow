@@ -74,12 +74,11 @@ runtime execution:
 
 ## Geting Started
 
-Our comprehensive [getting started](../docs/getting_started.md) guide and usage [examples](../docs/examples.md) should give you everything you need to get going with your own workflows. Specific examples include:
+Our comprehensive [getting started](/docs/getting-started) guide and usage [examples](/docs/examples/) should give you everything you need to get going with your own workflows. Specific examples include:
 
-- Simple AI Chat Workflow: How to use [OpenAI chat integration](../docs/examples/ai-workflows.md)
-- Data Processing Workflow: Build a custom pipeline to [process sales data](../docs/examples/data-processing.md)
-- MCP tool integration: Use [MCP tools as workflow components](../docs/examples/mcp-tools.md)
-- Custom component development: [Build your own components and UDFs](../docs/examples/custom-components.md)
+- Simple AI Chat Workflow: How to use [OpenAI chat integration](/docs/examples/openai-workflows)
+- MCP tool integration: Use [MCP tools as workflow components](/docs/examples/mcp-tools)
+- Custom component development: [Build your own components and UDFs](/docs/examples/custom-components)
 
 ## What's Next?
 
@@ -109,11 +108,6 @@ involved.
 Special thanks to all our early contributors and testers who helped shape
 Stepflow. Your feedback and contributions have been invaluable in getting us to
 this first release.
-
-## Next Steps
-
-Ready to build your first GenAI workflow? Check out our [documentation](../docs/index.md) and
-join us in making AI workflows accessible, reliable, and secure for everyone.
 
 **Happy workflow building!**
 
