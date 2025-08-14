@@ -11,6 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::collections::HashMap;
+
 use super::{Component, Expr, ValueTemplate};
 use crate::schema::SchemaRef;
 use schemars::JsonSchema;
@@ -41,6 +43,10 @@ pub struct Step {
     /// Arguments to pass to the component for this step
     #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
     pub input: ValueTemplate,
+
+    /// Extensible metadata for the step that can be used by tools and frameworks.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, serde_json::Value>,
 }
 
 #[derive(
@@ -151,6 +157,7 @@ mod tests {
                 default_value: Some(ValueRef::from("fallback").into()),
             },
             input: ValueTemplate::null(),
+            metadata: HashMap::default(),
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
@@ -169,6 +176,7 @@ mod tests {
             skip_if: None,
             on_error: ErrorAction::Fail,
             input: ValueTemplate::null(),
+            metadata: HashMap::default(),
         };
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();

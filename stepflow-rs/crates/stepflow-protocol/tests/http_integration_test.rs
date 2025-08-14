@@ -192,8 +192,11 @@ async fn test_http_protocol_integration() {
                                 });
                                 let input_ref = ValueRef::from(input_json);
 
-                                let execution_context =
-                                    ExecutionContext::new(context.clone(), Uuid::new_v4());
+                                let execution_context = ExecutionContext::for_step(
+                                    context.clone(),
+                                    Uuid::new_v4(),
+                                    "test_step".to_string(),
+                                );
 
                                 let execute_result = timeout(
                                     Duration::from_secs(5),

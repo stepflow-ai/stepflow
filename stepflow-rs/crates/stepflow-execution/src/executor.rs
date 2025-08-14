@@ -96,8 +96,8 @@ impl StepflowExecutor {
         }
     }
 
-    pub fn execution_context(&self, run_id: Uuid) -> ExecutionContext {
-        ExecutionContext::new(self.executor(), run_id)
+    pub fn execution_context(&self, run_id: Uuid, step_id: String) -> ExecutionContext {
+        ExecutionContext::for_step(self.executor(), run_id, step_id)
     }
 
     /// Get a reference to the state store.

@@ -23,7 +23,9 @@ import msgspec
 
 from stepflow_py.context import StepflowContext
 from stepflow_py.generated_protocol import (
+    ComponentExecuteParams,
     Message,
+    Method,
     MethodRequest,
     Notification,
 )
@@ -59,6 +61,31 @@ class StepflowStdioServer:
         """Get a registered component by path."""
         return self._server.get_component(component_path)
 
+    def _create_step_context(self, message: Message) -> StepflowContext:
+        """Create a step-specific context for component execution."""
+        step_id = None
+        run_id = None
+        flow_id = None
+
+        # Extract execution parameters from component execution requests
+        if (
+            isinstance(message, MethodRequest)
+            and message.method == Method.components_execute
+        ):
+            assert isinstance(message.params, ComponentExecuteParams)
+            step_id = message.params.step_id
+            run_id = message.params.run_id
+            flow_id = message.params.flow_id
+
+        return StepflowContext(
+            self._outgoing_queue,
+            self._message_decoder,
+            session_id=None,
+            step_id=step_id,
+            run_id=run_id,
+            flow_id=flow_id,
+        )
+
     def get_components(self):
         """Get all registered components."""
         return self._server.get_components()
@@ -88,7 +115,9 @@ class StepflowStdioServer:
             # Otherwise, this is an incoming request that we need to handle
             if isinstance(message, MethodRequest | Notification):
                 if self._server.requires_context(message):
-                    response = await self._server.handle_message(message, self._context)
+                    # Create step-specific context for component execution
+                    context = self._create_step_context(message)
+                    response = await self._server.handle_message(message, context)
                 else:
                     response = await self._server.handle_message(message)
             else:

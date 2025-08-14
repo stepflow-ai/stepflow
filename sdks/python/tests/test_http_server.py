@@ -197,6 +197,9 @@ class ServerHelper:
                 params=ComponentExecuteParams(
                     component=component or "/simple_component",
                     input=input_data or {"message": "test"},
+                    step_id="test_step",
+                    run_id="test-run-id",
+                    flow_id="test-flow-id",
                 ),
             )
         else:

@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, ClassVar, List, Literal
+from typing import Annotated, Any, ClassVar, Dict, List, Literal
 
 from msgspec import Meta, Struct
 
@@ -46,6 +46,7 @@ class Method(Enum):
     blobs_put = 'blobs/put'
     blobs_get = 'blobs/get'
     flows_evaluate = 'flows/evaluate'
+    flows_get_metadata = 'flows/get_metadata'
 
 
 class InitializeParams(Struct, kw_only=True):
@@ -75,6 +76,14 @@ Value = Annotated[
 ]
 
 
+BlobId = Annotated[
+    str,
+    Meta(
+        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
+    ),
+]
+
+
 class ComponentInfoParams(Struct, kw_only=True):
     component: Annotated[
         Component, Meta(description='The component to get information about.')
@@ -85,12 +94,8 @@ class ComponentListParams(Struct, kw_only=True):
     pass
 
 
-BlobId = Annotated[
-    str,
-    Meta(
-        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
-    ),
-]
+class GetBlobParams(Struct, kw_only=True):
+    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
 
 
 class BlobType(Enum):
@@ -104,6 +109,19 @@ class EvaluateFlowParams(Struct, kw_only=True):
         Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
     ]
     input: Annotated[Value, Meta(description='The input to provide to the flow.')]
+
+
+class GetFlowMetadataParams(Struct, kw_only=True):
+    flow_id: Annotated[BlobId, Meta(description='The flow to retrieve metadata for.')]
+    step_id: (
+        Annotated[
+            str | None,
+            Meta(
+                description="The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response."
+            ),
+        ]
+        | None
+    ) = None
 
 
 class InitializeResult(Struct, kw_only=True):
@@ -153,6 +171,24 @@ class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
     error: FlowError
 
 
+class GetFlowMetadataResult(Struct, kw_only=True):
+    flow_metadata: Annotated[
+        Dict[str, Any],
+        Meta(
+            description='Metadata for the current flow.\n\nThis always contains the flow-level metadata defined in the workflow file.\nCommon fields include name, description, version, but can contain any\narbitrary JSON structure defined by the workflow author.'
+        ),
+    ]
+    step_metadata: (
+        Annotated[
+            Dict[str, Any] | None,
+            Meta(
+                description='Metadata for the specified step (only present if step_id was provided and found).\n\nThis contains step-specific metadata defined in the workflow file.\nWill be None if no step_id was provided in the request'
+            ),
+        ]
+        | None
+    ) = None
+
+
 class Error(Struct, kw_only=True):
     code: Annotated[int, Meta(description='A numeric code indicating the error type.')]
     message: Annotated[
@@ -176,10 +212,9 @@ class Initialized(Struct, kw_only=True):
 class ComponentExecuteParams(Struct, kw_only=True):
     component: Annotated[Component, Meta(description='The component to execute.')]
     input: Annotated[Value, Meta(description='The input to the component.')]
-
-
-class GetBlobParams(Struct, kw_only=True):
-    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
+    step_id: Annotated[str, Meta(description='The ID of the step being executed.')]
+    run_id: Annotated[str, Meta(description='The ID of the workflow run.')]
+    flow_id: Annotated[BlobId, Meta(description='The ID of the flow being executed.')]
 
 
 class PutBlobParams(Struct, kw_only=True):
@@ -257,7 +292,8 @@ class MethodRequest(Struct, kw_only=True):
         | ComponentListParams
         | GetBlobParams
         | PutBlobParams
-        | EvaluateFlowParams,
+        | EvaluateFlowParams
+        | GetFlowMetadataParams,
         Meta(
             description='The parameters for the method call. Set on method requests.',
             title='MethodParams',
@@ -285,7 +321,8 @@ class MethodSuccess(Struct, kw_only=True):
         | ListComponentsResult
         | GetBlobResult
         | PutBlobResult
-        | EvaluateFlowResult,
+        | EvaluateFlowResult
+        | GetFlowMetadataResult,
         Meta(
             description='The result of a successful method execution.',
             title='MethodResult',

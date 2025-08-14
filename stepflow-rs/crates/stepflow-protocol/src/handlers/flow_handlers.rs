@@ -24,6 +24,9 @@ use super::blob_handlers::handle_method_call;
 /// Handler for flow evaluation method calls from component servers.
 pub struct EvaluateFlowHandler;
 
+/// Handler for flow metadata method calls from component servers.
+pub struct GetFlowMetadataHandler;
+
 impl MethodHandler for EvaluateFlowHandler {
     fn handle_message<'a>(
         &self,
@@ -45,6 +48,49 @@ impl MethodHandler for EvaluateFlowHandler {
                     })?;
 
                 Ok(crate::protocol::EvaluateFlowResult { result })
+            },
+        )
+        .boxed()
+    }
+}
+
+impl MethodHandler for GetFlowMetadataHandler {
+    fn handle_message<'a>(
+        &self,
+        request: &'a MethodRequest<'a>,
+        response_tx: mpsc::Sender<String>,
+        context: Arc<dyn Context>,
+    ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
+        handle_method_call(
+            request,
+            response_tx,
+            |request: crate::protocol::GetFlowMetadataParams| async move {
+                // Fetch the flow from the state store
+                let flow_id = &request.flow_id;
+                let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
+                    tracing::error!("Failed to get flow blob: {e}");
+                    Error::not_found("flow", flow_id.as_str())
+                })?;
+                let flow = blob_data
+                    .as_flow()
+                    .ok_or_else(|| Error::internal("Invalid flow blob"))?
+                    .clone();
+
+                let flow_metadata = flow.metadata().clone();
+
+                let step_metadata = if let Some(step_id) = request.step_id.as_ref() {
+                    let Some(step) = flow.steps().iter().find(|s| &s.id == step_id) else {
+                        return Err(Error::not_found("step", step_id.as_str()));
+                    };
+                    Some(step.metadata.clone())
+                } else {
+                    None
+                };
+
+                Ok(crate::protocol::GetFlowMetadataResult {
+                    flow_metadata,
+                    step_metadata,
+                })
             },
         )
         .boxed()

@@ -27,6 +27,12 @@ pub struct ComponentExecuteParams {
     pub component: Component,
     /// The input to the component.
     pub input: ValueRef,
+    /// The ID of the step being executed.
+    pub step_id: String,
+    /// The ID of the workflow run.
+    pub run_id: String,
+    /// The ID of the flow being executed.
+    pub flow_id: stepflow_core::BlobId,
 }
 
 /// Sent from the component server back to Stepflow with the result of the component execution.

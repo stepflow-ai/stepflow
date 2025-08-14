@@ -215,7 +215,11 @@ async def test_handle_component_execute(server):
         id="test-1",
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component="/test_component", input={"name": "Alice", "age": 25}
+            component="/test_component",
+            input={"name": "Alice", "age": 25},
+            step_id="test_step",
+            run_id="test-run-id",
+            flow_id="test-flow-id",
         ),
     )
     response = await server.handle_message(request)
@@ -240,7 +244,11 @@ async def test_handle_component_execute_invalid_input(server):
         id="test-1",
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component="/test_component", input={"invalid": "input"}
+            component="/test_component",
+            input={"invalid": "input"},
+            step_id="test_step",
+            run_id="test-run-id",
+            flow_id="test-flow-id",
         ),
     )
 
@@ -321,7 +329,11 @@ async def test_component_execute_with_context(server):
         id="test-1",
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component="/context_component", input={"name": "Alice", "age": 25}
+            component="/context_component",
+            input={"name": "Alice", "age": 25},
+            step_id="test_step",
+            run_id="test-run-id",
+            flow_id="test-flow-id",
         ),
     )
 
@@ -354,7 +366,11 @@ async def test_server_responses_include_jsonrpc(server):
         id="jsonrpc-test",
         method=Method.components_execute,
         params=ComponentExecuteParams(
-            component="/test_component", input={"name": "Test", "age": 30}
+            component="/test_component",
+            input={"name": "Test", "age": 30},
+            step_id="test_step",
+            run_id="test-run-id",
+            flow_id="test-flow-id",
         ),
     )
 
@@ -430,7 +446,11 @@ def test_requires_context():
                 id="test3",
                 method=Method.components_execute,
                 params=ComponentExecuteParams(
-                    component="/simple", input={"message": "test"}
+                    component="/simple",
+                    input={"message": "test"},
+                    step_id="test_step",
+                    run_id="test-run-id",
+                    flow_id="test-flow-id",
                 ),
             ),
             "expected": False,
@@ -443,7 +463,11 @@ def test_requires_context():
                 id="test4",
                 method=Method.components_execute,
                 params=ComponentExecuteParams(
-                    component="/context", input={"message": "test"}
+                    component="/context",
+                    input={"message": "test"},
+                    step_id="test_step",
+                    run_id="test-run-id",
+                    flow_id="test-flow-id",
                 ),
             ),
             "expected": True,
@@ -456,7 +480,11 @@ def test_requires_context():
                 id="test5",
                 method=Method.components_execute,
                 params=ComponentExecuteParams(
-                    component="/nonexistent", input={"message": "test"}
+                    component="/nonexistent",
+                    input={"message": "test"},
+                    step_id="test_step",
+                    run_id="test-run-id",
+                    flow_id="test-flow-id",
                 ),
             ),
             "expected": False,

@@ -71,10 +71,12 @@ mod tests {
                 output_schema: None,
                 skip_if: None,
                 on_error: stepflow_core::workflow::ErrorAction::Fail,
+                metadata: std::collections::HashMap::new(),
             }],
             version: None,
             test: None,
             examples: None,
+            metadata: std::collections::HashMap::new(),
         });
         let flow_arc = std::sync::Arc::new(flow);
         let flow_data = ValueRef::new(serde_json::to_value(flow_arc.as_ref()).unwrap());

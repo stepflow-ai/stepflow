@@ -56,6 +56,11 @@ pub enum TransportError {
     MethodMissingId { method: Cow<'static, str> },
     #[error("invalid environment variable: {0}")]
     InvalidEnvironmentVariable(String),
+    #[error("invalid value for field '{field}': expected {expected}")]
+    InvalidValue {
+        field: &'static str,
+        expected: &'static str,
+    },
 }
 
 pub type Result<T, E = error_stack::Report<TransportError>> = std::result::Result<T, E>;

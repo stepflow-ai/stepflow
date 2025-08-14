@@ -41,7 +41,11 @@ impl MockContext {
 
     /// Get an execution context for testing from this mock context.
     pub fn execution_context(&self) -> ExecutionContext {
-        ExecutionContext::new(self.executor.clone(), Uuid::new_v4())
+        ExecutionContext::new(
+            self.executor.clone(),
+            Uuid::new_v4(),
+            Some("test_step".to_string()),
+        )
     }
 }
 

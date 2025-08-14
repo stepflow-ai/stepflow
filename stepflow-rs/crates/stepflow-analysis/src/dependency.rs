@@ -207,6 +207,7 @@ mod tests {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
+            metadata: std::collections::HashMap::new(),
         }
     }
 
@@ -226,6 +227,7 @@ mod tests {
                     output_schema: None,
                     skip_if: None,
                     on_error: ErrorAction::Fail,
+                    metadata: std::collections::HashMap::new(),
                 },
                 Step {
                     id: "step2".to_string(),
@@ -235,11 +237,13 @@ mod tests {
                     output_schema: None,
                     skip_if: None,
                     on_error: ErrorAction::Fail,
+                    metadata: std::collections::HashMap::new(),
                 },
             ],
             output: ValueTemplate::step_ref("step2", JsonPath::default()),
             test: None,
             examples: None,
+            metadata: std::collections::HashMap::new(),
         })
     }
 
@@ -438,6 +442,7 @@ mod tests {
             output: ValueTemplate::step_ref("step1", JsonPath::default()),
             test: None,
             examples: None,
+            metadata: std::collections::HashMap::new(),
         });
 
         let result = analyze_flow_dependencies(

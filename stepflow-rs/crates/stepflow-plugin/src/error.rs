@@ -11,6 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
+
 use stepflow_core::workflow::Component;
 use thiserror::Error;
 
@@ -44,6 +46,8 @@ pub enum PluginError {
     InvalidRuleIndex(usize),
     #[error("plugin not found: {0}")]
     PluginNotFound(String),
+    #[error("internal error: {0}")]
+    Internal(Cow<'static, str>),
 }
 
 pub type Result<T, E = error_stack::Report<PluginError>> = std::result::Result<T, E>;

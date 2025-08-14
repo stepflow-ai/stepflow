@@ -69,6 +69,18 @@ impl Flow {
         }
     }
 
+    pub fn version(&self) -> Option<&str> {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.version.as_deref(),
+        }
+    }
+
+    pub fn metadata(&self) -> &HashMap<String, serde_json::Value> {
+        match self {
+            Flow::V1(flow_v1) => &flow_v1.metadata,
+        }
+    }
+
     /// Returns a reference to all steps in the flow.
     pub fn steps(&self) -> &[Step] {
         &self.latest().steps
@@ -175,6 +187,10 @@ pub struct FlowV1 {
     /// Example inputs for the workflow that can be used for testing and UI dropdowns.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub examples: Option<Vec<ExampleInput>>,
+
+    /// Extensible metadata for the flow that can be used by tools and frameworks.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, serde_json::Value>,
 }
 
 /// A wrapper around `Arc<Flow>` to support poem-openapi traits.
@@ -501,6 +517,7 @@ mod tests {
                     output_schema: None,
                     skip_if: None,
                     on_error: ErrorAction::default(),
+                    metadata: HashMap::default(),
                 },
                 Step {
                     id: "s2".to_owned(),
@@ -512,6 +529,7 @@ mod tests {
                     output_schema: None,
                     skip_if: None,
                     on_error: ErrorAction::default(),
+                    metadata: HashMap::default(),
                 },
             ],
             output: ValueTemplate::parse_value(serde_json::json!({
@@ -521,6 +539,7 @@ mod tests {
             .unwrap(),
             test: None,
             examples: None,
+            metadata: HashMap::default(),
         };
 
         similar_asserts::assert_serde_eq!(latest, &expected_flow);
@@ -545,6 +564,7 @@ mod tests {
                 description: Some("Direct example".to_string()),
                 input: ValueRef::new(json!({"input": "example"})),
             }]),
+            metadata: HashMap::default(),
             test: Some(TestConfig {
                 config: None,
                 servers: HashMap::default(),

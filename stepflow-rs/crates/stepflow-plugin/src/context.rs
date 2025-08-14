@@ -104,12 +104,104 @@ pub trait Context: Send + Sync {
 pub struct ExecutionContext {
     context: Arc<dyn Context>,
     run_id: Uuid,
+    step_id: Option<String>,
+    flow: Option<Arc<Flow>>,
+    flow_id: Option<BlobId>,
 }
 
 impl ExecutionContext {
     /// Create a new ExecutionContext.
-    pub fn new(context: Arc<dyn Context>, run_id: Uuid) -> Self {
-        Self { context, run_id }
+    pub fn new(context: Arc<dyn Context>, run_id: Uuid, step_id: Option<String>) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id,
+            flow: None,
+            flow_id: None,
+        }
+    }
+
+    /// Create a new ExecutionContext with a flow for metadata access.
+    pub fn new_with_flow(
+        context: Arc<dyn Context>,
+        run_id: Uuid,
+        step_id: Option<String>,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+    ) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id,
+            flow: Some(flow),
+            flow_id: Some(flow_id),
+        }
+    }
+
+    /// Create a new ExecutionContext for a specific step.
+    pub fn for_step(context: Arc<dyn Context>, run_id: Uuid, step_id: String) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: Some(step_id),
+            flow: None,
+            flow_id: None,
+        }
+    }
+
+    /// Create a new ExecutionContext for a specific step with flow metadata access.
+    pub fn for_step_with_flow(
+        context: Arc<dyn Context>,
+        run_id: Uuid,
+        step_id: String,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+    ) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: Some(step_id),
+            flow: Some(flow),
+            flow_id: Some(flow_id),
+        }
+    }
+
+    /// Create a new ExecutionContext for workflow-level operations (no specific step).
+    pub fn for_workflow(context: Arc<dyn Context>, run_id: Uuid) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: None,
+            flow: None,
+            flow_id: None,
+        }
+    }
+
+    /// Create a new ExecutionContext for workflow-level operations with flow metadata access.
+    pub fn for_workflow_with_flow(
+        context: Arc<dyn Context>,
+        run_id: Uuid,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+    ) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: None,
+            flow: Some(flow),
+            flow_id: Some(flow_id),
+        }
+    }
+
+    /// Create a new ExecutionContext with a different step ID, reusing the same context and run_id.
+    pub fn with_step(&self, step_id: String) -> Self {
+        Self {
+            context: self.context.clone(),
+            run_id: self.run_id,
+            step_id: Some(step_id),
+            flow: self.flow.clone(),
+            flow_id: self.flow_id.clone(),
+        }
     }
 
     /// Get the execution ID for this context.
@@ -117,9 +209,24 @@ impl ExecutionContext {
         self.run_id
     }
 
+    /// Get the step ID for this context, if available.
+    pub fn step_id(&self) -> Option<&str> {
+        self.step_id.as_deref()
+    }
+
+    /// Get the flow ID for this context, if available.
+    pub fn flow_id(&self) -> Option<&BlobId> {
+        self.flow_id.as_ref()
+    }
+
     /// Get a reference to the state store.
     pub fn state_store(&self) -> &Arc<dyn StateStore> {
         self.context.state_store()
+    }
+
+    /// Get the underlying context.
+    pub fn context(&self) -> &Arc<dyn Context> {
+        &self.context
     }
 }
 

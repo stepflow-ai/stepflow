@@ -32,6 +32,8 @@ pub enum Method {
     BlobsGet,
     #[serde(rename = "flows/evaluate")]
     FlowsEvaluate,
+    #[serde(rename = "flows/get_metadata")]
+    FlowsGetMetadata,
 }
 
 impl std::fmt::Display for Method {
@@ -45,6 +47,7 @@ impl std::fmt::Display for Method {
             Method::BlobsPut => write!(f, "blobs/put"),
             Method::BlobsGet => write!(f, "blobs/get"),
             Method::FlowsEvaluate => write!(f, "flows/evaluate"),
+            Method::FlowsGetMetadata => write!(f, "flows/get_metadata"),
         }
     }
 }
@@ -67,6 +70,7 @@ pub(crate) fn method_params(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::blobs::GetBlobParams>(),
         generator.subschema_for::<super::blobs::PutBlobParams>(),
         generator.subschema_for::<super::flows::EvaluateFlowParams>(),
+        generator.subschema_for::<super::flows::GetFlowMetadataParams>(),
     ];
     json_schema!({
         "title": "MethodParams",
@@ -84,6 +88,7 @@ pub(crate) fn method_result(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::blobs::GetBlobResult>(),
         generator.subschema_for::<super::blobs::PutBlobResult>(),
         generator.subschema_for::<super::flows::EvaluateFlowResult>(),
+        generator.subschema_for::<super::flows::GetFlowMetadataResult>(),
     ];
     json_schema!({
         "title": "MethodResult",
@@ -119,6 +124,10 @@ mod tests {
             serde_json::to_string(&Method::FlowsEvaluate).unwrap(),
             r#""flows/evaluate""#
         );
+        assert_eq!(
+            serde_json::to_string(&Method::FlowsGetMetadata).unwrap(),
+            r#""flows/get_metadata""#
+        );
     }
 
     #[test]
@@ -134,6 +143,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Method>(r#""flows/evaluate""#).unwrap(),
             Method::FlowsEvaluate
+        );
+        assert_eq!(
+            serde_json::from_str::<Method>(r#""flows/get_metadata""#).unwrap(),
+            Method::FlowsGetMetadata
         );
     }
 

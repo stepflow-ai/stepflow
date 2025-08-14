@@ -104,8 +104,9 @@ impl WorkflowExecutor {
         state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
         // Build dependencies for the workflow using the analysis crate
-        let analysis_result = stepflow_analysis::analyze_flow_dependencies(flow.clone(), flow_id)
-            .change_context(ExecutionError::AnalysisError)?;
+        let analysis_result =
+            stepflow_analysis::analyze_flow_dependencies(flow.clone(), flow_id.clone())
+                .change_context(ExecutionError::AnalysisError)?;
 
         let analysis = match analysis_result.analysis {
             Some(analysis) => analysis,
@@ -135,8 +136,13 @@ impl WorkflowExecutor {
         );
         let resolver = ValueResolver::new(run_id, input, state_loader, flow.clone());
 
-        // Create execution context
-        let context = executor.execution_context(run_id);
+        // Create workflow-aware execution context
+        let context = ExecutionContext::for_workflow_with_flow(
+            executor.clone(),
+            run_id,
+            flow.clone(),
+            flow_id,
+        );
 
         Ok(Self {
             tracker,
@@ -646,12 +652,15 @@ impl WorkflowExecutor {
             .executor
             .get_plugin_and_component(&step.component, step_input.clone())
             .await?;
+        // Create step-specific execution context reusing the workflow context
+        let step_context = self.context.with_step(step_id.clone());
+
         let result = execute_step_async(
             plugin,
             step,
             &resolved_component,
             step_input,
-            self.context.clone(),
+            step_context,
             &self.resolver,
         )
         .await?;
@@ -862,7 +871,7 @@ impl WorkflowExecutor {
 
         // Clone necessary data for the async task
         let flow = self.flow.clone();
-        let context = self.context.clone();
+        let base_context = self.context.clone();
         let resolver = self.resolver.clone();
 
         // Create the async task
@@ -870,12 +879,14 @@ impl WorkflowExecutor {
         let resolved_component_clone = resolved_component.clone();
         let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
             let step = flow.step(step_index);
+            // Create step-specific execution context reusing the workflow context
+            let step_context = base_context.with_step(step.id.clone());
             let result = execute_step_async(
                 &plugin_clone,
                 step,
                 &resolved_component_clone,
                 step_input,
-                context,
+                step_context,
                 &resolver,
             )
             .await;
@@ -1118,6 +1129,7 @@ mod tests {
             skip_if: None,
             on_error: ErrorAction::Fail,
             input: ValueTemplate::parse_value(input).unwrap(),
+            metadata: std::collections::HashMap::new(),
         }
     }
 
@@ -1132,6 +1144,7 @@ mod tests {
             output,
             test: None,
             examples: None,
+            metadata: std::collections::HashMap::new(),
         })
     }
 

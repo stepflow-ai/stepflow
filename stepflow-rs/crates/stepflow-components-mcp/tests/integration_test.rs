@@ -55,7 +55,11 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
     let test_context = Arc::new(TestContext {
         state_store: Arc::new(InMemoryStateStore::new()),
     });
-    let exec_context = ExecutionContext::new(test_context.clone(), Uuid::new_v4());
+    let exec_context = ExecutionContext::new(
+        test_context.clone(),
+        Uuid::new_v4(),
+        Some("test_step".to_string()),
+    );
 
     (test_context, exec_context)
 }
