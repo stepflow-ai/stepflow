@@ -70,6 +70,22 @@ impl Context for MockContext {
     {
         Box::pin(async { Err(PluginError::Execution.into()) })
     }
+
+    fn get_execution_metadata(
+        &self,
+        _step_id: Option<&str>,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        stepflow_plugin::ExecutionMetadata,
+                        error_stack::Report<PluginError>,
+                    >,
+                > + Send,
+        >,
+    > {
+        Box::pin(async move { Ok(stepflow_plugin::ExecutionMetadata::empty()) })
+    }
 }
 
 /// Test that we can create an HTTP plugin and it fails gracefully when no server is running
@@ -192,8 +208,11 @@ async fn test_http_protocol_integration() {
                                 });
                                 let input_ref = ValueRef::from(input_json);
 
-                                let execution_context =
-                                    ExecutionContext::new(context.clone(), Uuid::new_v4());
+                                let execution_context = ExecutionContext::for_step(
+                                    context.clone(),
+                                    Uuid::new_v4(),
+                                    "test_step".to_string(),
+                                );
 
                                 let execute_result = timeout(
                                     Duration::from_secs(5),

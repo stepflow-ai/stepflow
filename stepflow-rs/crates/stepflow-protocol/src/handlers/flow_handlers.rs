@@ -24,6 +24,9 @@ use super::blob_handlers::handle_method_call;
 /// Handler for flow evaluation method calls from component servers.
 pub struct EvaluateFlowHandler;
 
+/// Handler for flow metadata method calls from component servers.
+pub struct GetFlowMetadataHandler;
+
 impl MethodHandler for EvaluateFlowHandler {
     fn handle_message<'a>(
         &self,
@@ -45,6 +48,77 @@ impl MethodHandler for EvaluateFlowHandler {
                     })?;
 
                 Ok(crate::protocol::EvaluateFlowResult { result })
+            },
+        )
+        .boxed()
+    }
+}
+
+impl MethodHandler for GetFlowMetadataHandler {
+    fn handle_message<'a>(
+        &self,
+        request: &'a MethodRequest<'a>,
+        response_tx: mpsc::Sender<String>,
+        context: Arc<dyn Context>,
+    ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
+        handle_method_call(
+            request,
+            response_tx,
+            |request: crate::protocol::GetFlowMetadataParams| async move {
+                use stepflow_plugin::ExecutionContext;
+
+                // If run_id and flow_id are provided, create an ExecutionContext with flow access
+                let metadata = if let (Some(run_id_str), Some(flow_id)) =
+                    (request.run_id.as_ref(), request.flow_id.as_ref())
+                {
+                    // Parse the string UUID
+                    let run_id = run_id_str
+                        .parse::<uuid::Uuid>()
+                        .map_err(|_| Error::internal("Invalid run_id format"))?;
+
+                    // Fetch the flow from the state store
+                    let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
+                        tracing::error!("Failed to get blob: {e}");
+                        Error::internal("Failed to get blob")
+                    })?;
+
+                    let flow = blob_data
+                        .as_flow()
+                        .ok_or_else(|| Error::internal("Invalid flow blob"))?
+                        .clone();
+
+                    // Create ExecutionContext with flow for metadata access
+                    let exec_context = ExecutionContext::new_with_flow(
+                        context.clone(),
+                        run_id,
+                        request.step_id.clone(),
+                        flow,
+                        flow_id.clone(),
+                    );
+
+                    // Get metadata from the ExecutionContext
+                    exec_context
+                        .get_execution_metadata(request.step_id.as_deref())
+                        .await
+                        .map_err(|e| {
+                            tracing::error!("Failed to get execution metadata: {e}");
+                            Error::internal("Failed to get execution metadata")
+                        })?
+                } else {
+                    // Fallback to context-based metadata retrieval
+                    context
+                        .get_execution_metadata(request.step_id.as_deref())
+                        .await
+                        .map_err(|e| {
+                            tracing::error!("Failed to get execution metadata: {e}");
+                            Error::internal("Failed to get execution metadata")
+                        })?
+                };
+
+                Ok(crate::protocol::GetFlowMetadataResult {
+                    flow_metadata: metadata.flow_metadata,
+                    step_metadata: metadata.step_metadata,
+                })
             },
         )
         .boxed()

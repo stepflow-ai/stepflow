@@ -83,6 +83,11 @@
             "$ref": "#/$defs/ExampleInput"
           }
         },
+        "metadata": {
+          "description": "Extensible metadata for the flow that can be used by tools and frameworks.",
+          "type": "object",
+          "additionalProperties": true
+        },
         "schema": {
           "type": "string",
           "const": "https://stepflow.org/schemas/v1/flow.json"
@@ -152,6 +157,11 @@
         "input": {
           "description": "Arguments to pass to the component for this step",
           "$ref": "#/$defs/ValueTemplate"
+        },
+        "metadata": {
+          "description": "Extensible metadata for the step that can be used by tools and frameworks.",
+          "type": "object",
+          "additionalProperties": true
         }
       },
       "required": [

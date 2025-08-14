@@ -56,6 +56,9 @@
             },
             {
               "$ref": "#/$defs/EvaluateFlowParams"
+            },
+            {
+              "$ref": "#/$defs/GetFlowMetadataParams"
             }
           ]
         }
@@ -94,7 +97,8 @@
         "components/execute",
         "blobs/put",
         "blobs/get",
-        "flows/evaluate"
+        "flows/evaluate",
+        "flows/get_metadata"
       ]
     },
     "InitializeParams": {
@@ -123,11 +127,26 @@
         "input": {
           "description": "The input to the component.",
           "$ref": "#/$defs/Value"
+        },
+        "step_id": {
+          "description": "The ID of the step being executed.",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "The ID of the workflow run.",
+          "type": "string"
+        },
+        "flow_id": {
+          "description": "The ID of the flow being executed.",
+          "$ref": "#/$defs/BlobId"
         }
       },
       "required": [
         "component",
-        "input"
+        "input",
+        "step_id",
+        "run_id",
+        "flow_id"
       ]
     },
     "Component": {
@@ -141,6 +160,10 @@
     },
     "Value": {
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
+    },
+    "BlobId": {
+      "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+      "type": "string"
     },
     "ComponentInfoParams": {
       "description": "Sent from Stepflow to the component server to request information about a specific component.",
@@ -171,10 +194,6 @@
       "required": [
         "blob_id"
       ]
-    },
-    "BlobId": {
-      "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-      "type": "string"
     },
     "PutBlobParams": {
       "description": "Sent from the component server to the Stepflow to store a blob with the provided content.",
@@ -217,6 +236,37 @@
         "flow_id",
         "input"
       ]
+    },
+    "GetFlowMetadataParams": {
+      "description": "Sent from the component server to Stepflow to get flow and step metadata.\n\nThis request allows components to access workflow-level metadata and step-specific metadata\nduring execution. The metadata can contain arbitrary JSON values defined in the workflow\nYAML/JSON.",
+      "type": "object",
+      "properties": {
+        "step_id": {
+          "description": "The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "description": "The execution run ID for the current workflow execution.\n\nThis allows the handler to construct the proper execution context for metadata lookup.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flow_id": {
+          "description": "The flow blob ID for the current workflow.\n\nThis allows the handler to construct the proper execution context for metadata lookup.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     },
     "MethodResponse": {
       "description": "Response to a method request.",
@@ -264,6 +314,9 @@
             },
             {
               "$ref": "#/$defs/EvaluateFlowResult"
+            },
+            {
+              "$ref": "#/$defs/GetFlowMetadataResult"
             }
           ]
         }
@@ -513,6 +566,28 @@
       "required": [
         "outcome",
         "error"
+      ]
+    },
+    "GetFlowMetadataResult": {
+      "description": "Sent from Stepflow back to the component server with the requested metadata.\n\nContains the flow metadata and step metadata if a specific step was requested.\nThe metadata values are arbitrary JSON objects that can be accessed by components during\nworkflow execution.",
+      "type": "object",
+      "properties": {
+        "flow_metadata": {
+          "description": "Metadata for the current flow.\n\nThis always contains the flow-level metadata defined in the workflow file.\nCommon fields include name, description, version, but can contain any\narbitrary JSON structure defined by the workflow author.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "step_metadata": {
+          "description": "Metadata for the specified step (only present if step_id was provided and found).\n\nThis contains step-specific metadata defined in the workflow file.\nWill be None if no step_id was provided in the request",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flow_metadata"
       ]
     },
     "MethodError": {

@@ -50,12 +50,25 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
         fn working_directory(&self) -> &std::path::Path {
             std::path::Path::new(".")
         }
+        fn get_execution_metadata(
+            &self,
+            _step_id: Option<&str>,
+        ) -> futures::future::BoxFuture<
+            '_,
+            stepflow_plugin::Result<stepflow_plugin::ExecutionMetadata>,
+        > {
+            async move { Ok(stepflow_plugin::ExecutionMetadata::empty()) }.boxed()
+        }
     }
 
     let test_context = Arc::new(TestContext {
         state_store: Arc::new(InMemoryStateStore::new()),
     });
-    let exec_context = ExecutionContext::new(test_context.clone(), Uuid::new_v4());
+    let exec_context = ExecutionContext::new(
+        test_context.clone(),
+        Uuid::new_v4(),
+        Some("test_step".to_string()),
+    );
 
     (test_context, exec_context)
 }

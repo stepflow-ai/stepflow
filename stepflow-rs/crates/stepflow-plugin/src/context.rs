@@ -12,6 +12,7 @@
 // the License.
 
 use futures::future::{BoxFuture, FutureExt as _};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::{
@@ -20,6 +21,44 @@ use stepflow_core::{
 };
 use stepflow_state::StateStore;
 use uuid::Uuid;
+
+/// Result of execution metadata retrieval containing flow and optional step metadata.
+#[derive(Debug, Clone)]
+pub struct ExecutionMetadata {
+    /// Metadata associated with the current flow
+    pub flow_metadata: HashMap<String, serde_json::Value>,
+    /// Metadata associated with the specific step (if step_id was provided)
+    pub step_metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
+impl ExecutionMetadata {
+    /// Create new ExecutionMetadata with the given flow and step metadata
+    pub fn new(
+        flow_metadata: HashMap<String, serde_json::Value>,
+        step_metadata: Option<HashMap<String, serde_json::Value>>,
+    ) -> Self {
+        Self {
+            flow_metadata,
+            step_metadata,
+        }
+    }
+
+    /// Create ExecutionMetadata with only flow metadata
+    pub fn flow_only(flow_metadata: HashMap<String, serde_json::Value>) -> Self {
+        Self {
+            flow_metadata,
+            step_metadata: None,
+        }
+    }
+
+    /// Create empty ExecutionMetadata
+    pub fn empty() -> Self {
+        Self {
+            flow_metadata: HashMap::new(),
+            step_metadata: None,
+        }
+    }
+}
 
 /// Trait for interacting with the workflow runtime.
 pub trait Context: Send + Sync {
@@ -97,6 +136,13 @@ pub trait Context: Send + Sync {
 
     /// Working directory of the Stepflow Config.
     fn working_directory(&self) -> &Path;
+
+    /// Get metadata for the current execution context.
+    /// Returns flow metadata and optionally step metadata if step_id is provided.
+    fn get_execution_metadata(
+        &self,
+        step_id: Option<&str>,
+    ) -> BoxFuture<'_, crate::Result<ExecutionMetadata>>;
 }
 
 /// Execution context that combines a Context with an execution ID.
@@ -104,12 +150,104 @@ pub trait Context: Send + Sync {
 pub struct ExecutionContext {
     context: Arc<dyn Context>,
     run_id: Uuid,
+    step_id: Option<String>,
+    flow: Option<Arc<Flow>>,
+    flow_id: Option<BlobId>,
 }
 
 impl ExecutionContext {
     /// Create a new ExecutionContext.
-    pub fn new(context: Arc<dyn Context>, run_id: Uuid) -> Self {
-        Self { context, run_id }
+    pub fn new(context: Arc<dyn Context>, run_id: Uuid, step_id: Option<String>) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id,
+            flow: None,
+            flow_id: None,
+        }
+    }
+
+    /// Create a new ExecutionContext with a flow for metadata access.
+    pub fn new_with_flow(
+        context: Arc<dyn Context>,
+        run_id: Uuid,
+        step_id: Option<String>,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+    ) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id,
+            flow: Some(flow),
+            flow_id: Some(flow_id),
+        }
+    }
+
+    /// Create a new ExecutionContext for a specific step.
+    pub fn for_step(context: Arc<dyn Context>, run_id: Uuid, step_id: String) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: Some(step_id),
+            flow: None,
+            flow_id: None,
+        }
+    }
+
+    /// Create a new ExecutionContext for a specific step with flow metadata access.
+    pub fn for_step_with_flow(
+        context: Arc<dyn Context>,
+        run_id: Uuid,
+        step_id: String,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+    ) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: Some(step_id),
+            flow: Some(flow),
+            flow_id: Some(flow_id),
+        }
+    }
+
+    /// Create a new ExecutionContext for workflow-level operations (no specific step).
+    pub fn for_workflow(context: Arc<dyn Context>, run_id: Uuid) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: None,
+            flow: None,
+            flow_id: None,
+        }
+    }
+
+    /// Create a new ExecutionContext for workflow-level operations with flow metadata access.
+    pub fn for_workflow_with_flow(
+        context: Arc<dyn Context>,
+        run_id: Uuid,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+    ) -> Self {
+        Self {
+            context,
+            run_id,
+            step_id: None,
+            flow: Some(flow),
+            flow_id: Some(flow_id),
+        }
+    }
+
+    /// Create a new ExecutionContext with a different step ID, reusing the same context and run_id.
+    pub fn with_step(&self, step_id: String) -> Self {
+        Self {
+            context: self.context.clone(),
+            run_id: self.run_id,
+            step_id: Some(step_id),
+            flow: self.flow.clone(),
+            flow_id: self.flow_id.clone(),
+        }
     }
 
     /// Get the execution ID for this context.
@@ -117,9 +255,24 @@ impl ExecutionContext {
         self.run_id
     }
 
+    /// Get the step ID for this context, if available.
+    pub fn step_id(&self) -> Option<&str> {
+        self.step_id.as_deref()
+    }
+
+    /// Get the flow ID for this context, if available.
+    pub fn flow_id(&self) -> Option<&BlobId> {
+        self.flow_id.as_ref()
+    }
+
     /// Get a reference to the state store.
     pub fn state_store(&self) -> &Arc<dyn StateStore> {
         self.context.state_store()
+    }
+
+    /// Get the underlying context.
+    pub fn context(&self) -> &Arc<dyn Context> {
+        &self.context
     }
 }
 
@@ -155,5 +308,69 @@ impl Context for ExecutionContext {
 
     fn working_directory(&self) -> &Path {
         self.context.working_directory()
+    }
+
+    fn get_execution_metadata(
+        &self,
+        step_id: Option<&str>,
+    ) -> BoxFuture<'_, crate::Result<ExecutionMetadata>> {
+        // If we have a flow, provide metadata; otherwise delegate to underlying context
+        if let Some(flow) = &self.flow {
+            // Use provided step_id or fall back to the context's current step_id, convert to owned
+            let target_step_id = step_id
+                .map(|s| s.to_string())
+                .or_else(|| self.step_id().map(|s| s.to_string()));
+            let flow = flow.clone();
+
+            async move {
+                use std::collections::HashMap;
+
+                // Get flow metadata (built-in metadata + custom metadata)
+                let mut flow_metadata = HashMap::new();
+
+                // Add built-in metadata
+                if let Some(name) = flow.name() {
+                    flow_metadata.insert(
+                        "name".to_string(),
+                        serde_json::Value::String(name.to_string()),
+                    );
+                }
+                if let Some(description) = flow.description() {
+                    flow_metadata.insert(
+                        "description".to_string(),
+                        serde_json::Value::String(description.to_string()),
+                    );
+                }
+                // Note: Flow doesn't have a version method, but FlowV1 has a version field
+                if let Some(version) = flow.latest().version.as_ref() {
+                    flow_metadata.insert(
+                        "version".to_string(),
+                        serde_json::Value::String(version.clone()),
+                    );
+                }
+
+                // Add custom metadata from the flow
+                for (key, value) in flow.metadata() {
+                    flow_metadata.insert(key.clone(), value.clone());
+                }
+
+                // Get step metadata if step_id is provided
+                let step_metadata = if let Some(ref step_id) = target_step_id {
+                    // Find the step by ID
+                    flow.steps()
+                        .iter()
+                        .find(|step| step.id == *step_id)
+                        .map(|step| step.metadata.clone())
+                } else {
+                    None
+                };
+
+                Ok(ExecutionMetadata::new(flow_metadata, step_metadata))
+            }
+            .boxed()
+        } else {
+            // No flow available, delegate to underlying context
+            self.context.get_execution_metadata(step_id)
+        }
     }
 }

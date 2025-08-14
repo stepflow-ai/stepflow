@@ -34,8 +34,10 @@ from .exceptions import (
     StepflowProtocolError,
 )
 from .generated_protocol import (
+    ComponentExecuteParams,
     Error,
     Message,
+    Method,
     MethodError,
     MethodRequest,
     MethodSuccess,
@@ -247,10 +249,24 @@ class StepflowHttpServer:
             if needs_context:
                 # Create context for bidirectional communication, use streaming
                 outgoing_queue: asyncio.Queue[MethodRequest | None] = asyncio.Queue()
+
+                # Extract execution parameters for component execution requests
+                step_id = None
+                run_id = None
+                flow_id = None
+                if request.method == Method.components_execute:
+                    assert isinstance(request.params, ComponentExecuteParams)
+                    step_id = request.params.step_id
+                    run_id = request.params.run_id
+                    flow_id = request.params.flow_id
+
                 context = StepflowContext(
                     outgoing_queue=outgoing_queue,
                     message_decoder=self.message_decoder,
                     session_id=None,
+                    step_id=step_id,
+                    run_id=run_id,
+                    flow_id=flow_id,
                 )
                 return StreamingResponse(
                     self._execute_with_streaming_context(

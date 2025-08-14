@@ -57,3 +57,4 @@ The protocol defines error codes in standardized ranges following JSON-RPC conve
 | -32008 | Blob Not Found | Requested blob does not exist | Invalid blob ID |
 | -32009 | Expression Evaluation Failed | Flow expression could not be evaluated | Invalid reference or path |
 | -32010 | Session Expired | HTTP session has expired | Session cleanup or timeout |
+| -32011 | Invalid Step ID | Provided step ID does not exist | Unknown step ID in a request |

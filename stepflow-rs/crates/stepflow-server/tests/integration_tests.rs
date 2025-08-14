@@ -182,10 +182,12 @@ fn create_test_workflow() -> Flow {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
+            metadata: std::collections::HashMap::new(),
         }],
         output: ValueTemplate::default(),
         test: None,
         examples: None,
+        metadata: std::collections::HashMap::new(),
     })
 }
 
@@ -564,6 +566,7 @@ async fn test_status_updates_during_regular_execution() {
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
+                metadata: std::collections::HashMap::new(),
             },
             Step {
                 id: "step2".to_string(),
@@ -579,6 +582,7 @@ async fn test_status_updates_during_regular_execution() {
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
+                metadata: std::collections::HashMap::new(),
             },
         ],
         output: ValueTemplate::parse_value(json!({
@@ -588,6 +592,7 @@ async fn test_status_updates_during_regular_execution() {
         .unwrap(),
         test: None,
         examples: None,
+        metadata: std::collections::HashMap::new(),
     });
 
     // Store the workflow
@@ -687,6 +692,7 @@ async fn test_status_updates_during_debug_execution() {
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
+                metadata: std::collections::HashMap::new(),
             },
             Step {
                 id: "step2".to_string(),
@@ -702,6 +708,7 @@ async fn test_status_updates_during_debug_execution() {
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
+                metadata: std::collections::HashMap::new(),
             },
         ],
         output: ValueTemplate::parse_value(json!({
@@ -710,6 +717,7 @@ async fn test_status_updates_during_debug_execution() {
         .unwrap(),
         test: None,
         examples: None,
+        metadata: std::collections::HashMap::new(),
     });
 
     // Store the workflow
@@ -824,6 +832,7 @@ async fn test_status_transitions_with_error_handling() {
             output_schema: None,
             skip_if: None,
             on_error: ErrorAction::Fail,
+            metadata: std::collections::HashMap::new(),
         }],
         output: ValueTemplate::parse_value(json!({
             "result": {"$from": {"step": "failing_step"}, "path": "output"}
@@ -831,6 +840,7 @@ async fn test_status_transitions_with_error_handling() {
         .unwrap(),
         test: None,
         examples: None,
+        metadata: std::collections::HashMap::new(),
     });
 
     // Store the workflow

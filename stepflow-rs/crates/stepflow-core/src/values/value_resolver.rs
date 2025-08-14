@@ -332,10 +332,12 @@ mod tests {
                 output_schema: None,
                 skip_if: None,
                 on_error: ErrorAction::Fail,
+                metadata: HashMap::default(),
             }],
             output: ValueTemplate::literal(json!(null)),
             test: None,
             examples: None,
+            metadata: HashMap::default(),
         }))
     }
 

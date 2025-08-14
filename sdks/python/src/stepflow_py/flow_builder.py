@@ -119,10 +119,12 @@ class FlowBuilder:
         name: str | None = None,
         description: str | None = None,
         version: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         self.name = name
         self.description = description
         self.version = version
+        self.metadata = metadata or {}
         self.input_schema: Schema | None = None
         self.output_schema: Schema | None = None
         self.steps: dict[str, Step] = {}
@@ -141,7 +143,10 @@ class FlowBuilder:
             step_refs = builder.step("step_name").get_references()
         """
         builder = cls(
-            name=flow.name, description=flow.description, version=flow.version
+            name=flow.name,
+            description=flow.description,
+            version=flow.version,
+            metadata=flow.metadata,
         )
         builder.input_schema = flow.inputSchema
         builder.output_schema = flow.outputSchema
@@ -176,6 +181,11 @@ class FlowBuilder:
             self.output_schema = schema
         return self
 
+    def set_metadata(self, metadata: dict[str, Any]) -> FlowBuilder:
+        """Set the metadata for the flow."""
+        self.metadata = metadata
+        return self
+
     def add_step(
         self,
         *,
@@ -186,6 +196,7 @@ class FlowBuilder:
         output_schema: dict[str, Any] | Schema | None = None,
         skip_if: StepReference | WorkflowInput | Value | None = None,
         on_error: ErrorAction | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> StepHandle:
         """Add a step to the flow."""
         # Component is now just a string, no conversion needed
@@ -235,6 +246,7 @@ class FlowBuilder:
             outputSchema=output_schema_obj,
             skipIf=skip_if_expr,
             onError=on_error_action,
+            metadata=metadata or {},
         )
 
         self.steps[id] = step
@@ -267,6 +279,7 @@ class FlowBuilder:
             outputSchema=self.output_schema,
             steps=list(self.steps.values()),
             output=self._output,
+            metadata=self.metadata,
         )
 
     def _convert_to_value_template(self, data: Valuable) -> ValueTemplate | None:

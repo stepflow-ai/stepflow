@@ -481,6 +481,13 @@ mod tests {
         fn working_directory(&self) -> &Path {
             Path::new("/tmp")
         }
+
+        fn get_execution_metadata(
+            &self,
+            _step_id: Option<&str>,
+        ) -> BoxFuture<'_, PluginResult<stepflow_plugin::ExecutionMetadata>> {
+            async move { Ok(stepflow_plugin::ExecutionMetadata::empty()) }.boxed()
+        }
     }
 
     #[tokio::test]

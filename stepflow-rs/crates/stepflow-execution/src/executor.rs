@@ -96,8 +96,8 @@ impl StepflowExecutor {
         }
     }
 
-    pub fn execution_context(&self, run_id: Uuid) -> ExecutionContext {
-        ExecutionContext::new(self.executor(), run_id)
+    pub fn execution_context(&self, run_id: Uuid, step_id: String) -> ExecutionContext {
+        ExecutionContext::for_step(self.executor(), run_id, step_id)
     }
 
     /// Get a reference to the state store.
@@ -292,6 +292,18 @@ impl Context for StepflowExecutor {
 
     fn working_directory(&self) -> &std::path::Path {
         &self.working_directory
+    }
+
+    fn get_execution_metadata(
+        &self,
+        _step_id: Option<&str>,
+    ) -> BoxFuture<'_, stepflow_plugin::Result<stepflow_plugin::ExecutionMetadata>> {
+        async move {
+            // For now, return empty metadata as the StepflowExecutor doesn't have access to current execution context
+            // This will be properly implemented when we have execution-specific contexts
+            Ok(stepflow_plugin::ExecutionMetadata::empty())
+        }
+        .boxed()
     }
 }
 

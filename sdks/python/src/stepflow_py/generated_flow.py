@@ -351,6 +351,15 @@ class Step(Struct, kw_only=True):
         ]
         | None
     ) = None
+    metadata: (
+        Annotated[
+            Dict[str, Any],
+            Meta(
+                description='Extensible metadata for the step that can be used by tools and frameworks.'
+            ),
+        ]
+        | None
+    ) = None
 
 
 class FlowV1(Struct, kw_only=True):
@@ -391,6 +400,15 @@ class FlowV1(Struct, kw_only=True):
             List[ExampleInput],
             Meta(
                 description='Example inputs for the workflow that can be used for testing and UI dropdowns.'
+            ),
+        ]
+        | None
+    ) = None
+    metadata: (
+        Annotated[
+            Dict[str, Any],
+            Meta(
+                description='Extensible metadata for the flow that can be used by tools and frameworks.'
             ),
         ]
         | None

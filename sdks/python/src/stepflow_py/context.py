@@ -29,6 +29,8 @@ from stepflow_py.generated_protocol import (
     FlowResultSkipped,
     FlowResultSuccess,
     GetBlobResult,
+    GetFlowMetadataParams,
+    GetFlowMetadataResult,
     Message,
     Method,
     MethodError,
@@ -57,10 +59,16 @@ class StepflowContext:
         outgoing_queue: asyncio.Queue,
         message_decoder: MessageDecoder[asyncio.Future[Message]],
         session_id: str | None = None,
+        step_id: str | None = None,
+        run_id: str | None = None,
+        flow_id: str | None = None,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
         self._session_id = session_id
+        self._step_id = step_id
+        self._run_id = run_id
+        self._flow_id = flow_id
 
     async def _send_request(
         self, method: Method, params: Any, result_type: type[T]
@@ -134,6 +142,21 @@ class StepflowContext:
         """Get the session ID for HTTP mode, or None for STDIO mode."""
         return self._session_id
 
+    @property
+    def step_id(self) -> str | None:
+        """Get the current step ID, or None if not available."""
+        return self._step_id
+
+    @property
+    def run_id(self) -> str | None:
+        """Get the current run ID, or None if not available."""
+        return self._run_id
+
+    @property
+    def flow_id(self) -> str | None:
+        """Get the current flow ID, or None if not available."""
+        return self._flow_id
+
     async def evaluate_flow(self, flow: Flow, input: Any) -> Any:
         """Evaluate a flow with the given input.
 
@@ -200,6 +223,38 @@ class StepflowContext:
             )
         else:
             raise Exception(f"Unexpected flow result type: {type(flow_result)}")
+
+    async def get_metadata(self, step_id: str | None = None) -> dict[str, Any]:
+        """Get metadata for the current flow and optionally a specific step.
+
+        Args:
+            step_id: The ID of the step to get metadata for. If None, uses
+                the current step ID. If neither step_id nor current step_id
+                are available, only flow metadata is returned.
+
+        Returns:
+            A dictionary containing:
+            - flow_metadata: Metadata for the current flow
+            - step_metadata: Metadata for the specified step (if step_id
+              provided and found)
+        """
+        # Use provided step_id, or fall back to current step_id, or None
+        target_step_id = step_id or self._step_id
+
+        params = GetFlowMetadataParams(
+            step_id=target_step_id,
+            run_id=self._run_id,
+            flow_id=self._flow_id,
+        )
+        response = await self._send_request(
+            Method.flows_get_metadata, params, GetFlowMetadataResult
+        )
+
+        result = {"flow_metadata": response.flow_metadata}
+        if response.step_metadata is not None:
+            result["step_metadata"] = response.step_metadata
+
+        return result
 
     def log(self, message):
         """Log a message."""

@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
@@ -222,14 +223,32 @@ impl Plugin for StepflowPlugin {
     async fn execute(
         &self,
         component: &Component,
-        _context: ExecutionContext,
+        context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
+        let step_id = context
+            .step_id()
+            .ok_or_else(|| {
+                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing step ID")))
+            })?
+            .to_owned();
+
+        let run_id = context.run_id();
+        let flow_id = context
+            .flow_id()
+            .ok_or_else(|| {
+                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing flow ID")))
+            })?
+            .clone();
+
         let client_handle = self.client_handle().await?;
         let response = client_handle
             .method(&ComponentExecuteParams {
                 component: component.clone(),
                 input,
+                step_id,
+                run_id: run_id.to_string(),
+                flow_id,
             })
             .await
             .change_context(PluginError::Execution)?;

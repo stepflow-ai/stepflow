@@ -41,7 +41,11 @@ impl MockContext {
 
     /// Get an execution context for testing from this mock context.
     pub fn execution_context(&self) -> ExecutionContext {
-        ExecutionContext::new(self.executor.clone(), Uuid::new_v4())
+        ExecutionContext::new(
+            self.executor.clone(),
+            Uuid::new_v4(),
+            Some("test_step".to_string()),
+        )
     }
 }
 
@@ -83,5 +87,22 @@ impl stepflow_plugin::Context for MockExecutor {
 
     fn working_directory(&self) -> &std::path::Path {
         Path::new(".")
+    }
+
+    fn get_execution_metadata(
+        &self,
+        _step_id: Option<&str>,
+    ) -> Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = stepflow_plugin::Result<stepflow_plugin::ExecutionMetadata>,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            // Return empty metadata for tests
+            Ok(stepflow_plugin::ExecutionMetadata::empty())
+        })
     }
 }
