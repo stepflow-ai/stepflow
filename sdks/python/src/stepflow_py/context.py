@@ -98,9 +98,9 @@ class StepflowContext:
         # Extract the result from the response message
         if isinstance(response_message, MethodSuccess):
             result = response_message.result
-            assert isinstance(
-                result, result_type
-            ), f"Expected {result_type}, got {type(result)}"
+            assert isinstance(result, result_type), (
+                f"Expected {result_type}, got {type(result)}"
+            )
             return result
         elif isinstance(response_message, MethodError):
             # Handle error case
