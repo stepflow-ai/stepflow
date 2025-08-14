@@ -41,12 +41,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://riptano.github.io/stepflow/"
-Documentation = "https://riptano.github.io/stepflow/"
-Repository = "https://github.com/riptano/stepflow"
-"Bug Tracker" = "https://github.com/riptano/stepflow/issues"
-Changelog = "https://github.com/riptano/stepflow/blob/main/sdks/python/CHANGELOG.md"
-"Source Code" = "https://github.com/riptano/stepflow/tree/main/sdks/python"
+Homepage = "https://stepflow-ai.github.io/stepflow/"
+Documentation = "https://stepflow-ai.github.io/stepflow/"
+Repository = "https://github.com/stepflow-ai/stepflow"
+"Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
+Changelog = "https://github.com/stepflow-ai/stepflow/blob/main/sdks/python/CHANGELOG.md"
+"Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/sdks/python"
 
 [project.optional-dependencies]
 http = [

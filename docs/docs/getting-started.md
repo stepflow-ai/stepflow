@@ -10,7 +10,7 @@ This guide will help you install Stepflow and run your first workflow in just a 
 
 ### 1. Download Stepflow
 
-Download the latest pre-built binary from [GitHub Releases](https://github.com/riptano/stepflow/releases) for your platform.
+Download the latest pre-built binary from [GitHub Releases](https://github.com/stepflow-ai/stepflow/releases) for your platform.
 
 ### 2. Install Python SDK (Recommended)
 

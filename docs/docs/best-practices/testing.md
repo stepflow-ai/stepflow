@@ -405,7 +405,7 @@ jobs:
 
     - name: Install Stepflow
       run: |
-        curl -L https://github.com/riptano/stepflow/releases/latest/download/stepflow-linux.tar.gz | tar xz
+        curl -L https://github.com/stepflow-ai/stepflow/releases/latest/download/stepflow-linux.tar.gz | tar xz
         sudo mv stepflow /usr/local/bin/
 
     - name: Run Workflow Tests

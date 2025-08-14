@@ -101,7 +101,7 @@ Stepflow is open source and we welcome contributions! Whether you want to:
 - Report bugs or suggest features
 - Share your workflows
 
-Visit our [GitHub repository](https://github.com/riptano/stepflow) to get
+Visit our [GitHub repository](https://github.com/stepflow-ai/stepflow) to get
 involved.
 
 ## Acknowledgments
