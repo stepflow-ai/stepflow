@@ -29,16 +29,7 @@ scale in production? How do you maintain security and isolation when executing
 untrusted code? How do you parallelise your workflows to maximise resource
 utilization?
 
-LangFlow - one of our other projects - meets (exceeds even!) most of these
-requirements with both a visual authoring experience and a built-in API server
-that turns every agent into an API endpoint. These endpoints can then be
-integrated into applications built on any framework or stack, supporting all
-major vector databases, LLMs, and a variety of other AI tools.
-
-However, it became clear to us that a pure server implementation for running
-“flows” was necessary to really scale and provide isolation for security and
-resource consumption. Stepflow was designed to fill this gap, not only for
-LangFlow but every other workflow system, and address these challenges with a
+Stepflow was designed to fill these gaps for AI workflows, and address these challenges with a
 simple yet powerful approach: define your workflows in YAML or JSON, and let the
 runtime handle the complexity of execution, scaling, and security.
 
@@ -60,10 +51,7 @@ this release include:
 
 ### Secure Component Isolation
 
-GenAI in the modern enterprise requires workflow
-isolation for security and resource control. Stepflow builds this in at the
-core:
-
+GenAI in the modern enterprise requires workflow isolation for security and resource control. Stepflow builds this in at the core:
 - Process isolation: Each component runs in its own sandboxed process or node
 - JSON-RPC protocol: Clean separation between workflow runtime and components
 - Resource controls: Strict environment and resource management for each step
@@ -75,8 +63,10 @@ wire protocol. This means that you are in complete control of all aspects of
 runtime execution:
 
 - Language agnostic: Write components in Python, TypeScript, or any language
+- Well defined protocol and routing rules: Supports bidirectional communication with local or remote processes
 - Plugin architecture: Easy integration with existing tools and services
 - MCP support: Use Model Context Protocol tools as workflow components
+- Lang Chain component Support: Use Lang Chain tools as workflow components
 - Built-in components: OpenAI integration, file operations, and more out of the
   box
 - User Defined Functions: Take control of your workflow via providing your own
@@ -84,46 +74,23 @@ runtime execution:
 
 ## Geting Started
 
-Get the latest release from GitHub https://github.com/riptano/stepflow/releases.
+Our comprehensive [getting started](/docs/getting-started) guide and usage [examples](/docs/examples/) should give you everything you need to get going with your own workflows. Specific examples include:
 
-Here's a simple workflow to try to get started.
-
-```yaml
-# math-workflow.yaml
-input_schema:
-  type: object
-  properties:
-    numbers:
-      type: array
-      items:
-        type: number
-
-steps:
-  - id: sum_numbers
-    component: python://sum
-    args:
-      values: { $from: $input, path: numbers }
-
-  - id: square_result
-    component: python://square
-    args:
-      value: { $from: sum_numbers, path: result }
-
-outputs:
-  sum: { $from: sum_numbers, path: result }
-  squared: { $from: square_result, path: result }
-```
+- Simple AI Chat Workflow: How to use [OpenAI chat integration](/docs/examples/openai-workflows)
+- MCP tool integration: Use [MCP tools as workflow components](/docs/examples/mcp-tools)
+- Custom component development: [Build your own components and UDFs](/docs/examples/custom-components)
+- Integrate with Lang Chain: [Use Lang Chain tools as workflow components](/docs/examples/langchain-integration)
+- Production model serving: [Deploy a model to Stepflow](/docs/examples/production-model-serving)
 
 ## What's Next?
 
 This is just the beginning! Our roadmap includes:
 
-- Container-based components: Run components in Docker containers for ultimate
-  isolation
+- Serverless component execution: Run components in environments like AWS Fargate and Beam.cloud 
 - Distributed execution: Scale workflows across multiple machines
 - Enhanced Python SDK: Simplified component development
 - Richer component library: Pre-built components for common tasks
-- Kubernetes integration: Native deployment to cloud environments
+- Integration with other AI frameworks: Provide a runtime for popular agent frameworks like Langflow, Flowise, and n8n
 
 ## Join the Community
 
@@ -142,11 +109,6 @@ involved.
 Special thanks to all our early contributors and testers who helped shape
 Stepflow. Your feedback and contributions have been invaluable in getting us to
 this first release.
-
-## Next Steps
-
-Ready to build your first GenAI workflow? Check out our [documentation](/) and
-join us in making AI workflows accessible, reliable, and secure for everyone.
 
 **Happy workflow building!**
 
