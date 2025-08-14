@@ -70,22 +70,6 @@ impl Context for MockContext {
     {
         Box::pin(async { Err(PluginError::Execution.into()) })
     }
-
-    fn get_execution_metadata(
-        &self,
-        _step_id: Option<&str>,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        stepflow_plugin::ExecutionMetadata,
-                        error_stack::Report<PluginError>,
-                    >,
-                > + Send,
-        >,
-    > {
-        Box::pin(async move { Ok(stepflow_plugin::ExecutionMetadata::empty()) })
-    }
 }
 
 /// Test that we can create an HTTP plugin and it fails gracefully when no server is running

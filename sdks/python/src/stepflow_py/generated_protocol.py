@@ -112,29 +112,12 @@ class EvaluateFlowParams(Struct, kw_only=True):
 
 
 class GetFlowMetadataParams(Struct, kw_only=True):
+    flow_id: Annotated[BlobId, Meta(description='The flow to retrieve metadata for.')]
     step_id: (
         Annotated[
             str | None,
             Meta(
                 description="The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response."
-            ),
-        ]
-        | None
-    ) = None
-    run_id: (
-        Annotated[
-            str | None,
-            Meta(
-                description='The execution run ID for the current workflow execution.\n\nThis allows the handler to construct the proper execution context for metadata lookup.'
-            ),
-        ]
-        | None
-    ) = None
-    flow_id: (
-        Annotated[
-            BlobId | None,
-            Meta(
-                description='The flow blob ID for the current workflow.\n\nThis allows the handler to construct the proper execution context for metadata lookup.'
             ),
         ]
         | None

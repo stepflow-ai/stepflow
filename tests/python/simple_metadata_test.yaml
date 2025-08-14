@@ -1,5 +1,5 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: Simple Metadata Test  
+name: Simple Metadata Test
 description: Test flow and step metadata access
 version: 1.0.0
 metadata:
@@ -29,14 +29,14 @@ steps:
           async def get_metadata_info(input, context):
             # Get metadata for current step (context will provide the step_id automatically)
             metadata_result = await context.get_metadata()
-            
+
             return {
               'input_message': input['message'],
               'flow_metadata': metadata_result.get('flow_metadata', {}),
               'step_metadata': metadata_result.get('step_metadata'),
               'context_step_id': context.step_id
             }
-          
+
           get_metadata_info
       blob_type: data
 
@@ -57,7 +57,7 @@ steps:
             workflow: input
           path: message
 
-  # Execute the UDF with second step metadata  
+  # Execute the UDF with second step metadata
   - id: second_metadata_step
     component: /python/udf
     metadata:
@@ -94,9 +94,6 @@ test:
           first_step_result:
             input_message: "test-input"
             flow_metadata:
-              name: Simple Metadata Test
-              description: Test flow and step metadata access
-              version: 1.0.0
               flow_type: test_workflow
             step_metadata:
               step_purpose: first_execution
@@ -105,9 +102,6 @@ test:
           second_step_result:
             input_message: "test-input"
             flow_metadata:
-              name: Simple Metadata Test
-              description: Test flow and step metadata access
-              version: 1.0.0
               flow_type: test_workflow
             step_metadata:
               step_purpose: second_execution

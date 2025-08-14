@@ -50,6 +50,9 @@ impl ProtocolMethod for EvaluateFlowParams {
 /// YAML/JSON.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetFlowMetadataParams {
+    /// The flow to retrieve metadata for.
+    pub flow_id: BlobId,
+
     /// The ID of the step to get metadata for (optional).
     ///
     /// If not provided, only flow-level metadata is returned.
@@ -57,18 +60,6 @@ pub struct GetFlowMetadataParams {
     /// If the step_id doesn't exist, step_metadata will be None in the response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub step_id: Option<String>,
-
-    /// The execution run ID for the current workflow execution.
-    ///
-    /// This allows the handler to construct the proper execution context for metadata lookup.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub run_id: Option<String>,
-
-    /// The flow blob ID for the current workflow.
-    ///
-    /// This allows the handler to construct the proper execution context for metadata lookup.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub flow_id: Option<BlobId>,
 }
 
 /// Sent from Stepflow back to the component server with the requested metadata.

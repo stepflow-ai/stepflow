@@ -65,59 +65,31 @@ impl MethodHandler for GetFlowMetadataHandler {
             request,
             response_tx,
             |request: crate::protocol::GetFlowMetadataParams| async move {
-                use stepflow_plugin::ExecutionContext;
+                // Fetch the flow from the state store
+                let flow_id = &request.flow_id;
+                let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
+                    tracing::error!("Failed to get flow blob: {e}");
+                    Error::not_found("flow", flow_id.as_str())
+                })?;
+                let flow = blob_data
+                    .as_flow()
+                    .ok_or_else(|| Error::internal("Invalid flow blob"))?
+                    .clone();
 
-                // If run_id and flow_id are provided, create an ExecutionContext with flow access
-                let metadata = if let (Some(run_id_str), Some(flow_id)) =
-                    (request.run_id.as_ref(), request.flow_id.as_ref())
-                {
-                    // Parse the string UUID
-                    let run_id = run_id_str
-                        .parse::<uuid::Uuid>()
-                        .map_err(|_| Error::internal("Invalid run_id format: expected UUID"))?;
+                let flow_metadata = flow.metadata().clone();
 
-                    // Fetch the flow from the state store
-                    let blob_data = context
-                        .state_store()
-                        .get_blob(flow_id)
-                        .await
-                        .change_context(Error::internal("Failed to get flow blob"))?;
-                    let flow = blob_data
-                        .as_flow()
-                        .ok_or_else(|| Error::internal("Invalid flow blob"))?
-                        .clone();
-
-                    // Create ExecutionContext with flow for metadata access
-                    let exec_context = ExecutionContext::new_with_flow(
-                        context.clone(),
-                        run_id,
-                        request.step_id.clone(),
-                        flow,
-                        flow_id.clone(),
-                    );
-
-                    // Get metadata from the ExecutionContext
-                    exec_context
-                        .get_execution_metadata(request.step_id.as_deref())
-                        .await
-                        .map_err(|e| {
-                            tracing::error!("Failed to get execution metadata: {e}");
-                            Error::internal("Failed to get execution metadata")
-                        })?
+                let step_metadata = if let Some(step_id) = request.step_id.as_ref() {
+                    let Some(step) = flow.steps().iter().find(|s| &s.id == step_id) else {
+                        return Err(Error::not_found("step", step_id.as_str()));
+                    };
+                    Some(step.metadata.clone())
                 } else {
-                    // Fallback to context-based metadata retrieval
-                    context
-                        .get_execution_metadata(request.step_id.as_deref())
-                        .await
-                        .map_err(|e| {
-                            tracing::error!("Failed to get execution metadata: {e}");
-                            Error::internal("Failed to get execution metadata")
-                        })?
+                    None
                 };
 
                 Ok(crate::protocol::GetFlowMetadataResult {
-                    flow_metadata: metadata.flow_metadata,
-                    step_metadata: metadata.step_metadata,
+                    flow_metadata,
+                    step_metadata,
                 })
             },
         )

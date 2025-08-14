@@ -154,6 +154,22 @@ impl<'a> Error<'a> {
             data: None,
         }
     }
+
+    pub fn invalid_value(field: &str, expected: &str) -> Self {
+        Error {
+            code: -32012,
+            message: format!("Invalid value for field '{field}': expected {expected}").into(),
+            data: None,
+        }
+    }
+
+    pub fn not_found(entity: &str, id: &str) -> Self {
+        Error {
+            code: -32011,
+            message: format!("Not found: {entity} with ID '{id}'").into(),
+            data: None,
+        }
+    }
 }
 
 /// Request to execute a method.

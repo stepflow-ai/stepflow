@@ -98,9 +98,9 @@ class StepflowContext:
         # Extract the result from the response message
         if isinstance(response_message, MethodSuccess):
             result = response_message.result
-            assert isinstance(result, result_type), (
-                f"Expected {result_type}, got {type(result)}"
-            )
+            assert isinstance(
+                result, result_type
+            ), f"Expected {result_type}, got {type(result)}"
             return result
         elif isinstance(response_message, MethodError):
             # Handle error case
@@ -241,9 +241,9 @@ class StepflowContext:
         # Use provided step_id, or fall back to current step_id, or None
         target_step_id = step_id or self._step_id
 
+        assert self._flow_id is not None, "flow_id is not available in context"
         params = GetFlowMetadataParams(
             step_id=target_step_id,
-            run_id=self._run_id,
             flow_id=self._flow_id,
         )
         response = await self._send_request(
