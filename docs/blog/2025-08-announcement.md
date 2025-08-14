@@ -1,5 +1,5 @@
 ---
-date: 2025-07-25
+date: 2025-08-18
 title: "Announcing Stepflow: An Open Protocol and Runtime for GenAI Workflows"
 description: "Open Workflow Protocol and Runtime with JSON-RPC protocol for component servers."
 slug: announcing-stepflow
@@ -86,11 +86,11 @@ Our comprehensive [getting started](/docs/getting-started) guide and usage [exam
 
 This is just the beginning! Our roadmap includes:
 
-- Serverless component execution: Run components in environments like AWS Fargate and Beam.cloud 
-- Distributed execution: Scale workflows across multiple machines
-- Enhanced Python SDK: Simplified component development
+- Serverless component execution: Run components in environments like AWS Fargate and Beam.cloud
+- Flow-generating agent loops: Agent generates flows rather than single tool invocations.
+- Integration with AI tools: Provide a runtime for popular frameworks like Langflow, Flowise, and n8n
 - Richer component library: Pre-built components for common tasks
-- Integration with other AI frameworks: Provide a runtime for popular agent frameworks like Langflow, Flowise, and n8n
+- Tracing and debugging: Enhanced tools for tracing workflow execution and debugging issues
 
 ## Join the Community
 

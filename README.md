@@ -185,17 +185,11 @@ _For more examples, please refer to the [Documentation](https://fuzzy-journey-4j
 <!-- ROADMAP -->
 ## Roadmap
 
-- [x] Workflow execution and debugging
-- [x] JSON-RPC over stdio protocol for component servers
-- [x] Initial Stepflow UI
-- [x] SQL state store for durable execution
-- [x] MCP tools as components
-- [x] Container-based component servers
-- [ ] JSON-RPC over http protocol for remote execution
-- [x] Improve Python SDK
-- [ ] Enrich component libraries
-- [ ] Distributed state stores for scalable execution
-- [ ] Kubernetes and container based deployments
+- Serverless component execution: Run components in environments like AWS Fargate and Beam.cloud
+- Flow-generating agent loops: Agent generates flows rather than single tool invocations.
+- Integration with AI tools: Provide a runtime for popular frameworks like Langflow, Flowise, and n8n
+- Richer component library: Pre-built components for common tasks
+- Tracing and debugging: Enhanced tools for tracing workflow execution and debugging issues
 
 See the [open issues](https://github.com/riptano/stepflow/issues) for a full list of proposed features (and known issues).
 
