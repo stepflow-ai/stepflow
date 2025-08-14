@@ -23,7 +23,7 @@ Thank you for your interest in contributing to Stepflow! This guide will help yo
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/riptano/stepflow.git
+   git clone https://github.com/stepflow-ai/stepflow.git
    cd stepflow
    ```
 
@@ -345,8 +345,8 @@ Your pull request should:
 
 ## Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/riptano/stepflow/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/riptano/stepflow/discussions)
+- **Issues**: [GitHub Issues](https://github.com/stepflow-ai/stepflow/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/stepflow-ai/stepflow/discussions)
 - **Documentation**: [Project Docs](https://fuzzy-journey-4j3y1we.pages.github.io/)
 
 ## Development Tips
