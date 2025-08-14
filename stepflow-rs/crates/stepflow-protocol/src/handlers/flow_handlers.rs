@@ -74,14 +74,14 @@ impl MethodHandler for GetFlowMetadataHandler {
                     // Parse the string UUID
                     let run_id = run_id_str
                         .parse::<uuid::Uuid>()
-                        .map_err(|_| Error::internal("Invalid run_id format"))?;
+                        .map_err(|_| Error::internal("Invalid run_id format: expected UUID"))?;
 
                     // Fetch the flow from the state store
-                    let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
-                        tracing::error!("Failed to get blob: {e}");
-                        Error::internal("Failed to get blob")
-                    })?;
-
+                    let blob_data = context
+                        .state_store()
+                        .get_blob(flow_id)
+                        .await
+                        .change_context(Error::internal("Failed to get flow blob"))?;
                     let flow = blob_data
                         .as_flow()
                         .ok_or_else(|| Error::internal("Invalid flow blob"))?

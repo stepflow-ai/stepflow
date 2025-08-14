@@ -69,6 +69,12 @@ impl Flow {
         }
     }
 
+    pub fn version(&self) -> Option<&str> {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.version.as_deref(),
+        }
+    }
+
     pub fn metadata(&self) -> &HashMap<String, serde_json::Value> {
         match self {
             Flow::V1(flow_v1) => &flow_v1.metadata,

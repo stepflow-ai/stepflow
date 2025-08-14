@@ -317,9 +317,7 @@ impl Context for ExecutionContext {
         // If we have a flow, provide metadata; otherwise delegate to underlying context
         if let Some(flow) = &self.flow {
             // Use provided step_id or fall back to the context's current step_id, convert to owned
-            let target_step_id = step_id
-                .map(|s| s.to_string())
-                .or_else(|| self.step_id().map(|s| s.to_string()));
+            let target_step_id = step_id.map(|s| s.to_string());
             let flow = flow.clone();
 
             async move {
@@ -341,11 +339,11 @@ impl Context for ExecutionContext {
                         serde_json::Value::String(description.to_string()),
                     );
                 }
-                // Note: Flow doesn't have a version method, but FlowV1 has a version field
-                if let Some(version) = flow.latest().version.as_ref() {
+
+                if let Some(version) = flow.version() {
                     flow_metadata.insert(
                         "version".to_string(),
-                        serde_json::Value::String(version.clone()),
+                        serde_json::Value::String(version.to_string()),
                     );
                 }
 
