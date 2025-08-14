@@ -1,4 +1,4 @@
 {
-    "data_file_path": "examples/data-pipeline/sales-data.json",
+    "data_file_path": "../data-pipeline/sales-data.json",
     "target_revenue": 8000
 }
