@@ -10,7 +10,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/riptano/stepflow">
+  <a href="https://github.com/stepflow-ai/stepflow">
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
 
@@ -22,11 +22,11 @@
     <a href="https://fuzzy-journey-4j3y1we.pages.github.io/"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/riptano/stepflow">View Demo</a>
+    <a href="https://github.com/stepflow-ai/stepflow">View Demo</a>
     &middot;
-    <a href="https://github.com/riptano/stepflow/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/stepflow-ai/stepflow/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
     &middot;
-    <a href="https://github.com/riptano/stepflow/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/stepflow-ai/stepflow/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
   </p>
 </div>
 
@@ -97,7 +97,7 @@ To get a local copy up and running quickly follow these simple steps.
 
 1. Clone the repository
    ```sh
-   git clone https://github.com/riptano/stepflow.git
+   git clone https://github.com/stepflow-ai/stepflow.git
    cd stepflow
    ```
 
@@ -191,7 +191,7 @@ _For more examples, please refer to the [Documentation](https://fuzzy-journey-4j
 - Richer component library: Pre-built components for common tasks
 - Tracing and debugging: Enhanced tools for tracing workflow execution and debugging issues
 
-See the [open issues](https://github.com/riptano/stepflow/issues) for a full list of proposed features (and known issues).
+See the [open issues](https://github.com/stepflow-ai/stepflow/issues) for a full list of proposed features (and known issues).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -213,8 +213,8 @@ For detailed development instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Top contributors:
 
-<a href="https://github.com/riptano/stepflow/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=riptano/stepflow" alt="contrib.rocks image" />
+<a href="https://github.com/stepflow-ai/stepflow/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=stepflow-ai/stepflow" alt="contrib.rocks image" />
 </a>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -229,19 +229,19 @@ Distributed under the Apache License. See `LICENSE.txt` for more information.
 <!-- CONTACT -->
 ## Contact
 
-Project Link: [https://github.com/riptano/stepflow](https://github.com/riptano/stepflow)
+Project Link: [https://github.com/stepflow-ai/stepflow](https://github.com/stepflow-ai/stepflow)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/riptano/stepflow.svg?style=for-the-badge
-[contributors-url]: https://github.com/riptano/stepflow/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/riptano/stepflow.svg?style=for-the-badge
-[forks-url]: https://github.com/riptano/stepflow/network/members
-[stars-shield]: https://img.shields.io/github/stars/riptano/stepflow.svg?style=for-the-badge
-[stars-url]: https://github.com/riptano/stepflow/stargazers
-[issues-shield]: https://img.shields.io/github/issues/riptano/stepflow.svg?style=for-the-badge
-[issues-url]: https://github.com/riptano/stepflow/issues
-[license-shield]: https://img.shields.io/github/license/riptano/stepflow.svg?style=for-the-badge
-[license-url]: https://github.com/riptano/stepflow/blob/master/LICENSE.txt
+[contributors-shield]: https://img.shields.io/github/contributors/stepflow-ai/stepflow.svg?style=for-the-badge
+[contributors-url]: https://github.com/stepflow-ai/stepflow/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/stepflow-ai/stepflow.svg?style=for-the-badge
+[forks-url]: https://github.com/stepflow-ai/stepflow/network/members
+[stars-shield]: https://img.shields.io/github/stars/stepflow-ai/stepflow.svg?style=for-the-badge
+[stars-url]: https://github.com/stepflow-ai/stepflow/stargazers
+[issues-shield]: https://img.shields.io/github/issues/stepflow-ai/stepflow.svg?style=for-the-badge
+[issues-url]: https://github.com/stepflow-ai/stepflow/issues
+[license-shield]: https://img.shields.io/github/license/stepflow-ai/stepflow.svg?style=for-the-badge
+[license-url]: https://github.com/stepflow-ai/stepflow/blob/master/LICENSE.txt

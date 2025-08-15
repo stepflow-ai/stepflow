@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 body = """
 {%- if version -%}
     {%- set clean_version = version | trim_start_matches(pat="stepflow-py-") -%}
-    ## <a id="{{ clean_version }}"></a> [Stepflow Python SDK {{ clean_version }}](https://github.com/riptano/stepflow/releases/tag/stepflow-py-{{ clean_version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+    ## <a id="{{ clean_version }}"></a> [Stepflow Python SDK {{ clean_version }}](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-{{ clean_version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
 {%- else -%}
     ## unreleased
 {%- endif -%}
@@ -56,7 +56,7 @@ include_paths = [
 ]
 # Regex for preprocessing the commit messages
 commit_preprocessors = [
-  { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/riptano/stepflow/pull/${2}))"},
+  { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/stepflow-ai/stepflow/pull/${2}))"},
 ]
 # Regex for parsing and grouping commits
 commit_parsers = [

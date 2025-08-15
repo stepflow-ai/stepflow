@@ -17,7 +17,7 @@
 # Central workflow orchestration service
 
 # Use the official released Stepflow Docker image
-FROM ghcr.io/riptano/stepflow:debian-0.2.2
+FROM ghcr.io/stepflow-ai/stepflow:debian-0.2.2
 
 # Create application directory
 WORKDIR /app

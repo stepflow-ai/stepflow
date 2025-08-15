@@ -10,14 +10,14 @@ const config: Config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://riptano.github.io',
+  url: 'https://stepflow.org',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/stepflow/',
+  baseUrl: '/',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'riptano', // Usually your GitHub org/user name.
+  organizationName: 'stepflow-ai', // Usually your GitHub org/user name.
   projectName: 'stepflow', // Usually your repo name.
 
   onBrokenLinks: 'throw',
@@ -40,7 +40,7 @@ const config: Config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/riptano/stepflow/tree/main/docs/',
+            'https://github.com/stepflow-ai/stepflow/tree/main/docs/',
         },
         blog: {
           showReadingTime: true,
@@ -51,7 +51,7 @@ const config: Config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/riptano/stepflow/tree/main/docs/',
+            'https://github.com/stepflow-ai/stepflow/tree/main/docs/',
           // Useful options to enforce blogging best practices
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
@@ -83,7 +83,7 @@ const config: Config = {
         },
         { to: '/blog', label: 'Blog', position: 'left' },
         {
-          href: 'https://github.com/riptano/stepflow',
+          href: 'https://github.com/stepflow-ai/stepflow',
           label: 'GitHub',
           position: 'right',
         },
@@ -127,12 +127,12 @@ const config: Config = {
             },
             {
               label: 'GitHub',
-              href: 'https://github.com/riptano/stepflow',
+              href: 'https://github.com/stepflow-ai/stepflow',
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Stepflow Contributors. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,
