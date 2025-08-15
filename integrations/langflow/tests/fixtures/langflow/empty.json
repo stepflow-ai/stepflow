@@ -1,0 +1,8 @@
+{
+    "name": "Empty Workflow",
+    "description": "A workflow with no nodes for testing error handling",
+    "data": {
+        "nodes": [],
+        "edges": []
+    }
+}
