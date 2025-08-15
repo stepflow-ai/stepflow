@@ -258,7 +258,11 @@ class ChatInput(Component):
     
     @pytest.mark.parametrize("workflow_file", [
         "simple_chat.json",
-        "openai_chat.json"
+        "openai_chat.json",
+        "basic_prompting.json",
+        "memory_chatbot.json",
+        "document_qa.json",
+        "simple_agent.json"
     ])
     @pytest.mark.asyncio
     async def test_end_to_end_execution_flow(

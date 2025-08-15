@@ -142,6 +142,9 @@ steps:
     @pytest.mark.slow
     @pytest.mark.parametrize("workflow_file", [
         "simple_chat.json",
+        "basic_prompting.json",
+        "memory_chatbot.json",
+        "document_qa.json"
     ])
     def test_run_converted_langflow_workflow(
         self,

@@ -102,6 +102,21 @@ class TestLangflowIntegration:
                 expected_components = conversion_expectations["component_types"]
                 assert actual_components == expected_components
             
+            # Check component types include (for flexible matching)
+            if "component_types_include" in conversion_expectations:
+                actual_components = [step.component for step in workflow.steps]
+                expected_components = conversion_expectations["component_types_include"]
+                for expected in expected_components:
+                    assert any(expected in comp for comp in actual_components), \
+                        f"Expected component type {expected} not found in {actual_components}"
+            
+            # Check UDF executor count
+            if "udf_executor_count" in conversion_expectations:
+                udf_count = sum(1 for step in workflow.steps if step.component == "/langflow/udf_executor")
+                expected_count = conversion_expectations["udf_executor_count"]
+                assert udf_count == expected_count, \
+                    f"Expected {expected_count} UDF executors, found {udf_count}"
+            
             # Check dependencies
             if conversion_expectations.get("has_dependencies"):
                 # At least one step should have dependencies

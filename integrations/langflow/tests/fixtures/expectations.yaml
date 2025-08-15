@@ -83,6 +83,99 @@ test_cases:
       error_type: "ConversionError"
       error_message_contains: "No nodes found"
 
+  # Langflow Starter Project Tests
+  - name: "basic_prompting"
+    langflow_file: "basic_prompting.json"
+    input_data:
+      message: "Write a haiku about coding"
+    conversion_expectations:
+      workflow_name: "Basic Prompting"
+      step_count: 6
+      has_dependencies: true
+      # Most Langflow components become UDF executors
+      component_types_include:
+        - "/langflow/udf_executor"  # Most components become UDFs
+        - "/langflow/note"         # Note components are preserved
+      udf_executor_count: 4  # ChatInput, Prompt, ChatOutput, LanguageModelComponent
+    execution_expectations:
+      should_succeed: true
+      can_mock: true
+      mock_response:
+        text: "Code flows like stream\nLogic branches, functions bloom\nDebug finds the truth"
+        type: "Message"
+
+  - name: "memory_chatbot"
+    langflow_file: "memory_chatbot.json"
+    input_data:
+      message: "Remember my name is Alice"
+    conversion_expectations:
+      workflow_name: "Memory Chatbot"
+      step_count: 6
+      has_dependencies: true
+      component_types_include:
+        - "/langflow/udf_executor"
+        - "/langflow/note"
+      udf_executor_count: 5  # Most components become UDFs
+    execution_expectations:
+      should_succeed: true
+      can_mock: true
+      requires_memory: true
+
+  - name: "document_qa"
+    langflow_file: "document_qa.json"
+    input_data:
+      message: "What is the main topic of the document?"
+      document: "This is a sample document about machine learning."
+    conversion_expectations:
+      workflow_name: "Document Q&A"
+      step_count: 6
+      has_dependencies: true
+      component_types_include:
+        - "/langflow/udf_executor"
+        - "/langflow/note"
+      udf_executor_count: 5
+    execution_expectations:
+      should_succeed: true
+      can_mock: true
+      mock_response:
+        text: "The main topic is machine learning."
+        type: "Message"
+
+  - name: "simple_agent"
+    langflow_file: "simple_agent.json"
+    input_data:
+      message: "Calculate 15 * 23 and then search for information about the result"
+    conversion_expectations:
+      workflow_name: "Simple Agent"
+      step_count: 7
+      has_dependencies: true
+      component_types_include:
+        - "/langflow/udf_executor"
+        - "/langflow/note"
+      udf_executor_count: 5  # Agent, Calculator, URL, ChatInput, ChatOutput
+    execution_expectations:
+      should_succeed: true
+      can_mock: true
+      requires_tools: true
+
+  - name: "vector_store_rag"
+    langflow_file: "vector_store_rag.json"
+    input_data:
+      message: "Find information about artificial intelligence"
+    conversion_expectations:
+      workflow_name: "Vector Store RAG"
+      step_count: 17  # Complex workflow with many notes
+      has_dependencies: true
+      component_types_include:
+        - "/langflow/udf_executor"
+        - "/langflow/note"
+      udf_executor_count: 11  # Many components become UDFs
+    execution_expectations:
+      should_succeed: true
+      can_mock: true
+      requires_vector_store: true
+      performance_category: "large_workflow"
+
 performance_expectations:
   # Performance benchmarks for different workflow sizes
   small_workflow:  # 1-3 nodes
