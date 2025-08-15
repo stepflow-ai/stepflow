@@ -1,0 +1,116 @@
+# Test expectations for Langflow integration tests
+#
+# Each test case defines:
+# - langflow_file: Input Langflow JSON file
+# - input_data: Test input data for execution
+# - conversion_expectations: What to expect from conversion
+# - execution_expectations: What to expect from execution
+# - should_succeed: Whether the test should pass or fail
+
+test_cases:
+  - name: "simple_chat"
+    langflow_file: "simple_chat.json"
+    input_data:
+      message: "Hello, world!"
+    conversion_expectations:
+      workflow_name: "Simple Chat Example"
+      step_count: 2
+      step_ids:
+        - "langflow_chatinput"
+        - "langflow_chatoutput"
+      component_types:
+        - "/langflow/ChatInput"
+        - "/langflow/ChatOutput"
+    execution_expectations:
+      should_succeed: true
+      output_contains:
+        - "text"
+        - "sender"
+        - "type"
+      output_values:
+        type: "Message"
+        sender: "User"
+      # Check that the message text flows through
+      output_text_contains: "Hello, world!"
+    
+  - name: "openai_chat"
+    langflow_file: "openai_chat.json"
+    input_data:
+      message: "What is Python?"
+    environment:
+      # Mock or use test API key
+      OPENAI_API_KEY: "test-key-123"
+    conversion_expectations:
+      workflow_name: "OpenAI Chat Workflow"
+      step_count: 3
+      step_ids:
+        - "langflow_chatinput"
+        - "langflow_openaimodel"
+        - "langflow_chatoutput-output1"
+      # Should have proper dependencies
+      has_dependencies: true
+    execution_expectations:
+      should_succeed: true  # Will succeed with proper API key
+      can_mock: true  # Allow mocking for testing
+      output_structure:
+        type: "object"
+        required_fields:
+          - "text"
+          - "sender"
+          - "type"
+      # When mocked, should return predictable response
+      mock_response:
+        text: "Python is a programming language"
+        sender: "AI"
+        type: "Message"
+
+  - name: "invalid_workflow"
+    langflow_file: "invalid.json"  # Non-existent file
+    conversion_expectations:
+      should_fail: true
+      error_type: "ConversionError"
+      error_message_contains: "not found"
+    
+  - name: "empty_workflow"
+    langflow_file: "empty.json"
+    langflow_content:
+      # Inline JSON content for this test
+      data:
+        nodes: []
+        edges: []
+    conversion_expectations:
+      should_fail: true
+      error_type: "ConversionError"
+      error_message_contains: "No nodes found"
+
+performance_expectations:
+  # Performance benchmarks for different workflow sizes
+  small_workflow:  # 1-3 nodes
+    max_conversion_time: 1.0  # seconds
+    max_memory_mb: 50
+  
+  medium_workflow:  # 4-10 nodes
+    max_conversion_time: 2.0
+    max_memory_mb: 100
+    
+  large_workflow:  # 10+ nodes
+    max_conversion_time: 5.0
+    max_memory_mb: 200
+
+compatibility_requirements:
+  # Langflow features that must be supported
+  required_components:
+    - "ChatInput"
+    - "ChatOutput"
+    - "LanguageModelComponent"
+  
+  required_types:
+    - "Message"
+    - "Data" 
+    - "DataFrame"
+  
+  required_features:
+    - "environment_variables"
+    - "dropdown_fields"
+    - "schema_discovery"
+    - "dependency_analysis"
