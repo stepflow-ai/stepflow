@@ -20,7 +20,7 @@ export OPENAI_API_KEY=your_api_key_here
 From the repository root, run:
 
 ```bash
-cargo run -- run --flow=examples/openai/openai_chat.yaml --input=examples/openai/input.json --config=examples/openai/stepflow-config.yml
+cargo run --manifest-path stepflow-rs/Cargo.toml -- run --flow=examples/openai/openai_chat.yaml --input=examples/openai/input.json --config=examples/openai/stepflow-config.yml
 ```
 
 ## Example Flow
