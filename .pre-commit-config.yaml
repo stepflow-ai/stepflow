@@ -1,0 +1,44 @@
+# Pre-commit configuration for StepFlow
+# Install with: pre-commit install
+# Run manually with: pre-commit run --all-files
+
+repos:
+  # Essential checks only
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-case-conflict
+
+  # ICLA Check - This must be last to ensure all other checks pass first
+  - repo: local
+    hooks:
+      - id: icla-check
+        name: ICLA Check
+        entry: python scripts/check_icla.py
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true
+
+# Configuration for specific file types
+exclude: |
+  (?x)^(
+    \.github/cla-signatures\.json|
+    target/|
+    node_modules/|
+    \.git/|
+    \.venv/|
+    venv/|
+    __pycache__/|
+    \.pytest_cache/|
+    \.mypy_cache/|
+    \.coverage|
+    coverage\.xml|
+    \.lock$
+  )
+
+# Global settings
+fail_fast: false
+default_stages: [pre-commit]

@@ -79,3 +79,6 @@ htmlcov/
 # Project specific
 target
 TODO.md
+
+# force tracking of CLA signatures
+!.github/cla-signatures.json

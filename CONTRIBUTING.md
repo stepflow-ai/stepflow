@@ -27,18 +27,55 @@ Thank you for your interest in contributing to Stepflow! This guide will help yo
    cd stepflow
    ```
 
-2. **Build the stepflow-rs project**
+2. **Run the development setup script**
+   ```bash
+   ./scripts/setup_dev.sh
+   ```
+   This script will:
+   - Install pre-commit hooks
+   - Check your git configuration
+   - Verify your development environment
+   - Remind you to sign the ICLA (see below)
+
+3. **Sign the Individual Contributor License Agreement (ICLA)**
+
+   **⚠️ REQUIRED**: Before making your first contribution, you must sign the ICLA:
+
+   ```bash
+   python scripts/sign_icla.py
+   ```
+
+   The ICLA is a one-time legal agreement that:
+   - Grants the project rights to use your contributions
+   - Confirms you own the copyright to your work
+   - Ensures clear licensing for all project code
+
+   **Why is this required?**
+   - Protects both you and the project legally
+   - Ensures we can distribute your contributions under the Apache 2.0 license
+   - Required for all open source Apache Software Foundation projects
+
+   **What information is needed?**
+   - Your full legal name
+   - Email address
+   - GitHub username
+   - Country of residence
+   - Company/organization (optional)
+
+   For full details, see [ICLA.md](ICLA.md).
+
+4. **Build the stepflow-rs project**
    ```bash
    cd stepflow-rs
    cargo build
    ```
 
-3. **Run tests to verify setup**
+5. **Run tests to verify setup**
    ```bash
    cargo test
    ```
 
-4. **Try running an example**
+6. **Try running an example**
    ```bash
    cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml
    ```
@@ -295,6 +332,13 @@ We welcome various types of contributions:
    git push origin feature/your-feature-name
    ```
 
+   **Note**: Pre-commit hooks will automatically run and check:
+   - Code formatting (rustfmt, black, isort)
+   - Linting (clippy, flake8)
+   - ICLA signature status
+
+   If you haven't signed the ICLA, the commit will be blocked with instructions.
+
 ### Commit Message Format
 
 Use conventional commit prefixes:
@@ -329,12 +373,15 @@ Use conventional commit prefixes:
 
 Your pull request should:
 
+- ✅ **ICLA signed** - Individual Contributor License Agreement must be signed
 - ✅ Pass all existing tests
 - ✅ Include tests for new functionality
 - ✅ Pass `cargo clippy` without warnings
 - ✅ Be formatted with `cargo fmt`
 - ✅ Include appropriate documentation
 - ✅ Have a clear commit history
+
+**Note**: The ICLA check will run automatically on your PR. If you haven't signed it, the check will fail with instructions on how to sign.
 
 ### Review Process
 

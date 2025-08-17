@@ -112,6 +112,31 @@ To get a local copy up and running quickly follow these simple steps.
    cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml
    ```
 
+### Developer Setup
+
+If you plan to contribute to StepFlow:
+
+1. **Run the development setup script**
+   ```sh
+   ./scripts/setup_dev.sh
+   ```
+   This will install pre-commit hooks and check your development environment.
+
+2. **Sign the Individual Contributor License Agreement (ICLA)**
+   ```sh
+   python scripts/sign_icla.py
+   ```
+   This is required before your first contribution and is a one-time process.
+
+3. **Start developing with automatic code quality checks**
+
+   The setup script installs pre-commit hooks that automatically run:
+   - Code formatting (Rust, Python)
+   - Linting and style checks
+   - ICLA signature verification
+
+   For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- USAGE EXAMPLES -->
