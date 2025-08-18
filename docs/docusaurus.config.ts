@@ -6,7 +6,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Stepflow',
-  tagline: 'MCP for Prdocution GenAI Workflows',
+  tagline: 'MCP for Production GenAI Workflows',
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
