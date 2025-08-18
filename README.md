@@ -17,7 +17,7 @@
   <h3 align="center">Stepflow</h3>
 
   <p align="center">
-    Open protocol and runtime for building GenAI workflows
+    MCP for Production GenAI Workflows
     <br />
     <a href="https://stepflow.org/"><strong>Explore the docs »</strong></a>
     <br />
