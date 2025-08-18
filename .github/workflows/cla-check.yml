@@ -10,19 +10,19 @@ jobs:
   cla-check:
     name: Check Individual Contributor License Agreement (ICLA)
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           # Fetch full history to get the complete signatures file
           fetch-depth: 0
-
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
+      
       - name: Get PR author information
         id: pr-info
         uses: actions/github-script@v7
@@ -33,38 +33,38 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.issue.number
             });
-
+            
             const authorLogin = pullRequest.user.login;
             const authorType = pullRequest.user.type;
-
+            
             // Get author's email from commits if possible
             const { data: commits } = await github.rest.pulls.listCommits({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number
             });
-
+            
             let authorEmail = '';
             if (commits.length > 0) {
               // Try to get email from the most recent commit
               authorEmail = commits[commits.length - 1].commit.author.email || '';
             }
-
+            
             console.log(`PR Author: ${authorLogin} (${authorType})`);
             console.log(`Author Email: ${authorEmail}`);
-
+            
             return {
               login: authorLogin,
               email: authorEmail,
               type: authorType
             };
-
+      
       - name: Check if bot or organization
         id: check-bot
         run: |
           AUTHOR_TYPE="${{ fromJson(steps.pr-info.outputs.result).type }}"
           AUTHOR_LOGIN="${{ fromJson(steps.pr-info.outputs.result).login }}"
-
+          
           # Skip CLA check for bots and certain automated accounts
           if [[ "$AUTHOR_TYPE" == "Bot" ]] || [[ "$AUTHOR_LOGIN" =~ ^(dependabot|renovate|github-actions)\[bot\]$ ]]; then
             echo "Skipping CLA check for bot account: $AUTHOR_LOGIN"
@@ -72,149 +72,83 @@ jobs:
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
-
+      
       - name: Check ICLA signature
         id: icla-check
         if: steps.check-bot.outputs.skip != 'true'
-        run: |
-          AUTHOR_LOGIN="${{ fromJson(steps.pr-info.outputs.result).login }}"
-          AUTHOR_EMAIL="${{ fromJson(steps.pr-info.outputs.result).email }}"
-
-          echo "Checking ICLA for user: $AUTHOR_LOGIN"
-          echo "Email: $AUTHOR_EMAIL"
-
-          # Check if signatures file exists
-          if [ ! -f ".github/cla-signatures.json" ]; then
-            echo "❌ CLA signatures file not found"
-            echo "signed=false" >> $GITHUB_OUTPUT
-            echo "error=No CLA signatures file found" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Use Python to check the signatures
-          cat > check_signature.py << 'EOF'
-          import json
-          import sys
-          import os
-
-          def check_signature(github_username, email):
-              try:
-                  with open('.github/cla-signatures.json', 'r') as f:
-                      data = json.load(f)
-
-                  signatures = data.get('signatures', [])
-
-                  for sig in signatures:
-                      sig_github = sig.get('github_username', '').lower()
-                      sig_email = sig.get('email', '').lower()
-
-                      if github_username and sig_github == github_username.lower():
-                          return True, sig
-                      if email and sig_email == email.lower():
-                          return True, sig
-
-                  return False, None
-              except Exception as e:
-                  print(f"Error checking signatures: {e}")
-                  return False, None
-
-          github_username = os.environ.get('GITHUB_USERNAME', '')
-          email = os.environ.get('EMAIL', '')
-
-          has_signed, signature = check_signature(github_username, email)
-
-          if has_signed:
-              print("✅ ICLA signature found")
-              print(f"Name: {signature.get('name', 'Unknown')}")
-              print(f"Email: {signature.get('email', 'Unknown')}")
-              print(f"GitHub: {signature.get('github_username', 'Unknown')}")
-              print(f"Date: {signature.get('date', 'Unknown')}")
-              print("signed=true")
-          else:
-              print("❌ ICLA signature not found")
-              print("signed=false")
-          EOF
-
-          export GITHUB_USERNAME="$AUTHOR_LOGIN"
-          export EMAIL="$AUTHOR_EMAIL"
-
-          RESULT=$(python check_signature.py)
-          echo "$RESULT"
-
-          if echo "$RESULT" | grep -q "signed=true"; then
-            echo "signed=true" >> $GITHUB_OUTPUT
-          else
-            echo "signed=false" >> $GITHUB_OUTPUT
-          fi
-
+        uses: ./.github/actions/icla-check
+        with:
+          github-username: ${{ fromJson(steps.pr-info.outputs.result).login }}
+          email: ${{ fromJson(steps.pr-info.outputs.result).email }}
+      
       - name: Comment on PR if ICLA not signed
         if: steps.check-bot.outputs.skip != 'true' && steps.icla-check.outputs.signed != 'true'
         uses: actions/github-script@v7
         with:
           script: |
             const authorLogin = "${{ fromJson(steps.pr-info.outputs.result).login }}";
-
+            
             const body = `## ❌ Individual Contributor License Agreement (ICLA) Required
-
+            
             Hello @${authorLogin}! Thank you for your contribution to StepFlow.
-
+            
             Before we can merge your pull request, you need to sign our Individual Contributor License Agreement (ICLA). This is a one-time process that ensures clear licensing and intellectual property rights for the project.
-
+            
             ### How to sign the ICLA:
-
+            
             1. **Clone the repository locally:**
                \`\`\`bash
                git clone https://github.com/${context.repo.owner}/${context.repo.repo}.git
                cd ${context.repo.repo}
                \`\`\`
-
+            
             2. **Sign the ICLA:**
                \`\`\`bash
                python scripts/sign_icla.py
                \`\`\`
-
+            
             3. **Commit the updated signatures file:**
                \`\`\`bash
                git add .github/cla-signatures.json
                git commit -m "Add ICLA signature for ${authorLogin}"
                git push
                \`\`\`
-
+            
             4. **Update your pull request** by pushing to your branch.
-
+            
             ### What is the ICLA?
-
+            
             The ICLA grants the project a license to use your contributions and confirms that:
             - You own the copyright to your contributions
             - You grant the project rights to use your code
             - Your contributions are your original work
-
+            
             You can read the full agreement in [ICLA.md](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/ICLA.md).
-
+            
             ### Need help?
-
+            
             If you have questions about the ICLA or need assistance, please:
             - Comment on this PR
             - Open an issue
             - Contact the maintainers
-
+            
             Thank you for contributing to StepFlow! 🚀
-
+            
             ---
             *This check will automatically pass once you sign the ICLA and update your pull request.*`;
-
+            
             // Check if we already commented
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
               comment.body.includes('Individual Contributor License Agreement (ICLA) Required')
             );
-
+            
             if (botComment) {
               // Update existing comment
               await github.rest.issues.updateComment({
@@ -232,7 +166,7 @@ jobs:
                 body: body
               });
             }
-
+      
       - name: Set status check
         if: steps.check-bot.outputs.skip != 'true'
         run: |
@@ -248,7 +182,7 @@ jobs:
             echo "For more information, see: https://github.com/${{ github.repository }}/blob/main/ICLA.md"
             exit 1
           fi
-
+      
       - name: Success message
         if: steps.check-bot.outputs.skip != 'true' && steps.icla-check.outputs.signed == 'true'
         run: |

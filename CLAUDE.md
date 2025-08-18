@@ -919,29 +919,13 @@ model: { $from: { workflow: input }, path: "$.config.model" }      # "gpt-4"
 items: { $from: { workflow: input }, path: "items" }              # ["a", "b", "c"]
 ```
 
-## Developer Onboarding & ICLA System
+## ICLA (Individual Contributor License Agreement) System
 
-### New Developer Setup Process
+### Overview
 
-When helping new developers set up their development environment, follow this process:
+StepFlow requires all contributors to sign an Individual Contributor License Agreement (ICLA) before their pull requests can be merged. This is enforced automatically through GitHub Actions.
 
-#### 1. Initial Setup
-```bash
-# Clone the repository
-git clone https://github.com/stepflow-ai/stepflow.git
-cd stepflow
-
-# Run the automated setup script
-./scripts/setup_dev.sh
-```
-
-The setup script will:
-- Install pre-commit hooks
-- Check git configuration
-- Verify development environment
-- Display ICLA signing instructions
-
-#### 2. ICLA (Individual Contributor License Agreement) Requirements
+### For New Contributors
 
 **⚠️ CRITICAL**: All contributors MUST sign the ICLA before making contributions.
 
@@ -950,7 +934,7 @@ The setup script will:
 python scripts/check_icla.py
 ```
 
-**Sign the ICLA (first-time contributors):**
+**Sign the ICLA (required for first-time contributors):**
 ```bash
 python scripts/sign_icla.py
 ```
@@ -968,86 +952,69 @@ The signing process will:
 - Country of residence
 - Company/organization (optional)
 
-#### 3. Pre-commit Hook Integration
-
-The ICLA system is integrated with pre-commit hooks. Every commit will:
-- Run code formatting and linting checks
-- Verify ICLA signature status
-- Block commits if ICLA is not signed
-
-**If ICLA check fails:**
-```bash
-❌ ICLA signature not found for: user@example.com
-
-Please sign the Individual Contributor License Agreement (ICLA) before contributing:
-    python scripts/sign_icla.py
-
-For more information, see: ICLA.md
-```
-
-#### 4. GitHub Actions Integration
+### GitHub Actions Integration
 
 Pull requests automatically trigger ICLA verification:
 - ✅ **Signed**: PR can proceed with review
 - ❌ **Not signed**: Automated comment with signing instructions
 - 🤖 **Bot accounts**: Automatically skipped (dependabot, renovate, etc.)
 
+The GitHub Actions workflow uses a custom action located at `.github/actions/icla-check/` for modular and testable ICLA verification.
+
 ### ICLA System Components
 
-**Files involved in ICLA system:**
+**Core files:**
 - `ICLA.md` - Complete license agreement document
-- `scripts/check_icla.py` - Signature verification script
-- `scripts/sign_icla.py` - Interactive signing script  
-- `scripts/setup_dev.sh` - Development environment setup
-- `.pre-commit-config.yaml` - Pre-commit hook configuration
+- `scripts/check_icla.py` - Local signature verification script
+- `scripts/sign_icla.py` - Interactive signing script
+- `.github/actions/icla-check/action.yml` - GitHub Action definition
+- `.github/actions/icla-check/check_signature.py` - GitHub Action signature check
 - `.github/workflows/cla-check.yml` - GitHub Actions workflow
 - `.github/cla-signatures.json` - Signature storage (auto-created)
 
 **Key features:**
+- **GitHub Actions only**: No local pre-commit hooks to avoid developer friction
 - **Signature deduplication**: Updates existing signatures instead of creating duplicates
 - **Color-coded output**: Green for signed, red for unsigned status
-- **Automatic verification**: Pre-commit and GitHub Actions integration
+- **Modular design**: Encapsulated GitHub Action for easy testing and maintenance
 - **Legal compliance**: Based on Apache Software Foundation ICLA template
-
-### Troubleshooting ICLA Issues
-
-**Common issues and solutions:**
-
-1. **Pre-commit hook fails with ICLA error:**
-   - Run `python scripts/sign_icla.py` to sign
-   - Ensure git email matches ICLA email
-
-2. **GitHub Actions CLA check fails:**
-   - Sign ICLA locally and commit the updated `.github/cla-signatures.json`
-   - Push changes to update the PR
-
-3. **Email mismatch:**
-   - Git email and ICLA email must match
-   - Update git config: `git config user.email "correct@email.com"`
-   - Re-sign ICLA if needed
-
-4. **Missing signature file:**
-   - The `.github/cla-signatures.json` file is auto-created on first signature
-   - Commit and push this file after signing
 
 ### When to Guide Developers Through ICLA
 
 **Always mention ICLA requirements when:**
 - New contributor asks about contributing
 - Developer wants to submit their first PR
-- Someone reports pre-commit hook failures
 - GitHub Actions CLA check fails on PRs
 
 **ICLA guidance template:**
 ```
 Before you can contribute to StepFlow, you need to sign our Individual Contributor License Agreement (ICLA). This is a one-time legal requirement.
 
-1. Run the development setup: `./scripts/setup_dev.sh`
+1. Clone the repository locally
 2. Sign the ICLA: `python scripts/sign_icla.py`
 3. Commit the signature file: `git add .github/cla-signatures.json && git commit -m "Add ICLA signature"`
+4. Push your changes
 
 The ICLA ensures clear intellectual property rights and is required for all Apache-style open source projects. See ICLA.md for details.
 ```
+
+### Troubleshooting ICLA Issues
+
+**Common issues and solutions:**
+
+1. **GitHub Actions CLA check fails:**
+   - Sign ICLA locally: `python scripts/sign_icla.py`
+   - Commit the updated `.github/cla-signatures.json`
+   - Push changes to update the PR
+
+2. **Email mismatch:**
+   - Git email and ICLA email must match
+   - Update git config: `git config user.email "correct@email.com"`
+   - Re-sign ICLA if needed
+
+3. **Missing signature file:**
+   - The `.github/cla-signatures.json` file is auto-created on first signature
+   - Commit and push this file after signing
 
 ## HTTP Server Architecture
 

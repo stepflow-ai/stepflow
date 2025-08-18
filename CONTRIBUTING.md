@@ -27,17 +27,7 @@ Thank you for your interest in contributing to Stepflow! This guide will help yo
    cd stepflow
    ```
 
-2. **Run the development setup script**
-   ```bash
-   ./scripts/setup_dev.sh
-   ```
-   This script will:
-   - Install pre-commit hooks
-   - Check your git configuration
-   - Verify your development environment
-   - Remind you to sign the ICLA (see below)
-
-3. **Sign the Individual Contributor License Agreement (ICLA)**
+2. **Sign the Individual Contributor License Agreement (ICLA)**
 
    **⚠️ REQUIRED**: Before making your first contribution, you must sign the ICLA:
 
@@ -64,7 +54,7 @@ Thank you for your interest in contributing to Stepflow! This guide will help yo
 
    For full details, see [ICLA.md](ICLA.md).
 
-4. **Build the stepflow-rs project**
+3. **Build the stepflow-rs project**
    ```bash
    cd stepflow-rs
    cargo build

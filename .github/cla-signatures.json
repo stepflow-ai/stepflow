@@ -2,16 +2,6 @@
   "signatures": [
     {
       "cla_version": "1.0",
-      "company": "Example Corp",
-      "country": "United States",
-      "date": "2025-08-17T21:37:14.431370Z",
-      "email": "john.doe@example.com",
-      "github_username": "johndoe",
-      "id": "88d18951af642c2c",
-      "name": "John Doe"
-    },
-    {
-      "cla_version": "1.0",
       "company": "ASF",
       "country": "USA",
       "date": "2025-08-17T21:43:50.885314Z",
