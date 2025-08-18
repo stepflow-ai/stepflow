@@ -11,7 +11,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/stepflow-ai/stepflow">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
+    <img src="docs/static/img/logo.png" alt="Logo" width="80" height="80">
   </a>
 
   <h3 align="center">Stepflow</h3>
@@ -19,7 +19,7 @@
   <p align="center">
     Open protocol and runtime for building GenAI workflows
     <br />
-    <a href="https://fuzzy-journey-4j3y1we.pages.github.io/"><strong>Explore the docs »</strong></a>
+    <a href="https://stepflow.org/"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://github.com/stepflow-ai/stepflow">View Demo</a>
@@ -178,7 +178,7 @@ routes:
     - plugin: builtin
 ```
 
-_For more examples, please refer to the [Documentation](https://fuzzy-journey-4j3y1we.pages.github.io/)_
+_For more examples, please refer to the [Documentation](https://stepflow.org/)_
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
