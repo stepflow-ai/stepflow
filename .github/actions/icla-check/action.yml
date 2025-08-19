@@ -1,0 +1,39 @@
+name: 'ICLA Check'
+description: 'Check if pull request author has signed the Individual Contributor License Agreement'
+inputs:
+  github-username:
+    description: 'GitHub username of the PR author'
+    required: true
+  email:
+    description: 'Email address of the PR author'
+    required: true
+outputs:
+  signed:
+    description: 'Whether the user has signed the ICLA (true/false)'
+    value: ${{ steps.check.outputs.signed }}
+  signature-info:
+    description: 'JSON string with signature information if signed'
+    value: ${{ steps.check.outputs.signature-info }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Check ICLA signature
+      id: check
+      shell: bash
+      run: |
+        echo "Checking ICLA for user: ${{ inputs.github-username }}"
+        echo "Email: ${{ inputs.email }}"
+        
+        # Check if signatures file exists
+        if [ ! -f ".github/cla-signatures.json" ]; then
+          echo "❌ CLA signatures file not found"
+          echo "signed=false" >> $GITHUB_OUTPUT
+          echo "error=No CLA signatures file found" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Run the Python check script
+        cd ${{ github.action_path }}
+        python check_signature.py "${{ inputs.github-username }}" "${{ inputs.email }}"
+        
+        # The Python script will set the outputs

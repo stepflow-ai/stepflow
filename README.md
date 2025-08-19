@@ -112,6 +112,18 @@ To get a local copy up and running quickly follow these simple steps.
    cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml
    ```
 
+### Contributing to StepFlow
+
+Before contributing to StepFlow, you must sign our Individual Contributor License Agreement (ICLA):
+
+```sh
+python scripts/sign_icla.py
+```
+
+This is a one-time legal requirement that ensures clear licensing and intellectual property rights. The ICLA signature will be automatically verified when you submit pull requests.
+
+For detailed development instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- USAGE EXAMPLES -->

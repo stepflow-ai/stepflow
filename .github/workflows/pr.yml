@@ -1,4 +1,4 @@
-name: "Lint PR"
+name: "PR Checks"
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ on:
       - synchronize
 
 jobs:
-  main:
+  lint-pr:
     name: Validate PR
     runs-on: ubuntu-latest
     permissions:
@@ -105,4 +105,158 @@ jobs:
         with:
           header: pr-title-lint-error
           delete: true
+
+  icla-check:
+    name: Check ICLA Signature
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Get PR author information
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            
+            const authorLogin = pullRequest.user.login;
+            const authorType = pullRequest.user.type;
+            
+            console.log(`PR Author: ${authorLogin} (${authorType})`);
+            
+            return {
+              login: authorLogin,
+              type: authorType
+            };
+
+      - name: Check if bot or organization
+        id: check-bot
+        run: |
+          AUTHOR_TYPE="${{ fromJson(steps.pr-info.outputs.result).type }}"
+          AUTHOR_LOGIN="${{ fromJson(steps.pr-info.outputs.result).login }}"
+          
+          # Skip CLA check for bots and certain automated accounts
+          if [[ "$AUTHOR_TYPE" == "Bot" ]] || [[ "$AUTHOR_LOGIN" =~ ^(dependabot|renovate|github-actions)\[bot\]$ ]]; then
+            echo "Skipping CLA check for bot account: $AUTHOR_LOGIN"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check ICLA signature
+        id: icla-check
+        if: steps.check-bot.outputs.skip != 'true'
+        uses: ./.github/actions/icla-check
+        with:
+          github-username: ${{ fromJson(steps.pr-info.outputs.result).login }}
+          email: ""  # No longer used, kept for backward compatibility
+
+      - name: Comment on PR if ICLA not signed
+        if: steps.check-bot.outputs.skip != 'true' && steps.icla-check.outputs.signed != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const authorLogin = "${{ fromJson(steps.pr-info.outputs.result).login }}";
+            
+            const body = `## ❌ Individual Contributor License Agreement (ICLA) Required
+            
+            Hello @${authorLogin}! Thank you for your contribution to StepFlow.
+            
+            Before we can merge your pull request, you need to sign our Individual Contributor License Agreement (ICLA). This is a one-time process that ensures clear licensing and intellectual property rights for the project.
+            
+            ### How to sign the ICLA:
+            
+            1. **Clone the repository locally:**
+               \`\`\`bash
+               git clone https://github.com/${context.repo.owner}/${context.repo.repo}.git
+               cd ${context.repo.repo}
+               \`\`\`
+            
+            2. **Sign the ICLA:**
+               \`\`\`bash
+               python scripts/sign_icla.py
+               \`\`\`
+            
+            3. **Commit the updated signatures file:**
+               \`\`\`bash
+               git add .github/cla-signatures.json
+               git commit -m "Add ICLA signature for ${authorLogin}"
+               git push
+               \`\`\`
+            
+            4. **Update your pull request** by pushing to your branch.
+            
+            ### What is the ICLA?
+            
+            The ICLA grants the project a license to use your contributions and confirms that:
+            - You own the copyright to your contributions
+            - You grant the project rights to use your code
+            - Your contributions are your original work
+            
+            You can read the full agreement in [ICLA.md](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/ICLA.md).
+            
+            ### Need help?
+            
+            If you have questions about the ICLA or need assistance, please:
+            - Comment on this PR
+            - Open an issue
+            - Contact the maintainers
+            
+            Thank you for contributing to StepFlow! 🚀
+            
+            ---
+            *This check will automatically pass once you sign the ICLA and update your pull request.*`;
+            
+            // Check if we already commented
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Individual Contributor License Agreement (ICLA) Required')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+      - name: Fail if ICLA not signed
+        if: steps.check-bot.outputs.skip != 'true' && steps.icla-check.outputs.signed != 'true'
+        run: |
+          echo "❌ ICLA check failed"
+          echo ""
+          echo "The pull request author has not signed the Individual Contributor License Agreement (ICLA)."
+          echo "Please sign the ICLA by running: python scripts/sign_icla.py"
+          echo ""
+          echo "For more information, see: https://github.com/${{ github.repository }}/blob/main/ICLA.md"
+          exit 1
 
