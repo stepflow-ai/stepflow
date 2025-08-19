@@ -54,26 +54,23 @@ def load_signatures():
         return []
 
 
-def check_signature(github_username, email):
+def check_signature(github_username):
     """
     Check if a user has signed the ICLA.
     
     Args:
         github_username: The user's GitHub username
-        email: The user's email address
     
     Returns:
         Tuple of (has_signed, signature_info)
     """
+    if not github_username:
+        return False, None
+        
     signatures = load_signatures()
     
     for sig in signatures:
-        sig_email = sig.get("email", "").lower()
         sig_github = sig.get("github_username", "").lower()
-        
-        # Check email match
-        if sig_email == email.lower():
-            return True, sig
         
         # Check GitHub username match
         if sig_github == github_username.lower():
@@ -95,18 +92,19 @@ def set_github_output(name, value):
 def main():
     """Main entry point for GitHub Actions ICLA check."""
     if len(sys.argv) != 3:
+        # Keep email parameter for backward compatibility but don't use it
         print("Usage: check_signature.py <github_username> <email>")
         sys.exit(1)
     
     github_username = sys.argv[1]
-    email = sys.argv[2]
+    # email = sys.argv[2]  # No longer used
     
-    has_signed, signature_info = check_signature(github_username, email)
+    has_signed, signature_info = check_signature(github_username)
     
     if has_signed:
         print("✅ ICLA signature found")
         print(f"Name: {signature_info.get('name', 'Unknown')}")
-        print(f"Email: {signature_info.get('email', 'Unknown')}")
+        # Email no longer stored in public signatures
         print(f"GitHub: {signature_info.get('github_username', 'Unknown')}")
         print(f"Date: {signature_info.get('date', 'Unknown')}")
         

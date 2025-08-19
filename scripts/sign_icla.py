@@ -163,18 +163,18 @@ def save_signatures(data):
         return False
 
 
-def generate_signature_id(email, timestamp):
+def generate_signature_id(github_username, timestamp):
     """
     Generate a unique signature ID.
 
     Args:
-        email: The signer's email
+        github_username: The signer's GitHub username
         timestamp: The signature timestamp
 
     Returns:
         A unique signature ID
     """
-    content = f"{email}:{timestamp}"
+    content = f"{github_username}:{timestamp}"
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
@@ -272,16 +272,16 @@ def main():
     data = load_signatures()
     existing_signature = None
 
-    if default_email:
+    if default_github:
         for sig in data["signatures"]:
-            if sig.get("email", "").lower() == default_email.lower():
+            if sig.get("github_username", "").lower() == default_github.lower():
                 existing_signature = sig
                 break
 
     if existing_signature:
         print(f"{Colors.YELLOW}You have already signed the ICLA:{Colors.RESET}")
         print(f"  Name: {existing_signature.get('name')}")
-        print(f"  Email: {existing_signature.get('email')}")
+        print(f"  GitHub: {existing_signature.get('github_username')}")
         print(f"  Date: {existing_signature.get('date')}")
         print()
 
@@ -307,8 +307,10 @@ def main():
         "Full Legal Name", default=default_name, required=True, validator=validate_name
     )
 
+    # Collect email for records but don't store publicly
     email = get_user_input(
-        "Email Address", default=default_email, required=True, validator=validate_email
+        "Email Address (for legal records only, not stored publicly)",
+        default=default_email, required=True, validator=validate_email
     )
 
     github_username = get_user_input(
@@ -344,12 +346,24 @@ def main():
 
     # Create signature record
     timestamp = datetime.utcnow().isoformat() + "Z"
-    signature_id = generate_signature_id(email, timestamp)
+    signature_id = generate_signature_id(github_username, timestamp)
 
+    # Note: email is collected but not stored in public file
     signature = {
         "id": signature_id,
         "name": full_name,
-        "email": email,
+        "email": email,  # Will be removed before saving
+        "github_username": github_username,
+        "company": company if company else None,
+        "country": country,
+        "date": timestamp,
+        "cla_version": CLA_VERSION,
+    }
+
+    # Remove email from public signature (keep other fields)
+    public_signature = {
+        "id": signature_id,
+        "name": full_name,
         "github_username": github_username,
         "company": company if company else None,
         "country": country,
@@ -359,14 +373,14 @@ def main():
 
     # Update or add signature
     if existing_signature:
-        # Update existing signature
+        # Update existing signature based on GitHub username
         for i, sig in enumerate(data["signatures"]):
-            if sig.get("email", "").lower() == email.lower():
-                data["signatures"][i] = signature
+            if sig.get("github_username", "").lower() == github_username.lower():
+                data["signatures"][i] = public_signature
                 break
     else:
         # Add new signature
-        data["signatures"].append(signature)
+        data["signatures"].append(public_signature)
 
     # Sort signatures by date
     data["signatures"].sort(key=lambda x: x.get("date", ""))
@@ -377,7 +391,7 @@ def main():
         print(f"{Colors.GREEN}{'=' * 30}{Colors.RESET}")
         print(f"  Signature ID: {signature_id}")
         print(f"  Name: {full_name}")
-        print(f"  Email: {email}")
+        print(f"  Email: {email} (kept private)")
         print(f"  GitHub: {github_username}")
         print(f"  Date: {timestamp}")
         print()

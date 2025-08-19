@@ -134,24 +134,10 @@ jobs:
             const authorLogin = pullRequest.user.login;
             const authorType = pullRequest.user.type;
             
-            // Get author's email from commits if possible
-            const { data: commits } = await github.rest.pulls.listCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number
-            });
-            
-            let authorEmail = '';
-            if (commits.length > 0) {
-              authorEmail = commits[commits.length - 1].commit.author.email || '';
-            }
-            
             console.log(`PR Author: ${authorLogin} (${authorType})`);
-            console.log(`Author Email: ${authorEmail}`);
             
             return {
               login: authorLogin,
-              email: authorEmail,
               type: authorType
             };
 
@@ -175,7 +161,7 @@ jobs:
         uses: ./.github/actions/icla-check
         with:
           github-username: ${{ fromJson(steps.pr-info.outputs.result).login }}
-          email: ${{ fromJson(steps.pr-info.outputs.result).email }}
+          email: ""  # No longer used, kept for backward compatibility
 
       - name: Comment on PR if ICLA not signed
         if: steps.check-bot.outputs.skip != 'true' && steps.icla-check.outputs.signed != 'true'

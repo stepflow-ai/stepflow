@@ -116,26 +116,23 @@ def load_signatures():
         return []
 
 
-def check_signature(email, github_username=None):
+def check_signature(github_username):
     """
     Check if a user has signed the ICLA.
 
     Args:
-        email: The user's email address
-        github_username: The user's GitHub username (optional)
+        github_username: The user's GitHub username
 
     Returns:
         Tuple of (has_signed, signature_info)
     """
+    if not github_username:
+        return False, None
+        
     signatures = load_signatures()
 
     for sig in signatures:
-        if sig.get("email", "").lower() == email.lower():
-            return True, sig
-        if (
-            github_username
-            and sig.get("github_username", "").lower() == github_username.lower()
-        ):
+        if sig.get("github_username", "").lower() == github_username.lower():
             return True, sig
 
     return False, None
@@ -143,30 +140,30 @@ def check_signature(email, github_username=None):
 
 def main():
     """Main entry point for the ICLA check."""
-    # Check if we're in a git repository
-    if not get_git_config("user.email"):
-        print(
-            f"{Colors.YELLOW}Warning: Not in a git repository or git "
-            f"user.email not configured{Colors.RESET}"
-        )
-        print(
-            "Please configure git with: git config user.email "
-            "'your-email@example.com'"
-        )
-        return 1
-
     # Get user information
     user_email = get_git_config("user.email")
     user_name = get_git_config("user.name")
     github_username = get_git_config("github.user")
 
+    # Check if we have GitHub username configured
+    if not github_username:
+        print(
+            f"{Colors.YELLOW}Warning: GitHub username not configured{Colors.RESET}"
+        )
+        print(
+            "Please configure git with: git config github.user 'your-github-username'"
+        )
+        print("")
+        print("Alternatively, run: python scripts/sign_icla.py")
+        return 1
+
     # Check if user has signed
-    has_signed, signature_info = check_signature(user_email, github_username)
+    has_signed, signature_info = check_signature(github_username)
 
     if has_signed:
         print(f"{Colors.GREEN}✓ ICLA Check Passed{Colors.RESET}")
         print(f"  User: {signature_info.get('name', user_name or 'Unknown')}")
-        print(f"  Email: {signature_info.get('email', user_email)}")
+        print(f"  GitHub: {signature_info.get('github_username', github_username)}")
         print(f"  Signed on: {signature_info.get('date', 'Unknown date')}")
         return 0
     else:
@@ -180,11 +177,11 @@ def main():
         print(f"  {Colors.BLUE}python scripts/sign_icla.py{Colors.RESET}")
         print()
         print("Your current git configuration:")
-        print(f"  Email: {user_email}")
+        print(f"  GitHub: {github_username}")
         if user_name:
             print(f"  Name: {user_name}")
-        if github_username:
-            print(f"  GitHub: {github_username}")
+        if user_email:
+            print(f"  Email: {user_email} (not used for ICLA check)")
         print()
         print("The ICLA is required for all contributors to ensure clear " "licensing")
         print("and intellectual property rights. This is a one-time process.")
