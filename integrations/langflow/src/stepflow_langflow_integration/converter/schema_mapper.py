@@ -23,6 +23,10 @@ class SchemaMapper:
             "multiline": "string",
         }
         
+        # component_output_heuristics: Maps Langflow component types to their expected output data types.
+        # This is used as a fallback when component output metadata is not available in the node definition.
+        # For example, ChatInput components typically output Message objects, while VectorStore components
+        # output DataFrame objects. These heuristics help generate proper output schemas during conversion.
         self.component_output_heuristics = {
             "ChatInput": ["Message"],
             "ChatOutput": ["Message"],

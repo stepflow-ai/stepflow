@@ -58,7 +58,13 @@ def convert(
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 def analyze(input_file: Path):
-    """Analyze a Langflow workflow structure."""
+    """Analyze a Langflow workflow structure.
+    
+    This command provides detailed analysis of a Langflow JSON workflow without converting it.
+    It examines the workflow structure, component types, dependencies, and identifies potential
+    issues that might affect conversion. Useful for understanding workflow complexity and 
+    debugging conversion problems before attempting the full conversion process.
+    """
     try:
         converter = LangflowConverter()
         

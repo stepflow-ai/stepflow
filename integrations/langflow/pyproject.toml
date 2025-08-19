@@ -13,7 +13,7 @@ maintainers = [
 requires-python = ">=3.11"
 keywords = [
     "workflow",
-    "langflow", 
+    "langflow",
     "stepflow",
     "ai",
     "automation",
@@ -26,7 +26,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11", 
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -44,16 +44,10 @@ dependencies = [
     "langflow>=1.5.0",  # Required for component execution
 ]
 
-[project.optional-dependencies]
-# Future enhancement: Graph API fallback for parsing  
-graph-parsing = [
-    # "langflow-core",  # Not available in package registry yet
-]
-
 [dependency-groups]
 dev = [
     "pytest>=7.4.0",
-    "pytest-asyncio>=0.26.0", 
+    "pytest-asyncio>=0.26.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.14.1",
     "poethepoet>=0.24.0",
@@ -188,7 +182,7 @@ python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
     "--disable-warnings",
-    "-ra",  # show all test results 
+    "-ra",  # show all test results
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

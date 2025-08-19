@@ -200,31 +200,37 @@ The integration follows a multi-stage approach for maximum compatibility and saf
 
 ## 📦 Supported Components
 
-The integration supports all Langflow component types:
+The integration supports all Langflow component types through UDF execution:
 
-### Chat & Messaging
-- `ChatInput`, `ChatOutput` - User interaction components
-- `LanguageModelComponent` - LLM integration
-- `Prompt` - Dynamic prompt templating
+### Compatibility Matrix
 
-### Data Processing
-- `TextSplitter` - Document chunking and processing
-- `DocumentLoader` - File and web content loading
-- `VectorStore` - Vector database operations
+| Component Type | Support Status | Conversion Method |
+|---------------|----------------|-------------------|
+| ChatInput | ✅ Full | UDF Executor |
+| ChatOutput | ✅ Full | UDF Executor |
+| PromptTemplate | ✅ Full | UDF Executor |
+| LanguageModelComponent | ✅ Full | UDF Executor |
+| OpenAI/Anthropic Models | ✅ Full | UDF Executor |
+| Agent Components | ✅ Full | UDF Executor |
+| Calculator/Tool Components | ✅ Full | UDF Executor |
+| Memory Components | ✅ Full | UDF Executor |
+| Vector Store/Embeddings | ✅ Full | UDF Executor |
+| Text Splitter/Loaders | ✅ Full | UDF Executor |
+| File Components | ✅ Full | UDF Executor |
+| Custom Components | ✅ Full | UDF Executor |
+| Note/Documentation | ✅ Preserved | Filtered out |
 
-### AI Models
-- `OpenAIComponent` - OpenAI API integration
-- `AnthropicComponent` - Claude API integration
-- Custom model wrappers
+### Langflow Features Support
 
-### Memory & State
-- `Memory` - Conversation memory management
-- `ConversationSummaryMemory` - Automatic summarization
-
-### Custom Components
-- **Full UDF Support**: All user-defined components work via UDF execution
-- **Code Preservation**: Original component logic maintained
-- **Runtime Integration**: Access to Stepflow blob storage and context
+| Feature | Support Status | Notes |
+|---------|----------------|-------|
+| Component Dependencies | ✅ Full | Converted to Stepflow step dependencies |
+| Environment Variables | ✅ Full | API keys and secrets passed through |
+| Custom Python Components | ✅ Full | UDF execution preserves all functionality |
+| Template Variables | ✅ Full | Resolved during component execution |
+| Dropdown/Selection Fields | ✅ Full | Configuration preserved |
+| File Uploads | ✅ Full | File content passed as input data |
+| Multi-output Components | ✅ Full | Output selection preserved |
 
 ## 🧪 Testing & Development
 
@@ -284,6 +290,7 @@ uv run stepflow-langflow serve
 
 ### Potential Enhancements
 - **Debug Tools**: Enhanced workflow debugging and profiling
+- **Native Component Mappings**: Direct Stepflow equivalents for common components (performance optimization)
 
 ## 📚 Examples
 
@@ -339,4 +346,3 @@ This project follows the same Apache 2.0 license as the main Stepflow project.
 - **Issues**: Report bugs via [GitHub Issues](https://github.com/stepflow-ai/stepflow/issues)
 - **Examples**: Comprehensive examples in `tests/fixtures/langflow/`
 - **Testing**: Use `--mock` mode for safe experimentation
-- **Development**: See `PLAN.md` for implementation details
