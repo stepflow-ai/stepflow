@@ -15,6 +15,7 @@ Stepflow provides several commands for executing workflows in different ways. Th
 - **[`list-components`](./list-components.md)** - List all available components from a stepflow config
 - **[`repl`](./repl.md)** - Start an interactive REPL for workflow development and debugging
 - **[`validate`](./validate.md)** - Validate workflow files and configuration
+- **[`visualize`](./visualize.md)** - Visualize workflow structure as a graph
 
 ## Global Options
 

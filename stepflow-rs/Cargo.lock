@@ -662,6 +662,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dot"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a74b6c4d4a1cff5f454164363c16b72fa12463ca6b31f4b5f2035a65fa3d5906"
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3234,6 +3240,7 @@ version = "0.2.2"
 dependencies = [
  "clap",
  "clap-markdown",
+ "dot",
  "error-stack",
  "indexmap",
  "insta-cmd",

@@ -74,6 +74,7 @@ utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"]}
 walkdir = "2.5.0"
 which = { version = "7.0.3", features = ["tracing"] }
+dot = "0.1"
 
 # Enable max optimizations for dependencies, but not for our code
 [profile.dev.package."*"]

@@ -1,0 +1,65 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--flow=tests/mock/basic.yaml"
+    - "--format=dot"
+    - "--no-servers"
+    - "--no-details"
+---
+success: true
+exit_code: 0
+----- stdout -----
+digraph workflow {
+  rankdir=TB;
+  node [shape=box, style=filled];
+  edge [fontsize=10];
+
+  "workflow_input" [
+    label="📥 Workflow Input",
+    fillcolor="lightblue",
+    shape=ellipse,
+  ];
+
+  "step1" [
+    label="🔧 step1",
+    fillcolor="lightcoral",
+  ];
+  "step2" [
+    label="🔧 step2",
+    fillcolor="lightcoral",
+  ];
+  "workflow_output" [
+    label="📤 Workflow Output",
+    fillcolor="lightgreen",
+    shape=ellipse,
+  ];
+
+  "workflow_input" -> "step1" [
+    color="blue",
+    style="solid",
+  ];
+  "step1" -> "step2" [
+    color="black",
+    style="solid",
+  ];
+  "step1" -> "workflow_output" [
+    color="green",
+    style="solid",
+  ];
+  "step2" -> "workflow_output" [
+    color="green",
+    style="solid",
+  ];
+  "step2" -> "workflow_output" [
+    color="green",
+    style="solid",
+  ];
+}
+
+
+----- stderr -----

@@ -1,0 +1,19 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--flow=tests/builtins/blob_test.yaml"
+    - "--config=tests/builtins/stepflow-config.yml"
+    - "--output=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/stepflow_test_blob_test.dot"
+    - "--format=dot"
+---
+success: true
+exit_code: 0
+----- stdout -----
+
+----- stderr -----
+✅ Visualization generated: /var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/stepflow_test_blob_test.dot

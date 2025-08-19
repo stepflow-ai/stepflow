@@ -1,0 +1,18 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--flow=nonexistent.yaml"
+    - "--output=output.dot"
+    - "--format=dot"
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Missing file: nonexistent.yaml

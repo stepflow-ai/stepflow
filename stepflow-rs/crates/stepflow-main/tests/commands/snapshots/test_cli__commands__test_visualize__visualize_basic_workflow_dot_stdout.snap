@@ -1,0 +1,67 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--flow=tests/mock/basic.yaml"
+    - "--format=dot"
+---
+success: true
+exit_code: 0
+----- stdout -----
+digraph workflow {
+  rankdir=TB;
+  node [shape=box, style=filled];
+  edge [fontsize=10];
+
+  "workflow_input" [
+    label="📥 Workflow Input",
+    fillcolor="lightblue",
+    shape=ellipse,
+    tooltip="Workflow: Unnamed\\nInput Schema: Available",
+  ];
+
+  "step1" [
+    label="🔧 step1\n📦 /mock/one_output\n🖥️ mock",
+    fillcolor="lightcoral",
+    tooltip="Step: step1\\nComponent: /mock/one_output",
+  ];
+  "step2" [
+    label="🔧 step2\n📦 /mock/two_outputs\n🖥️ mock",
+    fillcolor="lightcoral",
+    tooltip="Step: step2\\nComponent: /mock/two_outputs",
+  ];
+  "workflow_output" [
+    label="📤 Workflow Output",
+    fillcolor="lightgreen",
+    shape=ellipse,
+    tooltip="Workflow: Unnamed\\nOutput Schema: Available",
+  ];
+
+  "workflow_input" -> "step1" [
+    color="blue",
+    style="solid",
+  ];
+  "step1" -> "step2" [
+    color="black",
+    style="solid",
+  ];
+  "step1" -> "workflow_output" [
+    color="green",
+    style="solid",
+  ];
+  "step2" -> "workflow_output" [
+    color="green",
+    style="solid",
+  ];
+  "step2" -> "workflow_output" [
+    color="green",
+    style="solid",
+  ];
+}
+
+
+----- stderr -----
