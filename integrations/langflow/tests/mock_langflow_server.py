@@ -77,23 +77,38 @@ class MockLangflowServer:
         component_input = input_data.get("input", {})
         
         # Mock different component types
-        if "chatinput" in component_name.lower():
+        if "chatinput" in component_name.lower() or "chat_input" in component_name.lower():
+            # Handle the new chat_input format that reads from workflow input
+            message_text = "Mock user input"
+            if "message" in component_input:
+                message_text = component_input.get("message", "Mock user input") 
+            elif "input_value" in component_input:
+                message_text = component_input.get("input_value", "Mock user input")
+            
             return {
                 "result": {
-                    "text": component_input.get("input_value", "Mock user input"),
-                    "sender": "User",
-                    "sender_name": "User",
+                    "text": message_text,
+                    "sender": component_input.get("sender", "User"),
+                    "sender_name": component_input.get("sender", "User"),
                     "type": "Message",
                     "__langflow_type__": "Message"
                 }
             }
-        elif "chatoutput" in component_name.lower():
+        elif "chatoutput" in component_name.lower() or "chat_output" in component_name.lower():
             # ChatOutput typically receives input from previous steps
             input_text = "Mock AI response"
-            if "input_0" in component_input:
+            if "message" in component_input:
+                # New chat_output format
+                message_input = component_input["message"]
+                if isinstance(message_input, dict) and "text" in message_input:
+                    input_text = f"AI Response to: {message_input['text']}"
+                elif isinstance(message_input, str):
+                    input_text = f"AI Response to: {message_input}"
+            elif "input_0" in component_input:
+                # Old format
                 prev_result = component_input["input_0"]
                 if isinstance(prev_result, dict) and "text" in prev_result:
-                    input_text = f"Response to: {prev_result['text']}"
+                    input_text = f"AI Response to: {prev_result['text']}"
             
             return {
                 "result": {
@@ -187,6 +202,8 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
             result = {"components": [
                 {"component": "/ChatInput", "description": "Mock chat input component"},
                 {"component": "/ChatOutput", "description": "Mock chat output component"},
+                {"component": "/chat_input", "description": "Mock chat input component (new format)"},
+                {"component": "/chat_output", "description": "Mock chat output component (new format)"},
                 {"component": "/udf_executor", "description": "Mock UDF executor component"},
                 {"component": "/note", "description": "Mock note component"},
             ]}

@@ -34,7 +34,24 @@ class UDFExecutor:
             if not blob_id:
                 raise ExecutionError("No blob_id provided")
             
-            blob_data = await context.get_blob(blob_id)
+            # Try to get existing blob, or create special components on-demand
+            blob_data = None
+            try:
+                blob_data = await context.get_blob(blob_id)
+            except Exception:
+                # Check if this is a special ChatInput/ChatOutput component
+                if "chatinput" in blob_id.lower():
+                    blob_data = self._create_chat_input_blob()
+                    # Store the blob for future use
+                    actual_blob_id = await context.put_blob(blob_data)
+                elif "chatoutput" in blob_id.lower():
+                    blob_data = self._create_chat_output_blob()
+                    # Store the blob for future use
+                    actual_blob_id = await context.put_blob(blob_data)
+                else:
+                    # Re-raise the original error for non-special components
+                    raise ExecutionError(f"Blob not found: {blob_id}")
+            
             runtime_inputs = input_data.get("input", {})
             
             # Execute the component
@@ -271,3 +288,103 @@ class UDFExecutor:
                 return await loop.run_in_executor(None, lambda: future.result())
         else:
             return method()
+    
+    def _create_chat_input_blob(self) -> Dict[str, Any]:
+        """Create blob data for ChatInput component."""
+        chat_input_code = '''
+from langflow.custom.custom_component.component import Component
+from langflow.io import MessageTextInput, Output
+from langflow.schema.message import Message
+
+class ChatInputComponent(Component):
+    display_name = "Chat Input"
+    description = "Processes chat input from workflow"
+    
+    inputs = [
+        MessageTextInput(name="message", display_name="Message Input"),
+    ]
+    
+    outputs = [
+        Output(display_name="Message", name="output", method="process_message")
+    ]
+
+    def process_message(self) -> Message:
+        """Process the input message."""
+        message_text = self.message or "No message provided"
+        return Message(
+            text=str(message_text),
+            sender="User",
+            sender_name="User"
+        )
+'''
+        
+        return {
+            "code": chat_input_code,
+            "component_type": "ChatInputComponent",
+            "template": {
+                "message": {
+                    "type": "str", 
+                    "value": "",
+                    "info": "Message text input"
+                }
+            },
+            "outputs": [{"name": "output", "method": "process_message", "types": ["Message"]}],
+            "selected_output": "output"
+        }
+    
+    def _create_chat_output_blob(self) -> Dict[str, Any]:
+        """Create blob data for ChatOutput component."""
+        chat_output_code = '''
+from langflow.custom.custom_component.component import Component
+from langflow.io import HandleInput, Output
+from langflow.schema.message import Message
+
+class ChatOutputComponent(Component):
+    display_name = "Chat Output"
+    description = "Processes chat output for workflow"
+    
+    inputs = [
+        HandleInput(name="input_message", display_name="Input Message", input_types=["Message", "str"])
+    ]
+    
+    outputs = [
+        Output(display_name="Message", name="output", method="process_output")
+    ]
+
+    def process_output(self) -> Message:
+        """Process the output message."""
+        input_msg = self.input_message
+        
+        # Handle different input types
+        if hasattr(input_msg, 'text'):
+            # It's already a Message object
+            return input_msg
+        elif isinstance(input_msg, dict):
+            # It's a dict with message fields
+            return Message(
+                text=input_msg.get('text', str(input_msg)),
+                sender=input_msg.get('sender', 'AI'),
+                sender_name=input_msg.get('sender_name', 'Assistant')
+            )
+        else:
+            # Convert to string and create Message
+            return Message(
+                text=str(input_msg),
+                sender="AI",
+                sender_name="Assistant"
+            )
+'''
+        
+        return {
+            "code": chat_output_code,
+            "component_type": "ChatOutputComponent", 
+            "template": {
+                "input_message": {
+                    "type": "Message",
+                    "value": None,
+                    "info": "Input message to output"
+                }
+            },
+            "outputs": [{"name": "output", "method": "process_output", "types": ["Message"]}],
+            "selected_output": "output"
+        }

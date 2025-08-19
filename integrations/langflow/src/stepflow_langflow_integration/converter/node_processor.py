@@ -56,7 +56,26 @@ class NodeProcessor:
             template = node_info.get("template", {})
             custom_code = template.get("code", {}).get("value", "")
             
-            if custom_code:
+            # Handle special components first
+            if component_type == "ChatInput":
+                # ChatInput should read from workflow input - create special UDF
+                blob_data = self._create_chat_input_udf(node)
+                step_input = {
+                    "blob_id": f"udf_{step_id}",
+                    "input": self._extract_chat_input_mapping(node)
+                }
+                component_path = "/langflow/udf_executor"
+                blob_data_to_store = blob_data
+            elif component_type == "ChatOutput":
+                # ChatOutput should pass through its input - create special UDF
+                blob_data = self._create_chat_output_udf(node)
+                step_input = {
+                    "blob_id": f"udf_{step_id}",
+                    "input": self._extract_chat_output_mapping(node, dependencies.get(node_id, []))
+                }
+                component_path = "/langflow/udf_executor"
+                blob_data_to_store = blob_data
+            elif custom_code:
                 # Custom component - use UDF executor
                 blob_data = self._prepare_udf_blob(node, component_type)
                 
@@ -234,3 +253,175 @@ class NodeProcessor:
                 }
         
         return component_inputs
+    
+    def _extract_chat_input_mapping(self, node: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract inputs for ChatInput component to map to workflow input.
+        
+        Args:
+            node: Langflow ChatInput node object
+            
+        Returns:
+            Dict mapping ChatInput to workflow input
+        """
+        node_data = node.get("data", {})
+        node_info = node_data.get("node", {})
+        template = node_info.get("template", {})
+        
+        # Get the sender from template, defaulting to "User" 
+        sender = "User"
+        if "sender" in template:
+            sender_config = template["sender"]
+            if isinstance(sender_config, dict):
+                sender = sender_config.get("value", "User")
+        
+        # Create a message from workflow input
+        return {
+            "message": {
+                "$from": {"workflow": "input"},
+                "path": "message"  # Expect workflow input to have a 'message' field
+            },
+            "sender": sender
+        }
+    
+    def _extract_chat_output_mapping(
+        self, 
+        node: Dict[str, Any], 
+        dependency_node_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Extract inputs for ChatOutput component to pass through data.
+        
+        Args:
+            node: Langflow ChatOutput node object
+            dependency_node_ids: IDs of nodes this node depends on
+            
+        Returns:
+            Dict mapping ChatOutput inputs for identity pass-through
+        """
+        if dependency_node_ids:
+            # Pass through the input from the previous step
+            dep_step_id = self._generate_step_id(dependency_node_ids[0], "")
+            return {
+                "input_message": {
+                    "$from": {"step": dep_step_id},
+                    "path": "result"
+                }
+            }
+        else:
+            # No dependencies, return empty value
+            return {"input_message": None}
+    
+    def _create_chat_input_udf(self, node: Dict[str, Any]) -> Dict[str, Any]:
+        """Create UDF blob data for ChatInput component.
+        
+        Args:
+            node: Langflow ChatInput node object
+            
+        Returns:
+            UDF blob data for ChatInput handling
+        """
+        # Create a simple ChatInput UDF that reads from workflow input
+        chat_input_code = '''
+from langflow.custom.custom_component.component import Component
+from langflow.io import MessageTextInput, Output
+from langflow.schema.message import Message
+
+class ChatInputComponent(Component):
+    display_name = "Chat Input"
+    description = "Processes chat input from workflow"
+    
+    inputs = [
+        MessageTextInput(name="message", display_name="Message"),
+    ]
+    
+    outputs = [
+        Output(display_name="Message", name="message", method="process_message")
+    ]
+
+    def process_message(self) -> Message:
+        """Process the input message."""
+        message_text = self.message or "No message provided"
+        return Message(
+            text=str(message_text),
+            sender="User",
+            sender_name="User"
+        )
+'''
+        
+        return {
+            "code": chat_input_code,
+            "component_type": "ChatInputComponent",
+            "template": {
+                "message": {
+                    "type": "str", 
+                    "value": "",
+                    "info": "Message text input"
+                }
+            },
+            "outputs": [{"name": "message", "method": "process_message", "types": ["Message"]}],
+            "selected_output": "message"
+        }
+    
+    def _create_chat_output_udf(self, node: Dict[str, Any]) -> Dict[str, Any]:
+        """Create UDF blob data for ChatOutput component.
+        
+        Args:
+            node: Langflow ChatOutput node object
+            
+        Returns:
+            UDF blob data for ChatOutput handling
+        """
+        # Create a simple ChatOutput UDF that passes through its input
+        chat_output_code = '''
+from langflow.custom.custom_component.component import Component
+from langflow.io import HandleInput, Output
+from langflow.schema.message import Message
+
+class ChatOutputComponent(Component):
+    display_name = "Chat Output"
+    description = "Processes chat output for workflow"
+    
+    inputs = [
+        HandleInput(name="message", display_name="Input Message", input_types=["Message", "str"])
+    ]
+    
+    outputs = [
+        Output(display_name="Message", name="message", method="process_output")
+    ]
+
+    def process_output(self) -> Message:
+        """Process the output message."""
+        input_msg = self.message
+        
+        # Handle different input types
+        if hasattr(input_msg, 'text'):
+            # It's already a Message object
+            return input_msg
+        elif isinstance(input_msg, dict):
+            # It's a dict with message fields
+            return Message(
+                text=input_msg.get('text', str(input_msg)),
+                sender=input_msg.get('sender', 'AI'),
+                sender_name=input_msg.get('sender_name', 'Assistant')
+            )
+        else:
+            # Convert to string and create Message
+            return Message(
+                text=str(input_msg),
+                sender="AI",
+                sender_name="Assistant"
+            )
+'''
+        
+        return {
+            "code": chat_output_code,
+            "component_type": "ChatOutputComponent", 
+            "template": {
+                "message": {
+                    "type": "Message",
+                    "value": None,
+                    "info": "Input message to output"
+                }
+            },
+            "outputs": [{"name": "message", "method": "process_output", "types": ["Message"]}],
+            "selected_output": "message"
+        }

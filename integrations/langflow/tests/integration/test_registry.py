@@ -261,7 +261,8 @@ class TestRegistry:
                 conversion=ConversionExpectation(
                     workflow_name="Simple Chat Example",
                     step_count=2,
-                    component_types_include=["ChatInput", "ChatOutput"],  # Focus on component types, not paths
+                    component_types_include=["/langflow/udf_executor"],  # ChatInput and ChatOutput are now UDF executors
+                    udf_executor_count=2,  # ChatInput, ChatOutput
                     has_dependencies=True,  # ChatOutput depends on ChatInput
                 ),
                 execution=ExecutionExpectation(
@@ -282,7 +283,8 @@ class TestRegistry:
                 conversion=ConversionExpectation(
                     workflow_name="OpenAI Chat Workflow",
                     step_count=3,
-                    component_types_include=["ChatInput", "LanguageModelComponent", "ChatOutput"],  # Built-in components
+                    component_types_include=["/langflow/udf_executor", "/langflow/LanguageModelComponent"],  # Mixed: UDF executors for Chat, built-in for LM
+                    udf_executor_count=2,  # ChatInput, ChatOutput
                     has_dependencies=True,
                 ),
                 execution=ExecutionExpectation(

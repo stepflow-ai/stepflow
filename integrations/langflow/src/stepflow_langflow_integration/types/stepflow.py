@@ -36,6 +36,7 @@ class StepflowWorkflow:
     description: Optional[str] = None
     version: str = "1.0"
     schema: str = "https://stepflow.org/schemas/v1/flow.json"
+    input: Optional[Dict[str, Any]] = None
     output: Optional[Dict[str, Any]] = None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -52,6 +53,9 @@ class StepflowWorkflow:
         if self.version != "1.0":
             result["version"] = self.version
         
+        if self.input:
+            result["input"] = self.input
+            
         if self.output:
             result["output"] = self.output
         

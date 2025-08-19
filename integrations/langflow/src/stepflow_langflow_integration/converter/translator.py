@@ -113,6 +113,7 @@ class LangflowConverter:
             workflow = StepflowWorkflow(
                 name=self._generate_workflow_name(langflow_data),
                 steps=steps,
+                input=self._generate_input_section(nodes),
                 output=self._generate_output_section(steps, dependencies)
             )
             
@@ -212,6 +213,49 @@ class LangflowConverter:
         # Fallback to generic name
         return "Converted Langflow Workflow"
     
+    def _generate_input_section(self, nodes: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Generate input section for workflow based on ChatInput components.
+        
+        Args:
+            nodes: List of Langflow nodes
+            
+        Returns:
+            Input section dict or None if no ChatInput components found
+        """
+        # Look for ChatInput components
+        chat_input_nodes = []
+        for node in nodes:
+            node_data = node.get("data", {})
+            component_type = node_data.get("type", "")
+            if component_type == "ChatInput":
+                chat_input_nodes.append(node)
+        
+        if not chat_input_nodes:
+            return None
+        
+        # Generate input schema for ChatInput components
+        # For now, assume all ChatInput components expect a "message" field
+        input_schema = {
+            "message": {
+                "type": "string",
+                "description": "Message input for the chat workflow"
+            }
+        }
+        
+        # If multiple ChatInput components, we might need more complex input schema
+        if len(chat_input_nodes) > 1:
+            # For multiple inputs, create named fields based on node IDs
+            input_schema = {}
+            for node in chat_input_nodes:
+                node_id = node.get("id", "")
+                field_name = f"message_{node_id.lower().replace('-', '_')}"
+                input_schema[field_name] = {
+                    "type": "string", 
+                    "description": f"Message input for {node_id}"
+                }
+        
+        return input_schema
+    
     def _generate_output_section(self, steps: List[StepflowStep], dependencies: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         """Generate output section for workflow based on step types and dependencies.
         
@@ -236,11 +280,23 @@ class LangflowConverter:
         
         leaf_steps = [step for step in steps if step.id not in dependent_steps]
         
-        # Prefer specific output component types
-        for step in leaf_steps:
+        # First, look for ChatOutput components specifically (highest priority)
+        for step in steps:
             component_lower = step.component.lower()
-            if any(output_type in component_lower for output_type in ['output', 'chat_output', 'chatoutput']):
+            step_id_lower = step.id.lower()
+            # Check if this is a ChatOutput component (either direct or UDF)
+            if ('chatoutput' in step_id_lower or 'chat_output' in step_id_lower):
                 output_steps.append(step)
+        
+        # If no ChatOutput found, look for other output component types
+        if not output_steps:
+            for step in leaf_steps:
+                component_lower = step.component.lower()
+                if any(output_type in component_lower for output_type in ['output']):
+                    output_steps.append(step)
+                # Also prioritize steps that were originally output components (now using identity)
+                elif step.component == "/builtin/identity":
+                    output_steps.append(step)
         
         # If no specific output components, use all leaf steps
         if not output_steps:
