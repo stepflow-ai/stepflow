@@ -446,6 +446,7 @@ pub async fn visualize_flow(
 }
 
 /// Generate DOT visualization to stdout
+#[allow(clippy::print_stdout)]
 pub async fn visualize_flow_to_stdout(
     flow: std::sync::Arc<Flow>,
     router: Option<PluginRouter>,
@@ -455,6 +456,7 @@ pub async fn visualize_flow_to_stdout(
     let dot_content = visualizer.generate_dot()?;
 
     // Output to stdout
+
     println!("{}", dot_content);
     Ok(())
 }

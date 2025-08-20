@@ -41,6 +41,15 @@ Generate a visual representation of workflow structure showing steps, dependenci
 * `--format <FORMAT>` — Output format for the visualization
 
   Default value: `svg`
+
+  Possible values:
+  - `dot`:
+    DOT graph format
+  - `svg`:
+    SVG image format
+  - `png`:
+    PNG image format
+
 * `--no-servers` — Hide component server information from nodes
 * `--no-details` — Hide detailed tooltips and metadata
 * `--config <FILE>` — The path to the stepflow config file.
