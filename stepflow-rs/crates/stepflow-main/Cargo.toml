@@ -46,6 +46,7 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 strum.workspace = true
+which.workspace = true
 
 [dev-dependencies]
 clap-markdown = "0.1.4"

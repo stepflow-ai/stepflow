@@ -389,7 +389,11 @@ impl FlowVisualizer {
     ) -> Result<()> {
         use std::process::Stdio;
 
-        let mut cmd = tokio::process::Command::new("dot");
+        let dot = which::which("dot").change_context(MainError::internal(
+            "Graphviz 'dot' command not found. Please install Graphviz to use this feature.",
+        ))?;
+
+        let mut cmd = tokio::process::Command::new(dot);
         cmd.arg(format!("-T{}", format))
             .arg("-o")
             .arg(output_path)
