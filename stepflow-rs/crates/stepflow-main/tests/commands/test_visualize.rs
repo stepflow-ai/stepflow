@@ -19,11 +19,16 @@ macro_rules! apply_visualize_filters {
     ($temp_dir:expr) => {
         let mut settings = insta::Settings::clone_current();
         // Replace the specific temp directory path with placeholder
-        let temp_path = $temp_dir.to_string_lossy().to_string();
+        let mut temp_path = $temp_dir.to_string_lossy().to_string();
+        if temp_path.ends_with(std::path::MAIN_SEPARATOR) {
+            temp_path.pop();
+        }
         let escaped_path = regex::escape(&temp_path);
-        settings.add_filter(&escaped_path, "[TEMP_DIR]/");
+        settings.add_filter(&escaped_path, "[TEMP_DIR]");
         // Convert windows paths to Unix paths
-        settings.add_filter(r"\\", "/");
+        if std::path::MAIN_SEPARATOR == '\\' {
+            settings.add_filter(r"\\", "/");
+        }
         let _bound = settings.bind_to_scope();
     };
 }
