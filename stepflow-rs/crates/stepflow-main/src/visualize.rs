@@ -111,10 +111,9 @@ impl FlowVisualizer {
             "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
         )
         .unwrap();
-        let analysis_result =
-            analyze_flow_dependencies(self.flow.clone(), blob_id).change_context(
-                MainError::internal(format!("Failed to analyze flow dependencies: {}", blob_id)),
-            )?;
+
+        let analysis_result = analyze_flow_dependencies(self.flow.clone(), blob_id)
+            .change_context(MainError::internal("Failed to analyze flow dependencies"))?;
 
         // Create color mapping for component servers
         let server_colors = self.create_server_color_mapping();
