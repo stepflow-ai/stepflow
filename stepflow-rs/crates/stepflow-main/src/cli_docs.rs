@@ -32,6 +32,7 @@ const COMMAND_ORDER: &[(&str, u32)] = &[
     ("list-components", 6),
     ("repl", 7),
     ("validate", 8),
+    ("visualize", 9),
 ];
 
 /// Generate custom CLI index documentation with command list and links

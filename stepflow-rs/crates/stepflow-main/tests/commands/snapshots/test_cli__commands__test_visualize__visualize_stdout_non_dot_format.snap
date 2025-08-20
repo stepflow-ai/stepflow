@@ -1,0 +1,17 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--flow=tests/mock/basic.yaml"
+    - "--format=svg"
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Error: Only DOT format is supported for stdout output. Use --format=dot or specify --output=<file> for other formats.

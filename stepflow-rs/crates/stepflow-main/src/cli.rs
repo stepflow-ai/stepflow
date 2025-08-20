@@ -25,7 +25,7 @@ use crate::{
     serve::serve,
     submit::submit,
     test::TestOptions,
-    validate,
+    validate, visualize,
 };
 
 /// Stepflow command line application.
@@ -312,6 +312,65 @@ pub enum Command {
         #[command(flatten)]
         config_args: ConfigArgs,
     },
+    /// Visualize workflow structure as a graph.
+    ///
+    /// Generate a visual representation of workflow structure showing steps, dependencies,
+    /// and component routing. Supports multiple output formats (DOT, SVG, PNG) with
+    /// optional features like component server coloring and detailed tooltips.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Generate SVG visualization (default)
+    /// stepflow visualize --flow=workflow.yaml --output=workflow.svg
+    ///
+    /// # Generate PNG with component server info
+    /// stepflow visualize --flow=workflow.yaml --output=workflow.png --format=png
+    ///
+    /// # Generate DOT file for custom processing
+    /// stepflow visualize --flow=workflow.yaml --output=workflow.dot --format=dot
+    ///
+    /// # Output DOT to stdout
+    /// stepflow visualize --flow=workflow.yaml --format=dot
+    ///
+    /// # Minimal visualization without server details  
+    /// stepflow visualize --flow=workflow.yaml --output=workflow.svg --no-servers
+    ///
+    /// ```
+    Visualize {
+        /// Path to the workflow file to visualize.
+        #[arg(
+            long = "flow", 
+            value_name = "FILE",
+            value_hint = clap::ValueHint::FilePath
+        )]
+        flow_path: PathBuf,
+
+        /// Path to write the visualization output. If not specified, outputs DOT format to stdout.
+        #[arg(
+            long = "output",
+            short = 'o',
+            value_name = "FILE",
+            value_hint = clap::ValueHint::FilePath
+        )]
+        output_path: Option<PathBuf>,
+
+        /// Output format for the visualization.
+        #[arg(long = "format", value_name = "FORMAT", default_value = "svg")]
+        format: visualize::OutputFormat,
+
+        /// Hide component server information from nodes.
+        #[arg(long = "no-servers")]
+        no_servers: bool,
+
+        /// Hide detailed tooltips and metadata.
+        #[arg(long = "no-details")]
+        no_details: bool,
+
+        #[command(flatten)]
+        config_args: ConfigArgs,
+    },
 }
 
 impl Cli {
@@ -326,6 +385,7 @@ impl Cli {
                 Command::ListComponents { .. } => "list-components",
                 Command::Repl { .. } => "repl",
                 Command::Validate { .. } => "validate",
+                Command::Visualize { .. } => "visualize",
             }
         );
         match self.command {
@@ -401,6 +461,68 @@ impl Cli {
                     validate::validate(&flow_path, config_args.config_path.as_deref()).await?;
                 if failures > 0 {
                     std::process::exit(1);
+                }
+            }
+            Command::Visualize {
+                flow_path,
+                output_path,
+                format,
+                no_servers,
+                no_details,
+                config_args,
+            } => {
+                let flow: Arc<Flow> = load(&flow_path)?;
+                let flow_dir = flow_path.parent();
+
+                // Try to load config for server information (simplified approach for now)
+                let router = match config_args.load_config(flow_dir) {
+                    Ok(_config) => {
+                        // For now, we'll pass None but could build a router here in the future
+                        // This would require implementing PluginRouter construction from StepflowConfig
+                        None
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            "Could not load configuration, visualization will not show component server routing"
+                        );
+                        None
+                    }
+                };
+
+                let vis_config = visualize::VisualizationConfig {
+                    format,
+                    show_component_servers: !no_servers,
+                    show_details: !no_details,
+                };
+
+                match output_path {
+                    Some(path) => {
+                        // Output to file
+                        visualize::visualize_flow(flow, router, &path, vis_config).await?;
+
+                        // Print success message to stderr for CLI feedback
+                        use crate::MainError;
+                        use error_stack::ResultExt as _;
+                        use std::io::{self, Write as _};
+                        writeln!(
+                            io::stderr(),
+                            "✅ Visualization generated: {}",
+                            path.display()
+                        )
+                        .change_context(MainError::Configuration)?;
+                    }
+                    None => {
+                        // Output to stdout (only support DOT format for stdout)
+                        if format != visualize::OutputFormat::Dot {
+                            use crate::MainError;
+                            use error_stack::ResultExt as _;
+                            use std::io::{self, Write as _};
+                            writeln!(io::stderr(), "Error: Only DOT format is supported for stdout output. Use --format=dot or specify --output=<file> for other formats.")
+                                .change_context(MainError::Configuration)?;
+                            std::process::exit(1);
+                        }
+                        visualize::visualize_flow_to_stdout(flow, router, vis_config).await?;
+                    }
                 }
             }
         };

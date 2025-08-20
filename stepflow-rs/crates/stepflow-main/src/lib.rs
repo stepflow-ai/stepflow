@@ -25,6 +25,7 @@ mod submit;
 pub mod test;
 mod test_server;
 mod validate;
+mod visualize;
 
 pub use cli::Cli;
 pub use error::*;
