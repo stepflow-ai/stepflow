@@ -57,6 +57,14 @@ pub enum MainError {
     InvalidArgument(String),
     #[error("Internal error with paths")]
     Path,
+    #[error("Internal error: {0}")]
+    Internal(Cow<'static, str>),
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;
+
+impl MainError {
+    pub fn internal(msg: impl Into<Cow<'static, str>>) -> Self {
+        MainError::Internal(msg.into())
+    }
+}

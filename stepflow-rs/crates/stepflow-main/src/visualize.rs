@@ -82,8 +82,9 @@ impl FlowVisualizer {
 
         match self.config.format {
             OutputFormat::Dot => {
-                std::fs::write(output_path, dot_content)
-                    .change_context(MainError::Configuration)?;
+                std::fs::write(output_path, dot_content).change_context(MainError::internal(
+                    format!("Failed to write DOT file: {}", output_path.display()),
+                ))?;
             }
             format => {
                 self.render_graphviz(&dot_content, output_path, format)
@@ -110,8 +111,10 @@ impl FlowVisualizer {
             "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
         )
         .unwrap();
-        let analysis_result = analyze_flow_dependencies(self.flow.clone(), blob_id)
-            .change_context(MainError::Configuration)?;
+        let analysis_result =
+            analyze_flow_dependencies(self.flow.clone(), blob_id).change_context(
+                MainError::internal(format!("Failed to analyze flow dependencies: {}", blob_id)),
+            )?;
 
         // Create color mapping for component servers
         let server_colors = self.create_server_color_mapping();
@@ -394,12 +397,9 @@ impl FlowVisualizer {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut child = cmd
-            .spawn()
-            .change_context(MainError::Configuration)
-            .attach_printable(
-                "Failed to spawn graphviz 'dot' command. Make sure Graphviz is installed.",
-            )?;
+        let mut child = cmd.spawn().change_context(MainError::internal(
+            "Failed to spawn graphviz 'dot' command",
+        ))?;
 
         if let Some(stdin) = child.stdin.take() {
             tokio::io::AsyncWriteExt::write_all(
@@ -407,18 +407,23 @@ impl FlowVisualizer {
                 dot_content.as_bytes(),
             )
             .await
-            .change_context(MainError::Configuration)?;
+            .change_context(MainError::internal(format!(
+                "Failed to write DOT content to graphviz child: {}",
+                dot_content
+            )))?;
         }
 
         let output = child
             .wait_with_output()
             .await
-            .change_context(MainError::Configuration)?;
+            .change_context(MainError::internal("Failed to wait for graphviz child"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(report!(MainError::Configuration)
-                .attach_printable(format!("Graphviz rendering failed: {}", stderr)));
+            return Err(report!(MainError::internal(format!(
+                "Graphviz rendering failed: {}",
+                stderr
+            ))));
         }
 
         Ok(())
