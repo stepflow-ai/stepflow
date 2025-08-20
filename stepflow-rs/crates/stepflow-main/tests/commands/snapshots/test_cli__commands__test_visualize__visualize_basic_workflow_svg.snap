@@ -15,4 +15,4 @@ exit_code: 0
 ----- stdout -----
 
 ----- stderr -----
-✅ Visualization generated: /var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/stepflow_test_basic_output.svg
+✅ Visualization generated: [TEMP_DIR]/stepflow_test_basic_output.svg

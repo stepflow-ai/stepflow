@@ -14,6 +14,20 @@
 use super::stepflow;
 use insta_cmd::assert_cmd_snapshot;
 
+/// Macro to apply common filters for visualize command tests
+macro_rules! apply_visualize_filters {
+    ($temp_dir:expr) => {
+        let mut settings = insta::Settings::clone_current();
+        // Replace the specific temp directory path with placeholder
+        let temp_path = $temp_dir.to_string_lossy().to_string();
+        let escaped_path = regex::escape(&temp_path);
+        settings.add_filter(&escaped_path, "[TEMP_DIR]/");
+        // Convert windows paths to Unix paths
+        settings.add_filter(r"\\", "/");
+        let _bound = settings.bind_to_scope();
+    };
+}
+
 #[test]
 fn test_visualize_help() {
     assert_cmd_snapshot!(stepflow().arg("visualize").arg("--help"));
@@ -23,6 +37,8 @@ fn test_visualize_help() {
 fn test_visualize_basic_workflow_dot() {
     // Test basic visualization with DOT output format to temporary file
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_basic_output.dot");
 
     assert_cmd_snapshot!(
@@ -56,6 +72,8 @@ fn test_visualize_basic_workflow_svg() {
     // Test SVG output - this should work if graphviz is available
     // If graphviz is not available, it will show an appropriate error
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_basic_output.svg");
 
     assert_cmd_snapshot!(
@@ -74,6 +92,8 @@ fn test_visualize_basic_workflow_svg() {
 fn test_visualize_with_no_servers_option() {
     // Test the --no-servers option that hides component server information
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_basic_no_servers.dot");
 
     assert_cmd_snapshot!(
@@ -93,6 +113,8 @@ fn test_visualize_with_no_servers_option() {
 fn test_visualize_with_no_details_option() {
     // Test the --no-details option that hides tooltips and metadata
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_basic_no_details.dot");
 
     assert_cmd_snapshot!(
@@ -112,6 +134,8 @@ fn test_visualize_with_no_details_option() {
 fn test_visualize_conditional_skip_workflow() {
     // Test visualization with conditional skip workflow which has optional dependencies
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_conditional_skip.dot");
 
     assert_cmd_snapshot!(
@@ -130,6 +154,8 @@ fn test_visualize_conditional_skip_workflow() {
 fn test_visualize_with_custom_config() {
     // Test visualization with custom config that defines different plugins
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_blob_test.dot");
 
     assert_cmd_snapshot!(
@@ -162,6 +188,8 @@ fn test_visualize_png_format() {
     // Test PNG output format - this tests the format parsing
     // Will fail gracefully if graphviz is not available
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_basic_output.png");
 
     assert_cmd_snapshot!(
@@ -180,6 +208,8 @@ fn test_visualize_png_format() {
 fn test_visualize_invalid_format() {
     // Test error handling for invalid output formats
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_basic_output.xyz");
 
     assert_cmd_snapshot!(
@@ -232,6 +262,8 @@ fn test_visualize_stdout_with_options() {
 fn test_visualize_all_options_combined() {
     // Test combining multiple options
     let temp_dir = std::env::temp_dir();
+    apply_visualize_filters!(temp_dir);
+
     let output_file = temp_dir.join("stepflow_test_basic_combined.dot");
 
     assert_cmd_snapshot!(
