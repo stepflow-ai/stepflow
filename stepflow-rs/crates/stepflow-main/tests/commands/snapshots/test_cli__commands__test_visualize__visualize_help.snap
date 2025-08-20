@@ -57,6 +57,11 @@ Options:
           
           [default: svg]
 
+          Possible values:
+          - dot: DOT graph format
+          - svg: SVG image format
+          - png: PNG image format
+
       --log-file <FILE>
           Write logs to a file instead of stderr
 

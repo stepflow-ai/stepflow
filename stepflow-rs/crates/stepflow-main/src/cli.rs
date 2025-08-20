@@ -25,8 +25,7 @@ use crate::{
     serve::serve,
     submit::submit,
     test::TestOptions,
-    validate,
-    visualize,
+    validate, visualize,
 };
 
 /// Stepflow command line application.
@@ -315,8 +314,8 @@ pub enum Command {
     },
     /// Visualize workflow structure as a graph.
     ///
-    /// Generate a visual representation of workflow structure showing steps, dependencies, 
-    /// and component routing. Supports multiple output formats (DOT, SVG, PNG) with 
+    /// Generate a visual representation of workflow structure showing steps, dependencies,
+    /// and component routing. Supports multiple output formats (DOT, SVG, PNG) with
     /// optional features like component server coloring and detailed tooltips.
     ///
     /// # Examples
@@ -358,11 +357,7 @@ pub enum Command {
         output_path: Option<PathBuf>,
 
         /// Output format for the visualization.
-        #[arg(
-            long = "format",
-            value_name = "FORMAT",
-            default_value = "svg"
-        )]
+        #[arg(long = "format", value_name = "FORMAT", default_value = "svg")]
         format: visualize::OutputFormat,
 
         /// Hide component server information from nodes.
@@ -372,7 +367,6 @@ pub enum Command {
         /// Hide detailed tooltips and metadata.
         #[arg(long = "no-details")]
         no_details: bool,
-
 
         #[command(flatten)]
         config_args: ConfigArgs,
@@ -479,7 +473,7 @@ impl Cli {
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
                 let flow_dir = flow_path.parent();
-                
+
                 // Try to load config for server information (simplified approach for now)
                 let router = match config_args.load_config(flow_dir) {
                     Ok(_config) => {
@@ -488,35 +482,41 @@ impl Cli {
                         None
                     }
                     Err(_) => {
-                        tracing::warn!("Could not load configuration, visualization will not show component server routing");
+                        tracing::warn!(
+                            "Could not load configuration, visualization will not show component server routing"
+                        );
                         None
                     }
                 };
-                
+
                 let vis_config = visualize::VisualizationConfig {
                     format,
                     show_component_servers: !no_servers,
                     show_details: !no_details,
                 };
-                
+
                 match output_path {
                     Some(path) => {
                         // Output to file
                         visualize::visualize_flow(flow, router, &path, vis_config).await?;
-                        
+
                         // Print success message to stderr for CLI feedback
-                        use std::io::{self, Write as _};
-                        use error_stack::ResultExt as _;
                         use crate::MainError;
-                        writeln!(io::stderr(), "✅ Visualization generated: {}", path.display())
-                            .change_context(MainError::Configuration)?;
+                        use error_stack::ResultExt as _;
+                        use std::io::{self, Write as _};
+                        writeln!(
+                            io::stderr(),
+                            "✅ Visualization generated: {}",
+                            path.display()
+                        )
+                        .change_context(MainError::Configuration)?;
                     }
                     None => {
                         // Output to stdout (only support DOT format for stdout)
                         if format != visualize::OutputFormat::Dot {
-                            use std::io::{self, Write as _};
-                            use error_stack::ResultExt as _;
                             use crate::MainError;
+                            use error_stack::ResultExt as _;
+                            use std::io::{self, Write as _};
                             writeln!(io::stderr(), "Error: Only DOT format is supported for stdout output. Use --format=dot or specify --output=<file> for other formats.")
                                 .change_context(MainError::Configuration)?;
                             std::process::exit(1);

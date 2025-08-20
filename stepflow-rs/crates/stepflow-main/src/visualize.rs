@@ -15,35 +15,23 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use error_stack::{report, ResultExt as _};
-use stepflow_analysis::{Dependency, analyze_flow_dependencies, FlowAnalysis};
+use error_stack::{ResultExt as _, report};
+use stepflow_analysis::{Dependency, FlowAnalysis, analyze_flow_dependencies};
 use stepflow_core::workflow::Flow;
 use stepflow_plugin::routing::PluginRouter;
 
 use crate::error::{MainError, Result};
 
 /// Output formats supported for visualization
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, clap::ValueEnum)]
+#[strum(serialize_all = "lowercase")]
 pub enum OutputFormat {
     /// DOT graph format
     Dot,
     /// SVG image format
     Svg,
-    /// PNG image format  
+    /// PNG image format
     Png,
-}
-
-impl std::str::FromStr for OutputFormat {
-    type Err = String;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "dot" => Ok(OutputFormat::Dot),
-            "svg" => Ok(OutputFormat::Svg), 
-            "png" => Ok(OutputFormat::Png),
-            _ => Err(format!("Invalid output format: {}. Valid formats: dot, svg, png", s)),
-        }
-    }
 }
 
 /// Configuration for visualization rendering
@@ -91,44 +79,43 @@ impl FlowVisualizer {
     /// Generate visualization and write to the specified output path
     pub async fn generate(&self, output_path: &Path) -> Result<()> {
         let dot_content = self.generate_dot()?;
-        
+
         match self.config.format {
             OutputFormat::Dot => {
                 std::fs::write(output_path, dot_content)
                     .change_context(MainError::Configuration)?;
             }
-            OutputFormat::Svg => {
-                self.render_graphviz(&dot_content, output_path, "svg").await?;
-            }
-            OutputFormat::Png => {
-                self.render_graphviz(&dot_content, output_path, "png").await?;
+            format => {
+                self.render_graphviz(&dot_content, output_path, format)
+                    .await?;
             }
         }
-        
+
         Ok(())
     }
 
     /// Generate DOT format representation of the workflow
     pub fn generate_dot(&self) -> Result<String> {
         let mut dot = String::new();
-        
+
         // Start the digraph
         writeln!(&mut dot, "digraph workflow {{").unwrap();
         writeln!(&mut dot, "  rankdir=TB;").unwrap();
         writeln!(&mut dot, "  node [shape=box, style=filled];").unwrap();
         writeln!(&mut dot, "  edge [fontsize=10];").unwrap();
         writeln!(&mut dot).unwrap();
-        
+
         // Analyze the entire workflow to get dependencies
         let blob_id = stepflow_core::BlobId::new(
-            "0000000000000000000000000000000000000000000000000000000000000000".to_string()
-        ).unwrap();
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        )
+        .unwrap();
         let analysis_result = analyze_flow_dependencies(self.flow.clone(), blob_id)
             .change_context(MainError::Configuration)?;
-        
+
         // Create color mapping for component servers
         let server_colors = self.create_server_color_mapping();
-        
+
         // Add workflow input node
         writeln!(&mut dot, "  \"workflow_input\" [").unwrap();
         writeln!(&mut dot, "    label=\"📥 Workflow Input\",").unwrap();
@@ -140,13 +127,13 @@ impl FlowVisualizer {
         }
         writeln!(&mut dot, "  ];").unwrap();
         writeln!(&mut dot).unwrap();
-        
+
         // Add step nodes
         for (step_index, step) in self.flow.steps().iter().enumerate() {
             self.add_step_node(&mut dot, step_index, step, &server_colors)?;
         }
-        
-        // Add workflow output node  
+
+        // Add workflow output node
         writeln!(&mut dot, "  \"workflow_output\" [").unwrap();
         writeln!(&mut dot, "    label=\"📤 Workflow Output\",").unwrap();
         writeln!(&mut dot, "    fillcolor=\"lightgreen\",").unwrap();
@@ -157,34 +144,43 @@ impl FlowVisualizer {
         }
         writeln!(&mut dot, "  ];").unwrap();
         writeln!(&mut dot).unwrap();
-        
+
         // Add edges based on dependencies
         if let Some(analysis) = analysis_result.analysis.as_ref() {
             self.add_edges(&mut dot, analysis)?;
         } else {
             // If analysis failed due to validation errors, we can still show the basic structure
-            tracing::warn!("Workflow analysis failed, showing basic structure without detailed dependencies");
+            tracing::warn!(
+                "Workflow analysis failed, showing basic structure without detailed dependencies"
+            );
         }
-        
+
         // Add edges from steps to workflow output
         if let Some(analysis) = analysis_result.analysis.as_ref() {
             self.add_output_edges(&mut dot, analysis)?;
         }
-        
+
         // End the digraph
         writeln!(&mut dot, "}}").unwrap();
-        
+
         Ok(dot)
     }
 
     fn create_server_color_mapping(&self) -> HashMap<String, &'static str> {
         let mut colors = HashMap::new();
         let color_palette = [
-            "lightcoral", "lightblue", "lightgreen", "lightyellow",
-            "lightpink", "lightgray", "lightcyan", "lightsalmon",
-            "lightsteelblue", "lightseagreen",
+            "lightcoral",
+            "lightblue",
+            "lightgreen",
+            "lightyellow",
+            "lightpink",
+            "lightgray",
+            "lightcyan",
+            "lightsalmon",
+            "lightsteelblue",
+            "lightseagreen",
         ];
-        
+
         let mut color_index = 0;
         for step in self.flow.steps() {
             let server_name = self.extract_server_name(step.component.path());
@@ -193,7 +189,7 @@ impl FlowVisualizer {
                 color_index += 1;
             }
         }
-        
+
         colors
     }
 
@@ -230,33 +226,33 @@ impl FlowVisualizer {
     }
 
     fn add_step_node(
-        &self, 
-        dot: &mut String, 
-        step_index: usize, 
+        &self,
+        dot: &mut String,
+        step_index: usize,
         step: &stepflow_core::workflow::Step,
         server_colors: &HashMap<String, &'static str>,
     ) -> Result<()> {
         let server_name = self.extract_server_name(step.component.path());
         let color = server_colors.get(&server_name).unwrap_or(&"white");
-        
+
         // Create the step label
         let mut label = format!("🔧 {}", step.id);
         if self.config.show_component_servers {
             label.push_str(&format!("\\n📦 {}", step.component.path()));
             label.push_str(&format!("\\n🖥️ {}", server_name));
         }
-        
+
         writeln!(dot, "  \"{}\" [", step.id).unwrap();
         writeln!(dot, "    label=\"{}\",", label).unwrap();
         writeln!(dot, "    fillcolor=\"{}\",", color).unwrap();
-        
+
         if self.config.show_details {
             let tooltip = self.create_step_tooltip(step_index, step);
             writeln!(dot, "    tooltip=\"{}\",", escape_for_dot(&tooltip)).unwrap();
         }
-        
+
         writeln!(dot, "  ];").unwrap();
-        
+
         Ok(())
     }
 
@@ -274,7 +270,9 @@ impl FlowVisualizer {
                             writeln!(dot, "    style=\"solid\",").unwrap();
                             writeln!(dot, "  ];").unwrap();
                         }
-                        Dependency::StepOutput { step_id, optional, .. } => {
+                        Dependency::StepOutput {
+                            step_id, optional, ..
+                        } => {
                             // Edge from dependency step to this step
                             writeln!(dot, "  \"{}\" -> \"{}\" [", step_id, step.id).unwrap();
                             if *optional {
@@ -289,7 +287,7 @@ impl FlowVisualizer {
                         }
                     }
                 }
-                
+
                 // Add edges for skip condition dependencies
                 if let Some(skip_dep) = &step_analysis.skip_if_depend {
                     match skip_dep {
@@ -311,12 +309,12 @@ impl FlowVisualizer {
                 }
             }
         }
-        
+
         Ok(())
     }
 
     fn add_output_edges(&self, dot: &mut String, analysis: &FlowAnalysis) -> Result<()> {
-        // Use the output dependencies from the analysis            
+        // Use the output dependencies from the analysis
         for dep in analysis.output_depends.dependencies() {
             match dep {
                 Dependency::StepOutput { step_id, .. } => {
@@ -335,46 +333,59 @@ impl FlowVisualizer {
                 }
             }
         }
-        
+
         Ok(())
     }
 
     fn create_input_tooltip(&self) -> String {
-        format!("Workflow: {}\\nInput Schema: Available", 
-                self.flow.name().unwrap_or("Unnamed"))
+        format!(
+            "Workflow: {}\\nInput Schema: Available",
+            self.flow.name().unwrap_or("Unnamed")
+        )
     }
 
     fn create_output_tooltip(&self) -> String {
-        format!("Workflow: {}\\nOutput Schema: Available",
-                self.flow.name().unwrap_or("Unnamed"))
+        format!(
+            "Workflow: {}\\nOutput Schema: Available",
+            self.flow.name().unwrap_or("Unnamed")
+        )
     }
 
-    fn create_step_tooltip(&self, _step_index: usize, step: &stepflow_core::workflow::Step) -> String {
+    fn create_step_tooltip(
+        &self,
+        _step_index: usize,
+        step: &stepflow_core::workflow::Step,
+    ) -> String {
         let mut tooltip = format!("Step: {}\\nComponent: {}", step.id, step.component.path());
-        
+
         if let Some(_skip_condition) = &step.skip_if {
             tooltip.push_str("\\nSkip Condition: Present");
         }
-        
+
         match &step.on_error {
-            stepflow_core::workflow::ErrorAction::Fail => {},
+            stepflow_core::workflow::ErrorAction::Fail => {}
             stepflow_core::workflow::ErrorAction::Skip => {
                 tooltip.push_str("\\nError Action: Skip");
-            },
+            }
             stepflow_core::workflow::ErrorAction::UseDefault { .. } => {
                 tooltip.push_str("\\nError Action: Use Default");
-            },
+            }
             stepflow_core::workflow::ErrorAction::Retry => {
                 tooltip.push_str("\\nError Action: Retry");
-            },
+            }
         }
-        
+
         tooltip
     }
 
-    async fn render_graphviz(&self, dot_content: &str, output_path: &Path, format: &str) -> Result<()> {
+    async fn render_graphviz(
+        &self,
+        dot_content: &str,
+        output_path: &Path,
+        format: OutputFormat,
+    ) -> Result<()> {
         use std::process::Stdio;
-        
+
         let mut cmd = tokio::process::Command::new("dot");
         cmd.arg(format!("-T{}", format))
             .arg("-o")
@@ -382,25 +393,34 @@ impl FlowVisualizer {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        
-        let mut child = cmd.spawn()
+
+        let mut child = cmd
+            .spawn()
             .change_context(MainError::Configuration)
-            .attach_printable("Failed to spawn graphviz 'dot' command. Make sure Graphviz is installed.")?;
-        
+            .attach_printable(
+                "Failed to spawn graphviz 'dot' command. Make sure Graphviz is installed.",
+            )?;
+
         if let Some(stdin) = child.stdin.take() {
-            tokio::io::AsyncWriteExt::write_all(&mut tokio::io::BufWriter::new(stdin), dot_content.as_bytes()).await
-                .change_context(MainError::Configuration)?;
-        }
-        
-        let output = child.wait_with_output().await
+            tokio::io::AsyncWriteExt::write_all(
+                &mut tokio::io::BufWriter::new(stdin),
+                dot_content.as_bytes(),
+            )
+            .await
             .change_context(MainError::Configuration)?;
-        
+        }
+
+        let output = child
+            .wait_with_output()
+            .await
+            .change_context(MainError::Configuration)?;
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(report!(MainError::Configuration)
                 .attach_printable(format!("Graphviz rendering failed: {}", stderr)));
         }
-        
+
         Ok(())
     }
 }
@@ -433,7 +453,7 @@ pub async fn visualize_flow_to_stdout(
 ) -> Result<()> {
     let visualizer = FlowVisualizer::new(flow, router).with_config(config);
     let dot_content = visualizer.generate_dot()?;
-    
+
     // Output to stdout
     println!("{}", dot_content);
     Ok(())

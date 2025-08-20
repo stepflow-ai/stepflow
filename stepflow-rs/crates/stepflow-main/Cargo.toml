@@ -46,6 +46,7 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 dot.workspace = true
+strum.workspace = true
 
 [dev-dependencies]
 insta-cmd.workspace = true

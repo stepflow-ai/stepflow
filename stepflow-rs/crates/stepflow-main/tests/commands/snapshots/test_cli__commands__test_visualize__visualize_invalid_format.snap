@@ -7,7 +7,7 @@ info:
     - "--omit-stack-trace"
     - visualize
     - "--flow=tests/mock/basic.yaml"
-    - "--output=basic_output.xyz"
+    - "--output=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/stepflow_test_basic_output.xyz"
     - "--format=xyz"
 ---
 success: false
@@ -15,6 +15,7 @@ exit_code: 2
 ----- stdout -----
 
 ----- stderr -----
-error: invalid value 'xyz' for '--format <FORMAT>': Invalid output format: xyz. Valid formats: dot, svg, png
+error: invalid value 'xyz' for '--format <FORMAT>'
+  [possible values: dot, svg, png]
 
 For more information, try '--help'.

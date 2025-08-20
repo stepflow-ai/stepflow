@@ -24,7 +24,7 @@ fn test_visualize_basic_workflow_dot() {
     // Test basic visualization with DOT output format to temporary file
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_basic_output.dot");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -32,7 +32,7 @@ fn test_visualize_basic_workflow_dot() {
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
@@ -57,7 +57,7 @@ fn test_visualize_basic_workflow_svg() {
     // If graphviz is not available, it will show an appropriate error
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_basic_output.svg");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -65,7 +65,7 @@ fn test_visualize_basic_workflow_svg() {
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=svg")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
@@ -75,7 +75,7 @@ fn test_visualize_with_no_servers_option() {
     // Test the --no-servers option that hides component server information
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_basic_no_servers.dot");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -84,7 +84,7 @@ fn test_visualize_with_no_servers_option() {
             .arg("--format=dot")
             .arg("--no-servers")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
@@ -94,7 +94,7 @@ fn test_visualize_with_no_details_option() {
     // Test the --no-details option that hides tooltips and metadata
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_basic_no_details.dot");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -103,7 +103,7 @@ fn test_visualize_with_no_details_option() {
             .arg("--format=dot")
             .arg("--no-details")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
@@ -113,7 +113,7 @@ fn test_visualize_conditional_skip_workflow() {
     // Test visualization with conditional skip workflow which has optional dependencies
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_conditional_skip.dot");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -121,7 +121,7 @@ fn test_visualize_conditional_skip_workflow() {
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
@@ -131,7 +131,7 @@ fn test_visualize_with_custom_config() {
     // Test visualization with custom config that defines different plugins
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_blob_test.dot");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -140,7 +140,7 @@ fn test_visualize_with_custom_config() {
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
@@ -163,7 +163,7 @@ fn test_visualize_png_format() {
     // Will fail gracefully if graphviz is not available
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_basic_output.png");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -171,7 +171,7 @@ fn test_visualize_png_format() {
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=png")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
@@ -181,7 +181,7 @@ fn test_visualize_invalid_format() {
     // Test error handling for invalid output formats
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_basic_output.xyz");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -189,7 +189,7 @@ fn test_visualize_invalid_format() {
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=xyz")
     );
-    
+
     // Note: No cleanup needed since invalid format means no file is created
 }
 
@@ -233,7 +233,7 @@ fn test_visualize_all_options_combined() {
     // Test combining multiple options
     let temp_dir = std::env::temp_dir();
     let output_file = temp_dir.join("stepflow_test_basic_combined.dot");
-    
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
@@ -243,7 +243,7 @@ fn test_visualize_all_options_combined() {
             .arg("--no-servers")
             .arg("--no-details")
     );
-    
+
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
 }
