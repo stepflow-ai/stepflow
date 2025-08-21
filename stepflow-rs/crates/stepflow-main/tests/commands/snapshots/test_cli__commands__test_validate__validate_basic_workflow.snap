@@ -1,0 +1,26 @@
+---
+source: crates/stepflow-main/tests/commands/test_validate.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - validate
+    - "--flow=tests/basic.yaml"
+---
+success: false
+exit_code: 1
+----- stdout -----
+🔧 Validating configuration...
+✅ Found 1 plugin(s) configured
+❌ No routing rules configured in stepflow-config.yml
+⚠️  Plugin 'builtin' is not referenced by any routing rule
+❌ Configuration has 1 issue(s)
+📋 Validating workflow: tests/basic.yaml
+📊 Validation results: 0 fatal, 0 errors, 1 warnings
+
+⚠️  Warnings:
+  WARN Field access '$.message' on step 'workflow_input' cannot be validated: no input schema available (steps.0.input.user_prompt)
+❌ Validation completed with 1 failure(s)
+
+----- stderr -----

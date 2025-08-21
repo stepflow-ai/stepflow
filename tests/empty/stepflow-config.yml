@@ -1,0 +1,10 @@
+plugins:
+  builtin:
+    type: builtin
+
+routes:
+  "/{*component}":
+    - plugin: builtin
+
+stateStore:
+  type: inMemory

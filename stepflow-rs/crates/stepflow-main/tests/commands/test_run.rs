@@ -78,3 +78,14 @@ fn test_run_invalid_input_json() {
             .arg("--input-json=invalid json")
     );
 }
+
+#[test]
+fn test_run_empty_flow() {
+    assert_cmd_snapshot!(
+        stepflow()
+            .arg("run")
+            .arg("--flow=tests/empty/empty_flow.yaml")
+            .arg("--config=tests/empty/stepflow-config.yml")
+            .arg(r#"--input-json={"message": "hello world", "numbers": {"a": 10, "b": 20}, "items": ["first", "second", "third"]}"#)
+    );
+}

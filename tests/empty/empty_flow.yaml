@@ -1,0 +1,91 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "Empty Flow Test"
+description: "Tests executing an empty flow that only connects input to output using JSON path syntax"
+
+input_schema:
+  type: object
+  properties:
+    message:
+      type: string
+      description: "Input message"
+    numbers:
+      type: object
+      properties:
+        a:
+          type: integer
+        b:
+          type: integer
+      required: [a, b]
+    items:
+      type: array
+      items:
+        type: string
+
+output_schema:
+  type: object
+  properties:
+    message:
+      type: string
+      description: "Passed through message"
+    a_value:
+      type: integer
+      description: "Value of a from input"
+    b_value:
+      type: integer
+      description: "Value of b from input"
+    first_item:
+      type: string
+      description: "First item from array"
+    nested_data:
+      type: object
+      description: "The original numbers object"
+
+# No steps - this is an empty flow
+steps: []
+
+# Output directly maps from input using JSON path syntax
+output:
+  message: { $from: { workflow: input }, path: "message" }
+  a_value: { $from: { workflow: input }, path: "$.numbers.a" }
+  b_value: { $from: { workflow: input }, path: "$.numbers.b" }
+  first_item: { $from: { workflow: input }, path: "$.items[0]" }
+  nested_data: { $from: { workflow: input }, path: "$.numbers" }
+
+test:
+  cases:
+  - name: test_empty_flow_basic
+    description: Test empty flow with basic data transformation
+    input:
+      message: "hello world"
+      numbers:
+        a: 10
+        b: 20
+      items: ["first", "second", "third"]
+    output:
+      outcome: success
+      result:
+        message: "hello world"
+        a_value: 10
+        b_value: 20
+        first_item: "first"
+        nested_data:
+          a: 10
+          b: 20
+  - name: test_empty_flow_different_values
+    description: Test empty flow with different input values
+    input:
+      message: "test message"
+      numbers:
+        a: 5
+        b: 15
+      items: ["alpha", "beta"]
+    output:
+      outcome: success
+      result:
+        message: "test message"
+        a_value: 5
+        b_value: 15
+        first_item: "alpha"
+        nested_data:
+          a: 5
+          b: 15

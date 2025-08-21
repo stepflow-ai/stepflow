@@ -68,10 +68,6 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
         }
     }
 
-    // Warn if workflow has no steps
-    if flow.steps().is_empty() {
-        diagnostics.add(DiagnosticMessage::EmptyWorkflow, vec!["steps".to_string()]);
-    }
 
     // Warn if workflow has no name
     if flow.name().is_none() || flow.name().unwrap().trim().is_empty() {
