@@ -1,0 +1,30 @@
+---
+source: crates/stepflow-main/tests/commands/test_validate.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - validate
+    - "--flow=tests/empty/empty_flow.yaml"
+    - "--config=tests/empty/stepflow-config.yml"
+---
+success: true
+exit_code: 0
+----- stdout -----
+🔧 Validating configuration...
+✅ Found 1 plugin(s) configured
+✅ Found 1 routing rule(s) configured
+✅ Configuration is valid
+📋 Validating workflow: tests/empty/empty_flow.yaml
+📊 Validation results: 0 fatal, 0 errors, 5 warnings
+
+⚠️  Warnings:
+  WARN Field access '$.message' on step 'workflow_input' cannot be validated: no input schema available (output.message)
+  WARN Field access '$.numbers.a' on step 'workflow_input' cannot be validated: no input schema available (output.a_value)
+  WARN Field access '$.numbers.b' on step 'workflow_input' cannot be validated: no input schema available (output.b_value)
+  WARN Field access '$.items[0]' on step 'workflow_input' cannot be validated: no input schema available (output.first_item)
+  WARN Field access '$.numbers' on step 'workflow_input' cannot be validated: no input schema available (output.nested_data)
+✅ Validation passed with no errors
+
+----- stderr -----

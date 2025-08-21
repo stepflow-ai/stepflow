@@ -108,8 +108,6 @@ pub enum DiagnosticMessage {
     #[serde(rename_all = "camelCase")]
     MissingWorkflowDescription,
     #[serde(rename_all = "camelCase")]
-    EmptyWorkflow,
-    #[serde(rename_all = "camelCase")]
     UnvalidatedFieldAccess {
         step_id: String,
         field: String,
@@ -140,7 +138,6 @@ impl DiagnosticMessage {
             DiagnosticMessage::UnreachableStep { .. } => DiagnosticLevel::Warning,
             DiagnosticMessage::MissingWorkflowName => DiagnosticLevel::Warning,
             DiagnosticMessage::MissingWorkflowDescription => DiagnosticLevel::Warning,
-            DiagnosticMessage::EmptyWorkflow => DiagnosticLevel::Warning,
             DiagnosticMessage::UnvalidatedFieldAccess { .. } => DiagnosticLevel::Warning,
         }
     }
@@ -215,7 +212,6 @@ impl DiagnosticMessage {
             DiagnosticMessage::MissingWorkflowDescription => {
                 "Workflow has no description defined".to_string()
             }
-            DiagnosticMessage::EmptyWorkflow => "Workflow has no steps defined".to_string(),
             DiagnosticMessage::UnvalidatedFieldAccess {
                 step_id,
                 field,
@@ -243,7 +239,6 @@ impl DiagnosticMessage {
             DiagnosticMessage::UnreachableStep { step_id } => Some(step_id),
             DiagnosticMessage::MissingWorkflowName => None,
             DiagnosticMessage::MissingWorkflowDescription => None,
-            DiagnosticMessage::EmptyWorkflow => None,
             DiagnosticMessage::UnvalidatedFieldAccess { step_id, .. } => Some(step_id),
         }
     }

@@ -1,0 +1,17 @@
+---
+source: crates/stepflow-main/tests/commands/test_run.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - run
+    - "--flow=tests/empty/empty_flow.yaml"
+    - "--config=tests/empty/stepflow-config.yml"
+    - "--input-json={\"message\": \"hello world\", \"numbers\": {\"a\": 10, \"b\": 20}, \"items\": [\"first\", \"second\", \"third\"]}"
+---
+success: true
+exit_code: 0
+----- stdout -----
+{"outcome":"success","result":{"message":"hello world","a_value":10,"b_value":20,"first_item":"first","nested_data":{"a":10,"b":20}}}
+----- stderr -----
