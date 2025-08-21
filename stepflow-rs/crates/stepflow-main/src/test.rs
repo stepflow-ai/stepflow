@@ -12,7 +12,6 @@
 
 #![allow(clippy::print_stdout)]
 
-
 use crate::args::{ConfigArgs, OutputArgs, WorkflowLoader, load};
 use crate::test_server::TestServerManager;
 use crate::{MainError, Result, stepflow_config::StepflowConfig};

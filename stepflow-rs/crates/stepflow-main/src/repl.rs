@@ -12,7 +12,6 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-
 use clap::Parser as _;
 use error_stack::ResultExt as _;
 use rustyline::{DefaultEditor, error::ReadlineError};

@@ -12,7 +12,6 @@
 
 #![allow(clippy::print_stdout)]
 
-
 use crate::args::{ConfigArgs, WorkflowLoader};
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;

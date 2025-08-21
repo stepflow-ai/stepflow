@@ -12,7 +12,6 @@
 
 #![allow(clippy::print_stdout)]
 
-
 use crate::args::{ConfigArgs, load};
 use crate::{MainError, Result, stepflow_config::StepflowConfig};
 use error_stack::ResultExt as _;
