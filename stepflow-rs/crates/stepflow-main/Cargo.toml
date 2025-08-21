@@ -45,11 +45,15 @@ tracing-error.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
+strum.workspace = true
+which.workspace = true
 
 [dev-dependencies]
-insta-cmd.workspace = true
-tempfile.workspace = true
 clap-markdown = "0.1.4"
+insta.workspace = true
+insta-cmd.workspace = true
+regex.workspace = true
+tempfile.workspace = true
 
 [[bin]]
 name = "stepflow"

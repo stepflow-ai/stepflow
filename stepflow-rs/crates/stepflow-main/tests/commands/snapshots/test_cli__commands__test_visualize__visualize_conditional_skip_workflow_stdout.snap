@@ -1,0 +1,65 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--flow=tests/mock/conditional_skip.yaml"
+    - "--format=dot"
+---
+success: true
+exit_code: 0
+----- stdout -----
+digraph workflow {
+  rankdir=TB;
+  node [shape=box, style=filled];
+  edge [fontsize=10];
+
+  "workflow_input" [
+    label="📥 Workflow Input",
+    fillcolor="lightblue",
+    shape=ellipse,
+    tooltip="Workflow: Unnamed\\nInput Schema: Available",
+  ];
+
+  "conditional_step" [
+    label="🔧 conditional_step\n📦 /mock/one_output\n🖥️ mock",
+    fillcolor="lightcoral",
+    tooltip="Step: conditional_step\\nComponent: /mock/one_output\\nSkip Condition: Present",
+  ];
+  "dependent_step" [
+    label="🔧 dependent_step\n📦 /mock/handle_skip\n🖥️ mock",
+    fillcolor="lightcoral",
+    tooltip="Step: dependent_step\\nComponent: /mock/handle_skip",
+  ];
+  "workflow_output" [
+    label="📤 Workflow Output",
+    fillcolor="lightgreen",
+    shape=ellipse,
+    tooltip="Workflow: Unnamed\\nOutput Schema: Available",
+  ];
+
+  "workflow_input" -> "conditional_step" [
+    color="blue",
+    style="solid",
+  ];
+  "workflow_input" -> "conditional_step" [
+    color="purple",
+    style="dotted",
+    label="skip condition",
+  ];
+  "conditional_step" -> "dependent_step" [
+    color="orange",
+    style="dashed",
+    label="optional",
+  ];
+  "dependent_step" -> "workflow_output" [
+    color="green",
+    style="solid",
+  ];
+}
+
+
+----- stderr -----

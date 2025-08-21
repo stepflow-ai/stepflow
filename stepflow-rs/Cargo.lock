@@ -1419,6 +1419,7 @@ dependencies = [
  "console",
  "globset",
  "once_cell",
+ "regex",
  "serde",
  "similar",
  "walkdir",
@@ -3236,8 +3237,10 @@ dependencies = [
  "clap-markdown",
  "error-stack",
  "indexmap",
+ "insta",
  "insta-cmd",
  "nix 0.29.0",
+ "regex",
  "reqwest",
  "rustyline",
  "serde",
@@ -3255,6 +3258,7 @@ dependencies = [
  "stepflow-server",
  "stepflow-state",
  "stepflow-state-sql",
+ "strum",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
@@ -3264,6 +3268,7 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
+ "which 7.0.3",
 ]
 
 [[package]]
@@ -3406,6 +3411,28 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "strum"
+version = "0.26.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.26.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.104",
+]
 
 [[package]]
 name = "subst"

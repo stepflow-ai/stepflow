@@ -1,0 +1,18 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--flow=tests/mock/basic.yaml"
+    - "--output=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/stepflow_test_basic_output.png"
+    - "--format=png"
+---
+success: true
+exit_code: 0
+----- stdout -----
+
+----- stderr -----
+✅ Visualization generated: [TEMP_DIR]/stepflow_test_basic_output.png

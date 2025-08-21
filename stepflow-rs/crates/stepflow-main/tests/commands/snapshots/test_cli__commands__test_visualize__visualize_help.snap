@@ -1,0 +1,85 @@
+---
+source: crates/stepflow-main/tests/commands/test_visualize.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - visualize
+    - "--help"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Visualize workflow structure as a graph.
+
+Generate a visual representation of workflow structure showing steps, dependencies, and component routing. Supports multiple output formats (DOT, SVG, PNG) with optional features like component server coloring and detailed tooltips.
+
+# Examples
+
+```bash
+
+# Generate SVG visualization (default) stepflow visualize --flow=workflow.yaml --output=workflow.svg
+
+# Generate PNG with component server info stepflow visualize --flow=workflow.yaml --output=workflow.png --format=png
+
+# Generate DOT file for custom processing stepflow visualize --flow=workflow.yaml --output=workflow.dot --format=dot
+
+# Output DOT to stdout stepflow visualize --flow=workflow.yaml --format=dot
+
+# Minimal visualization without server details stepflow visualize --flow=workflow.yaml --output=workflow.svg --no-servers
+
+```
+
+Usage: stepflow visualize [OPTIONS] --flow <FILE>
+
+Options:
+      --flow <FILE>
+          Path to the workflow file to visualize
+
+      --log-level <LEVEL>
+          Set the log level for Stepflow
+          
+          [default: info]
+          [possible values: trace, debug, info, warn, error]
+
+  -o, --output <FILE>
+          Path to write the visualization output. If not specified, outputs DOT format to stdout
+
+      --other-log-level <LEVEL>
+          Set the log level for other parts of Stepflow
+          
+          [default: warn]
+          [possible values: trace, debug, info, warn, error]
+
+      --format <FORMAT>
+          Output format for the visualization
+          
+          [default: svg]
+
+          Possible values:
+          - dot: DOT graph format
+          - svg: SVG image format
+          - png: PNG image format
+
+      --log-file <FILE>
+          Write logs to a file instead of stderr
+
+      --no-servers
+          Hide component server information from nodes
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
+      --no-details
+          Hide detailed tooltips and metadata
+
+      --config <FILE>
+          The path to the stepflow config file.
+          
+          If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+----- stderr -----
