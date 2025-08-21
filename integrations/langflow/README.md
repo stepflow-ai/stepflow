@@ -294,26 +294,84 @@ uv run stepflow-langflow serve
 
 ## 📚 Examples
 
-The `tests/fixtures/langflow/` directory contains example workflows:
+The `tests/fixtures/langflow/` directory contains example workflows from official Langflow starter projects. **All examples have been tested and work successfully** with both `--mock` (safe testing) and real execution modes.
 
-- **`simple_chat.json`**: Basic chat input/output flow
-- **`basic_prompting.json`**: LLM prompting with templates
-- **`memory_chatbot.json`**: Conversational AI with memory
-- **`document_qa.json`**: Document-based question answering
-- **`vector_store_rag.json`**: RAG (Retrieval Augmented Generation)
-- **`simple_agent.json`**: AI agent with tool calling
+### 🚀 Quick Test Commands
 
-Try them out:
+All workflows accept a `"message"` field as their primary input:
 
 ```bash
-# Test with mock execution
-uv run stepflow-langflow execute tests/fixtures/langflow/simple_chat.json '{"message": "Hello!"}' --mock
+# 1. Simple Chat - Basic input/output flow
+uv run stepflow-langflow execute tests/fixtures/langflow/simple_chat.json \
+  '{"message": "Hello!"}' --mock
 
-# Analyze complex workflows
+# 2. Basic Prompting - LLM prompting with templates  
+uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json \
+  '{"message": "Write a haiku about coding"}' --mock
+
+# 3. Memory Chatbot - Conversational AI with memory
+uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json \
+  '{"message": "Remember my name is Alice"}' --mock
+
+# 4. Document Q&A - Document-based question answering
+uv run stepflow-langflow execute tests/fixtures/langflow/document_qa.json \
+  '{"message": "What is the main topic of this document?"}' --mock
+
+# 5. Simple Agent - AI agent with calculator/tools
+uv run stepflow-langflow execute tests/fixtures/langflow/simple_agent.json \
+  '{"message": "Calculate 15 * 23 and explain the result"}' --mock
+
+# 6. Vector Store RAG - Complex retrieval augmented generation
+uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
+  '{"message": "Find information about artificial intelligence"}' --mock
+
+# 7. OpenAI Chat - Direct OpenAI API integration
+uv run stepflow-langflow execute tests/fixtures/langflow/openai_chat.json \
+  '{"message": "What is Python programming?"}' --mock
+```
+
+### 💡 Example Input Patterns
+
+All workflows expect JSON input with a `message` field:
+
+| Workflow | Input Example | Description |
+|----------|---------------|-------------|
+| `simple_chat.json` | `{"message": "Hello there!"}` | Basic greeting or question |
+| `basic_prompting.json` | `{"message": "Write a poem about nature"}` | Creative prompts for LLM |
+| `memory_chatbot.json` | `{"message": "Remember I like coffee"}` | Conversational input with memory |
+| `document_qa.json` | `{"message": "Summarize this document"}` | Questions about documents |
+| `simple_agent.json` | `{"message": "Calculate 42 * 17"}` | Tasks requiring tools/calculations |
+| `vector_store_rag.json` | `{"message": "Explain machine learning"}` | Knowledge retrieval queries |
+| `openai_chat.json` | `{"message": "Explain quantum computing"}` | Direct chat with LLM |
+
+### 🔍 Workflow Analysis
+
+Understand workflow structure before execution:
+
+```bash
+# Analyze workflow complexity and dependencies
 uv run stepflow-langflow analyze tests/fixtures/langflow/vector_store_rag.json
 
-# Debug workflow conversion
-uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json --dry-run
+# View converted workflow without execution
+uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json --dry-run
+
+# Keep temporary files for debugging
+uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json \
+  '{"message": "Test"}' --mock --keep-files --output-dir ./debug
+```
+
+### 🎯 Real Execution
+
+Remove `--mock` flag for real component execution (requires Langflow dependencies):
+
+```bash
+# Real execution with actual LLM calls (requires OPENAI_API_KEY)
+uv run stepflow-langflow execute tests/fixtures/langflow/openai_chat.json \
+  '{"message": "Hello, Claude!"}' 
+
+# Real execution with timeout for complex workflows
+uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
+  '{"message": "Explain deep learning"}' --timeout 120
 ```
 
 ## 🏛️ Architecture Notes

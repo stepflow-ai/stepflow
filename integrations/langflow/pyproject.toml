@@ -42,6 +42,7 @@ dependencies = [
     "click>=8.0",
     "jsonschema>=4.17.0",
     "langflow>=1.5.0",  # Required for component execution
+    "python-dotenv>=1.0.0",  # For .env file support
 ]
 
 [dependency-groups]

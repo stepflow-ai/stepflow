@@ -17,10 +17,12 @@
 
 import json
 import sys
+import os
 from pathlib import Path
 from typing import Optional
 
 import click
+from dotenv import load_dotenv
 
 from ..converter.translator import LangflowConverter
 from ..executor.langflow_server import StepflowLangflowServer
@@ -31,6 +33,8 @@ from ..utils.errors import ConversionError, ValidationError
 @click.version_option()
 def main():
     """Stepflow Langflow Integration CLI."""
+    # Load environment variables from .env file if it exists
+    load_dotenv()
     pass
 
 
@@ -273,6 +277,12 @@ stateStore:
     transport: stdio
     command: uv
     args: ["--project", "{current_dir}", "run", "stepflow-langflow-server"]
+    env:  # Environment variables to propagate to the Langflow subprocess
+      OPENAI_API_KEY: "${{OPENAI_API_KEY:-}}"
+      ANTHROPIC_API_KEY: "${{ANTHROPIC_API_KEY:-}}"
+      GOOGLE_API_KEY: "${{GOOGLE_API_KEY:-}}"
+      COHERE_API_KEY: "${{COHERE_API_KEY:-}}"
+      HUGGINGFACE_API_TOKEN: "${{HUGGINGFACE_API_TOKEN:-}}"
 
 routes:
   "/langflow/{{*component}}":
@@ -333,7 +343,8 @@ stateStore:
             if result.returncode == 0:
                 click.echo("✅ Execution completed successfully!")
                 click.echo("\n🎯 Results:")
-                # Try to pretty-print JSON output
+                # Try to pretty-print JSON output and check outcome
+                workflow_success = True
                 try:
                     # Look for JSON in the output
                     lines = result.stdout.strip().split('\n')
@@ -341,11 +352,22 @@ stateStore:
                         if line.strip().startswith('{') and line.strip().endswith('}'):
                             result_data = json.loads(line)
                             click.echo(json.dumps(result_data, indent=2))
+                            
+                            # Check if workflow outcome is success
+                            outcome = result_data.get("outcome", "unknown")
+                            if outcome != "success":
+                                workflow_success = False
+                                click.echo(f"\n❌ Workflow failed with outcome: {outcome}", err=True)
                             break
                     else:
                         click.echo(result.stdout)
-                except:
+                except Exception as e:
                     click.echo(result.stdout)
+                    click.echo(f"\n⚠️  Could not parse result JSON: {e}", err=True)
+                
+                # Exit with error code if workflow failed
+                if not workflow_success:
+                    sys.exit(2)  # Use exit code 2 for workflow failure vs 1 for system failure
             else:
                 click.echo("❌ Execution failed")
                 click.echo("STDOUT:", err=True)
