@@ -17,8 +17,6 @@ import time
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from stepflow_langflow_integration.cli.main import main as langflow_main
-
 class ComprehensiveTestSuite:
     """Comprehensive test suite for Langflow-to-Stepflow integration."""
     
@@ -39,6 +37,10 @@ class ComprehensiveTestSuite:
         Args:
             stepflow_binary_path: Path to stepflow binary, defaults to environment variable
         """
+        # Load .env file to get real API keys before any other initialization
+        from dotenv import load_dotenv
+        load_dotenv()
+        
         self.stepflow_binary_path = (
             stepflow_binary_path or 
             os.getenv("STEPFLOW_BINARY_PATH", 
@@ -73,39 +75,47 @@ class ComprehensiveTestSuite:
         print(f"  📋 Testing {workflow_name} ({mode})...")
         
         try:
-            # Prepare sys.argv for workflow execution
-            args = [
-                "langflow_main",
+            # Use subprocess execution like manual tests to properly load .env
+            cmd = [
+                "uv", "run", "python", "-m", 
+                "stepflow_langflow_integration.cli.main", 
                 "execute",
-                f"tests/fixtures/langflow/{workflow_name}.json", 
+                f"tests/fixtures/langflow/{workflow_name}.json",
                 json.dumps({"message": test_message})
             ]
             if mock:
-                args.append("--mock")
-                
-            # Store original argv and replace
-            original_argv = sys.argv
-            sys.argv = args
+                cmd.append("--mock")
             
-            try:
-                langflow_main()
-                result = {"status": "✅ PASS", "exit_code": 0, "error": None}
+            # Set environment variables (will be merged with .env file loading in subprocess)
+            env = os.environ.copy()
+            env["STEPFLOW_BINARY_PATH"] = self.stepflow_binary_path
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=env
+            )
+            
+            if result.returncode == 0:
+                test_result = {"status": "✅ PASS", "exit_code": 0, "error": None}
                 print(f"    ✅ {workflow_name} ({mode}): PASSED")
-            except SystemExit as e:
-                if e.code == 0:
-                    result = {"status": "✅ PASS", "exit_code": 0, "error": None}
-                    print(f"    ✅ {workflow_name} ({mode}): PASSED") 
-                else:
-                    result = {"status": "❌ FAIL", "exit_code": e.code, "error": f"Exit code {e.code}"}
-                    print(f"    ❌ {workflow_name} ({mode}): FAILED (exit code {e.code})")
-            finally:
-                sys.argv = original_argv
+            else:
+                error_msg = f"Exit code {result.returncode}"
+                if result.stderr:
+                    error_msg += f" - {result.stderr[:100]}"
+                test_result = {"status": "❌ FAIL", "exit_code": result.returncode, "error": error_msg}
+                print(f"    ❌ {workflow_name} ({mode}): FAILED (exit code {result.returncode})")
                 
+        except subprocess.TimeoutExpired:
+            test_result = {"status": "❌ FAIL", "exit_code": None, "error": "Timeout after 60s"}
+            print(f"    ❌ {workflow_name} ({mode}): FAILED - Timeout")
         except Exception as e:
-            result = {"status": "❌ FAIL", "exit_code": None, "error": str(e)[:100]}
+            test_result = {"status": "❌ FAIL", "exit_code": None, "error": str(e)[:100]}
             print(f"    ❌ {workflow_name} ({mode}): FAILED - {str(e)[:50]}")
             
-        return result
+        return test_result
     
     def test_mock_execution(self) -> Dict[str, Dict]:
         """Test all workflows in mock mode.
@@ -270,9 +280,7 @@ class ComprehensiveTestSuite:
         print(f"  • OpenAI API key: {'✅ Set' if self.openai_api_key else '❌ Not set'}")
         print(f"  • Test workflows: {len(self.WORKFLOWS)}")
         
-        # Set environment variables
-        os.environ["STEPFLOW_BINARY_PATH"] = self.stepflow_binary_path
-        os.environ["OPENAI_API_KEY"] = self.openai_api_key
+        # Environment variables are already loaded from .env in subprocess execution
         
         # Run test suites
         mock_results = self.test_mock_execution()

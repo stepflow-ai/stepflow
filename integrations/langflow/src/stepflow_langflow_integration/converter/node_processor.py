@@ -72,6 +72,11 @@ class NodeProcessor:
             if not component_type or component_type.strip() == "":
                 return None
             
+            # Skip tool dependency nodes that will be handled by Agent tool sequences
+            if self._is_tool_dependency_of_agent(node_id, all_nodes, dependencies):
+                print(f"DEBUG NodeProcessor: Skipping tool dependency {node_id} ({component_type}) - handled by Agent tool sequence")
+                return None
+            
             # Generate step ID (clean up for Stepflow)
             step_id = self._generate_step_id(node_id, component_type)
             
@@ -111,6 +116,10 @@ class NodeProcessor:
                 print(f"DEBUG NodeProcessor: Routing {component_type} with embedded config to standalone server")
                 component_path = f"/langflow/{component_type}"
                 step_input = self._extract_component_inputs_for_builder(node, dependencies.get(node_id, []), all_nodes, node_output_refs)
+            elif self._is_agent_with_tools(node, dependencies.get(node_id, []), all_nodes):
+                # Agent with tool dependencies - use enhanced UDF machinery
+                component_path = "/langflow/udf_executor"
+                step_input = self._create_tool_sequence_config(node, dependencies.get(node_id, []), all_nodes, builder, node_output_refs, field_mapping)
             elif custom_code:
                 # Custom component - use UDF executor
                 component_path = "/langflow/udf_executor"
@@ -923,3 +932,269 @@ class MockGenericComponent(Component):
             "outputs": [output_info],
             "selected_output": output_info["name"]
         }
+
+    def _is_agent_with_tools(self, node: Dict[str, Any], dependencies: List[str], all_nodes: List[Dict[str, Any]]) -> bool:
+        """Check if this node is an Agent component with tool dependencies.
+        
+        Args:
+            node: Langflow node to check
+            dependencies: List of dependency node IDs
+            all_nodes: All nodes in the workflow
+            
+        Returns:
+            True if this is an Agent component with tool dependencies
+        """
+        node_data = node.get("data", {})
+        component_type = node_data.get("type", "")
+        
+        # Check if this is an Agent component
+        if component_type != "Agent":
+            return False
+        
+        # Check if it has tool dependencies (components that output "Tool" type)
+        if not dependencies:
+            return False
+        
+        # Look for dependencies that create tools
+        tool_dependencies = []
+        for dep_id in dependencies:
+            dep_node = self._find_node_by_id(dep_id, all_nodes)
+            if dep_node:
+                dep_type = dep_node.get("data", {}).get("type", "")
+                # Check if this dependency creates tools (CalculatorComponent, URLComponent, etc.)
+                if self._is_tool_creator(dep_type):
+                    tool_dependencies.append(dep_id)
+        
+        # If agent has tool-creating dependencies, use enhanced UDF machinery
+        return len(tool_dependencies) > 0
+
+    def _is_tool_creator(self, component_type: str) -> bool:
+        """Check if a component type creates tools.
+        
+        Args:
+            component_type: Component type to check
+            
+        Returns:
+            True if this component creates tools
+        """
+        tool_creators = [
+            "CalculatorComponent",
+            "URLComponent", 
+            "SearchAPIComponent",
+            "WikipediaAPIComponent",
+            "ShellComponent",
+            "PythonCodeStructuredTool",
+            # Add more tool-creating components as needed
+        ]
+        return component_type in tool_creators
+
+    def _find_node_by_id(self, node_id: str, all_nodes: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Find a node by its ID.
+        
+        Args:
+            node_id: Node ID to find
+            all_nodes: All nodes to search
+            
+        Returns:
+            Node dictionary if found, None otherwise
+        """
+        for node in all_nodes:
+            if node.get("id") == node_id:
+                return node
+        return None
+
+    def _create_tool_sequence_config(
+        self, 
+        agent_node: Dict[str, Any], 
+        dependencies: List[str], 
+        all_nodes: List[Dict[str, Any]], 
+        builder: Any, 
+        node_output_refs: Dict[str, Any],
+        field_mapping: Dict[str, Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """Create tool sequence configuration for enhanced UDF machinery.
+        
+        Args:
+            agent_node: Agent node that needs tools
+            dependencies: Agent dependency node IDs
+            all_nodes: All nodes in workflow  
+            builder: FlowBuilder instance
+            node_output_refs: Node output references
+            field_mapping: Field mapping for inputs
+            
+        Returns:
+            Tool sequence configuration for UDF executor
+        """
+        agent_node_id = agent_node.get("id", "")
+        component_type = agent_node.get("data", {}).get("type", "")
+        
+        print(f"DEBUG: Creating tool sequence config for Agent {agent_node_id}")
+        
+        # Separate tool dependencies from other dependencies
+        tool_configs = []
+        other_inputs = {}
+        external_inputs = {}  # For references to non-fused steps
+        
+        for dep_id in dependencies:
+            dep_node = self._find_node_by_id(dep_id, all_nodes)
+            if dep_node:
+                dep_type = dep_node.get("data", {}).get("type", "")
+                
+                if self._is_tool_creator(dep_type):
+                    # This is a tool dependency - create tool config
+                    print(f"DEBUG: Processing tool dependency: {dep_id} ({dep_type})")
+                    
+                    # Create blob for tool component
+                    tool_blob_data = self._prepare_udf_blob(dep_node, dep_type)
+                    tool_blob_step = builder.add_step_auto(
+                        base_name="tool_blob",
+                        component="/builtin/put_blob",
+                        input_data={
+                            "data": tool_blob_data,
+                            "blob_type": "data"
+                        }
+                    )
+                    
+                    # Use intelligent translation approach:
+                    # Since blob_id references a step that will be executed BEFORE this fused step,
+                    # we can reference it as an external input to the fused step
+                    tool_config = {
+                        "component_type": dep_type,
+                        "blob_id": f"tool_blob_{len(tool_configs)}",  # Internal reference within fused step
+                        "inputs": self._extract_tool_inputs(dep_node, all_nodes, node_output_refs)
+                    }
+                    tool_configs.append(tool_config)
+                    
+                    # Add external input mapping for the blob_id
+                    external_inputs[f"tool_blob_{len(tool_configs)-1}"] = Value.step(tool_blob_step.id, "blob_id")
+                else:
+                    # This is a regular input dependency (like ChatInput)
+                    if dep_type == "ChatInput":
+                        other_inputs["input_value"] = Value.input.add_path("message")
+                    else:
+                        dep_step_id = self._generate_step_id(dep_id, dep_type)
+                        other_inputs["input_value"] = Value.step(dep_step_id, "result")
+        
+        # Extract Agent-specific parameters from the node template
+        if component_type == "Agent":
+            template = agent_node.get("data", {}).get("node", {}).get("template", {})
+            
+            # Add essential Agent parameters with default values
+            agent_params = {
+                "session_id": "default_session",  # Provide default session ID
+                "api_key": "",  # Will be populated by runtime environment
+                "model_name": template.get("model_name", {}).get("value", "gpt-3.5-turbo"),
+                "temperature": template.get("temperature", {}).get("value", 0.7),
+                "max_tokens": template.get("max_tokens", {}).get("value", 1000),
+                "system_prompt": template.get("system_prompt", {}).get("value", "You are a helpful assistant."),
+                "verbose": template.get("verbose", {}).get("value", False)
+            }
+            
+            # Merge agent parameters into other_inputs
+            other_inputs.update(agent_params)
+            
+            print(f"DEBUG: Added Agent parameters: {list(agent_params.keys())}")
+        
+        # Create blob for agent component
+        agent_blob_data = self._prepare_udf_blob(agent_node, component_type)
+        agent_blob_step = builder.add_step_auto(
+            base_name="agent_blob",
+            component="/builtin/put_blob", 
+            input_data={
+                "data": agent_blob_data,
+                "blob_type": "data"
+            }
+        )
+        
+        # Apply intelligent translation: agent blob is also external to the fused step
+        external_inputs["agent_blob"] = Value.step(agent_blob_step.id, "blob_id")
+        
+        # Create tool sequence configuration with resolved references
+        tool_sequence_config = {
+            "tools": tool_configs,
+            "agent": {
+                "component_type": component_type,
+                "blob_id": "agent_blob",  # Internal reference within fused step
+                "inputs": other_inputs  # Include the input_value and other agent inputs
+            }
+        }
+        
+        # Merge external inputs with other inputs
+        final_inputs = other_inputs.copy()
+        final_inputs.update(external_inputs)
+        
+        # Return external inputs at top level for proper step input mapping
+        result = {
+            "tool_sequence_config": tool_sequence_config,
+            "input": other_inputs  # Only non-external inputs go under "input"
+        }
+        
+        # Add external inputs at top level so they become step input parameters
+        result.update(external_inputs)
+        
+        return result
+
+    def _extract_tool_inputs(self, tool_node: Dict[str, Any], all_nodes: List[Dict[str, Any]], node_output_refs: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract inputs for a tool component.
+        
+        Args:
+            tool_node: Tool node to extract inputs from
+            all_nodes: All nodes in workflow
+            node_output_refs: Node output references
+            
+        Returns:
+            Tool component inputs
+        """
+        node_data = tool_node.get("data", {})
+        component_type = node_data.get("type", "")
+        template = node_data.get("node", {}).get("template", {})
+        
+        tool_inputs = {}
+        
+        # Extract all template values
+        for field_name, field_config in template.items():
+            if isinstance(field_config, dict):
+                field_value = field_config.get("value")
+                if field_value is not None:
+                    tool_inputs[field_name] = field_value
+        
+        # Apply component-specific default values for empty/missing required fields
+        if component_type == "URLComponent":
+            urls_value = tool_inputs.get("urls", "")
+            if not urls_value or urls_value.strip() == "":
+                # Provide default URL for tool creation - agents can override at runtime
+                # Use httpbin.org which is designed for testing and responds quickly
+                tool_inputs["urls"] = ["https://httpbin.org/html"]
+        
+        return tool_inputs
+
+    def _is_tool_dependency_of_agent(self, node_id: str, all_nodes: List[Dict[str, Any]], dependencies: Dict[str, List[str]]) -> bool:
+        """Check if a node is a tool dependency of an Agent node.
+        
+        Args:
+            node_id: ID of the node to check
+            all_nodes: All nodes in the workflow
+            dependencies: Dependency graph
+            
+        Returns:
+            True if this node is a tool dependency of an Agent
+        """
+        # Look for any Agent nodes that have this node as a dependency
+        for node in all_nodes:
+            agent_node_id = node.get("id")
+            if not agent_node_id:
+                continue
+                
+            # Check if this node is an Agent with tools
+            if self._is_agent_with_tools(node, dependencies.get(agent_node_id, []), all_nodes):
+                # Check if the current node_id is a dependency of this Agent
+                agent_dependencies = dependencies.get(agent_node_id, [])
+                if node_id in agent_dependencies:
+                    # Verify it's a tool dependency (not a regular input like ChatInput)
+                    dep_node = self._find_node_by_id(node_id, all_nodes)
+                    if dep_node:
+                        dep_type = dep_node.get("data", {}).get("type", "")
+                        if self._is_tool_creator(dep_type):
+                            return True
+        
+        return False

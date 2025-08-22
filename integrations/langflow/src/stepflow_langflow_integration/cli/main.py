@@ -283,6 +283,8 @@ stateStore:
       GOOGLE_API_KEY: "${{GOOGLE_API_KEY:-}}"
       COHERE_API_KEY: "${{COHERE_API_KEY:-}}"
       HUGGINGFACE_API_TOKEN: "${{HUGGINGFACE_API_TOKEN:-}}"
+      ASTRA_DB_API_ENDPOINT: "${{ASTRA_DB_API_ENDPOINT:-}}"
+      ASTRA_DB_APPLICATION_TOKEN: "${{ASTRA_DB_APPLICATION_TOKEN:-}}"
 
 routes:
   "/langflow/{{*component}}":
