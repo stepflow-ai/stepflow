@@ -1,0 +1,192 @@
+[project]
+name = "stepflow-langflow-integration"
+version = "0.1.0"
+description = "Langflow integration for Stepflow - convert and execute Langflow workflows"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Stepflow Contributors"}
+]
+maintainers = [
+    {name = "Stepflow Contributors"}
+]
+requires-python = ">=3.11"
+keywords = [
+    "workflow",
+    "langflow",
+    "stepflow",
+    "ai",
+    "automation",
+    "conversion",
+    "integration"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed"
+]
+
+dependencies = [
+    "stepflow-py>=0.2.4",
+    "pyyaml>=6.0",
+    "msgspec>=0.19.0",
+    "click>=8.0",
+    "jsonschema>=4.17.0",
+    "langflow>=1.5.0",  # Required for component execution
+    "python-dotenv>=1.0.0",  # For .env file support
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.26.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.14.1",
+    "poethepoet>=0.24.0",
+    "ruff>=0.9.4",
+    "mypy>=1.8.0",
+    "deptry>=0.22.0",
+    "types-PyYAML>=6.0.0",
+    "httpx>=0.25.0",  # For testing HTTP components
+]
+
+[project.urls]
+Homepage = "https://stepflow-ai.github.io/stepflow/"
+Documentation = "https://stepflow-ai.github.io/stepflow/"
+Repository = "https://github.com/stepflow-ai/stepflow"
+"Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
+"Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/integrations/langflow"
+
+[project.scripts]
+stepflow-langflow = "stepflow_langflow_integration.cli.main:main"
+stepflow-langflow-server = "stepflow_langflow_integration.executor.standalone_server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+stepflow-py = { path = "../../sdks/python", editable = true }
+
+[tool.poe]
+# comment this out to debug poe tasks
+verbosity = -1
+
+[tool.poe.env]
+RUFF = "ruff@0.9.4"
+DEPTRY = "deptry@0.22.0"
+
+[tool.poe.tasks.fmt-check]
+help = "Runs `ruff format --check` to check for formatting issues (fix with `fmt-fix`)"
+cmd = "uvx ${RUFF} format --check ."
+
+[tool.poe.tasks.fmt-fix]
+help = "Runs `ruff format` to fix formatting issues"
+cmd = "uvx ${RUFF} format ."
+
+[tool.poe.tasks.lint-check]
+help = "Runs `ruff check` to check for lint issues (fix with `lint-fix`)"
+cmd = "uvx ${RUFF} check ."
+
+[tool.poe.tasks.lint-fix]
+help = "Runs `ruff check --fix` to fix lint issues"
+cmd = "uvx ${RUFF} check --fix ."
+
+[tool.poe.tasks.type-check]
+help = "Runs `mypy` to check for static type issues"
+cmd = "uv run mypy src tests"
+
+[tool.poe.tasks.dep-check]
+help = "Runs `deptry` to check for dependency issues"
+cmd = "uvx ${DEPTRY} src tests"
+
+[tool.poe.tasks.test]
+help = "Run tests"
+cmd = "uv run pytest tests"
+
+# Aliases for common commands
+[tool.poe.tasks.fmt]
+help = "Alias for fmt-fix"
+ref = "fmt-fix"
+
+[tool.poe.tasks.lint]
+help = "Runs all checks (fixing where possible)"
+sequence = ["fmt-fix", "lint-fix", "dep-check"]
+
+[tool.poe.tasks.typecheck]
+help = "Alias for type-check"
+ref = "type-check"
+
+[tool.poe.tasks.check]
+help = "Runs all checks and tests"
+sequence = ["lint", "test"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "C4"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.deptry]
+# types-* packages are type stubs for mypy and not directly imported
+ignore = ["DEP002"]
+extend_exclude = ["types-PyYAML"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+# Enable strict checks gradually
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+strict_equality = false
+
+# Ignore errors in tests for now
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--disable-warnings",
+    "-ra",  # show all test results
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "real_execution: marks tests that use real Langflow component execution (not mocks)",
+]

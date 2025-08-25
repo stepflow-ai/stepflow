@@ -65,6 +65,24 @@ class JsonPath:
         path = self.copy()
         path.push_index(key)
         return path
+        
+    def add_path(self, *segments: str) -> JsonPath:
+        """Add multiple path segments, creating a new JsonPath.
+        
+        Args:
+            *segments: Path segments to add (e.g., "message", "metadata", "count")
+            
+        Returns:
+            New JsonPath with segments added
+            
+        Example:
+            path = JsonPath().add_path("message")  # $.message
+            path = JsonPath().add_path("config", "temperature")  # $.config.temperature
+        """
+        path = self.copy()
+        for segment in segments:
+            path.push_field(segment)
+        return path
 
     def copy(self) -> JsonPath:
         """Create a copy of this JsonPath instance."""
@@ -123,6 +141,30 @@ class WorkflowInput:
     def with_on_skip(self, on_skip: SkipAction) -> WorkflowInput:
         """Create a copy of this reference with the specified onSkip action."""
         return WorkflowInput(self.path, on_skip)
+
+
+class InputPathBuilder:
+    """Helper class for building workflow input references with method chaining."""
+    
+    def __init__(self, on_skip: SkipAction | None = None):
+        self.path = JsonPath()
+        self.on_skip = on_skip
+    
+    def add_path(self, *segments: str) -> Value:
+        """Add path segments and return a Value with workflow input reference.
+        
+        Args:
+            *segments: Path segments to add (e.g., "message", "config", "temperature")
+            
+        Returns:
+            Value with WorkflowInput reference
+            
+        Example:
+            Value.input.add_path("message")  # $.message
+            Value.input.add_path("config", "temperature")  # $.config.temperature
+        """
+        path = self.path.add_path(*segments)
+        return Value(WorkflowInput(path, self.on_skip))
 
 
 class Value:
@@ -295,3 +337,7 @@ Valuable = (
     | dict[str, "Valuable"]
     | list["Valuable"]
 )
+
+# Create a singleton input path builder for the convenient API
+# This allows using Value.input.add_path("message") syntax
+Value.input = InputPathBuilder()

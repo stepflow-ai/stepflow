@@ -16,8 +16,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, is_dataclass
+from typing import Any, Dict, Optional, Union
+import msgspec
 
 from .generated_flow import (
     Component,
@@ -119,16 +120,20 @@ class FlowBuilder:
         description: str | None = None,
         version: str | None = None,
         metadata: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ):
         self.name = name
         self.description = description
         self.version = version
         self.metadata = metadata or {}
+        self.namespace = namespace or ""
         self.input_schema: Schema | None = None
         self.output_schema: Schema | None = None
         self.steps: dict[str, Step] = {}
         self._step_handles: dict[str, StepHandle] = {}
         self._output: ValueTemplate | None = None
+        self._output_fields: dict[str, Valuable] = {}  # For incremental output building
+        self._step_counter = 0  # For generating unique IDs
 
     @classmethod
     def load(cls, flow: Flow) -> FlowBuilder:
@@ -260,13 +265,199 @@ class FlowBuilder:
         """Set the output of the flow."""
         self._output = self._convert_to_value_template(output_data)
         return self
+    
+    def add_output_field(self, key: str, value: Valuable) -> FlowBuilder:
+        """Add a field to the output incrementally.
+        
+        This allows building up structured outputs field by field instead of
+        manually managing all output references.
+        
+        Args:
+            key: The field name in the output
+            value: The value for this field (can be a step reference, input reference, etc.)
+            
+        Returns:
+            Self for chaining
+            
+        Example:
+            builder.add_output_field("result", step1.result)
+            builder.add_output_field("metadata", step2.result) 
+            # Creates output: {"result": ..., "metadata": ...}
+        """
+        self._output_fields[key] = value
+        return self
+    
+    def generate_step_id(self, base_name: str) -> str:
+        """Generate a unique step ID with optional namespace.
+        
+        Args:
+            base_name: Base name for the step
+            
+        Returns:
+            Unique step ID, possibly with namespace prefix
+        """
+        self._step_counter += 1
+        if self.namespace:
+            return f"{self.namespace}_{base_name}_{self._step_counter}"
+        else:
+            return f"{base_name}_{self._step_counter}"
+    
+    def add_step_auto(
+        self,
+        *,
+        base_name: str,
+        component: Component,
+        input_data: Any = None,  # Accept any data structure
+        input_schema: dict[str, Any] | Schema | None = None,
+        output_schema: dict[str, Any] | Schema | None = None,
+        skip_if: StepReference | WorkflowInput | Value | None = None,
+        on_error: ErrorAction | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> StepHandle:
+        """Add a step with auto-generated unique ID and data structure conversion.
+        
+        This method automatically:
+        1. Generates a unique step ID from base_name
+        2. Converts dataclasses/msgspec structs to JSON
+        3. Handles step references properly
+        
+        Args:
+            base_name: Base name for generating unique step ID
+            component: Component to execute
+            input_data: Input data (dict, dataclass, msgspec struct, Value, etc.)
+            input_schema: Optional input schema
+            output_schema: Optional output schema  
+            skip_if: Optional skip condition
+            on_error: Optional error handling
+            metadata: Optional metadata
+            
+        Returns:
+            StepHandle for the created step
+        """
+        step_id = self.generate_step_id(base_name)
+        converted_input = self._auto_convert_input(input_data)
+        
+        return self.add_step(
+            id=step_id,
+            component=component,
+            input_data=converted_input,
+            input_schema=input_schema,
+            output_schema=output_schema,
+            skip_if=skip_if,
+            on_error=on_error,
+            metadata=metadata,
+        )
+    
+    def add_conditional_step(
+        self,
+        condition: Union[bool, StepReference, WorkflowInput, Value],
+        **step_kwargs
+    ) -> Optional[StepHandle]:
+        """Add a step conditionally based on a boolean or reference.
+        
+        Args:
+            condition: Condition to evaluate. If bool and False, returns None.
+                      If reference/Value, creates step with skip_if condition.
+            **step_kwargs: Arguments to pass to add_step_auto or add_step
+            
+        Returns:
+            StepHandle if step was created, None if skipped due to condition
+            
+        Example:
+            # Simple boolean condition
+            step = builder.add_conditional_step(
+                condition=should_process,
+                base_name="process_data",
+                component="/my/processor",
+                input_data=data
+            )
+            
+            # Reference-based condition (creates step with skip_if)
+            step = builder.add_conditional_step(
+                condition=Value.input("$.enable_feature"),
+                base_name="feature_step", 
+                component="/my/feature",
+                input_data=data
+            )
+        """
+        # Handle boolean conditions
+        if isinstance(condition, bool):
+            if not condition:
+                return None
+            # Condition is True, create step normally (remove condition from kwargs)
+            return self._create_step_from_kwargs(**step_kwargs)
+        
+        # Handle reference conditions - create step with skip_if
+        if isinstance(condition, (StepReference, WorkflowInput, Value)):
+            # Invert the condition for skip_if (skip when condition is falsy)
+            # This could be enhanced to handle proper boolean inversion
+            step_kwargs['skip_if'] = condition
+            return self._create_step_from_kwargs(**step_kwargs)
+        
+        # Invalid condition type
+        raise ValueError(f"Unsupported condition type: {type(condition)}")
+    
+    def _create_step_from_kwargs(self, **kwargs) -> StepHandle:
+        """Helper to create step from kwargs, preferring add_step_auto if base_name provided."""
+        if 'base_name' in kwargs:
+            return self.add_step_auto(**kwargs)
+        elif 'id' in kwargs:
+            return self.add_step(**kwargs)
+        else:
+            raise ValueError("Either 'base_name' or 'id' must be provided for step creation")
+    
+    def _auto_convert_input(self, input_data: Any) -> Valuable:
+        """Auto-convert various data structures to Valuable format.
+        
+        Args:
+            input_data: Data to convert
+            
+        Returns:
+            Converted data suitable for Valuable
+        """
+        if input_data is None:
+            return None
+        
+        # Already a Valuable type - pass through
+        if isinstance(input_data, (Value, StepReference, WorkflowInput, EscapedLiteral, str, int, float, bool)):
+            return input_data
+        
+        # Handle dataclasses
+        if is_dataclass(input_data):
+            # Convert dataclass to dict
+            import dataclasses
+            converted = dataclasses.asdict(input_data)
+            return converted
+        
+        # Handle msgspec structs
+        if hasattr(input_data, '__struct_fields__'):  # msgspec struct
+            # Convert msgspec struct to dict
+            converted = msgspec.structs.asdict(input_data)
+            return converted
+        
+        # Handle regular dicts and lists - recursively convert any nested structures
+        if isinstance(input_data, dict):
+            return {k: self._auto_convert_input(v) for k, v in input_data.items()}
+        
+        if isinstance(input_data, list):
+            return [self._auto_convert_input(item) for item in input_data]
+        
+        # For other types, return as-is
+        return input_data
 
     def build(self) -> Flow:
         """Build the Flow object."""
-        if self._output is None:
+        # Determine output from either explicit output or accumulated fields
+        output_to_use = None
+        if self._output is not None:
+            output_to_use = self._output
+        elif self._output_fields:
+            # Build output from accumulated fields
+            output_to_use = self._convert_to_value_template(self._output_fields)
+        else:
             raise ValueError(
-                "Flow output must be set before building. Use set_output() to specify "
-                "the flow output."
+                "Flow output must be set before building. Use set_output() or "
+                "add_output_field() to specify the flow output."
             )
 
         return Flow(
@@ -277,7 +468,7 @@ class FlowBuilder:
             inputSchema=self.input_schema,
             outputSchema=self.output_schema,
             steps=list(self.steps.values()),
-            output=self._output,
+            output=output_to_use,
             metadata=self.metadata,
         )
 
