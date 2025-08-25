@@ -1,15 +1,14 @@
-# Licensed to the Apache Software Foundation (ASF) under one or more contributor
-# license agreements.  See the NOTICE file distributed with this work for
-# additional information regarding copyright ownership.  The ASF licenses this
-# file to you under the Apache License, Version 2.0 (the "License"); you may not
-# use this file except in compliance with the License.  You may obtain a copy of
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
 # the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
 
@@ -276,7 +275,9 @@ class TestRegistry:
                 conversion=ConversionExpectation(
                     workflow_name="Simple Chat Example",
                     step_count=2,
-                    component_types_include=["/langflow/udf_executor"],  # ChatInput and ChatOutput are now UDF executors
+                    component_types_include=[
+                        "/langflow/udf_executor"
+                    ],  # ChatInput and ChatOutput are now UDF executors
                     udf_executor_count=2,  # ChatInput, ChatOutput
                     has_dependencies=True,  # ChatOutput depends on ChatInput
                 ),
@@ -298,7 +299,10 @@ class TestRegistry:
                 conversion=ConversionExpectation(
                     workflow_name="OpenAI Chat Workflow",
                     step_count=3,
-                    component_types_include=["/langflow/udf_executor", "/langflow/LanguageModelComponent"],  # Mixed: UDF executors for Chat, built-in for LM
+                    component_types_include=[
+                        "/langflow/udf_executor",
+                        "/langflow/LanguageModelComponent",
+                    ],  # Mixed: UDF executors for Chat, built-in for LM
                     udf_executor_count=2,  # ChatInput, ChatOutput
                     has_dependencies=True,
                 ),
@@ -359,7 +363,9 @@ class TestRegistry:
                     workflow_name="Basic Prompting",
                     step_count=4,  # After filtering note nodes
                     has_dependencies=True,
-                    component_types_include=["/langflow/udf_executor"],  # All components are UDF executors
+                    component_types_include=[
+                        "/langflow/udf_executor"
+                    ],  # All components are UDF executors
                     udf_executor_count=4,  # ChatInput, Prompt, LanguageModelComponent, ChatOutput
                 ),
                 execution=ExecutionExpectation(
@@ -384,7 +390,9 @@ class TestRegistry:
                     workflow_name="Memory Chatbot",
                     step_count=5,  # After filtering note nodes
                     has_dependencies=True,
-                    component_types_include=["/langflow/udf_executor"],  # All components are UDF executors
+                    component_types_include=[
+                        "/langflow/udf_executor"
+                    ],  # All components are UDF executors
                     udf_executor_count=5,  # Memory, ChatInput, Prompt, LanguageModelComponent, ChatOutput
                 ),
                 execution=ExecutionExpectation(
@@ -409,7 +417,9 @@ class TestRegistry:
                     workflow_name="Document Q&A",
                     step_count=5,  # After filtering note nodes
                     has_dependencies=True,
-                    component_types_include=["/langflow/udf_executor"],  # All components are UDF executors
+                    component_types_include=[
+                        "/langflow/udf_executor"
+                    ],  # All components are UDF executors
                     udf_executor_count=5,  # File, ChatInput, Prompt, LanguageModelComponent, ChatOutput
                 ),
                 execution=ExecutionExpectation(
@@ -436,7 +446,9 @@ class TestRegistry:
                     workflow_name="Simple Agent",
                     step_count=5,  # After filtering note nodes
                     has_dependencies=True,
-                    component_types_include=["/langflow/udf_executor"],  # All components are UDF executors
+                    component_types_include=[
+                        "/langflow/udf_executor"
+                    ],  # All components are UDF executors
                     udf_executor_count=5,  # Calculator, URL, ChatInput, Agent, ChatOutput
                 ),
                 execution=ExecutionExpectation(
@@ -460,7 +472,9 @@ class TestRegistry:
                     workflow_name="Vector Store RAG",
                     step_count=11,  # After filtering note nodes
                     has_dependencies=True,
-                    component_types_include=["/langflow/udf_executor"],  # All components are UDF executors
+                    component_types_include=[
+                        "/langflow/udf_executor"
+                    ],  # All components are UDF executors
                     udf_executor_count=11,  # All workflow components become UDF executors
                 ),
                 execution=ExecutionExpectation(

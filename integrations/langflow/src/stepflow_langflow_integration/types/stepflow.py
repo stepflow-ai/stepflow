@@ -1,15 +1,14 @@
-# Licensed to the Apache Software Foundation (ASF) under one or more contributor
-# license agreements.  See the NOTICE file distributed with this work for
-# additional information regarding copyright ownership.  The ASF licenses this
-# file to you under the Apache License, Version 2.0 (the "License"); you may not
-# use this file except in compliance with the License.  You may obtain a copy of
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
 # the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
 
@@ -22,12 +21,12 @@ from typing import Dict, Any, List, Optional
 @dataclass
 class StepflowStep:
     """Represents a Stepflow workflow step."""
-    
+
     id: str
     component: str
     input: Dict[str, Any]
     output_schema: Optional[Dict[str, Any]] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert step to dictionary representation."""
         result = {
@@ -35,17 +34,17 @@ class StepflowStep:
             "component": self.component,
             "input": self.input,
         }
-        
+
         if self.output_schema:
             result["output_schema"] = self.output_schema
-        
+
         return result
 
 
-@dataclass 
+@dataclass
 class StepflowWorkflow:
     """Represents a Stepflow workflow."""
-    
+
     name: str
     steps: List[StepflowStep]
     description: Optional[str] = None
@@ -53,7 +52,7 @@ class StepflowWorkflow:
     schema: str = "https://stepflow.org/schemas/v1/flow.json"
     input: Optional[Dict[str, Any]] = None
     output: Optional[Dict[str, Any]] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert workflow to dictionary representation."""
         result = {
@@ -61,17 +60,17 @@ class StepflowWorkflow:
             "name": self.name,
             "steps": [step.to_dict() for step in self.steps],
         }
-        
+
         if self.description:
             result["description"] = self.description
-        
+
         if self.version != "1.0":
             result["version"] = self.version
-        
+
         if self.input:
             result["input"] = self.input
-            
+
         if self.output:
             result["output"] = self.output
-        
+
         return result

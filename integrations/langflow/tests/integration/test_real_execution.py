@@ -1,15 +1,14 @@
-# Licensed to the Apache Software Foundation (ASF) under one or more contributor
-# license agreements.  See the NOTICE file distributed with this work for
-# additional information regarding copyright ownership.  The ASF licenses this
-# file to you under the Apache License, Version 2.0 (the "License"); you may not
-# use this file except in compliance with the License.  You may obtain a copy of
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
 # the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
 
@@ -18,7 +17,7 @@
 These tests verify that converted workflows actually execute with real UDF components,
 not mocks. They test the complete pipeline:
 1. Convert Langflow JSON → Stepflow YAML
-2. Store component code as blobs 
+2. Store component code as blobs
 3. Execute using real Langflow component server
 4. Verify results are functionally correct
 """
@@ -33,7 +32,7 @@ from typing import Dict, Any
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 from stepflow_langflow_integration.testing.stepflow_binary import (
     StepflowBinaryRunner,
-    create_test_config_file
+    create_test_config_file,
 )
 
 from .test_registry import get_test_registry, TestWorkflow, pytest_parametrize_workflows
@@ -43,7 +42,7 @@ def get_real_langflow_config() -> str:
     """Get stepflow config that uses real Langflow component server instead of mocks."""
     # Get the langflow integration project path
     langflow_project_path = Path(__file__).parent.parent.parent
-    
+
     return f"""
 plugins:
   builtin:
@@ -76,7 +75,7 @@ class TestRealLangflowExecution:
 
     @pytest.fixture
     def converter(self):
-        """Create converter instance.""" 
+        """Create converter instance."""
         return LangflowConverter()
 
     @pytest.fixture
@@ -101,9 +100,7 @@ class TestRealLangflowExecution:
         Path(config_path).unlink(missing_ok=True)
 
     def test_langflow_server_availability(
-        self,
-        stepflow_runner: StepflowBinaryRunner,
-        real_langflow_config_path: str
+        self, stepflow_runner: StepflowBinaryRunner, real_langflow_config_path: str
     ):
         """Test that the real Langflow component server is working."""
         success, components, stderr = stepflow_runner.list_components(
@@ -112,10 +109,16 @@ class TestRealLangflowExecution:
 
         assert success, f"Failed to list components from real Langflow server: {stderr}"
         assert isinstance(components, list)
-        
+
         # Should have the UDF executor component
-        langflow_components = [c for c in components if "langflow" in c.lower() or "udf_executor" in c.lower()]
-        assert len(langflow_components) > 0, f"Should have Langflow components available: {components}"
+        langflow_components = [
+            c
+            for c in components
+            if "langflow" in c.lower() or "udf_executor" in c.lower()
+        ]
+        assert (
+            len(langflow_components) > 0
+        ), f"Should have Langflow components available: {components}"
 
     @pytest.mark.slow
     def test_simple_chat_real_execution(
@@ -123,11 +126,11 @@ class TestRealLangflowExecution:
         registry,
         converter: LangflowConverter,
         stepflow_runner: StepflowBinaryRunner,
-        real_langflow_config_path: str
+        real_langflow_config_path: str,
     ):
         """Test simple_chat workflow with real UDF execution."""
         # Load and convert workflow
-        workflow = registry.get_workflow_by_name('simple_chat')
+        workflow = registry.get_workflow_by_name("simple_chat")
         langflow_data = registry.load_langflow_data(workflow)
         stepflow_workflow = converter.convert(langflow_data)
         workflow_yaml = converter.to_yaml(stepflow_workflow)
@@ -144,13 +147,16 @@ class TestRealLangflowExecution:
             workflow_yaml,
             input_data,
             config_path=real_langflow_config_path,
-            timeout=60.0  # Longer timeout for real execution
+            timeout=60.0,  # Longer timeout for real execution
         )
 
-        # Check execution success  
+        # Check execution success
         if not success:
             # If failure is due to missing Langflow dependencies, skip
-            if any(indicator in stderr.lower() for indicator in ["importerror", "modulenotfounderror", "langflow"]):
+            if any(
+                indicator in stderr.lower()
+                for indicator in ["importerror", "modulenotfounderror", "langflow"]
+            ):
                 pytest.skip(f"Langflow dependencies not available: {stderr}")
             else:
                 pytest.fail(f"Real workflow execution failed: {stdout}\n{stderr}")
@@ -163,21 +169,25 @@ class TestRealLangflowExecution:
         # Verify the actual result content (should be from real Langflow execution)
         actual_result = result_data["result"]
         assert isinstance(actual_result, dict)
-        
+
         # Should have message-like structure from real ChatOutput component
-        assert "text" in actual_result or "message" in actual_result or "content" in actual_result
+        assert (
+            "text" in actual_result
+            or "message" in actual_result
+            or "content" in actual_result
+        )
 
     @pytest.mark.slow
     def test_basic_prompting_real_execution(
         self,
         registry,
-        converter: LangflowConverter, 
+        converter: LangflowConverter,
         stepflow_runner: StepflowBinaryRunner,
-        real_langflow_config_path: str
+        real_langflow_config_path: str,
     ):
         """Test basic_prompting workflow with real UDF execution."""
         # Load and convert workflow
-        workflow = registry.get_workflow_by_name('basic_prompting')
+        workflow = registry.get_workflow_by_name("basic_prompting")
         langflow_data = registry.load_langflow_data(workflow)
         stepflow_workflow = converter.convert(langflow_data)
         workflow_yaml = converter.to_yaml(stepflow_workflow)
@@ -190,16 +200,22 @@ class TestRealLangflowExecution:
             workflow_yaml,
             input_data,
             config_path=real_langflow_config_path,
-            timeout=90.0  # Longer timeout for LLM calls
+            timeout=90.0,  # Longer timeout for LLM calls
         )
 
         # Check execution
         if not success:
-            # If failure is due to missing dependencies or API keys, skip  
-            missing_deps = any(indicator in stderr.lower() for indicator in [
-                "importerror", "modulenotfounderror", "langflow",
-                "openai_api_key", "anthropic_api_key"
-            ])
+            # If failure is due to missing dependencies or API keys, skip
+            missing_deps = any(
+                indicator in stderr.lower()
+                for indicator in [
+                    "importerror",
+                    "modulenotfounderror",
+                    "langflow",
+                    "openai_api_key",
+                    "anthropic_api_key",
+                ]
+            )
             if missing_deps:
                 pytest.skip(f"Missing dependencies or API keys: {stderr}")
             else:
@@ -214,22 +230,29 @@ class TestRealLangflowExecution:
         assert isinstance(actual_result, dict)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("workflow", pytest_parametrize_workflows([
-        # Start with simpler workflows that don't require external APIs
-        get_test_registry().get_workflow_by_name('simple_chat'),
-    ]))
+    @pytest.mark.parametrize(
+        "workflow",
+        pytest_parametrize_workflows(
+            [
+                # Start with simpler workflows that don't require external APIs
+                get_test_registry().get_workflow_by_name("simple_chat"),
+            ]
+        ),
+    )
     def test_converted_workflow_real_execution(
         self,
         workflow: TestWorkflow,
         registry,
         converter: LangflowConverter,
         stepflow_runner: StepflowBinaryRunner,
-        real_langflow_config_path: str
+        real_langflow_config_path: str,
     ):
         """Test converted workflows with real execution."""
         # Skip if workflow is marked as not suitable for real execution
-        if not hasattr(workflow, 'tags') or 'real_execution_safe' not in workflow.tags:
-            pytest.skip(f"Workflow {workflow.name} not marked as safe for real execution")
+        if not hasattr(workflow, "tags") or "real_execution_safe" not in workflow.tags:
+            pytest.skip(
+                f"Workflow {workflow.name} not marked as safe for real execution"
+            )
 
         # Load and convert
         try:
@@ -246,21 +269,31 @@ class TestRealLangflowExecution:
             workflow_yaml,
             input_data,
             config_path=real_langflow_config_path,
-            timeout=120.0
+            timeout=120.0,
         )
 
         # Handle execution results
         if not success:
             # Check for expected failure conditions
-            dependency_issues = any(indicator in stderr.lower() for indicator in [
-                "importerror", "modulenotfounderror", "langflow",
-                "openai_api_key", "anthropic_api_key", "connection", "timeout"
-            ])
-            
+            dependency_issues = any(
+                indicator in stderr.lower()
+                for indicator in [
+                    "importerror",
+                    "modulenotfounderror",
+                    "langflow",
+                    "openai_api_key",
+                    "anthropic_api_key",
+                    "connection",
+                    "timeout",
+                ]
+            )
+
             if dependency_issues:
                 pytest.skip(f"Dependency or connectivity issue: {stderr}")
             else:
-                pytest.fail(f"Unexpected execution failure for {workflow.name}: {stdout}\n{stderr}")
+                pytest.fail(
+                    f"Unexpected execution failure for {workflow.name}: {stdout}\n{stderr}"
+                )
 
         # Basic result validation
         assert isinstance(result_data, dict)
@@ -270,7 +303,7 @@ class TestRealLangflowExecution:
             assert actual_result is not None
 
 
-@pytest.mark.real_execution 
+@pytest.mark.real_execution
 @pytest.mark.slow
 class TestBlobStorageIntegration:
     """Test that blob storage and retrieval works in real execution."""
@@ -280,7 +313,7 @@ class TestBlobStorageIntegration:
         """Create StepflowBinaryRunner instance."""
         return StepflowBinaryRunner()
 
-    @pytest.fixture  
+    @pytest.fixture
     def real_langflow_config_path(self) -> str:
         """Create test configuration that uses real Langflow server."""
         config_content = get_real_langflow_config()
@@ -289,12 +322,10 @@ class TestBlobStorageIntegration:
         Path(config_path).unlink(missing_ok=True)
 
     def test_blob_storage_with_custom_component(
-        self,
-        stepflow_runner: StepflowBinaryRunner,
-        real_langflow_config_path: str
+        self, stepflow_runner: StepflowBinaryRunner, real_langflow_config_path: str
     ):
         """Test that custom component code is properly stored and retrieved as blobs."""
-        
+
         # Create a workflow that uses a custom UDF component
         custom_workflow_yaml = """
 schema: https://stepflow.org/schemas/v1/flow.json
@@ -312,11 +343,11 @@ steps:
           class BlobTestComponent(Component):
               display_name = "Blob Test Component"
               description = "Test component for blob storage"
-              
+
               inputs = [
                   MessageTextInput(name="test_input", display_name="Test Input")
               ]
-              
+
               outputs = [
                   Output(display_name="Test Output", name="result", method="process")
               ]
@@ -360,12 +391,15 @@ output:
             custom_workflow_yaml,
             {},
             config_path=real_langflow_config_path,
-            timeout=60.0
+            timeout=60.0,
         )
 
         if not success:
             # Skip if Langflow dependencies missing
-            if any(indicator in stderr.lower() for indicator in ["importerror", "modulenotfounderror", "langflow"]):
+            if any(
+                indicator in stderr.lower()
+                for indicator in ["importerror", "modulenotfounderror", "langflow"]
+            ):
                 pytest.skip(f"Langflow dependencies not available: {stderr}")
             else:
                 pytest.fail(f"Blob storage test failed: {stdout}\n{stderr}")
@@ -373,10 +407,10 @@ output:
         # Verify the result shows the blob was stored and retrieved correctly
         assert isinstance(result_data, dict)
         assert result_data.get("outcome") == "success"
-        
+
         actual_result = result_data.get("result")
         assert actual_result is not None
-        
+
         # Should contain the processed output from the custom component
         if isinstance(actual_result, dict) and "text" in actual_result:
             assert "Blob test processed" in actual_result["text"]
@@ -401,12 +435,10 @@ class TestTypeConversion:
         Path(config_path).unlink(missing_ok=True)
 
     def test_message_type_conversion(
-        self,
-        stepflow_runner: StepflowBinaryRunner,
-        real_langflow_config_path: str
+        self, stepflow_runner: StepflowBinaryRunner, real_langflow_config_path: str
     ):
         """Test that Langflow Message types are properly converted."""
-        
+
         # Workflow that creates and processes Message objects
         message_conversion_yaml = """
 schema: https://stepflow.org/schemas/v1/flow.json
@@ -473,7 +505,7 @@ steps:
                       processed_text = f"Processed: {input_msg.text}"
                   else:
                       processed_text = f"Processed: {str(input_msg)}"
-                  
+
                   return Message(
                       text=processed_text,
                       sender="MessageProcessor"
@@ -498,7 +530,7 @@ steps:
       input:
         input_text: "Hello Message Conversion"
 
-  - id: process_msg  
+  - id: process_msg
     component: /langflow/udf_executor
     input:
       blob_id:
@@ -522,11 +554,14 @@ output:
             message_conversion_yaml,
             {},
             config_path=real_langflow_config_path,
-            timeout=60.0
+            timeout=60.0,
         )
 
         if not success:
-            if any(indicator in stderr.lower() for indicator in ["importerror", "modulenotfounderror", "langflow"]):
+            if any(
+                indicator in stderr.lower()
+                for indicator in ["importerror", "modulenotfounderror", "langflow"]
+            ):
                 pytest.skip(f"Langflow dependencies not available: {stderr}")
             else:
                 pytest.fail(f"Message conversion test failed: {stdout}\n{stderr}")
@@ -534,10 +569,10 @@ output:
         # Verify type conversion worked
         assert isinstance(result_data, dict)
         assert result_data.get("outcome") == "success"
-        
+
         actual_result = result_data.get("result")
         assert actual_result is not None
-        
+
         # Should show the message was properly converted and processed
         if isinstance(actual_result, dict) and "text" in actual_result:
             assert "Processed: Hello Message Conversion" in actual_result["text"]

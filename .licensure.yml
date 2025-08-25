@@ -26,6 +26,7 @@ excludes:
   - \.mypy_cache/.*
   - \.venv/.*
   - venv/.*
+  - env.*
 
 licenses:
   - files: any

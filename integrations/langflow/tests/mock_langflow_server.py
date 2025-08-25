@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-# Licensed to the Apache Software Foundation (ASF) under one or more contributor
-# license agreements.  See the NOTICE file distributed with this work for
-# additional information regarding copyright ownership.  The ASF licenses this
-# file to you under the Apache License, Version 2.0 (the "License"); you may not
-# use this file except in compliance with the License.  You may obtain a copy of
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
 # the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
 
@@ -30,10 +29,10 @@ from typing import Dict, Any, Optional
 
 class MockStepflowContext:
     """Mock implementation of StepflowContext for testing."""
-    
+
     def __init__(self):
         self.blobs = {}
-    
+
     async def get_blob(self, blob_id: str) -> Dict[str, Any]:
         """Retrieve blob data by ID."""
         if blob_id not in self.blobs:
@@ -43,10 +42,10 @@ class MockStepflowContext:
                 "component_type": "MockComponent",
                 "template": {},
                 "outputs": [{"name": "output", "method": "run", "types": ["Data"]}],
-                "selected_output": "output"
+                "selected_output": "output",
             }
         return self.blobs[blob_id]
-    
+
     async def put_blob(self, data: Dict[str, Any]) -> str:
         """Store blob data and return ID."""
         blob_id = f"mock_blob_{len(self.blobs)}"
@@ -56,12 +55,12 @@ class MockStepflowContext:
 
 class MockLangflowServer:
     """Mock server that responds to component requests with predictable data."""
-    
+
     def __init__(self):
         self.context = MockStepflowContext()
         # Store flow-specific configurations by flow_id
         self.flow_configs = {}
-    
+
     def get_component_info(self, component_name: str) -> Dict[str, Any]:
         """Return mock component info."""
         return {
@@ -69,47 +68,51 @@ class MockLangflowServer:
             "description": f"Mock {component_name} component for testing",
             "input_schema": {
                 "type": "object",
-                "properties": {
-                    "input": {"type": "object"}
-                }
+                "properties": {"input": {"type": "object"}},
             },
             "output_schema": {
                 "type": "object",
-                "properties": {
-                    "result": {"type": "object"}
-                }
-            }
+                "properties": {"result": {"type": "object"}},
+            },
         }
-    
-    async def execute_component(self, component_name: str, input_data: Dict[str, Any], flow_id: str = "unknown") -> Dict[str, Any]:
+
+    async def execute_component(
+        self, component_name: str, input_data: Dict[str, Any], flow_id: str = "unknown"
+    ) -> Dict[str, Any]:
         """Execute mock component and return predictable result."""
-        
+
         # Check if we have flow-specific mock configuration
         flow_config = self.flow_configs.get(flow_id, {})
-        
+
         # Extract blob_id and input from the request
         blob_id = input_data.get("blob_id", "")
         component_input = input_data.get("input", {})
-        
+
         # Mock different component types
-        if "chatinput" in component_name.lower() or "chat_input" in component_name.lower():
+        if (
+            "chatinput" in component_name.lower()
+            or "chat_input" in component_name.lower()
+        ):
             # Handle the new chat_input format that reads from workflow input
             message_text = "Mock user input"
             if "message" in component_input:
-                message_text = component_input.get("message", "Mock user input") 
+                message_text = component_input.get("message", "Mock user input")
             elif "input_value" in component_input:
                 message_text = component_input.get("input_value", "Mock user input")
-            
+
             return {
                 "result": {
                     "text": message_text,
                     "sender": component_input.get("sender", "User"),
                     "sender_name": component_input.get("sender", "User"),
                     "type": "Message",
-                    "__langflow_type__": "Message"
+                    "__langflow_type__": "Message",
                 }
             }
-        elif "chatoutput" in component_name.lower() or "chat_output" in component_name.lower():
+        elif (
+            "chatoutput" in component_name.lower()
+            or "chat_output" in component_name.lower()
+        ):
             # ChatOutput typically receives input from previous steps
             input_text = "Mock AI response"
             if "message" in component_input:
@@ -124,14 +127,14 @@ class MockLangflowServer:
                 prev_result = component_input["input_0"]
                 if isinstance(prev_result, dict) and "text" in prev_result:
                     input_text = f"AI Response to: {prev_result['text']}"
-            
+
             return {
                 "result": {
                     "text": input_text,
-                    "sender": "AI", 
+                    "sender": "AI",
                     "sender_name": "Assistant",
                     "type": "Message",
-                    "__langflow_type__": "Message"
+                    "__langflow_type__": "Message",
                 }
             }
         elif "languagemodel" in component_name.lower():
@@ -141,35 +144,33 @@ class MockLangflowServer:
                 prev_result = component_input["input_0"]
                 if isinstance(prev_result, dict) and "text" in prev_result:
                     input_text = prev_result["text"]
-            
+
             return {
                 "result": {
                     "text": f"AI response to: {input_text}",
                     "sender": "AI",
-                    "sender_name": "LanguageModel", 
+                    "sender_name": "LanguageModel",
                     "type": "Message",
-                    "__langflow_type__": "Message"
+                    "__langflow_type__": "Message",
                 }
             }
         elif "prompt" in component_name.lower():
             return {
                 "result": {
                     "template": component_input.get("template", "Mock prompt template"),
-                    "formatted": "Mock formatted prompt"
+                    "formatted": "Mock formatted prompt",
                 }
             }
         elif "note" in component_name.lower():
             return {
-                "result": {
-                    "note": component_input.get("text", "Mock note content")
-                }
+                "result": {"note": component_input.get("text", "Mock note content")}
             }
         else:
             # Generic mock response
             return {
                 "result": {
                     "output": f"Mock output from {component_name}",
-                    "input_received": component_input
+                    "input_received": component_input,
                 }
             }
 
@@ -177,27 +178,35 @@ class MockLangflowServer:
 async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
     """Handle incoming JSON-RPC request."""
     server = MockLangflowServer()
-    
+
     method = request.get("method", "")
     params = request.get("params", {})
     request_id = request.get("id")
-    
+
     # Log all incoming requests for debugging
-    print(f"DEBUG: Received method '{method}' with id '{request_id}' and params {params}", file=sys.stderr, flush=True)
-    
+    print(
+        f"DEBUG: Received method '{method}' with id '{request_id}' and params {params}",
+        file=sys.stderr,
+        flush=True,
+    )
+
     try:
         if method == "initialize" or method == "initialized":
             result = {
-                "status": "initialized", 
+                "status": "initialized",
                 "version": "mock-1.0.0",
-                "server_protocol_version": 1
+                "server_protocol_version": 1,
             }
             # Special handling for 'initialized' notifications - no response needed
             if method == "initialized" and request_id is None:
-                print(f"DEBUG: Ignoring 'initialized' notification", file=sys.stderr, flush=True)
+                print(
+                    f"DEBUG: Ignoring 'initialized' notification",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 return None  # Don't send a response for notifications
         elif method == "components/info":
-            # ComponentInfoParams has a 'component' field 
+            # ComponentInfoParams has a 'component' field
             component_name = params.get("component", "unknown")
             result = {"info": server.get_component_info(component_name)}
         elif method == "components/execute":
@@ -208,39 +217,62 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
             run_id = params.get("run_id", "unknown")
             flow_id = params.get("flow_id", "unknown")
             # Log the component execution for debugging
-            print(f"DEBUG: Executing component {component_name} (step: {step_id}, flow: {flow_id}) with input {input_data}", file=sys.stderr, flush=True)
-            execution_result = await server.execute_component(component_name, input_data, flow_id=flow_id)
+            print(
+                f"DEBUG: Executing component {component_name} (step: {step_id}, flow: {flow_id}) with input {input_data}",
+                file=sys.stderr,
+                flush=True,
+            )
+            execution_result = await server.execute_component(
+                component_name, input_data, flow_id=flow_id
+            )
             # ComponentExecuteResult expects 'output' field
             result = {"output": execution_result}
         elif method == "components/list":
             # Return list of available components (use 'component' field, not 'name')
-            result = {"components": [
-                {"component": "/ChatInput", "description": "Mock chat input component"},
-                {"component": "/ChatOutput", "description": "Mock chat output component"},
-                {"component": "/chat_input", "description": "Mock chat input component (new format)"},
-                {"component": "/chat_output", "description": "Mock chat output component (new format)"},
-                {"component": "/udf_executor", "description": "Mock UDF executor component"},
-                {"component": "/note", "description": "Mock note component"},
-            ]}
+            result = {
+                "components": [
+                    {
+                        "component": "/ChatInput",
+                        "description": "Mock chat input component",
+                    },
+                    {
+                        "component": "/ChatOutput",
+                        "description": "Mock chat output component",
+                    },
+                    {
+                        "component": "/chat_input",
+                        "description": "Mock chat input component (new format)",
+                    },
+                    {
+                        "component": "/chat_output",
+                        "description": "Mock chat output component (new format)",
+                    },
+                    {
+                        "component": "/udf_executor",
+                        "description": "Mock UDF executor component",
+                    },
+                    {"component": "/note", "description": "Mock note component"},
+                ]
+            }
         else:
             # Instead of raising exception, return a default response
-            print(f"WARNING: Unknown method '{method}', returning empty result", file=sys.stderr, flush=True)
-            result = {"status": "ok", "message": f"Mock server handled unknown method: {method}"}
-        
+            print(
+                f"WARNING: Unknown method '{method}', returning empty result",
+                file=sys.stderr,
+                flush=True,
+            )
+            result = {
+                "status": "ok",
+                "message": f"Mock server handled unknown method: {method}",
+            }
+
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+    except Exception as e:
         return {
             "jsonrpc": "2.0",
             "id": request_id,
-            "result": result
-        }
-    
-    except Exception as e:
-        return {
-            "jsonrpc": "2.0", 
-            "id": request_id,
-            "error": {
-                "code": -1,
-                "message": str(e)
-            }
+            "error": {"code": -1, "message": str(e)},
         }
 
 
@@ -251,11 +283,11 @@ async def main():
             line = sys.stdin.readline()
             if not line:
                 break
-            
+
             line = line.strip()
             if not line:
                 continue
-            
+
             try:
                 request = json.loads(line)
                 response = await handle_request(request)
@@ -267,13 +299,10 @@ async def main():
                 error_response = {
                     "jsonrpc": "2.0",
                     "id": None,
-                    "error": {
-                        "code": -32700,
-                        "message": "Parse error"
-                    }
+                    "error": {"code": -32700, "message": "Parse error"},
                 }
                 print(json.dumps(error_response), flush=True)
-    
+
     except KeyboardInterrupt:
         pass
     except EOFError:

@@ -1,15 +1,14 @@
-# Licensed to the Apache Software Foundation (ASF) under one or more contributor
-# license agreements.  See the NOTICE file distributed with this work for
-# additional information regarding copyright ownership.  The ASF licenses this
-# file to you under the Apache License, Version 2.0 (the "License"); you may not
-# use this file except in compliance with the License.  You may obtain a copy of
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
 # the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
 
@@ -56,7 +55,7 @@ def simple_langflow_workflow() -> Dict[str, Any]:
                                 "input_value": {
                                     "type": "str",
                                     "value": "",
-                                    "info": "Message to be passed as input"
+                                    "info": "Message to be passed as input",
                                 }
                             }
                         },
@@ -64,13 +63,13 @@ def simple_langflow_workflow() -> Dict[str, Any]:
                             {
                                 "name": "message",
                                 "method": "message_response",
-                                "types": ["Message"]
+                                "types": ["Message"],
                             }
-                        ]
-                    }
+                        ],
+                    },
                 },
                 {
-                    "id": "ChatOutput-2", 
+                    "id": "ChatOutput-2",
                     "data": {
                         "type": "ChatOutput",
                         "node": {
@@ -78,28 +77,28 @@ def simple_langflow_workflow() -> Dict[str, Any]:
                                 "input_value": {
                                     "type": "str",
                                     "value": "",
-                                    "info": "Message to be passed as output"
+                                    "info": "Message to be passed as output",
                                 }
                             }
                         },
                         "outputs": [
                             {
                                 "name": "message",
-                                "method": "message_response", 
-                                "types": ["Message"]
+                                "method": "message_response",
+                                "types": ["Message"],
                             }
-                        ]
-                    }
-                }
+                        ],
+                    },
+                },
             ],
             "edges": [
                 {
                     "source": "ChatInput-1",
                     "target": "ChatOutput-2",
                     "source_handle": "message",
-                    "target_handle": "input_value"
+                    "target_handle": "input_value",
                 }
-            ]
+            ],
         }
     }
 
