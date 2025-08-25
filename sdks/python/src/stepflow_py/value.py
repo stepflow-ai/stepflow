@@ -39,9 +39,19 @@ class JsonPath:
         """Initialize with an optional initial path."""
         self.fragments = ["$"]
 
-    def push_field(self, name: str) -> JsonPath:
-        """Add a field access to the path (e.g., .fieldName). Mutates this instance."""
-        self.fragments.append(f".{name}")
+    def push_field(self, *names: str) -> JsonPath:
+        """Add field access(es) to the path (e.g., .fieldName). Mutates this instance.
+
+        Args:
+            *names: One or more field names to add
+
+        Returns:
+            Self for method chaining
+        """
+        if not names:
+            raise ValueError("At least one field name is required")
+        for name in names:
+            self.fragments.append(f".{name}")
         return self
 
     def push_index(self, key: str | int) -> JsonPath:
@@ -56,32 +66,24 @@ class JsonPath:
             self.fragments.append(f'["{key}"]')
         return self
 
-    def with_field(self, name: str) -> JsonPath:
+    def with_field(self, *names: str) -> JsonPath:
+        """Create a new JsonPath with additional field access(es).
+
+        Args:
+            *names: One or more field names to add
+
+        Returns:
+            New JsonPath with fields added
+        """
+        if not names:
+            raise ValueError("At least one field name is required")
         path = self.copy()
-        path.push_field(name)
+        path.push_field(*names)
         return path
 
     def with_index(self, key: str | int) -> JsonPath:
         path = self.copy()
         path.push_index(key)
-        return path
-        
-    def add_path(self, *segments: str) -> JsonPath:
-        """Add multiple path segments, creating a new JsonPath.
-        
-        Args:
-            *segments: Path segments to add (e.g., "message", "metadata", "count")
-            
-        Returns:
-            New JsonPath with segments added
-            
-        Example:
-            path = JsonPath().add_path("message")  # $.message
-            path = JsonPath().add_path("config", "temperature")  # $.config.temperature
-        """
-        path = self.copy()
-        for segment in segments:
-            path.push_field(segment)
         return path
 
     def copy(self) -> JsonPath:
@@ -145,25 +147,44 @@ class WorkflowInput:
 
 class InputPathBuilder:
     """Helper class for building workflow input references with method chaining."""
-    
+
     def __init__(self, on_skip: SkipAction | None = None):
         self.path = JsonPath()
         self.on_skip = on_skip
-    
+
+    def __call__(
+        self, path: str | None = None, on_skip: SkipAction | None = None
+    ) -> Value:
+        """Make InputPathBuilder callable to maintain API compatibility.
+
+        This allows Value.input() to work returning a WorkflowInput reference.
+
+        Args:
+            path: Optional path string
+            on_skip: Optional skip action
+
+        Returns:
+            Value containing WorkflowInput reference with proper path handling
+        """
+        json_path = JsonPath()
+        if path is not None and path != "$":
+            json_path.fragments = [path]
+        return Value(WorkflowInput(json_path, on_skip))
+
     def add_path(self, *segments: str) -> Value:
         """Add path segments and return a Value with workflow input reference.
-        
+
         Args:
             *segments: Path segments to add (e.g., "message", "config", "temperature")
-            
+
         Returns:
             Value with WorkflowInput reference
-            
+
         Example:
             Value.input.add_path("message")  # $.message
             Value.input.add_path("config", "temperature")  # $.config.temperature
         """
-        path = self.path.add_path(*segments)
+        path = self.path.with_field(*segments)
         return Value(WorkflowInput(path, self.on_skip))
 
 
@@ -176,6 +197,9 @@ class Value:
     - References to workflow input (using Value.input())
     - Expressions using $literal and $from syntax
     """
+
+    # Class attribute for input path builder (set at module level)
+    input: InputPathBuilder
 
     def __init__(self, value: Valuable):
         """Create a Value from a Valuable.
@@ -215,17 +239,6 @@ class Value:
         if path is not None and path != "$":
             json_path.fragments = [path]
         return Value(StepReference(step_id, json_path, on_skip))
-
-    @staticmethod
-    def input(path: str | None = None, on_skip: SkipAction | None = None) -> Value:
-        """Create a reference to workflow input.
-
-        This is equivalent to using $from with a workflow input reference.
-        """
-        json_path = JsonPath()
-        if path is not None and path != "$":
-            json_path.fragments = [path]
-        return Value(WorkflowInput(json_path, on_skip))
 
     def to_value_template(self) -> ValueTemplate:
         """Convert this Value to a ValueTemplate for use in flow definitions."""
