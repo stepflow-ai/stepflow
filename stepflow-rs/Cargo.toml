@@ -1,7 +1,7 @@
 [workspace.package]
 authors = ["Ben Chambers"]
 edition = "2024"
-version = "0.2.2"
+version = "0.3.0"
 license = "Apache-2.0"
 homepage = "https://fuzzy-journey-4j3y1we.pages.github.io/"
 repository = "https://github.com/stepflow-ai/stepflow"
