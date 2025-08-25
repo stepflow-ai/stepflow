@@ -94,10 +94,10 @@ class TestLangflowConverter:
         """Test workflow analysis."""
         analysis = converter.analyze(simple_langflow_workflow)
         
-        assert analysis["node_count"] == 2
-        assert analysis["edge_count"] == 1
-        assert "ChatInput" in analysis["component_types"]
-        assert "ChatOutput" in analysis["component_types"]
+        assert analysis.node_count == 2
+        assert analysis.edge_count == 1
+        assert "ChatInput" in analysis.component_types
+        assert "ChatOutput" in analysis.component_types
     
     def test_step_ordering_with_dependencies(self, converter: LangflowConverter):
         """Test that steps are ordered based on dependencies, not node order."""

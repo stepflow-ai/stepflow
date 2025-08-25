@@ -201,11 +201,11 @@ class TestWorkflowConversion:
                 
                 # Check consistency - Note: Analysis counts all nodes, conversion filters out notes/docs
                 # So we expect conversion steps <= analysis nodes, not exact equality
-                assert len(stepflow_workflow.steps) <= analysis["node_count"], \
-                    f"Converted step count ({len(stepflow_workflow.steps)}) should not exceed analysis node count ({analysis['node_count']}) for {workflow.name}"
+                assert len(stepflow_workflow.steps) <= analysis.node_count, \
+                    f"Converted step count ({len(stepflow_workflow.steps)}) should not exceed analysis node count ({analysis.node_count}) for {workflow.name}"
                 
                 # Total components in analysis should be >= steps (some may be filtered)
-                total_components = sum(analysis["component_types"].values())
+                total_components = sum(analysis.component_types.values())
                 assert len(stepflow_workflow.steps) <= total_components, \
                     f"Step count ({len(stepflow_workflow.steps)}) should not exceed analysis component count ({total_components}) for {workflow.name}"
                 

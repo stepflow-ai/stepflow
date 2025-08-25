@@ -19,6 +19,7 @@ import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
+from dataclasses import dataclass
 
 from stepflow_py import FlowBuilder, Value
 
@@ -27,6 +28,17 @@ from ..utils.errors import ConversionError, ValidationError
 from .dependency_analyzer import DependencyAnalyzer
 from .schema_mapper import SchemaMapper
 from .node_processor import NodeProcessor
+
+
+@dataclass
+class WorkflowAnalysis:
+    """Typed analysis results from analyzing a Langflow workflow."""
+    
+    node_count: int  # Total number of nodes in the Langflow workflow
+    edge_count: int  # Total number of connections/edges between nodes
+    component_types: Dict[str, int]  # Map of component type names to their counts (e.g., {"ChatInput": 1, "OpenAI": 2})
+    dependencies: Dict[str, List[str]]  # Map of node IDs to lists of their dependency node IDs
+    potential_issues: List[str]  # List of warnings or potential problems detected during analysis
 
 
 class LangflowConverter:
@@ -187,14 +199,14 @@ class LangflowConverter:
         except Exception as e:
             raise ConversionError(f"Error generating YAML: {e}")
     
-    def analyze(self, langflow_data: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze(self, langflow_data: Dict[str, Any]) -> WorkflowAnalysis:
         """Analyze Langflow workflow structure without conversion.
         
         Args:
             langflow_data: Parsed Langflow JSON data
             
         Returns:
-            Analysis results
+            Typed analysis results
         """
         try:
             data = langflow_data.get("data", {})
@@ -228,9 +240,15 @@ class LangflowConverter:
                     )
             
             # Analyze dependencies
-            analysis["dependencies"] = self.dependency_analyzer.build_dependency_graph(edges)
+            dependencies = self.dependency_analyzer.build_dependency_graph(edges)
             
-            return analysis
+            return WorkflowAnalysis(
+                node_count=len(nodes),
+                edge_count=len(edges),
+                component_types=analysis["component_types"],
+                dependencies=dependencies,
+                potential_issues=analysis["potential_issues"]
+            )
             
         except Exception as e:
             raise ConversionError(f"Error analyzing workflow: {e}")
