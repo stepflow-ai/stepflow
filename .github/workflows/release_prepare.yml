@@ -28,7 +28,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   prepare-release:
@@ -83,27 +82,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get current release branch
-        id: release-branch
-        run: |
-          BRANCH=$(git branch --show-current)
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          echo "Current release branch: $BRANCH"
-
-      - name: Dispatch CI workflow
-        run: |
-          echo "🔄 Dispatching CI workflow for release branch: ${{ steps.release-branch.outputs.branch }}"
-          gh workflow run ci.yml --ref "${{ steps.release-branch.outputs.branch }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Dispatch PR workflow
-        run: |
-          echo "🔄 Dispatching PR workflow for release branch: ${{ steps.release-branch.outputs.branch }}"
-          gh workflow run pr.yml --ref "${{ steps.release-branch.outputs.branch }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Summary
         run: |
           echo "## Release Preparation Complete" >> $GITHUB_STEP_SUMMARY
@@ -116,6 +94,5 @@ jobs:
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "1. Review the generated PR" >> $GITHUB_STEP_SUMMARY
           echo "2. Check the changelog entries" >> $GITHUB_STEP_SUMMARY
-          echo "3. The CI and PR workflows have been automatically dispatched" >> $GITHUB_STEP_SUMMARY
-          echo "4. Merge the PR when ready" >> $GITHUB_STEP_SUMMARY
-          echo "5. The release will be automatically tagged and built" >> $GITHUB_STEP_SUMMARY
+          echo "3. Merge the PR when ready" >> $GITHUB_STEP_SUMMARY
+          echo "4. The release will be automatically tagged and built" >> $GITHUB_STEP_SUMMARY
