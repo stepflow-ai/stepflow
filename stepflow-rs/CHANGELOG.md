@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.3.0"></a> [Stepflow 0.3.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.3.0) - 2025-08-25
+### Documentation
+
+- Demonstrate operations concerns ([#171](https://github.com/stepflow-ai/stepflow/pull/171))
+- Update the CLI documentation ([#203](https://github.com/stepflow-ai/stepflow/pull/203))
+- Flesh out roadmap a little ([#211](https://github.com/stepflow-ai/stepflow/pull/211))
+- Update docs to use stepflow-ai GitHub org ([#212](https://github.com/stepflow-ai/stepflow/pull/212))
+
+### Features
+
+- Add schema field to flow ([#194](https://github.com/stepflow-ai/stepflow/pull/194))
+- Use blobs for flows ([#195](https://github.com/stepflow-ai/stepflow/pull/195))
+- Add extensible metadata to flows and steps ([#210](https://github.com/stepflow-ai/stepflow/pull/210))
+- Add a visualize command to the cli ([#221](https://github.com/stepflow-ai/stepflow/pull/221))
+- Allow empty flows ([#224](https://github.com/stepflow-ai/stepflow/pull/224))
+
+### Miscellaneous Tasks
+
+- Standardize on Stepflow capitalization ([#205](https://github.com/stepflow-ai/stepflow/pull/205))
+- All the plumbing, files, and scripts for ICLA setup and maintenance. ([#218](https://github.com/stepflow-ai/stepflow/pull/218))
+- License check revamp using correct license headers, configure licensure for such ([#223](https://github.com/stepflow-ai/stepflow/pull/223))
+
 ## <a id="0.2.2"></a> [Stepflow 0.2.2](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.2.2) - 2025-07-30
 ### Miscellaneous Tasks
 
