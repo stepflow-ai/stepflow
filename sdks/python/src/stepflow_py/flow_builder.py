@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, is_dataclass
+from typing import Any, assert_never
+
+import msgspec
 
 from .generated_flow import (
     Component,
@@ -129,6 +131,7 @@ class FlowBuilder:
         self.steps: dict[str, Step] = {}
         self._step_handles: dict[str, StepHandle] = {}
         self._output: ValueTemplate | None = None
+        self._output_fields: dict[str, Valuable] = {}  # For incremental output building
 
     @classmethod
     def load(cls, flow: Flow) -> FlowBuilder:
@@ -164,6 +167,16 @@ class FlowBuilder:
             raise KeyError(f"Step '{step_id}' not found")
         return StepHandle(self.steps[step_id], self)
 
+    def _ensure_unique_step_id(self, preferred_id: str) -> str:
+        """Ensure the step ID is unique by adding a suffix if needed."""
+        if preferred_id not in self.steps:
+            return preferred_id
+
+        counter = 2
+        while f"{preferred_id}_{counter}" in self.steps:
+            counter += 1
+        return f"{preferred_id}_{counter}"
+
     def set_input_schema(self, schema: dict[str, Any] | Schema) -> FlowBuilder:
         """Set the input schema for the flow."""
         if isinstance(schema, dict):
@@ -190,19 +203,28 @@ class FlowBuilder:
         *,
         id: str,
         component: Component,
-        input_data: Valuable | None = None,
+        input_data: Any = None,  # Accept any data structure
         input_schema: dict[str, Any] | Schema | None = None,
         output_schema: dict[str, Any] | Schema | None = None,
         skip_if: StepReference | WorkflowInput | Value | None = None,
         on_error: ErrorAction | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> StepHandle:
-        """Add a step to the flow."""
-        # Component is now just a string, no conversion needed
-        # component is already the correct type
+        """Add a step to the flow with automatic ID uniqueness and input conversion.
+
+        Automatically:
+        1. Ensures step ID is unique by adding suffix if needed
+        2. Converts dataclasses/msgspec structs to JSON
+        3. Handles step references properly
+        """
+        # Ensure step ID is unique
+        unique_id = self._ensure_unique_step_id(id)
+
+        # Auto-convert input data
+        converted_input = self._auto_convert_input(input_data)
 
         # Convert input data to ValueTemplate
-        input_template = self._convert_to_value_template(input_data)
+        input_template = self._convert_to_value_template(converted_input)
 
         # Convert schemas
         input_schema_obj = None
@@ -238,7 +260,7 @@ class FlowBuilder:
 
         # Create the step
         step = Step(
-            id=id,
+            id=unique_id,
             component=component,
             input=input_template,
             inputSchema=input_schema_obj,
@@ -248,11 +270,11 @@ class FlowBuilder:
             metadata=metadata or {},
         )
 
-        self.steps[id] = step
+        self.steps[unique_id] = step
 
         # Create and store handle
         handle = StepHandle(step, self)
-        self._step_handles[id] = handle
+        self._step_handles[unique_id] = handle
 
         return handle
 
@@ -261,12 +283,90 @@ class FlowBuilder:
         self._output = self._convert_to_value_template(output_data)
         return self
 
+    def add_output_field(self, key: str, value: Valuable) -> FlowBuilder:
+        """Add a field to the output incrementally.
+
+        This allows building up structured outputs field by field instead of
+        manually managing all output references.
+
+        Args:
+            key: The field name in the output
+            value: The value for this field (step reference, input reference, etc.)
+
+        Returns:
+            Self for chaining
+
+        Example:
+            builder.add_output_field("result", step1.result)
+            builder.add_output_field("metadata", step2.result)
+            # Creates output: {"result": ..., "metadata": ...}
+        """
+        self._output_fields[key] = value
+        return self
+
+    def _auto_convert_input(self, input_data: Any) -> Valuable:
+        """Auto-convert various data structures to Valuable format.
+
+        Args:
+            input_data: Data to convert
+
+        Returns:
+            Converted data suitable for Valuable
+        """
+        if input_data is None:
+            return None
+
+        # Already a Valuable type - pass through
+        if isinstance(
+            input_data,
+            Value
+            | StepReference
+            | WorkflowInput
+            | EscapedLiteral
+            | str
+            | int
+            | float
+            | bool,
+        ):
+            return input_data
+
+        # Handle dataclasses
+        if is_dataclass(input_data):
+            # Convert dataclass to dict
+            import dataclasses
+
+            assert not isinstance(input_data, type)
+            converted = dataclasses.asdict(input_data)
+            return converted
+
+        # Handle msgspec structs
+        if hasattr(input_data, "__struct_fields__"):  # msgspec struct
+            # Convert msgspec struct to dict
+            converted = msgspec.structs.asdict(input_data)
+            return converted
+
+        # Handle regular dicts and lists - recursively convert any nested structures
+        if isinstance(input_data, dict):
+            return {k: self._auto_convert_input(v) for k, v in input_data.items()}
+
+        if isinstance(input_data, list):
+            return [self._auto_convert_input(item) for item in input_data]
+
+        assert_never(input_data)
+
     def build(self) -> Flow:
         """Build the Flow object."""
-        if self._output is None:
+        # Determine output from either explicit output or accumulated fields
+        output_to_use = None
+        if self._output is not None:
+            output_to_use = self._output
+        elif self._output_fields:
+            # Build output from accumulated fields
+            output_to_use = self._convert_to_value_template(self._output_fields)
+        else:
             raise ValueError(
-                "Flow output must be set before building. Use set_output() to specify "
-                "the flow output."
+                "Flow output must be set before building. Use set_output() or "
+                "add_output_field() to specify the flow output."
             )
 
         return Flow(
@@ -277,7 +377,7 @@ class FlowBuilder:
             inputSchema=self.input_schema,
             outputSchema=self.output_schema,
             steps=list(self.steps.values()),
-            output=self._output,
+            output=output_to_use,
             metadata=self.metadata,
         )
 
