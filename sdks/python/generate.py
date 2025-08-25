@@ -108,20 +108,20 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
                 filtered_lines.append(line)
 
         # Create the license header
-        license_header = [
+        header = [
             "# Copyright 2025 DataStax Inc.",
             "#",
-            '# Licensed under the Apache License, Version 2.0 (the "License");',
-            "# you may not use this file except in compliance with the License.",
-            "# You may obtain a copy of the License at",
+            '# Licensed under the Apache License, Version 2.0 (the "License"); you may not',
+            "# use this file except in compliance with the License. You may obtain a copy of",
+            "# the License at",
             "#",
             "#     http://www.apache.org/licenses/LICENSE-2.0",
             "#",
             "# Unless required by applicable law or agreed to in writing, software",
-            '# distributed under the License is distributed on an "AS IS" BASIS,',
-            "# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.",
-            "# See the License for the specific language governing permissions and",
-            "# limitations under the License.",
+            '# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT',
+            "# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the",
+            "# License for the specific language governing permissions and limitations under",
+            "# the License.",
             "",
             f"# Auto-generated {schema_name} types from schemas/{schema_name}.json",
             "# To regenerate this file, run:",
@@ -130,7 +130,7 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
         ]
 
         # Combine license header with the filtered content
-        new_content = "\n".join(license_header + filtered_lines)
+        new_content = "\n".join(header + filtered_lines)
 
         # Fix forward references for recursive types
         new_content = new_content.replace(
