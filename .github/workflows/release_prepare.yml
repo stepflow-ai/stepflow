@@ -83,17 +83,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get current release branch
+        id: release-branch
+        run: |
+          BRANCH=$(git branch --show-current)
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "Current release branch: $BRANCH"
+
       - name: Dispatch CI workflow
         run: |
-          echo "🔄 Dispatching CI workflow for release branch..."
-          gh workflow run ci.yml
+          echo "🔄 Dispatching CI workflow for release branch: ${{ steps.release-branch.outputs.branch }}"
+          gh workflow run ci.yml --ref "${{ steps.release-branch.outputs.branch }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Dispatch PR workflow
         run: |
-          echo "🔄 Dispatching PR workflow for release branch..."
-          gh workflow run pr.yml
+          echo "🔄 Dispatching PR workflow for release branch: ${{ steps.release-branch.outputs.branch }}"
+          gh workflow run pr.yml --ref "${{ steps.release-branch.outputs.branch }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
