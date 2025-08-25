@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.3.0"></a> [Stepflow Python SDK 0.3.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.3.0) - 2025-08-25
+### Bug Fixes
+
+- Decorator should preserve iscoroutine property ([#190](https://github.com/stepflow-ai/stepflow/pull/190))
+
+### Documentation
+
+- Demonstrate operations concerns ([#171](https://github.com/stepflow-ai/stepflow/pull/171))
+- Flesh out roadmap a little ([#211](https://github.com/stepflow-ai/stepflow/pull/211))
+- Update docs to use stepflow-ai GitHub org ([#212](https://github.com/stepflow-ai/stepflow/pull/212))
+
+### Features
+
+- Add schema field to flow ([#194](https://github.com/stepflow-ai/stepflow/pull/194))
+- Use blobs for flows ([#195](https://github.com/stepflow-ai/stepflow/pull/195))
+- Add comprehensive LangChain integration for StepFlow Python SDK ([#174](https://github.com/stepflow-ai/stepflow/pull/174))
+- Simplify UDFs using named functions ([#199](https://github.com/stepflow-ai/stepflow/pull/199))
+- Add extensible metadata to flows and steps ([#210](https://github.com/stepflow-ai/stepflow/pull/210))
+- Initial Stepflow-Langflow integration ([#216](https://github.com/stepflow-ai/stepflow/pull/216))
+
+### Miscellaneous Tasks
+
+- Add response logging ([#191](https://github.com/stepflow-ai/stepflow/pull/191))
+- Standardize on Stepflow capitalization ([#205](https://github.com/stepflow-ai/stepflow/pull/205))
+- All the plumbing, files, and scripts for ICLA setup and maintenance. ([#218](https://github.com/stepflow-ai/stepflow/pull/218))
+- License check revamp using correct license headers, configure licensure for such ([#223](https://github.com/stepflow-ai/stepflow/pull/223))
+- Fix stragglers for license update ([#225](https://github.com/stepflow-ai/stepflow/pull/225))
+- Update release scripts ([#228](https://github.com/stepflow-ai/stepflow/pull/228))
+- Dispatch permission ([#230](https://github.com/stepflow-ai/stepflow/pull/230))
+- Dispatch on the release branch ([#233](https://github.com/stepflow-ai/stepflow/pull/233))
+- Undo dispatch changes ([#235](https://github.com/stepflow-ai/stepflow/pull/235))
+
 ## <a id="0.2.4"></a> [Stepflow Python SDK 0.2.4](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.2.4) - 2025-07-30
 ### Bug Fixes
 
