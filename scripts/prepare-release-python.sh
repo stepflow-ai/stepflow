@@ -244,6 +244,18 @@ echo -e "${BLUE}Creating pull request...${NC}"
 # Create release branch
 RELEASE_BRANCH="release/stepflow-py-v$NEW_VERSION"
 echo -e "${BLUE}Creating release branch: $RELEASE_BRANCH${NC}"
+
+# Check if release branch already exists
+if git show-ref --verify --quiet "refs/heads/$RELEASE_BRANCH"; then
+    echo -e "${YELLOW}Release branch $RELEASE_BRANCH already exists locally. Deleting and recreating...${NC}"
+    git branch -D "$RELEASE_BRANCH"
+fi
+
+# Check if release branch exists on remote
+if git show-ref --verify --quiet "refs/remotes/origin/$RELEASE_BRANCH"; then
+    echo -e "${YELLOW}Release branch $RELEASE_BRANCH already exists on remote. It will be overwritten...${NC}"
+fi
+
 git checkout -b "$RELEASE_BRANCH"
 
 # Commit changes
@@ -260,7 +272,7 @@ git commit -m "chore: release stepflow-py v$NEW_VERSION
 
 # Push branch
 echo -e "${BLUE}Pushing release branch...${NC}"
-git push -u origin "$RELEASE_BRANCH"
+git push -u origin "$RELEASE_BRANCH" --force
 
 # Create PR
 PR_BODY="## Release stepflow-py v$NEW_VERSION
