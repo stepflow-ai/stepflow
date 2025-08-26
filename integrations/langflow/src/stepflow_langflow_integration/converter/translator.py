@@ -20,9 +20,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 
-from stepflow_py import FlowBuilder, Value
-
-from ..types.stepflow import StepflowWorkflow, StepflowStep
+from stepflow_py import Flow, FlowBuilder, Step, Value
 from ..utils.errors import ConversionError, ValidationError
 from .dependency_analyzer import DependencyAnalyzer
 from .schema_mapper import SchemaMapper
@@ -49,13 +47,8 @@ class WorkflowAnalysis:
 class LangflowConverter:
     """Convert Langflow JSON workflows to Stepflow YAML workflows."""
 
-    def __init__(self, validate_schemas: bool = False):
-        """Initialize the converter.
-
-        Args:
-            validate_schemas: Whether to perform additional schema validation
-        """
-        self.validate_schemas = validate_schemas
+    def __init__(self):
+        """Initialize the converter."""
         self.dependency_analyzer = DependencyAnalyzer()
         self.schema_mapper = SchemaMapper()
         self.node_processor = NodeProcessor()
@@ -88,14 +81,14 @@ class LangflowConverter:
         workflow = self.convert(langflow_data)
         return self.to_yaml(workflow)
 
-    def convert(self, langflow_data: Dict[str, Any]) -> StepflowWorkflow:
+    def convert(self, langflow_data: Dict[str, Any]) -> Flow:
         """Convert Langflow data structure to Stepflow workflow.
 
         Args:
             langflow_data: Parsed Langflow JSON data
 
         Returns:
-            StepflowWorkflow object
+            Flow object
 
         Raises:
             ConversionError: If conversion fails
@@ -129,10 +122,8 @@ class LangflowConverter:
             # Create node lookup for efficient processing
             node_lookup = {node["id"]: node for node in nodes}
 
-            # Create FlowBuilder with namespace for unique step IDs
-            builder = FlowBuilder(
-                name=self._generate_workflow_name(langflow_data), namespace="langflow"
-            )
+            # Create FlowBuilder
+            builder = FlowBuilder(name=self._generate_workflow_name(langflow_data))
 
             # Note: Skip setting input schema for now as Schema class doesn't support properties
             # input_schema = self._generate_input_section(nodes)
@@ -176,17 +167,9 @@ class LangflowConverter:
             # Set workflow output using incremental output building
             self._build_flow_output(builder, nodes, dependencies, node_output_refs)
 
-            # Build the flow using stepflow_py
+            # Build and return the flow
             flow = builder.build()
-
-            # Convert to our legacy StepflowWorkflow format for compatibility
-            workflow = self._convert_flow_to_stepflow_workflow(flow)
-
-            # Optional validation
-            if self.validate_schemas:
-                self._validate_workflow(workflow)
-
-            return workflow
+            return flow
 
         except ConversionError:
             raise
@@ -196,18 +179,20 @@ class LangflowConverter:
             print(f"Full traceback: {traceback.format_exc()}")
             raise ConversionError(f"Unexpected error during conversion: {e}")
 
-    def to_yaml(self, workflow: StepflowWorkflow) -> str:
-        """Convert StepflowWorkflow to YAML string.
+    def to_yaml(self, workflow: Flow) -> str:
+        """Convert Flow to YAML string.
 
         Args:
-            workflow: StepflowWorkflow object
+            workflow: Flow object (official stepflow_py type)
 
         Returns:
             YAML string
         """
         try:
-            # Convert to dict representation
-            workflow_dict = workflow.to_dict()
+            # Convert Flow to dict using msgspec serialization
+            import msgspec
+
+            workflow_dict = msgspec.to_builtins(workflow)
 
             # Generate clean YAML
             return yaml.dump(
@@ -559,7 +544,7 @@ class LangflowConverter:
 
     def _generate_output_section(
         self,
-        steps: List[StepflowStep],
+        steps: List[Step],
         dependencies: Dict[str, List[str]],
         nodes: List[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
@@ -796,169 +781,3 @@ class LangflowConverter:
 
         # Final fallback - direct input passthrough
         return Value.input("$.message")
-
-    def _convert_flow_to_stepflow_workflow(self, flow) -> StepflowWorkflow:
-        """Convert stepflow_py Flow to legacy StepflowWorkflow for compatibility.
-
-        Args:
-            flow: stepflow_py Flow object
-
-        Returns:
-            StepflowWorkflow object
-        """
-        # Convert steps
-        steps = []
-        if flow.steps:
-            for step in flow.steps:
-                stepflow_step = StepflowStep(
-                    id=step.id,
-                    component=step.component,
-                    input=(
-                        self._convert_value_template_to_dict(step.input)
-                        if step.input
-                        else {}
-                    ),
-                    output_schema=(
-                        self._convert_schema_to_dict(step.outputSchema)
-                        if step.outputSchema
-                        else None
-                    ),
-                )
-                steps.append(stepflow_step)
-
-        # Convert input schema
-        input_section = None
-        if flow.inputSchema and flow.inputSchema.properties:
-            input_section = flow.inputSchema.properties
-
-        # Convert output
-        output_section = (
-            self._convert_value_template_to_dict(flow.output) if flow.output else None
-        )
-
-        return StepflowWorkflow(
-            name=flow.name or "Converted Langflow Workflow",
-            steps=steps,
-            input=input_section,
-            output=output_section,
-        )
-
-    def _convert_value_template_to_dict(self, value_template) -> Any:
-        """Convert stepflow_py ValueTemplate to dict format."""
-        if value_template is None:
-            return None
-
-        # Handle Reference objects (they have field_from and path attributes)
-        if hasattr(value_template, "field_from"):
-            result = {"$from": {}}
-
-            # Handle the reference source
-            if hasattr(value_template.field_from, "workflow"):
-                # Convert WorkflowRef enum to string
-                workflow_ref = value_template.field_from.workflow
-                if hasattr(workflow_ref, "value"):
-                    result["$from"]["workflow"] = workflow_ref.value
-                else:
-                    result["$from"]["workflow"] = str(workflow_ref)
-            elif hasattr(value_template.field_from, "step"):
-                result["$from"]["step"] = value_template.field_from.step
-
-            # Handle the path
-            if value_template.path:
-                result["path"] = value_template.path
-
-            return result
-
-        # Handle EscapedLiteral objects
-        if hasattr(value_template, "field_literal"):
-            return value_template.field_literal
-
-        # Handle dictionaries
-        if isinstance(value_template, dict):
-            result = {}
-            for key, value in value_template.items():
-                result[key] = self._convert_value_template_to_dict(value)
-            return result
-
-        # Handle lists
-        if isinstance(value_template, list):
-            return [
-                self._convert_value_template_to_dict(item) for item in value_template
-            ]
-
-        # Return primitive values as-is
-        return value_template
-
-    def _convert_schema_to_dict(self, schema) -> Dict[str, Any]:
-        """Convert stepflow_py Schema to dict format."""
-        if schema is None:
-            return None
-
-        result = {}
-        if hasattr(schema, "type") and schema.type:
-            result["type"] = schema.type
-        if hasattr(schema, "properties") and schema.properties:
-            result["properties"] = schema.properties
-        if hasattr(schema, "description") and schema.description:
-            result["description"] = schema.description
-
-        return result if result else None
-
-    def _create_blob_creation_step(self, udf_step: StepflowStep) -> StepflowStep:
-        """Create a blob creation step for a UDF component step.
-
-        Args:
-            udf_step: Step that needs blob data created
-
-        Returns:
-            Step that creates the blob and stores it
-        """
-        blob_data = getattr(udf_step, "_udf_blob_data")
-        blob_step_id = f"blob_{udf_step.id}"
-
-        # Create step that stores blob data using /builtin/put_blob
-        blob_step = StepflowStep(
-            id=blob_step_id,
-            component="/builtin/put_blob",
-            input={
-                "data": blob_data,  # Store the blob data as a literal
-                "blob_type": "data",  # Use "data" blob type for component data
-            },
-            output_schema={
-                "type": "object",
-                "properties": {"blob_id": {"type": "string"}},
-            },
-        )
-
-        # Update the UDF step to reference the blob creation step
-        if isinstance(udf_step.input, dict) and "blob_id" in udf_step.input:
-            udf_step.input["blob_id"] = {
-                "$from": {"step": blob_step_id},
-                "path": "blob_id",
-            }
-
-        return blob_step
-
-    def _validate_workflow(self, workflow: StepflowWorkflow) -> None:
-        """Validate the converted workflow.
-
-        Args:
-            workflow: StepflowWorkflow to validate
-
-        Raises:
-            ValidationError: If validation fails
-        """
-        if not workflow.steps:
-            raise ValidationError("Workflow has no steps")
-
-        step_ids = {step.id for step in workflow.steps}
-
-        # Check for duplicate step IDs
-        if len(step_ids) != len(workflow.steps):
-            raise ValidationError("Duplicate step IDs found")
-
-        # Check step dependencies reference valid steps
-        for step in workflow.steps:
-            # This would need to be implemented based on the actual
-            # Stepflow step dependency format
-            pass

@@ -107,9 +107,3 @@ def simple_langflow_workflow() -> Dict[str, Any]:
 def converter() -> LangflowConverter:
     """LangflowConverter instance for testing."""
     return LangflowConverter()
-
-
-@pytest.fixture
-def validating_converter() -> LangflowConverter:
-    """LangflowConverter with validation enabled."""
-    return LangflowConverter(validate_schemas=True)

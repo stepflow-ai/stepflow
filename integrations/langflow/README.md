@@ -152,10 +152,6 @@ from stepflow_langflow_integration.converter.translator import LangflowConverter
 converter = LangflowConverter()
 stepflow_yaml = converter.convert_file("workflow.json")
 
-# Conversion with validation
-converter = LangflowConverter(validate_schemas=True)
-stepflow_yaml = converter.convert_file("workflow.json")
-
 # Analyze workflow structure
 with open("workflow.json") as f:
     langflow_data = json.load(f)
@@ -312,7 +308,7 @@ All workflows accept a `"message"` field as their primary input. **Integration S
 uv run stepflow-langflow execute tests/fixtures/langflow/simple_chat.json \
   '{"message": "Hello!"}' --mock
 
-# 2. Basic Prompting - LLM prompting with templates ✅  
+# 2. Basic Prompting - LLM prompting with templates ✅
 uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json \
   '{"message": "Write a haiku about coding"}' --mock
 
@@ -363,7 +359,7 @@ uv run stepflow-langflow execute tests/fixtures/langflow/document_qa.json \
 uv run stepflow-langflow execute tests/fixtures/langflow/simple_agent.json \
   '{"message": "Calculate 15 * 23 and explain the result"}' --timeout 180
 
-# 6. Vector Store RAG - Complex retrieval augmented generation ✅ WORKING  
+# 6. Vector Store RAG - Complex retrieval augmented generation ✅ WORKING
 uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
   '{"message": "Find information about artificial intelligence"}'
 
@@ -409,13 +405,13 @@ uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json \
 #### ✅ Fully Working Workflows (Real Execution)
 The following workflows work reliably with real API execution:
 - `simple_chat.json` - Direct passthrough workflow
-- `basic_prompting.json` - LLM with template processing  
+- `basic_prompting.json` - LLM with template processing
 - `memory_chatbot.json` - Conversational AI with memory
 - `document_qa.json` - Document-based question answering
 - `vector_store_rag.json` - Complex retrieval augmented generation
 - `openai_chat.json` - Direct OpenAI API integration
 
-#### ⚠️ Partially Working Workflows  
+#### ⚠️ Partially Working Workflows
 - `simple_agent.json` - Architecture complete but OpenAI Agent execution issues may cause timeouts
   - **Workaround**: Use extended timeout (`--timeout 180`) and validate with `--mock` first
 

@@ -7044,7 +7044,7 @@ dev = [
 
 [[package]]
 name = "stepflow-py"
-version = "0.2.4"
+version = "0.3.0"
 source = { editable = "../../sdks/python" }
 dependencies = [
     { name = "jsonschema" },
