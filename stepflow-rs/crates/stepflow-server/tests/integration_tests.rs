@@ -16,10 +16,9 @@ use axum::http::{Request, StatusCode};
 use serde_json::json;
 use std::sync::Arc;
 use stepflow_core::values::ValueTemplate;
-use stepflow_core::workflow::FlowV1;
 use stepflow_core::{
     FlowResult,
-    workflow::{Component, ErrorAction, Flow, Step, FlowBuilder, StepBuilder},
+    workflow::{Flow, FlowBuilder, StepBuilder},
 };
 use stepflow_execution::StepflowExecutor;
 use stepflow_mock::MockPlugin;
@@ -167,11 +166,13 @@ async fn create_test_server_with_mocks() -> (Router, Arc<StepflowExecutor>) {
 fn create_test_workflow() -> Flow {
     FlowBuilder::test_flow()
         .description("Test workflow for integration testing")
-        .step(StepBuilder::builtin_step("test_step", "create_messages")
-            .input_literal(json!({
-                "user_prompt": "Hello from test"
-            }))
-            .build())
+        .step(
+            StepBuilder::builtin_step("test_step", "create_messages")
+                .input_literal(json!({
+                    "user_prompt": "Hello from test"
+                }))
+                .build(),
+        )
         .build()
 }
 
@@ -553,11 +554,13 @@ async fn test_status_updates_during_regular_execution() {
                 }))
                 .build(),
         ])
-        .output(ValueTemplate::parse_value(json!({
-            "step1_result": {"$from": {"step": "step1"}, "path": "output"},
-            "step2_result": {"$from": {"step": "step2"}, "path": "x"}
-        }))
-        .unwrap())
+        .output(
+            ValueTemplate::parse_value(json!({
+                "step1_result": {"$from": {"step": "step1"}, "path": "output"},
+                "step2_result": {"$from": {"step": "step2"}, "path": "x"}
+            }))
+            .unwrap(),
+        )
         .build();
 
     // Store the workflow
@@ -660,10 +663,12 @@ async fn test_status_updates_during_debug_execution() {
                 }))
                 .build(),
         ])
-        .output(ValueTemplate::parse_value(json!({
-            "result": {"$from": {"step": "step2"}, "path": "x"}
-        }))
-        .unwrap())
+        .output(
+            ValueTemplate::parse_value(json!({
+                "result": {"$from": {"step": "step2"}, "path": "x"}
+            }))
+            .unwrap(),
+        )
         .build();
 
     // Store the workflow
@@ -767,14 +772,18 @@ async fn test_status_transitions_with_error_handling() {
     let workflow = FlowBuilder::new()
         .name("error_status_test")
         .description("Test workflow for error status tracking")
-        .step(StepBuilder::new("failing_step")
-            .component("/mock/error_component")
-            .input_literal(json!({"input": "trigger_error"}))
-            .build())
-        .output(ValueTemplate::parse_value(json!({
-            "result": {"$from": {"step": "failing_step"}, "path": "output"}
-        }))
-        .unwrap())
+        .step(
+            StepBuilder::new("failing_step")
+                .component("/mock/error_component")
+                .input_literal(json!({"input": "trigger_error"}))
+                .build(),
+        )
+        .output(
+            ValueTemplate::parse_value(json!({
+                "result": {"$from": {"step": "failing_step"}, "path": "output"}
+            }))
+            .unwrap(),
+        )
         .build();
 
     // Store the workflow

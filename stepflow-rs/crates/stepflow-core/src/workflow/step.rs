@@ -86,7 +86,7 @@ impl Default for ErrorAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::{Component, ValueRef, StepBuilder};
+    use crate::workflow::{StepBuilder, ValueRef};
 
     #[test]
     fn test_error_action_serialization() {

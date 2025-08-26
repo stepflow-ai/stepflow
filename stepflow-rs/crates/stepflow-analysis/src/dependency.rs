@@ -195,12 +195,10 @@ mod tests {
     use super::*;
     use crate::dependencies::ValueDependencies;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, JsonPath, Step, FlowBuilder, StepBuilder};
+    use stepflow_core::workflow::{Flow, FlowBuilder, JsonPath, Step, StepBuilder};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
-        StepBuilder::mock_step(id)
-            .input_json(input)
-            .build()
+        StepBuilder::mock_step(id).input_json(input).build()
     }
 
     fn create_test_flow() -> Flow {

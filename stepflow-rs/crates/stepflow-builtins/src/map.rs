@@ -188,7 +188,9 @@ mod tests {
 
         let test_flow = FlowBuilder::new()
             .name("test-empty")
-            .output(ValueTemplate::literal(serde_json::json!({"result": "processed"})))
+            .output(ValueTemplate::literal(
+                serde_json::json!({"result": "processed"}),
+            ))
             .build();
 
         let input = MapInput {

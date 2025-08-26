@@ -68,7 +68,6 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
         }
     }
 
-
     // Warn if workflow has no name
     if flow.name().is_none() || flow.name().unwrap().trim().is_empty() {
         diagnostics.add(
@@ -355,12 +354,10 @@ mod tests {
     use super::*;
     use crate::diagnostics::DiagnosticMessage;
     use serde_json::json;
-    use stepflow_core::workflow::{Flow, FlowV1, JsonPath, Step, FlowBuilder, StepBuilder};
+    use stepflow_core::workflow::{FlowBuilder, JsonPath, Step, StepBuilder};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
-        StepBuilder::mock_step(id)
-            .input_json(input)
-            .build()
+        StepBuilder::mock_step(id).input_json(input).build()
     }
 
     #[test]
@@ -494,10 +491,12 @@ mod tests {
     #[test]
     fn test_empty_component_name() {
         let flow = FlowBuilder::test_flow()
-            .step(StepBuilder::new("step1")
-                .component("") // Empty builtin name
-                .input(ValueTemplate::workflow_input(JsonPath::default()))
-                .build())
+            .step(
+                StepBuilder::new("step1")
+                    .component("") // Empty builtin name
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+            )
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
@@ -516,9 +515,11 @@ mod tests {
     #[test]
     fn test_valid_builtin_component() {
         let flow = FlowBuilder::test_flow()
-            .step(StepBuilder::builtin_step("step1", "eval")
-                .input(ValueTemplate::workflow_input(JsonPath::default()))
-                .build())
+            .step(
+                StepBuilder::builtin_step("step1", "eval")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+            )
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 

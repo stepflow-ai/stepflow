@@ -427,7 +427,7 @@ impl From<&TestCase> for ExampleInput {
 
 #[cfg(test)]
 mod tests {
-    use crate::workflow::{Component, ErrorAction, Step, FlowBuilder, StepBuilder};
+    use crate::workflow::{FlowBuilder, StepBuilder};
 
     use super::*;
 
@@ -501,7 +501,7 @@ mod tests {
         // Test full structural equality
         let expected_flow_built = FlowBuilder::new()
             .name("test")
-            .description("test") 
+            .description("test")
             .version("1.0.0")
             .input_schema(input_schema)
             .output_schema(output_schema)
@@ -519,10 +519,13 @@ mod tests {
                     }))
                     .build(),
             ])
-            .output(ValueTemplate::parse_value(serde_json::json!({
-                "s1a": { "$from": { "step": "s1" }, "path": "a" },
-                "s2b": { "$from": { "step": "s2" }, "path": "a" }
-            })).unwrap())
+            .output(
+                ValueTemplate::parse_value(serde_json::json!({
+                    "s1a": { "$from": { "step": "s1" }, "path": "a" },
+                    "s2b": { "$from": { "step": "s2" }, "path": "a" }
+                }))
+                .unwrap(),
+            )
             .build();
 
         let expected_flow = match expected_flow_built {

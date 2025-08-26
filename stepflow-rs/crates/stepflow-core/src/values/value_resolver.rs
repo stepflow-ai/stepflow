@@ -318,13 +318,17 @@ mod tests {
 
     fn create_test_flow() -> Arc<Flow> {
         use crate::workflow::{FlowBuilder, StepBuilder};
-        
-        Arc::new(FlowBuilder::new()
-            .step(StepBuilder::mock_step("step1")
-                .input_literal(json!({}))
-                .build())
-            .output(ValueTemplate::literal(json!(null)))
-            .build())
+
+        Arc::new(
+            FlowBuilder::new()
+                .step(
+                    StepBuilder::mock_step("step1")
+                        .input_literal(json!({}))
+                        .build(),
+                )
+                .output(ValueTemplate::literal(json!(null)))
+                .build(),
+        )
     }
 
     #[tokio::test]

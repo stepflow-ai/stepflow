@@ -25,7 +25,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::values::ValueTemplate;
-    use stepflow_core::workflow::{FlowV1, FlowBuilder, StepBuilder};
+    use stepflow_core::workflow::{FlowBuilder, StepBuilder};
     use stepflow_core::{BlobType, FlowResult, workflow::ValueRef};
     use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
@@ -58,10 +58,12 @@ mod tests {
         // First store a workflow
         let flow = FlowBuilder::new()
             .output(ValueTemplate::empty_object())
-            .step(StepBuilder::new("test_step")
-                .component("/test/mock")
-                .input(ValueTemplate::empty_object())
-                .build())
+            .step(
+                StepBuilder::new("test_step")
+                    .component("/test/mock")
+                    .input(ValueTemplate::empty_object())
+                    .build(),
+            )
             .build();
         let flow_arc = std::sync::Arc::new(flow);
         let flow_data = ValueRef::new(serde_json::to_value(flow_arc.as_ref()).unwrap());

@@ -12,7 +12,9 @@
 
 use std::collections::HashMap;
 
-use super::{Component, ErrorAction, Expr, ExampleInput, Flow, FlowV1, Step, TestConfig, ValueTemplate};
+use super::{
+    Component, ErrorAction, ExampleInput, Expr, Flow, FlowV1, Step, TestConfig, ValueTemplate,
+};
 use crate::schema::SchemaRef;
 use serde_json::json;
 
@@ -241,7 +243,9 @@ impl StepBuilder {
     pub fn build(self) -> Step {
         Step {
             id: self.id.expect("Step ID is required"),
-            component: self.component.unwrap_or_else(|| Component::from_string("/mock/test")),
+            component: self
+                .component
+                .unwrap_or_else(|| Component::from_string("/mock/test")),
             input: self.input.unwrap_or_else(ValueTemplate::null),
             input_schema: self.input_schema,
             output_schema: self.output_schema,
@@ -361,9 +365,7 @@ mod tests {
 
     #[test]
     fn test_convenience_functions() {
-        let flow = mock_flow()
-            .step(mock_step("step1").build())
-            .build();
+        let flow = mock_flow().step(mock_step("step1").build()).build();
 
         match flow {
             Flow::V1(flow_v1) => {
