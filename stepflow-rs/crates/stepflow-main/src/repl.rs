@@ -674,7 +674,7 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
                         for step in &completed_steps {
                             let status = match &step.result {
                                 stepflow_core::FlowResult::Success(_) => "SUCCESS",
-                                stepflow_core::FlowResult::Skipped => "SKIPPED",
+                                stepflow_core::FlowResult::Skipped { .. } => "SKIPPED",
                                 stepflow_core::FlowResult::Failed(_) => "FAILED",
                             };
                             println!(
@@ -751,8 +751,12 @@ fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
                 .change_context(MainError::FlowExecution)?;
             println!("Result: {result_json}");
         }
-        stepflow_core::FlowResult::Skipped => {
-            println!("Result: SKIPPED");
+        stepflow_core::FlowResult::Skipped { reason } => {
+            if let Some(reason) = reason {
+                println!("Result: SKIPPED - {reason}");
+            } else {
+                println!("Result: SKIPPED");
+            }
         }
         stepflow_core::FlowResult::Failed(error) => {
             println!("Result: FAILED - {error}");

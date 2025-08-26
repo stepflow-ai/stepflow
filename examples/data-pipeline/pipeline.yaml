@@ -19,7 +19,11 @@ steps:
     input:
       data:
         $literal:
-          code: "sum(item['revenue'] for item in input['sales_data'])"
+          code: |
+            sales_data = input.get('sales_data')
+            if not sales_data:
+                raise SkipStep("No sales data provided for revenue calculation")
+            return sum(item['revenue'] for item in sales_data)
       blob_type: "data"
 
   - id: calculate_total_revenue
@@ -49,7 +53,11 @@ steps:
     input:
       data:
         $literal:
-          code: "sum(item['revenue'] for item in input['sales_data']) / len(input['sales_data']) if input['sales_data'] else 0"
+          code: |
+            sales_data = input.get('sales_data')
+            if not sales_data:
+                raise SkipStep("No sales data provided for average calculation")
+            return sum(item['revenue'] for item in sales_data) / len(sales_data)
       blob_type: "data"
 
   - id: calculate_average_sale
@@ -65,7 +73,12 @@ steps:
     input:
       data:
         $literal:
-          code: "input['a'] / input['b'] if input['b'] != 0 else 0"
+          code: |
+            a = input['a']
+            b = input['b']
+            if b == 0:
+                raise SkipStep("Cannot divide by zero - target revenue is zero")
+            return a / b
       blob_type: "data"
 
   - id: calculate_performance_ratio
@@ -90,7 +103,11 @@ steps:
               input:
                 data:
                   $literal:
-                    code: "[item for item in input['sales_data'] if item.get('region') == 'West']"
+                    code: |
+                      sales_data = input.get('sales_data')
+                      if not sales_data:
+                          raise SkipStep("No sales data provided for West region filtering")
+                      return [item for item in sales_data if item.get('region') == 'West']
 
             - id: filter_region
               component: "/python/udf"
@@ -104,7 +121,11 @@ steps:
               input:
                 data:
                   $literal:
-                    code: "sum(item['revenue'] for item in input['filtered_data'])"
+                    code: |
+                      filtered_data = input.get('filtered_data')
+                      if not filtered_data:
+                          raise SkipStep("No filtered West region data for revenue calculation")
+                      return sum(item['revenue'] for item in filtered_data)
 
             - id: region_revenue
               component: "/python/udf"
@@ -118,7 +139,11 @@ steps:
               input:
                 data:
                   $literal:
-                    code: "len(input['filtered_data'])"
+                    code: |
+                      filtered_data = input.get('filtered_data')
+                      if not filtered_data:
+                          raise SkipStep("No filtered West region data for count calculation")
+                      return len(filtered_data)
 
             - id: region_count
               component: "/python/udf"
@@ -147,7 +172,11 @@ steps:
               input:
                 data:
                   $literal:
-                    code: "[item for item in input['sales_data'] if item.get('region') == 'East']"
+                    code: |
+                      sales_data = input.get('sales_data')
+                      if not sales_data:
+                          raise SkipStep("No sales data provided for East region filtering")
+                      return [item for item in sales_data if item.get('region') == 'East']
 
             - id: filter_region
               component: "/python/udf"
@@ -161,7 +190,11 @@ steps:
               input:
                 data:
                   $literal:
-                    code: "sum(item['revenue'] for item in input['filtered_data'])"
+                    code: |
+                      filtered_data = input.get('filtered_data')
+                      if not filtered_data:
+                          raise SkipStep("No filtered East region data for revenue calculation")
+                      return sum(item['revenue'] for item in filtered_data)
 
             - id: region_revenue
               component: "/python/udf"
@@ -175,7 +208,11 @@ steps:
               input:
                 data:
                   $literal:
-                    code: "len(input['filtered_data'])"
+                    code: |
+                      filtered_data = input.get('filtered_data')
+                      if not filtered_data:
+                          raise SkipStep("No filtered East region data for count calculation")
+                      return len(filtered_data)
 
             - id: region_count
               component: "/python/udf"
@@ -228,19 +265,26 @@ steps:
       data:
         $literal:
           code: |
-            f"""Sales Analysis Summary:
+            total_revenue = input['total_revenue']
+            sales_count = input['sales_count']
+            average_sale = input['average_sale']
+            performance_ratio = input['performance_ratio']
+            target_revenue = input['target_revenue']
+            regional_comparison = input['regional_comparison']
+            
+            return f"""Sales Analysis Summary:
 
             Overall Metrics:
-            - Total Revenue: ${input['total_revenue']:,.2f}
-            - Number of Sales: {input['sales_count']}
-            - Average Sale Value: ${input['average_sale']:,.2f}
-            - Performance vs Target: {input['performance_ratio']:.1%} (Target: ${input['target_revenue']:,.2f})
+            - Total Revenue: ${total_revenue:,.2f}
+            - Number of Sales: {sales_count}
+            - Average Sale Value: ${average_sale:,.2f}
+            - Performance vs Target: {performance_ratio:.1%} (Target: ${target_revenue:,.2f})
 
             Regional Performance:
-            - West Region: ${input['regional_comparison']['west_revenue']:,.2f} ({input['regional_comparison']['west_count']} sales)
-            - East Region: ${input['regional_comparison']['east_revenue']:,.2f} ({input['regional_comparison']['east_count']} sales)
-            - Revenue Leader: {input['regional_comparison']['revenue_leader']} (${input['regional_comparison']['revenue_difference']:,.2f} difference)
-            - Volume Leader: {input['regional_comparison']['count_leader']} ({input['regional_comparison']['count_difference']} sales difference)
+            - West Region: ${regional_comparison['west_revenue']:,.2f} ({regional_comparison['west_count']} sales)
+            - East Region: ${regional_comparison['east_revenue']:,.2f} ({regional_comparison['east_count']} sales)
+            - Revenue Leader: {regional_comparison['revenue_leader']} (${regional_comparison['revenue_difference']:,.2f} difference)
+            - Volume Leader: {regional_comparison['count_leader']} ({regional_comparison['count_difference']} sales difference)
 
             Please provide strategic insights and recommendations based on this data."""
 

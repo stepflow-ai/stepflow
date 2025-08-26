@@ -120,7 +120,7 @@ pub async fn debug_continue(
     let state_store = executor.state_store();
     let status = match &final_result {
         FlowResult::Success(_) => ExecutionStatus::Completed,
-        FlowResult::Failed(_) | FlowResult::Skipped => ExecutionStatus::Failed,
+        FlowResult::Failed(_) | FlowResult::Skipped { .. } => ExecutionStatus::Failed,
     };
 
     state_store.update_run_status(run_id, status, None).await?;

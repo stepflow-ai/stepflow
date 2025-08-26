@@ -169,7 +169,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                         .into());
                     }
                 }
-                FlowResult::Skipped => FlowResult::Skipped,
+                FlowResult::Skipped { reason: _ } => FlowResult::Skipped { reason: None },
                 other => other,
             }
         } else {
@@ -180,7 +180,7 @@ impl<L: ValueLoader> ValueResolver<L> {
         // NOTE: Skip actions are applied after path resolution.
         match path_result {
             FlowResult::Success(result) => Ok(FlowResult::Success(result)),
-            FlowResult::Skipped => {
+            FlowResult::Skipped { reason } => {
                 match expr.on_skip() {
                     Some(SkipAction::UseDefault { default_value }) => {
                         let default = default_value
@@ -191,7 +191,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                     }
                     _ => {
                         // No on_skip action specified - propagate the skip
-                        Ok(FlowResult::Skipped)
+                        Ok(FlowResult::Skipped { reason })
                     }
                 }
             }
@@ -230,8 +230,8 @@ impl<L: ValueLoader> ValueResolver<L> {
                         FlowResult::Success(result) => {
                             result_array.push(result.as_ref().clone());
                         }
-                        FlowResult::Skipped => {
-                            return Ok(FlowResult::Skipped);
+                        FlowResult::Skipped { reason } => {
+                            return Ok(FlowResult::Skipped { reason });
                         }
                         FlowResult::Failed(error) => {
                             return Ok(FlowResult::Failed(error));
@@ -250,8 +250,8 @@ impl<L: ValueLoader> ValueResolver<L> {
                         FlowResult::Success(result) => {
                             result_map.insert(k.clone(), result.as_ref().clone());
                         }
-                        FlowResult::Skipped => {
-                            return Ok(FlowResult::Skipped);
+                        FlowResult::Skipped { reason } => {
+                            return Ok(FlowResult::Skipped { reason });
                         }
                         FlowResult::Failed(error) => {
                             return Ok(FlowResult::Failed(error));

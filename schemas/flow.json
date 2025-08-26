@@ -673,6 +673,10 @@
           "title": "FlowOutcome",
           "const": "skipped",
           "default": "skipped"
+        },
+        "reason": {
+          "description": "Optional reason for why the step was skipped.",
+          "type": "string"
         }
       },
       "required": [
