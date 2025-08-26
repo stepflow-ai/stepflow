@@ -5,6 +5,10 @@ on:
     types: [closed]
     branches: [main]
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   dispatch-rust-release:
     name: Dispatch Rust Release Build
@@ -27,12 +31,12 @@ jobs:
           echo "Extracted version: $VERSION"
 
       - name: Dispatch release build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/dispatches \
-            -d '{"event_type":"build-release","client_payload":{"version":"${{ steps.version.outputs.version }}","tag":"${{ steps.version.outputs.tag }}"}}'
+          gh workflow run "Release - Rust" \
+            --field version="${{ steps.version.outputs.version }}" \
+            --field skip_tag_creation=false
 
       - name: Summary
         run: |
@@ -69,12 +73,12 @@ jobs:
           echo "Extracted version: $VERSION"
 
       - name: Dispatch Python release build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/dispatches \
-            -d '{"event_type":"build-python-release","client_payload":{"version":"${{ steps.version.outputs.version }}","tag":"${{ steps.version.outputs.tag }}"}}'
+          gh workflow run "Release - Python SDK" \
+            --field version="${{ steps.version.outputs.version }}" \
+            --field skip_tag_creation=false
 
       - name: Summary
         run: |
