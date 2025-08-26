@@ -1,0 +1,5 @@
+{
+  "topic": "LangChain Integration Patterns",
+  "initial_context": "LangChain has emerged as a powerful framework for building applications with Large Language Models (LLMs). When integrated with workflow orchestration systems like Stepflow, it enables sophisticated AI pipelines that can process, analyze, and generate content at scale. The integration supports multiple patterns: decorated components for reusable AI modules, named runnables for dynamic invocation, and user-defined functions for maximum flexibility. Each pattern serves different use cases - decorated components excel at stable, production-ready AI services, named runnables provide modularity and code reuse, while UDFs enable rapid prototyping and experimentation. The key to successful integration lies in understanding the bidirectional communication between the orchestrator and AI components, proper type safety through schema validation, and efficient state management across workflow steps.",
+  "output_dir": "/tmp/research/langchain"
+}

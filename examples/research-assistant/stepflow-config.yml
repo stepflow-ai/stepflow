@@ -1,0 +1,51 @@
+# Stepflow configuration for Research Assistant
+# This configuration sets up both LangChain and MCP plugins
+
+plugins:
+  # Built-in components
+  builtin:
+    type: builtin
+
+  # Research components via LangChain
+  research:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args:
+      - "--project"
+      - "../../sdks/python"
+      - "run"
+      - "--extra"
+      - "langchain"
+      - "python"
+      - "research_server.py"
+    env:
+      PYTHONPATH: "${PWD}:${PYTHONPATH}"
+
+  # MCP Filesystem server for file operations
+  filesystem:
+    type: mcp
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "/tmp"
+    env:
+      MCP_STRICT_MODE: "false"
+
+routes:
+  # Route research components to the research server
+  "/research/{*component}":
+    - plugin: research
+  
+  # Route filesystem operations to MCP server
+  "/filesystem/{*component}":
+    - plugin: filesystem
+  
+  # Fallback to builtin components
+  "/{*component}":
+    - plugin: builtin
+
+# Optional: State store configuration
+stateStore:
+  type: inMemory
