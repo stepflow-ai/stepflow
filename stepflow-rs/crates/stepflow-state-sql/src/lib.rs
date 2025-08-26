@@ -25,7 +25,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::values::ValueTemplate;
-    use stepflow_core::workflow::FlowV1;
+    use stepflow_core::workflow::{FlowBuilder, StepBuilder};
     use stepflow_core::{BlobType, FlowResult, workflow::ValueRef};
     use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
@@ -56,27 +56,15 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         // First store a workflow
-        let flow = stepflow_core::workflow::Flow::V1(FlowV1 {
-            name: None,
-            description: None,
-            input_schema: None,
-            output_schema: None,
-            output: ValueTemplate::empty_object(),
-            steps: vec![stepflow_core::workflow::Step {
-                id: "test_step".to_string(),
-                component: stepflow_core::workflow::Component::from_string("/test/mock"),
-                input: ValueTemplate::empty_object(),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: stepflow_core::workflow::ErrorAction::Fail,
-                metadata: std::collections::HashMap::new(),
-            }],
-            version: None,
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+        let flow = FlowBuilder::new()
+            .output(ValueTemplate::empty_object())
+            .step(
+                StepBuilder::new("test_step")
+                    .component("/test/mock")
+                    .input(ValueTemplate::empty_object())
+                    .build(),
+            )
+            .build();
         let flow_arc = std::sync::Arc::new(flow);
         let flow_data = ValueRef::new(serde_json::to_value(flow_arc.as_ref()).unwrap());
         let flow_id = store.put_blob(flow_data, BlobType::Flow).await.unwrap();

@@ -54,13 +54,13 @@ Options:
 
       --format <FORMAT>
           Output format for the visualization
-          
-          [default: svg]
 
           Possible values:
           - dot: DOT graph format
           - svg: SVG image format
           - png: PNG image format
+          
+          [default: svg]
 
       --log-file <FILE>
           Write logs to a file instead of stderr

@@ -195,55 +195,24 @@ mod tests {
     use super::*;
     use crate::dependencies::ValueDependencies;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, JsonPath, Step};
+    use stepflow_core::workflow::{Flow, FlowBuilder, JsonPath, Step, StepBuilder};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
-        Step {
-            id: id.to_string(),
-            component: Component::from_string("/mock/test"),
-            input: ValueTemplate::parse_value(input).unwrap(),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::Fail,
-            metadata: std::collections::HashMap::new(),
-        }
+        StepBuilder::mock_step(id).input_json(input).build()
     }
 
     fn create_test_flow() -> Flow {
-        Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![
-                Step {
-                    id: "step1".to_string(),
-                    component: Component::from_string("/mock/test"),
-                    input: ValueTemplate::workflow_input(JsonPath::default()),
-                    input_schema: None,
-                    output_schema: None,
-                    skip_if: None,
-                    on_error: ErrorAction::Fail,
-                    metadata: std::collections::HashMap::new(),
-                },
-                Step {
-                    id: "step2".to_string(),
-                    component: Component::from_string("/mock/test"),
-                    input: ValueTemplate::step_ref("step1", JsonPath::default()),
-                    input_schema: None,
-                    output_schema: None,
-                    skip_if: None,
-                    on_error: ErrorAction::Fail,
-                    metadata: std::collections::HashMap::new(),
-                },
-            ],
-            output: ValueTemplate::step_ref("step2", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        })
+        FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::mock_step("step1")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step2")
+                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
+                    .build(),
+            ])
+            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .build()
     }
 
     #[test]
@@ -428,21 +397,14 @@ mod tests {
 
     #[test]
     fn test_new_validation_api_invalid_workflow() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("invalid_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![
+        let flow = FlowBuilder::new()
+            .name("invalid_workflow")
+            .steps(vec![
                 create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
-            ],
-            output: ValueTemplate::step_ref("step1", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+            ])
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
 
         let result = analyze_flow_dependencies(
             Arc::new(flow),

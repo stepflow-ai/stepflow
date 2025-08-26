@@ -86,8 +86,7 @@ impl Default for ErrorAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::Component;
-    use crate::workflow::ValueRef;
+    use crate::workflow::{StepBuilder, ValueRef};
 
     #[test]
     fn test_error_action_serialization() {
@@ -146,18 +145,13 @@ mod tests {
 
     #[test]
     fn test_step_serialization_with_error_action() {
-        let step = Step {
-            id: "test_step".to_string(),
-            component: Component::from_string("/mock/test_component"),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::UseDefault {
+        let step = StepBuilder::new("test_step")
+            .component("/mock/test_component")
+            .on_error(ErrorAction::UseDefault {
                 default_value: Some(ValueRef::from("fallback").into()),
-            },
-            input: ValueTemplate::null(),
-            metadata: HashMap::default(),
-        };
+            })
+            .input(ValueTemplate::null())
+            .build();
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
         assert!(yaml.contains("onError:"));
@@ -167,16 +161,10 @@ mod tests {
 
     #[test]
     fn test_step_default_error_action_not_serialized() {
-        let step = Step {
-            id: "test_step".to_string(),
-            component: Component::from_string("/mock/test_component"),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::Fail,
-            input: ValueTemplate::null(),
-            metadata: HashMap::default(),
-        };
+        let step = StepBuilder::new("test_step")
+            .component("/mock/test_component")
+            .input(ValueTemplate::null())
+            .build();
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
         assert!(!yaml.contains("on_error:"));
