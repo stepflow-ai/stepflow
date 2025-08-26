@@ -163,6 +163,12 @@ class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'
 
 class FlowResultSkipped(Struct, kw_only=True, tag_field='outcome', tag='skipped'):
     outcome: ClassVar[Annotated[Literal['skipped'], Meta(title='FlowOutcome')]]
+    reason: (
+        Annotated[
+            str, Meta(description='Optional reason for why the step was skipped.')
+        ]
+        | None
+    ) = None
 
 
 class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):

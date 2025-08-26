@@ -17,7 +17,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import StepflowValueError
+from stepflow_py.exceptions import SkipStep, StepflowValueError
 from stepflow_py.udf import UdfCompilationError, _compile_function, _InputWrapper
 
 
@@ -398,6 +398,167 @@ word_count = len(words)
 
 
 @pytest.mark.asyncio
+async def test_skip_step_exception_propagation(mock_context):
+    """Test that SkipStep exceptions are properly propagated through UDF execution."""
+    # Simple lambda expression that raises SkipStep
+    code = "raise SkipStep('Test skip condition')"
+    
+    schema = {
+        "type": "object",
+        "properties": {"test": {"type": "string"}},
+        "required": ["test"],
+    }
+    
+    func = _compile_function(code, schema)
+    test_input = {"test": "value"}
+    
+    with pytest.raises(SkipStep) as exc_info:
+        await func(test_input, context=mock_context)
+    
+    # Verify the exception has the expected message
+    assert str(exc_info.value) == "Test skip condition"
+    assert exc_info.value.message == "Test skip condition"
+
+
+@pytest.mark.asyncio
+async def test_skip_step_in_function_body(mock_context):
+    """Test that SkipStep can be raised from function body code."""
+    code = """
+if input.should_skip:
+    raise SkipStep("Skipping due to input condition")
+return input.value * 2
+"""
+    
+    schema = {
+        "type": "object",
+        "properties": {
+            "should_skip": {"type": "boolean"},
+            "value": {"type": "integer"}
+        },
+        "required": ["should_skip", "value"],
+    }
+    
+    func = _compile_function(code, schema)
+    
+    # Test skip condition
+    skip_input = {"should_skip": True, "value": 5}
+    with pytest.raises(SkipStep) as exc_info:
+        await func(skip_input, context=mock_context)
+    assert str(exc_info.value) == "Skipping due to input condition"
+    
+    # Test normal execution
+    normal_input = {"should_skip": False, "value": 5}
+    result = await func(normal_input, context=mock_context)
+    assert result == 10
+
+
+@pytest.mark.asyncio
+async def test_skip_step_in_sync_function(mock_context):
+    """Test that SkipStep works with sync function definitions."""
+    code = """
+def my_func(input, context):
+    if input.skip_me:
+        raise SkipStep(f"Skipping for session {context.session_id}")
+    return input.data
+my_func
+"""
+    
+    schema = {
+        "type": "object",
+        "properties": {
+            "skip_me": {"type": "boolean"},
+            "data": {"type": "string"}
+        },
+        "required": ["skip_me", "data"],
+    }
+    
+    func = _compile_function(code, schema)
+    
+    # Test skip condition
+    skip_input = {"skip_me": True, "data": "test"}
+    with pytest.raises(SkipStep) as exc_info:
+        await func(skip_input, context=mock_context)
+    assert "test_session" in str(exc_info.value)
+    
+    # Test normal execution  
+    normal_input = {"skip_me": False, "data": "test"}
+    result = await func(normal_input, context=mock_context)
+    assert result == "test"
+
+
+@pytest.mark.asyncio
+async def test_skip_step_in_async_function(mock_context):
+    """Test that SkipStep works with async function definitions."""
+    code = """
+async def my_func(input):
+    if input.condition == "skip":
+        raise SkipStep("Async function skip")
+    return {"processed": input.condition}
+my_func
+"""
+    
+    schema = {
+        "type": "object",
+        "properties": {"condition": {"type": "string"}},
+        "required": ["condition"],
+    }
+    
+    func = _compile_function(code, schema)
+    
+    # Test skip condition
+    skip_input = {"condition": "skip"}
+    with pytest.raises(SkipStep) as exc_info:
+        await func(skip_input, context=mock_context)
+    assert str(exc_info.value) == "Async function skip"
+    
+    # Test normal execution
+    normal_input = {"condition": "continue"}
+    result = await func(normal_input, context=mock_context)
+    assert result == {"processed": "continue"}
+
+
+@pytest.mark.asyncio
+async def test_skip_step_with_langchain_runnable(mock_context):
+    """Test that SkipStep works with LangChain runnable patterns."""
+    pytest.importorskip("langchain_core")
+    
+    code = '''
+from langchain_core.runnables import RunnableLambda
+
+def conditional_processor(data):
+    """Process data or skip based on condition."""
+    if data.get("should_skip", False):
+        raise SkipStep("Runnable requested skip")
+    
+    return {"result": f"Processed: {data['text']}"}
+
+return RunnableLambda(conditional_processor)
+'''
+    
+    schema = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "should_skip": {"type": "boolean"}
+        },
+        "required": ["text"],
+    }
+    
+    func = _compile_function(code, schema)
+    
+    # Test skip condition
+    skip_input = {"text": "hello", "should_skip": True}
+    with pytest.raises(SkipStep) as exc_info:
+        await func(skip_input, context=mock_context)
+    assert str(exc_info.value) == "Runnable requested skip"
+    
+    # Test normal execution
+    normal_input = {"text": "hello", "should_skip": False}
+    result = await func(normal_input, context=mock_context)
+    assert result == {"result": "Processed: hello"}
+
+
+@pytest.mark.asyncio
 async def test_udf_compilation_error_includes_blob_context():
     """
     Test that UdfCompilationError includes blob_id context when called through udf().
@@ -424,3 +585,32 @@ async def test_udf_compilation_error_includes_blob_context():
     assert error.blob_id == test_blob_id
     assert error.data["blob_id"] == test_blob_id
     assert f"Blob '{test_blob_id}'" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_skip_step_through_udf_function():
+    """Test that SkipStep propagates correctly through the full udf() function."""
+    from stepflow_py.udf import UdfInput, udf
+    
+    # Create a mock context that returns blob with skip code
+    async def mock_get_blob(self, blob_id):
+        return {
+            "code": "raise SkipStep('UDF function skip test')",
+            "input_schema": {
+                "type": "object", 
+                "properties": {"test": {"type": "string"}},
+                "required": ["test"]
+            },
+        }
+    
+    mock_context = type("MockContext", (), {"get_blob": mock_get_blob})()
+    
+    test_blob_id = "test_skip_blob_123"
+    udf_input = UdfInput(blob_id=test_blob_id, input={"test": "value"})
+    
+    with pytest.raises(SkipStep) as exc_info:
+        await udf(udf_input, mock_context)
+    
+    # Verify the exception propagated correctly
+    assert str(exc_info.value) == "UDF function skip test"
+    assert exc_info.value.message == "UDF function skip test"

@@ -62,7 +62,10 @@ pub enum FlowResult {
     Success(ValueRef),
     /// # Skipped
     /// The step was skipped.
-    Skipped,
+    Skipped {
+        /// Optional reason for why the step was skipped.
+        reason: Option<Cow<'static, str>>,
+    },
     /// # Failed
     /// The step failed with the given error.
     Failed(FlowError),
@@ -82,9 +85,13 @@ impl Serialize for FlowResult {
                 state.serialize_field("result", result)?;
                 state.end()
             }
-            FlowResult::Skipped => {
-                let mut state = serializer.serialize_struct("FlowResult", 1)?;
+            FlowResult::Skipped { reason } => {
+                let field_count = if reason.is_some() { 2 } else { 1 };
+                let mut state = serializer.serialize_struct("FlowResult", field_count)?;
                 state.serialize_field("outcome", "skipped")?;
+                if let Some(reason) = reason {
+                    state.serialize_field("reason", reason)?;
+                }
                 state.end()
             }
             FlowResult::Failed(error) => {
@@ -118,7 +125,13 @@ impl<'de> Deserialize<'de> for FlowResult {
                 let result_ref = ValueRef::new(result.clone());
                 Ok(FlowResult::Success(result_ref))
             }
-            "skipped" => Ok(FlowResult::Skipped),
+            "skipped" => {
+                let reason = value
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| Cow::Owned(s.to_string()));
+                Ok(FlowResult::Skipped { reason })
+            }
             "failed" => {
                 let error = FlowError::deserialize(
                     value
@@ -169,6 +182,10 @@ impl JsonSchema for FlowResult {
                         "title": "FlowOutcome",
                         "const": "skipped",
                         "default": "skipped"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Optional reason for why the step was skipped."
                     },
                 },
                 "required": ["outcome"],
@@ -226,7 +243,7 @@ impl FlowResult {
     }
 
     pub fn skipped(&self) -> bool {
-        matches!(self, Self::Skipped)
+        matches!(self, Self::Skipped { .. })
     }
 
     pub fn failed(&self) -> Option<&FlowError> {

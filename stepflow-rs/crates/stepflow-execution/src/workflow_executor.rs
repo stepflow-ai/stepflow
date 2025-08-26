@@ -566,7 +566,7 @@ impl WorkflowExecutor {
             {
                 Ok(result) => match result {
                     FlowResult::Success(_) => StepStatus::Completed,
-                    FlowResult::Skipped => StepStatus::Skipped,
+                    FlowResult::Skipped { .. } => StepStatus::Skipped,
                     FlowResult::Failed { .. } => StepStatus::Failed,
                 },
                 Err(_) => StepStatus::Blocked,
@@ -607,7 +607,7 @@ impl WorkflowExecutor {
         if let Some(skip_if) = &step.skip_if
             && self.should_skip_step(skip_if).await?
         {
-            let result = FlowResult::Skipped;
+            let result = FlowResult::Skipped { reason: None };
             self.record_step_completion(step_index, &result).await?;
             return Ok(StepExecutionResult::new(
                 step_index,
@@ -625,9 +625,9 @@ impl WorkflowExecutor {
             .change_context(ExecutionError::ValueResolverFailure)?
         {
             FlowResult::Success(result) => result,
-            FlowResult::Skipped => {
+            FlowResult::Skipped { .. } => {
                 // Step inputs contain skipped values - skip this step
-                let result = FlowResult::Skipped;
+                let result = FlowResult::Skipped { reason: None };
                 self.record_step_completion(step_index, &result).await?;
                 return Ok(StepExecutionResult::new(
                     step_index,
@@ -787,7 +787,7 @@ impl WorkflowExecutor {
                     .change_context(ExecutionError::ValueResolverFailure)?;
                 let step_input = match step_input {
                     FlowResult::Success(result) => result,
-                    FlowResult::Skipped => {
+                    FlowResult::Skipped { .. } => {
                         // Step inputs contain skipped values - propagate the skip
                         additional_unblocked
                             .union_with(&self.skip_step(&step_id, step_index).await?);
@@ -821,7 +821,7 @@ impl WorkflowExecutor {
         tracing::debug!("Skipping step {} at index {}", step_id, step_index);
 
         let newly_unblocked_from_skip = self.tracker.complete_step(step_index);
-        let skip_result = FlowResult::Skipped;
+        let skip_result = FlowResult::Skipped { reason: None };
 
         // Cache the skipped result before writing to state store
         self.write_cache
@@ -927,7 +927,7 @@ pub(crate) async fn execute_step_async(
                         step.id,
                         error
                     );
-                    Ok(FlowResult::Skipped)
+                    Ok(FlowResult::Skipped { reason: None })
                 }
                 stepflow_core::workflow::ErrorAction::UseDefault { default_value } => {
                     tracing::debug!(
@@ -946,7 +946,7 @@ pub(crate) async fn execute_step_async(
                         .change_context(ExecutionError::ValueResolverFailure)?;
                     match default_value {
                         FlowResult::Success(result) => Ok(FlowResult::Success(result)),
-                        FlowResult::Skipped => {
+                        FlowResult::Skipped { .. } => {
                             // Default value resolved to skipped - treat as null
                             Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
                         }
@@ -1789,7 +1789,7 @@ output:
 
         // The workflow should complete with skipped result
         match result {
-            FlowResult::Skipped => {
+            FlowResult::Skipped { .. } => {
                 // Expected - the step failed but was configured to skip
             }
             _ => panic!("Expected skipped result, got: {result:?}"),
@@ -1968,7 +1968,7 @@ output:
 
         // The downstream step should skip because its input depends on a skipped step
         match result {
-            FlowResult::Skipped => {
+            FlowResult::Skipped { .. } => {
                 // Expected - the downstream step should be skipped when its input is skipped
             }
             _ => panic!("Expected skipped result for downstream step, got: {result:?}"),

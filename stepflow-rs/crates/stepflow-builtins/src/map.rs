@@ -117,7 +117,7 @@ impl BuiltinComponent for MapComponent {
             match result {
                 FlowResult::Success(_) => successful += 1,
                 FlowResult::Failed { .. } => failed += 1,
-                FlowResult::Skipped => skipped += 1,
+                FlowResult::Skipped { .. } => skipped += 1,
             }
         }
 

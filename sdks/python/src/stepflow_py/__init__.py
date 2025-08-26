@@ -13,6 +13,7 @@
 # the License.
 
 from .context import StepflowContext
+from .exceptions import SkipStep
 from .flow_builder import FlowBuilder, StepHandle
 from .generated_flow import (
     ErrorAction,
@@ -34,6 +35,8 @@ __all__ = [
     "StepflowStdioServer",
     "StepflowContext",
     "FlowBuilder",
+    # Exceptions
+    "SkipStep",
     # Value API for cleaner workflow definitions
     "Value",
     "Valuable",
