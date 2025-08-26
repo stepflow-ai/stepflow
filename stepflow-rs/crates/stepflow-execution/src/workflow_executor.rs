@@ -1020,7 +1020,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::FlowError;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, Step, StepId};
+    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, Step, StepId, FlowBuilder, StepBuilder, ValueTemplate, JsonPath};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
@@ -1120,31 +1120,16 @@ mod tests {
     }
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
-        Step {
-            id: id.to_string(),
-            component: Component::from_string("/mock/test"),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::Fail,
-            input: ValueTemplate::parse_value(input).unwrap(),
-            metadata: std::collections::HashMap::new(),
-        }
+        StepBuilder::mock_step(id)
+            .input_json(input)
+            .build()
     }
 
     fn create_test_flow(steps: Vec<Step>, output: ValueTemplate) -> Flow {
-        Flow::V1(FlowV1 {
-            name: None,
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps,
-            output,
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        })
+        FlowBuilder::new()
+            .steps(steps)
+            .output(output)
+            .build()
     }
 
     #[tokio::test]

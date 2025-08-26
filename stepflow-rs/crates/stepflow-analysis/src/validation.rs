@@ -355,38 +355,24 @@ mod tests {
     use super::*;
     use crate::diagnostics::DiagnosticMessage;
     use serde_json::json;
-    use stepflow_core::workflow::{Component, ErrorAction, Flow, FlowV1, JsonPath, Step};
+    use stepflow_core::workflow::{Flow, FlowV1, JsonPath, Step, FlowBuilder, StepBuilder};
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
-        Step {
-            id: id.to_string(),
-            component: Component::from_string("/mock/test"),
-            input: serde_json::from_value(input).unwrap(),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::Fail,
-            metadata: std::collections::HashMap::new(),
-        }
+        StepBuilder::mock_step(id)
+            .input_json(input)
+            .build()
     }
 
     #[test]
     fn test_valid_workflow() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: Some("A test workflow".to_string()),
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![
+        let flow = FlowBuilder::test_flow()
+            .description("A test workflow")
+            .steps(vec![
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step2", json!({"$from": {"step": "step1"}})),
-            ],
-            output: ValueTemplate::step_ref("step2", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+            ])
+            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -395,21 +381,13 @@ mod tests {
 
     #[test]
     fn test_forward_reference_error() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
                 create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
                 create_test_step("step2", json!({"$from": {"workflow": "input"}})),
-            ],
-            output: ValueTemplate::step_ref("step2", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+            ])
+            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -424,21 +402,13 @@ mod tests {
 
     #[test]
     fn test_duplicate_step_ids() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
-            ],
-            output: ValueTemplate::step_ref("step1", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+            ])
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -453,21 +423,13 @@ mod tests {
 
     #[test]
     fn test_self_reference() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![create_test_step(
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![create_test_step(
                 "step1",
                 json!({"$from": {"step": "step1"}}),
-            )],
-            output: ValueTemplate::step_ref("step1", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+            )])
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
@@ -482,21 +444,13 @@ mod tests {
 
     #[test]
     fn test_unreachable_step() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
                 create_test_step("step1", json!({"$from": {"workflow": "input"}})),
                 create_test_step("step2", json!({"$from": {"workflow": "input"}})), // Not referenced
-            ],
-            output: ValueTemplate::step_ref("step1", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+            ])
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (_fatal, _error, warning) = diagnostics.counts();
@@ -511,21 +465,13 @@ mod tests {
 
     #[test]
     fn test_workflow_with_no_name_and_description() {
-        let flow = Flow::V1(FlowV1 {
-            name: None,        // Missing name
-            description: None, // Missing description
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![create_test_step(
+        let flow = FlowBuilder::new() // No name/description
+            .steps(vec![create_test_step(
                 "step1",
                 json!({"$from": {"workflow": "input"}}),
-            )],
-            output: ValueTemplate::step_ref("step1", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+            )])
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, _error, warning) = diagnostics.counts();
@@ -547,27 +493,13 @@ mod tests {
 
     #[test]
     fn test_empty_component_name() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![Step {
-                id: "step1".to_string(),
-                component: Component::from_string(""), // Empty builtin name
-                input: ValueTemplate::workflow_input(JsonPath::default()),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                metadata: std::collections::HashMap::new(),
-            }],
-            output: ValueTemplate::step_ref("step1", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+        let flow = FlowBuilder::test_flow()
+            .step(StepBuilder::new("step1")
+                .component("") // Empty builtin name
+                .input(ValueTemplate::workflow_input(JsonPath::default()))
+                .build())
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
@@ -583,27 +515,12 @@ mod tests {
 
     #[test]
     fn test_valid_builtin_component() {
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_workflow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![Step {
-                id: "step1".to_string(),
-                component: Component::from_string("/builtin/eval"), // Valid builtin
-                input: ValueTemplate::workflow_input(JsonPath::default()),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                metadata: std::collections::HashMap::new(),
-            }],
-            output: ValueTemplate::step_ref("step1", JsonPath::default()),
-            test: None,
-            examples: None,
-            metadata: std::collections::HashMap::new(),
-        });
+        let flow = FlowBuilder::test_flow()
+            .step(StepBuilder::builtin_step("step1", "eval")
+                .input(ValueTemplate::workflow_input(JsonPath::default()))
+                .build())
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
 
         let diagnostics = validate_workflow(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();

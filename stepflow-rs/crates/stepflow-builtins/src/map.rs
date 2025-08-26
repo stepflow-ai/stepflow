@@ -139,21 +139,19 @@ mod tests {
     use super::*;
     use crate::mock_context::MockContext;
     use stepflow_core::values::ValueTemplate;
-    use stepflow_core::workflow::FlowV1;
+    use stepflow_core::workflow::FlowBuilder;
 
     #[tokio::test]
     async fn test_map_component_success() {
         let component = MapComponent::new();
 
         // Create a workflow that doubles the input value
-        let test_flow = Flow::V1(FlowV1 {
-            name: Some("test-double".to_string()),
-            steps: vec![],
-            output: ValueTemplate::literal(serde_json::json!({
+        let test_flow = FlowBuilder::new()
+            .name("test-double")
+            .output(ValueTemplate::literal(serde_json::json!({
                 "doubled": 42
-            })),
-            ..Default::default()
-        });
+            })))
+            .build();
 
         let input = MapInput {
             workflow: test_flow,
@@ -188,12 +186,10 @@ mod tests {
     async fn test_map_component_empty_list() {
         let component = MapComponent::new();
 
-        let test_flow = Flow::V1(FlowV1 {
-            name: Some("test-empty".to_string()),
-            steps: vec![],
-            output: ValueTemplate::literal(serde_json::json!({"result": "processed"})),
-            ..Default::default()
-        });
+        let test_flow = FlowBuilder::new()
+            .name("test-empty")
+            .output(ValueTemplate::literal(serde_json::json!({"result": "processed"})))
+            .build();
 
         let input = MapInput {
             workflow: test_flow,

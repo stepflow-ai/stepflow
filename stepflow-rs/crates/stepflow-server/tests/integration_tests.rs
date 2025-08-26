@@ -19,7 +19,7 @@ use stepflow_core::values::ValueTemplate;
 use stepflow_core::workflow::FlowV1;
 use stepflow_core::{
     FlowResult,
-    workflow::{Component, ErrorAction, Flow, Step},
+    workflow::{Component, ErrorAction, Flow, Step, FlowBuilder, StepBuilder},
 };
 use stepflow_execution::StepflowExecutor;
 use stepflow_mock::MockPlugin;
@@ -165,29 +165,14 @@ async fn create_test_server_with_mocks() -> (Router, Arc<StepflowExecutor>) {
 
 /// Helper to create a simple test workflow
 fn create_test_workflow() -> Flow {
-    Flow::V1(FlowV1 {
-        name: Some("test_workflow".to_string()),
-        description: Some("Test workflow for integration testing".to_string()),
-        version: None,
-        input_schema: None,
-        output_schema: None,
-        steps: vec![Step {
-            id: "test_step".to_string(),
-            component: Component::from_string("/builtin/create_messages"),
-            input: ValueTemplate::literal(json!({
+    FlowBuilder::test_flow()
+        .description("Test workflow for integration testing")
+        .step(StepBuilder::builtin_step("test_step", "create_messages")
+            .input_literal(json!({
                 "user_prompt": "Hello from test"
-            })),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::Fail,
-            metadata: std::collections::HashMap::new(),
-        }],
-        output: ValueTemplate::default(),
-        test: None,
-        examples: None,
-        metadata: std::collections::HashMap::new(),
-    })
+            }))
+            .build())
+        .build()
 }
 
 #[tokio::test]
@@ -550,49 +535,30 @@ async fn test_status_updates_during_regular_execution() {
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow for regular execution status testing
-    let workflow = Flow::V1(FlowV1 {
-        name: Some("status_test_workflow".to_string()),
-        description: Some("Test workflow for status tracking".to_string()),
-        version: None,
-        input_schema: None,
-        output_schema: None,
-        steps: vec![
-            Step {
-                id: "step1".to_string(),
-                component: Component::from_string("/mock/one_output"),
-                input: ValueTemplate::parse_value(json!({"input": "first_step"})).unwrap(),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                metadata: std::collections::HashMap::new(),
-            },
-            Step {
-                id: "step2".to_string(),
-                component: Component::from_string("/mock/two_outputs"),
-                input: ValueTemplate::parse_value(json!({
+    let workflow = FlowBuilder::new()
+        .name("status_test_workflow")
+        .description("Test workflow for status tracking")
+        .steps(vec![
+            StepBuilder::new("step1")
+                .component("/mock/one_output")
+                .input_json(json!({"input": "first_step"}))
+                .build(),
+            StepBuilder::new("step2")
+                .component("/mock/two_outputs")
+                .input_json(json!({
                     "input": {
                         "$from": {"step": "step1"},
                         "path": "output"
                     }
                 }))
-                .unwrap(),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                metadata: std::collections::HashMap::new(),
-            },
-        ],
-        output: ValueTemplate::parse_value(json!({
+                .build(),
+        ])
+        .output(ValueTemplate::parse_value(json!({
             "step1_result": {"$from": {"step": "step1"}, "path": "output"},
             "step2_result": {"$from": {"step": "step2"}, "path": "x"}
         }))
-        .unwrap(),
-        test: None,
-        examples: None,
-        metadata: std::collections::HashMap::new(),
-    });
+        .unwrap())
+        .build();
 
     // Store the workflow
     let store_request = Request::builder()
@@ -676,48 +642,29 @@ async fn test_status_updates_during_debug_execution() {
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow for debug execution status testing
-    let workflow = Flow::V1(FlowV1 {
-        name: Some("debug_status_test".to_string()),
-        description: Some("Test workflow for debug status tracking".to_string()),
-        version: None,
-        input_schema: None,
-        output_schema: None,
-        steps: vec![
-            Step {
-                id: "step1".to_string(),
-                component: Component::from_string("/mock/one_output"),
-                input: ValueTemplate::parse_value(json!({"input": "debug_step"})).unwrap(),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                metadata: std::collections::HashMap::new(),
-            },
-            Step {
-                id: "step2".to_string(),
-                component: Component::from_string("/mock/two_outputs"),
-                input: ValueTemplate::parse_value(json!({
+    let workflow = FlowBuilder::new()
+        .name("debug_status_test")
+        .description("Test workflow for debug status tracking")
+        .steps(vec![
+            StepBuilder::new("step1")
+                .component("/mock/one_output")
+                .input_json(json!({"input": "debug_step"}))
+                .build(),
+            StepBuilder::new("step2")
+                .component("/mock/two_outputs")
+                .input_json(json!({
                     "input": {
                         "$from": {"step": "step1"},
                         "path": "output"
                     }
                 }))
-                .unwrap(),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                metadata: std::collections::HashMap::new(),
-            },
-        ],
-        output: ValueTemplate::parse_value(json!({
+                .build(),
+        ])
+        .output(ValueTemplate::parse_value(json!({
             "result": {"$from": {"step": "step2"}, "path": "x"}
         }))
-        .unwrap(),
-        test: None,
-        examples: None,
-        metadata: std::collections::HashMap::new(),
-    });
+        .unwrap())
+        .build();
 
     // Store the workflow
     let store_request = Request::builder()
@@ -817,30 +764,18 @@ async fn test_status_transitions_with_error_handling() {
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow for error status testing
-    let workflow = Flow::V1(FlowV1 {
-        name: Some("error_status_test".to_string()),
-        description: Some("Test workflow for error status tracking".to_string()),
-        version: None,
-        input_schema: None,
-        output_schema: None,
-        steps: vec![Step {
-            id: "failing_step".to_string(),
-            component: Component::from_string("/mock/error_component"),
-            input: ValueTemplate::literal(json!({"input": "trigger_error"})),
-            input_schema: None,
-            output_schema: None,
-            skip_if: None,
-            on_error: ErrorAction::Fail,
-            metadata: std::collections::HashMap::new(),
-        }],
-        output: ValueTemplate::parse_value(json!({
+    let workflow = FlowBuilder::new()
+        .name("error_status_test")
+        .description("Test workflow for error status tracking")
+        .step(StepBuilder::new("failing_step")
+            .component("/mock/error_component")
+            .input_literal(json!({"input": "trigger_error"}))
+            .build())
+        .output(ValueTemplate::parse_value(json!({
             "result": {"$from": {"step": "failing_step"}, "path": "output"}
         }))
-        .unwrap(),
-        test: None,
-        examples: None,
-        metadata: std::collections::HashMap::new(),
-    });
+        .unwrap())
+        .build();
 
     // Store the workflow
     let store_request = Request::builder()

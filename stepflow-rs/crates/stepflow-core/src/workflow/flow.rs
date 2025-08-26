@@ -427,7 +427,7 @@ impl From<&TestCase> for ExampleInput {
 
 #[cfg(test)]
 mod tests {
-    use crate::workflow::{Component, ErrorAction, Step};
+    use crate::workflow::{Component, ErrorAction, Step, FlowBuilder, StepBuilder};
 
     use super::*;
 
@@ -499,46 +499,34 @@ mod tests {
         assert!(!latest.output.is_literal());
 
         // Test full structural equality
-        let expected_flow = FlowV1 {
-            name: Some("test".to_owned()),
-            description: Some("test".to_owned()),
-            version: Some("1.0.0".to_owned()),
-            input_schema: Some(input_schema),
-            output_schema: Some(output_schema),
-            steps: vec![
-                Step {
-                    id: "s1".to_owned(),
-                    component: Component::from_string("/langflow/echo"),
-                    input: ValueTemplate::literal(serde_json::json!({
+        let expected_flow_built = FlowBuilder::new()
+            .name("test")
+            .description("test") 
+            .version("1.0.0")
+            .input_schema(input_schema)
+            .output_schema(output_schema)
+            .steps(vec![
+                StepBuilder::new("s1")
+                    .component("/langflow/echo")
+                    .input_literal(serde_json::json!({
                         "a": "hello world"
-                    })),
-                    input_schema: None,
-                    output_schema: None,
-                    skip_if: None,
-                    on_error: ErrorAction::default(),
-                    metadata: HashMap::default(),
-                },
-                Step {
-                    id: "s2".to_owned(),
-                    component: Component::from_string("/mcp/foo/bar"),
-                    input: ValueTemplate::literal(serde_json::json!({
+                    }))
+                    .build(),
+                StepBuilder::new("s2")
+                    .component("/mcp/foo/bar")
+                    .input_literal(serde_json::json!({
                         "a": "hello world 2"
-                    })),
-                    input_schema: None,
-                    output_schema: None,
-                    skip_if: None,
-                    on_error: ErrorAction::default(),
-                    metadata: HashMap::default(),
-                },
-            ],
-            output: ValueTemplate::parse_value(serde_json::json!({
+                    }))
+                    .build(),
+            ])
+            .output(ValueTemplate::parse_value(serde_json::json!({
                 "s1a": { "$from": { "step": "s1" }, "path": "a" },
                 "s2b": { "$from": { "step": "s2" }, "path": "a" }
-            }))
-            .unwrap(),
-            test: None,
-            examples: None,
-            metadata: HashMap::default(),
+            })).unwrap())
+            .build();
+
+        let expected_flow = match expected_flow_built {
+            Flow::V1(flow_v1) => flow_v1,
         };
 
         similar_asserts::assert_serde_eq!(latest, &expected_flow);
@@ -550,21 +538,15 @@ mod tests {
         use serde_json::json;
 
         // Create a flow with both examples and test cases
-        let flow = Flow::V1(FlowV1 {
-            name: Some("test_flow".to_string()),
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![],
-            output: ValueTemplate::literal(json!({})),
-            examples: Some(vec![ExampleInput {
+        let flow = FlowBuilder::new()
+            .name("test_flow")
+            .output(ValueTemplate::literal(json!({})))
+            .examples(vec![ExampleInput {
                 name: "example1".to_string(),
                 description: Some("Direct example".to_string()),
                 input: ValueRef::new(json!({"input": "example"})),
-            }]),
-            metadata: HashMap::default(),
-            test: Some(TestConfig {
+            }])
+            .test_config(TestConfig {
                 config: None,
                 servers: HashMap::default(),
                 cases: vec![
@@ -581,8 +563,8 @@ mod tests {
                         output: None,
                     },
                 ],
-            }),
-        });
+            })
+            .build();
 
         let all_examples = flow.get_all_examples();
 

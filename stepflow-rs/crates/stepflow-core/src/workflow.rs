@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod builders;
 mod component;
 mod expr;
 mod flow;
@@ -17,6 +18,7 @@ mod json_path;
 mod step;
 mod step_id;
 
+pub use builders::*;
 pub use component::*;
 pub use expr::*;
 pub use flow::*;

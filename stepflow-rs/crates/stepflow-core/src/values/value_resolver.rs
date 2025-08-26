@@ -269,7 +269,7 @@ impl<L: ValueLoader> ValueResolver<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::{Component, ErrorAction, FlowV1, JsonPath, Step};
+    use crate::workflow::JsonPath;
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -317,27 +317,14 @@ mod tests {
     }
 
     fn create_test_flow() -> Arc<Flow> {
-        Arc::new(Flow::V1(FlowV1 {
-            name: None,
-            description: None,
-            version: None,
-            input_schema: None,
-            output_schema: None,
-            steps: vec![Step {
-                id: "step1".to_string(),
-                component: Component::from_string("/mock/test"),
-                input: ValueTemplate::literal(json!({})),
-                input_schema: None,
-                output_schema: None,
-                skip_if: None,
-                on_error: ErrorAction::Fail,
-                metadata: HashMap::default(),
-            }],
-            output: ValueTemplate::literal(json!(null)),
-            test: None,
-            examples: None,
-            metadata: HashMap::default(),
-        }))
+        use crate::workflow::{FlowBuilder, StepBuilder};
+        
+        Arc::new(FlowBuilder::new()
+            .step(StepBuilder::mock_step("step1")
+                .input_literal(json!({}))
+                .build())
+            .output(ValueTemplate::literal(json!(null)))
+            .build())
     }
 
     #[tokio::test]
