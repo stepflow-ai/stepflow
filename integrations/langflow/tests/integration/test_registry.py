@@ -274,12 +274,9 @@ class TestRegistry:
                 input_data={"message": "Hello, world!"},
                 conversion=ConversionExpectation(
                     workflow_name="Simple Chat Example",
-                    step_count=2,
-                    component_types_include=[
-                        "/langflow/udf_executor"
-                    ],  # ChatInput and ChatOutput are now UDF executors
-                    udf_executor_count=2,  # ChatInput, ChatOutput
-                    has_dependencies=True,  # ChatOutput depends on ChatInput
+                    step_count=0,  # ChatInput and ChatOutput are I/O connection points, not processing steps
+                    udf_executor_count=0,  # No UDF executors needed
+                    has_dependencies=False,  # No processing steps means no dependencies
                 ),
                 execution=ExecutionExpectation(
                     result_contains_keys=["text", "sender", "type"],
@@ -298,12 +295,11 @@ class TestRegistry:
                 environment={"OPENAI_API_KEY": "test-key-123"},
                 conversion=ConversionExpectation(
                     workflow_name="OpenAI Chat Workflow",
-                    step_count=3,
+                    step_count=1,  # Only LanguageModelComponent creates a processing step
                     component_types_include=[
-                        "/langflow/udf_executor",
                         "/langflow/LanguageModelComponent",
-                    ],  # Mixed: UDF executors for Chat, built-in for LM
-                    udf_executor_count=2,  # ChatInput, ChatOutput
+                    ],  # LanguageModelComponent routes to standalone component
+                    udf_executor_count=0,  # No UDF executors needed
                     has_dependencies=True,
                 ),
                 execution=ExecutionExpectation(
@@ -361,12 +357,13 @@ class TestRegistry:
                 input_data={"message": "Write a haiku about coding"},
                 conversion=ConversionExpectation(
                     workflow_name="Basic Prompting",
-                    step_count=4,  # After filtering note nodes
+                    step_count=4,  # Prompt blob + Prompt processing + LanguageModelComponent blob + LanguageModelComponent processing
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/udf_executor"
-                    ],  # All components are UDF executors
-                    udf_executor_count=4,  # ChatInput, Prompt, LanguageModelComponent, ChatOutput
+                        "/langflow/udf_executor",
+                        "/builtin/put_blob",
+                    ],  # UDF executors + blob storage
+                    udf_executor_count=2,  # Both Prompt and LanguageModelComponent are UDF executors
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
@@ -388,12 +385,12 @@ class TestRegistry:
                 input_data={"message": "Remember my name is Alice"},
                 conversion=ConversionExpectation(
                     workflow_name="Memory Chatbot",
-                    step_count=5,  # After filtering note nodes
+                    step_count=5,  # Memory + Prompt blob + Prompt processing + LanguageModelComponent blob + LanguageModelComponent processing
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/udf_executor"
-                    ],  # All components are UDF executors
-                    udf_executor_count=5,  # Memory, ChatInput, Prompt, LanguageModelComponent, ChatOutput
+                        "/langflow/udf_executor", "/langflow/memory", "/builtin/put_blob"
+                    ],  # UDF executors + memory component + blob storage
+                    udf_executor_count=2,  # Prompt and LanguageModelComponent components (Memory is standalone)
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
@@ -415,12 +412,12 @@ class TestRegistry:
                 },
                 conversion=ConversionExpectation(
                     workflow_name="Document Q&A",
-                    step_count=5,  # After filtering note nodes
+                    step_count=5,  # File + 2 UDF executors + 2 blob storage steps
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/udf_executor"
-                    ],  # All components are UDF executors
-                    udf_executor_count=5,  # File, ChatInput, Prompt, LanguageModelComponent, ChatOutput
+                        "/langflow/file", "/langflow/udf_executor", "/builtin/put_blob"
+                    ],  # File component + UDF executors + blob storage
+                    udf_executor_count=2,  # Prompt and LanguageModelComponent both use UDF executor
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
@@ -444,12 +441,12 @@ class TestRegistry:
                 },
                 conversion=ConversionExpectation(
                     workflow_name="Simple Agent",
-                    step_count=5,  # After filtering note nodes
+                    step_count=4,  # Tool blobs (2x) + Agent blob + Agent processing step
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/udf_executor"
-                    ],  # All components are UDF executors
-                    udf_executor_count=5,  # Calculator, URL, ChatInput, Agent, ChatOutput
+                        "/langflow/udf_executor", "/builtin/put_blob"
+                    ],  # UDF executor for Agent + blob storage steps
+                    udf_executor_count=1,  # Only Agent component (tools are dependencies, not separate UDF executors)
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
@@ -470,12 +467,12 @@ class TestRegistry:
                 },
                 conversion=ConversionExpectation(
                     workflow_name="Vector Store RAG",
-                    step_count=11,  # After filtering note nodes
+                    step_count=11,  # 8 processing steps + 3 blob storage steps
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/udf_executor"
-                    ],  # All components are UDF executors
-                    udf_executor_count=11,  # All workflow components become UDF executors
+                        "/langflow/file", "/langflow/AstraDB", "/langflow/udf_executor", "/builtin/put_blob"
+                    ],  # File component + AstraDB + UDF executors + blob storage
+                    udf_executor_count=4,  # Prompt, SplitText, parser, LanguageModelComponent (OpenAI embeddings merged into AstraDB)
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,

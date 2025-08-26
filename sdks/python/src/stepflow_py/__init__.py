@@ -16,14 +16,19 @@ from .context import StepflowContext
 from .exceptions import SkipStep
 from .flow_builder import FlowBuilder, StepHandle
 from .generated_flow import (
+    Component,
     ErrorAction,
+    Flow,
     OnErrorDefault,
     OnErrorFail,
     OnErrorRetry,
     OnErrorSkip,
     OnSkipDefault,
     OnSkipSkip,
+    Schema,
     SkipAction,
+    Step,
+    ValueTemplate,
 )
 from .server import StepflowServer
 from .stdio_server import StepflowStdioServer
@@ -45,6 +50,12 @@ __all__ = [
     "StepHandle",
     "StepReference",
     "WorkflowInput",
+    # Flow and workflow types (re-exported from generated_flow)
+    "Flow",
+    "Step",
+    "Component",
+    "Schema",
+    "ValueTemplate",
     # Error and Skip Action types
     "ErrorAction",
     "OnErrorFail",

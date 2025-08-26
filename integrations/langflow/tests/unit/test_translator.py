@@ -27,12 +27,6 @@ class TestLangflowConverter:
     def test_init_default(self):
         """Test default initialization."""
         converter = LangflowConverter()
-        assert not converter.validate_schemas
-
-    def test_init_with_validation(self):
-        """Test initialization with validation enabled."""
-        converter = LangflowConverter(validate_schemas=True)
-        assert converter.validate_schemas
 
     def test_convert_simple_workflow(
         self, converter: LangflowConverter, simple_langflow_workflow: Dict[str, Any]
@@ -41,19 +35,16 @@ class TestLangflowConverter:
         workflow = converter.convert(simple_langflow_workflow)
 
         assert workflow.name == "Converted Langflow Workflow"
-        assert len(workflow.steps) == 2
 
-        # Check step IDs (now use full node ID with suffix for uniqueness)
-        step_ids = [step.id for step in workflow.steps]
-        assert "langflow_chatinput-1" in step_ids
-        assert "langflow_chatoutput-2" in step_ids
+        # ChatInput and ChatOutput are I/O connection points, not processing steps
+        # They handle Message type conversion but don't create workflow steps
+        assert len(workflow.steps) == 0
 
-        # Check components - they should be mapped to specific Langflow components
-        for step in workflow.steps:
-            assert step.component.startswith("/langflow/")
-            # Built-in Langflow components don't need blob_id, custom UDF components do
-            if step.component == "/langflow/udf_executor":
-                assert "blob_id" in step.input
+        # Verify the workflow structure is valid
+        assert workflow.schema_ == "https://stepflow.org/schemas/v1/flow.json"
+
+        # Workflow should have output that references input (passthrough)
+        assert workflow.output is not None
 
     def test_convert_empty_nodes(self, converter: LangflowConverter):
         """Test conversion with empty nodes list."""
@@ -78,8 +69,8 @@ class TestLangflowConverter:
 
         assert isinstance(yaml_output, str)
         assert "name: Converted Langflow Workflow" in yaml_output
-        assert "steps:" in yaml_output
-        assert "/langflow/" in yaml_output
+        # Should have output section since ChatInput/ChatOutput create passthrough
+        assert "output:" in yaml_output
 
     def test_analyze_workflow(
         self, converter: LangflowConverter, simple_langflow_workflow: Dict[str, Any]
@@ -140,19 +131,10 @@ class TestLangflowConverter:
         # Check that steps are reordered based on dependencies
         step_ids = [step.id for step in workflow.steps]
 
-        # input-node should come first (no dependencies)
-        # middle-node should come second (depends on input-node)
-        # output-node should come last (depends on middle-node)
-        input_pos = step_ids.index("langflow_input-node")
-        middle_pos = step_ids.index("langflow_middle-node")
-        output_pos = step_ids.index("langflow_output-node")
-
-        assert (
-            input_pos < middle_pos
-        ), f"Input step should come before middle step: {step_ids}"
-        assert (
-            middle_pos < output_pos
-        ), f"Middle step should come before output step: {step_ids}"
+        # Only the Prompt (middle-node) should generate a step since it's actual processing
+        # ChatInput and ChatOutput are logical I/O connection points
+        assert len(step_ids) == 1
+        assert "langflow_middle-node" in step_ids
 
         # Verify no forward references
         for i, step in enumerate(workflow.steps):
@@ -248,21 +230,16 @@ class TestLangflowConverter:
         workflow = converter.convert(workflow_data)
         step_ids = [step.id for step in workflow.steps]
 
-        # Expected order: Memory-3, ChatInput-1, Prompt-4, LLM-5, ChatOutput-2
+        # Expected processing steps: Memory-3, Prompt-4, LLM-5
+        # ChatInput and ChatOutput are logical I/O connection points
+        assert len(step_ids) == 3
+
         memory_pos = step_ids.index("langflow_memory-3")
-        input_pos = step_ids.index("langflow_chatinput-1")
         prompt_pos = step_ids.index("langflow_prompt-4")
         llm_pos = step_ids.index("langflow_llm-5")
-        output_pos = step_ids.index("langflow_chatoutput-2")
 
         # Memory should come before Prompt (Memory -> Prompt)
         assert memory_pos < prompt_pos, f"Memory should come before Prompt: {step_ids}"
 
         # Prompt should come before LLM (Prompt -> LLM)
         assert prompt_pos < llm_pos, f"Prompt should come before LLM: {step_ids}"
-
-        # ChatInput should come before LLM (ChatInput -> LLM)
-        assert input_pos < llm_pos, f"ChatInput should come before LLM: {step_ids}"
-
-        # LLM should come before ChatOutput (LLM -> ChatOutput)
-        assert llm_pos < output_pos, f"LLM should come before ChatOutput: {step_ids}"

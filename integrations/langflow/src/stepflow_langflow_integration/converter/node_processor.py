@@ -19,7 +19,6 @@ from typing import Dict, Any, List, Optional
 
 from stepflow_py import FlowBuilder, Value
 
-from ..types.stepflow import StepflowStep
 from ..utils.errors import ConversionError
 from .schema_mapper import SchemaMapper
 
@@ -81,7 +80,11 @@ class NodeProcessor:
             # Generate step ID (clean up for Stepflow)
             step_id = self._generate_step_id(node_id, component_type)
 
-            # Handle special components first
+            # Get node structure info for routing decisions
+            node_info = node_data.get("node", {})
+            template = node_info.get("template", {})
+
+            # Handle ChatInput/ChatOutput as I/O connection points (not processing steps)
             if component_type == "ChatInput":
                 # ChatInput returns a reference to workflow input directly
                 return Value.input.add_path("message")
@@ -155,8 +158,9 @@ class NodeProcessor:
                 # First create a blob step for the UDF code using auto ID generation
                 blob_data = self._prepare_udf_blob(node, component_type)
 
-                blob_step_handle = builder.add_step_auto(
-                    base_name="blob",
+                blob_step_id = f"{step_id}_blob"
+                blob_step_handle = builder.add_step(
+                    id=blob_step_id,
                     component="/builtin/put_blob",
                     input_data={"data": blob_data, "blob_type": "data"},
                 )
@@ -178,9 +182,10 @@ class NodeProcessor:
                     node, dependencies.get(node_id, []), all_nodes, node_output_refs
                 )
 
-            # Add step to builder using auto ID generation and data conversion
-            step_handle = builder.add_step_auto(
-                base_name=component_type.lower(),
+            # Add step to builder with proper ID and component path
+            step_id = self._generate_step_id(node_id, component_type)
+            step_handle = builder.add_step(
+                id=step_id,
                 component=component_path,
                 input_data=step_input,
             )
@@ -1117,10 +1122,11 @@ class MockGenericComponent(Component):
 
                     # Create blob for tool component
                     tool_blob_data = self._prepare_udf_blob(dep_node, dep_type)
-                    tool_blob_step = builder.add_step_auto(
-                        base_name="tool_blob",
+                    tool_blob_step_id = f"langflow_tool_blob_{dep_id}"
+                    tool_blob_step = builder.add_step(
+                        id=tool_blob_step_id,
                         component="/builtin/put_blob",
-                        input_data={"data": tool_blob_data, "blob_type": "data"},
+                        input_data={"blob": tool_blob_data, "blob_type": "data"},
                     )
 
                     # Use intelligent translation approach:
@@ -1173,10 +1179,11 @@ class MockGenericComponent(Component):
 
         # Create blob for agent component
         agent_blob_data = self._prepare_udf_blob(agent_node, component_type)
-        agent_blob_step = builder.add_step_auto(
-            base_name="agent_blob",
+        agent_blob_step_id = f"langflow_agent_blob_{agent_node['id']}"
+        agent_blob_step = builder.add_step(
+            id=agent_blob_step_id,
             component="/builtin/put_blob",
-            input_data={"data": agent_blob_data, "blob_type": "data"},
+            input_data={"blob": agent_blob_data, "blob_type": "data"},
         )
 
         # Apply intelligent translation: agent blob is also external to the fused step

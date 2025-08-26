@@ -40,14 +40,13 @@ def main():
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_file", type=click.Path(path_type=Path), required=False)
-@click.option("--validate", is_flag=True, help="Validate schemas during conversion")
 def convert(input_file: Path, output_file: Optional[Path], validate: bool):
     """Convert a Langflow JSON workflow to Stepflow YAML.
 
     If no output file is specified, prints the YAML to stdout.
     """
     try:
-        converter = LangflowConverter(validate_schemas=validate)
+        converter = LangflowConverter()
         stepflow_yaml = converter.convert_file(input_file)
 
         if output_file:
@@ -137,32 +136,6 @@ def serve(host: str, port: int, protocol_prefix: str):
         click.echo("\n🛑 Server stopped")
     except Exception as e:
         click.echo(f"❌ Server error: {e}", err=True)
-        sys.exit(1)
-
-
-@main.command()
-@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
-def validate(input_file: Path):
-    """Validate a Langflow workflow file."""
-    try:
-        converter = LangflowConverter(validate_schemas=True)
-
-        # Load JSON
-        with open(input_file, "r", encoding="utf-8") as f:
-            langflow_data = json.load(f)
-
-        # Convert with validation
-        workflow = converter.convert(langflow_data)
-
-        click.echo(f"✅ {input_file} is valid")
-        click.echo(f"   • Workflow: {workflow.name}")
-        click.echo(f"   • Steps: {len(workflow.steps)}")
-
-    except (ConversionError, ValidationError) as e:
-        click.echo(f"❌ Validation failed: {e}", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"❌ Unexpected error: {e}", err=True)
         sys.exit(1)
 
 
