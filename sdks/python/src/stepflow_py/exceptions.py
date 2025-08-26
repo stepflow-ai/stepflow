@@ -160,15 +160,14 @@ class StepflowFailed(Exception):
         self.data = data
 
 
-
 class SkipStep(Exception):
     """Exception raised by components to request that the current step be skipped.
-    
+
     Components can raise this exception during execution to indicate that the step
     should be marked as skipped rather than failed. This is useful for conditional
     logic, resource availability checks, or other runtime decisions where skipping
     is the appropriate response rather than failing.
-    
+
     Example:
         @server.component
         def conditional_processor(input: MyInput) -> MyOutput:

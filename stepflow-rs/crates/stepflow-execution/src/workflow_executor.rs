@@ -729,8 +729,8 @@ impl WorkflowExecutor {
 
         match resolved_value {
             FlowResult::Success(result) => Ok(result.is_truthy()),
-            FlowResult::Skipped => Ok(false), // Don't skip if condition references skipped values
-            FlowResult::Failed { .. } => Ok(false), // Don't skip if condition evaluation failed
+            FlowResult::Skipped { .. } => Ok(false), // Don't skip if condition references skipped values
+            FlowResult::Failed { .. } => Ok(false),  // Don't skip if condition evaluation failed
         }
     }
 

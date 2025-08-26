@@ -68,7 +68,6 @@ fn validate_workflow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
         }
     }
 
-
     // Warn if workflow has no name
     if flow.name().is_none() || flow.name().unwrap().trim().is_empty() {
         diagnostics.add(

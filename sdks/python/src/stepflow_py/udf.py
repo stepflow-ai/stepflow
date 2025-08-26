@@ -425,6 +425,9 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
     # Execute the cached function (validation happens inside)
     try:
         result = await compiled_func(input.input, context)
+    except SkipStep:
+        # Let SkipStep exceptions propagate unchanged
+        raise
     except Exception as e:
         raise ValueError(f"Function execution failed: {e}") from e
 
@@ -564,10 +567,15 @@ def _compile_function(code: str, input_schema: dict):
     # 4. If still no function, try function body pattern
     if func is None:
         try:
-            # Check if the code contains return statements (required for function body)
+            # Check if the code contains return statements or other valid statements
             import re
 
-            if re.search(r"^\s*return\b", code, re.MULTILINE):
+            has_return = re.search(r"^\s*return\b", code, re.MULTILINE)
+            has_raise = re.search(r"^\s*raise\b", code, re.MULTILINE)
+            has_if = re.search(r"^\s*if\b", code, re.MULTILINE)
+            has_statements = has_return or has_raise or has_if
+
+            if has_statements:
                 # Try as function body with input/context detection
                 # Properly indent each line of the code
                 indented_lines = []
@@ -593,7 +601,7 @@ _test_func"""
             "(1) A Python expression, "
             "(2) A function definition followed by the function name, "
             "(3) Code that results in a callable object, "
-            "(4) Function body statements with return statements.",
+            "(4) Function body statements (with return, raise, if, etc.).",
             code,
         )
 

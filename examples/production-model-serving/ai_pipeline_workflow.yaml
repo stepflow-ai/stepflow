@@ -151,8 +151,7 @@ steps:
           
           # Build the prompt with sentiment context
           sentiment = input.sentiment_analysis
-          prompt = f"""Based on the sentiment analysis ({sentiment['label']} with confidence {sentiment['score']}),
-generate a thoughtful response to: {input.user_text}"""
+          prompt = f"Based on the sentiment analysis ({sentiment['label']} with confidence {sentiment['score']}), generate a thoughtful response to: {input.user_text}"
           
           return {
               "prompt": prompt,
