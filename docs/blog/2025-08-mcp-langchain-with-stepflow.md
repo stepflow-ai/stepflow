@@ -1,8 +1,16 @@
+---
+date: 2025-08-27
+title: "Building an AI-Powered Research Assistant with Stepflow: Orchestrating LangChain and MCP"
+description: "How to combine AI processing with practical tool integration using declarative workflows"
+slug: mcp-langchain-with-stepflow
+authors:
+  - benchambers
+  - natemccall
+tags: [examples]
+---
+
+
 # Building an AI-Powered Research Assistant with Stepflow: Orchestrating LangChain and MCP
-
-*How to combine AI processing with practical tool integration using declarative workflows*
-
-## Introduction
 
 In the rapidly evolving landscape of AI applications, the ability to orchestrate complex workflows that combine language models with practical tools has become essential. Today, we'll explore how Stepflow, a modern open source workflow orchestration engine, seamlessly integrates LangChain's AI capabilities with common tools via the Model Context Protocol (MCP) to create a powerful research assistant.
 
