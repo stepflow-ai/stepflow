@@ -1,4 +1,4 @@
 {
-  "filename": "/tmp/stepflow-mcp-example.txt",
-  "content": "Hello from Stepflow using MCP tools!\n\nThis file was created by a Stepflow workflow using the Model Context Protocol (MCP) to interact with filesystem tools."
+  "filename": "/private/tmp/stepflow-mcp-test.txt",
+  "content": "Hello from Stepflow using MCP!\n\nThis file was created by a Stepflow workflow using the Model Context Protocol (MCP) to interact with filesystem tools.\n\nTimestamp: 2025-08-27\nWorkflow: MCP Filesystem Example"
 }
