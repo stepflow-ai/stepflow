@@ -1,5 +1,5 @@
 {
   "topic": "AI Workflow Orchestration",
   "initial_context": "AI workflow orchestration is becoming increasingly important as organizations deploy complex AI systems that require coordination between multiple models, data sources, and processing steps. Modern orchestration platforms like Stepflow provide declarative approaches to defining workflows, enabling developers to focus on business logic rather than infrastructure concerns. Key challenges include managing state across distributed components, handling failures gracefully, ensuring type safety, and providing observability into workflow execution. The integration of Language Models (LLMs) through frameworks like LangChain adds another dimension, allowing workflows to incorporate natural language processing, reasoning, and generation capabilities. Meanwhile, protocols like MCP (Model Context Protocol) enable workflows to interact with external tools and services, creating a bridge between AI capabilities and practical tool usage. This convergence of orchestration, AI, and tool integration represents a significant evolution in how we build and deploy intelligent systems.",
-  "output_dir": "/tmp/research/ai_workflows"
+  "output_dir": "/private/tmp/research/ai_workflows"
 }

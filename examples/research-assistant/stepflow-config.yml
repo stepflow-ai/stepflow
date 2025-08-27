@@ -21,13 +21,14 @@ plugins:
       - "research_server.py"
 
   # MCP Filesystem server for file operations
+  # Note: On macOS, /tmp is a symlink to /private/tmp, so we use the resolved path  
   filesystem:
     type: mcp
     command: npx
     args:
       - "-y"
       - "@modelcontextprotocol/server-filesystem"
-      - "/tmp"
+      - "/private/tmp"
     env:
       MCP_STRICT_MODE: "false"
 
