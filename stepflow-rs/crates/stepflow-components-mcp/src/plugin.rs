@@ -135,7 +135,7 @@ impl McpClient {
     ) -> McpResult<serde_json::Value> {
         // Acquire lock to ensure atomic request/response operation
         let _lock = self.request_mutex.lock().await;
-        
+
         let id = self.next_id;
         self.next_id += 1;
 
@@ -200,16 +200,17 @@ impl McpClient {
                     )
                 })?;
 
-
             // Check if this is a response to our request or an incoming request from the server
             if message.get("result").is_some() || message.get("error").is_some() {
                 // This is a response to our request
                 break message;
             } else if message.get("method").is_some() {
                 // This is an incoming request from the MCP server - handle it inline
-                let method = message.get("method").and_then(|m| m.as_str()).unwrap_or("unknown");
+                let method = message
+                    .get("method")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown");
                 let request_id = message.get("id");
-
 
                 match method {
                     "roots/list" => {
@@ -226,11 +227,17 @@ impl McpClient {
                             let msg = serde_json::to_string(&response)
                                 .change_context(McpError::Communication)?;
 
-                            self.stdin.write_all(msg.as_bytes()).await
+                            self.stdin
+                                .write_all(msg.as_bytes())
+                                .await
                                 .change_context(McpError::Communication)?;
-                            self.stdin.write_all(b"\n").await
+                            self.stdin
+                                .write_all(b"\n")
+                                .await
                                 .change_context(McpError::Communication)?;
-                            self.stdin.flush().await
+                            self.stdin
+                                .flush()
+                                .await
                                 .change_context(McpError::Communication)?;
                         }
                     }
@@ -243,7 +250,7 @@ impl McpClient {
                 return Err(
                     error_stack::Report::new(McpError::InvalidResponse).attach_printable(format!(
                         "Unexpected message format from MCP server for method '{method}': {line}"
-                    ))
+                    )),
                 );
             }
         };
@@ -251,9 +258,12 @@ impl McpClient {
         // Validate response ID matches request
         if let Some(response_id) = response.get("id") {
             // Try both u64 and i64 parsing to handle different JSON number representations
-            let response_id_num = response_id.as_u64()
-                .or_else(|| response_id.as_i64().and_then(|i| if i >= 0 { Some(i as u64) } else { None }));
-            
+            let response_id_num = response_id.as_u64().or_else(|| {
+                response_id
+                    .as_i64()
+                    .and_then(|i| if i >= 0 { Some(i as u64) } else { None })
+            });
+
             if response_id_num != Some(id) {
                 return Err(
                     error_stack::Report::new(McpError::InvalidResponse).attach_printable(format!(

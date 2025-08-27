@@ -9,11 +9,12 @@ for the Stepflow research assistant workflow.
 import json
 import sys
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Any
 
 try:
     import msgspec
     from langchain_core.runnables import RunnableLambda
+
     from stepflow_py import StepflowServer, StepflowStdioServer
 except ImportError as e:
     print(f"Error: Missing required dependencies: {e}", file=sys.stderr)
@@ -32,9 +33,9 @@ class QuestionGeneratorInput(msgspec.Struct):
 
 class QuestionGeneratorOutput(msgspec.Struct):
     """Output from research question generation."""
-    questions: List[str]
+    questions: list[str]
     formatted_output: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class TextAnalyzerInput(msgspec.Struct):
@@ -48,15 +49,15 @@ class TextAnalyzerInput(msgspec.Struct):
 class TextAnalyzerOutput(msgspec.Struct):
     """Output from text analysis."""
     summary: str
-    key_points: List[str]
+    key_points: list[str]
     formatted_analysis: str
-    statistics: Dict[str, Any]
+    statistics: dict[str, Any]
 
 
 class NoteGeneratorInput(msgspec.Struct):
     """Input for research note generation."""
     topic: str
-    questions: List[str]
+    questions: list[str]
     analysis: str
     execution_mode: str = "invoke"
 
@@ -64,22 +65,22 @@ class NoteGeneratorInput(msgspec.Struct):
 class NoteGeneratorOutput(msgspec.Struct):
     """Output from research note generation."""
     notes: str
-    sections: Dict[str, str]
-    metadata: Dict[str, Any]
+    sections: dict[str, str]
+    metadata: dict[str, Any]
 
 
 class ReportGeneratorInput(msgspec.Struct):
     """Input for report generation."""
     topic: str
-    questions: Dict[str, Any]
-    analysis: Dict[str, Any]
-    notes: Dict[str, Any]
+    questions: dict[str, Any]
+    analysis: dict[str, Any]
+    notes: dict[str, Any]
     execution_mode: str = "invoke"
 
 
 class ReportGeneratorOutput(msgspec.Struct):
     """Output from report generation."""
-    report: Dict[str, Any]
+    report: dict[str, Any]
     report_json: str
     summary: str
 
@@ -91,11 +92,11 @@ server = StepflowServer()
 @server.langchain_component(name="question_generator")
 def create_question_generator():
     """Generate research questions based on a topic and context."""
-    
+
     def generate_questions(data):
         topic = data["topic"]
         context = data["context"]
-        
+
         # Generate research questions based on the topic and context
         # In a real implementation, this could use an LLM
         questions = [
@@ -108,15 +109,19 @@ def create_question_generator():
             f"What future developments are expected in {topic}?",
             f"What are the ethical considerations related to {topic}?"
         ]
-        
+
         # Add context-specific questions
         if "AI" in context or "artificial intelligence" in context.lower():
-            questions.append(f"How does {topic} intersect with artificial intelligence?")
+            questions.append(
+                f"How does {topic} intersect with artificial intelligence?"
+            )
         if "data" in context.lower():
             questions.append(f"What role does data play in {topic}?")
         if "workflow" in context.lower() or "orchestration" in context.lower():
-            questions.append(f"How can {topic} be integrated into workflow orchestration?")
-        
+            questions.append(
+                f"How can {topic} be integrated into workflow orchestration?"
+            )
+
         # Format the output as markdown
         formatted_output = f"""# Research Questions for: {topic}
 
@@ -127,17 +132,17 @@ Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
         for i, question in enumerate(questions, 1):
             formatted_output += f"{i}. {question}\n"
-        
+
         formatted_output += f"""
 
 ## Context Considerations:
-Based on the provided context, these questions explore {topic} from multiple perspectives, 
+Based on the provided context, these questions explore {topic} from multiple perspectives,
 including theoretical foundations, practical applications, and future directions.
 
 ### Initial Context:
 {context[:500]}{"..." if len(context) > 500 else ""}
 """
-        
+
         return {
             "questions": questions,
             "formatted_output": formatted_output,
@@ -148,35 +153,35 @@ including theoretical foundations, practical applications, and future directions
                 "context_length": len(context)
             }
         }
-    
+
     return RunnableLambda(generate_questions)
 
 
 @server.langchain_component(name="text_analyzer")
 def create_text_analyzer():
     """Analyze text for research insights."""
-    
+
     def analyze_text(data):
         text = data["text"]
         topic = data["topic"]
         analysis_type = data.get("analysis_type", "research_summary")
-        
+
         # Perform text analysis
         # In a real implementation, this could use NLP libraries or LLMs
         words = text.split()
         sentences = text.split('.')
-        
+
         # Extract key points (simplified version)
         key_points = []
         for sentence in sentences[:5]:  # First 5 sentences as key points
             if len(sentence.strip()) > 20:
                 key_points.append(sentence.strip() + ".")
-        
+
         # Generate summary
-        summary = f"""The provided text about {topic} contains {len(words)} words and {len(sentences)} sentences. 
-The content appears to focus on {analysis_type} aspects of the topic. 
+        summary = f"""The provided text about {topic} contains {len(words)} words and {len(sentences)} sentences.
+The content appears to focus on {analysis_type} aspects of the topic.
 Key themes identified include technical implementation, practical applications, and system architecture."""
-        
+
         # Format the analysis
         formatted_analysis = f"""# Analysis Summary: {topic}
 
@@ -187,14 +192,14 @@ Key themes identified include technical implementation, practical applications, 
 """
         for i, point in enumerate(key_points, 1):
             formatted_analysis += f"\n{i}. {point}"
-        
+
         formatted_analysis += f"""
 
 ## Statistical Analysis:
 - Total words: {len(words)}
 - Total sentences: {len(sentences)}
 - Average words per sentence: {len(words) // max(len(sentences), 1)}
-- Unique words: {len(set(word.lower() for word in words))}
+- Unique words: {len({word.lower() for word in words})}
 
 ## Topic Relevance:
 The text provides {"substantial" if len(words) > 100 else "limited"} context about {topic}.
@@ -202,7 +207,7 @@ Further research is {"recommended" if len(words) < 200 else "optional"} to fully
 
 Analysis completed on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
-        
+
         return {
             "summary": summary,
             "key_points": key_points,
@@ -210,23 +215,23 @@ Analysis completed on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
             "statistics": {
                 "word_count": len(words),
                 "sentence_count": len(sentences),
-                "unique_words": len(set(word.lower() for word in words)),
+                "unique_words": len({word.lower() for word in words}),
                 "avg_words_per_sentence": len(words) // max(len(sentences), 1)
             }
         }
-    
+
     return RunnableLambda(analyze_text)
 
 
 @server.langchain_component(name="note_generator")
 def create_note_generator():
     """Generate structured research notes."""
-    
+
     def generate_notes(data):
         topic = data["topic"]
         questions = data["questions"]
         analysis = data["analysis"]
-        
+
         # Generate structured notes
         notes = f"""# Research Notes: {topic}
 
@@ -239,13 +244,13 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 ### Primary Research Questions
 """
-        
+
         # Add questions to notes
         for i, question in enumerate(questions[:5], 1):  # First 5 questions
             notes += f"\n**Q{i}:** {question}\n"
-            notes += f"- Status: Pending investigation\n"
+            notes += "- Status: Pending investigation\n"
             notes += f"- Priority: {'High' if i <= 3 else 'Medium'}\n"
-        
+
         notes += """
 
 ## Key Insights
@@ -303,14 +308,14 @@ Based on the initial analysis, the following insights have been identified:
 ---
 *Research notes compiled using Stepflow Research Assistant*
 """
-        
+
         sections = {
             "executive_summary": analysis,
             "research_questions": "\n".join(questions[:5]),
             "methodology": "Literature Review, Practical Analysis, Expert Consultation, Case Studies",
             "next_steps": "Complete literature review, identify experts, set up testing environment"
         }
-        
+
         return {
             "notes": notes,
             "sections": sections,
@@ -321,20 +326,20 @@ Based on the initial analysis, the following insights have been identified:
                 "note_length": len(notes)
             }
         }
-    
+
     return RunnableLambda(generate_notes)
 
 
 @server.langchain_component(name="report_generator")
 def create_report_generator():
     """Generate a comprehensive research report."""
-    
+
     def generate_report(data):
         topic = data["topic"]
         questions = data["questions"]
         analysis = data["analysis"]
         notes = data["notes"]
-        
+
         # Create comprehensive report
         report = {
             "title": f"Research Report: {topic}",
@@ -347,7 +352,11 @@ def create_report_generator():
             },
             "research_questions": {
                 "primary": questions.get("questions", [])[:5],
-                "secondary": questions.get("questions", [])[5:10] if len(questions.get("questions", [])) > 5 else [],
+                "secondary": (
+                    questions.get("questions", [])[5:10]
+                    if len(questions.get("questions", [])) > 5
+                    else []
+                ),
                 "total_count": len(questions.get("questions", []))
             },
             "research_notes": {
@@ -355,12 +364,21 @@ def create_report_generator():
                 "metadata": notes.get("metadata", {})
             },
             "methodology": {
-                "approach": "Mixed methods combining AI analysis and systematic investigation",
+                "approach": (
+                    "Mixed methods combining AI analysis and systematic investigation"
+                ),
                 "tools_used": ["Stepflow", "LangChain", "MCP"],
-                "data_sources": ["Initial context", "Generated insights", "Structured analysis"]
+                "data_sources": [
+                    "Initial context",
+                    "Generated insights",
+                    "Structured analysis"
+                ]
             },
             "conclusions": {
-                "summary": f"This research report provides a comprehensive framework for investigating {topic}.",
+                "summary": (
+                    f"This research report provides a comprehensive framework "
+                    f"for investigating {topic}."
+                ),
                 "recommendations": [
                     "Proceed with systematic investigation of research questions",
                     "Leverage AI tools for accelerated analysis",
@@ -385,21 +403,22 @@ def create_report_generator():
                 }
             }
         }
-        
+
         # Convert report to formatted JSON string
         report_json = json.dumps(report, indent=2)
-        
+
         # Generate summary
-        summary = f"""Research report generated for '{topic}' containing {len(questions.get('questions', []))} research questions, 
-comprehensive analysis, structured notes, and actionable recommendations. 
+        num_questions = len(questions.get('questions', []))
+        summary = f"""Research report generated for '{topic}' containing {num_questions} research questions,
+comprehensive analysis, structured notes, and actionable recommendations.
 The report provides a complete framework for conducting systematic research on the topic."""
-        
+
         return {
             "report": report,
             "report_json": report_json,
             "summary": summary
         }
-    
+
     return RunnableLambda(generate_report)
 
 
@@ -410,3 +429,4 @@ if __name__ == "__main__":
     # Create and run the stdio server
     stdio_server = StepflowStdioServer(server)
     stdio_server.run()
+
