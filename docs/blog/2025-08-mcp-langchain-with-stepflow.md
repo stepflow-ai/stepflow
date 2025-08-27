@@ -2,9 +2,8 @@
 date: 2025-08-27
 title: "Building an AI-Powered Research Assistant with Stepflow: Orchestrating LangChain and MCP"
 description: "How to combine AI processing with practical tool integration using declarative workflows"
-slug: mcp-langchain-with-stepflow
+slug: mcp-langchain-research-assistant
 authors:
-  - benchambers
   - natemccall
 tags: [examples]
 ---
@@ -14,9 +13,9 @@ tags: [examples]
 
 In the rapidly evolving landscape of AI applications, the ability to orchestrate complex workflows that combine language models with practical tools has become essential. Today, we'll explore how Stepflow, a modern open source workflow orchestration engine, seamlessly integrates LangChain's AI capabilities with common tools via the Model Context Protocol (MCP) to create a powerful research assistant.
 
-We're going beyond a simple "Hello World" example here by building a practical system that generates research questions, analyzes text, creates structured notes, and saves everything to an organized file structure. All orchestrated through a declarative YAML workflow that's easy to understand and modify.
+While invoking MCP tools from within an agent is nothing new, in this post we are building a practical, modular "flow" on top of Stepflow's declarative workflow engine. This system will generate research questions, analyze text, create structured notes, and save everything to an organized file structure. All this will be orchestrated through a declarative YAML workflow that's easy to understand and modify.
 
-## The Challenge: Bridging AI and Tools
+## The Challenge: Bridging AI and Tools with Flows
 
 There has been a lot of news recently about the challenges of building modern AI applications in enterprise. Getting on the AI bandwagon has led to a lot of initial implementations that miss the mark, assuming that an LLM and some context are all that is needed. Modern AI applications need more than just language models and some context. They need to:
 - Clearly and transparently implement the business logic and processes
@@ -322,7 +321,7 @@ Building this research assistant revealed several insights:
 
 ## Conclusion
 
-The combination of Stepflow, LangChain, and MCP demonstrates how modern orchestration can simplify AI application development. By separating concerns – orchestration, AI processing, and tool integration – we create systems that are both powerful and maintainable.
+The combination of Stepflow, LangChain, and MCP demonstrates how modern orchestration can simplify AI application development. By separating concerns – orchestration, AI processing, and tool integration – and providing a declarative workflow engine, we create systems that are both powerful and maintainable.
 
 This research assistant is just the beginning. The same patterns apply to:
 - Data processing pipelines
@@ -330,8 +329,6 @@ This research assistant is just the beginning. The same patterns apply to:
 - Automated testing frameworks
 - DevOps automation
 - Business process automation
-
-The key insight? **Orchestration transforms complexity into clarity.**
 
 ## Production Ready
 
@@ -362,7 +359,7 @@ We're excited about the future of AI orchestration:
 - **Cloud Deployment**: Managed Stepflow service
 - **Enhanced Observability**: Real-time monitoring and debugging
 
-Join us in building the future of AI workflow orchestration!
+Our next post will be about production-ready AI workflows. See this our [production model serving example](/docs/examples/production-model-serving) to get a head start.
 
 ---
 
