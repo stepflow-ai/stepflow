@@ -19,8 +19,6 @@ plugins:
       - "langchain"
       - "python"
       - "research_server.py"
-    env:
-      PYTHONPATH: "${PWD}:${PYTHONPATH}"
 
   # MCP Filesystem server for file operations
   filesystem:

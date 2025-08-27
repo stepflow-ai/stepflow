@@ -4,29 +4,35 @@
 
 ## Introduction
 
-In the rapidly evolving landscape of AI applications, the ability to orchestrate complex workflows that combine language models with practical tools has become essential. Today, we'll explore how Stepflow, a modern workflow orchestration engine, seamlessly integrates LangChain's AI capabilities with the Model Context Protocol (MCP) to create a powerful research assistant.
+In the rapidly evolving landscape of AI applications, the ability to orchestrate complex workflows that combine language models with practical tools has become essential. Today, we'll explore how Stepflow, a modern open source workflow orchestration engine, seamlessly integrates LangChain's AI capabilities with common tools via the Model Context Protocol (MCP) to create a powerful research assistant.
 
-This isn't just another "Hello World" example – we're building a practical system that generates research questions, analyzes text, creates structured notes, and saves everything to an organized file structure. All orchestrated through a declarative YAML workflow that's easy to understand and modify.
+We're going beyond a simple "Hello World" example here by building a practical system that generates research questions, analyzes text, creates structured notes, and saves everything to an organized file structure. All orchestrated through a declarative YAML workflow that's easy to understand and modify.
 
 ## The Challenge: Bridging AI and Tools
 
-Modern AI applications need more than just language models. They need to:
+There has been a lot of news recently about the challenges of building modern AI applications in enterprise. Getting on the AI bandwagon has led to a lot of initial implementations that miss the mark, assuming that an LLM and some context are all that is needed. Modern AI applications need more than just language models and some context. They need to:
+- Clearly and transparently implement the business logic and processes
 - Process and analyze information
 - Interact with filesystems and databases
 - Coordinate multiple AI components
 - Handle failures gracefully
 - Maintain type safety across boundaries
 
-Traditional approaches often require complex imperative code, making systems hard to maintain and extend. Stepflow takes a different approach with its declarative workflow engine and plugin architecture.
+Traditional approaches often require complex imperative code, making systems hard to maintain and extend. Stepflow takes a different approach with its declarative workflow engine and plugin architecture. By separating concerns, we create systems that are both powerful and maintainable. The research assistant we demonstrate in this post is a practical example of how Stepflow can be used to build complex AI applications, while maintaining transparency and clarity.
 
 ## Architecture Overview
 
 Our research assistant combines three key technologies:
+- Stepflow Orchestrator: for declarative YAML Workflows
+- LangChain Components: for well known AI Processing
+- MCP Components: for MCP-based tool integration
+
+The diagram below provides an overview of the architecture. 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Stepflow Orchestrator                     │
-│                 (Declarative YAML Workflows)                 │
+│                    Stepflow Orchestrator                    │
+│                 (Declarative YAML Workflows)                │
 ├─────────────────────────┬───────────────────────────────────┤
 │   LangChain Components  │      MCP Components               │
 │   (AI Processing)       │   (Tool Integration)              │
@@ -90,15 +96,19 @@ steps:
   - id: generate_questions
     component: /research/question_generator
     input:
-      topic: { $from: { workflow: input }, path: "topic" }
-      context: { $from: { workflow: input }, path: "initial_context" }
+      input:
+        topic: { $from: { workflow: input }, path: "topic" }
+        context: { $from: { workflow: input }, path: "initial_context" }
+      execution_mode: invoke
 
   # Analyze the context
   - id: analyze_context
     component: /research/text_analyzer
     input:
-      text: { $from: { workflow: input }, path: "initial_context" }
-      topic: { $from: { workflow: input }, path: "topic" }
+      input:
+        text: { $from: { workflow: input }, path: "initial_context" }
+        topic: { $from: { workflow: input }, path: "topic" }
+      execution_mode: invoke
 
   # Save outputs using MCP filesystem tools
   - id: save_questions
@@ -116,7 +126,8 @@ Notice how steps can reference outputs from previous steps, creating a data flow
 Each AI component is a decorated LangChain runnable:
 
 ```python
-@server.langchain_component(name="research/question_generator")
+# Note: Component names are registered without path prefix
+@server.langchain_component(name="question_generator")
 def create_question_generator():
     """Generate research questions based on topic and context."""
     
@@ -163,6 +174,8 @@ class QuestionGeneratorOutput(msgspec.Struct):
 
 This ensures type safety across language boundaries – from Rust orchestrator to Python components.
 
+**Important:** When using the `langchain_component` decorator, component inputs must be wrapped in an `input` field. The decorator creates components that expect a `LangChainComponentInput` structure with the actual data nested under the `input` key.
+
 ## Running the Research Assistant
 
 Setup is straightforward:
@@ -172,7 +185,12 @@ Setup is straightforward:
 cd stepflow-rs
 cargo build --release
 
-# Run the workflow
+# Install LangChain dependencies
+cd ../sdks/python
+uv add --group dev langchain-core
+
+# Run the workflow with MCP integration
+cd ../stepflow-rs
 ./target/release/stepflow run \
   --flow=../examples/research-assistant/workflow.yaml \
   --input=../examples/research-assistant/input_ai_workflows.json \
@@ -250,7 +268,9 @@ Integrate Brave Search for real-time information:
 - id: search_web
   component: /web_search/brave_web_search
   input:
-    query: { $from: { step: generate_questions }, path: "questions[0]" }
+    input:
+      query: { $from: { step: generate_questions }, path: "questions[0]" }
+    execution_mode: invoke
 ```
 
 ### Connect to LLMs
@@ -305,13 +325,25 @@ This research assistant is just the beginning. The same patterns apply to:
 
 The key insight? **Orchestration transforms complexity into clarity.**
 
+## Production Ready
+
+The MCP filesystem integration provides reliable file operations with proper error handling and bidirectional communication. The system handles MCP's protocol requirements transparently, allowing workflows to use any MCP-compatible tool server.
+
 ## Try It Yourself
 
 The complete code is available in the Stepflow repository:
 ```bash
 git clone https://github.com/stepflow-ai/stepflow
 cd stepflow/examples/research-assistant
-./run.sh
+
+# Install dependencies and run
+cd ../../stepflow-rs && cargo build --release
+cd ../sdks/python && uv add --group dev langchain-core
+cd ../stepflow-rs
+./target/release/stepflow run \
+  --flow=../examples/research-assistant/workflow.yaml \
+  --input=../examples/research-assistant/input_ai_workflows.json \
+  --config=../examples/research-assistant/stepflow-config.yml
 ```
 
 ## What's Next?

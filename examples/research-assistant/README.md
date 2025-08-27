@@ -13,6 +13,21 @@ The Research Assistant workflow showcases:
 
 ## Architecture
 
+### MCP Integration
+
+The Research Assistant uses the Model Context Protocol (MCP) to integrate with filesystem tools, providing a standardized way to interact with external tools and services.
+
+**MCP Filesystem Components:**
+- **`write_file`**: Creates files with automatic directory creation
+- **`create_directory`**: Creates directories recursively  
+- **`list_directory`**: Lists directory contents
+
+**Benefits of MCP Integration:**
+- Standard protocol for tool integration
+- Works with any MCP-compatible tool server
+- Extensible to other MCP tools (web search, databases, etc.)
+- Reliable bidirectional communication
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Stepflow Orchestrator                     │
@@ -49,6 +64,11 @@ The Research Assistant workflow showcases:
    uv add --group dev langchain-core
    ```
 
+**Important Configuration Notes:**
+- LangChain components are registered with simple names (e.g., `question_generator`) but accessed via routing paths (e.g., `/research/question_generator`)
+- Component inputs must be wrapped in an `input` field when using the `langchain_component` decorator
+- The Python server should not print to stdout as it interferes with JSON-RPC communication
+
 ## Quick Start
 
 ### 1. Build Stepflow
@@ -78,11 +98,30 @@ Generates research questions based on a topic and context:
 - Adapts questions based on context keywords
 - Outputs formatted markdown and structured data
 
+**Input Structure:**
+```yaml
+input:
+  input:
+    topic: { $from: { workflow: input }, path: "topic" }
+    context: { $from: { workflow: input }, path: "context" }
+  execution_mode: invoke
+```
+
 #### Text Analyzer (`/research/text_analyzer`)
 Analyzes text for research insights:
 - Extracts key points and statistics
 - Generates summaries
 - Provides formatted analysis reports
+
+**Input Structure:**
+```yaml
+input:
+  input:
+    text: { $from: { workflow: input }, path: "context" }
+    topic: { $from: { workflow: input }, path: "topic" }
+    analysis_type: "research_summary"
+  execution_mode: invoke
+```
 
 #### Note Generator (`/research/note_generator`)
 Creates structured research notes:
@@ -167,13 +206,15 @@ class QuestionGeneratorInput(msgspec.Struct):
 ```
 
 ### Declarative Workflow
-Steps are defined declaratively with clear dependencies:
+Steps are defined declaratively with clear dependencies. Note that LangChain components require input to be wrapped in an `input` field:
 ```yaml
 - id: generate_notes
   component: /research/note_generator
   input:
-    topic: { $from: { workflow: input }, path: "topic" }
-    questions: { $from: { step: generate_questions }, path: "questions" }
+    input:
+      topic: { $from: { workflow: input }, path: "topic" }
+      questions: { $from: { step: generate_questions }, path: "questions" }
+    execution_mode: invoke
 ```
 
 ### Automatic Parallelization
@@ -188,7 +229,7 @@ Failed steps are captured with detailed error information, allowing workflows to
 
 1. Create a new LangChain component in `research_server.py`:
 ```python
-@server.langchain_component(name="research/literature_reviewer")
+@server.langchain_component(name="literature_reviewer")
 def create_literature_reviewer():
     """Review and summarize academic literature."""
     # Implementation here
@@ -199,7 +240,9 @@ def create_literature_reviewer():
 - id: review_literature
   component: /research/literature_reviewer
   input:
-    topic: { $from: { workflow: input }, path: "topic" }
+    input:
+      topic: { $from: { workflow: input }, path: "topic" }
+    execution_mode: invoke
 ```
 
 ### Adding New Tools
@@ -278,7 +321,7 @@ cat /tmp/research/ai_workflows/research_report.json | jq .
    # Ensure npx is available
    which npx
    # Test MCP server directly
-   npx -y @modelcontextprotocol/server-filesystem --help
+   npx -y @modelcontextprotocol/server-filesystem /tmp
    ```
 
 2. **LangChain Import Errors**

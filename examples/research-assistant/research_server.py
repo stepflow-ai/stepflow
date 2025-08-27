@@ -7,12 +7,20 @@ for the Stepflow research assistant workflow.
 """
 
 import json
+import sys
 from datetime import datetime
 from typing import Dict, List, Any
 
-import msgspec
-from langchain_core.runnables import RunnableLambda
-from stepflow_py import StepflowServer, StepflowStdioServer
+try:
+    import msgspec
+    from langchain_core.runnables import RunnableLambda
+    from stepflow_py import StepflowServer, StepflowStdioServer
+except ImportError as e:
+    print(f"Error: Missing required dependencies: {e}", file=sys.stderr)
+    print("Please install with:", file=sys.stderr)
+    print("  cd ../../sdks/python", file=sys.stderr)
+    print("  uv add --group dev langchain-core", file=sys.stderr)
+    sys.exit(1)
 
 
 class QuestionGeneratorInput(msgspec.Struct):
@@ -80,7 +88,7 @@ class ReportGeneratorOutput(msgspec.Struct):
 server = StepflowServer()
 
 
-@server.langchain_component(name="research/question_generator")
+@server.langchain_component(name="question_generator")
 def create_question_generator():
     """Generate research questions based on a topic and context."""
     
@@ -144,7 +152,7 @@ including theoretical foundations, practical applications, and future directions
     return RunnableLambda(generate_questions)
 
 
-@server.langchain_component(name="research/text_analyzer")
+@server.langchain_component(name="text_analyzer")
 def create_text_analyzer():
     """Analyze text for research insights."""
     
@@ -210,7 +218,7 @@ Analysis completed on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     return RunnableLambda(analyze_text)
 
 
-@server.langchain_component(name="research/note_generator")
+@server.langchain_component(name="note_generator")
 def create_note_generator():
     """Generate structured research notes."""
     
@@ -317,7 +325,7 @@ Based on the initial analysis, the following insights have been identified:
     return RunnableLambda(generate_notes)
 
 
-@server.langchain_component(name="research/report_generator")
+@server.langchain_component(name="report_generator")
 def create_report_generator():
     """Generate a comprehensive research report."""
     
@@ -395,15 +403,10 @@ The report provides a complete framework for conducting systematic research on t
     return RunnableLambda(generate_report)
 
 
+
 # Main entry point
 if __name__ == "__main__":
-    print("Starting Research Assistant LangChain Server...")
-    print(f"Server initialized with {len(server.components)} components")
-    print("Components available:")
-    for name in server.components:
-        print(f"  - /{name}")
-    print("\nServer ready for connections...")
-    
+    # Don't print to stdout - it interferes with JSON-RPC protocol
     # Create and run the stdio server
     stdio_server = StepflowStdioServer(server)
     stdio_server.run()
