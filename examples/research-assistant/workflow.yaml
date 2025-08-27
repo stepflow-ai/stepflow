@@ -1,0 +1,145 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "AI Research Assistant"
+description: "Combines LangChain AI processing with MCP filesystem tools to create an automated research workflow"
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+      description: "Research topic to explore"
+    initial_context:
+      type: string
+      description: "Initial context or background information about the topic"
+    output_dir:
+      type: string
+      description: "Directory to save research files"
+      default: "/tmp/research"
+  required: ["topic", "initial_context"]
+
+output_schema:
+  type: object
+  properties:
+    research_questions:
+      type: object
+      description: "Generated research questions"
+    analysis_summary:
+      type: object
+      description: "Analysis of the initial context"
+    created_files:
+      type: array
+      description: "List of created research files"
+    report_location:
+      type: string
+      description: "Location of saved research"
+
+steps:
+  # Step 1: Generate research questions using LangChain
+  - id: generate_questions
+    component: /research/question_generator
+    input:
+      input:
+        topic: { $from: { workflow: input }, path: "topic" }
+        context: { $from: { workflow: input }, path: "initial_context" }
+      execution_mode: invoke
+
+  # Step 2: Analyze initial context using LangChain
+  - id: analyze_context
+    component: /research/text_analyzer
+    input:
+      input:
+        text: { $from: { workflow: input }, path: "initial_context" }
+        topic: { $from: { workflow: input }, path: "topic" }
+        analysis_type: "research_summary"
+      execution_mode: invoke
+
+  # Step 3: Generate structured research notes
+  - id: generate_notes
+    component: /research/note_generator
+    input:
+      input:
+        topic: { $from: { workflow: input }, path: "topic" }
+        questions: { $from: { step: generate_questions }, path: "questions" }
+        analysis: { $from: { step: analyze_context }, path: "summary" }
+      execution_mode: invoke
+
+  # Step 4: Create output directory first
+  - id: create_output_dir
+    component: /filesystem/create_directory
+    depends_on: [generate_questions, analyze_context, generate_notes]
+    input:
+      path: { $from: { workflow: input }, path: "output_dir" }
+
+  # Step 5: Save research questions to file
+  - id: save_questions
+    component: /filesystem/write_file
+    depends_on: [create_output_dir]
+    input:
+      path: 
+        $template: "{{output_dir}}/research_questions.md"
+        values:
+          output_dir: { $from: { workflow: input }, path: "output_dir" }
+      content: { $from: { step: generate_questions }, path: "formatted_output" }
+
+  # Step 6: Save research notes
+  - id: save_notes
+    component: /filesystem/write_file
+    depends_on: [create_output_dir]
+    input:
+      path:
+        $template: "{{output_dir}}/research_notes.md"
+        values:
+          output_dir: { $from: { workflow: input }, path: "output_dir" }
+      content: { $from: { step: generate_notes }, path: "notes" }
+
+  # Step 7: Save analysis summary
+  - id: save_analysis
+    component: /filesystem/write_file
+    depends_on: [create_output_dir]
+    input:
+      path:
+        $template: "{{output_dir}}/analysis_summary.md"
+        values:
+          output_dir: { $from: { workflow: input }, path: "output_dir" }
+      content: { $from: { step: analyze_context }, path: "formatted_analysis" }
+
+  # Step 8: Create a comprehensive JSON report
+  - id: create_report
+    component: /research/report_generator
+    input:
+      input:
+        topic: { $from: { workflow: input }, path: "topic" }
+        questions: { $from: { step: generate_questions } }
+        analysis: { $from: { step: analyze_context } }
+        notes: { $from: { step: generate_notes } }
+      execution_mode: invoke
+
+  # Step 9: Save the JSON report
+  - id: save_report
+    component: /filesystem/write_file
+    depends_on: [create_output_dir, create_report]
+    input:
+      path:
+        $template: "{{output_dir}}/research_report.json"
+        values:
+          output_dir: { $from: { workflow: input }, path: "output_dir" }
+      content: 
+        $template: "{{report}}"
+        values:
+          report: { $from: { step: create_report }, path: "report_json" }
+
+  # Step 10: List all created files (depends on all file creation steps)
+  - id: list_research_files
+    component: /filesystem/list_directory
+    depends_on: [save_questions, save_notes, save_analysis, save_report]
+    input:
+      path: { $from: { workflow: input }, path: "output_dir" }
+
+output:
+  research_questions: { $from: { step: generate_questions } }
+  analysis_summary: { $from: { step: analyze_context } }
+  created_files: { $from: { step: list_research_files } }
+  report_location:
+    $template: "Research saved to: {{output_dir}}"
+    values:
+      output_dir: { $from: { workflow: input }, path: "output_dir" }

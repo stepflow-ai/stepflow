@@ -25,8 +25,9 @@ cargo run -- run --flow=../examples/mcp-component/basic.yaml --input=../examples
 
 1. **Configure MCP Plugin**: The configuration sets up an MCP plugin that connects to the npm-distributed filesystem server
 2. **Create a File**: Uses the MCP `write_file` tool to create a file with the specified content
-3. **Read the File**: Uses the MCP `read_file` tool to read back the created file
+3. **Read the File**: Uses the MCP `read_text_file` tool to read back the created file (with proper dependencies)
 4. **List Directory**: Uses the MCP `list_directory` tool to show all files in the `/tmp` directory
+5. **Proper Dependencies**: Steps are properly sequenced using `depends_on` to ensure correct execution order
 
 ## Understanding MCP Component Paths
 
@@ -44,9 +45,10 @@ For example:
 ## Expected Output
 
 The workflow will output:
-- `created_file_content`: The content that was read back from the created file
+- `file_path`: The path to the created file
+- `file_content`: The content that was read back from the created file  
 - `directory_listing`: A list of files in the `/tmp` directory
-- `original_input`: The original input passed to the workflow
+- `success_message`: A formatted success message
 
 ## Adding More MCP Servers
 
@@ -76,8 +78,16 @@ search_step:
     query: "Stepflow workflow engine"
 ```
 
+## Key Features Demonstrated
+
+- **MCP Integration**: Shows how Stepflow integrates with MCP-compatible tool servers
+- **Bidirectional Communication**: The MCP protocol handles server-to-client communication automatically
+- **Proper Dependencies**: Steps use `depends_on` to ensure correct execution order
+- **Error Handling**: MCP tool failures are handled gracefully by the workflow engine
+
 ## Troubleshooting
 
 - **Command not found**: Make sure `npx` is available in your PATH
 - **Permission errors**: Ensure you have write permissions to `/tmp`
 - **Tool not found**: Verify the MCP server is properly configured and the tool names match those provided by the server
+- **Execution failures**: Check that the MCP server supports bidirectional communication (this example works with the latest filesystem server)

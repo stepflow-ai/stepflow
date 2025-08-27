@@ -6,15 +6,15 @@ plugins:
   builtin:
     type: builtin
 
-  # MCP server for filesystem operations
-  # Note: On macOS, use "/private/tmp" instead of "/tmp" due to symlink resolution
+  # MCP server for filesystem operations  
+  # Note: On macOS, /tmp is a symlink to /private/tmp, so we use the resolved path
   filesystem:
     type: mcp
     command: npx
     args:
       - "-y"
       - "@modelcontextprotocol/server-filesystem"
-      - "/tmp"
+      - "/private/tmp"
     env:
       # Optional environment variables for the MCP server
       DEBUG: "false"

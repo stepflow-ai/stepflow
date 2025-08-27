@@ -59,11 +59,15 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
 
 /// Convert Stepflow Component path to MCP tool name
 pub fn component_path_to_tool_name(component_path: &str) -> Option<String> {
-    // Expected format: /plugin_name/tool_name
-    if let Some(without_leading_slash) = component_path.strip_prefix('/')
-        && let Some(pos) = without_leading_slash.find('/')
-    {
-        return Some(without_leading_slash[pos + 1..].to_string());
+    // After routing, we get paths like "/write_file" or "/plugin_name/tool_name"
+    if let Some(without_leading_slash) = component_path.strip_prefix('/') {
+        // If it contains another slash, extract the part after the last slash
+        if let Some(pos) = without_leading_slash.rfind('/') {
+            return Some(without_leading_slash[pos + 1..].to_string());
+        } else {
+            // No additional slash, so this is already just the tool name
+            return Some(without_leading_slash.to_string());
+        }
     }
     None
 }
@@ -74,6 +78,18 @@ mod tests {
 
     #[test]
     fn test_component_path_to_tool_name() {
+        // Test routed paths (after routing removes plugin prefix)
+        assert_eq!(
+            component_path_to_tool_name("/write_file"),
+            Some("write_file".to_string())
+        );
+
+        assert_eq!(
+            component_path_to_tool_name("/read_text_file"),
+            Some("read_text_file".to_string())
+        );
+
+        // Test full paths (before routing)
         assert_eq!(
             component_path_to_tool_name("/filesystem/read_file"),
             Some("read_file".to_string())
@@ -84,7 +100,14 @@ mod tests {
             Some("tool_name".to_string())
         );
 
+        // Test nested paths
+        assert_eq!(
+            component_path_to_tool_name("/plugin/sub/tool_name"),
+            Some("tool_name".to_string())
+        );
+
+        // Test invalid paths
         assert_eq!(component_path_to_tool_name("invalidpath"), None);
-        assert_eq!(component_path_to_tool_name("/filesystem"), None);
+        assert_eq!(component_path_to_tool_name(""), None);
     }
 }

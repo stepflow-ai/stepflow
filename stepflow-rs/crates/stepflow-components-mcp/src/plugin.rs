@@ -71,6 +71,8 @@ struct McpClient {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     next_id: u64,
+    // Mutex to serialize request/response operations to prevent concurrent reads
+    request_mutex: tokio::sync::Mutex<()>,
 }
 
 impl McpClient {
@@ -122,6 +124,7 @@ impl McpClient {
             stdin,
             stdout: BufReader::new(stdout),
             next_id: 1,
+            request_mutex: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -130,6 +133,9 @@ impl McpClient {
         method: &str,
         params: serde_json::Value,
     ) -> McpResult<serde_json::Value> {
+        // Acquire lock to ensure atomic request/response operation
+        let _lock = self.request_mutex.lock().await;
+
         let id = self.next_id;
         self.next_id += 1;
 
@@ -161,47 +167,110 @@ impl McpClient {
         .change_context(McpError::Communication)
         .attach_printable_lazy(|| format!("Failed to write to MCP server for method '{method}'"))?;
 
-        // Read the response with timeout
+        // Read responses, handling bidirectional communication
         let read_timeout = Duration::from_secs(30); // Longer timeout for tool execution
-        let mut line = String::new();
-        let bytes_read = timeout(read_timeout, self.stdout.read_line(&mut line))
-            .await
-            .change_context(McpError::Timeout)
-            .attach_printable_lazy(|| {
-                format!("Timeout waiting for MCP server response for method '{method}'")
-            })?
-            .change_context(McpError::Communication)
-            .attach_printable_lazy(|| {
-                format!("Failed to read from MCP server for method '{method}'")
-            })?;
+        let response = loop {
+            let mut line = String::new();
+            let bytes_read = timeout(read_timeout, self.stdout.read_line(&mut line))
+                .await
+                .change_context(McpError::Timeout)
+                .attach_printable_lazy(|| {
+                    format!("Timeout waiting for MCP server response for method '{method}'")
+                })?
+                .change_context(McpError::Communication)
+                .attach_printable_lazy(|| {
+                    format!("Failed to read from MCP server for method '{method}'")
+                })?;
 
-        error_stack::ensure!(
-            bytes_read > 0,
-            error_stack::Report::new(McpError::Communication).attach_printable(format!(
-                "MCP server closed connection while waiting for response to method '{method}'"
-            ))
-        );
+            error_stack::ensure!(
+                bytes_read > 0,
+                error_stack::Report::new(McpError::Communication).attach_printable(format!(
+                    "MCP server closed connection while waiting for response to method '{method}'"
+                ))
+            );
 
-        // Parse the response
-        let response: serde_json::Value = serde_json::from_str(line.trim())
-            .change_context(McpError::InvalidResponse)
-            .attach_printable_lazy(|| {
-                format!(
-                    "Failed to parse MCP server response for method '{}'. Raw response: '{}'",
-                    method,
-                    line.trim()
-                )
-            })?;
+            // Parse the message
+            let message: serde_json::Value = serde_json::from_str(line.trim())
+                .change_context(McpError::InvalidResponse)
+                .attach_printable_lazy(|| {
+                    format!(
+                        "Failed to parse MCP server message for method '{}'. Raw message: '{}'",
+                        method,
+                        line.trim()
+                    )
+                })?;
+
+            // Check if this is a response to our request or an incoming request from the server
+            if message.get("result").is_some() || message.get("error").is_some() {
+                // This is a response to our request
+                break message;
+            } else if message.get("method").is_some() {
+                // This is an incoming request from the MCP server - handle it inline
+                let method = message
+                    .get("method")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown");
+                let request_id = message.get("id");
+
+                match method {
+                    "roots/list" => {
+                        // MCP server is asking for available roots - send empty response
+                        if let Some(id) = request_id {
+                            let response = json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "result": {
+                                    "roots": []
+                                }
+                            });
+
+                            let msg = serde_json::to_string(&response)
+                                .change_context(McpError::Communication)?;
+
+                            self.stdin
+                                .write_all(msg.as_bytes())
+                                .await
+                                .change_context(McpError::Communication)?;
+                            self.stdin
+                                .write_all(b"\n")
+                                .await
+                                .change_context(McpError::Communication)?;
+                            self.stdin
+                                .flush()
+                                .await
+                                .change_context(McpError::Communication)?;
+                        }
+                    }
+                    _ => {
+                        // For unknown incoming request methods, just ignore for now
+                    }
+                }
+                // Continue reading for our actual response
+            } else {
+                return Err(
+                    error_stack::Report::new(McpError::InvalidResponse).attach_printable(format!(
+                        "Unexpected message format from MCP server for method '{method}': {line}"
+                    )),
+                );
+            }
+        };
 
         // Validate response ID matches request
-        if let Some(response_id) = response.get("id")
-            && response_id.as_u64() != Some(id)
-        {
-            return Err(
-                error_stack::Report::new(McpError::InvalidResponse).attach_printable(format!(
-                    "Response ID mismatch for method '{method}': expected {id}, got {response_id}"
-                )),
-            );
+        if let Some(response_id) = response.get("id") {
+            // Try both u64 and i64 parsing to handle different JSON number representations
+            let response_id_num = response_id.as_u64().or_else(|| {
+                response_id
+                    .as_i64()
+                    .and_then(|i| if i >= 0 { Some(i as u64) } else { None })
+            });
+
+            if response_id_num != Some(id) {
+                return Err(
+                    error_stack::Report::new(McpError::InvalidResponse).attach_printable(format!(
+                        "Response ID mismatch for method '{method}': expected {id}, got {response_id}"
+                    )),
+                );
+            }
         }
 
         // Check for JSON-RPC errors
