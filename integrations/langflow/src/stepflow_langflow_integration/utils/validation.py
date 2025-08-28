@@ -119,7 +119,7 @@ def check_circular_dependencies(dependencies: dict[str, list[str]]) -> None:
         ValidationError: If circular dependencies found
     """
     # Build adjacency list
-    graph = {}
+    graph: dict[str, list[str]] = {}
     all_nodes = set()
 
     for target, sources in dependencies.items():

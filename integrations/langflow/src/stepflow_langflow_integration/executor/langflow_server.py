@@ -18,6 +18,8 @@ from typing import Any
 
 from stepflow_py import StepflowContext, StepflowStdioServer
 
+from .udf_executor import UDFExecutor
+
 
 class CachedStepflowContext:
     """A wrapper around StepflowContext that returns cached blob data to avoid
@@ -53,18 +55,6 @@ class CachedStepflowContext:
     def __getattr__(self, name: str):
         """Delegate all other methods to the original context."""
         return getattr(self.original_context, name)
-
-
-# Handle relative imports when run directly
-try:
-    from .udf_executor import UDFExecutor
-except ImportError:
-    import sys
-    from pathlib import Path
-
-    # Add parent directory to path for direct execution
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from executor.udf_executor import UDFExecutor
 
 
 class StepflowLangflowServer:
@@ -119,15 +109,16 @@ class StepflowLangflowServer:
 
             # Add tool blob IDs (external inputs like tool_blob_X)
             for key, value in input_data.items():
-                if key.startswith("tool_blob_") and isinstance(value, dict):
-                    # Extract blob ID from reference structure
-                    if "$from" in value and "step" in value["$from"]:
-                        # This is a step reference - we can't resolve it here
-                        continue
-                    elif isinstance(value, str):
+                if key.startswith("tool_blob_"):
+                    if isinstance(value, str):
                         blob_ids_to_cache.add(value)
-                    elif "blob_id" in value:
-                        blob_ids_to_cache.add(value["blob_id"])
+                    elif isinstance(value, dict):
+                        # Extract blob ID from reference structure
+                        if "$from" in value and "step" in value["$from"]:
+                            # This is a step reference - we can't resolve it here
+                            continue
+                        elif "blob_id" in value:
+                            blob_ids_to_cache.add(value["blob_id"])
 
             # Add agent blob ID if present
             if "agent_blob" in input_data:
@@ -160,11 +151,13 @@ class StepflowLangflowServer:
                     print(f"DEBUG: Failed to cache blob {blob_id}: {e}")
                     # Continue - let the UDF executor handle the error
 
-            # Create a modified context that returns cached data instead of making
-            # new calls
-            cached_context = CachedStepflowContext(context, cached_blobs)
+            # Create resolved input data with cached blobs
+            resolved_input_data = input_data.copy()
+            resolved_input_data["_resolved_blobs"] = cached_blobs
 
-            return await self.udf_executor.execute(input_data, cached_context)
+            return await self.udf_executor.execute_with_resolved_data(
+                resolved_input_data
+            )
 
         # TODO: Register native component implementations
         # self.server.component(name="openai_chat", func=self._openai_chat)

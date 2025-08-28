@@ -1147,7 +1147,7 @@ class UDFExecutor:
                         )
 
                     # Return empty list - Agent can work without historical messages
-                    result = []
+                    result: list[Any] = []
 
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
@@ -1468,7 +1468,7 @@ class UDFExecutor:
                         text=mock_text,
                         sender="Agent",
                         session_id="stepflow_session_12345",
-                        properties={
+                        properties={  # type: ignore[arg-type]
                             "icon": "Bot",
                             "background_color": "",
                             "text_color": "",
@@ -1788,7 +1788,7 @@ class UDFExecutor:
                     return original_asyncio_run(coro, **kwargs)
 
             # Apply the patch temporarily
-            asyncio.run = sync_patched_asyncio_run
+            asyncio.run = sync_patched_asyncio_run  # type: ignore[assignment]
 
             try:
                 if asyncio.iscoroutinefunction(method):
@@ -1859,7 +1859,7 @@ class UDFExecutor:
         """Find component class in execution environment."""
         component_class = exec_globals.get(component_type)
         if component_class and isinstance(component_class, type):
-            return component_class
+            return component_class  # type: ignore[no-any-return]
 
         # Search for class by name with different matching strategies
         component_type_lower = component_type.lower()
@@ -2016,13 +2016,13 @@ class UDFExecutor:
             for output in outputs:
                 if output.get("name") == selected_output:
                     method = output.get("method")
-                    if method:
+                    if isinstance(method, str) and method:
                         return method
 
         # Fallback to first output's method
         if outputs:
             method = outputs[0].get("method")
-            if method:
+            if isinstance(method, str) and method:
                 return method
 
         # Final fallback: try common method names for components without metadata
@@ -2040,7 +2040,9 @@ class UDFExecutor:
         if hasattr(component_instance, "outputs"):
             outputs = getattr(component_instance, "outputs", [])
             if outputs and hasattr(outputs[0], "method"):
-                return outputs[0].method
+                method = outputs[0].method
+                if isinstance(method, str):
+                    return method
 
         # Look for common Langflow component method patterns
         common_methods = [

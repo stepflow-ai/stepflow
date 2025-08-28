@@ -304,9 +304,14 @@ async def langflow_language_model(
     if isinstance(input_value, str):
         user_message = input_value
     elif isinstance(input_value, dict):
-        user_message = input_value.get(
-            "text", input_value.get("content", str(input_value))
-        )
+        text_value = input_value.get("text")
+        if text_value is not None:
+            user_message = str(text_value)
+        else:
+            content_value = input_value.get("content")
+            user_message = (
+                str(content_value) if content_value is not None else str(input_value)
+            )
     else:
         user_message = str(input_value)
 
@@ -323,10 +328,17 @@ async def langflow_language_model(
         # Initialize OpenAI client
         client = openai.OpenAI(api_key=api_key)
 
-        # Build messages array
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": user_message},
+        # Build messages array with proper typing for OpenAI client
+        from openai.types.chat import (
+            ChatCompletionSystemMessageParam,
+            ChatCompletionUserMessageParam,
+        )
+
+        messages: list[
+            ChatCompletionSystemMessageParam | ChatCompletionUserMessageParam
+        ] = [
+            ChatCompletionSystemMessageParam(role="system", content=system_message),
+            ChatCompletionUserMessageParam(role="user", content=user_message),
         ]
 
         # Make API call

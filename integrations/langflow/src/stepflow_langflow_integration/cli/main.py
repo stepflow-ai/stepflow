@@ -123,7 +123,7 @@ def serve(host: str, port: int, protocol_prefix: str):
         click.echo("🚀 Starting Langflow component server...")
         click.echo(f"   Protocol prefix: {protocol_prefix}")
 
-        server = StepflowLangflowServer(protocol_prefix=protocol_prefix)
+        server = StepflowLangflowServer()
 
         # For now, only stdio mode is supported
         if host != "localhost" or port != 8000:

@@ -31,7 +31,7 @@ class DependencyAnalyzer:
         Returns:
             Dict mapping step IDs to their dependencies
         """
-        dependencies = {}
+        dependencies: dict[str, list[str]] = {}
 
         for edge in edges:
             source = edge.get("source")
@@ -57,7 +57,7 @@ class DependencyAnalyzer:
             ValueError: If circular dependencies are detected
         """
         # Topological sort using Kahn's algorithm
-        in_degree = {}
+        in_degree: dict[str, int] = {}
         all_nodes = set()
 
         # Collect all nodes and calculate in-degrees

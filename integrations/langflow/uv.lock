@@ -7024,8 +7024,11 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "jsonschema" },
+    { name = "langchain-core" },
+    { name = "langchain-openai" },
     { name = "langflow" },
     { name = "msgspec" },
+    { name = "openai" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "stepflow-py" },
@@ -7050,8 +7053,11 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "jsonschema", specifier = ">=4.17.0" },
+    { name = "langchain-core", specifier = ">=0.1.0" },
+    { name = "langchain-openai", specifier = ">=0.1.0" },
     { name = "langflow", specifier = ">=1.5.0" },
     { name = "msgspec", specifier = ">=0.19.0" },
+    { name = "openai", specifier = ">=1.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "stepflow-py", editable = "../../sdks/python" },

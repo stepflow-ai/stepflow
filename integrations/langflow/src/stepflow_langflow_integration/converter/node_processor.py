@@ -255,7 +255,7 @@ class NodeProcessor:
             selected_output = outputs[0].get("name")
 
         # Prepare template (remove code field to avoid duplication)
-        prepared_template = {}
+        prepared_template: dict[str, Any] = {}
         embedding_config_count = 0
         for field_name, field_config in template.items():
             if field_name != "code":
@@ -294,7 +294,7 @@ class NodeProcessor:
         Returns:
             Dict of runtime inputs
         """
-        runtime_inputs = {}
+        runtime_inputs: dict[str, Any] = {}
 
         # For now, create placeholder inputs based on dependencies
         # TODO: Map actual edge connections to specific input fields
@@ -330,7 +330,7 @@ class NodeProcessor:
         node_info = node_data.get("node", {})
         template = node_info.get("template", {})
 
-        component_inputs = {}
+        component_inputs: dict[str, Any] = {}
 
         # Map static template values to component inputs
         for field_name, field_config in template.items():
@@ -393,7 +393,7 @@ class NodeProcessor:
         Returns:
             Dict of runtime inputs
         """
-        runtime_inputs = {}
+        runtime_inputs: dict[str, Any] = {}
         node_id = node.get("id")
 
         # Use field mapping if available, otherwise fall back to generic input names
@@ -402,7 +402,7 @@ class NodeProcessor:
             node_field_map = field_mapping[node_id]
 
             # Group inputs by field name to handle list fields like 'tools'
-            field_inputs = {}
+            field_inputs: dict[str, Any] = {}
 
             for dep_id in dependency_node_ids:
                 if dep_id in node_field_map and dep_id in node_output_refs:
@@ -456,7 +456,7 @@ class NodeProcessor:
         node_info = node_data.get("node", {})
         template = node_info.get("template", {})
 
-        component_inputs = {}
+        component_inputs: dict[str, Any] = {}
 
         # Map static template values to component inputs
         for field_name, field_config in template.items():
@@ -1138,9 +1138,9 @@ class MockGenericComponent(Component):
         print(f"DEBUG: Creating tool sequence config for Agent {agent_node_id}")
 
         # Separate tool dependencies from other dependencies
-        tool_configs = []
-        other_inputs = {}
-        external_inputs = {}  # For references to non-fused steps
+        tool_configs: list[dict[str, Any]] = []
+        other_inputs: dict[str, Any] = {}
+        external_inputs: dict[str, Any] = {}  # For references to non-fused steps
 
         for dep_id in dependencies:
             dep_node = self._find_node_by_id(dep_id, all_nodes)
@@ -1267,7 +1267,7 @@ class MockGenericComponent(Component):
         component_type = node_data.get("type", "")
         template = node_data.get("node", {}).get("template", {})
 
-        tool_inputs = {}
+        tool_inputs: dict[str, Any] = {}
 
         # Extract all template values
         for field_name, field_config in template.items():

@@ -134,7 +134,7 @@ class LangflowConverter:
             #     builder.set_input_schema(input_schema)
 
             # Process nodes and collect output references
-            node_output_refs = {}  # node_id -> output reference
+            node_output_refs: dict[str, Any] = {}  # node_id -> output reference
             processed_nodes = set()
 
             # First, process nodes in execution order
@@ -221,7 +221,7 @@ class LangflowConverter:
             edges = data.get("edges", [])
 
             # Basic statistics
-            analysis = {
+            analysis: dict[str, Any] = {
                 "node_count": len(nodes),
                 "edge_count": len(edges),
                 "component_types": {},
@@ -264,11 +264,13 @@ class LangflowConverter:
         """Generate a workflow name from Langflow data."""
         # Try to get name from various sources
         if "name" in langflow_data:
-            return langflow_data["name"]
+            name = langflow_data["name"]
+            return str(name) if name is not None else "Converted Langflow Workflow"
 
         data = langflow_data.get("data", {})
         if "name" in data:
-            return data["name"]
+            name = data["name"]
+            return str(name) if name is not None else "Converted Langflow Workflow"
 
         # Fallback to generic name
         return "Converted Langflow Workflow"
@@ -284,7 +286,7 @@ class LangflowConverter:
         Returns:
             Dict mapping target_node_id -> {source_node_id -> target_field_name}
         """
-        field_mapping = {}
+        field_mapping: dict[str, dict[str, str]] = {}
 
         for edge in edges:
             target_id = edge.get("target")
@@ -451,7 +453,9 @@ class LangflowConverter:
         """
         # Get embedding configuration from node template
         embedding_data = embedding_node.get("data", {})
-        embedding_template = embedding_data.get("node", {}).get("template", {})
+        embedding_template: dict[str, Any] = embedding_data.get("node", {}).get(
+            "template", {}
+        )
 
         # Get vector store configuration
         vector_store_data = vector_store_node.get("data", {})
@@ -479,9 +483,12 @@ class LangflowConverter:
                 "chunk_size",
                 "max_retries",
             ]:
-                embedding_config["value"]["config"][param_name] = param_config.get(
-                    "value"
-                )
+                # Type check: param_config should be a dict with template data
+                if isinstance(param_config, dict):
+                    param_value: Any = param_config.get("value")
+                    # Type assertion to ensure config is treated as dict
+                    config_dict: dict[str, Any] = embedding_config["value"]["config"]  # type: ignore[index]
+                    config_dict[param_name] = param_value
 
         # Set the embedding configuration in the vector store template
         vector_store_template[f"_embedding_config_{field_name}"] = embedding_config
