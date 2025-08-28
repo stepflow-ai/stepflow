@@ -14,16 +14,18 @@
 
 """Centralized test registry for Langflow integration tests.
 
-This module provides a single source of truth for all test workflows and their expected behaviors.
-It eliminates duplication across test files by providing common workflow definitions, input data,
+This module provides a single source of truth for all test workflows and their
+expected behaviors. It eliminates duplication across test files by providing
+common workflow definitions, input data,
 and expected outcomes.
 """
 
 import json
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
 import pytest
 
 
@@ -32,15 +34,15 @@ class ConversionExpectation:
     """Expected results from Langflow → Stepflow conversion."""
 
     should_succeed: bool = True
-    workflow_name: Optional[str] = None
-    step_count: Optional[int] = None
-    step_ids: Optional[List[str]] = None
-    component_types: Optional[List[str]] = None
-    component_types_include: Optional[List[str]] = None
-    udf_executor_count: Optional[int] = None
+    workflow_name: str | None = None
+    step_count: int | None = None
+    step_ids: list[str] | None = None
+    component_types: list[str] | None = None
+    component_types_include: list[str] | None = None
+    udf_executor_count: int | None = None
     has_dependencies: bool = False
-    error_type: Optional[str] = None
-    error_message_contains: Optional[str] = None
+    error_type: str | None = None
+    error_message_contains: str | None = None
 
 
 @dataclass
@@ -48,8 +50,8 @@ class ValidationExpectation:
     """Expected results from Stepflow workflow validation."""
 
     should_succeed: bool = True
-    error_contains: Optional[str] = None
-    requires_components: Optional[List[str]] = None
+    error_contains: str | None = None
+    requires_components: list[str] | None = None
 
 
 class ResultValidator(ABC):
@@ -58,11 +60,12 @@ class ResultValidator(ABC):
     @abstractmethod
     def validate(
         self,
-        result_data: Dict[str, Any],
-        input_data: Dict[str, Any],
+        result_data: dict[str, Any],
+        input_data: dict[str, Any],
         workflow_name: str,
     ) -> None:
-        """Validate execution result. Should raise AssertionError if validation fails."""
+        """Validate execution result. Should raise AssertionError if validation
+        fails."""
         pass
 
 
@@ -71,8 +74,8 @@ class ChatResultValidator(ResultValidator):
 
     def validate(
         self,
-        result_data: Dict[str, Any],
-        input_data: Dict[str, Any],
+        result_data: dict[str, Any],
+        input_data: dict[str, Any],
         workflow_name: str,
     ) -> None:
         """Validate chat workflow results."""
@@ -87,9 +90,10 @@ class ChatResultValidator(ResultValidator):
             )
             has_meaningful_content = len(result_str.strip()) > 10
 
-            assert (
-                has_input_reflection or has_meaningful_content
-            ), f"Chat result should reflect input or provide meaningful response for {workflow_name}. Input: {input_message}, Result: {result_data}"
+            assert has_input_reflection or has_meaningful_content, (
+                f"Chat result should reflect input or provide meaningful response for "
+                f"{workflow_name}. Input: {input_message}, Result: {result_data}"
+            )
 
 
 class PromptingResultValidator(ResultValidator):
@@ -97,17 +101,18 @@ class PromptingResultValidator(ResultValidator):
 
     def validate(
         self,
-        result_data: Dict[str, Any],
-        input_data: Dict[str, Any],
+        result_data: dict[str, Any],
+        input_data: dict[str, Any],
         workflow_name: str,
     ) -> None:
         """Validate prompting workflow results."""
         result_str = str(result_data)
 
         # Should have reasonable content length
-        assert (
-            len(result_str.strip()) > 5
-        ), f"Prompting result should have meaningful content for {workflow_name}: {result_data}"
+        assert len(result_str.strip()) > 5, (
+            f"Prompting result should have meaningful content for "
+            f"{workflow_name}: {result_data}"
+        )
 
 
 class MemoryResultValidator(ResultValidator):
@@ -115,8 +120,8 @@ class MemoryResultValidator(ResultValidator):
 
     def validate(
         self,
-        result_data: Dict[str, Any],
-        input_data: Dict[str, Any],
+        result_data: dict[str, Any],
+        input_data: dict[str, Any],
         workflow_name: str,
     ) -> None:
         """Validate memory workflow results."""
@@ -129,9 +134,10 @@ class MemoryResultValidator(ResultValidator):
             )
             has_meaningful_response = len(result_str.strip()) > 15
 
-            assert (
-                has_memory_indication or has_meaningful_response
-            ), f"Memory workflow should acknowledge memory operations for {workflow_name}: {result_data}"
+            assert has_memory_indication or has_meaningful_response, (
+                f"Memory workflow should acknowledge memory operations for "
+                f"{workflow_name}: {result_data}"
+            )
 
 
 class DocumentQAResultValidator(ResultValidator):
@@ -139,8 +145,8 @@ class DocumentQAResultValidator(ResultValidator):
 
     def validate(
         self,
-        result_data: Dict[str, Any],
-        input_data: Dict[str, Any],
+        result_data: dict[str, Any],
+        input_data: dict[str, Any],
         workflow_name: str,
     ) -> None:
         """Validate QA/document workflow results."""
@@ -157,9 +163,11 @@ class DocumentQAResultValidator(ResultValidator):
             )
             has_analysis_content = len(result_str.strip()) > 20
 
-            assert (
-                has_document_relation or has_analysis_content
-            ), f"QA result should relate to document content for {workflow_name}. Document: {document_content[:50]}..., Result: {result_data}"
+            assert has_document_relation or has_analysis_content, (
+                f"QA result should relate to document content for "
+                f"{workflow_name}. Document: {document_content[:50]}..., "
+                f"Result: {result_data}"
+            )
 
 
 class AgentResultValidator(ResultValidator):
@@ -167,8 +175,8 @@ class AgentResultValidator(ResultValidator):
 
     def validate(
         self,
-        result_data: Dict[str, Any],
-        input_data: Dict[str, Any],
+        result_data: dict[str, Any],
+        input_data: dict[str, Any],
         workflow_name: str,
     ) -> None:
         """Validate agent workflow results."""
@@ -184,9 +192,10 @@ class AgentResultValidator(ResultValidator):
         has_calculation = any(pattern in result_str for pattern in calculation_patterns)
         has_substantial_content = len(result_str.strip()) > 25
 
-        assert (
-            has_tool_indication or has_calculation or has_substantial_content
-        ), f"Agent result should show evidence of tool usage or reasoning for {workflow_name}: {result_data}"
+        assert has_tool_indication or has_calculation or has_substantial_content, (
+            f"Agent result should show evidence of tool usage or reasoning for "
+            f"{workflow_name}: {result_data}"
+        )
 
 
 class GenericResultValidator(ResultValidator):
@@ -194,15 +203,15 @@ class GenericResultValidator(ResultValidator):
 
     def validate(
         self,
-        result_data: Dict[str, Any],
-        input_data: Dict[str, Any],
+        result_data: dict[str, Any],
+        input_data: dict[str, Any],
         workflow_name: str,
     ) -> None:
         """Basic validation - just ensure result has meaningful content."""
         assert result_data is not None, f"Result should not be None for {workflow_name}"
-        assert isinstance(
-            result_data, dict
-        ), f"Result should be dict for {workflow_name}, got {type(result_data)}"
+        assert isinstance(result_data, dict), (
+            f"Result should be dict for {workflow_name}, got {type(result_data)}"
+        )
 
 
 @dataclass
@@ -210,15 +219,15 @@ class ExecutionExpectation:
     """Expected results from Stepflow workflow execution."""
 
     should_succeed: bool = True
-    result_structure: Optional[Dict[str, Any]] = None
-    result_contains_keys: Optional[List[str]] = None
-    result_values: Optional[Dict[str, Any]] = None
+    result_structure: dict[str, Any] | None = None
+    result_contains_keys: list[str] | None = None
+    result_values: dict[str, Any] | None = None
     timeout_seconds: float = 30.0
     can_mock: bool = False
-    mock_response: Optional[Dict[str, Any]] = None
-    requires_api_keys: Optional[List[str]] = None
+    mock_response: dict[str, Any] | None = None
+    requires_api_keys: list[str] | None = None
     performance_category: str = "small_workflow"
-    result_validator: Optional[ResultValidator] = None
+    result_validator: ResultValidator | None = None
 
 
 @dataclass
@@ -226,14 +235,14 @@ class TestWorkflow:
     """Complete test workflow definition."""
 
     name: str
-    langflow_file: Optional[str] = None
-    langflow_content: Optional[Dict[str, Any]] = None
-    input_data: Optional[Dict[str, Any]] = None
-    environment: Optional[Dict[str, str]] = None
+    langflow_file: str | None = None
+    langflow_content: dict[str, Any] | None = None
+    input_data: dict[str, Any] | None = None
+    environment: dict[str, str] | None = None
     conversion: ConversionExpectation = None
     validation: ValidationExpectation = None
     execution: ExecutionExpectation = None
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
 
     def __post_init__(self):
         """Set defaults for expectations."""
@@ -250,7 +259,7 @@ class TestWorkflow:
 class TestRegistry:
     """Registry of all test workflows with common loading and validation logic."""
 
-    def __init__(self, fixtures_dir: Optional[Path] = None):
+    def __init__(self, fixtures_dir: Path | None = None):
         """Initialize test registry.
 
         Args:
@@ -260,7 +269,7 @@ class TestRegistry:
             fixtures_dir = Path(__file__).parent.parent / "fixtures"
         self.fixtures_dir = fixtures_dir
         self.langflow_fixtures_dir = fixtures_dir / "langflow"
-        self._workflows: List[TestWorkflow] = []
+        self._workflows: list[TestWorkflow] = []
         self._register_workflows()
 
     def _register_workflows(self):
@@ -274,7 +283,8 @@ class TestRegistry:
                 input_data={"message": "Hello, world!"},
                 conversion=ConversionExpectation(
                     workflow_name="Simple Chat Example",
-                    step_count=0,  # ChatInput and ChatOutput are I/O connection points, not processing steps
+                    step_count=0,  # ChatInput and ChatOutput are I/O connection points,
+                    # not processing steps
                     udf_executor_count=0,  # No UDF executors needed
                     has_dependencies=False,  # No processing steps means no dependencies
                 ),
@@ -295,7 +305,8 @@ class TestRegistry:
                 environment={"OPENAI_API_KEY": "test-key-123"},
                 conversion=ConversionExpectation(
                     workflow_name="OpenAI Chat Workflow",
-                    step_count=1,  # Only LanguageModelComponent creates a processing step
+                    step_count=1,  # Only LanguageModelComponent creates a
+                    # processing step
                     component_types_include=[
                         "/langflow/LanguageModelComponent",
                     ],  # LanguageModelComponent routes to standalone component
@@ -357,18 +368,24 @@ class TestRegistry:
                 input_data={"message": "Write a haiku about coding"},
                 conversion=ConversionExpectation(
                     workflow_name="Basic Prompting",
-                    step_count=4,  # Prompt blob + Prompt processing + LanguageModelComponent blob + LanguageModelComponent processing
+                    step_count=4,  # Prompt blob + Prompt processing +
+                    # LanguageModelComponent blob + LanguageModelComponent processing
                     has_dependencies=True,
                     component_types_include=[
                         "/langflow/udf_executor",
                         "/builtin/put_blob",
                     ],  # UDF executors + blob storage
-                    udf_executor_count=2,  # Both Prompt and LanguageModelComponent are UDF executors
+                    udf_executor_count=2,  # Both Prompt and LanguageModelComponent
+                    # are UDF executors
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
                     mock_response={
-                        "text": "Code flows like stream\nLogic branches, functions bloom\nDebug finds the truth",
+                        "text": (
+                            "Code flows like stream\n"
+                            "Logic branches, functions bloom\n"
+                            "Debug finds the truth"
+                        ),
                         "type": "Message",
                     },
                     result_validator=PromptingResultValidator(),
@@ -385,12 +402,16 @@ class TestRegistry:
                 input_data={"message": "Remember my name is Alice"},
                 conversion=ConversionExpectation(
                     workflow_name="Memory Chatbot",
-                    step_count=5,  # Memory + Prompt blob + Prompt processing + LanguageModelComponent blob + LanguageModelComponent processing
+                    step_count=5,  # Memory + Prompt blob + Prompt processing +
+                    # LanguageModelComponent blob + LanguageModelComponent processing
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/udf_executor", "/langflow/memory", "/builtin/put_blob"
+                        "/langflow/udf_executor",
+                        "/langflow/memory",
+                        "/builtin/put_blob",
                     ],  # UDF executors + memory component + blob storage
-                    udf_executor_count=2,  # Prompt and LanguageModelComponent components (Memory is standalone)
+                    udf_executor_count=2,  # Prompt and LanguageModelComponent
+                    # components (Memory is standalone)
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
@@ -415,9 +436,12 @@ class TestRegistry:
                     step_count=5,  # File + 2 UDF executors + 2 blob storage steps
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/file", "/langflow/udf_executor", "/builtin/put_blob"
+                        "/langflow/file",
+                        "/langflow/udf_executor",
+                        "/builtin/put_blob",
                     ],  # File component + UDF executors + blob storage
-                    udf_executor_count=2,  # Prompt and LanguageModelComponent both use UDF executor
+                    udf_executor_count=2,  # Prompt and LanguageModelComponent both use
+                    # UDF executor
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
@@ -437,16 +461,20 @@ class TestRegistry:
                 name="simple_agent",
                 langflow_file="simple_agent.json",
                 input_data={
-                    "message": "Calculate 15 * 23 and then search for information about the result"
+                    "message": "Calculate 15 * 23 and then search for information "
+                    + "about the result"
                 },
                 conversion=ConversionExpectation(
                     workflow_name="Simple Agent",
-                    step_count=4,  # Tool blobs (2x) + Agent blob + Agent processing step
+                    step_count=4,  # Tool blobs (2x) + Agent blob +
+                    # Agent processing step
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/udf_executor", "/builtin/put_blob"
+                        "/langflow/udf_executor",
+                        "/builtin/put_blob",
                     ],  # UDF executor for Agent + blob storage steps
-                    udf_executor_count=1,  # Only Agent component (tools are dependencies, not separate UDF executors)
+                    udf_executor_count=1,  # Only Agent component (tools are
+                    # dependencies, not separate UDF executors)
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
@@ -470,23 +498,27 @@ class TestRegistry:
                     step_count=11,  # 8 processing steps + 3 blob storage steps
                     has_dependencies=True,
                     component_types_include=[
-                        "/langflow/file", "/langflow/AstraDB", "/langflow/udf_executor", "/builtin/put_blob"
+                        "/langflow/file",
+                        "/langflow/AstraDB",
+                        "/langflow/udf_executor",
+                        "/builtin/put_blob",
                     ],  # File component + AstraDB + UDF executors + blob storage
-                    udf_executor_count=4,  # Prompt, SplitText, parser, LanguageModelComponent (OpenAI embeddings merged into AstraDB)
+                    udf_executor_count=4,  # Prompt, SplitText, parser,
+                    # LanguageModelComponent (OpenAI embeddings merged into AstraDB)
                 ),
                 execution=ExecutionExpectation(
                     can_mock=True,
                     timeout_seconds=120.0,  # Large workflows may be slow
                     performance_category="large_workflow",
-                    result_validator=DocumentQAResultValidator(),  # RAG is similar to document QA
+                    result_validator=DocumentQAResultValidator(),
                 ),
                 tags=["mockable", "slow"],
             )
         )
 
     def get_workflows(
-        self, tags: Optional[List[str]] = None, exclude_tags: Optional[List[str]] = None
-    ) -> List[TestWorkflow]:
+        self, tags: list[str] | None = None, exclude_tags: list[str] | None = None
+    ) -> list[TestWorkflow]:
         """Get workflows filtered by tags.
 
         Args:
@@ -508,14 +540,14 @@ class TestRegistry:
 
         return workflows
 
-    def get_workflow_by_name(self, name: str) -> Optional[TestWorkflow]:
+    def get_workflow_by_name(self, name: str) -> TestWorkflow | None:
         """Get workflow by name."""
         for workflow in self._workflows:
             if workflow.name == name:
                 return workflow
         return None
 
-    def load_langflow_data(self, workflow: TestWorkflow) -> Dict[str, Any]:
+    def load_langflow_data(self, workflow: TestWorkflow) -> dict[str, Any]:
         """Load Langflow JSON data for a workflow.
 
         Args:
@@ -533,7 +565,7 @@ class TestRegistry:
         if workflow.langflow_file:
             file_path = self.langflow_fixtures_dir / workflow.langflow_file
             if file_path.exists():
-                with open(file_path, "r") as f:
+                with open(file_path) as f:
                     return json.load(f)
             else:
                 raise FileNotFoundError(
@@ -544,18 +576,18 @@ class TestRegistry:
             f"Workflow {workflow.name} has no langflow_file or langflow_content"
         )
 
-    def get_conversion_test_cases(self) -> List[TestWorkflow]:
+    def get_conversion_test_cases(self) -> list[TestWorkflow]:
         """Get workflows suitable for conversion testing."""
         return self.get_workflows()  # All workflows should be conversion tested
 
-    def get_validation_test_cases(self) -> List[TestWorkflow]:
+    def get_validation_test_cases(self) -> list[TestWorkflow]:
         """Get workflows suitable for validation testing."""
         # Only workflows that should convert successfully
         return [w for w in self._workflows if w.conversion.should_succeed]
 
     def get_execution_test_cases(
         self, mockable_only: bool = False
-    ) -> List[TestWorkflow]:
+    ) -> list[TestWorkflow]:
         """Get workflows suitable for execution testing.
 
         Args:
@@ -568,12 +600,12 @@ class TestRegistry:
 
         return workflows
 
-    def get_performance_test_cases(self) -> List[TestWorkflow]:
+    def get_performance_test_cases(self) -> list[TestWorkflow]:
         """Get workflows suitable for performance testing."""
         return [w for w in self._workflows if "slow" not in w.tags]
 
     @property
-    def all_workflows(self) -> List[TestWorkflow]:
+    def all_workflows(self) -> list[TestWorkflow]:
         """Get all registered workflows."""
         return self._workflows.copy()
 
@@ -590,12 +622,12 @@ def get_test_registry() -> TestRegistry:
     return _registry
 
 
-def workflow_ids(workflows: List[TestWorkflow]) -> List[str]:
+def workflow_ids(workflows: list[TestWorkflow]) -> list[str]:
     """Extract workflow names for pytest parametrization."""
     return [w.name for w in workflows]
 
 
-def pytest_parametrize_workflows(workflows: List[TestWorkflow]):
+def pytest_parametrize_workflows(workflows: list[TestWorkflow]):
     """Create pytest.param objects for workflow parametrization."""
     return [
         pytest.param(

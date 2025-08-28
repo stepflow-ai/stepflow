@@ -14,7 +14,7 @@
 
 """Type conversion between Langflow and Stepflow formats."""
 
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
 
 class TypeConverter:
@@ -31,9 +31,9 @@ class TypeConverter:
         """
         # Import Langflow types dynamically to avoid import errors
         try:
-            from langflow.schema.message import Message
             from langflow.schema.data import Data
             from langflow.schema.dataframe import DataFrame
+            from langflow.schema.message import Message
         except ImportError:
             # Fallback if Langflow not available
             return obj
@@ -75,7 +75,7 @@ class TypeConverter:
                         obj.to_dict("records") if hasattr(obj, "to_dict") else str(obj)
                     ),
                 }
-        elif isinstance(obj, (str, int, float, bool, list, dict, type(None))):
+        elif isinstance(obj, str | int | float | bool | list | dict | type(None)):
             # Simple serializable types
             return obj
         else:
@@ -86,7 +86,7 @@ class TypeConverter:
             )
 
     def deserialize_to_langflow_type(
-        self, obj: Any, expected_type: Optional[Type] = None
+        self, obj: Any, expected_type: type | None = None
     ) -> Any:
         """Deserialize objects back to Langflow types.
 
@@ -102,9 +102,9 @@ class TypeConverter:
 
         # Import Langflow types dynamically
         try:
-            from langflow.schema.message import Message
             from langflow.schema.data import Data
             from langflow.schema.dataframe import DataFrame
+            from langflow.schema.message import Message
         except ImportError:
             return obj
 

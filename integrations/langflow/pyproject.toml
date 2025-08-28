@@ -56,7 +56,8 @@ dev = [
     "mypy>=1.8.0",
     "deptry>=0.22.0",
     "types-PyYAML>=6.0.0",
-    "httpx>=0.25.0",  # For testing HTTP components
+    "httpx>=0.25.0", # For testing HTTP components
+    "black>=25.1.0",
 ]
 
 [project.urls]
@@ -141,6 +142,7 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
+"src/stepflow_langflow_integration/executor/standalone_server.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

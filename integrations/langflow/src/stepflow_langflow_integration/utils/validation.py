@@ -14,13 +14,15 @@
 
 """Validation utilities for workflows and schemas."""
 
-from typing import Dict, Any, List
-from jsonschema import validate, ValidationError as JsonSchemaValidationError
+from typing import Any
+
+from jsonschema import ValidationError as JsonSchemaValidationError
+from jsonschema import validate
 
 from .errors import ValidationError
 
 
-def validate_langflow_json(data: Dict[str, Any]) -> None:
+def validate_langflow_json(data: dict[str, Any]) -> None:
     """Validate basic Langflow JSON structure.
 
     Args:
@@ -66,7 +68,7 @@ def validate_langflow_json(data: Dict[str, Any]) -> None:
             raise ValidationError(f"Node {i} missing 'data'")
 
 
-def validate_json_schema(instance: Any, schema: Dict[str, Any]) -> None:
+def validate_json_schema(instance: Any, schema: dict[str, Any]) -> None:
     """Validate instance against JSON schema.
 
     Args:
@@ -79,11 +81,11 @@ def validate_json_schema(instance: Any, schema: Dict[str, Any]) -> None:
     try:
         validate(instance=instance, schema=schema)
     except JsonSchemaValidationError as e:
-        raise ValidationError(f"Schema validation failed: {e.message}")
+        raise ValidationError(f"Schema validation failed: {e.message}") from e
 
 
 def validate_step_dependencies(
-    steps: List[Dict[str, Any]], dependencies: Dict[str, List[str]]
+    steps: list[dict[str, Any]], dependencies: dict[str, list[str]]
 ) -> None:
     """Validate that step dependencies reference valid steps.
 
@@ -107,7 +109,7 @@ def validate_step_dependencies(
                 )
 
 
-def check_circular_dependencies(dependencies: Dict[str, List[str]]) -> None:
+def check_circular_dependencies(dependencies: dict[str, list[str]]) -> None:
     """Check for circular dependencies using DFS.
 
     Args:

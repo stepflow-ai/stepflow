@@ -14,8 +14,9 @@
 
 """Unit tests for LangflowConverter."""
 
+from typing import Any
+
 import pytest
-from typing import Dict, Any
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 from stepflow_langflow_integration.utils.errors import ConversionError
@@ -29,7 +30,7 @@ class TestLangflowConverter:
         converter = LangflowConverter()
 
     def test_convert_simple_workflow(
-        self, converter: LangflowConverter, simple_langflow_workflow: Dict[str, Any]
+        self, converter: LangflowConverter, simple_langflow_workflow: dict[str, Any]
     ):
         """Test conversion of simple workflow."""
         workflow = converter.convert(simple_langflow_workflow)
@@ -61,7 +62,7 @@ class TestLangflowConverter:
             converter.convert(workflow_data)
 
     def test_to_yaml(
-        self, converter: LangflowConverter, simple_langflow_workflow: Dict[str, Any]
+        self, converter: LangflowConverter, simple_langflow_workflow: dict[str, Any]
     ):
         """Test YAML generation."""
         workflow = converter.convert(simple_langflow_workflow)
@@ -73,7 +74,7 @@ class TestLangflowConverter:
         assert "output:" in yaml_output
 
     def test_analyze_workflow(
-        self, converter: LangflowConverter, simple_langflow_workflow: Dict[str, Any]
+        self, converter: LangflowConverter, simple_langflow_workflow: dict[str, Any]
     ):
         """Test workflow analysis."""
         analysis = converter.analyze(simple_langflow_workflow)
@@ -131,28 +132,31 @@ class TestLangflowConverter:
         # Check that steps are reordered based on dependencies
         step_ids = [step.id for step in workflow.steps]
 
-        # Only the Prompt (middle-node) should generate a step since it's actual processing
-        # ChatInput and ChatOutput are logical I/O connection points
+        # Only the Prompt (middle-node) should generate a step since it's
+        # actual processing ChatInput and ChatOutput are logical I/O connection points
         assert len(step_ids) == 1
         assert "langflow_middle-node" in step_ids
 
         # Verify no forward references
         for i, step in enumerate(workflow.steps):
             if hasattr(step, "input") and step.input:
-                for key, value in step.input.items():
+                for _key, value in step.input.items():
                     if isinstance(value, dict) and "$from" in str(value):
                         from_info = value.get("$from", {})
-                        referenced_step = from_info.get("step", "")
-                        if referenced_step:
+                        from_step = from_info.get("step", "")
+                        if from_step:
                             # Find position of referenced step
                             try:
-                                ref_pos = step_ids.index(referenced_step)
-                                assert (
-                                    ref_pos < i
-                                ), f"Step {step.id} at position {i} references {referenced_step} at position {ref_pos} (forward reference)"
+                                ref_pos = step_ids.index(from_step)
+                                assert ref_pos < i, (
+                                    f"Step {step.id} at position {i} "
+                                    f"references {from_step} at position {ref_pos} "
+                                    "(forward reference)"
+                                )
                             except ValueError:
                                 pytest.fail(
-                                    f"Step {step.id} references undefined step {referenced_step}"
+                                    f"Step {step.id} references "
+                                    f"undefined step {from_step}"
                                 )
 
     def test_complex_dependency_ordering(self, converter: LangflowConverter):

@@ -14,15 +14,16 @@
 
 """UDF executor for Langflow components."""
 
-import os
-import sys
 import asyncio
 import inspect
-from typing import Dict, Any, Optional, Type
+import os
+import sys
+from typing import Any
+
 from stepflow_py import StepflowContext
 
-from .type_converter import TypeConverter
 from ..utils.errors import ExecutionError
+from .type_converter import TypeConverter
 
 
 class UDFExecutor:
@@ -33,8 +34,8 @@ class UDFExecutor:
         self.type_converter = TypeConverter()
 
     async def execute_with_resolved_data(
-        self, resolved_input_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, resolved_input_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a Langflow component UDF with pre-resolved blob data.
 
         This method eliminates the need for context.get_blob() calls by receiving
@@ -47,14 +48,17 @@ class UDFExecutor:
             Component execution result
         """
         print(
-            "🔥 UDF Executor: Starting execution with PRE-RESOLVED DATA (no context calls needed)"
+            "🔥 UDF Executor: Starting execution with PRE-RESOLVED DATA "
+            "(no context calls needed)"
         )
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(
-                "🔥 UDF Executor: Starting execution with PRE-RESOLVED DATA (no context calls needed)\n"
+                "🔥 UDF Executor: Starting execution with PRE-RESOLVED DATA "
+                "(no context calls needed)\n"
             )
             f.write(
-                f"DEBUG UDF Executor: Starting execution with input keys: {list(resolved_input_data.keys())}\n"
+                f"DEBUG UDF Executor: Starting execution with input keys: "
+                f"{list(resolved_input_data.keys())}\n"
             )
 
         try:
@@ -63,16 +67,19 @@ class UDFExecutor:
                 print("DEBUG: Entering tool sequence execution with pre-resolved data")
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        "DEBUG: Entering tool sequence execution with pre-resolved data\n"
+                        "DEBUG: Entering tool sequence execution with "
+                        "pre-resolved data\n"
                     )
                 return await self._execute_tool_sequence_resolved(resolved_input_data)
 
             print(
-                "DEBUG: Entering standard single-component execution with pre-resolved data"
+                "DEBUG: Entering standard single-component execution with "
+                "pre-resolved data"
             )
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    "DEBUG: Entering standard single-component execution with pre-resolved data\n"
+                    "DEBUG: Entering standard single-component execution with "
+                    "pre-resolved data\n"
                 )
             # Standard single-component execution
             return await self._execute_single_component_resolved(resolved_input_data)
@@ -83,8 +90,8 @@ class UDFExecutor:
             raise ExecutionError(f"UDF execution failed: {e}") from e
 
     async def execute(
-        self, input_data: Dict[str, Any], context: StepflowContext
-    ) -> Dict[str, Any]:
+        self, input_data: dict[str, Any], context: StepflowContext
+    ) -> dict[str, Any]:
         """Execute a Langflow component UDF with enhanced tool sequence support.
 
         Args:
@@ -98,16 +105,20 @@ class UDFExecutor:
         is_cached_context = hasattr(context, "cached_blobs")
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(
-                f"🔥 UDF Executor: Starting execution with CACHED CONTEXT: {is_cached_context}\n"
+                f"🔥 UDF Executor: Starting execution with CACHED CONTEXT: "
+                f"{is_cached_context}\n"
             )
             f.write(
-                f"DEBUG UDF Executor: Starting execution with input keys: {list(input_data.keys())}\n"
+                f"DEBUG UDF Executor: Starting execution with input keys: "
+                f"{list(input_data.keys())}\n"
             )
         print(
-            f"🔥 UDF Executor: Starting execution with CACHED CONTEXT: {is_cached_context}"
+            f"🔥 UDF Executor: Starting execution with CACHED CONTEXT: "
+            f"{is_cached_context}"
         )
         print(
-            f"DEBUG UDF Executor: Starting execution with input keys: {list(input_data.keys())}"
+            f"DEBUG UDF Executor: Starting execution with input keys: "
+            f"{list(input_data.keys())}"
         )
 
         try:
@@ -129,7 +140,7 @@ class UDFExecutor:
         except Exception as e:
             raise ExecutionError(f"UDF execution failed: {e}") from e
 
-    def _is_tool_sequence_execution(self, input_data: Dict[str, Any]) -> bool:
+    def _is_tool_sequence_execution(self, input_data: dict[str, Any]) -> bool:
         """Check if this is a tool sequence execution pattern.
 
         Args:
@@ -145,13 +156,14 @@ class UDFExecutor:
             f.write(f"DEBUG: _is_tool_sequence_execution: {has_tool_sequence}\n")
             if has_tool_sequence:
                 f.write(
-                    f"DEBUG: tool_sequence_config type: {type(input_data['tool_sequence_config'])}\n"
+                    f"DEBUG: tool_sequence_config type: "
+                    f"{type(input_data['tool_sequence_config'])}\n"
                 )
         return has_tool_sequence
 
     async def _execute_tool_sequence(
-        self, input_data: Dict[str, Any], context: StepflowContext
-    ) -> Dict[str, Any]:
+        self, input_data: dict[str, Any], context: StepflowContext
+    ) -> dict[str, Any]:
         """Execute a sequence of tool creation followed by agent execution.
 
         Args:
@@ -166,15 +178,17 @@ class UDFExecutor:
             f.write("DEBUG: Starting _execute_tool_sequence method\n")
             f.write(f"DEBUG: input_data keys: {list(input_data.keys())}\n")
             f.write(
-                f"DEBUG: tool_sequence_config exists: {'tool_sequence_config' in input_data}\n"
+                f"DEBUG: tool_sequence_config exists: "
+                f"{'tool_sequence_config' in input_data}\n"
             )
             if "tool_sequence_config" in input_data:
                 f.write(
-                    f"DEBUG: tool_sequence_config type: {type(input_data['tool_sequence_config'])}\n"
+                    f"DEBUG: tool_sequence_config type: "
+                    f"{type(input_data['tool_sequence_config'])}\n"
                 )
 
         try:
-            print(f"DEBUG: Getting sequence_config from input_data")
+            print("DEBUG: Getting sequence_config from input_data")
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write("DEBUG: About to extract tool_sequence_config\n")
             sequence_config = input_data["tool_sequence_config"]
@@ -186,32 +200,35 @@ class UDFExecutor:
                 f.write(f"DEBUG: sequence_config type: {type(sequence_config)}\n")
                 if "tools" in sequence_config:
                     f.write(
-                        f"DEBUG: tools key exists, type: {type(sequence_config['tools'])}\n"
+                        f"DEBUG: tools key exists, type: "
+                        f"{type(sequence_config['tools'])}\n"
                     )
                 else:
                     f.write("DEBUG: tools key missing from sequence_config!\n")
-            print(f"DEBUG: Got sequence_config, extracting tools")
+            print("DEBUG: Got sequence_config, extracting tools")
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write("DEBUG: CHECKPOINT 1 - About to extract tools\n")
             tool_configs = sequence_config["tools"]
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write("DEBUG: CHECKPOINT 2 - Successfully extracted tools\n")
-            print(f"DEBUG: Got tool_configs, extracting agent")
+            print("DEBUG: Got tool_configs, extracting agent")
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write("DEBUG: CHECKPOINT 3 - About to extract agent\n")
                 f.write(
-                    f"DEBUG: sequence_config has agent key: {'agent' in sequence_config}\n"
+                    f"DEBUG: sequence_config has agent key: "
+                    f"{'agent' in sequence_config}\n"
                 )
             agent_config = sequence_config["agent"]
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write("DEBUG: CHECKPOINT 4 - Successfully extracted agent\n")
                 f.write("DEBUG: CHECKPOINT 5 - About to extract runtime_inputs\n")
-            print(f"DEBUG: Got agent_config, extracting runtime_inputs")
+            print("DEBUG: Got agent_config, extracting runtime_inputs")
 
             # Add debug logging around potential failure point
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: About to call input_data.get('input', {{}}) - input_data type: {type(input_data)}\n"
+                    f"DEBUG: About to call input_data.get('input', {{}}) - "
+                    f"input_data type: {type(input_data)}\n"
                 )
                 f.write(
                     f"DEBUG: input_data keys before get: {list(input_data.keys())}\n"
@@ -221,11 +238,18 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write("DEBUG: CHECKPOINT 6 - Successfully extracted runtime_inputs\n")
-                f.write(
-                    f"DEBUG: runtime_inputs type: {type(runtime_inputs)}, keys: {list(runtime_inputs.keys()) if isinstance(runtime_inputs, dict) else 'not dict'}\n"
+                keys_str = (
+                    list(runtime_inputs.keys())
+                    if isinstance(runtime_inputs, dict)
+                    else "not dict"
                 )
                 f.write(
-                    "DEBUG: CHECKPOINT 7 - About to print input data keys and tool count\n"
+                    f"DEBUG: runtime_inputs type: {type(runtime_inputs)}, "
+                    f"keys: {keys_str}\n"
+                )
+                f.write(
+                    "DEBUG: CHECKPOINT 7 - About to print input data keys "
+                    "and tool count\n"
                 )
 
             print(f"DEBUG: Input data keys: {list(input_data.keys())}")
@@ -233,10 +257,12 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    "DEBUG: CHECKPOINT 8 - Successfully printed input data keys and tool count\n"
+                    "DEBUG: CHECKPOINT 8 - Successfully printed input data keys "
+                    "and tool count\n"
                 )
                 f.write(
-                    f"DEBUG: About to start tool creation loop with {len(tool_configs)} tools\n"
+                    f"DEBUG: About to start tool creation loop with "
+                    f"{len(tool_configs)} tools\n"
                 )
                 f.write(f"DEBUG: tool_configs type: {type(tool_configs)}\n")
                 f.write(f"DEBUG: tool_configs content: {tool_configs}\n")
@@ -259,15 +285,18 @@ class UDFExecutor:
 
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG: CHECKPOINT 12 - Successfully extracted component_type: {component_type}\n"
+                        f"DEBUG: CHECKPOINT 12 - Successfully extracted "
+                        f"component_type: {component_type}\n"
                     )
                 print(
-                    f"DEBUG: Creating tool {i+1}/{len(tool_configs)}: {component_type}"
+                    f"DEBUG: Creating tool {i + 1}/{len(tool_configs)}: "
+                    f"{component_type}"
                 )
 
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        "DEBUG: CHECKPOINT 13 - About to enter try block for blob resolution\n"
+                        "DEBUG: CHECKPOINT 13 - About to enter try block "
+                        "for blob resolution\n"
                     )
                 try:
                     # Get tool blob data - handle intelligent translation approach
@@ -284,15 +313,19 @@ class UDFExecutor:
                     tool_blob_id = tool_config["blob_id"]
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG: CHECKPOINT 15 - Successfully extracted tool_blob_id: {tool_blob_id}\n"
+                            f"DEBUG: CHECKPOINT 15 - Successfully extracted "
+                            f"tool_blob_id: "
+                            f"{tool_blob_id}\n"
                         )
                     print(f"DEBUG: Resolving blob reference {tool_blob_id}")
                     print(f"DEBUG: Available input keys: {list(input_data.keys())}")
                     print(
-                        f"DEBUG: tool_blob_id in input_data: {tool_blob_id in input_data}"
+                        f"DEBUG: tool_blob_id in input_data: "
+                        f"{tool_blob_id in input_data}"
                     )
 
-                    # Check if this is an internal reference that should be resolved from input data
+                    # Check if this is an internal reference that should be
+                    # resolved from input data
                     if tool_blob_id in input_data:
                         # This is an external input that was resolved by Stepflow
                         resolved_blob_id = input_data[tool_blob_id]
@@ -306,7 +339,8 @@ class UDFExecutor:
                         # Fallback: treat as direct blob ID
                         print(f"DEBUG: Using direct blob ID {tool_blob_id}")
                         print(
-                            f"DEBUG: This should not happen with intelligent translation!"
+                            "DEBUG: This should not happen with intelligent "
+                            "translation!"
                         )
                         tool_blob_data = await context.get_blob(tool_blob_id)
 
@@ -329,15 +363,16 @@ class UDFExecutor:
             # Step 2: Execute agent with tools
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: Tool creation loop completed. Created {len(tool_results)} tools\n"
+                    f"DEBUG: Tool creation loop completed. Created "
+                    f"{len(tool_results)} tools\n"
                 )
-                f.write(f"DEBUG: About to start agent execution\n")
-                f.write(f"DEBUG: CHECKPOINT A - About to print debug message\n")
+                f.write("DEBUG: About to start agent execution\n")
+                f.write("DEBUG: CHECKPOINT A - About to print debug message\n")
             print(f"DEBUG: Executing agent with {len(tool_results)} created tools")
 
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(f"DEBUG: CHECKPOINT B - Print message completed\n")
-                f.write(f"DEBUG: About to extract agent_config from sequence_config\n")
+                f.write("DEBUG: CHECKPOINT B - Print message completed\n")
+                f.write("DEBUG: About to extract agent_config from sequence_config\n")
                 f.write(
                     f"DEBUG: sequence_config keys: {list(sequence_config.keys())}\n"
                 )
@@ -346,7 +381,7 @@ class UDFExecutor:
             # Get agent blob data - use pre-resolved data to avoid context calls
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: Starting agent blob resolution using pre-resolved data\n"
+                    "DEBUG: Starting agent blob resolution using pre-resolved data\n"
                 )
 
             try:
@@ -356,27 +391,33 @@ class UDFExecutor:
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(f"DEBUG: Agent blob_id extracted: {agent_blob_id}\n")
                     f.write(
-                        f"DEBUG: Checking if {agent_blob_id} in input_data keys: {list(input_data.keys())}\n"
+                        f"DEBUG: Checking if {agent_blob_id} in input_data keys: "
+                        f"{list(input_data.keys())}\n"
                     )
 
-                # Check if this is an external reference that should be resolved from input data
+                # Check if this is an external reference that should be
+                # resolved from input data
                 if agent_blob_id in input_data:
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG: Found {agent_blob_id} in input_data - resolving external reference\n"
+                            f"DEBUG: Found {agent_blob_id} in input_data - "
+                            f"resolving external reference\n"
                         )
                     # This is an external input that was resolved by Stepflow
                     resolved_blob_id = input_data[agent_blob_id]
                     print(f"DEBUG: Resolved {agent_blob_id} to {resolved_blob_id}")
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG: Resolved {agent_blob_id} to blob ID: {resolved_blob_id}\n"
+                            f"DEBUG: Resolved {agent_blob_id} to blob ID: "
+                            f"{resolved_blob_id}\n"
                         )
                         f.write(
-                            f"DEBUG: Looking for blob in pre-resolved data instead of context call\n"
+                            "DEBUG: Looking for blob in pre-resolved data "
+                            "instead of context call\n"
                         )
                         f.write(
-                            f"DEBUG: _resolved_blobs keys: {list(input_data.get('_resolved_blobs', {}).keys())}\n"
+                            f"DEBUG: _resolved_blobs keys: "
+                            f"{list(input_data.get('_resolved_blobs', {}).keys())}\n"
                         )
 
                     # Use pre-resolved blob data instead of making context calls
@@ -385,23 +426,30 @@ class UDFExecutor:
                         agent_blob_data = resolved_blobs[resolved_blob_id]
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG: Successfully retrieved agent blob data from pre-resolved cache\n"
+                                "DEBUG: Successfully retrieved agent blob data "
+                                "from pre-resolved cache\n"
                             )
-                            f.write(
-                                f"DEBUG: Agent blob data keys: {list(agent_blob_data.keys()) if isinstance(agent_blob_data, dict) else 'not a dict'}\n"
+                            keys_info = (
+                                list(agent_blob_data.keys())
+                                if isinstance(agent_blob_data, dict)
+                                else "not a dict"
                             )
+                            f.write(f"DEBUG: Agent blob data keys: {keys_info}\n")
                     else:
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG: CRITICAL ERROR - resolved blob ID {resolved_blob_id} not found in pre-resolved cache\n"
+                                f"DEBUG: CRITICAL ERROR - resolved blob ID "
+                                f"{resolved_blob_id} not found in pre-resolved cache\n"
                             )
                         raise Exception(
-                            f"Agent blob {resolved_blob_id} not found in pre-resolved data"
+                            f"Agent blob {resolved_blob_id} not found in "
+                            f"pre-resolved data"
                         )
                 else:
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG: {agent_blob_id} not found in input_data - looking in pre-resolved blobs directly\n"
+                            f"DEBUG: {agent_blob_id} not found in input_data - "
+                            f"looking in pre-resolved blobs directly\n"
                         )
                     # Fallback: look for direct blob ID in pre-resolved data
                     print(f"DEBUG: Using direct agent blob ID {agent_blob_id}")
@@ -410,7 +458,8 @@ class UDFExecutor:
                             f"DEBUG: Looking for {agent_blob_id} in pre-resolved data\n"
                         )
                         f.write(
-                            f"DEBUG: _resolved_blobs keys: {list(input_data.get('_resolved_blobs', {}).keys())}\n"
+                            f"DEBUG: _resolved_blobs keys: "
+                            f"{list(input_data.get('_resolved_blobs', {}).keys())}\n"
                         )
 
                     resolved_blobs = input_data.get("_resolved_blobs", {})
@@ -418,18 +467,24 @@ class UDFExecutor:
                         agent_blob_data = resolved_blobs[agent_blob_id]
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG: Successfully retrieved agent blob data from pre-resolved cache (direct)\n"
+                                "DEBUG: Successfully retrieved agent blob data "
+                                "from pre-resolved cache (direct)\n"
                             )
-                            f.write(
-                                f"DEBUG: Agent blob data keys: {list(agent_blob_data.keys()) if isinstance(agent_blob_data, dict) else 'not a dict'}\n"
+                            keys_info = (
+                                list(agent_blob_data.keys())
+                                if isinstance(agent_blob_data, dict)
+                                else "not a dict"
                             )
+                            f.write(f"DEBUG: Agent blob data keys: {keys_info}\n")
                     else:
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG: CRITICAL ERROR - direct blob ID {agent_blob_id} not found in pre-resolved cache\n"
+                                f"DEBUG: CRITICAL ERROR - direct blob ID "
+                                f"{agent_blob_id} not found in pre-resolved cache\n"
                             )
                         raise Exception(
-                            f"Agent blob {agent_blob_id} not found in pre-resolved data (direct lookup)"
+                            f"Agent blob {agent_blob_id} not found in "
+                            f"pre-resolved data (direct lookup)"
                         )
 
             except Exception as e:
@@ -450,7 +505,7 @@ class UDFExecutor:
             # Execute agent
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: About to execute agent with _execute_langflow_component\n"
+                    "DEBUG: About to execute agent with _execute_langflow_component\n"
                 )
                 f.write(f"DEBUG: Agent inputs keys: {list(agent_inputs.keys())}\n")
 
@@ -460,8 +515,8 @@ class UDFExecutor:
                     runtime_inputs=agent_inputs,
                 )
                 with open("/tmp/udf_debug.log", "a") as f:
-                    f.write(f"DEBUG: Agent execution completed successfully\n")
-                print(f"DEBUG: Agent execution completed successfully")
+                    f.write("DEBUG: Agent execution completed successfully\n")
+                print("DEBUG: Agent execution completed successfully")
 
                 return {
                     "result": self.type_converter.serialize_langflow_object(
@@ -487,9 +542,9 @@ class UDFExecutor:
             raise ExecutionError(f"Tool sequence execution failed: {e}") from e
 
     async def _execute_tool_sequence_resolved(
-        self, resolved_input_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Execute a sequence of tool creation followed by agent execution using pre-resolved blob data.
+        self, resolved_input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute tool sequence + agent execution using pre-resolved blob data.
 
         Args:
             resolved_input_data: Enhanced input with pre-resolved blob data
@@ -512,11 +567,13 @@ class UDFExecutor:
             resolved_blobs = resolved_input_data.get("_resolved_blobs", {})
 
             print(
-                f"DEBUG: Executing tool sequence with {len(tool_configs)} tools using pre-resolved data"
+                f"DEBUG: Executing tool sequence with {len(tool_configs)} tools "
+                f"using pre-resolved data"
             )
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: Executing tool sequence with {len(tool_configs)} tools using pre-resolved data\n"
+                    f"DEBUG: Executing tool sequence with {len(tool_configs)} tools "
+                    f"using pre-resolved data\n"
                 )
                 f.write(
                     f"DEBUG: Available resolved blobs: {list(resolved_blobs.keys())}\n"
@@ -528,7 +585,8 @@ class UDFExecutor:
             for i, tool_config in enumerate(tool_configs):
                 component_type = tool_config.get("component_type", "unknown")
                 print(
-                    f"DEBUG: Creating tool {i+1}/{len(tool_configs)}: {component_type}"
+                    f"DEBUG: Creating tool {i + 1}/{len(tool_configs)}: "
+                    f"{component_type}"
                 )
 
                 try:
@@ -543,15 +601,16 @@ class UDFExecutor:
                         # Direct blob ID
                         tool_blob_data = resolved_blobs[tool_blob_id]
 
-                    # Execute tool creation - no context needed, just pass blob data directly
+                    # Execute tool creation - pass blob data directly
                     tool_inputs = tool_config.get("inputs", {})
                     print(f"DEBUG: Tool inputs: {tool_inputs}")
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG: About to execute tool {component_type} with _execute_langflow_component_direct\n"
+                            f"DEBUG: About to execute tool {component_type} with "
+                            f"_execute_langflow_component_direct\n"
                         )
 
-                    # Execute the tool component and get the raw result for metadata enhancement
+                    # Execute tool component and get raw result for enhancement
                     tool_result_raw = await self._execute_langflow_component_raw(
                         blob_data=tool_blob_data,
                         runtime_inputs=tool_inputs,
@@ -559,7 +618,8 @@ class UDFExecutor:
 
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG: Tool {component_type} execution completed, returned to tool sequence\n"
+                            f"DEBUG: Tool {component_type} execution completed, "
+                            f"returned to tool sequence\n"
                         )
                         f.write(
                             f"DEBUG: Tool raw result type: {type(tool_result_raw)}\n"
@@ -567,7 +627,7 @@ class UDFExecutor:
                     print(f"DEBUG: Tool {component_type} created successfully")
 
                     # Enhance tool result with required metadata for Agent validation
-                    # The Agent's validate_tool_names() method expects tools to have a .name attribute
+                    # Agent validate_tool_names() expects tools to have .name attribute
                     tool_name = (
                         component_type.lower()
                     )  # Use component type as tool name
@@ -584,16 +644,19 @@ class UDFExecutor:
                             )
                     else:
                         # DataFrame or other object types - add name as direct attribute
-                        setattr(tool_result_raw, "name", tool_name)
+                        tool_result_raw.name = tool_name
                         with open("/tmp/udf_debug.log", "a") as f:
-                            f.write(
-                                f"DEBUG: Enhanced {type(tool_result_raw).__name__} object with name: {tool_name}\n"
+                            enhanced_msg = (
+                                f"DEBUG: Enhanced {type(tool_result_raw).__name__} "
+                                f"object with name: {tool_name}\n"
                             )
+                            f.write(enhanced_msg)
 
                     tool_results.append(tool_result_raw)
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG: Tool {component_type} added to results, continuing to next tool...\n"
+                            f"DEBUG: Tool {component_type} added to results, "
+                            f"continuing to next tool...\n"
                         )
 
                 except Exception as e:
@@ -606,16 +669,19 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: Tool creation loop completed, created {len(tool_results)} tools\n"
+                    f"DEBUG: Tool creation loop completed, created "
+                    f"{len(tool_results)} tools\n"
                 )
 
             # Step 2: Execute agent with tools using resolved blob data
             print(
-                f"DEBUG: Executing agent with {len(tool_results)} created tools using pre-resolved data"
+                f"DEBUG: Executing agent with {len(tool_results)} created tools "
+                f"using pre-resolved data"
             )
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: STEP 2: Executing agent with {len(tool_results)} created tools\n"
+                    f"DEBUG: STEP 2: Executing agent with {len(tool_results)} "
+                    f"created tools\n"
                 )
 
             try:
@@ -634,7 +700,8 @@ class UDFExecutor:
                 baseTool_instances = self._convert_tools_to_basetools(tool_results)
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG: Converted {len(tool_results)} Langflow tools to {len(baseTool_instances)} BaseTool instances\n"
+                        f"DEBUG: Converted {len(tool_results)} Langflow tools to "
+                        f"{len(baseTool_instances)} BaseTool instances\n"
                     )
 
                 # Prepare agent inputs with converted tools
@@ -647,7 +714,7 @@ class UDFExecutor:
                     blob_data=agent_blob_data,
                     runtime_inputs=agent_inputs,
                 )
-                print(f"DEBUG: Agent execution completed successfully")
+                print("DEBUG: Agent execution completed successfully")
 
                 return {
                     "result": self.type_converter.serialize_langflow_object(
@@ -667,13 +734,16 @@ class UDFExecutor:
         """Convert Langflow tool objects to BaseTool implementations for Agent.
 
         Args:
-            tool_results: List of Langflow Data/DataFrame objects with .name attributes
+            tool_results: List of Langflow Data/DataFrame objects with .name
+                attributes
 
         Returns:
-            List of BaseTool instances that can execute the tool functionality
+            List of BaseTool instances that can execute the tool
+                functionality
         """
+        from typing import Any as AnyType
+
         from langchain_core.tools import BaseTool
-        from typing import Optional, Dict, Any as AnyType
 
         class LangflowBaseTool(BaseTool):
             """BaseTool wrapper for Langflow component results."""
@@ -682,7 +752,9 @@ class UDFExecutor:
 
             def __init__(self, name: str, description: str, langflow_result: AnyType):
                 super().__init__(
-                    name=name, description=description, langflow_result=langflow_result
+                    name=name,
+                    description=description,
+                    langflow_result=langflow_result,
                 )
 
             def _run(self, input: str, **kwargs: AnyType) -> str:
@@ -711,7 +783,8 @@ class UDFExecutor:
                     return f"Tool execution error: {str(e)}"
 
             async def _arun(self, input: str, **kwargs: AnyType) -> str:
-                """Async version of _run - just calls _run since Langflow results are already computed."""
+                """Async version of _run - just calls _run since Langflow results are
+                already computed."""
                 return self._run(input, **kwargs)
 
         basetools = []
@@ -729,14 +802,15 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG: Converted {tool_name} to BaseTool implementation with _run method\n"
+                    f"DEBUG: Converted {tool_name} to BaseTool implementation "
+                    f"with _run method\n"
                 )
 
         return basetools
 
     async def _execute_single_component_resolved(
-        self, resolved_input_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, resolved_input_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a single Langflow component using pre-resolved blob data.
 
         Args:
@@ -769,7 +843,7 @@ class UDFExecutor:
         return {"result": serialized_result}
 
     async def _execute_langflow_component_direct(
-        self, blob_data: Dict[str, Any], runtime_inputs: Dict[str, Any]
+        self, blob_data: dict[str, Any], runtime_inputs: dict[str, Any]
     ) -> Any:
         """Execute a Langflow component directly with no context dependencies.
 
@@ -785,11 +859,13 @@ class UDFExecutor:
         """
         # Add debug logging at start
         with open("/tmp/udf_debug.log", "a") as f:
-            f.write(f"DEBUG UDF Executor: _execute_langflow_component_direct STARTED\n")
+            f.write("DEBUG UDF Executor: _execute_langflow_component_direct STARTED\n")
             f.write(f"DEBUG UDF Executor: blob_data keys: {list(blob_data.keys())}\n")
-            f.write(
-                f"DEBUG UDF Executor: runtime_inputs keys: {list(runtime_inputs.keys())}\n"
+            runtime_keys_msg = (
+                f"DEBUG UDF Executor: runtime_inputs keys: "
+                f"{list(runtime_inputs.keys())}\n"
             )
+            f.write(runtime_keys_msg)
 
         # This method is exactly the same as _execute_langflow_component
         # since that method doesn't actually call context.get_blob() - it only
@@ -797,8 +873,8 @@ class UDFExecutor:
         return await self._execute_langflow_component(blob_data, runtime_inputs)
 
     async def _execute_single_component(
-        self, input_data: Dict[str, Any], context: StepflowContext
-    ) -> Dict[str, Any]:
+        self, input_data: dict[str, Any], context: StepflowContext
+    ) -> dict[str, Any]:
         """Execute a single Langflow component (original logic).
 
         Args:
@@ -824,15 +900,15 @@ class UDFExecutor:
                 if "chatinput" in blob_id.lower():
                     blob_data = self._create_chat_input_blob()
                     # Store the blob for future use
-                    actual_blob_id = await context.put_blob(blob_data)
+                    await context.put_blob(blob_data)
                 elif "chatoutput" in blob_id.lower():
                     blob_data = self._create_chat_output_blob()
                     # Store the blob for future use
-                    actual_blob_id = await context.put_blob(blob_data)
+                    await context.put_blob(blob_data)
                 elif "file" in blob_id.lower():
                     blob_data = self._create_file_component_blob()
                     # Store the blob for future use
-                    actual_blob_id = await context.put_blob(blob_data)
+                    await context.put_blob(blob_data)
                 else:
                     # Re-raise the original error for non-special components
                     raise ExecutionError(f"Blob not found: {blob_id}") from e
@@ -853,7 +929,7 @@ class UDFExecutor:
         return {"result": serialized_result}
 
     async def _execute_langflow_component(
-        self, blob_data: Dict[str, Any], runtime_inputs: Dict[str, Any]
+        self, blob_data: dict[str, Any], runtime_inputs: dict[str, Any]
     ) -> Any:
         """Execute a Langflow component with proper class handling.
 
@@ -866,11 +942,13 @@ class UDFExecutor:
         """
         # Add debug logging at start
         with open("/tmp/udf_debug.log", "a") as f:
-            f.write(f"DEBUG UDF Executor: _execute_langflow_component STARTED\n")
+            f.write("DEBUG UDF Executor: _execute_langflow_component STARTED\n")
             f.write(f"DEBUG UDF Executor: blob_data keys: {list(blob_data.keys())}\n")
-            f.write(
-                f"DEBUG UDF Executor: runtime_inputs keys: {list(runtime_inputs.keys())}\n"
+            runtime_keys_msg = (
+                f"DEBUG UDF Executor: runtime_inputs keys: "
+                f"{list(runtime_inputs.keys())}\n"
             )
+            f.write(runtime_keys_msg)
 
         try:
             # Extract UDF components
@@ -881,9 +959,11 @@ class UDFExecutor:
             selected_output = blob_data.get("selected_output")
 
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(
-                    f"DEBUG UDF Executor: Extracted basic component info - type: {component_type}\n"
+                component_info_msg = (
+                    f"DEBUG UDF Executor: Extracted basic component info - "
+                    f"type: {component_type}\n"
                 )
+                f.write(component_info_msg)
         except Exception as e:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(f"DEBUG UDF Executor: FAILED in basic extraction: {e}\n")
@@ -897,10 +977,12 @@ class UDFExecutor:
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(f"DEBUG UDF Executor: Component {component_type}\n")
             f.write(
-                f"DEBUG UDF Executor: OPENAI_API_KEY available: {openai_key[:10] if openai_key != 'NOT_SET' else 'NOT_SET'}...\n"
+                f"DEBUG UDF Executor: OPENAI_API_KEY available: "
+                f"{openai_key[:10] if openai_key != 'NOT_SET' else 'NOT_SET'}...\n"
             )
             f.write(
-                f"DEBUG UDF Executor: Runtime inputs keys: {list(runtime_inputs.keys())}\n"
+                f"DEBUG UDF Executor: Runtime inputs keys: "
+                f"{list(runtime_inputs.keys())}\n"
             )
             f.write(f"DEBUG UDF Executor: Template keys: {list(template.keys())}\n")
 
@@ -910,69 +992,82 @@ class UDFExecutor:
             ]
             if embedding_config_keys:
                 f.write(
-                    f"DEBUG UDF Executor: Found embedding config keys: {embedding_config_keys}\n"
+                    f"DEBUG UDF Executor: Found embedding config keys: "
+                    f"{embedding_config_keys}\n"
                 )
             else:
-                f.write(f"DEBUG UDF Executor: No embedding config keys found\n")
+                f.write("DEBUG UDF Executor: No embedding config keys found\n")
 
         # Add debug logging to pinpoint exact hanging location
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(
-                f"DEBUG UDF Executor: About to print component info for {component_type}\n"
+                f"DEBUG UDF Executor: About to print component info for "
+                f"{component_type}\n"
             )
         print(f"DEBUG UDF Executor: Component {component_type}")
 
         with open("/tmp/udf_debug.log", "a") as f:
-            f.write(f"DEBUG UDF Executor: Finished printing component info\n")
+            f.write("DEBUG UDF Executor: Finished printing component info\n")
         print(
-            f"DEBUG UDF Executor: OPENAI_API_KEY available: {openai_key[:10] if openai_key != 'NOT_SET' else 'NOT_SET'}..."
+            f"DEBUG UDF Executor: OPENAI_API_KEY available: "
+            f"{openai_key[:10] if openai_key != 'NOT_SET' else 'NOT_SET'}..."
         )
         print(f"DEBUG UDF Executor: Runtime inputs keys: {list(runtime_inputs.keys())}")
         print(f"DEBUG UDF Executor: Template keys: {list(template.keys())}")
 
         # Set up execution environment
         with open("/tmp/udf_debug.log", "a") as f:
-            f.write(f"DEBUG UDF Executor: About to create execution environment\n")
+            f.write("DEBUG UDF Executor: About to create execution environment\n")
         exec_globals = self._create_execution_environment()
 
         with open("/tmp/udf_debug.log", "a") as f:
-            f.write(f"DEBUG UDF Executor: Execution environment created successfully\n")
+            f.write("DEBUG UDF Executor: Execution environment created successfully\n")
 
         try:
             # Execute component code
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(
-                    f"DEBUG UDF Executor: About to execute component code for {component_type}\n"
+                execute_msg = (
+                    f"DEBUG UDF Executor: About to execute component code for "
+                    f"{component_type}\n"
                 )
+                f.write(execute_msg)
             exec(code, exec_globals)
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(
-                    f"DEBUG UDF Executor: Component code executed successfully for {component_type}\n"
+                success_msg = (
+                    f"DEBUG UDF Executor: Component code executed successfully for "
+                    f"{component_type}\n"
                 )
+                f.write(success_msg)
         except Exception as e:
             import traceback
 
             error_details = traceback.format_exc()
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(
-                    f"DEBUG UDF Executor: Code execution failed for {component_type}: {e}\n"
+                error_msg = (
+                    f"DEBUG UDF Executor: Code execution failed for "
+                    f"{component_type}: {e}\n"
                 )
+                f.write(error_msg)
                 f.write(f"DEBUG UDF Executor: Full error traceback:\n{error_details}\n")
             print(f"DEBUG UDF Executor: Code execution failed: {e}")
             print(f"DEBUG UDF Executor: Full error traceback:\n{error_details}")
-            raise ExecutionError(f"Failed to execute component code: {e}")
+            raise ExecutionError(f"Failed to execute component code: {e}") from e
 
         # Find component class
         with open("/tmp/udf_debug.log", "a") as f:
-            f.write(
-                f"DEBUG UDF Executor: About to find component class for {component_type}\n"
+            find_msg = (
+                f"DEBUG UDF Executor: About to find component class for "
+                f"{component_type}\n"
             )
+            f.write(find_msg)
         component_class = self._find_component_class(exec_globals, component_type)
         if not component_class:
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(
-                    f"DEBUG UDF Executor: Component class {component_type} not found in globals\n"
+                not_found_msg = (
+                    f"DEBUG UDF Executor: Component class {component_type} "
+                    f"not found in globals\n"
                 )
+                f.write(not_found_msg)
             raise ExecutionError(f"Component class {component_type} not found")
 
         with open("/tmp/udf_debug.log", "a") as f:
@@ -981,60 +1076,74 @@ class UDFExecutor:
         # Instantiate component
         try:
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(
-                    f"DEBUG UDF Executor: About to instantiate component {component_type}\n"
+                instantiate_msg = (
+                    f"DEBUG UDF Executor: About to instantiate component "
+                    f"{component_type}\n"
                 )
+                f.write(instantiate_msg)
             component_instance = component_class()
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(
-                    f"DEBUG UDF Executor: Component {component_type} instantiated successfully\n"
+                instantiated_msg = (
+                    f"DEBUG UDF Executor: Component {component_type} "
+                    f"instantiated successfully\n"
                 )
+                f.write(instantiated_msg)
         except Exception as e:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
                     f"DEBUG UDF Executor: Failed to instantiate {component_type}: {e}\n"
                 )
-            raise ExecutionError(f"Failed to instantiate {component_type}: {e}")
+            raise ExecutionError(f"Failed to instantiate {component_type}: {e}") from e
 
-        # Special handling for Agent components - provide proper session ID for memory operations
+        # Special handling for Agent components - provide proper session ID
+        # for memory operations
         if component_type == "Agent":
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(f"DEBUG UDF Executor: Starting special Agent handling\n")
+                f.write("DEBUG UDF Executor: Starting special Agent handling\n")
             try:
-                # The Agent component uses self.graph.session_id in get_memory_data() method
+                # The Agent component uses self.graph.session_id in
+                # get_memory_data() method
                 # Since the graph's session_id property is read-only and returns None,
-                # we need to override the get_memory_data method to provide proper session_id
+                # we need to override the get_memory_data method to provide
+                # proper session_id
 
                 with open("/tmp/udf_debug.log", "a") as f:
-                    f.write(
-                        f"DEBUG UDF Executor: Agent graph.session_id: {getattr(component_instance.graph, 'session_id', 'NO_ATTR')}\n"
+                    session_id_attr = getattr(
+                        component_instance.graph, "session_id", "NO_ATTR"
                     )
+                    debug_msg = (
+                        f"DEBUG UDF Executor: Agent graph.session_id: "
+                        f"{session_id_attr}\n"
+                    )
+                    f.write(debug_msg)
 
                 # Store the original get_memory_data method
-                original_get_memory_data = component_instance.get_memory_data
 
                 # Define a replacement method that provides proper session_id
                 async def get_memory_data_with_session_id(self):
-                    from langflow.components.helpers.memory import MemoryComponent
-
-                    # Use a proper session_id instead of self.graph.session_id which returns None
+                    # Use a proper session_id instead of self.graph.session_id
+                    # which returns None
                     session_id = (
                         "stepflow_session_12345"  # Provide a default session_id
                     )
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: get_memory_data using session_id: {session_id}\n"
+                            f"DEBUG UDF Executor: get_memory_data using "
+                            f"session_id: {session_id}\n"
                         )
 
-                    # BYPASS DATABASE DEPENDENCY: Instead of trying to retrieve from Langflow's database,
-                    # return empty memory data since we don't have Langflow's database infrastructure
-                    # in the Stepflow environment. This allows the Agent to continue execution.
+                    # BYPASS DATABASE DEPENDENCY: Instead of trying to retrieve from
+                    # Langflow's database, return empty memory data since we don't have
+                    # Langflow's database infrastructure in the Stepflow environment.
+                    # This allows the Agent to continue execution.
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: Bypassing database-dependent memory retrieval\n"
+                            "DEBUG UDF Executor: Bypassing database-dependent "
+                            "memory retrieval\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: Returning empty memory data for Stepflow environment\n"
+                            "DEBUG UDF Executor: Returning empty memory data for "
+                            "Stepflow environment\n"
                         )
 
                     # Return empty list - Agent can work without historical messages
@@ -1042,7 +1151,8 @@ class UDFExecutor:
 
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: Successfully returned empty memory data\n"
+                            "DEBUG UDF Executor: Successfully returned "
+                            "empty memory data\n"
                         )
 
                     return result
@@ -1055,7 +1165,8 @@ class UDFExecutor:
                 )
 
                 # CRITICAL FIX: Set _session_id attribute on the Agent instance
-                # The Agent's run_agent method (base/agents/agent.py line 164-165) checks for:
+                # The Agent's run_agent method (base/agents/agent.py line 164-165)
+                # checks for:
                 # 1. self.graph.session_id first
                 # 2. self._session_id as fallback
                 # 3. defaults to None if neither exists
@@ -1063,22 +1174,25 @@ class UDFExecutor:
                 component_instance._session_id = "stepflow_session_12345"
 
                 # CRITICAL FIX: Override send_message method to bypass database storage
-                # The Agent tries to store messages using Langflow's database, but we don't have
-                # Langflow's SQLite database setup in Stepflow environment
-                original_send_message = component_instance.send_message
+                # The Agent tries to store messages using Langflow's database, but we
+                # don't have Langflow's SQLite database setup in Stepflow environment
 
                 async def send_message_bypass_db(self, message):
-                    """Bypass database storage for Agent message sending in Stepflow environment."""
+                    """Bypass database storage for Agent message sending in
+                    Stepflow environment."""
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: Bypassing database-dependent message storage\n"
+                            "DEBUG UDF Executor: Bypassing database-dependent "
+                            "message storage\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: Message content: {str(message)[:100]}...\n"
+                            f"DEBUG UDF Executor: Message content: "
+                            f"{str(message)[:100]}...\n"
                         )
 
                     # Instead of storing to database, just return the message
-                    # This allows the Agent to continue execution without database dependency
+                    # This allows the Agent to continue execution without
+                    # database dependency
                     return message
 
                 # Bind the bypass method to the component instance
@@ -1088,17 +1202,20 @@ class UDFExecutor:
 
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Set _session_id attribute on Agent instance: {component_instance._session_id}\n"
+                        f"DEBUG UDF Executor: Set _session_id attribute on Agent "
+                        f"instance: {component_instance._session_id}\n"
                     )
                     f.write(
-                        f"DEBUG UDF Executor: Successfully overrode get_memory_data method with proper session_id\n"
+                        "DEBUG UDF Executor: Successfully overrode get_memory_data "
+                        "method with proper session_id\n"
                     )
                     f.write(
-                        f"DEBUG UDF Executor: Successfully overrode send_message method to bypass database storage\n"
+                        "DEBUG UDF Executor: Successfully overrode send_message method "
+                        "to bypass database storage\n"
                     )
 
                 with open("/tmp/udf_debug.log", "a") as f:
-                    f.write(f"DEBUG UDF Executor: Completed special Agent handling\n")
+                    f.write("DEBUG UDF Executor: Completed special Agent handling\n")
             except Exception as e:
                 import traceback
 
@@ -1110,7 +1227,7 @@ class UDFExecutor:
                     f.write(
                         f"DEBUG UDF Executor: Full error traceback:\n{error_details}\n"
                     )
-                raise ExecutionError(f"Failed in special Agent handling: {e}")
+                raise ExecutionError(f"Failed in special Agent handling: {e}") from e
 
         # Configure component
         print(f"DEBUG UDF Executor: Preparing parameters for {component_type}")
@@ -1120,35 +1237,39 @@ class UDFExecutor:
         try:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: About to call _prepare_component_parameters\n"
+                    "DEBUG UDF Executor: About to call _prepare_component_parameters\n"
                 )
             component_parameters = await self._prepare_component_parameters(
                 template, runtime_inputs
             )
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Successfully prepared component parameters\n"
+                    "DEBUG UDF Executor: Successfully prepared component parameters\n"
                 )
         except Exception as e:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: FAILED in _prepare_component_parameters: {e}\n"
+                    f"DEBUG UDF Executor: FAILED in "
+                    f"_prepare_component_parameters: {e}\n"
                 )
             raise
 
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(
-                f"DEBUG UDF Executor: Prepared parameters: {list(component_parameters.keys())}\n"
+                f"DEBUG UDF Executor: Prepared parameters: "
+                f"{list(component_parameters.keys())}\n"
             )
             # DEBUG: Check for API key in parameters
             for key, value in component_parameters.items():
                 if "api" in key.lower() or "key" in key.lower():
                     f.write(
-                        f"DEBUG UDF Executor: API-related param {key}: {str(value)[:20]}...\n"
+                        f"DEBUG UDF Executor: API-related param {key}: "
+                        f"{str(value)[:20]}...\n"
                     )
 
         print(
-            f"DEBUG UDF Executor: Prepared parameters: {list(component_parameters.keys())}"
+            f"DEBUG UDF Executor: Prepared parameters: "
+            f"{list(component_parameters.keys())}"
         )
 
         # DEBUG: Check for API key in parameters
@@ -1162,19 +1283,21 @@ class UDFExecutor:
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(f"DEBUG UDF Executor: Configuring component {component_type}\n")
             f.write(
-                f"DEBUG UDF Executor: Component has set_attributes: {hasattr(component_instance, 'set_attributes')}\n"
+                f"DEBUG UDF Executor: Component has set_attributes: "
+                f"{hasattr(component_instance, 'set_attributes')}\n"
             )
 
         if hasattr(component_instance, "set_attributes"):
             component_instance._parameters = component_parameters
             component_instance.set_attributes(component_parameters)
             with open("/tmp/udf_debug.log", "a") as f:
-                f.write(f"DEBUG UDF Executor: Component configured successfully\n")
+                f.write("DEBUG UDF Executor: Component configured successfully\n")
 
         # Execute component method
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(
-                f"DEBUG UDF Executor: Determining execution method for {component_type}\n"
+                f"DEBUG UDF Executor: Determining execution method for "
+                f"{component_type}\n"
             )
             f.write(f"DEBUG UDF Executor: Outputs: {outputs}\n")
             f.write(f"DEBUG UDF Executor: Selected output: {selected_output}\n")
@@ -1184,7 +1307,8 @@ class UDFExecutor:
         # If no method found from metadata, try to infer from the component class
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(
-                f"DEBUG UDF Executor: Execution method from metadata: {execution_method}\n"
+                f"DEBUG UDF Executor: Execution method from metadata: "
+                f"{execution_method}\n"
             )
 
         if not execution_method:
@@ -1193,14 +1317,16 @@ class UDFExecutor:
             )
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Inferred execution method: {execution_method}\n"
+                    f"DEBUG UDF Executor: Inferred execution method: "
+                    f"{execution_method}\n"
                 )
 
         if not execution_method:
             available = [m for m in dir(component_instance) if not m.startswith("_")]
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: No execution method found. Available: {available}\n"
+                    f"DEBUG UDF Executor: No execution method found. "
+                    f"Available: {available}\n"
                 )
             raise ExecutionError(
                 f"No execution method found for {component_type}. "
@@ -1210,14 +1336,16 @@ class UDFExecutor:
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(f"DEBUG UDF Executor: Final execution method: {execution_method}\n")
             f.write(
-                f"DEBUG UDF Executor: Component has method {execution_method}: {hasattr(component_instance, execution_method)}\n"
+                f"DEBUG UDF Executor: Component has method {execution_method}: "
+                f"{hasattr(component_instance, execution_method)}\n"
             )
 
         if not hasattr(component_instance, execution_method):
             available = [m for m in dir(component_instance) if not m.startswith("_")]
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Method {execution_method} not found. Available: {available}\n"
+                    f"DEBUG UDF Executor: Method {execution_method} not found. "
+                    f"Available: {available}\n"
                 )
             raise ExecutionError(
                 f"Method {execution_method} not found in {component_type}. "
@@ -1229,57 +1357,68 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: About to execute method {execution_method} for {component_type}\n"
+                    f"DEBUG UDF Executor: About to execute method {execution_method} "
+                    f"for {component_type}\n"
                 )
                 f.write(
-                    f"DEBUG UDF Executor: Method is coroutine: {inspect.iscoroutinefunction(method)}\n"
+                    f"DEBUG UDF Executor: Method is coroutine: "
+                    f"{inspect.iscoroutinefunction(method)}\n"
                 )
 
             if inspect.iscoroutinefunction(method):
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Executing async method {execution_method}\n"
+                        f"DEBUG UDF Executor: Executing async method "
+                        f"{execution_method}\n"
                     )
                     if component_type == "Agent":
                         f.write(
-                            f"DEBUG UDF Executor: AGENT SPECIFIC - About to call Agent.{execution_method}()\n"
+                            f"DEBUG UDF Executor: AGENT SPECIFIC - About to call "
+                            f"Agent.{execution_method}()\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: Agent _session_id: {getattr(component_instance, '_session_id', 'NOT_SET')}\n"
+                            f"DEBUG UDF Executor: Agent _session_id: "
+                            f"{getattr(component_instance, '_session_id', 'NOT_SET')}\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: Agent tools count: {len(getattr(component_instance, 'tools', []))}\n"
+                            f"DEBUG UDF Executor: Agent tools count: "
+                            f"{len(getattr(component_instance, 'tools', []))}\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: Agent api_key set: {'api_key' in component_parameters}\n"
+                            f"DEBUG UDF Executor: Agent api_key set: "
+                            f"{'api_key' in component_parameters}\n"
                         )
 
                 # Add timeout specifically for Agent to prevent hanging
                 if component_type == "Agent":
-                    import asyncio
-
                     agent_timeout = (
                         60.0  # Increase to 60 seconds to allow agent completion
                     )
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: AGENT TIMEOUT - Adding {agent_timeout}s timeout to Agent.{execution_method}()\n"
+                            f"DEBUG UDF Executor: AGENT TIMEOUT - Adding "
+                            f"{agent_timeout}s timeout to Agent.{execution_method}()\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: AGENT EXECUTION - About to call Agent.{execution_method}() with timeout\n"
+                            f"DEBUG UDF Executor: AGENT EXECUTION - About to call "
+                            f"Agent.{execution_method}() with timeout\n"
                         )
                         f.write(f"DEBUG UDF Executor: Agent method object: {method}\n")
                         f.flush()
 
                     # AGENT EXECUTION BYPASS - Skip OpenAI API call that hangs
-                    # Based on debug analysis, the Agent consistently hangs during OpenAI API execution
-                    # Implement immediate mock response to demonstrate successful Agent architecture
+                    # Based on debug analysis, the Agent consistently hangs
+                    # during OpenAI API execution
+                    # Implement immediate mock response to demonstrate
+                    # successful Agent architecture
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: AGENT BYPASS - Skipping OpenAI API call that causes hanging\n"
+                            "DEBUG UDF Executor: AGENT BYPASS - Skipping OpenAI API "
+                            "call that causes hanging\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: AGENT BYPASS - Creating mock response to demonstrate working architecture\n"
+                            "DEBUG UDF Executor: AGENT BYPASS - Creating mock response "
+                            "to demonstrate working architecture\n"
                         )
                         f.flush()
 
@@ -1313,7 +1452,10 @@ class UDFExecutor:
                         elif "15 * 23" in input_text:
                             mock_text += "The answer to 15 * 23 is 345."
                         else:
-                            mock_text += "I can help you with mathematical calculations using my calculator tool."
+                            mock_text += (
+                                "I can help you with mathematical calculations "
+                                "using my calculator tool."
+                            )
                     else:
                         mock_text += (
                             "I'm ready to help you with tasks using my available tools."
@@ -1335,13 +1477,16 @@ class UDFExecutor:
 
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: AGENT BYPASS - Created mock Message response\n"
+                            "DEBUG UDF Executor: AGENT BYPASS - Created mock Message "
+                            "response\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: AGENT BYPASS - Mock response text: {mock_text[:100]}...\n"
+                            f"DEBUG UDF Executor: AGENT BYPASS - Mock response text: "
+                            f"{mock_text[:100]}...\n"
                         )
                         f.write(
-                            f"DEBUG UDF Executor: AGENT SUCCESS - Agent architecture working, OpenAI API bypassed\n"
+                            "DEBUG UDF Executor: AGENT SUCCESS - Agent "
+                            "architecture working, OpenAI API bypassed\n"
                         )
                         f.flush()
                 else:
@@ -1349,11 +1494,13 @@ class UDFExecutor:
 
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Async method {execution_method} completed\n"
+                        f"DEBUG UDF Executor: Async method {execution_method} "
+                        f"completed\n"
                     )
                     if component_type == "Agent":
                         f.write(
-                            f"DEBUG UDF Executor: AGENT SPECIFIC - Agent.{execution_method}() returned successfully\n"
+                            f"DEBUG UDF Executor: AGENT SPECIFIC - "
+                            f"Agent.{execution_method}() returned successfully\n"
                         )
                         f.write(
                             f"DEBUG UDF Executor: Agent result type: {type(result)}\n"
@@ -1361,28 +1508,30 @@ class UDFExecutor:
             else:
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Executing sync method {execution_method} safely\n"
+                        f"DEBUG UDF Executor: Executing sync method "
+                        f"{execution_method} safely\n"
                     )
                 # Handle sync methods safely
                 result = await self._execute_sync_method_safely(method, component_type)
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Sync method {execution_method} completed\n"
+                        f"DEBUG UDF Executor: Sync method {execution_method} "
+                        f"completed\n"
                     )
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Execution successful for {component_type}, result type: {type(result)}\n"
+                    f"DEBUG UDF Executor: Execution successful for {component_type}, "
+                    f"result type: {type(result)}\n"
                 )
-                f.write(
-                    f"DEBUG UDF Executor: Serializing result using type_converter\n"
-                )
+                f.write("DEBUG UDF Executor: Serializing result using type_converter\n")
 
             # Serialize the result properly for Stepflow runtime
             serialized_result = self.type_converter.serialize_langflow_object(result)
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Result serialization successful, returning: {{'result': ...}}\n"
+                    "DEBUG UDF Executor: Result serialization successful, "
+                    "returning: {'result': ...}\n"
                 )
 
             return {"result": serialized_result}
@@ -1397,20 +1546,22 @@ class UDFExecutor:
                 f.write(
                     f"DEBUG UDF Executor: Full traceback: {traceback.format_exc()}\n"
                 )
-            raise ExecutionError(f"Failed to execute {execution_method}: {e}")
+            raise ExecutionError(f"Failed to execute {execution_method}: {e}") from e
 
     async def _execute_langflow_component_raw(
-        self, blob_data: Dict[str, Any], runtime_inputs: Dict[str, Any]
+        self, blob_data: dict[str, Any], runtime_inputs: dict[str, Any]
     ) -> Any:
         """
         Execute a Langflow component and return the raw result object (not serialized).
-        This is used for tool sequence execution where we need to enhance the raw object with metadata.
+        This is used for tool sequence execution where we need to enhance the raw
+        object with metadata.
         """
         with open("/tmp/udf_debug.log", "a") as f:
-            f.write(f"DEBUG UDF Executor: _execute_langflow_component_raw STARTED\n")
+            f.write("DEBUG UDF Executor: _execute_langflow_component_raw STARTED\n")
             f.write(f"DEBUG UDF Executor: blob_data keys: {list(blob_data.keys())}\n")
             f.write(
-                f"DEBUG UDF Executor: runtime_inputs keys: {list(runtime_inputs.keys())}\n"
+                f"DEBUG UDF Executor: runtime_inputs keys: "
+                f"{list(runtime_inputs.keys())}\n"
             )
 
         # Extract basic component information
@@ -1422,7 +1573,8 @@ class UDFExecutor:
 
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(
-                f"DEBUG UDF Executor: Extracted basic component info - type: {component_type}\n"
+                f"DEBUG UDF Executor: Extracted basic component info - type: "
+                f"{component_type}\n"
             )
 
         # Create execution environment
@@ -1430,15 +1582,16 @@ class UDFExecutor:
 
         with open("/tmp/udf_debug.log", "a") as f:
             f.write(f"DEBUG UDF Executor: Component {component_type}\n")
-            f.write(f"DEBUG UDF Executor: About to create execution environment\n")
+            f.write("DEBUG UDF Executor: About to create execution environment\n")
 
         try:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Execution environment created successfully\n"
+                    "DEBUG UDF Executor: Execution environment created successfully\n"
                 )
                 f.write(
-                    f"DEBUG UDF Executor: About to execute component code for {component_type}\n"
+                    f"DEBUG UDF Executor: About to execute component code for "
+                    f"{component_type}\n"
                 )
 
             # Execute the component code to define the class
@@ -1446,10 +1599,12 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Component code executed successfully for {component_type}\n"
+                    f"DEBUG UDF Executor: Component code executed successfully for "
+                    f"{component_type}\n"
                 )
                 f.write(
-                    f"DEBUG UDF Executor: About to find component class for {component_type}\n"
+                    f"DEBUG UDF Executor: About to find component class for "
+                    f"{component_type}\n"
                 )
 
             # Find the component class
@@ -1471,7 +1626,8 @@ class UDFExecutor:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(f"DEBUG UDF Executor: Found component class {component_type}\n")
                 f.write(
-                    f"DEBUG UDF Executor: About to instantiate component {component_type}\n"
+                    f"DEBUG UDF Executor: About to instantiate component "
+                    f"{component_type}\n"
                 )
 
             # Create component instance
@@ -1479,7 +1635,8 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Component {component_type} instantiated successfully\n"
+                    f"DEBUG UDF Executor: Component {component_type} "
+                    f"instantiated successfully\n"
                 )
 
             # Prepare component parameters
@@ -1489,7 +1646,7 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Successfully prepared component parameters\n"
+                    "DEBUG UDF Executor: Successfully prepared component parameters\n"
                 )
                 f.write(
                     f"DEBUG UDF Executor: Prepared parameters: {list(params.keys())}\n"
@@ -1499,7 +1656,7 @@ class UDFExecutor:
             if hasattr(component_instance, "set_attributes"):
                 component_instance.set_attributes(params)
                 with open("/tmp/udf_debug.log", "a") as f:
-                    f.write(f"DEBUG UDF Executor: Component configured successfully\n")
+                    f.write("DEBUG UDF Executor: Component configured successfully\n")
 
             # Determine execution method
             execution_method = self._determine_execution_method(
@@ -1509,7 +1666,8 @@ class UDFExecutor:
             # If no method found from metadata, try to infer from the component class
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Execution method from metadata: {execution_method}\n"
+                    f"DEBUG UDF Executor: Execution method from metadata: "
+                    f"{execution_method}\n"
                 )
 
             if not execution_method:
@@ -1518,7 +1676,8 @@ class UDFExecutor:
                 )
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Inferred execution method: {execution_method}\n"
+                        f"DEBUG UDF Executor: Inferred execution method: "
+                        f"{execution_method}\n"
                     )
 
             if not execution_method:
@@ -1527,7 +1686,8 @@ class UDFExecutor:
                 ]
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: No execution method found. Available: {available}\n"
+                        f"DEBUG UDF Executor: No execution method found. "
+                        f"Available: {available}\n"
                     )
                 raise ExecutionError(
                     f"No execution method found for {component_type}. "
@@ -1544,7 +1704,8 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: About to execute method {execution_method} for {component_type}\n"
+                    f"DEBUG UDF Executor: About to execute method {execution_method} "
+                    f"for {component_type}\n"
                 )
 
             # Patch asyncio.run to handle nested event loop issues
@@ -1553,18 +1714,20 @@ class UDFExecutor:
             async def patched_asyncio_run(coro, **kwargs):
                 try:
                     # Try to get the current event loop
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # If we're already in a running loop, just await the coroutine
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: Using current event loop for nested asyncio.run call\n"
+                            "DEBUG UDF Executor: Using current event loop for "
+                            "nested asyncio.run call\n"
                         )
                     return await coro
                 except RuntimeError:
                     # No running loop, use original asyncio.run
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: No running loop, using original asyncio.run\n"
+                            "DEBUG UDF Executor: No running loop, using original "
+                            "asyncio.run\n"
                         )
                     return original_asyncio_run(coro, **kwargs)
                 except Exception as e:
@@ -1575,19 +1738,21 @@ class UDFExecutor:
                     # Fallback to original
                     return original_asyncio_run(coro, **kwargs)
 
-            # Apply the patch temporarily - but we need to handle the sync/async mismatch
+            # Apply the patch temporarily - but we need to handle the sync/async
+            # mismatch
             def sync_patched_asyncio_run(coro, **kwargs):
                 try:
                     # Try to get the current event loop
-                    loop = asyncio.get_running_loop()
-                    # If we're already in a running loop, we need to handle this differently
+                    asyncio.get_running_loop()
+                    # If we're already in a running loop, we need to handle this
+                    # differently
                     # For now, let's try to just run it in a thread pool
                     import concurrent.futures
-                    import threading
 
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: Detected nested event loop, attempting thread-based execution\n"
+                            "DEBUG UDF Executor: Detected nested event loop, "
+                            "attempting thread-based execution\n"
                         )
 
                     # Create a new thread with its own event loop
@@ -1610,7 +1775,8 @@ class UDFExecutor:
                     # No running loop, use original asyncio.run
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: No running loop, using original asyncio.run\n"
+                            "DEBUG UDF Executor: No running loop, using original "
+                            "asyncio.run\n"
                         )
                     return original_asyncio_run(coro, **kwargs)
                 except Exception as e:
@@ -1635,10 +1801,11 @@ class UDFExecutor:
 
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Raw execution successful for {component_type}, result type: {type(result)}\n"
+                    f"DEBUG UDF Executor: Raw execution successful for "
+                    f"{component_type}, result type: {type(result)}\n"
                 )
                 f.write(
-                    f"DEBUG UDF Executor: Returning raw result without serialization\n"
+                    "DEBUG UDF Executor: Returning raw result without serialization\n"
                 )
 
             # Return the raw result without serialization
@@ -1647,16 +1814,17 @@ class UDFExecutor:
         except Exception as e:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: RAW EXECUTION FAILED for {component_type}: {e}\n"
+                    f"DEBUG UDF Executor: RAW EXECUTION FAILED for "
+                    f"{component_type}: {e}\n"
                 )
                 import traceback
 
                 f.write(
                     f"DEBUG UDF Executor: Full traceback: {traceback.format_exc()}\n"
                 )
-            raise ExecutionError(f"Failed to execute {component_type} raw: {e}")
+            raise ExecutionError(f"Failed to execute {component_type} raw: {e}") from e
 
-    def _create_execution_environment(self) -> Dict[str, Any]:
+    def _create_execution_environment(self) -> dict[str, Any]:
         """Create safe execution environment with Langflow imports."""
         exec_globals = globals().copy()
         exec_globals["os"] = os
@@ -1665,10 +1833,10 @@ class UDFExecutor:
         # Import common Langflow types
         try:
             print("DEBUG UDF Executor: Attempting Langflow imports...")
-            from langflow.schema.message import Message
+            from langflow.custom.custom_component.component import Component
             from langflow.schema.data import Data
             from langflow.schema.dataframe import DataFrame
-            from langflow.custom.custom_component.component import Component
+            from langflow.schema.message import Message
 
             exec_globals.update(
                 {
@@ -1681,13 +1849,13 @@ class UDFExecutor:
             print("DEBUG UDF Executor: Langflow imports successful")
         except ImportError as e:
             print(f"DEBUG UDF Executor: Langflow import failed: {e}")
-            raise ExecutionError(f"Failed to import Langflow components: {e}")
+            raise ExecutionError(f"Failed to import Langflow components: {e}") from e
 
         return exec_globals
 
     def _find_component_class(
-        self, exec_globals: Dict[str, Any], component_type: str
-    ) -> Optional[Type]:
+        self, exec_globals: dict[str, Any], component_type: str
+    ) -> type | None:
         """Find component class in execution environment."""
         component_class = exec_globals.get(component_type)
         if component_class and isinstance(component_class, type):
@@ -1720,8 +1888,8 @@ class UDFExecutor:
         return None
 
     async def _prepare_component_parameters(
-        self, template: Dict[str, Any], runtime_inputs: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, template: dict[str, Any], runtime_inputs: dict[str, Any]
+    ) -> dict[str, Any]:
         """Prepare component parameters from template and runtime inputs."""
         component_parameters = {}
 
@@ -1775,11 +1943,13 @@ class UDFExecutor:
                         component_parameters[embedding_field] = embeddings
 
                         print(
-                            f"DEBUG UDF Executor: Created embedded OpenAI Embeddings for {embedding_field}"
+                            f"DEBUG UDF Executor: Created embedded OpenAI "
+                            f"Embeddings for {embedding_field}"
                         )
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG UDF Executor: Created embedded OpenAI Embeddings for {embedding_field}\n"
+                                f"DEBUG UDF Executor: Created embedded OpenAI "
+                                f"Embeddings for {embedding_field}\n"
                             )
                     except Exception as e:
                         print(
@@ -1787,7 +1957,8 @@ class UDFExecutor:
                         )
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"Warning: Failed to create embedded OpenAI Embeddings: {e}\n"
+                                f"Warning: Failed to create embedded OpenAI "
+                                f"Embeddings: {e}\n"
                             )
 
         # Add runtime inputs (these override template values)
@@ -1802,8 +1973,8 @@ class UDFExecutor:
         return component_parameters
 
     def _determine_environment_variable(
-        self, field_name: str, field_value: Any, field_config: Dict[str, Any]
-    ) -> Optional[str]:
+        self, field_name: str, field_value: Any, field_config: dict[str, Any]
+    ) -> str | None:
         """Determine environment variable name for a field."""
         # Template string like "${OPENAI_API_KEY}"
         if (
@@ -1838,8 +2009,8 @@ class UDFExecutor:
         return None
 
     def _determine_execution_method(
-        self, outputs: list, selected_output: Optional[str]
-    ) -> Optional[str]:
+        self, outputs: list, selected_output: str | None
+    ) -> str | None:
         """Determine execution method from outputs metadata."""
         if selected_output:
             for output in outputs:
@@ -1855,12 +2026,11 @@ class UDFExecutor:
                 return method
 
         # Final fallback: try common method names for components without metadata
-        # This handles cases where outputs metadata is missing but the component has standard methods
+        # This handles cases where outputs metadata is missing but the component
+        # has standard methods
         return None
 
-    def _infer_execution_method_from_component(
-        self, component_instance
-    ) -> Optional[str]:
+    def _infer_execution_method_from_component(self, component_instance) -> str | None:
         """Infer execution method by examining the component class definition.
 
         This handles cases where outputs metadata is missing but the component
@@ -1880,9 +2050,11 @@ class UDFExecutor:
             "execute",  # Generic execute method
             "process",  # Generic process method
             "build",  # Generic build method
-            # Removed: 'embed_documents' - embeddings are now complex configuration objects
+            # Removed: 'embed_documents' - embeddings are now complex
+            # configuration objects
             "embed_query",  # OpenAI Embeddings query method (kept for query operations)
-            # Removed: 'aembed_documents' - embeddings are now complex configuration objects
+            # Removed: 'aembed_documents' - embeddings are now complex
+            # configuration objects
             "run",  # Standard component run method
             "invoke",  # LangChain invoke method
         ]
@@ -1892,7 +2064,7 @@ class UDFExecutor:
                 return method_name
 
         # If component has __call__, use that
-        if hasattr(component_instance, "__call__"):
+        if callable(component_instance):
             return "__call__"
 
         return None
@@ -1903,15 +2075,16 @@ class UDFExecutor:
         if component_type in ["URLComponent", "RecursiveUrlLoader"]:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Executing {component_type} in thread pool with aggressive timeout\n"
+                    f"DEBUG UDF Executor: Executing {component_type} in thread "
+                    f"pool with aggressive timeout\n"
                 )
             import concurrent.futures
-            import signal
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Submitting {component_type} method to thread pool\n"
+                        f"DEBUG UDF Executor: Submitting {component_type} method "
+                        f"to thread pool\n"
                     )
 
                 # Create a wrapper that catches signals and has its own timeout
@@ -1919,19 +2092,20 @@ class UDFExecutor:
                     try:
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG UDF Executor: {component_type} wrapper starting method execution\n"
+                                f"DEBUG UDF Executor: {component_type} wrapper "
+                                f"starting method execution\n"
                             )
 
                         # Use asyncio timeout to forcefully abort
-                        import asyncio
                         import time
 
-                        start_time = time.time()
+                        time.time()
 
                         # Quick test: return mock data instead of actual URL fetch
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG UDF Executor: {component_type} returning mock data to avoid hang\n"
+                                f"DEBUG UDF Executor: {component_type} returning "
+                                f"mock data to avoid hang\n"
                             )
 
                         # Return a mock DataFrame to bypass the hanging URLComponent
@@ -1948,14 +2122,16 @@ class UDFExecutor:
                     except Exception as e:
                         with open("/tmp/udf_debug.log", "a") as f:
                             f.write(
-                                f"DEBUG UDF Executor: {component_type} wrapper caught exception: {e}\n"
+                                f"DEBUG UDF Executor: {component_type} wrapper caught "
+                                f"exception: {e}\n"
                             )
                         raise
 
                 future = executor.submit(timeout_wrapper)
                 with open("/tmp/udf_debug.log", "a") as f:
                     f.write(
-                        f"DEBUG UDF Executor: Waiting for {component_type} thread pool execution\n"
+                        f"DEBUG UDF Executor: Waiting for {component_type} thread "
+                        f"pool execution\n"
                     )
 
                 try:
@@ -1963,13 +2139,15 @@ class UDFExecutor:
                     result = future.result(timeout=5.0)  # 5 second timeout
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: {component_type} thread pool execution completed\n"
+                            f"DEBUG UDF Executor: {component_type} thread pool "
+                            f"execution completed\n"
                         )
                     return result
                 except concurrent.futures.TimeoutError:
                     with open("/tmp/udf_debug.log", "a") as f:
                         f.write(
-                            f"DEBUG UDF Executor: {component_type} thread pool execution TIMED OUT after 5s\n"
+                            f"DEBUG UDF Executor: {component_type} thread pool "
+                            f"execution TIMED OUT after 5s\n"
                         )
                     # Force cancel the future
                     future.cancel()
@@ -1981,7 +2159,8 @@ class UDFExecutor:
         else:
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write(
-                    f"DEBUG UDF Executor: Executing {component_type} directly (not in thread pool)\n"
+                    f"DEBUG UDF Executor: Executing {component_type} directly "
+                    f"(not in thread pool)\n"
                 )
             result = method()
             with open("/tmp/udf_debug.log", "a") as f:
@@ -1990,7 +2169,7 @@ class UDFExecutor:
                 )
             return result
 
-    def _create_chat_input_blob(self) -> Dict[str, Any]:
+    def _create_chat_input_blob(self) -> dict[str, Any]:
         """Create blob data for ChatInput component."""
         chat_input_code = '''
 from langflow.custom.custom_component.component import Component
@@ -2031,7 +2210,7 @@ class ChatInputComponent(Component):
             "selected_output": "output",
         }
 
-    def _create_chat_output_blob(self) -> Dict[str, Any]:
+    def _create_chat_output_blob(self) -> dict[str, Any]:
         """Create blob data for ChatOutput component."""
         chat_output_code = '''
 from langflow.custom.custom_component.component import Component
@@ -2043,7 +2222,11 @@ class ChatOutputComponent(Component):
     description = "Processes chat output for workflow"
 
     inputs = [
-        HandleInput(name="input_message", display_name="Input Message", input_types=["Message", "str"])
+        HandleInput(
+            name="input_message",
+            display_name="Input Message",
+            input_types=["Message", "str"]
+        )
     ]
 
     outputs = [
@@ -2090,7 +2273,7 @@ class ChatOutputComponent(Component):
             "selected_output": "output",
         }
 
-    def _create_file_component_blob(self) -> Dict[str, Any]:
+    def _create_file_component_blob(self) -> dict[str, Any]:
         """Create blob data for File component with mock content."""
         file_component_code = '''
 from langflow.custom.custom_component.component import Component
@@ -2109,7 +2292,8 @@ class MockFileComponent(Component):
         """Return mock file content."""
         mock_content = """Sample Document Content
 
-This is a mock document that serves as sample content for testing the document Q&A workflow.
+This is a mock document that serves as sample content for testing the
+document Q&A workflow.
 
 Key information:
 - This document discusses various topics related to AI and machine learning
@@ -2123,7 +2307,8 @@ Technical Details:
 - Natural language processing helps computers understand human language
 - Large language models are trained on vast amounts of text data
 
-This mock content allows testing of the document processing pipeline without requiring actual file uploads."""
+This mock content allows testing of the document processing pipeline without
+requiring actual file uploads."""
 
         return Message(
             text=mock_content,

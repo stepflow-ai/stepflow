@@ -16,8 +16,8 @@
 
 from .stepflow_binary import (
     StepflowBinaryRunner,
-    get_default_stepflow_config,
     create_test_config_file,
+    get_default_stepflow_config,
 )
 
 __all__ = [

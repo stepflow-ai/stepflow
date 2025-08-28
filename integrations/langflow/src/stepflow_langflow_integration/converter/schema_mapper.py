@@ -14,7 +14,7 @@
 
 """Schema mapping between Langflow and Stepflow formats."""
 
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 
 class SchemaMapper:
@@ -37,10 +37,12 @@ class SchemaMapper:
             "multiline": "string",
         }
 
-        # component_output_heuristics: Maps Langflow component types to their expected output data types.
-        # This is used as a fallback when component output metadata is not available in the node definition.
-        # For example, ChatInput components typically output Message objects, while VectorStore components
-        # output DataFrame objects. These heuristics help generate proper output schemas during conversion.
+        # component_output_heuristics: Maps Langflow component types to their expected
+        # output data types. This is used as a fallback when component output metadata
+        # is not available in the node definition. For example, ChatInput components
+        # typically output Message objects, while VectorStore components output
+        # DataFrame objects. These heuristics help generate proper output schemas
+        # during conversion.
         self.component_output_heuristics = {
             "ChatInput": ["Message"],
             "ChatOutput": ["Message"],
@@ -52,7 +54,7 @@ class SchemaMapper:
             "Embeddings": ["DataFrame"],
         }
 
-    def extract_output_schema(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_output_schema(self, node: dict[str, Any]) -> dict[str, Any]:
         """Extract output schema from a Langflow node.
 
         Args:
@@ -82,7 +84,7 @@ class SchemaMapper:
         # Fallback: generic object schema
         return {"type": "object", "properties": {"result": {"type": "object"}}}
 
-    def extract_input_schema(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_input_schema(self, node: dict[str, Any]) -> dict[str, Any]:
         """Extract input schema from a Langflow node template.
 
         Args:
@@ -133,8 +135,8 @@ class SchemaMapper:
         }
 
     def _convert_langflow_outputs_to_schema(
-        self, outputs: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, outputs: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Convert Langflow outputs metadata to JSON schema."""
         if not outputs:
             return {"type": "object"}
@@ -147,8 +149,8 @@ class SchemaMapper:
         return self._convert_langflow_types_to_schema(output_types)
 
     def _convert_langflow_types_to_schema(
-        self, langflow_types: List[str]
-    ) -> Dict[str, Any]:
+        self, langflow_types: list[str]
+    ) -> dict[str, Any]:
         """Convert Langflow types to JSON schema.
 
         Args:

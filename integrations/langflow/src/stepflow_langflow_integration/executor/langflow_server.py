@@ -14,18 +14,21 @@
 
 """Stepflow component server for Langflow integration."""
 
-from typing import Dict, Any
-from stepflow_py import StepflowStdioServer, StepflowContext
+from typing import Any
+
+from stepflow_py import StepflowContext, StepflowStdioServer
 
 
 class CachedStepflowContext:
-    """A wrapper around StepflowContext that returns cached blob data to avoid JSON-RPC deadlocks.
+    """A wrapper around StepflowContext that returns cached blob data to avoid
+    JSON-RPC deadlocks.
 
-    This class prevents circular JSON-RPC dependencies by serving blob data from a local cache
-    instead of making new context.get_blob() calls during component execution.
+    This class prevents circular JSON-RPC dependencies by serving blob data
+    from a local cache instead of making new context.get_blob() calls during
+    component execution.
     """
 
-    def __init__(self, original_context: StepflowContext, cached_blobs: Dict[str, Any]):
+    def __init__(self, original_context: StepflowContext, cached_blobs: dict[str, Any]):
         """Initialize with original context and cached blob data."""
         self.original_context = original_context
         self.cached_blobs = cached_blobs
@@ -81,14 +84,16 @@ class StepflowLangflowServer:
 
         @self.server.component(name="udf_executor")
         async def udf_executor(
-            input_data: Dict[str, Any], context: StepflowContext
-        ) -> Dict[str, Any]:
-            """Execute a Langflow UDF component with blob caching to avoid JSON-RPC deadlocks."""
+            input_data: dict[str, Any], context: StepflowContext
+        ) -> dict[str, Any]:
+            """Execute a Langflow UDF component with blob caching to avoid
+            JSON-RPC deadlocks."""
             print("🔥 LANGFLOW SERVER: ENTERED UDF_EXECUTOR WITH BLOB CACHING!")
             with open("/tmp/udf_debug.log", "a") as f:
                 f.write("🔥 LANGFLOW SERVER: ENTERED UDF_EXECUTOR WITH BLOB CACHING!\n")
 
-            # CRITICAL FIX: Pre-cache all blob data to avoid context.get_blob() calls during execution
+            # CRITICAL FIX: Pre-cache all blob data to avoid context.get_blob() calls
+            # during execution
             # This prevents JSON-RPC circular dependencies that cause deadlocks
 
             print(f"DEBUG CACHE: Input data keys: {list(input_data.keys())}")
@@ -99,7 +104,8 @@ class StepflowLangflowServer:
                     print(f"DEBUG CACHE: {key} = possible blob ID: {value}")
                 else:
                     print(
-                        f"DEBUG CACHE: {key} = {type(value).__name__}: {str(value)[:100]}"
+                        f"DEBUG CACHE: {key} = {type(value).__name__}: "
+                        f"{str(value)[:100]}"
                     )
 
             cached_blobs = {}
@@ -141,14 +147,21 @@ class StepflowLangflowServer:
                     print(f"DEBUG: Pre-caching blob {blob_id}")
                     blob_data = await context.get_blob(blob_id)
                     cached_blobs[blob_id] = blob_data
+                    blob_info = (
+                        list(blob_data.keys())
+                        if isinstance(blob_data, dict)
+                        else type(blob_data)
+                    )
                     print(
-                        f"DEBUG: Successfully cached blob {blob_id} with keys: {list(blob_data.keys()) if isinstance(blob_data, dict) else type(blob_data)}"
+                        f"DEBUG: Successfully cached blob {blob_id} with keys: "
+                        f"{blob_info}"
                     )
                 except Exception as e:
                     print(f"DEBUG: Failed to cache blob {blob_id}: {e}")
                     # Continue - let the UDF executor handle the error
 
-            # Create a modified context that returns cached data instead of making new calls
+            # Create a modified context that returns cached data instead of making
+            # new calls
             cached_context = CachedStepflowContext(context, cached_blobs)
 
             return await self.udf_executor.execute(input_data, cached_context)

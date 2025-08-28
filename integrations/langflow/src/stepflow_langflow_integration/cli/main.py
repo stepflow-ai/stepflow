@@ -16,9 +16,7 @@
 
 import json
 import sys
-import os
 from pathlib import Path
-from typing import Optional
 
 import click
 from dotenv import load_dotenv
@@ -40,7 +38,7 @@ def main():
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_file", type=click.Path(path_type=Path), required=False)
-def convert(input_file: Path, output_file: Optional[Path], validate: bool):
+def convert(input_file: Path, output_file: Path | None, validate: bool):
     """Convert a Langflow JSON workflow to Stepflow YAML.
 
     If no output file is specified, prints the YAML to stdout.
@@ -73,16 +71,17 @@ def convert(input_file: Path, output_file: Optional[Path], validate: bool):
 def analyze(input_file: Path):
     """Analyze a Langflow workflow structure.
 
-    This command provides detailed analysis of a Langflow JSON workflow without converting it.
-    It examines the workflow structure, component types, dependencies, and identifies potential
-    issues that might affect conversion. Useful for understanding workflow complexity and
-    debugging conversion problems before attempting the full conversion process.
+    This command provides detailed analysis of a Langflow JSON workflow without
+    converting it. It examines the workflow structure, component types, dependencies,
+    and identifies potential issues that might affect conversion. Useful for
+    understanding workflow complexity and debugging conversion problems before
+    attempting the full conversion process.
     """
     try:
         converter = LangflowConverter()
 
         # Load and analyze
-        with open(input_file, "r", encoding="utf-8") as f:
+        with open(input_file, encoding="utf-8") as f:
             langflow_data = json.load(f)
 
         analysis = converter.analyze(langflow_data)
@@ -121,7 +120,7 @@ def analyze(input_file: Path):
 def serve(host: str, port: int, protocol_prefix: str):
     """Start the Langflow component server."""
     try:
-        click.echo(f"🚀 Starting Langflow component server...")
+        click.echo("🚀 Starting Langflow component server...")
         click.echo(f"   Protocol prefix: {protocol_prefix}")
 
         server = StepflowLangflowServer(protocol_prefix=protocol_prefix)
@@ -167,27 +166,27 @@ def execute(
     input_file: Path,
     input_json: str,
     mock: bool,
-    config: Optional[Path],
-    stepflow_binary: Optional[Path],
+    config: Path | None,
+    stepflow_binary: Path | None,
     timeout: int,
     dry_run: bool,
     keep_files: bool,
-    output_dir: Optional[Path],
+    output_dir: Path | None,
 ):
     """Convert and execute a Langflow workflow using Stepflow.
 
     INPUT_FILE: Path to Langflow JSON workflow file
     INPUT_JSON: JSON input data for the workflow (default: {})
     """
-    import tempfile
-    import subprocess
     import shutil
+    import subprocess
+    import tempfile
     from pathlib import Path
 
     try:
         # Parse input JSON
         try:
-            input_data = json.loads(input_json)
+            json.loads(input_json)  # Validate JSON format
         except json.JSONDecodeError as e:
             click.echo(f"❌ Invalid input JSON: {e}", err=True)
             sys.exit(1)
@@ -198,7 +197,7 @@ def execute(
         converter = LangflowConverter()
         stepflow_yaml = converter.convert_file(input_file)
 
-        click.echo(f"✅ Conversion completed")
+        click.echo("✅ Conversion completed")
 
         if dry_run:
             click.echo("\n📄 Converted workflow:")
@@ -301,12 +300,13 @@ stateStore:
 
             if not binary_path:
                 click.echo(
-                    "❌ Stepflow binary not found. Please specify --stepflow-binary or build the project",
+                    "❌ Stepflow binary not found. Please specify --stepflow-binary "
+                    "or build the project",
                     err=True,
                 )
                 sys.exit(1)
 
-        click.echo(f"🎯 Executing workflow with stepflow...")
+        click.echo("🎯 Executing workflow with stepflow...")
         click.echo(f"   • Input: {input_json}")
         click.echo(f"   • Timeout: {timeout}s")
 

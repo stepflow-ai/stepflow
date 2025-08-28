@@ -15,16 +15,18 @@
 """Main Langflow to Stepflow converter implementation."""
 
 import json
-import yaml
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
+import msgspec
+import yaml
 from stepflow_py import Flow, FlowBuilder, Step, Value
-from ..utils.errors import ConversionError, ValidationError
+
+from ..utils.errors import ConversionError
 from .dependency_analyzer import DependencyAnalyzer
-from .schema_mapper import SchemaMapper
 from .node_processor import NodeProcessor
+from .schema_mapper import SchemaMapper
 
 
 @dataclass
@@ -33,13 +35,12 @@ class WorkflowAnalysis:
 
     node_count: int  # Total number of nodes in the Langflow workflow
     edge_count: int  # Total number of connections/edges between nodes
-    component_types: Dict[
-        str, int
-    ]  # Map of component type names to their counts (e.g., {"ChatInput": 1, "OpenAI": 2})
-    dependencies: Dict[
-        str, List[str]
+    # Map of component type names to their counts (e.g., {"ChatInput": 1, "OpenAI": 2})
+    component_types: dict[str, int]
+    dependencies: dict[
+        str, list[str]
     ]  # Map of node IDs to lists of their dependency node IDs
-    potential_issues: List[
+    potential_issues: list[
         str
     ]  # List of warnings or potential problems detected during analysis
 
@@ -53,7 +54,7 @@ class LangflowConverter:
         self.schema_mapper = SchemaMapper()
         self.node_processor = NodeProcessor()
 
-    def convert_file(self, input_path: Union[str, Path]) -> str:
+    def convert_file(self, input_path: str | Path) -> str:
         """Convert a Langflow JSON file to Stepflow YAML.
 
         Args:
@@ -71,17 +72,17 @@ class LangflowConverter:
             raise ConversionError(f"Input file not found: {input_path}")
 
         try:
-            with open(input_path, "r", encoding="utf-8") as f:
+            with open(input_path, encoding="utf-8") as f:
                 langflow_data = json.load(f)
         except json.JSONDecodeError as e:
-            raise ConversionError(f"Invalid JSON in {input_path}: {e}")
+            raise ConversionError(f"Invalid JSON in {input_path}: {e}") from e
         except Exception as e:
-            raise ConversionError(f"Error reading {input_path}: {e}")
+            raise ConversionError(f"Error reading {input_path}: {e}") from e
 
         workflow = self.convert(langflow_data)
         return self.to_yaml(workflow)
 
-    def convert(self, langflow_data: Dict[str, Any]) -> Flow:
+    def convert(self, langflow_data: dict[str, Any]) -> Flow:
         """Convert Langflow data structure to Stepflow workflow.
 
         Args:
@@ -114,7 +115,8 @@ class LangflowConverter:
             # Create field mapping from edges for proper UDF input handling
             field_mapping = self._build_field_mapping_from_edges(edges)
 
-            # Apply complex configuration transformations (merge embeddings into vector stores)
+            # Apply complex configuration transformations (merge embeddings into
+            # vector stores)
             nodes, edges, dependencies = self._apply_complex_configuration_transforms(
                 nodes, edges, dependencies
             )
@@ -125,7 +127,8 @@ class LangflowConverter:
             # Create FlowBuilder
             builder = FlowBuilder(name=self._generate_workflow_name(langflow_data))
 
-            # Note: Skip setting input schema for now as Schema class doesn't support properties
+            # Note: Skip setting input schema for now as Schema class doesn't
+            # support properties
             # input_schema = self._generate_input_section(nodes)
             # if input_schema:
             #     builder.set_input_schema(input_schema)
@@ -177,7 +180,7 @@ class LangflowConverter:
             import traceback
 
             print(f"Full traceback: {traceback.format_exc()}")
-            raise ConversionError(f"Unexpected error during conversion: {e}")
+            raise ConversionError(f"Unexpected error during conversion: {e}") from e
 
     def to_yaml(self, workflow: Flow) -> str:
         """Convert Flow to YAML string.
@@ -190,8 +193,6 @@ class LangflowConverter:
         """
         try:
             # Convert Flow to dict using msgspec serialization
-            import msgspec
-
             workflow_dict = msgspec.to_builtins(workflow)
 
             # Generate clean YAML
@@ -203,9 +204,9 @@ class LangflowConverter:
                 width=120,
             )
         except Exception as e:
-            raise ConversionError(f"Error generating YAML: {e}")
+            raise ConversionError(f"Error generating YAML: {e}") from e
 
-    def analyze(self, langflow_data: Dict[str, Any]) -> WorkflowAnalysis:
+    def analyze(self, langflow_data: dict[str, Any]) -> WorkflowAnalysis:
         """Analyze Langflow workflow structure without conversion.
 
         Args:
@@ -257,9 +258,9 @@ class LangflowConverter:
             )
 
         except Exception as e:
-            raise ConversionError(f"Error analyzing workflow: {e}")
+            raise ConversionError(f"Error analyzing workflow: {e}") from e
 
-    def _generate_workflow_name(self, langflow_data: Dict[str, Any]) -> str:
+    def _generate_workflow_name(self, langflow_data: dict[str, Any]) -> str:
         """Generate a workflow name from Langflow data."""
         # Try to get name from various sources
         if "name" in langflow_data:
@@ -273,8 +274,8 @@ class LangflowConverter:
         return "Converted Langflow Workflow"
 
     def _build_field_mapping_from_edges(
-        self, edges: List[Dict[str, Any]]
-    ) -> Dict[str, Dict[str, str]]:
+        self, edges: list[dict[str, Any]]
+    ) -> dict[str, dict[str, str]]:
         """Build field mapping from edges for proper input handling.
 
         Args:
@@ -305,7 +306,7 @@ class LangflowConverter:
 
                     target_info = json.loads(target_handle.replace("œ", '"'))
                     field_name = target_info.get("fieldName")
-                except:
+                except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                     field_name = None
             else:
                 field_name = None
@@ -319,11 +320,12 @@ class LangflowConverter:
 
     def _apply_complex_configuration_transforms(
         self,
-        nodes: List[Dict[str, Any]],
-        edges: List[Dict[str, Any]],
-        dependencies: Dict[str, List[str]],
-    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, List[str]]]:
-        """Apply complex configuration transformations to merge embeddings into vector stores.
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+        dependencies: dict[str, list[str]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, list[str]]]:
+        """Apply complex configuration transformations to merge embeddings into
+        vector stores.
 
         Args:
             nodes: List of Langflow nodes
@@ -359,7 +361,8 @@ class LangflowConverter:
             # Debug: Log what we're finding
             if source_type == "OpenAIEmbeddings":
                 print(
-                    f"DEBUG Transform: Found OpenAIEmbeddings {source_id} -> {target_type} {target_id}"
+                    f"DEBUG Transform: Found OpenAIEmbeddings {source_id} -> "
+                    f"{target_type} {target_id}"
                 )
 
             # Check for embedding -> vector store connection
@@ -383,17 +386,19 @@ class LangflowConverter:
 
                         target_info = json.loads(target_handle.replace("œ", '"'))
                         field_name = target_info.get("fieldName")
-                    except:
+                    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                         pass
 
                 print(
-                    f"DEBUG Transform: Field name for {source_id} -> {target_id}: {field_name}"
+                    f"DEBUG Transform: Field name for {source_id} -> {target_id}: "
+                    f"{field_name}"
                 )
 
                 # Check if this is an embedding_model or similar field
                 if field_name and "embedding" in field_name.lower():
                     print(
-                        f"DEBUG Transform: Merging {source_id} into {target_id} field {field_name}"
+                        f"DEBUG Transform: Merging {source_id} into {target_id} "
+                        f"field {field_name}"
                     )
                     embedding_to_vector_store[source_id] = target_id
                     nodes_to_remove.add(source_id)
@@ -403,7 +408,8 @@ class LangflowConverter:
                     self._merge_embedding_config(source_node, target_node, field_name)
                 else:
                     print(
-                        f"DEBUG Transform: Skipping {source_id} -> {target_id}, field '{field_name}' doesn't contain 'embedding'"
+                        f"DEBUG Transform: Skipping {source_id} -> {target_id}, "
+                        f"field '{field_name}' doesn't contain 'embedding'"
                     )
 
         # Remove embedding nodes and edges
@@ -413,7 +419,8 @@ class LangflowConverter:
         # Debug: Show what was removed
         if nodes_to_remove:
             print(
-                f"DEBUG Transform: Removed {len(nodes_to_remove)} embedding nodes: {list(nodes_to_remove)}"
+                f"DEBUG Transform: Removed {len(nodes_to_remove)} embedding nodes: "
+                f"{list(nodes_to_remove)}"
             )
             print(
                 f"DEBUG Transform: Remaining nodes: {[n['id'] for n in filtered_nodes]}"
@@ -431,8 +438,8 @@ class LangflowConverter:
 
     def _merge_embedding_config(
         self,
-        embedding_node: Dict[str, Any],
-        vector_store_node: Dict[str, Any],
+        embedding_node: dict[str, Any],
+        vector_store_node: dict[str, Any],
         field_name: str,
     ):
         """Merge embedding configuration into vector store node.
@@ -481,7 +488,8 @@ class LangflowConverter:
 
         # Debug: Show what was merged
         print(
-            f"DEBUG Transform: Added _embedding_config_{field_name} to {vector_store_node['id']}"
+            f"DEBUG Transform: Added _embedding_config_{field_name} to "
+            f"{vector_store_node['id']}"
         )
         print(f"DEBUG Transform: Embedding config: {embedding_config}")
 
@@ -490,16 +498,20 @@ class LangflowConverter:
         vector_store_template["_has_embedded_config"] = {
             "type": "bool",
             "value": True,
-            "info": "Indicates this component has embedded configuration and should use standalone server",
+            "info": (
+                "Indicates this component has embedded configuration and "
+                "should use standalone server"
+            ),
         }
 
-        # Also preserve the original field for backward compatibility but mark it as configured
+        # Also preserve the original field for backward compatibility but mark it as
+        # configured
         if field_name in vector_store_template:
             vector_store_template[field_name]["_configured_by_embedding"] = True
 
     def _generate_input_section(
-        self, nodes: List[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, nodes: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
         """Generate input section for workflow based on ChatInput components.
 
         Args:
@@ -544,10 +556,10 @@ class LangflowConverter:
 
     def _generate_output_section(
         self,
-        steps: List[Step],
-        dependencies: Dict[str, List[str]],
-        nodes: List[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        steps: list[Step],
+        dependencies: dict[str, list[str]],
+        nodes: list[dict[str, Any]] = None,
+    ) -> dict[str, Any] | None:
         """Generate output section for workflow based on step types and dependencies.
 
         Args:
@@ -574,12 +586,11 @@ class LangflowConverter:
             return None
 
         # Find output steps (steps with no dependents or known output types)
-        step_ids = {step.id for step in steps}
         output_steps = []
 
         # Find steps that nothing else depends on (leaf nodes)
         dependent_steps = set()
-        for step_id, deps in dependencies.items():
+        for deps in dependencies.values():
             dependent_steps.update(deps)
 
         leaf_steps = [step for step in steps if step.id not in dependent_steps]
@@ -598,7 +609,8 @@ class LangflowConverter:
                 component_lower = step.component.lower()
                 if any(output_type in component_lower for output_type in ["output"]):
                     output_steps.append(step)
-                # Also prioritize steps that were originally output components (now using identity)
+                # Also prioritize steps that were originally output components
+                # (now using identity)
                 elif step.component == "/builtin/identity":
                     output_steps.append(step)
 
@@ -634,9 +646,9 @@ class LangflowConverter:
     def _build_flow_output(
         self,
         builder: FlowBuilder,
-        nodes: List[Dict[str, Any]],
-        dependencies: Dict[str, List[str]],
-        node_output_refs: Dict[str, Any],
+        nodes: list[dict[str, Any]],
+        dependencies: dict[str, list[str]],
+        node_output_refs: dict[str, Any],
     ) -> None:
         """Build workflow output using incremental output building API.
 
@@ -664,7 +676,8 @@ class LangflowConverter:
                     builder.set_output(node_output_refs[dep_node_id])
                     return
 
-            # ChatOutput has no dependencies or dependencies not found - check if it's a simple passthrough
+            # ChatOutput has no dependencies or dependencies not found - check if
+            # it's a simple passthrough
             if chat_output_nodes and len(nodes) <= 2:
                 # Simple ChatInput -> ChatOutput workflow
                 chat_input_nodes = [
@@ -713,9 +726,9 @@ class LangflowConverter:
 
     def _generate_flow_output(
         self,
-        nodes: List[Dict[str, Any]],
-        dependencies: Dict[str, List[str]],
-        node_output_refs: Dict[str, Any],
+        nodes: list[dict[str, Any]],
+        dependencies: dict[str, list[str]],
+        node_output_refs: dict[str, Any],
     ) -> Any:
         """Generate flow output using the new architecture.
 
@@ -744,7 +757,8 @@ class LangflowConverter:
                 if dep_node_id in node_output_refs:
                     return node_output_refs[dep_node_id]
 
-            # ChatOutput has no dependencies or dependencies not found - check if it's a simple passthrough
+            # ChatOutput has no dependencies or dependencies not found - check if
+            # it's a simple passthrough
             if chat_output_nodes and len(nodes) <= 2:
                 # Simple ChatInput -> ChatOutput workflow
                 chat_input_nodes = [

@@ -14,7 +14,6 @@
 
 """Unit tests for SchemaMapper."""
 
-import pytest
 from stepflow_langflow_integration.converter.schema_mapper import SchemaMapper
 
 

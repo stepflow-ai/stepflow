@@ -14,8 +14,7 @@
 
 """Process individual Langflow nodes into Stepflow steps."""
 
-import json
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 from stepflow_py import FlowBuilder, Value
 
@@ -32,13 +31,13 @@ class NodeProcessor:
 
     def process_node(
         self,
-        node: Dict[str, Any],
-        dependencies: Dict[str, List[str]],
-        all_nodes: List[Dict[str, Any]],
+        node: dict[str, Any],
+        dependencies: dict[str, list[str]],
+        all_nodes: list[dict[str, Any]],
         builder: FlowBuilder,
-        node_output_refs: Dict[str, Any],
-        field_mapping: Dict[str, Dict[str, str]] = None,
-    ) -> Optional[Any]:
+        node_output_refs: dict[str, Any],
+        field_mapping: dict[str, dict[str, str]] = None,
+    ) -> Any | None:
         """Process a Langflow node using flow builder architecture.
 
         Args:
@@ -47,7 +46,8 @@ class NodeProcessor:
             all_nodes: All nodes in the workflow
             builder: FlowBuilder instance
             node_output_refs: Mapping of node IDs to their output references
-            field_mapping: Mapping of target nodes to their input field names from edges
+            field_mapping: Mapping of target nodes to their input field names
+                from edges
 
         Returns:
             Output reference for this node, or None if node should be skipped
@@ -73,7 +73,8 @@ class NodeProcessor:
             # Skip tool dependency nodes that will be handled by Agent tool sequences
             if self._is_tool_dependency_of_agent(node_id, all_nodes, dependencies):
                 print(
-                    f"DEBUG NodeProcessor: Skipping tool dependency {node_id} ({component_type}) - handled by Agent tool sequence"
+                    f"DEBUG NodeProcessor: Skipping tool dependency {node_id} "
+                    f"({component_type}) - handled by Agent tool sequence"
                 )
                 return None
 
@@ -84,12 +85,14 @@ class NodeProcessor:
             node_info = node_data.get("node", {})
             template = node_info.get("template", {})
 
-            # Handle ChatInput/ChatOutput as I/O connection points (not processing steps)
+            # Handle ChatInput/ChatOutput as I/O connection points (not processing
+            # steps)
             if component_type == "ChatInput":
                 # ChatInput returns a reference to workflow input directly
                 return Value.input.add_path("message")
             elif component_type == "ChatOutput":
-                # ChatOutput depends on another node - return that node's output reference
+                # ChatOutput depends on another node - return that node's output
+                # reference
                 dependency_node_ids = dependencies.get(node_id, [])
                 if dependency_node_ids and dependency_node_ids[0] in node_output_refs:
                     return node_output_refs[dependency_node_ids[0]]
@@ -132,7 +135,8 @@ class NodeProcessor:
             ]:
                 # Vector store with embedded configuration - use standalone server
                 print(
-                    f"DEBUG NodeProcessor: Routing {component_type} with embedded config to standalone server"
+                    f"DEBUG NodeProcessor: Routing {component_type} with embedded "
+                    f"config to standalone server"
                 )
                 component_path = f"/langflow/{component_type}"
                 step_input = self._extract_component_inputs_for_builder(
@@ -197,11 +201,12 @@ class NodeProcessor:
             import traceback
 
             print(
-                f"Full traceback for node {node.get('id', 'unknown')}: {traceback.format_exc()}"
+                f"Full traceback for node {node.get('id', 'unknown')}: "
+                f"{traceback.format_exc()}"
             )
             raise ConversionError(
                 f"Error processing node {node.get('id', 'unknown')}: {e}"
-            )
+            ) from e
 
     def _generate_step_id(self, node_id: str, component_type: str) -> str:
         """Generate a clean step ID from node ID and type.
@@ -221,8 +226,8 @@ class NodeProcessor:
         return f"langflow_{base_id}"
 
     def _prepare_udf_blob(
-        self, node: Dict[str, Any], component_type: str
-    ) -> Dict[str, Any]:
+        self, node: dict[str, Any], component_type: str
+    ) -> dict[str, Any]:
         """Prepare UDF blob data for component execution.
 
         Args:
@@ -261,7 +266,8 @@ class NodeProcessor:
         # Debug: Log embedded configuration preservation
         if embedding_config_count > 0:
             print(
-                f"DEBUG NodeProcessor: Preserved {embedding_config_count} embedding configs for {component_type}"
+                f"DEBUG NodeProcessor: Preserved {embedding_config_count} "
+                f"embedding configs for {component_type}"
             )
         else:
             print(
@@ -277,8 +283,8 @@ class NodeProcessor:
         }
 
     def _extract_runtime_inputs(
-        self, node: Dict[str, Any], dependency_node_ids: List[str]
-    ) -> Dict[str, Any]:
+        self, node: dict[str, Any], dependency_node_ids: list[str]
+    ) -> dict[str, Any]:
         """Extract runtime inputs that will come from other workflow steps.
 
         Args:
@@ -303,12 +309,13 @@ class NodeProcessor:
 
     def _extract_component_inputs_for_builder(
         self,
-        node: Dict[str, Any],
-        dependency_node_ids: List[str],
-        all_nodes: List[Dict[str, Any]],
-        node_output_refs: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Extract inputs for built-in Langflow components using flow builder architecture.
+        node: dict[str, Any],
+        dependency_node_ids: list[str],
+        all_nodes: list[dict[str, Any]],
+        node_output_refs: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Extract inputs for built-in Langflow components using flow builder
+        architecture.
 
         Args:
             node: Langflow node object
@@ -369,18 +376,19 @@ class NodeProcessor:
 
     def _extract_runtime_inputs_for_builder(
         self,
-        node: Dict[str, Any],
-        dependency_node_ids: List[str],
-        node_output_refs: Dict[str, Any],
-        field_mapping: Dict[str, Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
+        node: dict[str, Any],
+        dependency_node_ids: list[str],
+        node_output_refs: dict[str, Any],
+        field_mapping: dict[str, dict[str, str]] = None,
+    ) -> dict[str, Any]:
         """Extract runtime inputs for UDF components using flow builder architecture.
 
         Args:
             node: Langflow node object
             dependency_node_ids: IDs of nodes this node depends on
             node_output_refs: Mapping of node IDs to their output references
-            field_mapping: Mapping of target nodes to their input field names from edges
+            field_mapping: Mapping of target nodes to their input field names
+                from edges
 
         Returns:
             Dict of runtime inputs
@@ -431,10 +439,10 @@ class NodeProcessor:
 
     def _extract_component_inputs(
         self,
-        node: Dict[str, Any],
-        dependency_node_ids: List[str],
-        all_nodes: List[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        node: dict[str, Any],
+        dependency_node_ids: list[str],
+        all_nodes: list[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Extract inputs for built-in Langflow components.
 
         Args:
@@ -488,7 +496,7 @@ class NodeProcessor:
 
         return component_inputs
 
-    def _extract_chat_input_mapping(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_chat_input_mapping(self, node: dict[str, Any]) -> dict[str, Any]:
         """Extract inputs for ChatInput component to map to workflow input.
 
         Args:
@@ -518,8 +526,8 @@ class NodeProcessor:
         }
 
     def _extract_chat_output_mapping(
-        self, node: Dict[str, Any], dependency_node_ids: List[str]
-    ) -> Dict[str, Any]:
+        self, node: dict[str, Any], dependency_node_ids: list[str]
+    ) -> dict[str, Any]:
         """Extract inputs for ChatOutput component to pass through data.
 
         Args:
@@ -537,7 +545,7 @@ class NodeProcessor:
             # No dependencies, return empty value
             return {"input_message": None}
 
-    def _create_chat_input_udf(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_chat_input_udf(self, node: dict[str, Any]) -> dict[str, Any]:
         """Create UDF blob data for ChatInput component.
 
         Args:
@@ -586,7 +594,7 @@ class ChatInputComponent(Component):
             "selected_output": "output",
         }
 
-    def _create_chat_output_udf(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_chat_output_udf(self, node: dict[str, Any]) -> dict[str, Any]:
         """Create UDF blob data for ChatOutput component.
 
         Args:
@@ -606,7 +614,11 @@ class ChatOutputComponent(Component):
     description = "Processes chat output for workflow"
 
     inputs = [
-        HandleInput(name="input_message", display_name="Input Message", input_types=["Message", "str"])
+        HandleInput(
+            name="input_message",
+            display_name="Input Message",
+            input_types=["Message", "str"],
+        )
     ]
 
     outputs = [
@@ -653,7 +665,7 @@ class ChatOutputComponent(Component):
             "selected_output": "output",
         }
 
-    def _create_file_component_udf(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_file_component_udf(self, node: dict[str, Any]) -> dict[str, Any]:
         """Create UDF blob data for File component with mock content.
 
         Args:
@@ -679,7 +691,8 @@ class MockFileComponent(Component):
         """Return mock file content."""
         mock_content = """Sample Document Content
 
-This is a mock document that serves as sample content for testing the document Q&A workflow.
+This is a mock document that serves as sample content for testing the document
+Q&A workflow.
 
 Key information:
 - This document discusses various topics related to AI and machine learning
@@ -693,7 +706,8 @@ Technical Details:
 - Natural language processing helps computers understand human language
 - Large language models are trained on vast amounts of text data
 
-This mock content allows testing of the document processing pipeline without requiring actual file uploads."""
+This mock content allows testing of the document processing pipeline without
+requiring actual file uploads."""
 
         return Message(
             text=mock_content,
@@ -722,7 +736,7 @@ This mock content allows testing of the document processing pipeline without req
             "selected_output": "message",
         }
 
-    def _create_memory_component_udf(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_memory_component_udf(self, node: dict[str, Any]) -> dict[str, Any]:
         """Create UDF blob data for Memory component with mock memory.
 
         Args:
@@ -742,7 +756,11 @@ class MockMemoryComponent(Component):
     description = "Mock memory component that provides sample conversation history"
 
     outputs = [
-        Output(display_name="Messages Text", name="messages_text", method="get_messages_text")
+        Output(
+            display_name="Messages Text",
+            name="messages_text",
+            method="get_messages_text"
+        )
     ]
 
     def get_messages_text(self) -> str:
@@ -750,13 +768,19 @@ class MockMemoryComponent(Component):
         mock_history = """Previous conversation history:
 
 User: Hello, how are you?
-Assistant: Hello! I'm doing well, thank you for asking. I'm here to help with any questions or tasks you have.
+Assistant: Hello! I'm doing well, thank you for asking. I'm here to help with any
+questions or tasks you have.
 
 User: What can you help me with?
-Assistant: I can help with a wide variety of tasks including answering questions, writing content, analysis, problem-solving, and general conversation. What would you like assistance with today?
+Assistant: I can help with a wide variety of tasks including answering questions,
+writing content, analysis, problem-solving, and general conversation. What would you
+like assistance with today?
 
 User: Tell me about artificial intelligence.
-Assistant: Artificial intelligence (AI) refers to computer systems that can perform tasks that typically require human intelligence, such as learning, reasoning, and problem-solving. AI encompasses various techniques like machine learning, deep learning, and natural language processing.
+Assistant: Artificial intelligence (AI) refers to computer systems that can perform
+tasks that typically require human intelligence, such as learning, reasoning, and
+problem-solving. AI encompasses various techniques like machine learning, deep
+learning, and natural language processing.
 """
         return mock_history.strip()
 '''
@@ -781,7 +805,7 @@ Assistant: Artificial intelligence (AI) refers to computer systems that can perf
             "selected_output": "messages_text",
         }
 
-    def _create_url_component_udf(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_url_component_udf(self, node: dict[str, Any]) -> dict[str, Any]:
         """Create UDF blob data for URL component with mock web content.
 
         Args:
@@ -872,7 +896,7 @@ For simple addition like 2 + 2, the answer is always 4."""
 
     def _create_simple_mock_component_unused(
         self, component_name: str, output_type: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a simple mock component that returns appropriate mock data.
 
         Args:
@@ -933,7 +957,13 @@ class MockMemoryComponent(Component):
     display_name = "Mock Memory"
     description = "Mock memory component for testing"
 
-    outputs = [Output(display_name="Messages Text", name="messages_text", method="get_content")]
+    outputs = [
+        Output(
+            display_name="Messages Text",
+            name="messages_text",
+            method="get_content"
+        )
+    ]
 
     def get_content(self) -> str:
         return """'''
@@ -1004,9 +1034,9 @@ class MockGenericComponent(Component):
 
     def _is_agent_with_tools(
         self,
-        node: Dict[str, Any],
-        dependencies: List[str],
-        all_nodes: List[Dict[str, Any]],
+        node: dict[str, Any],
+        dependencies: list[str],
+        all_nodes: list[dict[str, Any]],
     ) -> bool:
         """Check if this node is an Agent component with tool dependencies.
 
@@ -1035,7 +1065,8 @@ class MockGenericComponent(Component):
             dep_node = self._find_node_by_id(dep_id, all_nodes)
             if dep_node:
                 dep_type = dep_node.get("data", {}).get("type", "")
-                # Check if this dependency creates tools (CalculatorComponent, URLComponent, etc.)
+                # Check if this dependency creates tools
+                # (CalculatorComponent, URLComponent, etc.)
                 if self._is_tool_creator(dep_type):
                     tool_dependencies.append(dep_id)
 
@@ -1063,8 +1094,8 @@ class MockGenericComponent(Component):
         return component_type in tool_creators
 
     def _find_node_by_id(
-        self, node_id: str, all_nodes: List[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, node_id: str, all_nodes: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
         """Find a node by its ID.
 
         Args:
@@ -1081,13 +1112,13 @@ class MockGenericComponent(Component):
 
     def _create_tool_sequence_config(
         self,
-        agent_node: Dict[str, Any],
-        dependencies: List[str],
-        all_nodes: List[Dict[str, Any]],
+        agent_node: dict[str, Any],
+        dependencies: list[str],
+        all_nodes: list[dict[str, Any]],
         builder: Any,
-        node_output_refs: Dict[str, Any],
-        field_mapping: Dict[str, Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
+        node_output_refs: dict[str, Any],
+        field_mapping: dict[str, dict[str, str]] = None,
+    ) -> dict[str, Any]:
         """Create tool sequence configuration for enhanced UDF machinery.
 
         Args:
@@ -1130,11 +1161,13 @@ class MockGenericComponent(Component):
                     )
 
                     # Use intelligent translation approach:
-                    # Since blob_id references a step that will be executed BEFORE this fused step,
+                    # Since blob_id references a step that will be executed
+                    # BEFORE this fused step,
                     # we can reference it as an external input to the fused step
                     tool_config = {
                         "component_type": dep_type,
-                        "blob_id": f"tool_blob_{len(tool_configs)}",  # Internal reference within fused step
+                        "blob_id": f"tool_blob_{len(tool_configs)}",
+                        # Internal reference within fused step
                         "inputs": self._extract_tool_inputs(
                             dep_node, all_nodes, node_output_refs
                         ),
@@ -1142,7 +1175,7 @@ class MockGenericComponent(Component):
                     tool_configs.append(tool_config)
 
                     # Add external input mapping for the blob_id
-                    external_inputs[f"tool_blob_{len(tool_configs)-1}"] = Value.step(
+                    external_inputs[f"tool_blob_{len(tool_configs) - 1}"] = Value.step(
                         tool_blob_step.id, "blob_id"
                     )
                 else:
@@ -1195,7 +1228,7 @@ class MockGenericComponent(Component):
             "agent": {
                 "component_type": component_type,
                 "blob_id": "agent_blob",  # Internal reference within fused step
-                "inputs": other_inputs,  # Include the input_value and other agent inputs
+                "inputs": other_inputs,  # Input_value and other agent inputs
             },
         }
 
@@ -1216,10 +1249,10 @@ class MockGenericComponent(Component):
 
     def _extract_tool_inputs(
         self,
-        tool_node: Dict[str, Any],
-        all_nodes: List[Dict[str, Any]],
-        node_output_refs: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        tool_node: dict[str, Any],
+        all_nodes: list[dict[str, Any]],
+        node_output_refs: dict[str, Any],
+    ) -> dict[str, Any]:
         """Extract inputs for a tool component.
 
         Args:
@@ -1256,8 +1289,8 @@ class MockGenericComponent(Component):
     def _is_tool_dependency_of_agent(
         self,
         node_id: str,
-        all_nodes: List[Dict[str, Any]],
-        dependencies: Dict[str, List[str]],
+        all_nodes: list[dict[str, Any]],
+        dependencies: dict[str, list[str]],
     ) -> bool:
         """Check if a node is a tool dependency of an Agent node.
 

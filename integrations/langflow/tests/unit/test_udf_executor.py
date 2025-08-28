@@ -12,13 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Unit tests for UDFExecutor - test UDF execution in isolation with real Langflow code."""
+"""Unit test for UDF execution in isolation (with real Langflow code)."""
+
+from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
-import asyncio
-import json
-from unittest.mock import Mock, AsyncMock
-from typing import Dict, Any
 
 from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
 from stepflow_langflow_integration.utils.errors import ExecutionError
@@ -100,7 +99,9 @@ from langflow.base.io.chat import ChatComponent
 from langflow.inputs.inputs import BoolInput
 from langflow.io import DropdownInput, MessageTextInput, MultilineInput, Output
 from langflow.schema.message import Message
-from langflow.utils.constants import MESSAGE_SENDER_AI, MESSAGE_SENDER_USER, MESSAGE_SENDER_NAME_USER
+from langflow.utils.constants import (
+    MESSAGE_SENDER_AI, MESSAGE_SENDER_USER, MESSAGE_SENDER_NAME_USE
+)
 
 class ChatInput(ChatComponent):
     display_name = "Chat Input"
@@ -182,7 +183,7 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_simple_component(
-        self, executor: UDFExecutor, mock_context, simple_component_blob: Dict[str, Any]
+        self, executor: UDFExecutor, mock_context, simple_component_blob: dict[str, Any]
     ):
         """Test execution of a simple custom component."""
         # Setup mock context
@@ -216,7 +217,7 @@ class ChatInput(ChatComponent):
         self,
         executor: UDFExecutor,
         mock_context,
-        chat_input_component_blob: Dict[str, Any],
+        chat_input_component_blob: dict[str, Any],
     ):
         """Test execution of real ChatInput component."""
         # Setup mock context
@@ -248,9 +249,9 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_component_with_template_defaults(
-        self, executor: UDFExecutor, mock_context, simple_component_blob: Dict[str, Any]
+        self, executor: UDFExecutor, mock_context, simple_component_blob: dict[str, Any]
     ):
-        """Test that template default values are used when runtime input is not provided."""
+        """Test that template default values are used when input is not provided."""
         # Modify blob to have default value
         simple_component_blob["template"]["text_input"]["value"] = "Default Text"
         mock_context.get_blob.return_value = simple_component_blob
@@ -270,7 +271,7 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_component_runtime_overrides_template(
-        self, executor: UDFExecutor, mock_context, simple_component_blob: Dict[str, Any]
+        self, executor: UDFExecutor, mock_context, simple_component_blob: dict[str, Any]
     ):
         """Test that runtime inputs override template defaults."""
         # Set template default
@@ -583,13 +584,13 @@ class TestUDFExecutorIntegration:
         found_class = executor_with_mocks._find_component_class(
             exec_globals, "TestComponent"
         )
-        assert found_class == type
+        assert found_class is type
 
         # Case insensitive match
         found_class = executor_with_mocks._find_component_class(
             exec_globals, "testcomponent"
         )
-        assert found_class == type
+        assert found_class is type
 
         # Not found
         found_class = executor_with_mocks._find_component_class(
@@ -690,17 +691,17 @@ class TestUDFExecutorWithRealLangflowComponents:
             if step.component == "/langflow/udf_executor"
         ]
 
-        assert (
-            len(udf_steps) > 0
-        ), "No UDF executor steps found in basic_prompting workflow"
+        assert len(udf_steps) > 0, (
+            "No UDF executor steps found in basic_prompting workflow"
+        )
 
         # Test the first UDF step
         first_step = udf_steps[0]
 
         # The step input should have blob_id reference
-        assert "blob_id" in str(
-            first_step.input
-        ), f"No blob_id found in step input: {first_step.input}"
+        assert "blob_id" in str(first_step.input), (
+            f"No blob_id found in step input: {first_step.input}"
+        )
 
         print(f"✅ Found {len(udf_steps)} UDF components in converted workflow")
         print(f"✅ First UDF step: {first_step.id} using {first_step.component}")
@@ -746,9 +747,7 @@ class TestUDFExecutorWithRealLangflowComponents:
         assert result_data["text"] == "Mock AI response from language model"
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(
-        reason="Test uses outdated Langflow imports - needs updating to current Langflow API"
-    )
+    @pytest.mark.skip(reason="Test uses outdated Langflow imports; needs updating")
     async def test_real_component_code_execution_patterns(
         self, executor: UDFExecutor, mock_context, registry
     ):
@@ -797,7 +796,9 @@ class OpenAIModelComponent(LCModelComponent, BaseModelComponent):
 
     async def build_model(self) -> Message:
         # Mock execution - return formatted response
-        input_text = self.input_value.text if hasattr(self.input_value, 'text') else str(self.input_value)
+        input_text = (self.input_value.text
+                      if hasattr(self.input_value, 'text')
+                      else str(self.input_value))
         mock_response = f"OpenAI Mock Response for: {input_text}"
 
         return Message(

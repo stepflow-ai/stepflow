@@ -14,10 +14,10 @@
 
 """Pytest configuration and fixtures."""
 
-import json
-import pytest
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
+
+import pytest
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 
@@ -41,7 +41,7 @@ def stepflow_fixtures_dir(fixtures_dir: Path) -> Path:
 
 
 @pytest.fixture
-def simple_langflow_workflow() -> Dict[str, Any]:
+def simple_langflow_workflow() -> dict[str, Any]:
     """Simple Langflow workflow for testing."""
     return {
         "data": {

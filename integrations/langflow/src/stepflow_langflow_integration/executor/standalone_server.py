@@ -18,16 +18,17 @@
 This script can be run directly and handles imports properly.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+from typing import Any
 
-# Add the package root to the path
+# Add the package root to the path before importing project modules
 package_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(package_root))
 
-from typing import Dict, Any
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowContext, StepflowStdioServer
+
 from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
 
 # Create server instance (following the exact pattern from stepflow_py/main.py)
@@ -38,8 +39,8 @@ udf_executor = UDFExecutor()
 
 
 async def _pre_resolve_all_blobs(
-    input_data: Dict[str, Any], context: StepflowContext
-) -> Dict[str, Any]:
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
     """Pre-resolve all blob data that will be needed during UDF execution.
 
     This eliminates the need for nested context.get_blob() calls and prevents
@@ -86,11 +87,13 @@ async def _pre_resolve_all_blobs(
             blob_ids_to_resolve.add(agent_ref["blob_id"])
 
     print(
-        f"DEBUG: Found {len(blob_ids_to_resolve)} blob IDs to resolve: {blob_ids_to_resolve}"
+        f"DEBUG: Found {len(blob_ids_to_resolve)} blob IDs to resolve: "
+        f"{blob_ids_to_resolve}"
     )
     with open("/tmp/udf_debug.log", "a") as f:
         f.write(
-            f"DEBUG: Found {len(blob_ids_to_resolve)} blob IDs to resolve: {blob_ids_to_resolve}\n"
+            f"DEBUG: Found {len(blob_ids_to_resolve)} blob IDs to resolve: "
+            f"{blob_ids_to_resolve}\n"
         )
 
     # Pre-fetch all blob data
@@ -124,9 +127,10 @@ async def _pre_resolve_all_blobs(
 # Register the main UDF executor component at module level
 @server.component(name="udf_executor")
 async def udf_executor_component(
-    input_data: Dict[str, Any], context: StepflowContext
-) -> Dict[str, Any]:
-    """Execute a Langflow UDF component with simplified architecture - no context wrapper needed."""
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
+    """Execute a Langflow UDF component with simplified architecture - no context
+    wrapper needed."""
     print("🔥 SIMPLIFIED UDF_EXECUTOR_COMPONENT - NO CONTEXT WRAPPER!")
     with open("/tmp/udf_debug.log", "a") as f:
         f.write("🔥 SIMPLIFIED UDF_EXECUTOR_COMPONENT - NO CONTEXT WRAPPER!\n")
@@ -142,8 +146,8 @@ async def udf_executor_component(
 # Langflow component implementations
 @server.component(name="file")
 async def langflow_file(
-    input_data: Dict[str, Any], context: StepflowContext
-) -> Dict[str, Any]:
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
     """Langflow File component implementation.
 
     Processes files and returns their content as messages.
@@ -162,7 +166,8 @@ systems capable of performing tasks that typically require human intelligence.
 ## Key Concepts
 - Machine Learning: Algorithms that improve automatically through experience
 - Deep Learning: Neural networks with multiple layers for complex pattern recognition
-- Natural Language Processing: Enabling computers to understand and process human language
+- Natural Language Processing: Enabling computers to understand and process human
+  language
 - Computer Vision: Teaching machines to interpret and understand visual information
 
 ## Applications
@@ -173,9 +178,9 @@ AI is used in various domains including:
 - Technology: Search engines, recommendation systems, and virtual assistants
 
 ## Technical Details
-Large language models are trained on vast datasets to understand context, generate text,
-and perform reasoning tasks. They use transformer architectures with attention mechanisms
-to process and generate human-like text responses."""
+Large language models are trained on vast datasets to understand context, generate
+text, and perform reasoning tasks. They use transformer architectures with attention
+mechanisms to process and generate human-like text responses."""
 
     return {
         "result": {
@@ -188,8 +193,8 @@ to process and generate human-like text responses."""
 
 @server.component(name="memory")
 async def langflow_memory(
-    input_data: Dict[str, Any], context: StepflowContext
-) -> Dict[str, Any]:
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
     """Langflow Memory component implementation.
 
     Manages conversation history and context.
@@ -200,13 +205,19 @@ async def langflow_memory(
     conversation_history = """Previous conversation context:
 
 User: Hello, I'm interested in learning about AI.
-Assistant: Hello! I'd be happy to help you learn about artificial intelligence. AI is a fascinating field that encompasses machine learning, natural language processing, computer vision, and more.
+Assistant: Hello! I'd be happy to help you learn about artificial intelligence. AI is a
+fascinating field that encompasses machine learning, natural language processing,
+computer vision, and more.
 
 User: What's the difference between AI and machine learning?
-Assistant: Great question! AI is the broader field focused on creating intelligent systems, while machine learning is a subset of AI that focuses on algorithms that can learn from data without being explicitly programmed for every task.
+Assistant: Great question! AI is the broader field focused on creating intelligent
+systems, while machine learning is a subset of AI that focuses on algorithms that can
+learn from data without being explicitly programmed for every task.
 
 User: Can you give me some examples of machine learning in everyday life?
-Assistant: Certainly! You encounter ML daily: email spam filters, recommendation systems on Netflix/Spotify, voice assistants like Siri, photo tagging on social media, and navigation apps that optimize routes based on traffic patterns.
+Assistant: Certainly! You encounter ML daily: email spam filters, recommendation
+systems on Netflix/Spotify, voice assistants like Siri, photo tagging on social media,
+and navigation apps that optimize routes based on traffic patterns.
 
 Current conversation continues..."""
 
@@ -215,8 +226,8 @@ Current conversation continues..."""
 
 @server.component(name="url")
 async def langflow_url(
-    input_data: Dict[str, Any], context: StepflowContext
-) -> Dict[str, Any]:
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
     """Langflow URL component implementation.
 
     Fetches and processes content from web URLs.
@@ -268,15 +279,15 @@ For questions like "What is 2 + 2?", the answer is 4."""
 
 @server.component(name="LanguageModelComponent")
 async def langflow_language_model(
-    input_data: Dict[str, Any], context: StepflowContext
-) -> Dict[str, Any]:
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
     """Langflow LanguageModelComponent implementation.
 
     Handles OpenAI chat completion directly using API calls.
     This component receives configuration and input messages and returns AI responses.
     """
+
     import openai
-    import json
 
     # Extract configuration parameters from input_data
     # The UDF executor populates these from the Langflow node template
@@ -301,7 +312,10 @@ async def langflow_language_model(
 
     if not api_key:
         return {
-            "error": "OpenAI API key not found. Please set OPENAI_API_KEY environment variable or provide api_key in input.",
+            "error": (
+                "OpenAI API key not found. Please set OPENAI_API_KEY environment "
+                "variable or provide api_key in input."
+            ),
             "result": None,
         }
 
@@ -338,9 +352,10 @@ async def langflow_language_model(
 
 @server.component(name="AstraDB")
 async def langflow_astradb(
-    input_data: Dict[str, Any], context: StepflowContext
-) -> Dict[str, Any]:
-    """Langflow AstraDB vector store component with embedded OpenAI Embeddings configuration.
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
+    """Langflow AstraDB vector store component with embedded OpenAI Embeddings
+    configuration.
 
     This component handles vector storage operations with embedded OpenAI Embeddings
     configuration for proper embedding model initialization.
@@ -359,13 +374,17 @@ async def langflow_astradb(
                 embedding_config = value.get("config", {})
                 embedding_field = key.replace("_embedding_config_", "")
                 print(
-                    f"DEBUG AstraDB: Extracted {embedding_field} config: {embedding_config}"
+                    f"DEBUG AstraDB: Extracted {embedding_field} config: "
+                    f"{embedding_config}"
                 )
                 break
 
     if not embedding_config:
         return {
-            "error": "No embedded OpenAI Embeddings configuration found for AstraDB component",
+            "error": (
+                "No embedded OpenAI Embeddings configuration found for "
+                "AstraDB component"
+            ),
             "result": None,
         }
 
@@ -381,7 +400,9 @@ async def langflow_astradb(
         return {
             "result": {
                 "status": "stored",
-                "message": f"Vector data stored successfully with embedded OpenAI Embeddings",
+                "message": (
+                    "Vector data stored successfully with embedded OpenAI Embeddings"
+                ),
                 "embedding_model": embedding_config.get(
                     "model", "text-embedding-3-small"
                 ),
