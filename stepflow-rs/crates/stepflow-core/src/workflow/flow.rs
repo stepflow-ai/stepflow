@@ -173,6 +173,7 @@ pub struct FlowV1 {
 
     /// The steps to execute for the flow.
     #[schemars(extend("default" = []))]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.

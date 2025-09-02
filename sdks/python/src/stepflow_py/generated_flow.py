@@ -368,7 +368,6 @@ class Step(Struct, kw_only=True):
 
 
 class FlowV1(Struct, kw_only=True):
-    steps: Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
     schema_: Literal['https://stepflow.org/schemas/v1/flow.json'] = field(name='schema')
     name: Annotated[str | None, Meta(description='The name of the flow.')] | None = None
     description: (
@@ -385,6 +384,10 @@ class FlowV1(Struct, kw_only=True):
         Annotated[Schema | None, Meta(description='The output schema of the flow.')]
         | None
     ) = None
+    steps: (
+        Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
+        | None
+    ) = []
     output: (
         Annotated[
             ValueTemplate,

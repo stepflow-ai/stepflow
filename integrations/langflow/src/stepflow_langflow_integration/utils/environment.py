@@ -15,12 +15,11 @@
 """Environment variable utilities."""
 
 import os
-from typing import Optional
 
 
 def determine_environment_variable(
     field_name: str, field_value: str, field_config: dict
-) -> Optional[str]:
+) -> str | None:
     """Determine environment variable name from Langflow field metadata.
 
     Args:
@@ -77,9 +76,7 @@ def determine_environment_variable(
     return None
 
 
-def resolve_environment_value(
-    env_var: str, default: Optional[str] = None
-) -> Optional[str]:
+def resolve_environment_value(env_var: str, default: str | None = None) -> str | None:
     """Resolve environment variable value.
 
     Args:

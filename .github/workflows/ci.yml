@@ -48,6 +48,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       python: ${{ steps.filter.outputs.python }}
       docs: ${{ steps.filter.outputs.docs }}
+      langflow: ${{ steps.filter.outputs.langflow }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -64,6 +65,10 @@ jobs:
               - 'docs/**'
               - 'README.md'
               - '*.md'
+            langflow:
+              - 'integrations/langflow/**'
+              - 'stepflow-rs/**'
+              - 'sdks/python/**'
 
   # Rust checks (combined style, build, and test)
   rust-checks:
@@ -108,6 +113,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/docs-checks
+
+  # Langflow integration checks
+  langflow-checks:
+    name: Langflow Integration Checks
+    needs: changes
+    if: needs.changes.outputs.langflow == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/langflow-checks
+        with:
+          python-version: ${{ matrix.python-version }}
 
   # License header validation (runs on all changes)
   licensure:
@@ -164,7 +185,7 @@ jobs:
   check-success:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [changes, rust-checks, python-checks, docs-checks, licensure, integration-checks]
+    needs: [changes, rust-checks, python-checks, docs-checks, langflow-checks, licensure, integration-checks]
     # Always run this job, but fail if any required checks failed
     if: always()
     steps:
@@ -181,6 +202,10 @@ jobs:
           fi
           if [[ "${{ needs.docs-checks.result }}" == "failure" || "${{ needs.docs-checks.result }}" == "cancelled" ]]; then
             echo "::error::Documentation checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.langflow-checks.result }}" == "failure" || "${{ needs.langflow-checks.result }}" == "cancelled" ]]; then
+            echo "::error::Langflow integration checks failed"
             exit 1
           fi
           if [[ "${{ needs.licensure.result }}" == "failure" || "${{ needs.licensure.result }}" == "cancelled" ]]; then
@@ -203,6 +228,10 @@ jobs:
           fi
           if [[ "${{ needs.changes.outputs.docs }}" == "true" && "${{ needs.docs-checks.result }}" == "skipped" ]]; then
             echo "::error::Documentation changes detected but docs-checks was skipped"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.langflow }}" == "true" && "${{ needs.langflow-checks.result }}" == "skipped" ]]; then
+            echo "::error::Langflow changes detected but langflow-checks was skipped"
             exit 1
           fi
           if [[ ("${{ needs.changes.outputs.rust }}" == "true" || "${{ needs.changes.outputs.python }}" == "true") && "${{ needs.integration-checks.result }}" == "skipped" ]]; then

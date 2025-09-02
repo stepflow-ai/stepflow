@@ -144,6 +144,31 @@ else
 fi
 
 # =============================================================================
+# LANGFLOW INTEGRATION CHECKS
+# =============================================================================
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════════════════════"
+echo "⚡ LANGFLOW INTEGRATION CHECKS"
+echo "═══════════════════════════════════════════════════════════════════════════════"
+
+if [ "$VERBOSE" = true ]; then
+    if ! "$SCRIPT_DIR/check-langflow.sh"; then
+        echo "❌ Langflow integration checks failed"
+        FAILED_CATEGORIES+=("langflow")
+    else
+        echo "✅ Langflow integration checks passed"
+    fi
+else
+    if ! "$SCRIPT_DIR/check-langflow.sh" >/dev/null 2>&1; then
+        echo "❌ Langflow integration checks failed"
+        FAILED_CATEGORIES+=("langflow")
+    else
+        echo "✅ Langflow integration checks passed"
+    fi
+fi
+
+# =============================================================================
 # INTEGRATION TESTS
 # =============================================================================
 
@@ -185,6 +210,7 @@ if [ ${#FAILED_CATEGORIES[@]} -eq 0 ]; then
     echo "✅ Python checks: PASSED"  
     echo "✅ Documentation checks: PASSED"
     echo "✅ License checks: PASSED"
+    echo "✅ Langflow integration checks: PASSED"
     echo "✅ Integration tests: PASSED"
     echo ""
     echo "🚀 Ready for CI and deployment!"
@@ -215,6 +241,11 @@ else
     else
         echo "✅ License checks: PASSED"
     fi
+    if [[ " ${FAILED_CATEGORIES[*]} " =~ " langflow " ]]; then
+        echo "❌ Langflow integration checks: FAILED"
+    else
+        echo "✅ Langflow integration checks: PASSED"
+    fi
     if [[ " ${FAILED_CATEGORIES[*]} " =~ " integration " ]]; then
         echo "❌ Integration tests: FAILED"
     else
@@ -235,6 +266,9 @@ else
                 ;;
             "licenses")
                 echo "  - ./scripts/check-licenses.sh"
+                ;;
+            "langflow")
+                echo "  - ./scripts/check-langflow.sh"
                 ;;
             "integration")
                 echo "  - ./scripts/test-integration.sh"

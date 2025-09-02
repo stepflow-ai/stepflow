@@ -179,7 +179,7 @@ fn extract_dep_from_expr(expr: &Expr) -> Result<Option<Dependency>> {
                 BaseRef::Step { step } => Ok(Some(Dependency::StepOutput {
                     step_id: step.clone(),
                     field,
-                    optional: on_skip.is_optional(),
+                    optional: on_skip.as_ref().is_some_and(|s| s.is_optional()),
                 })),
                 BaseRef::Workflow(WorkflowRef::Input) => Ok(Some(Dependency::FlowInput { field })),
             }
@@ -263,9 +263,9 @@ mod tests {
                 step: "step1".to_string(),
             },
             path: "should_skip".into(),
-            on_skip: stepflow_core::workflow::SkipAction::UseDefault {
+            on_skip: Some(stepflow_core::workflow::SkipAction::UseDefault {
                 default_value: None,
-            },
+            }),
         });
 
         let result = analyze_flow_dependencies(

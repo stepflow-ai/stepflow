@@ -18,23 +18,24 @@ import json
 import os
 import subprocess
 import tempfile
-import time
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any
+
 import yaml
 
-from ..utils.errors import ValidationError, ExecutionError
+from ..utils.errors import ExecutionError, ValidationError
 
 
 class StepflowBinaryRunner:
     """Helper class for running Stepflow binary commands in tests."""
 
-    def __init__(self, binary_path: Optional[str] = None):
+    def __init__(self, binary_path: str | None = None):
         """Initialize with Stepflow binary path.
 
         Args:
             binary_path: Path to stepflow binary. If None, uses STEPFLOW_BINARY_PATH
-                        environment variable or defaults to stepflow-rs/target/debug/stepflow
+                          environment variable or defaults to
+                          stepflow-rs/target/debug/stepflow
         """
         if binary_path is None:
             # Try environment variable first
@@ -42,26 +43,27 @@ class StepflowBinaryRunner:
 
             if binary_path is None:
                 # Default to relative path from integrations/langflow to stepflow-rs
-                # We're at: stepflow-rs/integrations/langflow/src/stepflow_langflow_integration/testing/stepflow_binary.py
-                # We need: stepflow-rs/stepflow-rs/target/debug/stepflow
-                current_dir = Path(__file__).parent.parent.parent.parent.parent
-                binary_path = (
+                # Go up 6 levels from stepflow_binary.py to reach project root
+                current_dir = Path(__file__).parent.parent.parent.parent.parent.parent
+                default_path = (
                     current_dir / "stepflow-rs" / "target" / "debug" / "stepflow"
                 )
+                binary_path = str(default_path)
 
         self.binary_path = Path(binary_path)
         if not self.binary_path.exists():
             raise FileNotFoundError(
                 f"Stepflow binary not found at {self.binary_path}. "
-                f"Set STEPFLOW_BINARY_PATH environment variable or build stepflow-rs first."
+                f"Set STEPFLOW_BINARY_PATH environment variable or "
+                "build stepflow-rs first."
             )
 
     def validate_workflow(
         self,
         workflow_yaml: str,
-        config_path: Optional[str] = None,
+        config_path: str | None = None,
         timeout: float = 30.0,
-    ) -> Tuple[bool, str, str]:
+    ) -> tuple[bool, str, str]:
         """Validate a workflow using stepflow validate command.
 
         Args:
@@ -102,11 +104,11 @@ class StepflowBinaryRunner:
     def run_workflow(
         self,
         workflow_yaml: str,
-        input_data: Dict[str, Any],
-        config_path: Optional[str] = None,
+        input_data: dict[str, Any],
+        config_path: str | None = None,
         timeout: float = 60.0,
         input_format: str = "json",
-    ) -> Tuple[bool, Optional[Dict[str, Any]], str, str]:
+    ) -> tuple[bool, dict[str, Any] | None, str, str]:
         """Run a workflow using stepflow run command.
 
         Args:
@@ -197,9 +199,9 @@ class StepflowBinaryRunner:
         self,
         workflow_yaml: str,
         input_file_path: str,
-        config_path: Optional[str] = None,
+        config_path: str | None = None,
         timeout: float = 60.0,
-    ) -> Tuple[bool, Optional[Dict[str, Any]], str, str]:
+    ) -> tuple[bool, dict[str, Any] | None, str, str]:
         """Run a workflow with input from file.
 
         Args:
@@ -254,7 +256,7 @@ class StepflowBinaryRunner:
         finally:
             Path(workflow_path).unlink(missing_ok=True)
 
-    def check_binary_availability(self) -> Tuple[bool, str]:
+    def check_binary_availability(self) -> tuple[bool, str]:
         """Check if stepflow binary is available and working.
 
         Returns:
@@ -277,8 +279,8 @@ class StepflowBinaryRunner:
             return False, str(e)
 
     def list_components(
-        self, config_path: Optional[str] = None
-    ) -> Tuple[bool, List[str], str]:
+        self, config_path: str | None = None
+    ) -> tuple[bool, list[str], str]:
         """List available components using stepflow list-components.
 
         Args:
@@ -311,7 +313,7 @@ class StepflowBinaryRunner:
             return success, components, result.stderr
 
         except subprocess.TimeoutExpired as e:
-            raise ExecutionError(f"Stepflow list-components timed out") from e
+            raise ExecutionError("Stepflow list-components timed out") from e
 
 
 def get_default_stepflow_config() -> str:

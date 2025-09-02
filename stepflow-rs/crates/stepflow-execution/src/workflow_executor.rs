@@ -581,7 +581,7 @@ impl WorkflowExecutor {
             },
             input: step.input.clone(),
             skip_if: step.skip_if.clone(),
-            on_error: step.on_error.clone(),
+            on_error: step.on_error_or_default(),
             state,
         })
     }
@@ -920,7 +920,7 @@ pub(crate) async fn execute_step_async(
 
     match &result {
         FlowResult::Failed(error) => {
-            match &step.on_error {
+            match step.on_error_or_default() {
                 stepflow_core::workflow::ErrorAction::Skip => {
                     tracing::debug!(
                         "Step {} failed but configured to skip: {:?}",

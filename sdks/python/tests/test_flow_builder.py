@@ -53,15 +53,16 @@ def test_basic_flow_builder():
     # Check basic properties
     assert flow.name == "test_flow"
     assert flow.description == "A test flow"
-    assert len(flow.steps) == 2
+    assert len(flow.steps or []) == 2
 
     # Check step 1
-    step1_def = flow.steps[0]
+    steps = flow.steps or []
+    step1_def = steps[0]
     assert step1_def.id == "add_numbers"
     assert step1_def.component == "eval"
 
     # Check step 2
-    step2_def = flow.steps[1]
+    step2_def = steps[1]
     assert step2_def.id == "double_result"
     assert step2_def.component == "eval"
 
@@ -101,7 +102,7 @@ def test_step_references():
     builder.set_output({"result": Value.step(step1.id, "$")})
 
     flow = builder.build()
-    assert len(flow.steps) == 5
+    assert len(flow.steps or []) == 5
 
 
 def test_workflow_input_references():
@@ -132,7 +133,7 @@ def test_workflow_input_references():
     builder.set_output({"result": input_ref})
 
     flow = builder.build()
-    assert len(flow.steps) == 4
+    assert len(flow.steps or []) == 4
 
 
 def test_literal_values():
@@ -155,7 +156,7 @@ def test_literal_values():
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps) == 1
+    assert len(flow.steps or []) == 1
 
 
 def test_error_handling():
@@ -186,18 +187,18 @@ def test_error_handling():
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps) == 3
+    assert len(flow.steps or []) == 3
 
     # Check that error actions were set correctly
-    fail_step = next(step for step in flow.steps if step.id == "fail_step")
+    fail_step = next(step for step in (flow.steps or []) if step.id == "fail_step")
     assert isinstance(fail_step.onError, OnErrorFail)
     assert fail_step.onError.action == "fail"
 
-    skip_step = next(step for step in flow.steps if step.id == "skip_step")
+    skip_step = next(step for step in (flow.steps or []) if step.id == "skip_step")
     assert isinstance(skip_step.onError, OnErrorSkip)
     assert skip_step.onError.action == "skip"
 
-    retry_step = next(step for step in flow.steps if step.id == "retry_step")
+    retry_step = next(step for step in (flow.steps or []) if step.id == "retry_step")
     assert isinstance(retry_step.onError, OnErrorRetry)
     assert retry_step.onError.action == "retry"
 
@@ -218,10 +219,10 @@ def test_error_default_handling():
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps) == 1
+    assert len(flow.steps or []) == 1
 
     # Check that OnErrorDefault was set correctly
-    default_step = flow.steps[0]
+    default_step = (flow.steps or [])[0]
     assert isinstance(default_step.onError, OnErrorDefault)
     assert default_step.onError.action == "useDefault"
     assert default_step.onError.defaultValue == "fallback_value"
@@ -267,7 +268,7 @@ def test_step_ids():
     flow = builder.build()
 
     # Check that IDs were set correctly
-    step_ids = [step.id for step in flow.steps]
+    step_ids = [step.id for step in (flow.steps or [])]
     assert "custom_step_1" in step_ids
     assert "custom_step_2" in step_ids
     assert "custom_step_3" in step_ids
@@ -303,7 +304,7 @@ def test_complex_nested_references():
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps) == 2
+    assert len(flow.steps or []) == 2
 
 
 def test_get_references():
@@ -503,7 +504,7 @@ def test_flowbuilder_load():
 
     # Build the modified flow
     modified_flow = loaded_builder.build()
-    assert len(modified_flow.steps) == 2
+    assert len(modified_flow.steps or []) == 2
 
 
 def test_flowbuilder_load_and_extend():
@@ -528,7 +529,7 @@ def test_flowbuilder_load_and_extend():
 
     # Verify all steps are present
     final_flow = loaded_builder.build()
-    step_ids = [step.id for step in final_flow.steps]
+    step_ids = [step.id for step in (final_flow.steps or [])]
     assert "step1" in step_ids
     assert "step2" in step_ids
     assert "custom_step" in step_ids

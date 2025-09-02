@@ -19,18 +19,18 @@ by the Stepflow binary, ensuring proper schema compliance and component routing.
 They bridge conversion testing and execution testing.
 """
 
-import pytest
-import tempfile
 from pathlib import Path
+
+import pytest
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 from stepflow_langflow_integration.testing.stepflow_binary import (
     StepflowBinaryRunner,
-    get_default_stepflow_config,
     create_test_config_file,
+    get_default_stepflow_config,
 )
 
-from .test_registry import get_test_registry, TestWorkflow, pytest_parametrize_workflows
+from .test_registry import TestWorkflow, get_test_registry, pytest_parametrize_workflows
 
 
 class TestWorkflowValidation:
@@ -97,28 +97,32 @@ class TestWorkflowValidation:
 
         # Check validation result
         if workflow.validation.should_succeed:
-            assert (
-                success
-            ), f"Workflow '{workflow.name}' validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+            assert success, (
+                f"Workflow '{workflow.name}' validation failed:\n"
+                f"STDOUT: {stdout}\nSTDERR: {stderr}"
+            )
 
             # Check for success indicators
             success_indicators = ["✅", "passed", "success", "valid"]
             has_success_indicator = any(
                 indicator in stdout.lower() for indicator in success_indicators
             )
-            assert (
-                has_success_indicator
-            ), f"No success indicator found in validation output for '{workflow.name}': {stdout}"
+            assert has_success_indicator, (
+                "No success indicator found in validation output for "
+                f"'{workflow.name}': {stdout}"
+            )
         else:
-            assert (
-                not success
-            ), f"Workflow '{workflow.name}' validation should have failed but succeeded"
+            assert not success, (
+                f"Workflow '{workflow.name}' validation should have failed but "
+                "succeeded"
+            )
 
             # Check error message if specified
             if workflow.validation.error_contains:
-                assert (
-                    workflow.validation.error_contains in stderr.lower()
-                ), f"Expected error containing '{workflow.validation.error_contains}' in stderr: {stderr}"
+                assert workflow.validation.error_contains in stderr.lower(), (
+                    f"Expected error containing '{workflow.validation.error_contains}' "
+                    f"in stderr: {stderr}"
+                )
 
     def test_binary_availability(self, stepflow_runner: StepflowBinaryRunner):
         """Test that Stepflow binary is available and working."""
@@ -146,9 +150,9 @@ class TestWorkflowValidation:
 
         # Should have langflow/mock components for testing
         langflow_components = [c for c in components if "langflow" in c.lower()]
-        assert (
-            len(langflow_components) > 0
-        ), "Should have Langflow components available for testing"
+        assert len(langflow_components) > 0, (
+            "Should have Langflow components available for testing"
+        )
 
 
 class TestValidationErrorHandling:
@@ -192,7 +196,8 @@ steps:
 
         # May pass validation but should indicate issues
         if success:
-            # Even if validation passes, there should be warnings or the workflow should fail at runtime
+            # Even if validation passes, there should be warnings or
+            # the workflow should fail at runtime
             pass
         else:
             # Should have clear error message
@@ -201,17 +206,19 @@ steps:
                 indicator in stdout.lower() or indicator in stderr.lower()
                 for indicator in error_indicators
             )
-            assert (
-                has_error_indicator
-            ), f"Should have error indicator in output: stdout={stdout}, stderr={stderr}"
+            assert has_error_indicator, (
+                "Should have error indicator in output: "
+                f"stdout={stdout}, stderr={stderr}"
+            )
 
     def test_nonexistent_component(
         self, stepflow_runner: StepflowBinaryRunner, test_config_path: str
     ):
-        """Test that workflow with nonexistent component can be validated but should fail at execution.
+        """Test that workflow with nonexistent component can be valid.
 
-        Note: Stepflow validation focuses on workflow structure, not component availability.
-        Component routing is validated at execution time, not validation time.
+        Note: Stepflow validation focuses on workflow structure, not component
+        availability. Component routing is validated at execution time, not validation
+        time.
         """
 
         invalid_yaml = """
@@ -228,14 +235,14 @@ steps:
             invalid_yaml, config_path=test_config_path
         )
 
-        assert (
-            success
-        ), "Workflow validation should pass (component routing checked at execution time)"
+        assert success, (
+            "Workflow validation should pass (routing checked at execution time)"
+        )
 
         # Should contain warnings about unreferenced step
-        assert (
-            "warnings" in stdout.lower() or "warn" in stdout.lower()
-        ), f"Should have warnings about workflow structure: stdout={stdout}"
+        assert "warnings" in stdout.lower() or "warn" in stdout.lower(), (
+            f"Should have warnings about workflow structure: stdout={stdout}"
+        )
 
     def test_malformed_yaml(
         self, stepflow_runner: StepflowBinaryRunner, test_config_path: str
@@ -263,9 +270,9 @@ steps:
             indicator in stdout.lower() or indicator in stderr.lower()
             for indicator in yaml_error_indicators
         )
-        assert (
-            has_yaml_error
-        ), f"Should indicate YAML parsing error: stdout={stdout}, stderr={stderr}"
+        assert has_yaml_error, (
+            f"Should indicate YAML parsing error: stdout={stdout}, stderr={stderr}"
+        )
 
     def test_workflow_with_dependency_issues(
         self, stepflow_runner: StepflowBinaryRunner, test_config_path: str
@@ -310,9 +317,9 @@ steps:
                 indicator in stdout.lower() or indicator in stderr.lower()
                 for indicator in dependency_indicators
             )
-            assert (
-                has_dependency_error
-            ), f"Should indicate dependency issue: stdout={stdout}, stderr={stderr}"
+            assert has_dependency_error, (
+                f"Should indicate dependency issue: stdout={stdout}, stderr={stderr}"
+            )
 
 
 class TestValidationPerformance:
@@ -377,9 +384,9 @@ class TestValidationPerformance:
                 continue
 
         # Basic performance assertions
-        assert (
-            len(performance_results) > 0
-        ), "Should have validated at least one workflow"
+        assert len(performance_results) > 0, (
+            "Should have validated at least one workflow"
+        )
 
         max_time = max(r["validation_time"] for r in performance_results)
         assert max_time < 10.0, f"Validation took too long: {max_time:.2f}s"
@@ -389,10 +396,12 @@ class TestValidationPerformance:
         assert successful_validations > 0, "At least some validations should succeed"
 
         # Print performance summary for debugging
-        print(f"\nValidation Performance Results:")
+        print("\nValidation Performance Results:")
         for result in sorted(
             performance_results, key=lambda x: x["validation_time"], reverse=True
         ):
             print(
-                f"  {result['workflow']:20} | {result['nodes']:2} nodes | {result['validation_time']:.3f}s | {'✅' if result['success'] else '❌'}"
+                f"  {result['workflow']:20} | {result['nodes']:2} nodes | "
+                f"{result['validation_time']:.3f}s | "
+                f"{'✅' if result['success'] else '❌'}"
             )

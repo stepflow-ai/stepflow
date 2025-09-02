@@ -108,7 +108,7 @@ def test_skip_actions():
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps) == 1
+    assert len(flow.steps or []) == 1
 
     # Build and check references were created correctly
     loaded_builder = FlowBuilder.load(flow)
@@ -279,7 +279,7 @@ def test_value_class_in_flow_builder():
     )
 
     flow = builder.build()
-    assert len(flow.steps) == 1
+    assert len(flow.steps or []) == 1
 
     # Extract references to make sure they work
     references = FlowBuilder.load(flow).get_references()

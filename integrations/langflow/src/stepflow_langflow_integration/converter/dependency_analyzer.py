@@ -14,15 +14,15 @@
 
 """Dependency analysis for Langflow workflows."""
 
-from typing import Dict, Any, List
+from typing import Any
 
 
 class DependencyAnalyzer:
     """Analyzes Langflow edges to build step dependency graphs."""
 
     def build_dependency_graph(
-        self, edges: List[Dict[str, Any]]
-    ) -> Dict[str, List[str]]:
+        self, edges: list[dict[str, Any]]
+    ) -> dict[str, list[str]]:
         """Build a dependency graph from Langflow edges.
 
         Args:
@@ -31,7 +31,7 @@ class DependencyAnalyzer:
         Returns:
             Dict mapping step IDs to their dependencies
         """
-        dependencies = {}
+        dependencies: dict[str, list[str]] = {}
 
         for edge in edges:
             source = edge.get("source")
@@ -44,7 +44,7 @@ class DependencyAnalyzer:
 
         return dependencies
 
-    def get_execution_order(self, dependencies: Dict[str, List[str]]) -> List[str]:
+    def get_execution_order(self, dependencies: dict[str, list[str]]) -> list[str]:
         """Get topological execution order for nodes.
 
         Args:
@@ -57,7 +57,7 @@ class DependencyAnalyzer:
             ValueError: If circular dependencies are detected
         """
         # Topological sort using Kahn's algorithm
-        in_degree = {}
+        in_degree: dict[str, int] = {}
         all_nodes = set()
 
         # Collect all nodes and calculate in-degrees

@@ -21,10 +21,10 @@ predictable responses for testing the integration without requiring a full
 Langflow installation.
 """
 
+import asyncio
 import json
 import sys
-import asyncio
-from typing import Dict, Any, Optional
+from typing import Any
 
 
 class MockStepflowContext:
@@ -33,7 +33,7 @@ class MockStepflowContext:
     def __init__(self):
         self.blobs = {}
 
-    async def get_blob(self, blob_id: str) -> Dict[str, Any]:
+    async def get_blob(self, blob_id: str) -> dict[str, Any]:
         """Retrieve blob data by ID."""
         if blob_id not in self.blobs:
             # Return default mock blob structure
@@ -46,7 +46,7 @@ class MockStepflowContext:
             }
         return self.blobs[blob_id]
 
-    async def put_blob(self, data: Dict[str, Any]) -> str:
+    async def put_blob(self, data: dict[str, Any]) -> str:
         """Store blob data and return ID."""
         blob_id = f"mock_blob_{len(self.blobs)}"
         self.blobs[blob_id] = data
@@ -61,7 +61,7 @@ class MockLangflowServer:
         # Store flow-specific configurations by flow_id
         self.flow_configs = {}
 
-    def get_component_info(self, component_name: str) -> Dict[str, Any]:
+    def get_component_info(self, component_name: str) -> dict[str, Any]:
         """Return mock component info."""
         return {
             "name": component_name,
@@ -77,8 +77,8 @@ class MockLangflowServer:
         }
 
     async def execute_component(
-        self, component_name: str, input_data: Dict[str, Any], flow_id: str = "unknown"
-    ) -> Dict[str, Any]:
+        self, component_name: str, input_data: dict[str, Any], flow_id: str = "unknown"
+    ) -> dict[str, Any]:
         """Execute mock component and return predictable result."""
 
         # Check if we have flow-specific mock configuration
@@ -175,7 +175,7 @@ class MockLangflowServer:
             }
 
 
-async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
+async def handle_request(request: dict[str, Any]) -> dict[str, Any]:
     """Handle incoming JSON-RPC request."""
     server = MockLangflowServer()
 
@@ -200,7 +200,7 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
             # Special handling for 'initialized' notifications - no response needed
             if method == "initialized" and request_id is None:
                 print(
-                    f"DEBUG: Ignoring 'initialized' notification",
+                    "DEBUG: Ignoring 'initialized' notification",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -210,7 +210,8 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
             component_name = params.get("component", "unknown")
             result = {"info": server.get_component_info(component_name)}
         elif method == "components/execute":
-            # ComponentExecuteParams structure: component, input, step_id, run_id, flow_id
+            # ComponentExecuteParams structure:
+            #   component, input, step_id, run_id, flow_id
             component_name = params.get("component", "unknown")
             input_data = params.get("input", {})
             step_id = params.get("step_id", "unknown")
@@ -218,7 +219,8 @@ async def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
             flow_id = params.get("flow_id", "unknown")
             # Log the component execution for debugging
             print(
-                f"DEBUG: Executing component {component_name} (step: {step_id}, flow: {flow_id}) with input {input_data}",
+                f"DEBUG: Executing component {component_name} "
+                f"(step: {step_id}, flow: {flow_id}) with input {input_data}",
                 file=sys.stderr,
                 flush=True,
             )

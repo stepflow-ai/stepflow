@@ -43,6 +43,9 @@ dependencies = [
     "jsonschema>=4.17.0",
     "langflow>=1.5.0",  # Required for component execution
     "python-dotenv>=1.0.0",  # For .env file support
+    "openai>=1.0.0",  # For OpenAI API integration
+    "langchain_core>=0.1.0",  # For core LangChain functionality
+    "langchain_openai>=0.1.0",  # For LangChain OpenAI integration
 ]
 
 [dependency-groups]
@@ -56,7 +59,8 @@ dev = [
     "mypy>=1.8.0",
     "deptry>=0.22.0",
     "types-PyYAML>=6.0.0",
-    "httpx>=0.25.0",  # For testing HTTP components
+    "httpx>=0.25.0", # For testing HTTP components
+    "black>=25.1.0",
 ]
 
 [project.urls]
@@ -141,6 +145,7 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
+"src/stepflow_langflow_integration/executor/standalone_server.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -151,6 +156,10 @@ docstring-code-format = true
 # types-* packages are type stubs for mypy and not directly imported
 ignore = ["DEP002"]
 extend_exclude = ["types-PyYAML"]
+
+[tool.deptry.package_module_name_map]
+python-dotenv = ["dotenv"]
+pyyaml = ["yaml"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -142,7 +142,7 @@ pub struct StepBuilder {
     input_schema: Option<SchemaRef>,
     output_schema: Option<SchemaRef>,
     skip_if: Option<Expr>,
-    on_error: ErrorAction,
+    on_error: Option<ErrorAction>,
     metadata: HashMap<String, serde_json::Value>,
 }
 
@@ -156,7 +156,7 @@ impl StepBuilder {
             input_schema: None,
             output_schema: None,
             skip_if: None,
-            on_error: ErrorAction::default(),
+            on_error: None,
             metadata: HashMap::new(),
         }
     }
@@ -205,7 +205,7 @@ impl StepBuilder {
 
     /// Set the error action.
     pub fn on_error(mut self, action: ErrorAction) -> Self {
-        self.on_error = action;
+        self.on_error = Some(action);
         self
     }
 
@@ -345,7 +345,8 @@ mod tests {
 
         assert_eq!(step.id, "test_step");
         assert_eq!(step.component.path(), "/test/component");
-        assert_eq!(step.on_error, ErrorAction::Fail);
+        assert_eq!(step.on_error, None);
+        assert_eq!(step.on_error_or_default(), ErrorAction::Fail);
     }
 
     #[test]

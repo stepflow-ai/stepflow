@@ -14,18 +14,18 @@
 
 """Conversion tests: Langflow JSON → Stepflow YAML transformation.
 
-These tests focus purely on the conversion process without involving the Stepflow binary.
+These tests focus purely on the conversion process without involving the Stepflow
+binary.
 They verify that Langflow workflow JSON is correctly transformed to Stepflow YAML format
 with proper step ordering, component mapping, and dependency resolution.
 """
 
 import pytest
-from typing import Dict, Any
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 from stepflow_langflow_integration.utils.errors import ConversionError, ValidationError
 
-from .test_registry import get_test_registry, TestWorkflow, pytest_parametrize_workflows
+from .test_registry import TestWorkflow, get_test_registry, pytest_parametrize_workflows
 
 
 class TestWorkflowConversion:
@@ -83,41 +83,47 @@ class TestWorkflowConversion:
 
         # Check workflow name
         if expectations.workflow_name:
-            assert (
-                stepflow_workflow.name == expectations.workflow_name
-            ), f"Expected workflow name '{expectations.workflow_name}', got '{stepflow_workflow.name}'"
+            assert stepflow_workflow.name == expectations.workflow_name, (
+                f"Expected workflow name '{expectations.workflow_name}', "
+                f"got '{stepflow_workflow.name}'"
+            )
 
         # Check step count
         if expectations.step_count is not None:
-            assert (
-                len(stepflow_workflow.steps) == expectations.step_count
-            ), f"Expected {expectations.step_count} steps, got {len(stepflow_workflow.steps)}"
+            assert len(stepflow_workflow.steps) == expectations.step_count, (
+                f"Expected {expectations.step_count} steps, "
+                f"got {len(stepflow_workflow.steps)}"
+            )
 
         # Check step IDs (legacy - prefer component_types_include)
         if expectations.step_ids:
             actual_ids = [step.id for step in stepflow_workflow.steps]
             for expected_id in expectations.step_ids:
-                # For legacy compatibility, check if any step ID contains the expected ID
+                # For legacy compatibility, check if any step ID contains the
+                # expected ID
                 found = any(expected_id in actual_id for actual_id in actual_ids)
-                assert (
-                    found
-                ), f"Expected step ID pattern '{expected_id}' not found in {actual_ids}"
+                assert found, (
+                    f"Expected step ID pattern '{expected_id}' not found in "
+                    f"{actual_ids}"
+                )
 
         # Check exact component types
         if expectations.component_types:
             actual_components = [step.component for step in stepflow_workflow.steps]
-            assert (
-                actual_components == expectations.component_types
-            ), f"Expected components {expectations.component_types}, got {actual_components}"
+            assert actual_components == expectations.component_types, (
+                f"Expected components {expectations.component_types}, "
+                f"got {actual_components}"
+            )
 
         # Check component types includes (partial match)
         if expectations.component_types_include:
             actual_components = [step.component for step in stepflow_workflow.steps]
             for expected_component in expectations.component_types_include:
                 found = any(expected_component in comp for comp in actual_components)
-                assert (
-                    found
-                ), f"Expected component type '{expected_component}' not found in {actual_components}"
+                assert found, (
+                    f"Expected component type '{expected_component}' not found in "
+                    f"{actual_components}"
+                )
 
         # Check UDF executor count
         if expectations.udf_executor_count is not None:
@@ -126,9 +132,10 @@ class TestWorkflowConversion:
                 for step in stepflow_workflow.steps
                 if step.component == "/langflow/udf_executor"
             )
-            assert (
-                udf_count == expectations.udf_executor_count
-            ), f"Expected {expectations.udf_executor_count} UDF executors, found {udf_count}"
+            assert udf_count == expectations.udf_executor_count, (
+                f"Expected {expectations.udf_executor_count} UDF executors, "
+                f"found {udf_count}"
+            )
 
         # Verify no forward references (steps referencing later steps)
         self._assert_no_forward_references(stepflow_workflow)
@@ -141,15 +148,18 @@ class TestWorkflowConversion:
 
         # Check error type if specified
         if expectations.error_type:
-            assert expectations.error_type in str(
-                type(exc_info.value).__name__
-            ), f"Expected error type '{expectations.error_type}', got {type(exc_info.value).__name__}"
+            assert expectations.error_type in str(type(exc_info.value).__name__), (
+                f"Expected error type '{expectations.error_type}', "
+                f"got {type(exc_info.value).__name__}"
+            )
 
         # Check error message contains expected text
         if expectations.error_message_contains:
-            assert expectations.error_message_contains in str(
-                exc_info.value
-            ), f"Expected error message to contain '{expectations.error_message_contains}', got: {str(exc_info.value)}"
+            assert expectations.error_message_contains in str(exc_info.value), (
+                f"Expected error message to contain "
+                f"'{expectations.error_message_contains}', "
+                f"got: {str(exc_info.value)}"
+            )
 
     def _assert_no_forward_references(self, stepflow_workflow):
         """Assert workflow has no forward references (step ordering is correct)."""
@@ -157,19 +167,22 @@ class TestWorkflowConversion:
 
         for i, step in enumerate(stepflow_workflow.steps):
             if hasattr(step, "input") and step.input:
-                for key, value in step.input.items():
+                for _key, value in step.input.items():
                     if isinstance(value, dict) and "$from" in str(value):
                         from_info = value.get("$from", {})
                         referenced_step = from_info.get("step", "")
                         if referenced_step:
                             try:
                                 ref_pos = step_ids.index(referenced_step)
-                                assert (
-                                    ref_pos < i
-                                ), f"Step '{step.id}' at position {i} references '{referenced_step}' at position {ref_pos} (forward reference)"
+                                assert ref_pos < i, (
+                                    f"Step '{step.id}' at position {i} references "
+                                    f"'{referenced_step}' "
+                                    f"at position {ref_pos} (forward reference)"
+                                )
                             except ValueError:
                                 pytest.fail(
-                                    f"Step '{step.id}' references undefined step '{referenced_step}'"
+                                    f"Step '{step.id}' references undefined step "
+                                    f"'{referenced_step}'"
                                 )
 
     def test_yaml_output_quality(self, registry, converter: LangflowConverter):
@@ -198,9 +211,10 @@ class TestWorkflowConversion:
                 # Should be reasonably readable (not too long lines)
                 lines = yaml_output.split("\n")
                 for line in lines:
-                    assert (
-                        len(line) < 200
-                    ), f"Line too long in YAML output for {workflow.name}: {line[:50]}..."
+                    assert len(line) < 200, (
+                        f"Line too long in YAML output for {workflow.name}: "
+                        f"{line[:50]}..."
+                    )
 
             except (FileNotFoundError, ConversionError, ValidationError):
                 continue
@@ -221,17 +235,22 @@ class TestWorkflowConversion:
                 # Convert
                 stepflow_workflow = converter.convert(langflow_data)
 
-                # Check consistency - Note: Analysis counts all nodes, conversion filters out notes/docs
+                # Check consistency - Note: Analysis counts all nodes,
+                # conversion filters out notes/docs
                 # So we expect conversion steps <= analysis nodes, not exact equality
-                assert (
-                    len(stepflow_workflow.steps) <= analysis.node_count
-                ), f"Converted step count ({len(stepflow_workflow.steps)}) should not exceed analysis node count ({analysis.node_count}) for {workflow.name}"
+                assert len(stepflow_workflow.steps) <= analysis.node_count, (
+                    f"Converted step count ({len(stepflow_workflow.steps)}) should not "
+                    f"exceed analysis node count ({analysis.node_count}) for "
+                    f"{workflow.name}"
+                )
 
                 # Total components in analysis should be >= steps (some may be filtered)
                 total_components = sum(analysis.component_types.values())
-                assert (
-                    len(stepflow_workflow.steps) <= total_components
-                ), f"Step count ({len(stepflow_workflow.steps)}) should not exceed analysis component count ({total_components}) for {workflow.name}"
+                assert len(stepflow_workflow.steps) <= total_components, (
+                    f"Step count ({len(stepflow_workflow.steps)}) should not "
+                    f"exceed analysis component count ({total_components}) for "
+                    f"{workflow.name}"
+                )
 
             except (FileNotFoundError, ConversionError, ValidationError):
                 continue

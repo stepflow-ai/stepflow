@@ -254,7 +254,7 @@ uv run pytest tests/integration/ -m "not slow"  # Fast integration tests
 uv run pytest tests/integration/ -m "real_execution"  # Real execution tests
 
 # Run the complete test suite (as used in CI)
-../../../scripts/test-langflow-integration.sh
+uv run python -m pytest tests/ -v
 ```
 
 ### Development Setup
