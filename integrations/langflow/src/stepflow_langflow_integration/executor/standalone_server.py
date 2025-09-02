@@ -38,109 +38,13 @@ server = StepflowStdioServer()
 udf_executor = UDFExecutor()
 
 
-async def _pre_resolve_all_blobs(
-    input_data: dict[str, Any], context: StepflowContext
-) -> dict[str, Any]:
-    """Pre-resolve all blob data that will be needed during UDF execution.
-
-    This eliminates the need for nested context.get_blob() calls and prevents
-    JSON-RPC circular dependencies.
-
-    Args:
-        input_data: Raw input with blob references
-        context: Stepflow context for blob operations
-
-    Returns:
-        Input data with all blob references resolved to actual blob content
-    """
-    print("DEBUG: Starting _pre_resolve_all_blobs")
-    with open("/tmp/udf_debug.log", "a") as f:
-        f.write("DEBUG: Starting _pre_resolve_all_blobs\n")
-        f.write(f"DEBUG: Input data keys: {list(input_data.keys())}\n")
-
-    resolved_data = input_data.copy()
-
-    # Identify all blob IDs that need to be resolved
-    blob_ids_to_resolve = set()
-
-    # Add main blob_id if present
-    if "blob_id" in input_data:
-        blob_ids_to_resolve.add(input_data["blob_id"])
-
-    # Add tool blob IDs (external inputs like tool_blob_X)
-    for key, value in input_data.items():
-        if key.startswith("tool_blob_") and isinstance(value, str):
-            blob_ids_to_resolve.add(value)
-        elif (
-            key.startswith("tool_blob_")
-            and isinstance(value, dict)
-            and "blob_id" in value
-        ):
-            blob_ids_to_resolve.add(value["blob_id"])
-
-    # Add agent blob ID if present
-    if "agent_blob" in input_data:
-        agent_ref = input_data["agent_blob"]
-        if isinstance(agent_ref, str):
-            blob_ids_to_resolve.add(agent_ref)
-        elif isinstance(agent_ref, dict) and "blob_id" in agent_ref:
-            blob_ids_to_resolve.add(agent_ref["blob_id"])
-
-    print(
-        f"DEBUG: Found {len(blob_ids_to_resolve)} blob IDs to resolve: "
-        f"{blob_ids_to_resolve}"
-    )
-    with open("/tmp/udf_debug.log", "a") as f:
-        f.write(
-            f"DEBUG: Found {len(blob_ids_to_resolve)} blob IDs to resolve: "
-            f"{blob_ids_to_resolve}\n"
-        )
-
-    # Pre-fetch all blob data
-    resolved_blobs = {}
-    for blob_id in blob_ids_to_resolve:
-        try:
-            print(f"DEBUG: Pre-resolving blob {blob_id}")
-            blob_data = await context.get_blob(blob_id)
-            resolved_blobs[blob_id] = blob_data
-            print(f"DEBUG: Successfully resolved blob {blob_id}")
-            with open("/tmp/udf_debug.log", "a") as f:
-                f.write(f"DEBUG: Successfully resolved blob {blob_id}\n")
-        except Exception as e:
-            print(f"DEBUG: Failed to resolve blob {blob_id}: {e}")
-            with open("/tmp/udf_debug.log", "a") as f:
-                f.write(f"DEBUG: Failed to resolve blob {blob_id}: {e}\n")
-            # Continue - let the UDF executor handle the error
-
-    # Replace blob references with resolved data in the input
-    resolved_data["_resolved_blobs"] = resolved_blobs
-
-    print(f"DEBUG: Pre-resolution complete. Resolved {len(resolved_blobs)} blobs")
-    with open("/tmp/udf_debug.log", "a") as f:
-        f.write(
-            f"DEBUG: Pre-resolution complete. Resolved {len(resolved_blobs)} blobs\n"
-        )
-
-    return resolved_data
-
-
 # Register the main UDF executor component at module level
 @server.component(name="udf_executor")
 async def udf_executor_component(
     input_data: dict[str, Any], context: StepflowContext
 ) -> dict[str, Any]:
-    """Execute a Langflow UDF component with simplified architecture - no context
-    wrapper needed."""
-    print("🔥 SIMPLIFIED UDF_EXECUTOR_COMPONENT - NO CONTEXT WRAPPER!")
-    with open("/tmp/udf_debug.log", "a") as f:
-        f.write("🔥 SIMPLIFIED UDF_EXECUTOR_COMPONENT - NO CONTEXT WRAPPER!\n")
-
-    # Pre-resolve all blob data that the UDF executor will need
-    # This eliminates the need for nested context calls entirely
-    resolved_input_data = await _pre_resolve_all_blobs(input_data, context)
-
-    # Execute UDF with pre-resolved data - no context needed for blob operations
-    return await udf_executor.execute_with_resolved_data(resolved_input_data)
+    """Execute a Langflow UDF component."""
+    return await udf_executor.execute(input_data, context)
 
 
 # Langflow component implementations
