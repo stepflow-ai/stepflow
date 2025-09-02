@@ -41,12 +41,8 @@ runs:
       run: cargo build
       working-directory: stepflow-rs
 
-    - name: Install Langflow dependencies
-      shell: bash
-      run: uv sync
-      working-directory: integrations/langflow
-
     # Run Langflow integration checks using the shared script
+    # Note: The script handles its own dependency installation
     - name: Run Langflow integration checks
       shell: bash
       run: ./scripts/check-langflow.sh

@@ -363,7 +363,7 @@ impl FlowVisualizer {
             tooltip.push_str("\\nSkip Condition: Present");
         }
 
-        match &step.on_error {
+        match step.on_error_or_default() {
             stepflow_core::workflow::ErrorAction::Fail => {}
             stepflow_core::workflow::ErrorAction::Skip => {
                 tooltip.push_str("\\nError Action: Skip");

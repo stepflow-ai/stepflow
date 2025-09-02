@@ -43,7 +43,8 @@ class StepflowBinaryRunner:
 
             if binary_path is None:
                 # Default to relative path from integrations/langflow to stepflow-rs
-                current_dir = Path(__file__).parent.parent.parent.parent.parent
+                # Go up 6 levels from stepflow_binary.py to reach project root
+                current_dir = Path(__file__).parent.parent.parent.parent.parent.parent
                 default_path = (
                     current_dir / "stepflow-rs" / "target" / "debug" / "stepflow"
                 )

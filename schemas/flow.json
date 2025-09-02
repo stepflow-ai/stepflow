@@ -94,8 +94,7 @@
         }
       },
       "required": [
-        "schema",
-        "steps"
+        "schema"
       ]
     }
   ],
@@ -152,7 +151,14 @@
           ]
         },
         "onError": {
-          "$ref": "#/$defs/ErrorAction"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "input": {
           "description": "Arguments to pass to the component for this step",
@@ -195,7 +201,14 @@
               "$ref": "#/$defs/JsonPath"
             },
             "onSkip": {
-              "$ref": "#/$defs/SkipAction"
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SkipAction"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [

@@ -65,16 +65,21 @@ if ! command -v uv &> /dev/null; then
 fi
 
 output "🐍 Installing Python and dependencies..."
-if [ "$QUIET" = true ]; then
-    if ! uv python install >/dev/null 2>&1; then
-        echo "❌ Failed to install Python"
-        FAILED_CHECKS+=("python-install")
+# Skip Python installation if Python is already available and working
+if ! python3 --version >/dev/null 2>&1; then
+    if [ "$QUIET" = true ]; then
+        if ! uv python install >/dev/null 2>&1; then
+            echo "❌ Failed to install Python"
+            FAILED_CHECKS+=("python-install")
+        fi
+    else
+        if ! uv python install; then
+            echo "❌ Failed to install Python"
+            FAILED_CHECKS+=("python-install")
+        fi
     fi
 else
-    if ! uv python install; then
-        echo "❌ Failed to install Python"
-        FAILED_CHECKS+=("python-install")
-    fi
+    output "Python already available, skipping installation"
 fi
 
 if [ "$QUIET" = true ]; then
@@ -174,14 +179,14 @@ if [ -n "$STEPFLOW_BINARY" ]; then
     output "Using stepflow binary: $STEPFLOW_BINARY"
     export STEPFLOW_BINARY_PATH="$STEPFLOW_BINARY"
     
-    # Run the langflow integration test script (skip slow tests for CI)
+    # Run the langflow integration tests directly (skip slow tests for CI)
     if [ "$QUIET" = true ]; then
-        if ! "$PROJECT_ROOT/scripts/test-langflow-integration.sh" --skip-slow >/dev/null 2>&1; then
+        if ! uv run python -m pytest tests/integration/ -v -m "not slow" -x >/dev/null 2>&1; then
             echo "❌ Langflow integration tests failed"
             FAILED_CHECKS+=("integration-tests")
         fi
     else
-        if ! "$PROJECT_ROOT/scripts/test-langflow-integration.sh" --skip-slow; then
+        if ! uv run python -m pytest tests/integration/ -v -m "not slow" -x; then
             echo "❌ Langflow integration tests failed"
             FAILED_CHECKS+=("integration-tests")
         fi
@@ -231,7 +236,7 @@ else
                 ;;
             "integration-tests")
                 echo "  - Build stepflow binary: cd stepflow-rs && cargo build"
-                echo "  - Run: ./scripts/test-langflow-integration.sh"
+                echo "  - Run: cd integrations/langflow && uv run python -m pytest tests/integration/ -v"
                 ;;
         esac
     done

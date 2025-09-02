@@ -100,7 +100,7 @@ from langflow.inputs.inputs import BoolInput
 from langflow.io import DropdownInput, MessageTextInput, MultilineInput, Output
 from langflow.schema.message import Message
 from langflow.utils.constants import (
-    MESSAGE_SENDER_AI, MESSAGE_SENDER_USER, MESSAGE_SENDER_NAME_USE
+    MESSAGE_SENDER_AI, MESSAGE_SENDER_USER, MESSAGE_SENDER_NAME_USER
 )
 
 class ChatInput(ChatComponent):
@@ -207,10 +207,12 @@ class ChatInput(ChatComponent):
 
         # Verify the processed result
         result_data = result["result"]
-        assert "text" in result_data
-        assert result_data["text"] == "Processed: Hello World"
-        assert result_data["sender"] == "SimpleTestComponent"
-        assert result_data["sender_name"] == "Test Component"
+        # Langflow Message: result data is nested in ["result"] field
+        message_data = result_data["result"] if "result" in result_data else result_data
+        assert "text" in message_data
+        assert message_data["text"] == "Processed: Hello World"
+        assert message_data["sender"] == "SimpleTestComponent"
+        assert message_data["sender_name"] == "Test Component"
 
     @pytest.mark.asyncio
     async def test_execute_chat_input_component(
@@ -241,11 +243,13 @@ class ChatInput(ChatComponent):
         result_data = result["result"]
 
         # Should have Langflow Message structure
-        assert "text" in result_data
-        assert result_data["text"] == "What is Python?"
-        assert result_data["sender"] == "User"
-        assert result_data["sender_name"] == "Test User"
-        assert result_data.get("__langflow_type__") == "Message"
+        # Handle nested result structure from Langflow Messages
+        message_data = result_data["result"] if "result" in result_data else result_data
+        assert "text" in message_data
+        assert message_data["text"] == "What is Python?"
+        assert message_data["sender"] == "User"
+        assert message_data["sender_name"] == "Test User"
+        assert message_data.get("__langflow_type__") == "Message"
 
     @pytest.mark.asyncio
     async def test_execute_component_with_template_defaults(
@@ -267,7 +271,9 @@ class ChatInput(ChatComponent):
 
         # Should use template default
         result_data = result["result"]
-        assert result_data["text"] == "Processed: Default Text"
+        # Handle nested result structure from Langflow Messages
+        message_data = result_data["result"] if "result" in result_data else result_data
+        assert message_data["text"] == "Processed: Default Text"
 
     @pytest.mark.asyncio
     async def test_execute_component_runtime_overrides_template(
@@ -289,7 +295,9 @@ class ChatInput(ChatComponent):
 
         # Should use runtime value, not template default
         result_data = result["result"]
-        assert result_data["text"] == "Processed: Runtime Override"
+        # Handle nested result structure from Langflow Messages
+        message_data = result_data["result"] if "result" in result_data else result_data
+        assert message_data["text"] == "Processed: Runtime Override"
 
     @pytest.mark.asyncio
     async def test_execute_component_with_missing_code(
@@ -665,12 +673,14 @@ class TestUDFExecutorWithRealLangflowComponents:
         # Verify the actual execution result from the first call
         assert "result" in result
         result_data = result["result"]
-        assert "text" in result_data
+        # Handle nested result structure from Langflow Messages
+        message_data = result_data["result"] if "result" in result_data else result_data
+        assert "text" in message_data
         assert (
-            result_data["text"] == "Hello from test"
+            message_data["text"] == "Hello from test"
         )  # Should use the message we provided
-        assert result_data["sender"] == "User"
-        assert result_data["sender_name"] == "User"
+        assert message_data["sender"] == "User"
+        assert message_data["sender_name"] == "User"
 
     @pytest.mark.asyncio
     async def test_execute_converted_workflow_components(
@@ -743,8 +753,10 @@ class TestUDFExecutorWithRealLangflowComponents:
         # Verify result has proper structure
         assert "result" in result
         result_data = result["result"]
-        assert "text" in result_data
-        assert result_data["text"] == "Mock AI response from language model"
+        # Handle nested result structure from Langflow Messages
+        message_data = result_data["result"] if "result" in result_data else result_data
+        assert "text" in message_data
+        assert message_data["text"] == "Mock AI response from language model"
 
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Test uses outdated Langflow imports; needs updating")

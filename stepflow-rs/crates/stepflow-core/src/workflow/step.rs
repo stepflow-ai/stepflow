@@ -36,8 +36,8 @@ pub struct Step {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skip_if: Option<Expr>,
 
-    #[serde(default, skip_serializing_if = "ErrorAction::is_default")]
-    pub on_error: ErrorAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_error: Option<ErrorAction>,
 
     /// Arguments to pass to the component for this step
     #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
@@ -46,6 +46,17 @@ pub struct Step {
     /// Extensible metadata for the step that can be used by tools and frameworks.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
+}
+
+impl Step {
+    pub fn on_error(&self) -> Option<&ErrorAction> {
+        self.on_error.as_ref()
+    }
+
+    /// Get the effective error action, applying the default if none is specified.
+    pub fn on_error_or_default(&self) -> ErrorAction {
+        self.on_error().cloned().unwrap_or_default()
+    }
 }
 
 #[derive(
@@ -167,6 +178,21 @@ mod tests {
             .build();
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
-        assert!(!yaml.contains("on_error:"));
+        assert!(!yaml.contains("onError:"));
+    }
+
+    #[test]
+    fn test_on_error_null() {
+        let yaml_with_null = r#"
+id: test_step
+component: /mock/test_component
+onError: null
+input: {}
+metadata: {}
+        "#;
+
+        let step: Step = serde_yaml_ng::from_str(yaml_with_null.trim()).unwrap();
+        assert_eq!(step.on_error, None);
+        assert_eq!(step.on_error_or_default(), ErrorAction::Fail);
     }
 }
