@@ -38,7 +38,7 @@ def main():
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_file", type=click.Path(path_type=Path), required=False)
-def convert(input_file: Path, output_file: Path | None, validate: bool):
+def convert(input_file: Path, output_file: Path | None):
     """Convert a Langflow JSON workflow to Stepflow YAML.
 
     If no output file is specified, prints the YAML to stdout.
@@ -142,9 +142,6 @@ def serve(host: str, port: int, protocol_prefix: str):
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("input_json", type=str, default="{}")
 @click.option(
-    "--mock", is_flag=True, help="Use mock components instead of real UDF execution"
-)
-@click.option(
     "--config",
     type=click.Path(exists=True, path_type=Path),
     help="Custom stepflow config file",
@@ -165,7 +162,6 @@ def serve(host: str, port: int, protocol_prefix: str):
 def execute(
     input_file: Path,
     input_json: str,
-    mock: bool,
     config: Path | None,
     stepflow_binary: Path | None,
     timeout: int,
@@ -228,55 +224,34 @@ def execute(
             current_file = Path(__file__).resolve()
             current_dir = current_file.parent.parent.parent.parent
 
-            if mock:
-                mock_server_path = current_dir / "tests" / "mock_langflow_server.py"
-                config_content = f"""plugins:
+            # Always use real Langflow UDF execution
+            config_content = f"""plugins:
   builtin:
     type: builtin
-  mock_langflow:
-    type: stepflow
-    transport: stdio
-    command: uv
-    args: ["--project", "{current_dir}", "run", "python", "{mock_server_path}"]
-
-routes:
-  "/langflow/{{*component}}":
-    - plugin: mock_langflow
-  "/builtin/{{*component}}":
-    - plugin: builtin
-
-stateStore:
-  type: inMemory
-"""
-                click.echo("🎭 Using mock components")
-            else:
-                config_content = f"""plugins:
-  builtin:
-    type: builtin
-  real_langflow:
+  langflow:
     type: stepflow
     transport: stdio
     command: uv
     args: ["--project", "{current_dir}", "run", "stepflow-langflow-server"]
     env:  # Environment variables to propagate to the Langflow subprocess
-      OPENAI_API_KEY: "${{OPENAI_API_KEY:-}}"
-      ANTHROPIC_API_KEY: "${{ANTHROPIC_API_KEY:-}}"
-      GOOGLE_API_KEY: "${{GOOGLE_API_KEY:-}}"
-      COHERE_API_KEY: "${{COHERE_API_KEY:-}}"
-      HUGGINGFACE_API_TOKEN: "${{HUGGINGFACE_API_TOKEN:-}}"
-      ASTRA_DB_API_ENDPOINT: "${{ASTRA_DB_API_ENDPOINT:-}}"
-      ASTRA_DB_APPLICATION_TOKEN: "${{ASTRA_DB_APPLICATION_TOKEN:-}}"
+      OPENAI_API_KEY: "${{OPENAI_API_KEY}}"
+      ANTHROPIC_API_KEY: "${{ANTHROPIC_API_KEY}}"
+      GOOGLE_API_KEY: "${{GOOGLE_API_KEY}}"
+      COHERE_API_KEY: "${{COHERE_API_KEY}}"
+      HUGGINGFACE_API_TOKEN: "${{HUGGINGFACE_API_TOKEN}}"
+      ASTRA_DB_API_ENDPOINT: "${{ASTRA_DB_API_ENDPOINT}}"
+      ASTRA_DB_APPLICATION_TOKEN: "${{ASTRA_DB_APPLICATION_TOKEN}}"
 
 routes:
   "/langflow/{{*component}}":
-    - plugin: real_langflow
+    - plugin: langflow
   "/builtin/{{*component}}":
     - plugin: builtin
 
 stateStore:
   type: inMemory
 """
-                click.echo("🚀 Using real Langflow UDF execution")
+            click.echo("🚀 Using real Langflow UDF execution")
 
             with open(config_file, "w", encoding="utf-8") as f:
                 f.write(config_content)

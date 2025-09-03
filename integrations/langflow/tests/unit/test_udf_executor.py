@@ -516,12 +516,7 @@ class TestUDFExecutorIntegration:
         # We'll test this without real Langflow imports to avoid dependency issues
         return UDFExecutor()
 
-    @pytest.fixture
-    def registry(self):
-        """Get test registry for real workflow components."""
-        from ..integration.test_registry import get_test_registry
-
-        return get_test_registry()
+    # Registry fixture removed - no longer needed after eliminating test registry
 
     @pytest.fixture
     def converter(self):
@@ -633,13 +628,6 @@ class TestUDFExecutorWithRealLangflowComponents:
         return context
 
     @pytest.fixture
-    def registry(self):
-        """Get test registry for real workflow components."""
-        from ..integration.test_registry import get_test_registry
-
-        return get_test_registry()
-
-    @pytest.fixture
     def converter(self):
         """Create converter instance."""
         from stepflow_langflow_integration.converter.translator import LangflowConverter
@@ -647,37 +635,43 @@ class TestUDFExecutorWithRealLangflowComponents:
         return LangflowConverter()
 
     @pytest.mark.asyncio
-    async def test_execute_real_chatinput_component_from_workflow(
-        self, executor: UDFExecutor, mock_context, registry, converter
-    ):
-        """Test execution of ChatInput component with on-demand blob creation."""
-        # Simulate a ChatInput component that doesn't exist in blob store
-        blob_id = "udf_langflow_chatinput-abc123"
-        mock_context.get_blob.side_effect = Exception("Blob not found")
-        mock_context.put_blob.return_value = "generated_blob_id_123"
-
-        input_data = {
-            "blob_id": blob_id,
-            "input": {"message": "Hello from test", "sender": "User"},
-        }
-
-        # Execute - should trigger fallback component creation for ChatInput
-        result = await executor.execute(input_data, mock_context)
-
-        # Verify that execution succeeded with fallback component
-        assert result is not None
-        assert "result" in result
-        # ChatInput fallback should have processed the message
-        assert "Hello from test" in str(result["result"])
-
-    @pytest.mark.asyncio
     async def test_execute_converted_workflow_components(
-        self, executor: UDFExecutor, mock_context, registry, converter
+        self, executor: UDFExecutor, mock_context, converter
     ):
         """Test that components from converted workflows execute correctly."""
-        # Load and convert a workflow
-        workflow = registry.get_workflow_by_name("basic_prompting")
-        langflow_data = registry.load_langflow_data(workflow)
+        # Create simple workflow data to test UDF component creation
+        langflow_data = {
+            "data": {
+                "nodes": [
+                    {
+                        "id": "test-prompt",
+                        "data": {
+                            "type": "Prompt",
+                            "node": {
+                                "template": {
+                                    "code": {
+                                        "value": '''
+from langflow.custom.custom_component.component import Component
+from langflow.io import Output
+from langflow.schema.message import Message
+
+class TestPrompt(Component):
+    def build_prompt(self) -> Message:
+                        return Message(text="Test prompt")
+'''
+                                    }
+                                },
+                                "outputs": [{"name": "prompt", "method": "build_prompt"}],
+                                "base_classes": ["Message"],
+                                "display_name": "Test Prompt"
+                            },
+                            "outputs": [{"name": "prompt", "method": "build_prompt"}]
+                        }
+                    }
+                ],
+                "edges": []
+            }
+        }
 
         # Convert to find the UDF components
         stepflow_workflow = converter.convert(langflow_data)
@@ -690,7 +684,7 @@ class TestUDFExecutorWithRealLangflowComponents:
         ]
 
         assert len(udf_steps) > 0, (
-            "No UDF executor steps found in basic_prompting workflow"
+            "No UDF executor steps found in test workflow"
         )
 
         # Test the first UDF step
@@ -705,137 +699,140 @@ class TestUDFExecutorWithRealLangflowComponents:
         print(f"✅ First UDF step: {first_step.id} using {first_step.component}")
 
     @pytest.mark.asyncio
-    async def test_execute_chatoutput_component_on_demand(
-        self,
-        executor: UDFExecutor,
-        mock_context,
+    async def test_custom_code_vs_standard_component_strategy(
+        self, executor: UDFExecutor, mock_context
     ):
-        """Test execution of ChatOutput component with on-demand blob creation."""
-        # Simulate a ChatOutput component that doesn't exist in blob store
-        blob_id = "udf_langflow_chatoutput-def456"
-        mock_context.get_blob.side_effect = Exception("Blob not found")
-        mock_context.put_blob.return_value = "generated_blob_id_456"
+        """Use custom code when available, standard imports otherwise."""
 
-        # Create a mock input message from previous step
-        input_message = {
-            "text": "Mock AI response from language model",
-            "sender": "AI",
-            "sender_name": "Assistant",
-            "__langflow_type__": "Message",
-        }
-
-        input_data = {"blob_id": blob_id, "input": {"input_message": input_message}}
-
-        # Execute - should trigger fallback component creation for ChatOutput
-        result = await executor.execute(input_data, mock_context)
-
-        # Verify that execution succeeded with fallback component
-        assert result is not None
-        assert "result" in result
-        # ChatOutput fallback should have processed the input message
-        assert "Mock AI response from language model" in str(result["result"])
-
-    @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Test uses outdated Langflow imports; needs updating")
-    async def test_real_component_code_execution_patterns(
-        self, executor: UDFExecutor, mock_context, registry
-    ):
-        """Test execution patterns found in real Langflow component code."""
-        # Create a blob with realistic OpenAI component code pattern
-        openai_component_blob = {
+        # Test Case 1: Component with custom code - should use the custom code
+        custom_code_blob = {
             "code": """
-from langflow.base.langchain_utilities.model import LCModelComponent
-from langflow.base.models.model import BaseModelComponent
-from langflow.io import DropdownInput, FloatInput, IntInput, MessageInput, StrInput
-from langflow.schema.message import Message
+from langflow.custom.custom_component.component import Component
+from langflow.io import Output
+from langflow.schema.data import Data
 
+class CustomTestComponent(Component):
+    display_name = "Custom Test"
+    description = "Test component with custom implementation"
 
-class OpenAIModelComponent(LCModelComponent, BaseModelComponent):
-    display_name = "OpenAI"
-    description = "Generates text using OpenAI LLMs."
-    name = "OpenAIModel"
-
-    inputs = [
-        MessageInput(name="input_value", display_name="Input"),
-        IntInput(
-            name="max_tokens",
-            display_name="Max Tokens",
-            advanced=True,
-            value=1000,
-        ),
-        DropdownInput(
-            name="model_name",
-            display_name="Model Name",
-            advanced=False,
-            options=["gpt-4", "gpt-3.5-turbo"],
-            value="gpt-4",
-        ),
-        StrInput(
-            name="openai_api_base",
-            display_name="OpenAI API Base",
-            advanced=True,
-        ),
-        StrInput(
-            name="openai_api_key",
-            display_name="OpenAI API Key",
-            advanced=True,
-        ),
-        FloatInput(name="temperature", display_name="Temperature", value=0.1),
+    outputs = [
+        Output(display_name="Result", name="result", method="custom_method")
     ]
 
-    async def build_model(self) -> Message:
-        # Mock execution - return formatted response
-        input_text = (self.input_value.text
-                      if hasattr(self.input_value, 'text')
-                      else str(self.input_value))
-        mock_response = f"OpenAI Mock Response for: {input_text}"
-
-        return Message(
-            text=mock_response,
-            sender="OpenAI",
-            sender_name="GPT Model"
-        )
+    def custom_method(self) -> Data:
+        return Data(data={"message": "Custom implementation executed"})
 """,
-            "component_type": "OpenAIModelComponent",
-            "template": {
-                "input_value": {"type": "Message", "required": True},
-                "max_tokens": {"type": "int", "value": 1000},
-                "model_name": {"type": "str", "value": "gpt-4"},
-                "openai_api_base": {"type": "str", "value": ""},
-                "openai_api_key": {"type": "str", "value": "${OPENAI_API_KEY}"},
-                "temperature": {"type": "float", "value": 0.1},
-            },
+            "template": {},
+            "component_type": "CustomTestComponent",
             "outputs": [
-                {"name": "result", "method": "build_model", "types": ["Message"]}
+                {"name": "result", "method": "custom_method", "types": ["Data"]}
             ],
             "selected_output": "result",
+            "base_classes": [],
+            "metadata": {"module": "some.module.path"},
+            "is_builtin": False,
         }
 
-        mock_context.get_blob.return_value = openai_component_blob
+        # Mock the blob retrieval
+        mock_context.get_blob.return_value = custom_code_blob
 
-        # Create a mock input message
-        input_message = {
-            "text": "Write a haiku about testing",
-            "sender": "User",
-            "__langflow_type__": "Message",
-        }
-
-        input_data = {
-            "blob_id": "openai_component_blob",
-            "input": {
-                "input_value": input_message,
-                "temperature": 0.7,
-                "max_tokens": 150,
-            },
-        }
-
-        # Execute
+        # Execute - should use custom code
+        input_data = {"blob_id": "test_custom_blob", "input": {}}
         result = await executor.execute(input_data, mock_context)
 
-        # Verify execution
+        # Verify custom code was executed
+        # Check the actual result structure
         assert "result" in result
         result_data = result["result"]
-        assert "text" in result_data
-        assert "OpenAI Mock Response" in result_data["text"]
-        assert "Write a haiku about testing" in result_data["text"]
-        assert result_data["sender"] == "OpenAI"
+
+        # The Data object should be serialized with __langflow_type__ and data field
+        if isinstance(result_data, dict) and "data" in result_data:
+            assert result_data["data"]["message"] == "Custom implementation executed"
+        else:
+            # Fallback: check if the message is in the result directly
+            assert "Custom implementation executed" in str(result_data)
+
+        # Test Case 2: Component without custom code - should try standard import
+        builtin_code_blob = {
+            "code": (
+                "# Built-in Langflow component: TestBuiltin\n"
+                "# Will be loaded dynamically by UDF executor\npass\n"
+            ),
+            "template": {},
+            "component_type": "TestBuiltin",
+            "outputs": [{"name": "result", "method": "build", "types": ["Data"]}],
+            "selected_output": "result",
+            "base_classes": [],
+            "metadata": {"module": "nonexistent.module.TestBuiltin"},
+            "is_builtin": True,
+        }
+
+        # Reset executor state for clean test
+        executor.compiled_components = {}
+        mock_context.get_blob.return_value = builtin_code_blob
+
+        # Execute - should try dynamic loading (will fail but with expected error)
+        input_data = {"blob_id": "test_builtin_blob", "input": {}}
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await executor.execute(input_data, mock_context)
+
+        # Should fail with standard component loading error, not custom code error
+        assert "Could not load standard Langflow component" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_component_metadata_extraction_and_usage(
+        self, executor: UDFExecutor, mock_context
+    ):
+        # Create blob with enhanced metadata (from Phase 1 improvements)
+        enhanced_blob = {
+            "code": """
+from langflow.custom.custom_component.component import Component
+from langflow.io import Output
+from langflow.schema.message import Message
+
+class EnhancedTestComponent(Component):
+    display_name = "Enhanced Test"
+    description = "Test component with enhanced metadata"
+
+    outputs = [
+        Output(display_name="Message", name="message", method="create_message")
+    ]
+
+    def create_message(self) -> Message:
+        return Message(text="Enhanced metadata test successful")
+""",
+            "template": {"input_field": {"type": "str", "value": "test"}},
+            "component_type": "EnhancedTestComponent",
+            "outputs": [
+                {"name": "message", "method": "create_message", "types": ["Message"]}
+            ],
+            "selected_output": "message",
+            # Enhanced metadata from Phase 1
+            "base_classes": ["Message"],
+            "display_name": "Enhanced Test",
+            "description": "Test component with enhanced metadata",
+            "documentation": "https://docs.example.com/enhanced-test",
+            "metadata": {
+                "module": "test.module.EnhancedTestComponent",
+                "code_hash": "abc123",
+            },
+            "field_order": ["input_field"],
+            "icon": "test-icon",
+            "is_builtin": False,
+        }
+
+        mock_context.get_blob.return_value = enhanced_blob
+
+        # Execute with enhanced metadata
+        input_data = {"blob_id": "enhanced_test_blob", "input": {}}
+        result = await executor.execute(input_data, mock_context)
+
+        # Verify execution used enhanced metadata
+        assert result["result"]["text"] == "Enhanced metadata test successful"
+
+        # Verify compiled component contains enhanced metadata
+        compiled = executor.compiled_components["enhanced_test_blob"]
+        assert compiled["base_classes"] == ["Message"]
+        assert compiled["display_name"] == "Enhanced Test"
+        assert compiled["metadata"]["module"] == "test.module.EnhancedTestComponent"

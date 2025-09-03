@@ -67,7 +67,7 @@
                         "outputs": [
                             {
                                 "name": "response",
-                                "method": "generate_response",
+                                "method": "text_response",
                                 "types": ["Message"]
                             }
                         ]
