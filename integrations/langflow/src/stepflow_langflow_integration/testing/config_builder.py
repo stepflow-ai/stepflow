@@ -174,45 +174,24 @@ class StepflowConfigBuilder:
 
     def _initialize_langflow_database_service(self, database_path: str) -> None:
         """Initialize Langflow database using their service and migration system."""
+        import asyncio
         import os
 
-        from langflow.services.deps import get_settings_service
+        from langflow.services.deps import get_db_service, get_settings_service
 
         # Set up environment to point to our database
         original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
         os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{database_path}"
 
         try:
-            # Get settings service which will initialize database
-            get_settings_service()  # Initialize database settings
+            # Initialize settings service first
+            get_settings_service()
 
-            # Run database migration to create tables
-            from sqlalchemy import create_engine, text
+            # Get database service and create tables using Langflow's schema
+            db_service = get_db_service()
 
-            engine = create_engine(f"sqlite:///{database_path}")
-
-            # Create the message table using Langflow's expected schema
-            with engine.begin() as conn:
-                # This SQL is extracted from Langflow's actual table definition
-                conn.execute(
-                    text("""
-                CREATE TABLE IF NOT EXISTS message (
-                    id TEXT PRIMARY KEY,
-                    timestamp DATETIME,
-                    sender TEXT,
-                    sender_name TEXT,
-                    session_id TEXT,
-                    text TEXT,
-                    error BOOLEAN,
-                    edit BOOLEAN,
-                    files JSON,
-                    properties JSON,
-                    category TEXT,
-                    content_blocks JSON,
-                    flow_id TEXT
-                )
-                """)
-                )
+            # Run the async method to create tables
+            asyncio.run(db_service.create_db_and_tables())
 
         finally:
             # Restore original database URL if it existed
