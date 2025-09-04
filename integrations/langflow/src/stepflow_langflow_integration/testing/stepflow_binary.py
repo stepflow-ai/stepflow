@@ -242,10 +242,7 @@ class StepflowBinaryRunner:
                     pass
 
             # Check if workflow execution actually succeeded based on outcome
-            if (
-                isinstance(result_data, dict)
-                and result_data.get("outcome") == "failed"
-            ):
+            if isinstance(result_data, dict) and result_data.get("outcome") == "failed":
                 success = False
 
             return success, result_data, stdout_content, stderr_content
