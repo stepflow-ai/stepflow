@@ -61,27 +61,33 @@ class StepflowBinaryRunner:
     def validate_workflow(
         self,
         workflow_yaml: str,
-        config_path: str | None = None,
+        config_path: str,
         timeout: float = 30.0,
     ) -> tuple[bool, str, str]:
         """Validate a workflow using stepflow validate command.
 
         Args:
             workflow_yaml: YAML content of the workflow
-            config_path: Path to stepflow config file (optional)
+            config_path: Path to stepflow config file
             timeout: Command timeout in seconds
 
         Returns:
             Tuple of (success, stdout, stderr)
         """
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(workflow_yaml)
             workflow_path = f.name
 
         try:
-            cmd = [str(self.binary_path), "validate", "--flow", workflow_path]
-            if config_path:
-                cmd.extend(["--config", config_path])
+            cmd = [
+                str(self.binary_path),
+                "validate",
+                "--flow",
+                workflow_path,
+                "--config",
+                config_path,
+            ]
 
             result = subprocess.run(
                 cmd,
@@ -105,7 +111,7 @@ class StepflowBinaryRunner:
         self,
         workflow_yaml: str,
         input_data: dict[str, Any],
-        config_path: str | None = None,
+        config_path: str,
         timeout: float = 60.0,
         input_format: str = "json",
     ) -> tuple[bool, dict[str, Any] | None, str, str]:
@@ -114,13 +120,14 @@ class StepflowBinaryRunner:
         Args:
             workflow_yaml: YAML content of the workflow
             input_data: Input data for the workflow
-            config_path: Path to stepflow config file (optional)
+            config_path: Path to stepflow config file
             timeout: Command timeout in seconds
             input_format: Input format ("json" or "yaml")
 
         Returns:
             Tuple of (success, result_data, stdout, stderr)
         """
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(workflow_yaml)
             workflow_path = f.name
@@ -131,11 +138,10 @@ class StepflowBinaryRunner:
                 "run",
                 "--flow",
                 workflow_path,
+                "--config",
+                config_path,
                 f"--stdin-format={input_format}",
             ]
-
-            if config_path:
-                cmd.extend(["--config", config_path])
 
             # Pass input via stdin
             input_str = (
@@ -158,27 +164,62 @@ class StepflowBinaryRunner:
 
             if result.stdout.strip():
                 try:
-                    # Try to parse JSON output - look for JSON on the last line
-                    lines = result.stdout.strip().split("\n")
-                    json_line = None
-                    for line in reversed(lines):
-                        line = line.strip()
-                        if line.startswith("{") and line.endswith("}"):
-                            json_line = line
-                            break
+                    # Try to parse JSON output - look for JSON patterns in the output
+                    # The JSON might be embedded in log output with ANSI codes
 
-                    if json_line:
-                        result_data = json.loads(json_line)
-                        # Check if workflow execution actually succeeded
-                        if (
-                            isinstance(result_data, dict)
-                            and result_data.get("outcome") == "failed"
-                        ):
-                            success = False
-                    else:
-                        # No JSON found, treat as raw output
-                        if success:
-                            result_data = {"output": result.stdout.strip()}
+                    # Find the last occurrence of {"outcome" and try to parse from there
+                    outcome_pos = result.stdout.rfind('{"outcome"')
+                    if outcome_pos != -1:
+                        # Extract from {"outcome" to find the matching }
+                        json_candidate = result.stdout[outcome_pos:]
+
+                        # Find the end of the JSON by counting braces
+                        brace_count = 0
+                        end_pos = 0
+                        for i, char in enumerate(json_candidate):
+                            if char == "{":
+                                brace_count += 1
+                            elif char == "}":
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    end_pos = i + 1
+                                    break
+
+                        if end_pos > 0:
+                            json_str = json_candidate[:end_pos]
+                            # Clean up any stray characters before the JSON
+                            json_str = json_str.strip()
+                            if json_str.startswith('{"outcome"'):
+                                result_data = json.loads(json_str)
+                                # Check if workflow execution actually succeeded
+                                if (
+                                    isinstance(result_data, dict)
+                                    and result_data.get("outcome") == "failed"
+                                ):
+                                    success = False
+
+                    if result_data is None:
+                        # Fallback: try to parse line by line
+                        lines = result.stdout.strip().split("\n")
+                        json_line = None
+                        for line in reversed(lines):
+                            line = line.strip()
+                            if line.startswith("{") and line.endswith("}"):
+                                json_line = line
+                                break
+
+                        if json_line:
+                            result_data = json.loads(json_line)
+                            # Check if workflow execution actually succeeded
+                            if (
+                                isinstance(result_data, dict)
+                                and result_data.get("outcome") == "failed"
+                            ):
+                                success = False
+                        else:
+                            # No JSON found, treat as raw output
+                            if success:
+                                result_data = {"output": result.stdout.strip()}
 
                 except json.JSONDecodeError:
                     # If not JSON, treat as raw output
@@ -193,67 +234,6 @@ class StepflowBinaryRunner:
             ) from e
         finally:
             # Clean up temp file
-            Path(workflow_path).unlink(missing_ok=True)
-
-    def run_workflow_with_file_input(
-        self,
-        workflow_yaml: str,
-        input_file_path: str,
-        config_path: str | None = None,
-        timeout: float = 60.0,
-    ) -> tuple[bool, dict[str, Any] | None, str, str]:
-        """Run a workflow with input from file.
-
-        Args:
-            workflow_yaml: YAML content of the workflow
-            input_file_path: Path to input JSON file
-            config_path: Path to stepflow config file (optional)
-            timeout: Command timeout in seconds
-
-        Returns:
-            Tuple of (success, result_data, stdout, stderr)
-        """
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(workflow_yaml)
-            workflow_path = f.name
-
-        try:
-            cmd = [
-                str(self.binary_path),
-                "run",
-                "--flow",
-                workflow_path,
-                "--input",
-                input_file_path,
-            ]
-
-            if config_path:
-                cmd.extend(["--config", config_path])
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=self.binary_path.parent,
-            )
-
-            success = result.returncode == 0
-            result_data = None
-
-            if success and result.stdout.strip():
-                try:
-                    result_data = json.loads(result.stdout)
-                except json.JSONDecodeError:
-                    result_data = {"output": result.stdout.strip()}
-
-            return success, result_data, result.stdout, result.stderr
-
-        except subprocess.TimeoutExpired as e:
-            raise ExecutionError(
-                f"Stepflow run command timed out after {timeout}s"
-            ) from e
-        finally:
             Path(workflow_path).unlink(missing_ok=True)
 
     def check_binary_availability(self) -> tuple[bool, str]:
@@ -278,21 +258,17 @@ class StepflowBinaryRunner:
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             return False, str(e)
 
-    def list_components(
-        self, config_path: str | None = None
-    ) -> tuple[bool, list[str], str]:
+    def list_components(self, config_path: str) -> tuple[bool, list[str], str]:
         """List available components using stepflow list-components.
 
         Args:
-            config_path: Path to stepflow config file (optional)
+            config_path: Path to stepflow config file
 
         Returns:
             Tuple of (success, component_list, stderr)
         """
         try:
-            cmd = [str(self.binary_path), "list-components"]
-            if config_path:
-                cmd.extend(["--config", config_path])
+            cmd = [str(self.binary_path), "list-components", "--config", config_path]
 
             result = subprocess.run(
                 cmd,
@@ -314,74 +290,3 @@ class StepflowBinaryRunner:
 
         except subprocess.TimeoutExpired as e:
             raise ExecutionError("Stepflow list-components timed out") from e
-
-
-def get_default_stepflow_config() -> str:
-    """Get a default stepflow config for testing Langflow integration.
-
-    Returns:
-        YAML content for stepflow config with real Langflow component execution
-    """
-    import os
-
-    # Get path to langflow integration root directory
-    current_dir = Path(__file__).parent.parent.parent.parent
-
-    # Get actual environment variable values for substitution
-    # Try loading from .env if not already available
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    if not openai_key:
-        try:
-            from dotenv import load_dotenv
-
-            env_path = current_dir / ".env"
-            if env_path.exists():
-                load_dotenv(env_path)
-                openai_key = os.getenv("OPENAI_API_KEY", "")
-        except ImportError:
-            pass
-
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    google_key = os.getenv("GOOGLE_API_KEY", "")
-
-    # Skip API key requirement for tests - use placeholder if not available
-    if not openai_key:
-        openai_key = "test-api-key-placeholder"
-
-    return f"""
-plugins:
-  builtin:
-    type: builtin
-  langflow:
-    type: stepflow
-    transport: stdio
-    command: uv
-    args: ["--project", "{current_dir}", "run", "stepflow-langflow-server"]
-    env:
-      OPENAI_API_KEY: "{openai_key}"
-      ANTHROPIC_API_KEY: "{anthropic_key}"
-      GOOGLE_API_KEY: "{google_key}"
-
-routes:
-  "/langflow/{{*component}}":
-    - plugin: langflow
-  "/builtin/{{*component}}":
-    - plugin: builtin
-
-stateStore:
-  type: inMemory
-"""
-
-
-def create_test_config_file(config_content: str) -> str:
-    """Create a temporary config file for testing.
-
-    Args:
-        config_content: YAML content for the config
-
-    Returns:
-        Path to created config file (caller should clean up)
-    """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
-        f.write(config_content)
-        return f.name
