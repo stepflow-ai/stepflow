@@ -650,7 +650,7 @@ class TestUDFExecutorWithRealLangflowComponents:
                             "node": {
                                 "template": {
                                     "code": {
-                                        "value": '''
+                                        "value": """
 from langflow.custom.custom_component.component import Component
 from langflow.io import Output
 from langflow.schema.message import Message
@@ -658,18 +658,20 @@ from langflow.schema.message import Message
 class TestPrompt(Component):
     def build_prompt(self) -> Message:
                         return Message(text="Test prompt")
-'''
+"""
                                     }
                                 },
-                                "outputs": [{"name": "prompt", "method": "build_prompt"}],
+                                "outputs": [
+                                    {"name": "prompt", "method": "build_prompt"}
+                                ],
                                 "base_classes": ["Message"],
-                                "display_name": "Test Prompt"
+                                "display_name": "Test Prompt",
                             },
-                            "outputs": [{"name": "prompt", "method": "build_prompt"}]
-                        }
+                            "outputs": [{"name": "prompt", "method": "build_prompt"}],
+                        },
                     }
                 ],
-                "edges": []
+                "edges": [],
             }
         }
 
@@ -683,9 +685,7 @@ class TestPrompt(Component):
             if step.component == "/langflow/udf_executor"
         ]
 
-        assert len(udf_steps) > 0, (
-            "No UDF executor steps found in test workflow"
-        )
+        assert len(udf_steps) > 0, "No UDF executor steps found in test workflow"
 
         # Test the first UDF step
         first_step = udf_steps[0]
