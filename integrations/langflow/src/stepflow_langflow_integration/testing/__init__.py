@@ -14,14 +14,10 @@
 
 """Testing utilities for Stepflow Langflow integration."""
 
-from .stepflow_binary import (
-    StepflowBinaryRunner,
-    create_test_config_file,
-    get_default_stepflow_config,
-)
+from .config_builder import StepflowConfigBuilder
+from .stepflow_binary import StepflowBinaryRunner
 
 __all__ = [
-    "StepflowBinaryRunner",
-    "get_default_stepflow_config",
-    "create_test_config_file",
+    "StepflowConfigBuilder",  # Modern context manager-based config builder
+    "StepflowBinaryRunner",  # Binary runner with config_builder support
 ]

@@ -472,8 +472,16 @@ pass
         for field_name, field_config in template.items():
             if isinstance(field_config, dict):
                 field_value = field_config.get("value")
-                if field_value is not None:
+                if field_value is not None and field_value != "":
                     component_inputs[field_name] = field_value
+                elif field_name == "session_id" and (
+                    field_value == "" or field_value is None
+                ):
+                    # Map empty session_id fields to workflow input
+                    component_inputs[field_name] = {
+                        "$from": {"workflow": "input"},
+                        "path": "session_id",
+                    }
 
         # Map dependencies to component inputs based on edges
         if dependency_node_ids:
@@ -571,6 +579,20 @@ pass
                     # Fallback to workflow input if dependency not found
                     runtime_inputs[f"input_{i}"] = Value.input("$.message")
 
+        # Add session_id mapping for UDF components (like Memory) that need it
+        node_data = node.get("data", {})
+        node_info = node_data.get("node", {})
+        template = node_info.get("template", {})
+        node_id = node.get("id", "")
+
+        # Check for session_id field that needs mapping
+        if "session_id" in template:
+            session_id_config = template["session_id"]
+            if isinstance(session_id_config, dict):
+                session_id_value = session_id_config.get("value")
+                if session_id_value == "" or session_id_value is None:
+                    runtime_inputs["session_id"] = Value.input("$.session_id")
+
         return runtime_inputs
 
     def _extract_component_inputs(
@@ -659,6 +681,10 @@ pass
                 "path": "message",  # Expect workflow input to have a 'message' field
             },
             "sender": sender,
+            "session_id": {
+                "$from": {"workflow": "input"},
+                "path": "session_id",  # Pass session_id from workflow input
+            },
         }
 
     def _extract_chat_output_mapping(
