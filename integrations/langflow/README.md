@@ -5,8 +5,8 @@ A Python package for seamlessly integrating Langflow workflows with Stepflow, en
 ## ✨ Features
 
 - **🔄 One-Command Conversion & Execution**: Convert Langflow JSON to Stepflow YAML and execute in a single command
-- **🎭 Dual Execution Modes**: Support both mock (testing) and real UDF execution
-- **🧬 100% Component Compatibility**: Execute original Langflow components with full type preservation
+- **🚀 Real Langflow Execution**: Execute actual Langflow components with full type preservation
+- **🧬 100% Component Compatibility**: Uses original Langflow component code and standard imports
 - **🛡️ Security First**: Safe JSON-only parsing without requiring full Langflow installation
 
 ## 🚀 Quick Start
@@ -24,17 +24,14 @@ pip install -e .
 ### Convert and Execute in One Command
 
 ```bash
-# Execute with mock components (safe for testing)
-uv run stepflow-langflow execute my-workflow.json '{"message": "Hello!"}' --mock
-
-# Execute with real Langflow UDF components
+# Execute with real Langflow components
 uv run stepflow-langflow execute my-workflow.json '{"message": "Hello!"}'
 
 # Dry-run to see converted workflow
 uv run stepflow-langflow execute my-workflow.json --dry-run
 
 # Keep files for debugging
-uv run stepflow-langflow execute my-workflow.json '{}' --mock --keep-files --output-dir ./debug
+uv run stepflow-langflow execute my-workflow.json '{"message": "Hello!"}' --keep-files --output-dir ./debug
 ```
 
 ### Individual Commands
@@ -68,7 +65,6 @@ uv run stepflow-langflow execute [OPTIONS] INPUT_FILE [INPUT_JSON]
 - `INPUT_JSON`: JSON input data for the workflow (default: `{}`)
 
 **Options:**
-- `--mock`: Use mock components instead of real UDF execution (safe for testing)
 - `--config PATH`: Use custom stepflow configuration file
 - `--stepflow-binary PATH`: Path to stepflow binary (auto-detected if not specified)
 - `--timeout INTEGER`: Execution timeout in seconds (default: 60)
@@ -79,11 +75,11 @@ uv run stepflow-langflow execute [OPTIONS] INPUT_FILE [INPUT_JSON]
 **Examples:**
 
 ```bash
-# Basic execution with mock components
-uv run stepflow-langflow execute examples/simple_chat.json '{"message": "Hi there!"}' --mock
+# Basic execution with real Langflow components
+uv run stepflow-langflow execute examples/simple_chat.json '{"message": "Hi there!"}'
 
-# Real execution with custom timeout
-uv run stepflow-langflow execute examples/basic_prompting.json '{"prompt": "Write a haiku"}' --timeout 120
+# Execution with custom timeout
+uv run stepflow-langflow execute examples/basic_prompting.json '{"message": "Write a haiku"}' --timeout 120
 
 # Debug with file preservation
 uv run stepflow-langflow execute examples/memory_chatbot.json --dry-run --keep-files
@@ -235,9 +231,8 @@ The integration supports all Langflow component types through UDF execution:
 The integration includes comprehensive testing across multiple levels:
 
 - **Unit Tests**: Component conversion, dependency analysis, UDF execution
-- **Integration Tests**: Full workflow conversion and validation
-- **Real Execution Tests**: End-to-end testing with actual Langflow components
-- **Mock Testing**: Safe testing without external dependencies
+- **Integration Tests**: Complete workflow lifecycle testing (convert → validate → execute)
+- **Real Execution**: End-to-end testing with actual Langflow components and APIs
 
 ### Running Tests
 
@@ -250,8 +245,7 @@ uv run pytest --cov=stepflow_langflow_integration --cov-report=html
 
 # Run specific test categories
 uv run pytest tests/unit/                    # Unit tests only
-uv run pytest tests/integration/ -m "not slow"  # Fast integration tests
-uv run pytest tests/integration/ -m "real_execution"  # Real execution tests
+uv run pytest tests/integration/             # Integration tests (example flows)
 
 # Run the complete test suite (as used in CI)
 uv run python -m pytest tests/ -v
@@ -295,47 +289,15 @@ uv run stepflow-langflow serve
 
 ## 📚 Examples
 
-The `tests/fixtures/langflow/` directory contains example workflows from official Langflow starter projects. **All examples work successfully in `--mock` mode** (7/7) and **6 out of 7 workflows work in real execution mode** with API keys configured.
+The `tests/fixtures/langflow/` directory contains example workflows from official Langflow starter projects. **Examples work with real Langflow component execution** with API keys configured.
 
 ### 🚀 Quick Test Commands
 
-All workflows accept a `"message"` field as their primary input. **Integration Status: 6/7 workflows fully working with real execution.**
+All workflows accept a `"message"` field as their primary input. **Integration Status: Core workflows fully working with real execution.**
 
-#### Mock Mode Testing (Safe - No API Keys Required)
+#### Real Execution Examples
 ```bash
-# All 7 workflows work perfectly in mock mode
-# 1. Simple Chat - Basic input/output flow ✅
-uv run stepflow-langflow execute tests/fixtures/langflow/simple_chat.json \
-  '{"message": "Hello!"}' --mock
-
-# 2. Basic Prompting - LLM prompting with templates ✅
-uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json \
-  '{"message": "Write a haiku about coding"}' --mock
-
-# 3. Memory Chatbot - Conversational AI with memory ✅
-uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json \
-  '{"message": "Remember my name is Alice"}' --mock
-
-# 4. Document Q&A - Document-based question answering ✅
-uv run stepflow-langflow execute tests/fixtures/langflow/document_qa.json \
-  '{"message": "What is the main topic of this document?"}' --mock
-
-# 5. Simple Agent - AI agent with calculator/tools ✅
-uv run stepflow-langflow execute tests/fixtures/langflow/simple_agent.json \
-  '{"message": "Calculate 15 * 23 and explain the result"}' --mock
-
-# 6. Vector Store RAG - Complex retrieval augmented generation ✅
-uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
-  '{"message": "Find information about artificial intelligence"}' --mock
-
-# 7. OpenAI Chat - Direct OpenAI API integration ✅
-uv run stepflow-langflow execute tests/fixtures/langflow/openai_chat.json \
-  '{"message": "What is Python programming?"}' --mock
-```
-
-#### Real Execution Testing (Requires API Keys)
-```bash
-# Working workflows (6/7) - Remove --mock for real execution
+# Working workflows with real Langflow component execution
 # Requires OPENAI_API_KEY environment variable
 
 # 1. Simple Chat - Direct passthrough workflow ✅ WORKING
@@ -395,12 +357,12 @@ uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json --
 
 # Keep temporary files for debugging
 uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json \
-  '{"message": "Test"}' --mock --keep-files --output-dir ./debug
+  '{"message": "Test"}'  --keep-files --output-dir ./debug
 ```
 
 ### 🎯 Production Execution Status
 
-**Integration Status: 6/7 workflows fully operational in production.**
+**Integration Status: Core workflows fully operational in production.**
 
 #### ✅ Fully Working Workflows (Real Execution)
 The following workflows work reliably with real API execution:
@@ -413,7 +375,7 @@ The following workflows work reliably with real API execution:
 
 #### ⚠️ Partially Working Workflows
 - `simple_agent.json` - Architecture complete but OpenAI Agent execution issues may cause timeouts
-  - **Workaround**: Use extended timeout (`--timeout 180`) and validate with `--mock` first
+  - **Workaround**: Use extended timeout (`--timeout 180`) and validate with `` first
 
 #### Environment Requirements
 ```bash
@@ -465,4 +427,4 @@ This project follows the same Apache 2.0 license as the main Stepflow project.
 - **Documentation**: This README and inline code documentation
 - **Issues**: Report bugs via [GitHub Issues](https://github.com/stepflow-ai/stepflow/issues)
 - **Examples**: Comprehensive examples in `tests/fixtures/langflow/`
-- **Testing**: Use `--mock` mode for safe experimentation
+- **Testing**: Use `` mode for safe experimentation

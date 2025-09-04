@@ -22,6 +22,23 @@ import pytest
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 
 
+# Load environment variables from .env file for tests
+def pytest_configure(config):
+    """Load .env file for test environment."""
+    try:
+        from dotenv import load_dotenv
+
+        # Load .env from project root
+        env_path = Path(__file__).parent.parent / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+            print(f"✅ Loaded .env file for tests: {env_path}")
+        else:
+            print(f"⚠️ No .env file found at: {env_path}")
+    except ImportError:
+        print("⚠️ python-dotenv not available - environment variables not loaded")
+
+
 @pytest.fixture
 def fixtures_dir() -> Path:
     """Path to test fixtures directory."""

@@ -320,25 +320,51 @@ def get_default_stepflow_config() -> str:
     """Get a default stepflow config for testing Langflow integration.
 
     Returns:
-        YAML content for stepflow config
+        YAML content for stepflow config with real Langflow component execution
     """
-    # Get path to mock langflow server relative to this file
+    import os
+
+    # Get path to langflow integration root directory
     current_dir = Path(__file__).parent.parent.parent.parent
-    mock_server_path = current_dir / "tests" / "mock_langflow_server.py"
+
+    # Get actual environment variable values for substitution
+    # Try loading from .env if not already available
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if not openai_key:
+        try:
+            from dotenv import load_dotenv
+
+            env_path = current_dir / ".env"
+            if env_path.exists():
+                load_dotenv(env_path)
+                openai_key = os.getenv("OPENAI_API_KEY", "")
+        except ImportError:
+            pass
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    google_key = os.getenv("GOOGLE_API_KEY", "")
+
+    # Skip API key requirement for tests - use placeholder if not available
+    if not openai_key:
+        openai_key = "test-api-key-placeholder"
 
     return f"""
 plugins:
   builtin:
     type: builtin
-  mock_langflow:
+  langflow:
     type: stepflow
     transport: stdio
-    command: python3
-    args: ["{mock_server_path}"]
+    command: uv
+    args: ["--project", "{current_dir}", "run", "stepflow-langflow-server"]
+    env:
+      OPENAI_API_KEY: "{openai_key}"
+      ANTHROPIC_API_KEY: "{anthropic_key}"
+      GOOGLE_API_KEY: "{google_key}"
 
 routes:
   "/langflow/{{*component}}":
-    - plugin: mock_langflow
+    - plugin: langflow
   "/builtin/{{*component}}":
     - plugin: builtin
 

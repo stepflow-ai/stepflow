@@ -110,39 +110,8 @@ class NodeProcessor:
                 "value", False
             )
 
-            # Determine component path and inputs
-            if component_type == "File":
-                component_path = "/langflow/file"
-                step_input = self._extract_component_inputs_for_builder(
-                    node, dependencies.get(node_id, []), all_nodes, node_output_refs
-                )
-            elif component_type == "Memory":
-                component_path = "/langflow/memory"
-                step_input = self._extract_component_inputs_for_builder(
-                    node, dependencies.get(node_id, []), all_nodes, node_output_refs
-                )
-            elif component_type == "URLComponent":
-                component_path = "/langflow/url"
-                step_input = self._extract_component_inputs_for_builder(
-                    node, dependencies.get(node_id, []), all_nodes, node_output_refs
-                )
-            elif has_embedded_config and component_type in [
-                "AstraDB",
-                "VectorStore",
-                "Chroma",
-                "FAISS",
-                "Pinecone",
-            ]:
-                # Vector store with embedded configuration - use standalone server
-                print(
-                    f"DEBUG NodeProcessor: Routing {component_type} with embedded "
-                    f"config to standalone server"
-                )
-                component_path = f"/langflow/{component_type}"
-                step_input = self._extract_component_inputs_for_builder(
-                    node, dependencies.get(node_id, []), all_nodes, node_output_refs
-                )
-            elif self._is_agent_with_tools(
+            # Determine component path and inputs based on available information
+            if self._is_agent_with_tools(
                 node, dependencies.get(node_id, []), all_nodes
             ):
                 # Agent with tool dependencies - use enhanced UDF machinery
@@ -156,7 +125,14 @@ class NodeProcessor:
                     field_mapping,
                 )
             elif custom_code:
-                # Custom component - use UDF executor
+                # Any component with code - use UDF executor for real execution
+                import sys
+
+                print(
+                    f"DEBUG NodeProcessor: Routing {component_type} with code "
+                    f"to UDF executor",
+                    file=sys.stderr,
+                )
                 component_path = "/langflow/udf_executor"
 
                 # First create a blob step for the UDF code using auto ID generation
@@ -179,12 +155,54 @@ class NodeProcessor:
                         field_mapping,
                     ),
                 }
-            else:
-                # Built-in component - use Langflow component directly
+            elif has_embedded_config and component_type in [
+                "AstraDB",
+                "VectorStore",
+                "Chroma",
+                "FAISS",
+                "Pinecone",
+            ]:
+                # Vector store with embedded configuration - use standalone server
+                # TODO: Phase 4 will route these through UDF executor too
+                print(
+                    f"DEBUG NodeProcessor: Routing {component_type} with embedded "
+                    f"config to standalone server (temporary)"
+                )
                 component_path = f"/langflow/{component_type}"
                 step_input = self._extract_component_inputs_for_builder(
                     node, dependencies.get(node_id, []), all_nodes, node_output_refs
                 )
+            else:
+                # Components without custom code - create blob for built-in component
+                import sys
+
+                print(
+                    f"DEBUG NodeProcessor: Routing built-in {component_type} "
+                    f"through UDF executor",
+                    file=sys.stderr,
+                )
+                component_path = "/langflow/udf_executor"
+
+                # Create blob for built-in component using node structure
+                blob_data = self._prepare_builtin_component_blob(node, component_type)
+
+                blob_step_id = f"{step_id}_blob"
+                blob_step_handle = builder.add_step(
+                    id=blob_step_id,
+                    component="/builtin/put_blob",
+                    input_data={"data": blob_data, "blob_type": "data"},
+                )
+
+                # Create UDF executor step
+                step_input = {
+                    "blob_id": Value.step(blob_step_handle.id, "blob_id"),
+                    "input": self._extract_runtime_inputs_for_builder(
+                        node,
+                        dependencies.get(node_id, []),
+                        node_output_refs,
+                        field_mapping,
+                    ),
+                }
 
             # Add step to builder with proper ID and component path
             step_id = self._generate_step_id(node_id, component_type)
@@ -228,14 +246,14 @@ class NodeProcessor:
     def _prepare_udf_blob(
         self, node: dict[str, Any], component_type: str
     ) -> dict[str, Any]:
-        """Prepare UDF blob data for component execution.
+        """Prepare enhanced UDF blob data for component execution.
 
         Args:
             node: Langflow node object
             component_type: Component type name
 
         Returns:
-            UDF blob data
+            Enhanced UDF blob data with complete component information
         """
         node_data = node.get("data", {})
         node_info = node_data.get("node", {})
@@ -247,12 +265,30 @@ class NodeProcessor:
         if not code:
             raise ConversionError(f"No code found for component {component_type}")
 
-        # Extract outputs information
+        # Extract comprehensive component metadata
         outputs = node_data.get("outputs", [])
+        node_outputs = node_info.get("outputs", [])
+
+        # Use node outputs if available (more complete), fallback to data outputs
+        final_outputs = node_outputs if node_outputs else outputs
+
         selected_output = None
-        if outputs:
+        if final_outputs:
             # For now, use the first output
-            selected_output = outputs[0].get("name")
+            selected_output = final_outputs[0].get("name")
+
+        # Extract additional component metadata from node_info
+        base_classes = node_info.get("base_classes", [])
+        display_name = node_info.get("display_name", component_type)
+        description = node_info.get("description", "")
+        documentation = node_info.get("documentation", "")
+        metadata = node_info.get("metadata", {})
+
+        # Extract field order for proper component initialization
+        field_order = node_info.get("field_order", [])
+
+        # Extract component icon and UI information
+        icon = node_info.get("icon", "")
 
         # Prepare template (remove code field to avoid duplication)
         prepared_template: dict[str, Any] = {}
@@ -274,12 +310,112 @@ class NodeProcessor:
                 f"DEBUG NodeProcessor: No embedding configs found for {component_type}"
             )
 
-        return {
+        # Return enhanced blob data with complete component information
+        blob_data = {
             "code": code,
             "template": prepared_template,
             "component_type": component_type,
-            "outputs": outputs,
+            "outputs": final_outputs,
             "selected_output": selected_output,
+            # Enhanced metadata for real component execution
+            "base_classes": base_classes,
+            "display_name": display_name,
+            "description": description,
+            "documentation": documentation,
+            "metadata": metadata,
+            "field_order": field_order,
+            "icon": icon,
+        }
+
+        import sys
+
+        print(
+            f"DEBUG NodeProcessor: Enhanced blob for {component_type} with metadata: "
+            f"base_classes={base_classes}, display_name={display_name}",
+            file=sys.stderr,
+        )
+
+        return blob_data
+
+    def _prepare_builtin_component_blob(
+        self, node: dict[str, Any], component_type: str
+    ) -> dict[str, Any]:
+        """Prepare blob data for built-in Langflow components without custom code.
+
+        Args:
+            node: Langflow node object
+            component_type: Component type name
+
+        Returns:
+            Blob data with component import information for built-in components
+        """
+        node_data = node.get("data", {})
+        node_info = node_data.get("node", {})
+
+        # Extract component metadata
+        template = node_info.get("template", {})
+        outputs = node_data.get("outputs", [])
+        node_outputs = node_info.get("outputs", [])
+
+        # Use node outputs if available, fallback to data outputs
+        final_outputs = node_outputs if node_outputs else outputs
+
+        selected_output = None
+        if final_outputs:
+            selected_output = final_outputs[0].get("name")
+
+        # Extract metadata from node_info
+        base_classes = node_info.get("base_classes", [])
+        display_name = node_info.get("display_name", component_type)
+        description = node_info.get("description", "")
+        documentation = node_info.get("documentation", "")
+        metadata = node_info.get("metadata", {})
+        field_order = node_info.get("field_order", [])
+        icon = node_info.get("icon", "")
+
+        # For built-in components, generate import code based on metadata
+        module_path = metadata.get("module", "")
+        if module_path:
+            # Generate import code for the built-in component
+            module_parts = module_path.split(".")
+            class_name = module_parts[-1] if module_parts else component_type
+
+            builtin_code = f"""# Built-in Langflow component: {component_type}
+from {module_path} import {class_name}
+
+# Component class is imported from Langflow
+# This allows the UDF executor to load and execute the real built-in component
+{class_name} = {class_name}
+"""
+        else:
+            # Fallback for components without module metadata
+            builtin_code = f"""# Built-in Langflow component: {component_type}
+# Will be loaded dynamically by UDF executor based on component_type
+pass
+"""
+
+        import sys
+
+        print(
+            f"DEBUG NodeProcessor: Created built-in blob for {component_type} "
+            f"from module: {module_path}",
+            file=sys.stderr,
+        )
+
+        return {
+            "code": builtin_code,
+            "template": template,
+            "component_type": component_type,
+            "outputs": final_outputs,
+            "selected_output": selected_output,
+            "base_classes": base_classes,
+            "display_name": display_name,
+            "description": description,
+            "documentation": documentation,
+            "metadata": metadata,
+            "field_order": field_order,
+            "icon": icon,
+            "is_builtin": True,  # Mark as built-in component
         }
 
     def _extract_runtime_inputs(

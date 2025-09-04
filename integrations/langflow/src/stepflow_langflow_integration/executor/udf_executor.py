@@ -73,11 +73,14 @@ class UDFExecutor:
             if blob_id not in self.compiled_components:
                 try:
                     blob_data = await context.get_blob(blob_id)
-                except Exception:
-                    # Check if this is a special component that can be created on-demand
-                    blob_data = self._create_fallback_component_blob(blob_id)
-                    if blob_data is None:
-                        raise
+                    print(f"DEBUG UDFExecutor: Successfully loaded blob {blob_id}")
+                except Exception as e:
+                    # No fallback component generation - require real component code
+                    print(f"ERROR UDFExecutor: Failed to load blob {blob_id}: {e}")
+                    raise ExecutionError(
+                        f"No component code found for blob {blob_id}. "
+                        f"All components must have real Langflow code."
+                    ) from e
 
                 compiled_component = await self._compile_component(blob_data)
                 self.compiled_components[blob_id] = compiled_component
@@ -116,43 +119,92 @@ class UDFExecutor:
 
         return blob_ids
 
-    def _create_fallback_component_blob(self, blob_id: str) -> dict[str, Any] | None:
-        """Create fallback component blob for special components."""
-        if "chatinput" in blob_id.lower():
-            return self._create_chat_input_blob()
-        elif "chatoutput" in blob_id.lower():
-            return self._create_chat_output_blob()
-        elif "file" in blob_id.lower():
-            return self._create_file_component_blob()
-        else:
-            return None
-
     async def _compile_component(self, blob_data: dict[str, Any]) -> dict[str, Any]:
-        """Compile a component from blob data into an executable definition."""
+        """Compile a component from enhanced blob data into an executable definition."""
         component_type = blob_data.get("component_type", "Unknown")
         code = blob_data.get("code", "")
         template = blob_data.get("template", {})
         outputs = blob_data.get("outputs", [])
         selected_output = blob_data.get("selected_output")
 
+        # Extract enhanced metadata from Phase 1 improvements
+        base_classes = blob_data.get("base_classes", [])
+        display_name = blob_data.get("display_name", component_type)
+        description = blob_data.get("description", "")
+        documentation = blob_data.get("documentation", "")
+        metadata = blob_data.get("metadata", {})
+        field_order = blob_data.get("field_order", [])
+        icon = blob_data.get("icon", "")
+
         if not code:
             raise ExecutionError(f"No code found for component {component_type}")
 
-        # Create execution environment
+        print(
+            f"DEBUG UDFExecutor: Compiling {display_name} ({component_type}) with "
+            f"base_classes={base_classes}"
+        )
+
+        # Create execution environment with enhanced context
         exec_globals = self._create_execution_environment()
 
-        # Execute component code to define the class
-        try:
-            exec(code, exec_globals)
-        except Exception as e:
-            raise ExecutionError(f"Failed to execute component code: {e}") from e
+        # Strategy: Prefer custom code when available, fallback to Langflow imports
 
-        # Find component class
-        component_class = self._find_component_class(exec_globals, component_type)
-        if not component_class:
-            raise ExecutionError(f"Component class {component_type} not found")
+        if (
+            code
+            and code.strip()
+            and code.strip() != "pass"
+            and "# Will be loaded dynamically" not in code
+        ):
+            # Custom code available - use it (user's modifications/customizations)
+            print(
+                f"DEBUG UDFExecutor: Using custom component code for {component_type}"
+            )
+            try:
+                exec(code, exec_globals)
+                print(
+                    f"DEBUG UDFExecutor: Successfully executed custom code "
+                    f"for {component_type}"
+                )
+            except Exception as e:
+                raise ExecutionError(
+                    f"Failed to execute component code for {component_type}: {e}"
+                ) from e
 
-        # Determine execution method
+            # Find component class with enhanced detection
+            component_class = self._find_component_class(
+                exec_globals, component_type, base_classes, metadata
+            )
+            if not component_class:
+                available_classes = [
+                    name
+                    for name, obj in exec_globals.items()
+                    if isinstance(obj, type) and not name.startswith("_")
+                ]
+                raise ExecutionError(
+                    f"Component class {component_type} not found. "
+                    f"Available classes: {available_classes}"
+                )
+        else:
+            # No custom code - use standard Langflow component imports
+            print(
+                f"DEBUG UDFExecutor: No custom code, loading standard "
+                f"Langflow component {component_type}"
+            )
+            component_class = self._try_dynamic_builtin_loading(
+                component_type, base_classes, metadata
+            )
+            if not component_class:
+                raise ExecutionError(
+                    f"Could not load standard Langflow component {component_type}"
+                )
+            print(
+                f"DEBUG UDFExecutor: Using standard Langflow component "
+                f"{component_class.__name__}"
+            )
+
+        print(f"DEBUG UDFExecutor: Found component class: {component_class.__name__}")
+
+        # Determine execution method with enhanced logic
         execution_method = self._determine_execution_method(outputs, selected_output)
         if not execution_method:
             execution_method = self._infer_execution_method_from_component_class(
@@ -161,11 +213,21 @@ class UDFExecutor:
         if not execution_method:
             raise ExecutionError(f"No execution method found for {component_type}")
 
+        print(f"DEBUG UDFExecutor: Using execution method: {execution_method}")
+
         return {
             "class": component_class,
             "template": template,
             "execution_method": execution_method,
             "component_type": component_type,
+            # Enhanced metadata for better component execution
+            "base_classes": base_classes,
+            "display_name": display_name,
+            "description": description,
+            "documentation": documentation,
+            "metadata": metadata,
+            "field_order": field_order,
+            "icon": icon,
         }
 
     async def _execute_with_precompiled_components(
@@ -290,13 +352,16 @@ class UDFExecutor:
         except Exception as e:
             raise ExecutionError(f"Failed to instantiate {component_type}: {e}") from e
 
-        # Special handling for Agent components
-        if component_type == "Agent":
-            self._setup_agent_component(component_instance)
+        # Let all components handle their own setup - no special cases needed
 
         # Prepare parameters
         component_parameters = await self._prepare_component_parameters(
             template, runtime_inputs
+        )
+
+        # Apply component input defaults before configuring
+        component_parameters = self._apply_component_input_defaults(
+            component_instance, component_parameters
         )
 
         # Configure component
@@ -316,80 +381,17 @@ class UDFExecutor:
 
         try:
             if inspect.iscoroutinefunction(method):
-                # Handle Agent with mock response to avoid OpenAI API hanging
-                if component_type == "Agent":
-                    return self._create_mock_agent_response(component_parameters)
-                else:
-                    return await method()
+                # Execute all async methods directly - including real Agent execution
+                print(
+                    f"DEBUG UDFExecutor: Executing real async method "
+                    f"for {component_type}"
+                )
+                return await method()
             else:
                 # Handle sync methods safely
                 return await self._execute_sync_method_safely(method, component_type)
         except Exception as e:
             raise ExecutionError(f"Failed to execute {execution_method}: {e}") from e
-
-    def _setup_agent_component(self, component_instance: Any) -> None:
-        """Setup Agent component with proper session handling."""
-        import types
-
-        # Set session ID
-        component_instance._session_id = "stepflow_session_12345"
-
-        # Override get_memory_data to bypass database
-        async def get_memory_data_bypass(_):
-            return []
-
-        component_instance.get_memory_data = types.MethodType(
-            get_memory_data_bypass, component_instance
-        )
-
-        # Override send_message to bypass database
-        async def send_message_bypass(_, message):
-            return message
-
-        component_instance.send_message = types.MethodType(
-            send_message_bypass, component_instance
-        )
-
-    def _create_mock_agent_response(self, component_parameters: dict[str, Any]) -> Any:
-        """Create a mock Agent response to avoid OpenAI API hanging."""
-        from langflow.schema.message import Message
-
-        input_message = component_parameters.get("input_value", "No input provided")
-
-        # Extract text content
-        if hasattr(input_message, "text"):
-            input_text = input_message.text
-        elif hasattr(input_message, "data") and isinstance(input_message.data, dict):
-            input_text = input_message.data.get("text", str(input_message))
-        else:
-            input_text = str(input_message)
-
-        # Create realistic response
-        mock_text = f"Mock Agent Response: I received your message '{input_text}'. "
-
-        if any(word in input_text.lower() for word in ["calculate", "math", "+", "*"]):
-            if "2 + 2" in input_text:
-                mock_text += "The answer to 2 + 2 is 4."
-            elif "15 * 23" in input_text:
-                mock_text += "The answer to 15 * 23 is 345."
-            else:
-                mock_text += (
-                    "I can help you with mathematical calculations "
-                    "using my calculator tool."
-                )
-        else:
-            mock_text += "I'm ready to help you with tasks using my available tools."
-
-        return Message(
-            text=mock_text,
-            sender="Agent",
-            session_id="stepflow_session_12345",
-            properties={  # type: ignore[arg-type]
-                "icon": "Bot",
-                "background_color": "",
-                "text_color": "",
-            },
-        )
 
     def _convert_tools_to_basetools(self, tool_results: list[Any]) -> list[Any]:
         """Convert Langflow tool objects to BaseTool implementations for Agent."""
@@ -468,12 +470,17 @@ class UDFExecutor:
         return exec_globals
 
     def _find_component_class(
-        self, exec_globals: dict[str, Any], component_type: str
+        self,
+        exec_globals: dict[str, Any],
+        component_type: str,
+        base_classes: list[str] = None,
+        metadata: dict[str, Any] = None,
     ) -> type | None:
-        """Find component class in execution environment."""
-        # Direct match
+        """Find component class in execution environment with enhanced detection."""
+        # Direct match first
         component_class = exec_globals.get(component_type)
         if component_class and isinstance(component_class, type):
+            print(f"DEBUG UDFExecutor: Found direct match for {component_type}")
             return component_class  # type: ignore[no-any-return]
 
         # Search with different matching strategies
@@ -485,16 +492,132 @@ class UDFExecutor:
             name_lower = name.lower()
             # Exact lowercase match
             if name_lower == component_type_lower:
+                print(f"DEBUG UDFExecutor: Found lowercase match: {name}")
                 return obj
             # Component suffix match
             if name_lower == component_type_lower + "component":
+                print(f"DEBUG UDFExecutor: Found component suffix match: {name}")
                 return obj
             # Component prefix match
             if (
                 name_lower.endswith("component")
                 and name_lower[:-9] == component_type_lower
             ):
+                print(f"DEBUG UDFExecutor: Found component prefix match: {name}")
                 return obj
+
+        # Enhanced search using base_classes information from Phase 1
+        if base_classes:
+            print(
+                f"DEBUG UDFExecutor: Searching for component with "
+                f"base_classes: {base_classes}"
+            )
+            # Look for components that might inherit from specific Langflow base classes
+            from langflow.custom.custom_component.component import Component
+
+            for name, obj in exec_globals.items():
+                if isinstance(obj, type) and issubclass(obj, Component):
+                    print(f"DEBUG UDFExecutor: Found Component subclass: {name}")
+                    # This is a Langflow component, likely what we want
+                    return obj
+
+        # Try dynamic loading for built-in components if no class found in exec_globals
+        component_class = self._try_dynamic_builtin_loading(
+            component_type, base_classes, metadata or {}
+        )
+        if component_class:
+            return component_class
+
+        print(f"DEBUG UDFExecutor: No component class found for {component_type}")
+        return None
+
+    def _try_dynamic_builtin_loading(
+        self, component_type: str, base_classes: list[str] = None, metadata: dict = None
+    ) -> type | None:
+        """Try to dynamically load built-in Langflow components using metadata.
+
+        Args:
+            component_type: Component type name
+            base_classes: Base class information for the component
+            metadata: Component metadata containing module path
+
+        Returns:
+            Component class if found, None otherwise
+        """
+        print(
+            f"DEBUG UDFExecutor: Attempting dynamic loading of "
+            f"built-in {component_type}"
+        )
+
+        # First try using the module path from component metadata (most accurate)
+        if metadata and "module" in metadata:
+            module_path = metadata["module"]
+            try:
+                import importlib
+
+                module = importlib.import_module(module_path)
+
+                # Extract class name from module path or use component_type
+                class_name = module_path.split(".")[-1]
+                if hasattr(module, class_name):
+                    component_class = getattr(module, class_name)
+                    if isinstance(component_class, type):
+                        print(
+                            f"DEBUG UDFExecutor: Found {component_type} "
+                            f"at {module_path}.{class_name}"
+                        )
+                        return component_class
+
+                # Fallback: try component_type as class name
+                if hasattr(module, component_type):
+                    component_class = getattr(module, component_type)
+                    if isinstance(component_class, type):
+                        print(
+                            f"DEBUG UDFExecutor: Found {component_type} "
+                            f"at {module_path}.{component_type}"
+                        )
+                        return component_class
+
+            except ImportError as e:
+                print(
+                    "DEBUG UDFExecutor: Failed to import from metadata module"
+                    f"{module_path}: {e}"
+                )
+
+        # Fallback: Common built-in component import patterns
+        builtin_imports = [
+            # Model components - Current Langflow 1.5.0 location
+            "langflow.components.models.language_model",  # LanguageModelComponent
+            # Input/Output components - Current Langflow 1.5.0 locations
+            "langflow.components.input_output.chat",  # ChatInput
+            "langflow.components.input_output.chat_output",  # ChatOutput
+            # Other common component locations
+            f"langflow.components.prompts.{component_type.lower()}",
+            f"langflow.components.helpers.{component_type.lower()}",
+            f"langflow.components.data.{component_type.lower()}",
+            f"langflow.components.models.{component_type.lower()}",
+            # Legacy paths (for backward compatibility)
+            "langflow.base.models.model",
+            "langflow.components.models.openai",
+            "langflow.components.models.anthropic",
+        ]
+
+        for import_path in builtin_imports:
+            try:
+                import importlib
+
+                module = importlib.import_module(import_path)
+
+                # Try multiple class name variations
+                class_names = [component_type, f"{component_type}Component"]
+                for class_name in class_names:
+                    if hasattr(module, class_name):
+                        component_class = getattr(module, class_name)
+                        if isinstance(component_class, type):
+                            return component_class
+
+            except ImportError:
+                continue
 
         return None
 
@@ -560,6 +683,44 @@ class UDFExecutor:
                 component_parameters[key] = actual_value
             else:
                 component_parameters[key] = value
+
+        # Defaults will be applied from component inputs definition during execution
+        # This respects the actual component specification rather than hardcoding
+
+        return component_parameters
+
+    def _apply_component_input_defaults(
+        self, component_instance: Any, component_parameters: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Apply component input defaults for missing parameters.
+
+        Args:
+            component_instance: Instantiated component
+            component_parameters: Current parameters
+
+        Returns:
+            Parameters with defaults applied from component inputs definition
+        """
+        # Extract defaults from component inputs if available
+        if hasattr(component_instance, "inputs"):
+            for input_field in component_instance.inputs:
+                if hasattr(input_field, "name") and hasattr(input_field, "value"):
+                    param_name = input_field.name
+                    default_value = input_field.value
+
+                    # Only set default if missing and default is not None/empty
+                    if (
+                        param_name not in component_parameters
+                        and default_value is not None
+                        and default_value != ""
+                    ):
+                        component_parameters[param_name] = default_value
+                        import sys
+
+                        print(
+                            f"Applied default {param_name}={default_value}",
+                            file=sys.stderr,
+                        )
 
         return component_parameters
 
@@ -678,186 +839,7 @@ class UDFExecutor:
         return None
 
     async def _execute_sync_method_safely(self, method, component_type: str):
-        """Execute sync method safely in async context."""
-        # For problematic components, use mock data
-        if component_type in ["URLComponent", "RecursiveUrlLoader"]:
-            from langflow.schema.dataframe import DataFrame
-
-            mock_data = [
-                {
-                    "text": "Mock URL content for testing",
-                    "url": "https://httpbin.org/html",
-                }
-            ]
-            return DataFrame(data=mock_data)
-        else:
-            # Execute normal sync methods directly
-            return method()
-
-    def _create_chat_input_blob(self) -> dict[str, Any]:
-        """Create blob data for ChatInput component."""
-        chat_input_code = '''
-from langflow.custom.custom_component.component import Component
-from langflow.io import MessageTextInput, Output
-from langflow.schema.message import Message
-
-class ChatInputComponent(Component):
-    display_name = "Chat Input"
-    description = "Processes chat input from workflow"
-
-    inputs = [
-        MessageTextInput(name="message", display_name="Message Input"),
-    ]
-
-    outputs = [
-        Output(display_name="Output", name="output", method="process_message")
-    ]
-
-    def process_message(self) -> Message:
-        """Process the input message."""
-        message_text = self.message or "No message provided"
-        return Message(
-            text=str(message_text),
-            sender="User",
-            sender_name="User"
-        )
-'''
-
-        return {
-            "code": chat_input_code,
-            "component_type": "ChatInputComponent",
-            "template": {
-                "message": {"type": "str", "value": "", "info": "Message text input"}
-            },
-            "outputs": [
-                {"name": "output", "method": "process_message", "types": ["Message"]}
-            ],
-            "selected_output": "output",
-        }
-
-    def _create_chat_output_blob(self) -> dict[str, Any]:
-        """Create blob data for ChatOutput component."""
-        chat_output_code = '''
-from langflow.custom.custom_component.component import Component
-from langflow.io import HandleInput, Output
-from langflow.schema.message import Message
-
-class ChatOutputComponent(Component):
-    display_name = "Chat Output"
-    description = "Processes chat output for workflow"
-
-    inputs = [
-        HandleInput(
-            name="input_message",
-            display_name="Input Message",
-            input_types=["Message", "str"]
-        )
-    ]
-
-    outputs = [
-        Output(display_name="Output", name="output", method="process_output")
-    ]
-
-    def process_output(self) -> Message:
-        """Process the output message."""
-        input_msg = self.input_message
-
-        # Handle different input types
-        if hasattr(input_msg, 'text'):
-            # It's already a Message object
-            return input_msg
-        elif isinstance(input_msg, dict):
-            # It's a dict with message fields
-            return Message(
-                text=input_msg.get('text', str(input_msg)),
-                sender=input_msg.get('sender', 'AI'),
-                sender_name=input_msg.get('sender_name', 'Assistant')
-            )
-        else:
-            # Convert to string and create Message
-            return Message(
-                text=str(input_msg),
-                sender="AI",
-                sender_name="Assistant"
-            )
-'''
-
-        return {
-            "code": chat_output_code,
-            "component_type": "ChatOutputComponent",
-            "template": {
-                "input_message": {
-                    "type": "Message",
-                    "value": None,
-                    "info": "Input message to output",
-                }
-            },
-            "outputs": [
-                {"name": "output", "method": "process_output", "types": ["Message"]}
-            ],
-            "selected_output": "output",
-        }
-
-    def _create_file_component_blob(self) -> dict[str, Any]:
-        """Create blob data for File component with mock content."""
-        file_component_code = '''
-from langflow.custom.custom_component.component import Component
-from langflow.io import Output
-from langflow.schema.message import Message
-
-class MockFileComponent(Component):
-    display_name = "Mock File"
-    description = "Mock file component that provides sample content for testing"
-
-    outputs = [
-        Output(display_name="Raw Content", name="message", method="load_files_message")
-    ]
-
-    def load_files_message(self) -> Message:
-        """Return mock file content."""
-        mock_content = """Sample Document Content
-
-This is a mock document that serves as sample content for testing the
-document Q&A workflow.
-
-Key information:
-- This document discusses various topics related to AI and machine learning
-- It contains technical concepts and explanations
-- The content is suitable for question-answering tasks
-- You can ask questions about AI, machine learning, or general topics
-
-Technical Details:
-- Machine learning is a subset of artificial intelligence
-- Deep learning uses neural networks with multiple layers
-- Natural language processing helps computers understand human language
-- Large language models are trained on vast amounts of text data
-
-This mock content allows testing of the document processing pipeline without
-requiring actual file uploads."""
-
-        return Message(
-            text=mock_content,
-            sender="System",
-            sender_name="File Component"
-        )
-'''
-
-        return {
-            "code": file_component_code,
-            "component_type": "MockFileComponent",
-            "template": {
-                "path": {
-                    "type": "file",
-                    "value": "",
-                    "info": "Mock file path (not used in testing)",
-                }
-            },
-            "outputs": [
-                {
-                    "name": "message",
-                    "method": "load_files_message",
-                    "types": ["Message"],
-                }
-            ],
-            "selected_output": "message",
-        }
+        """Execute sync method safely in async context - real execution only."""
+        # Execute all sync methods directly - let components handle their execution
+        print(f"DEBUG UDFExecutor: Executing real sync method for {component_type}")
+        return method()
