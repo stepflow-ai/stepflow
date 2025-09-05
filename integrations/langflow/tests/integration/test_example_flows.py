@@ -31,8 +31,8 @@ from typing import Any
 import pytest
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
-from stepflow_langflow_integration.testing.config_builder import StepflowConfigBuilder
-from stepflow_langflow_integration.testing.stepflow_binary import StepflowBinaryRunner
+from tests.helpers.testing.config_builder import StepflowConfigBuilder
+from tests.helpers.testing.stepflow_binary import StepflowBinaryRunner
 
 
 @pytest.fixture(scope="module")
@@ -52,11 +52,6 @@ def stepflow_runner():
         return runner
     except FileNotFoundError as e:
         pytest.skip(f"Stepflow binary not found: {e}")
-
-
-def has_openai_api_key() -> bool:
-    """Check if OpenAI API key is available."""
-    return bool(os.getenv("OPENAI_API_KEY"))
 
 
 def load_flow_fixture(flow_name: str) -> dict[str, Any]:
@@ -123,21 +118,10 @@ def execute_complete_flow_lifecycle(
         )
 
         if not success:
-            # Check for common dependency issues and skip gracefully
-            if any(
-                indicator in stderr.lower()
-                for indicator in [
-                    "importerror",
-                    "modulenotfounderror",
-                    "no such table",
-                    "no files to process",
-                ]
-            ):
-                pytest.skip(f"External dependency not available: {stderr}")
-            else:
-                pytest.fail(
-                    f"Workflow execution failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
-                )
+            pytest.fail(
+                f"Workflow execution failed:\nResult: {result_data}\n"
+                f"STDOUT: {stdout}\nSTDERR: {stderr}"
+            )
 
         # Step 4: Basic result validation
         assert isinstance(result_data, dict), (
@@ -175,10 +159,9 @@ def test_simple_chat(converter, stepflow_runner):
 
 def test_openai_chat(converter, stepflow_runner):
     """Test OpenAI chat: direct API integration with built-in LanguageModelComponent."""
-    if not has_openai_api_key():
-        pytest.skip("Requires OPENAI_API_KEY environment variable")
 
     with StepflowConfigBuilder() as config:
+        config.with_openai_env()
         result = execute_complete_flow_lifecycle(
             flow_name="openai_chat",
             input_data={"message": "What is 2+2?"},
@@ -198,10 +181,9 @@ def test_openai_chat(converter, stepflow_runner):
 
 def test_basic_prompting(converter, stepflow_runner):
     """Test basic prompting: custom Prompt + LanguageModelComponent with OpenAI API."""
-    if not has_openai_api_key():
-        pytest.skip("Requires OPENAI_API_KEY environment variable")
 
     with StepflowConfigBuilder() as config:
+        config.with_openai_env()
         result = execute_complete_flow_lifecycle(
             flow_name="basic_prompting",
             input_data={"message": "Write a haiku about testing"},
@@ -222,15 +204,8 @@ def test_basic_prompting(converter, stepflow_runner):
 
 def test_vector_store_rag(converter, stepflow_runner):
     """Test vector store RAG: complex workflow with embeddings and retrieval."""
-    pytest.skip(
-        "TODO: Vector store RAG requires AstraDB configuration - implement in future PR"
-    )
-
-    if not has_openai_api_key():
-        pytest.skip("Requires OPENAI_API_KEY environment variable")
 
     # Create temporary test document for RAG processing
-    import os
     import tempfile
 
     test_content = """# Advanced AI and Machine Learning Technologies
@@ -271,27 +246,28 @@ retrieval-augmented generation (RAG). Popular solutions include:
 
     try:
         with StepflowConfigBuilder() as config:
-            result = execute_complete_flow_lifecycle(
-                flow_name="vector_store_rag",
-                input_data={
-                    "message": "What is the main topic of the document?",
-                    "file_path": test_file_path,  # Provide the file path
-                },
-                converter=converter,
-                stepflow_runner=stepflow_runner,
-                config_builder=config,
-                timeout=120.0,
-            )
+            config.with_openai_env().with_astra_db_env()
 
-            # Should return a response about the document content
-            message_result = result["result"]
-            assert isinstance(message_result, dict)
-            assert "text" in message_result or "__langflow_type__" in message_result
+            try:
+                result = execute_complete_flow_lifecycle(
+                    flow_name="vector_store_rag",
+                    input_data={
+                        "message": "What is the main topic of the document?",
+                        "file_path": test_file_path,  # Provide the file path
+                    },
+                    converter=converter,
+                    stepflow_runner=stepflow_runner,
+                    config_builder=config,
+                    timeout=120.0,
+                )
 
-            # The response should reference content from our test document
-            if "text" in message_result:
-                response_text = message_result["text"].lower()
+                # Should return a response about the document content
+                message_result = result["result"]
+                assert isinstance(message_result, dict)
+                assert "text" in message_result
+
                 # Should reference AI/ML content from our comprehensive document
+                response_text = message_result["text"].lower()
                 content_indicators = [
                     "artificial intelligence",
                     "machine learning",
@@ -308,6 +284,25 @@ retrieval-augmented generation (RAG). Popular solutions include:
                     f"Response should reference document content about AI/ML. "
                     f"Got: {response_text}"
                 )
+
+            except Exception as e:
+                error_message = str(e)
+                # Check for known issues that should be skipped vs. real failures
+                if (
+                    "authentication" in error_message.lower()
+                    or "unauthorized" in error_message.lower()
+                    or "api_key" in error_message.lower()
+                    or "token" in error_message.lower()
+                ):
+                    pytest.fail(f"AstraDB authentication issue: {error_message}")
+                elif (
+                    "network" in error_message.lower()
+                    or "connection" in error_message.lower()
+                ):
+                    pytest.fail(f"AstraDB connectivity issue: {error_message}")
+                else:
+                    # This is a real test failure, not an infrastructure issue
+                    raise
 
     finally:
         # Clean up temporary file
@@ -331,11 +326,10 @@ def test_memory_chatbot(converter, stepflow_runner):
     This validates the Retrieve-mode Memory component works with proper session
     handling.
     """
-    if not has_openai_api_key():
-        pytest.skip("Requires OPENAI_API_KEY environment variable")
 
     # Ultra-clean context manager approach with automatic resource cleanup
     with StepflowConfigBuilder() as config:
+        config.with_openai_env()
         config.add_shared_langflow_database()
 
         # Setup test data with different session IDs upfront
@@ -517,11 +511,8 @@ def test_memory_chatbot(converter, stepflow_runner):
 
 def test_document_qa(converter, stepflow_runner):
     """Test document QA: validates document loading and question answering."""
-    if not has_openai_api_key():
-        pytest.skip("Requires OPENAI_API_KEY environment variable")
 
     # Create temporary test document with meaningful content
-    import os
     import tempfile
 
     test_content = """# Machine Learning Fundamentals
@@ -550,6 +541,8 @@ language processing, and autonomous vehicles.
 
     try:
         with StepflowConfigBuilder() as config:
+            config.with_openai_env()
+
             # Test with file path provided as input data
             result = execute_complete_flow_lifecycle(
                 flow_name="document_qa",
@@ -594,10 +587,9 @@ language processing, and autonomous vehicles.
 
 def test_simple_agent(converter, stepflow_runner):
     """Test simple agent: tool coordination with Calculator and URL components."""
-    if not has_openai_api_key():
-        pytest.skip("Requires OPENAI_API_KEY environment variable")
 
     with StepflowConfigBuilder() as config:
+        config.with_openai_env()
         # Set up shared database for agent memory operations
         config.add_shared_langflow_database()
 
