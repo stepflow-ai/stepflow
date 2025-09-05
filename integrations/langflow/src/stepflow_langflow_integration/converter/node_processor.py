@@ -72,7 +72,7 @@ class NodeProcessor:
 
             # Skip tool dependency nodes that will be handled by Agent tool sequences
             if self._is_tool_dependency_of_agent(node_id, all_nodes, dependencies):
-                print(f"({component_type}) - handled by Agent tool sequence")
+                # Agent tool sequence handling
                 return None
 
             # Generate step ID (clean up for Stepflow)
@@ -123,9 +123,8 @@ class NodeProcessor:
                 )
             elif custom_code:
                 # Any component with code - use UDF executor for real execution
-                import sys
 
-                print(f"Routing {component_type} to UDF executor", file=sys.stderr)
+                # Routing to UDF executor
                 component_path = "/langflow/udf_executor"
 
                 # First create a blob step for the UDF code using auto ID generation
@@ -157,21 +156,15 @@ class NodeProcessor:
             ]:
                 # Vector store with embedded configuration - use standalone server
                 # TODO: Phase 4 will route these through UDF executor too
-                print(
-                    f"Routing {component_type} config to standalone server (temporary)"
-                )
+                # Routing with embedded configuration to standalone server
                 component_path = f"/langflow/{component_type}"
                 step_input = self._extract_component_inputs_for_builder(
                     node, dependencies.get(node_id, []), all_nodes, node_output_refs
                 )
             else:
                 # Components without custom code - create blob for built-in component
-                import sys
 
-                print(
-                    f"Routing built-in {component_type} through UDF executor",
-                    file=sys.stderr,
-                )
+                # Routing built-in component through UDF executor
                 component_path = "/langflow/udf_executor"
 
                 # Create blob for built-in component using node structure
@@ -207,12 +200,6 @@ class NodeProcessor:
             return Value.step(step_handle.id, "result")
 
         except Exception as e:
-            import traceback
-
-            print(
-                f"Full traceback for node {node.get('id', 'unknown')}: "
-                f"{traceback.format_exc()}"
-            )
             raise ConversionError(
                 f"Error processing node {node.get('id', 'unknown')}: {e}"
             ) from e
@@ -290,14 +277,7 @@ class NodeProcessor:
                 if field_name.startswith("_embedding_config_"):
                     embedding_config_count += 1
 
-        # Debug: Log embedded configuration preservation
-        if embedding_config_count > 0:
-            print(
-                f"Preserved {embedding_config_count} embedding configs for "
-                f"{component_type}"
-            )
-        else:
-            print(f"No embedding configs found for {component_type}")
+        # Embedding configuration preservation completed
 
         # Return enhanced blob data with complete component information
         blob_data = {
@@ -316,13 +296,7 @@ class NodeProcessor:
             "icon": icon,
         }
 
-        import sys
-
-        print(
-            f"Enhanced blob for {component_type}: base_classes={base_classes}, "
-            f"display_name={display_name}",
-            file=sys.stderr,
-        )
+        # Enhanced blob created with component metadata
 
         return blob_data
 
@@ -383,12 +357,7 @@ from {module_path} import {class_name}
 pass
 """
 
-        import sys
-
-        print(
-            f"Created built-in blob for {component_type} from module: {module_path}",
-            file=sys.stderr,
-        )
+        # Built-in blob created with module path
 
         return {
             "code": builtin_code,

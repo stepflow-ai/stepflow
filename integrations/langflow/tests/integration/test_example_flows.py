@@ -453,30 +453,6 @@ def test_memory_chatbot(converter, stepflow_runner):
             our_response = result_data["result"]["text"]
             other_response = result_other["result"]["text"]
 
-            print(
-                f"\nDEBUG - Alex's session ({our_session_id}) response: {our_response}"
-            )
-            print(
-                f"DEBUG - Bob's session ({other_session_id}) response: {other_response}"
-            )
-
-            # Let's also check the database to see what messages were actually retrieved
-            import sqlite3
-
-            conn = sqlite3.connect(str(db_path))
-            try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT session_id, sender_name, text FROM message "
-                    "ORDER BY timestamp"
-                )
-                all_messages = cursor.fetchall()
-                print("DEBUG - All messages in database:")
-                for msg in all_messages:
-                    print(f"  Session: {msg[0]}, Sender: {msg[1]}, Text: {msg[2]}")
-            finally:
-                conn.close()
-
             alex_remembered = "Alex" in our_response or "alex" in our_response.lower()
             bob_remembered = "Bob" in other_response or "bob" in other_response.lower()
 
@@ -484,11 +460,6 @@ def test_memory_chatbot(converter, stepflow_runner):
             # vice versa
             alex_sees_bob = "Bob" in our_response or "bob" in our_response.lower()
             bob_sees_alex = "Alex" in other_response or "alex" in other_response.lower()
-
-            print(f"DEBUG - Alex remembered correctly: {alex_remembered}")
-            print(f"DEBUG - Bob remembered correctly: {bob_remembered}")
-            print(f"DEBUG - Alex sees Bob's messages (bad): {alex_sees_bob}")
-            print(f"DEBUG - Bob sees Alex's messages (bad): {bob_sees_alex}")
 
             # Validate memory recall and session isolation
             assert alex_remembered, (
