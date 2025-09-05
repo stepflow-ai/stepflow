@@ -150,6 +150,29 @@ class StepflowConfigBuilder:
         finally:
             temp_path.unlink(missing_ok=True)
 
+    def add_shared_langflow_database(self) -> "StepflowConfigBuilder":
+        """Use a single shared Langflow database for all tests.
+
+        This avoids database reinitialization issues by using one database
+        across all tests. Tests should use unique session IDs to isolate data.
+
+        Returns:
+            Self for method chaining
+        """
+        # Use a consistent shared database file in temp directory
+        import tempfile
+
+        shared_db_path = (
+            Path(tempfile.gettempdir()) / "stepflow_langflow_shared_test.db"
+        )
+
+        # Only initialize once - if it doesn't exist yet
+        if not shared_db_path.exists():
+            self._initialize_langflow_database_service(str(shared_db_path))
+
+        # Configure builder to use the shared database
+        return self.with_langflow_database(str(shared_db_path))
+
     def add_temp_langflow_database(self) -> "StepflowConfigBuilder":
         """Create temporary Langflow database with proper schema initialization.
 
@@ -184,11 +207,21 @@ class StepflowConfigBuilder:
         os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{database_path}"
 
         try:
-            # Initialize settings service first
+            # Clear any existing service cache to force reinitialization
+            from langflow.services.manager import service_manager
+
+            if hasattr(service_manager, "_services"):
+                # Clear the service cache to force reinitialization with new database
+                service_manager._services.clear()
+
+            # Initialize settings service first (reads LANGFLOW_DATABASE_URL from env)
             get_settings_service()
 
-            # Get database service and create tables using Langflow's schema
+            # Get database service and reload engine with new database URL
             db_service = get_db_service()
+
+            # Force the database service to reload its engine with the new database URL
+            db_service.reload_engine()
 
             # Run the async method to create tables
             asyncio.run(db_service.create_db_and_tables())

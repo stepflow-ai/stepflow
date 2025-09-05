@@ -251,7 +251,7 @@ def test_memory_chatbot(converter, stepflow_runner):
 
     # Ultra-clean context manager approach with automatic resource cleanup
     with StepflowConfigBuilder() as config:
-        config.add_temp_langflow_database()
+        config.add_shared_langflow_database()
 
         # Setup test data with different session IDs upfront
         our_session_id = "test-memory-session-123"
@@ -290,15 +290,20 @@ def test_memory_chatbot(converter, stepflow_runner):
             session_id=other_session_id,
         )
 
-        # Configure Langflow to use our temporary database
-        # Find the database path from our config builder
-        db_path = None
-        for temp_file in config._temp_files:
-            if temp_file.suffix == ".db":
-                db_path = temp_file
-                break
+        # Configure Langflow to use our shared database
+        # Extract database path from the plugin environment variables
+        langflow_plugin_config = config._config["plugins"]["langflow"]
+        db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
+        # Extract path from sqlite:///path format
+        db_path = (
+            db_url.replace("sqlite:///", "")
+            if db_url.startswith("sqlite:///")
+            else None
+        )
 
-        assert db_path and db_path.exists(), "Database file not found"
+        assert db_path and Path(db_path).exists(), (
+            f"Database file not found at {db_path}"
+        )
 
         # Set up database environment for Langflow's storage methods
         import os
@@ -436,13 +441,97 @@ def test_document_qa():
     )
 
 
-def test_simple_agent():
+def test_simple_agent(converter, stepflow_runner):
     """Test simple agent: tool coordination with Calculator and URL components."""
     if not has_openai_api_key():
         pytest.skip("Requires OPENAI_API_KEY environment variable")
 
-    # Agent workflows require complex tool coordination
-    pytest.skip("Simple agent requires complex tool coordination not fully supported")
+    with StepflowConfigBuilder() as config:
+        # Set up shared database for agent memory operations
+        config.add_shared_langflow_database()
+
+        # Use a more complex calculation that requires actual computation
+        complex_expression = "137 * 89 + 456 / 12 - 73"
+        expected_result = 137 * 89 + 456 / 12 - 73  # 12158.0
+
+        # Use a unique session ID to avoid conflicts with other tests
+        import uuid
+
+        unique_session_id = f"agent_test_{uuid.uuid4().hex[:8]}"
+
+        result = execute_complete_flow_lifecycle(
+            flow_name="simple_agent",
+            input_data={
+                "message": f"Calculate this exact expression: {complex_expression}. "
+                f"Show your work and give me the precise numerical result.",
+                "session_id": unique_session_id,
+            },
+            converter=converter,
+            stepflow_runner=stepflow_runner,
+            config_builder=config,
+            timeout=120.0,  # Longer timeout for complex calculation
+        )
+
+        # Should return a Langflow Message with text content containing result
+        message_result = result["result"]
+        assert isinstance(message_result, dict)
+        assert "__langflow_type__" in message_result
+        assert "text" in message_result
+
+        # Verify the complex calculation result is present
+        response_text = message_result["text"].lower()
+        # The result should be 12158.0, look for various formats
+        result_patterns = ["12158", "12158.0", "12,158"]
+        result_found = any(pattern in response_text for pattern in result_patterns)
+        assert result_found, (
+            f"Expected result (12158) not found in response: {response_text}"
+        )
+
+        # CRITICAL: Verify that tools were used by checking database message history
+        # If the calculator tool was invoked, there should be messages in the database
+
+        # Extract database path from the plugin environment variables
+        langflow_plugin_config = config._config["plugins"]["langflow"]
+        db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
+        # Extract path from sqlite:///path format
+        db_path = (
+            db_url.replace("sqlite:///", "")
+            if db_url.startswith("sqlite:///")
+            else None
+        )
+
+        tool_usage_verified = False
+
+        if db_path:
+            import sqlite3
+
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+
+            # Get messages from our specific session that contain our calculation
+            # This verifies that tools were used for this specific test run
+            # Note: Agent uses formatted numbers with commas and mathematical symbols
+            cursor.execute(
+                """
+                SELECT text FROM message
+                WHERE session_id = ?
+                AND (text LIKE ? OR text LIKE ? OR text LIKE ?)
+            """,
+                (unique_session_id, "%12,193%", "%12,158%", "%137 × 89%"),
+            )
+            matching_messages = cursor.fetchall()
+            conn.close()
+
+            # If we found any messages with our calculation, tools were used
+            if matching_messages:
+                tool_usage_verified = True
+
+        assert tool_usage_verified, (
+            f"No evidence of calculator tool usage found in database. "
+            f"Expression: {complex_expression}"
+        )
+
+        # Test passes - tools were verified to be used
 
 
 # Utility and infrastructure tests

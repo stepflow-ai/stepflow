@@ -73,7 +73,6 @@ class UDFExecutor:
             if blob_id not in self.compiled_components:
                 try:
                     blob_data = await context.get_blob(blob_id)
-                    print(f"DEBUG UDFExecutor: Successfully loaded blob {blob_id}")
                 except Exception as e:
                     # No fallback component generation - require real component code
                     print(f"ERROR UDFExecutor: Failed to load blob {blob_id}: {e}")
@@ -202,8 +201,6 @@ class UDFExecutor:
                 f"{component_class.__name__}"
             )
 
-        print(f"DEBUG UDFExecutor: Found component class: {component_class.__name__}")
-
         # Determine execution method with enhanced logic
         execution_method = self._determine_execution_method(outputs, selected_output)
         if not execution_method:
@@ -212,8 +209,6 @@ class UDFExecutor:
             )
         if not execution_method:
             raise ExecutionError(f"No execution method found for {component_type}")
-
-        print(f"DEBUG UDFExecutor: Using execution method: {execution_method}")
 
         return {
             "class": component_class,
@@ -302,8 +297,24 @@ class UDFExecutor:
             tool_name = tool_config.get("component_type", "unknown").lower()
             if hasattr(tool_result, "data") and isinstance(tool_result.data, dict):
                 tool_result.data["name"] = tool_name
-            else:
+            elif hasattr(tool_result, "__dict__"):
+                # Only set name if object supports attribute assignment
                 tool_result.name = tool_name
+            else:
+                # For immutable objects (list, float, str, etc.), wrap in container
+                print(f"DEBUG UDFExecutor: Tool result is {type(tool_result)}")
+
+                class NamedToolResult:
+                    def __init__(self, result, name):
+                        self.result = result
+                        self.name = name
+                        # Preserve common attributes for tool usage
+                        if hasattr(result, "data"):
+                            self.data = result.data
+                        if hasattr(result, "text"):
+                            self.text = result.text
+
+                tool_result = NamedToolResult(tool_result, tool_name)
 
             tool_results.append(tool_result)
 
@@ -363,6 +374,9 @@ class UDFExecutor:
         component_parameters = self._apply_component_input_defaults(
             component_instance, component_parameters
         )
+        session_id = component_parameters.get("session_id", "default_session")
+        component_instance._session_id = session_id
+        # TODO: Also consider setting `flow_id`, `user_id`, `flow_name`.
 
         # Configure component
         if hasattr(component_instance, "set_attributes"):
@@ -382,10 +396,6 @@ class UDFExecutor:
         try:
             if inspect.iscoroutinefunction(method):
                 # Execute all async methods directly - including real Agent execution
-                print(
-                    f"DEBUG UDFExecutor: Executing real async method "
-                    f"for {component_type}"
-                )
                 return await method()
             else:
                 # Handle sync methods safely
@@ -411,25 +421,31 @@ class UDFExecutor:
                     langflow_result=langflow_result,
                 )
 
-            def _run(self, _input: str, **_kwargs: AnyType) -> str:
+            def _run(self, *args: AnyType, **kwargs: AnyType) -> str:
                 """Execute the tool with the given input."""
                 try:
-                    if hasattr(self.langflow_result, "data"):
+                    # Handle our wrapped tool results
+                    result_to_use = self.langflow_result
+                    if hasattr(self.langflow_result, "result"):
+                        # This is our NamedToolResult wrapper
+                        result_to_use = self.langflow_result.result
+
+                    if hasattr(result_to_use, "data"):
                         import json
 
-                        return json.dumps(self.langflow_result.data)
-                    elif hasattr(self.langflow_result, "to_dict"):
+                        return json.dumps(result_to_use.data)
+                    elif hasattr(result_to_use, "to_dict"):
                         import json
 
-                        return json.dumps(self.langflow_result.to_dict())
+                        return json.dumps(result_to_use.to_dict())
                     else:
-                        return str(self.langflow_result)
+                        return str(result_to_use)
                 except Exception as e:
                     return f"Tool execution error: {str(e)}"
 
-            async def _arun(self, _input: str, **_kwargs: AnyType) -> str:
+            async def _arun(self, *args: AnyType, **kwargs: AnyType) -> str:
                 """Async version of _run."""
-                return self._run(_input, **_kwargs)
+                return self._run(*args, **kwargs)
 
         basetools = []
         for tool in tool_results:
@@ -480,7 +496,6 @@ class UDFExecutor:
         # Direct match first
         component_class = exec_globals.get(component_type)
         if component_class and isinstance(component_class, type):
-            print(f"DEBUG UDFExecutor: Found direct match for {component_type}")
             return component_class  # type: ignore[no-any-return]
 
         # Search with different matching strategies
@@ -492,32 +507,24 @@ class UDFExecutor:
             name_lower = name.lower()
             # Exact lowercase match
             if name_lower == component_type_lower:
-                print(f"DEBUG UDFExecutor: Found lowercase match: {name}")
                 return obj
             # Component suffix match
             if name_lower == component_type_lower + "component":
-                print(f"DEBUG UDFExecutor: Found component suffix match: {name}")
                 return obj
             # Component prefix match
             if (
                 name_lower.endswith("component")
                 and name_lower[:-9] == component_type_lower
             ):
-                print(f"DEBUG UDFExecutor: Found component prefix match: {name}")
                 return obj
 
         # Enhanced search using base_classes information from Phase 1
         if base_classes:
-            print(
-                f"DEBUG UDFExecutor: Searching for component with "
-                f"base_classes: {base_classes}"
-            )
             # Look for components that might inherit from specific Langflow base classes
             from langflow.custom.custom_component.component import Component
 
-            for name, obj in exec_globals.items():
+            for _name, obj in exec_globals.items():
                 if isinstance(obj, type) and issubclass(obj, Component):
-                    print(f"DEBUG UDFExecutor: Found Component subclass: {name}")
                     # This is a Langflow component, likely what we want
                     return obj
 
@@ -528,7 +535,6 @@ class UDFExecutor:
         if component_class:
             return component_class
 
-        print(f"DEBUG UDFExecutor: No component class found for {component_type}")
         return None
 
     def _try_dynamic_builtin_loading(
@@ -841,5 +847,4 @@ class UDFExecutor:
     async def _execute_sync_method_safely(self, method, component_type: str):
         """Execute sync method safely in async context - real execution only."""
         # Execute all sync methods directly - let components handle their execution
-        print(f"DEBUG UDFExecutor: Executing real sync method for {component_type}")
         return method()
