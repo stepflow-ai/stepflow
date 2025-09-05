@@ -301,10 +301,8 @@ class UDFExecutor:
                 # Only set name if object supports attribute assignment
                 tool_result.name = tool_name
             else:
-                # For immutable objects (list, float, str, etc.), wrap in a simple container
-                print(
-                    f"DEBUG UDFExecutor: Tool result is {type(tool_result)}, wrapping with name"
-                )
+                # For immutable objects (list, float, str, etc.), wrap in container
+                print(f"DEBUG UDFExecutor: Tool result is {type(tool_result)}")
 
                 class NamedToolResult:
                     def __init__(self, result, name):
@@ -426,9 +424,6 @@ class UDFExecutor:
             def _run(self, *args: AnyType, **kwargs: AnyType) -> str:
                 """Execute the tool with the given input."""
                 try:
-                    # Extract the input from args - LangChain passes it as the first argument
-                    input_str = args[0] if args else ""
-
                     # Handle our wrapped tool results
                     result_to_use = self.langflow_result
                     if hasattr(self.langflow_result, "result"):
@@ -450,9 +445,7 @@ class UDFExecutor:
 
             async def _arun(self, *args: AnyType, **kwargs: AnyType) -> str:
                 """Async version of _run."""
-                # Extract the input from args - LangChain passes it as the first argument
-                input_str = args[0] if args else ""
-                return self._run(input_str, **kwargs)
+                return self._run(*args, **kwargs)
 
         basetools = []
         for tool in tool_results:
@@ -530,7 +523,7 @@ class UDFExecutor:
             # Look for components that might inherit from specific Langflow base classes
             from langflow.custom.custom_component.component import Component
 
-            for name, obj in exec_globals.items():
+            for _name, obj in exec_globals.items():
                 if isinstance(obj, type) and issubclass(obj, Component):
                     # This is a Langflow component, likely what we want
                     return obj

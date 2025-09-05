@@ -157,7 +157,9 @@ class NodeProcessor:
             ]:
                 # Vector store with embedded configuration - use standalone server
                 # TODO: Phase 4 will route these through UDF executor too
-                print(f"Routing {component_type} config to standalone server (temporary)")
+                print(
+                    f"Routing {component_type} config to standalone server (temporary)"
+                )
                 component_path = f"/langflow/{component_type}"
                 step_input = self._extract_component_inputs_for_builder(
                     node, dependencies.get(node_id, []), all_nodes, node_output_refs
@@ -166,7 +168,10 @@ class NodeProcessor:
                 # Components without custom code - create blob for built-in component
                 import sys
 
-                print(f"Routing built-in {component_type} through UDF executor", file=sys.stderr)
+                print(
+                    f"Routing built-in {component_type} through UDF executor",
+                    file=sys.stderr,
+                )
                 component_path = "/langflow/udf_executor"
 
                 # Create blob for built-in component using node structure
@@ -287,7 +292,10 @@ class NodeProcessor:
 
         # Debug: Log embedded configuration preservation
         if embedding_config_count > 0:
-            print(f"Preserved {embedding_config_count} embedding configs for {component_type}")
+            print(
+                f"Preserved {embedding_config_count} embedding configs for "
+                f"{component_type}"
+            )
         else:
             print(f"No embedding configs found for {component_type}")
 
@@ -310,7 +318,11 @@ class NodeProcessor:
 
         import sys
 
-        print(f"Enhanced blob for {component_type} with metadata: base_classes={base_classes}, display_name={display_name}", file=sys.stderr)
+        print(
+            f"Enhanced blob for {component_type}: base_classes={base_classes}, "
+            f"display_name={display_name}",
+            file=sys.stderr,
+        )
 
         return blob_data
 
@@ -373,7 +385,10 @@ pass
 
         import sys
 
-        print(f"Created built-in blob for {component_type} from module: {module_path}", file=sys.stderr)
+        print(
+            f"Created built-in blob for {component_type} from module: {module_path}",
+            file=sys.stderr,
+        )
 
         return {
             "code": builtin_code,
@@ -1267,9 +1282,7 @@ class MockGenericComponent(Component):
         Returns:
             Tool sequence configuration for UDF executor
         """
-        agent_node_id = agent_node.get("id", "")
         component_type = agent_node.get("data", {}).get("type", "")
-
 
         # Separate tool dependencies from other dependencies
         tool_configs: list[dict[str, Any]] = []
@@ -1316,7 +1329,9 @@ class MockGenericComponent(Component):
                     if dep_type == "ChatInput":
                         other_inputs["input_value"] = Value.input.add_path("message")
                         # Also extract session_id if available in the workflow input
-                        other_inputs["session_id_from_input"] = Value.input.add_path("session_id")
+                        other_inputs["session_id_from_input"] = Value.input.add_path(
+                            "session_id"
+                        )
                     else:
                         dep_step_id = self._generate_step_id(dep_id, dep_type)
                         other_inputs["input_value"] = Value.step(dep_step_id, "result")
@@ -1325,13 +1340,13 @@ class MockGenericComponent(Component):
         if component_type == "Agent":
             template = agent_node.get("data", {}).get("node", {}).get("template", {})
 
-            # Add essential Agent parameters with default values  
-            # Use session_id from ChatInput dependency if available, otherwise fallback to default
+            # Add essential Agent parameters with default values
+            # Use session_id from ChatInput dependency if available, otherwise fallback
             session_id_value = "default_session"
             if "session_id_from_input" in other_inputs:
                 # If we have a ChatInput dependency with session_id, use it
-                session_id_value = other_inputs["session_id_from_input"] 
-            
+                session_id_value = other_inputs["session_id_from_input"]
+
             agent_params = {
                 "session_id": session_id_value,
                 "api_key": "",  # Will be populated by runtime environment
@@ -1348,10 +1363,9 @@ class MockGenericComponent(Component):
 
             # Remove temporary session_id_from_input key before merging
             other_inputs.pop("session_id_from_input", None)
-            
+
             # Merge agent parameters into other_inputs
             other_inputs.update(agent_params)
-
 
         # Create blob for agent component
         agent_blob_data = self._prepare_udf_blob(agent_node, component_type)
