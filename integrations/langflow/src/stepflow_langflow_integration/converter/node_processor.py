@@ -72,9 +72,7 @@ class NodeProcessor:
 
             # Skip tool dependency nodes that will be handled by Agent tool sequences
             if self._is_tool_dependency_of_agent(node_id, all_nodes, dependencies):
-                print(
-                    f"({component_type}) - handled by Agent tool sequence"
-                )
+                print(f"({component_type}) - handled by Agent tool sequence")
                 return None
 
             # Generate step ID (clean up for Stepflow)
@@ -127,10 +125,7 @@ class NodeProcessor:
                 # Any component with code - use UDF executor for real execution
                 import sys
 
-                print(
-                    f"to UDF executor",
-                    file=sys.stderr,
-                )
+                print(f"Routing {component_type} to UDF executor", file=sys.stderr)
                 component_path = "/langflow/udf_executor"
 
                 # First create a blob step for the UDF code using auto ID generation
@@ -162,9 +157,7 @@ class NodeProcessor:
             ]:
                 # Vector store with embedded configuration - use standalone server
                 # TODO: Phase 4 will route these through UDF executor too
-                print(
-                    f"config to standalone server (temporary)"
-                )
+                print(f"Routing {component_type} config to standalone server (temporary)")
                 component_path = f"/langflow/{component_type}"
                 step_input = self._extract_component_inputs_for_builder(
                     node, dependencies.get(node_id, []), all_nodes, node_output_refs
@@ -173,10 +166,7 @@ class NodeProcessor:
                 # Components without custom code - create blob for built-in component
                 import sys
 
-                print(
-                    f"through UDF executor",
-                    file=sys.stderr,
-                )
+                print(f"Routing built-in {component_type} through UDF executor", file=sys.stderr)
                 component_path = "/langflow/udf_executor"
 
                 # Create blob for built-in component using node structure
@@ -297,12 +287,9 @@ class NodeProcessor:
 
         # Debug: Log embedded configuration preservation
         if embedding_config_count > 0:
-            print(
-                f"embedding configs for {component_type}"
-            )
+            print(f"Preserved {embedding_config_count} embedding configs for {component_type}")
         else:
-            print(
-            )
+            print(f"No embedding configs found for {component_type}")
 
         # Return enhanced blob data with complete component information
         blob_data = {
@@ -323,10 +310,7 @@ class NodeProcessor:
 
         import sys
 
-        print(
-            f"base_classes={base_classes}, display_name={display_name}",
-            file=sys.stderr,
-        )
+        print(f"Enhanced blob for {component_type} with metadata: base_classes={base_classes}, display_name={display_name}", file=sys.stderr)
 
         return blob_data
 
@@ -389,10 +373,7 @@ pass
 
         import sys
 
-        print(
-            f"from module: {module_path}",
-            file=sys.stderr,
-        )
+        print(f"Created built-in blob for {component_type} from module: {module_path}", file=sys.stderr)
 
         return {
             "code": builtin_code,

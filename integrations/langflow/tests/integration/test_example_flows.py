@@ -493,11 +493,14 @@ def test_simple_agent(converter, stepflow_runner):
             conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()
             
-            # Get all recent messages that contain our calculation (from any session)
-            # This verifies that tools were used without requiring exact session_id matching
+            # Get messages from our specific session that contain our calculation
+            # This verifies that tools were used for this specific test run
             # Note: Agent uses formatted numbers with commas and mathematical symbols
-            cursor.execute("SELECT text FROM message WHERE text LIKE ? OR text LIKE ? OR text LIKE ?", 
-                          ("%12,193%", "%12,158%", "%137 × 89%"))
+            cursor.execute("""
+                SELECT text FROM message 
+                WHERE session_id = ? 
+                AND (text LIKE ? OR text LIKE ? OR text LIKE ?)
+            """, (unique_session_id, "%12,193%", "%12,158%", "%137 × 89%"))
             matching_messages = cursor.fetchall()
             conn.close()
             
