@@ -105,9 +105,9 @@ def execute_complete_flow_lifecycle(
         success, stdout, stderr = stepflow_runner.validate_workflow(
             workflow_yaml, config_path=config_path
         )
-        assert success, (
-            f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
-        )
+        assert (
+            success
+        ), f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
 
         # Step 3: Execute
         success, result_data, stdout, stderr = stepflow_runner.run_workflow(
@@ -124,12 +124,12 @@ def execute_complete_flow_lifecycle(
             )
 
         # Step 4: Basic result validation
-        assert isinstance(result_data, dict), (
-            f"Expected dict result, got {type(result_data)}"
-        )
-        assert result_data.get("outcome") == "success", (
-            f"Execution failed: {result_data}"
-        )
+        assert isinstance(
+            result_data, dict
+        ), f"Expected dict result, got {type(result_data)}"
+        assert (
+            result_data.get("outcome") == "success"
+        ), f"Execution failed: {result_data}"
         assert "result" in result_data, f"No result field in output: {result_data}"
 
         return result_data
@@ -380,9 +380,9 @@ def test_memory_chatbot(converter, stepflow_runner):
             else None
         )
 
-        assert db_path and Path(db_path).exists(), (
-            f"Database file not found at {db_path}"
-        )
+        assert (
+            db_path and Path(db_path).exists()
+        ), f"Database file not found at {db_path}"
 
         # Set up database environment for Langflow's storage methods
         import os
@@ -453,30 +453,6 @@ def test_memory_chatbot(converter, stepflow_runner):
             our_response = result_data["result"]["text"]
             other_response = result_other["result"]["text"]
 
-            print(
-                f"\nDEBUG - Alex's session ({our_session_id}) response: {our_response}"
-            )
-            print(
-                f"DEBUG - Bob's session ({other_session_id}) response: {other_response}"
-            )
-
-            # Let's also check the database to see what messages were actually retrieved
-            import sqlite3
-
-            conn = sqlite3.connect(str(db_path))
-            try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT session_id, sender_name, text FROM message "
-                    "ORDER BY timestamp"
-                )
-                all_messages = cursor.fetchall()
-                print("DEBUG - All messages in database:")
-                for msg in all_messages:
-                    print(f"  Session: {msg[0]}, Sender: {msg[1]}, Text: {msg[2]}")
-            finally:
-                conn.close()
-
             alex_remembered = "Alex" in our_response or "alex" in our_response.lower()
             bob_remembered = "Bob" in other_response or "bob" in other_response.lower()
 
@@ -485,18 +461,13 @@ def test_memory_chatbot(converter, stepflow_runner):
             alex_sees_bob = "Bob" in our_response or "bob" in our_response.lower()
             bob_sees_alex = "Alex" in other_response or "alex" in other_response.lower()
 
-            print(f"DEBUG - Alex remembered correctly: {alex_remembered}")
-            print(f"DEBUG - Bob remembered correctly: {bob_remembered}")
-            print(f"DEBUG - Alex sees Bob's messages (bad): {alex_sees_bob}")
-            print(f"DEBUG - Bob sees Alex's messages (bad): {bob_sees_alex}")
-
             # Validate memory recall and session isolation
-            assert alex_remembered, (
-                f"Alex not remembered in Alex's session. Response: {our_response}"
-            )
-            assert bob_remembered, (
-                f"Bob not remembered in Bob's session. Response: {other_response}"
-            )
+            assert (
+                alex_remembered
+            ), f"Alex not remembered in Alex's session. Response: {our_response}"
+            assert (
+                bob_remembered
+            ), f"Bob not remembered in Bob's session. Response: {other_response}"
             assert not alex_sees_bob, (
                 f"Session isolation broken: Alex sees Bob's messages. "
                 f"Response: {our_response}"
@@ -576,9 +547,9 @@ language processing, and autonomous vehicles.
             found_content = any(
                 indicator in response_text for indicator in content_indicators
             )
-            assert found_content, (
-                f"Response should reference document content. Got: {response_text}"
-            )
+            assert (
+                found_content
+            ), f"Response should reference document content. Got: {response_text}"
 
     finally:
         # Clean up temporary file
@@ -626,9 +597,9 @@ def test_simple_agent(converter, stepflow_runner):
         # The result should be 12158.0, look for various formats
         result_patterns = ["12158", "12158.0", "12,158"]
         result_found = any(pattern in response_text for pattern in result_patterns)
-        assert result_found, (
-            f"Expected result (12158) not found in response: {response_text}"
-        )
+        assert (
+            result_found
+        ), f"Expected result (12158) not found in response: {response_text}"
 
         # CRITICAL: Verify that tools were used by checking database message history
         # If the calculator tool was invoked, there should be messages in the database
@@ -693,9 +664,9 @@ def test_langflow_server_availability(stepflow_runner):
 
                 # Should have langflow components available
                 langflow_components = [c for c in components if "langflow" in c.lower()]
-                assert len(langflow_components) > 0, (
-                    f"Should have Langflow components available: {components}"
-                )
+                assert (
+                    len(langflow_components) > 0
+                ), f"Should have Langflow components available: {components}"
 
     except Exception as e:
         pytest.skip(f"Langflow server not available: {e}")

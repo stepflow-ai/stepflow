@@ -179,7 +179,6 @@ class LangflowConverter:
         except Exception as e:
             import traceback
 
-            print(f"Full traceback: {traceback.format_exc()}")
             raise ConversionError(f"Unexpected error during conversion: {e}") from e
 
     def to_yaml(self, workflow: Flow) -> str:
@@ -360,12 +359,7 @@ class LangflowConverter:
             source_type = source_node.get("data", {}).get("type", "")
             target_type = target_node.get("data", {}).get("type", "")
 
-            # Debug: Log what we're finding
-            if source_type == "OpenAIEmbeddings":
-                print(
-                    f"DEBUG Transform: Found OpenAIEmbeddings {source_id} -> "
-                    f"{target_type} {target_id}"
-                )
+            # Check for embedding -> vector store connection
 
             # Check for embedding -> vector store connection
             if source_type == "OpenAIEmbeddings" and target_type in [
@@ -391,42 +385,23 @@ class LangflowConverter:
                     except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                         pass
 
-                print(
-                    f"DEBUG Transform: Field name for {source_id} -> {target_id}: "
-                    f"{field_name}"
-                )
+                # Field name extracted for embedding configuration
 
                 # Check if this is an embedding_model or similar field
                 if field_name and "embedding" in field_name.lower():
-                    print(
-                        f"DEBUG Transform: Merging {source_id} into {target_id} "
-                        f"field {field_name}"
-                    )
                     embedding_to_vector_store[source_id] = target_id
                     nodes_to_remove.add(source_id)
                     edges_to_remove.add(edge.get("id"))
 
                     # Merge embedding configuration into vector store
                     self._merge_embedding_config(source_node, target_node, field_name)
-                else:
-                    print(
-                        f"DEBUG Transform: Skipping {source_id} -> {target_id}, "
-                        f"field '{field_name}' doesn't contain 'embedding'"
-                    )
+                # else: Field doesn't contain 'embedding', skipping merge
 
         # Remove embedding nodes and edges
         filtered_nodes = [n for n in nodes if n["id"] not in nodes_to_remove]
         filtered_edges = [e for e in edges if e.get("id") not in edges_to_remove]
 
-        # Debug: Show what was removed
-        if nodes_to_remove:
-            print(
-                f"DEBUG Transform: Removed {len(nodes_to_remove)} embedding nodes: "
-                f"{list(nodes_to_remove)}"
-            )
-            print(
-                f"DEBUG Transform: Remaining nodes: {[n['id'] for n in filtered_nodes]}"
-            )
+        # Embedding nodes removed and dependencies updated
 
         # Update dependencies to remove embedding nodes
         filtered_dependencies = {}
@@ -493,12 +468,7 @@ class LangflowConverter:
         # Set the embedding configuration in the vector store template
         vector_store_template[f"_embedding_config_{field_name}"] = embedding_config
 
-        # Debug: Show what was merged
-        print(
-            f"DEBUG Transform: Added _embedding_config_{field_name} to "
-            f"{vector_store_node['id']}"
-        )
-        print(f"DEBUG Transform: Embedding config: {embedding_config}")
+        # Embedding configuration merged into vector store template
 
         # Mark this vector store as having embedded configuration
         # This will be used by the node processor to route to standalone server

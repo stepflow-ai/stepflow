@@ -75,7 +75,7 @@ class UDFExecutor:
                     blob_data = await context.get_blob(blob_id)
                 except Exception as e:
                     # No fallback component generation - require real component code
-                    print(f"ERROR UDFExecutor: Failed to load blob {blob_id}: {e}")
+                    # Failed to load blob - component code required
                     raise ExecutionError(
                         f"No component code found for blob {blob_id}. "
                         f"All components must have real Langflow code."
@@ -181,24 +181,14 @@ class UDFExecutor:
                 env_value = os.environ.get(value)
                 if env_value:
                     resolved[key] = env_value
-                    print(
-                        f"DEBUG: Resolved {key}: {value} -> {env_value[:10]}...",
-                        file=sys.stderr,
-                    )
-                else:
-                    print(
-                        f"DEBUG: Environment variable {value} not found for {key}",
-                        file=sys.stderr,
-                    )
+                    # Environment variable resolved
+                # else: Environment variable not found
 
         # Special handling for AstraDB components with empty api_endpoint
         # If api_endpoint is empty but we have ASTRA_DB_API_ENDPOINT env var, use it
         if resolved.get("api_endpoint") == "" and "ASTRA_DB_API_ENDPOINT" in os.environ:
             resolved["api_endpoint"] = os.environ["ASTRA_DB_API_ENDPOINT"]
-            print(
-                "DEBUG: Auto-resolved empty api_endpoint with ASTRA_DB_API_ENDPOINT",
-                file=sys.stderr,
-            )
+            # Auto-resolved empty api_endpoint from environment
 
         # For testing purposes, provide fallback database and collection names
         if resolved.get("database_name") == "":
@@ -207,17 +197,11 @@ class UDFExecutor:
             if "4f913ede-cf76-4f98-b390-907743bafd85" in api_endpoint:
                 # This matches our test database
                 resolved["database_name"] = "langflow-test"
-                print(
-                    "DEBUG UDFExecutor: Auto-resolved database_name to langflow-test",
-                    file=sys.stderr,
-                )
+                # Auto-resolved database_name for testing
 
         if resolved.get("collection_name") == "":
             resolved["collection_name"] = "test_collection"
-            print(
-                "DEBUG UDFExecutor: Auto-resolved collection_name to test_collection",
-                file=sys.stderr,
-            )
+            # Auto-resolved collection_name for testing
 
         return resolved
 
@@ -245,14 +229,10 @@ class UDFExecutor:
 
         for config_key, embedding_config in embedding_configs.items():
             embedding_field = config_key.replace("_embedding_config_", "")
-            # print(f"DEBUG: Processing embedded config for field: {embedding_field}")
-            # print(f"DEBUG: Embedding config: {embedding_config}", file=sys.stderr)
-
             if (
                 isinstance(embedding_config, dict)
                 and embedding_config.get("component_type") == "OpenAIEmbeddings"
             ):
-                # print(f"DEBUG: Creating OpenAIEmbeddings for {embedding_field}")
                 try:
                     from langchain_openai import OpenAIEmbeddings
 
@@ -270,7 +250,6 @@ class UDFExecutor:
                     for api_key_field in ["api_key", "openai_api_key"]:
                         if api_key_field in embedding_params:
                             api_key_value = embedding_params[api_key_field]
-                            # print(f"DEBUG: Found {api_key_field}: {api_key_value}")
 
                             # Handle ${ENV_VAR} format
                             if (
@@ -282,7 +261,6 @@ class UDFExecutor:
                                 actual_api_key = os.getenv(env_var)
                                 if actual_api_key:
                                     embedding_params["api_key"] = actual_api_key
-                                    # print(f"DEBUG: Resolved ${env_var} to API key")
                             # Handle direct environment variable name (OPENAI_API_KEY)
                             elif (
                                 isinstance(api_key_value, str)
@@ -291,7 +269,6 @@ class UDFExecutor:
                                 actual_api_key = os.getenv("OPENAI_API_KEY")
                                 if actual_api_key:
                                     embedding_params["api_key"] = actual_api_key
-                                    # print(f"DEBUG: Resolved OPENAI_API_KEY")
                             # Remove the openai_api_key field if exists, use api_key
                             if (
                                 api_key_field == "openai_api_key"
@@ -301,12 +278,8 @@ class UDFExecutor:
 
                     embeddings = OpenAIEmbeddings(**embedding_params)
                     updated_parameters[embedding_field] = embeddings
-                    # print(f"DEBUG: Created {embedding_field} embeddings")
                 except Exception as e:
-                    print(
-                        f"DEBUG: Failed {embedding_field} embeddings: {e}",
-                        file=sys.stderr,
-                    )
+                    # Failed to create embeddings configuration
 
         return updated_parameters
 
@@ -379,11 +352,7 @@ class UDFExecutor:
         if not code:
             raise ExecutionError(f"No code found for component {component_type}")
 
-        print(
-            f"DEBUG UDFExecutor: Compiling {display_name} ({component_type}) with "
-            f"base_classes={base_classes}",
-            file=sys.stderr,
-        )
+        # Compiling component with metadata
 
         # Create execution environment with enhanced context
         self._create_execution_environment()
@@ -398,20 +367,13 @@ class UDFExecutor:
             and "# Will be loaded dynamically" not in code
         ):
             # Custom code available - use it (user's modifications/customizations)
-            print(
-                f"DEBUG UDFExecutor: Using custom component code for {component_type}",
-                file=sys.stderr,
-            )
+            # Using custom component code
             try:
                 # Use Langflow's proper custom component evaluation
                 from langflow.custom.eval import eval_custom_component_code
 
                 component_class = eval_custom_component_code(code)
-                print(
-                    f"DEBUG UDFExecutor: Successfully evaluated custom code "
-                    f"for {component_type}, got class: {component_class}",
-                    file=sys.stderr,
-                )
+                # Successfully evaluated custom code
             except Exception as e:
                 raise ExecutionError(
                     f"Failed to evaluate component code for {component_type}: {e}"
@@ -423,11 +385,7 @@ class UDFExecutor:
                 )
         else:
             # No custom code - use standard Langflow component imports
-            print(
-                f"DEBUG UDFExecutor: No custom code, loading standard "
-                f"Langflow component {component_type}",
-                file=sys.stderr,
-            )
+            # Loading standard Langflow component
             component_class = self._try_dynamic_builtin_loading(
                 component_type, base_classes, metadata
             )
@@ -435,11 +393,7 @@ class UDFExecutor:
                 raise ExecutionError(
                     f"Could not load standard Langflow component {component_type}"
                 )
-            print(
-                f"DEBUG UDFExecutor: Using standard Langflow component "
-                f"{component_class.__name__}",
-                file=sys.stderr,
-            )
+            # Using standard Langflow component
 
         # Determine execution method with enhanced logic
         execution_method = self._determine_execution_method(outputs, selected_output)
@@ -542,10 +496,7 @@ class UDFExecutor:
                 tool_result.name = tool_name
             else:
                 # For immutable objects (list, float, str, etc.), wrap in container
-                print(
-                    f"DEBUG UDFExecutor: Tool result is {type(tool_result)}",
-                    file=sys.stderr,
-                )
+                # Tool result processed
 
                 class NamedToolResult:
                     def __init__(self, result, name):
@@ -629,9 +580,7 @@ class UDFExecutor:
             component_instance._parameters = resolved_parameters
             component_instance.set_attributes(resolved_parameters)
 
-        # Debug component configuration (only for problematic components)
-        # if component_type == "AstraDB":
-        #     print(f"AstraDB model: {resolved_parameters.get('embedding_model')}")
+        # Component configuration prepared for execution
 
         # Execute component method
         if not hasattr(component_instance, execution_method):
@@ -803,11 +752,7 @@ class UDFExecutor:
         Returns:
             Component class if found, None otherwise
         """
-        print(
-            f"DEBUG UDFExecutor: Attempting dynamic loading of "
-            f"built-in {component_type}",
-            file=sys.stderr,
-        )
+        # Attempting dynamic loading of built-in component
 
         # First try using the module path from component metadata (most accurate)
         if metadata and "module" in metadata:
@@ -822,30 +767,18 @@ class UDFExecutor:
                 if hasattr(module, class_name):
                     component_class = getattr(module, class_name)
                     if isinstance(component_class, type):
-                        print(
-                            f"DEBUG UDFExecutor: Found {component_type} "
-                            f"at {module_path}.{class_name}",
-                            file=sys.stderr,
-                        )
+                        # Found component at module path
                         return component_class
 
                 # Fallback: try component_type as class name
                 if hasattr(module, component_type):
                     component_class = getattr(module, component_type)
                     if isinstance(component_class, type):
-                        print(
-                            f"DEBUG UDFExecutor: Found {component_type} "
-                            f"at {module_path}.{component_type}",
-                            file=sys.stderr,
-                        )
+                        # Found component class in module
                         return component_class
 
             except ImportError as e:
-                print(
-                    "DEBUG UDFExecutor: Failed to import from metadata module "
-                    f"{module_path}: {e}",
-                    file=sys.stderr,
-                )
+                # Failed to import from metadata module
 
         # Fallback: Common built-in component import patterns
         builtin_imports = [
@@ -913,20 +846,10 @@ class UDFExecutor:
             elif key.startswith("_embedding_config_"):
                 embedding_field = key.replace("_embedding_config_", "")
                 embedding_config = field_def.get("value", {})
-                print(
-                    f"DEBUG: Processing embedding config for field: {embedding_field}",
-                    file=sys.stderr,
-                )
-                print(
-                    f"DEBUG: Embedding config: {embedding_config}",
-                    file=sys.stderr,
-                )
+                # Processing embedding config for field
 
                 if embedding_config.get("component_type") == "OpenAIEmbeddings":
-                    print(
-                        f"DEBUG: Creating OpenAIEmbeddings for {embedding_field}",
-                        file=sys.stderr,
-                    )
+                    # Creating OpenAIEmbeddings for field
                     try:
                         from langchain_openai import OpenAIEmbeddings
 
@@ -937,10 +860,7 @@ class UDFExecutor:
                         for api_key_field in ["api_key", "openai_api_key"]:
                             if api_key_field in embedding_params:
                                 api_key_value = embedding_params[api_key_field]
-                                print(
-                                    f"DEBUG: Found {api_key_field}: {api_key_value}",
-                                    file=sys.stderr,
-                                )
+                                # Found API key field in embedding params
 
                                 # Handle ${ENV_VAR} format
                                 if (
@@ -952,10 +872,7 @@ class UDFExecutor:
                                     actual_api_key = os.getenv(env_var)
                                     if actual_api_key:
                                         embedding_params["api_key"] = actual_api_key
-                                        print(
-                                            f"DEBUG: Resolved ${env_var} to API key",
-                                            file=sys.stderr,
-                                        )
+                                        # Resolved environment variable to API key
                                 # Handle direct env var name (OPENAI_API_KEY)
                                 elif (
                                     isinstance(api_key_value, str)
@@ -964,10 +881,7 @@ class UDFExecutor:
                                     actual_api_key = os.getenv("OPENAI_API_KEY")
                                     if actual_api_key:
                                         embedding_params["api_key"] = actual_api_key
-                                        print(
-                                            "DEBUG: Resolved OPENAI_API_KEY to API key",
-                                            file=sys.stderr,
-                                        )
+                                        # Resolved OPENAI_API_KEY to API key
                                 # Remove the openai_api_key field if exists, use api_key
                                 if (
                                     api_key_field == "openai_api_key"
@@ -977,15 +891,9 @@ class UDFExecutor:
 
                         embeddings = OpenAIEmbeddings(**embedding_params)
                         component_parameters[embedding_field] = embeddings
-                        print(
-                            f"DEBUG: Created {embedding_field} embeddings",
-                            file=sys.stderr,
-                        )
+                        # Created embeddings successfully
                     except Exception as e:
-                        print(
-                            f"DEBUG: Failed {embedding_field} embeddings: {e}",
-                            file=sys.stderr,
-                        )
+                        # Failed to create embeddings configuration
                         pass
 
         # Add runtime inputs (these override template values)
@@ -1066,10 +974,7 @@ class UDFExecutor:
                         and default_value != ""
                     ):
                         component_parameters[param_name] = default_value
-                        print(
-                            f"Applied default {param_name}={default_value}",
-                            file=sys.stderr,
-                        )
+                        # Applied default parameter value
 
         return component_parameters
 

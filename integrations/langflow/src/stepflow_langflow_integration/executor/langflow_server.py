@@ -61,10 +61,7 @@ class StepflowLangflowServer:
 
     def run(self) -> None:
         """Run the component server."""
-        print(
-            "🔥 LANGFLOW SERVER: Starting with CLEAN ARCHITECTURE "
-            "(no CachedStepflowContext)"
-        )
+        # Langflow server starting
         self.server.run()
 
     async def serve(self, host: str = "localhost", port: int = 8000) -> None:
