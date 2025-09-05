@@ -57,12 +57,7 @@ class TypeConverter:
                 return {
                     "__langflow_type__": "DataFrame",
                     "data": [
-                        (
-                            item.model_dump(mode="json")
-                            if hasattr(item, "model_dump")
-                            else item
-                        )
-                        for item in data_list
+                        self.serialize_langflow_object(item) for item in data_list
                     ],
                     "text_key": getattr(obj, "text_key", "text"),
                     "default_value": getattr(obj, "default_value", ""),
@@ -126,17 +121,7 @@ class TypeConverter:
                     # Convert back to Data objects if needed
                     if data_list and isinstance(data_list[0], dict):
                         data_objects = [
-                            (
-                                Data(**item)
-                                if "__langflow_type__" not in item
-                                else Data(
-                                    **{
-                                        k: v
-                                        for k, v in item.items()
-                                        if k != "__langflow_type__"
-                                    }
-                                )
-                            )
+                            self.deserialize_to_langflow_type(item)
                             for item in data_list
                         ]
                     else:

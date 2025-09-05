@@ -76,15 +76,7 @@ class StepflowConfigBuilder:
                         "run",
                         "stepflow-langflow-server",
                     ],
-                    "env": {
-                        "OPENAI_API_KEY": self._env_vars.get(
-                            "OPENAI_API_KEY", "test-api-key-placeholder"
-                        ),
-                        "ANTHROPIC_API_KEY": self._env_vars.get(
-                            "ANTHROPIC_API_KEY", ""
-                        ),
-                        "GOOGLE_API_KEY": self._env_vars.get("GOOGLE_API_KEY", ""),
-                    },
+                    "env": {},
                 },
             },
             "routes": {
@@ -364,6 +356,87 @@ class StepflowConfigBuilder:
             Self for method chaining
         """
         return self.with_plugin_env("langflow", env_vars)
+
+    def with_openai_env(self) -> "StepflowConfigBuilder":
+        """Add OpenAI environment variables if available.
+
+        Raises:
+            RuntimeError: If OPENAI_API_KEY is not available
+
+        Returns:
+            Self for method chaining
+        """
+        api_key = self._env_vars.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable is required but not available"
+            )
+
+        return self.with_plugin_env("langflow", {"OPENAI_API_KEY": api_key})
+
+    def with_anthropic_env(self) -> "StepflowConfigBuilder":
+        """Add Anthropic environment variables if available.
+
+        Raises:
+            RuntimeError: If ANTHROPIC_API_KEY is not available
+
+        Returns:
+            Self for method chaining
+        """
+        api_key = self._env_vars.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY environment variable is required but not available"
+            )
+
+        return self.with_plugin_env("langflow", {"ANTHROPIC_API_KEY": api_key})
+
+    def with_google_env(self) -> "StepflowConfigBuilder":
+        """Add Google environment variables if available.
+
+        Raises:
+            RuntimeError: If GOOGLE_API_KEY is not available
+
+        Returns:
+            Self for method chaining
+        """
+        api_key = self._env_vars.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "GOOGLE_API_KEY environment variable is required but not available"
+            )
+
+        return self.with_plugin_env("langflow", {"GOOGLE_API_KEY": api_key})
+
+    def with_astra_db_env(self) -> "StepflowConfigBuilder":
+        """Add AstraDB environment variables if available.
+
+        Raises:
+            RuntimeError: If required AstraDB environment variables are not available
+
+        Returns:
+            Self for method chaining
+        """
+        api_endpoint = self._env_vars.get("ASTRA_DB_API_ENDPOINT")
+        application_token = self._env_vars.get("ASTRA_DB_APPLICATION_TOKEN")
+
+        if not api_endpoint:
+            raise RuntimeError(
+                "ASTRA_DB_API_ENDPOINT environment variable is required"
+            )
+
+        if not application_token:
+            raise RuntimeError(
+                "ASTRA_DB_APPLICATION_TOKEN environment variable is required"
+            )
+
+        return self.with_plugin_env(
+            "langflow",
+            {
+                "ASTRA_DB_API_ENDPOINT": api_endpoint,
+                "ASTRA_DB_APPLICATION_TOKEN": application_token,
+            },
+        )
 
     def build(self) -> dict[str, Any]:
         """Build and return the configuration dictionary.

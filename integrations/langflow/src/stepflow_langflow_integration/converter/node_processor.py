@@ -595,6 +595,8 @@ pass
         # Handle standalone File components with workflow input mapping
         if not dependency_node_ids and component_type == "File":
             # For standalone File components, map workflow file_path to path parameter
+            # Path parameter should match Langflow's FileInput expectations
+            # file_path should be a simple list of paths, not wrapped
             runtime_inputs["path"] = Value.input("$.file_path")
 
         return runtime_inputs

@@ -332,7 +332,7 @@ class ChatInput(ChatComponent):
 
         input_data = {"blob_id": "invalid_code_blob", "input": {}}
 
-        with pytest.raises(ExecutionError, match="Failed to execute component code"):
+        with pytest.raises(ExecutionError, match="Failed to evaluate component code"):
             await executor.execute(input_data, mock_context)
 
     @pytest.mark.asyncio
@@ -355,7 +355,8 @@ def some_function():
         input_data = {"blob_id": "no_class_blob", "input": {}}
 
         with pytest.raises(
-            ExecutionError, match="Component class MissingComponent not found"
+            ExecutionError,
+            match="Failed to evaluate component code for MissingComponent",
         ):
             await executor.execute(input_data, mock_context)
 
@@ -366,8 +367,19 @@ def some_function():
         """Test execution fails when component cannot be instantiated."""
         blob_data = {
             "code": """
-class FailingComponent:
-    def __init__(self):
+from langflow.custom.custom_component.component import Component
+from langflow.io import Output
+
+class FailingComponent(Component):
+    display_name = "Failing Component"
+    description = "Component that fails instantiation"
+
+    outputs = [
+        Output(display_name="Result", name="result", method="execute")
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         raise ValueError("Cannot instantiate this component")
 
     def execute(self):
