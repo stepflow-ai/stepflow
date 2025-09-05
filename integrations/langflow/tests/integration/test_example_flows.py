@@ -110,9 +110,9 @@ def execute_complete_flow_lifecycle(
         success, stdout, stderr = stepflow_runner.validate_workflow(
             workflow_yaml, config_path=config_path
         )
-        assert success, (
-            f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
-        )
+        assert (
+            success
+        ), f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
 
         # Step 3: Execute
         success, result_data, stdout, stderr = stepflow_runner.run_workflow(
@@ -140,12 +140,12 @@ def execute_complete_flow_lifecycle(
                 )
 
         # Step 4: Basic result validation
-        assert isinstance(result_data, dict), (
-            f"Expected dict result, got {type(result_data)}"
-        )
-        assert result_data.get("outcome") == "success", (
-            f"Execution failed: {result_data}"
-        )
+        assert isinstance(
+            result_data, dict
+        ), f"Expected dict result, got {type(result_data)}"
+        assert (
+            result_data.get("outcome") == "success"
+        ), f"Execution failed: {result_data}"
         assert "result" in result_data, f"No result field in output: {result_data}"
 
         return result_data
@@ -220,13 +220,98 @@ def test_basic_prompting(converter, stepflow_runner):
         assert len(message_result["text"].split("\n")) >= 3
 
 
-def test_vector_store_rag():
+def test_vector_store_rag(converter, stepflow_runner):
     """Test vector store RAG: complex workflow with embeddings and retrieval."""
-    # Vector store RAG is highly complex with embeddings, databases, and file processing
-    pytest.skip("Missing dependencies (AstraDB, embeddings, file processing)")
+    pytest.skip(
+        "TODO: Vector store RAG requires AstraDB configuration - implement in future PR"
+    )
 
+    if not has_openai_api_key():
+        pytest.skip("Requires OPENAI_API_KEY environment variable")
 
-# Complex flows with external dependencies
+    # Create temporary test document for RAG processing
+    import os
+    import tempfile
+
+    test_content = """# Advanced AI and Machine Learning Technologies
+
+This comprehensive document explores cutting-edge developments in artificial
+intelligence and machine learning.
+
+## Deep Learning Architectures
+
+### Transformer Models
+Transformer architecture has revolutionized natural language processing through
+self-attention mechanisms. Key models include BERT, GPT, and T5.
+
+### Convolutional Neural Networks
+CNNs excel at image recognition tasks through hierarchical feature detection:
+- Edge detection in early layers
+- Pattern recognition in middle layers
+- Object identification in final layers
+
+## Vector Databases and Retrieval
+
+Vector databases store high-dimensional embeddings for semantic search and
+retrieval-augmented generation (RAG). Popular solutions include:
+- Pinecone for managed vector search
+- Weaviate for open-source semantic search
+- Chroma for lightweight embedding storage
+
+## Applications in Industry
+- Healthcare: Medical image analysis and drug discovery
+- Finance: Fraud detection and algorithmic trading
+- Autonomous vehicles: Computer vision and decision making
+- Recommendation systems: Personalized content delivery
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(test_content)
+        test_file_path = f.name
+
+    try:
+        with StepflowConfigBuilder() as config:
+            result = execute_complete_flow_lifecycle(
+                flow_name="vector_store_rag",
+                input_data={
+                    "message": "What is the main topic of the document?",
+                    "file_path": test_file_path,  # Provide the file path
+                },
+                converter=converter,
+                stepflow_runner=stepflow_runner,
+                config_builder=config,
+                timeout=120.0,
+            )
+
+            # Should return a response about the document content
+            message_result = result["result"]
+            assert isinstance(message_result, dict)
+            assert "text" in message_result or "__langflow_type__" in message_result
+
+            # The response should reference content from our test document
+            if "text" in message_result:
+                response_text = message_result["text"].lower()
+                # Should reference AI/ML content from our comprehensive document
+                content_indicators = [
+                    "artificial intelligence",
+                    "machine learning",
+                    "deep learning",
+                    "transformer",
+                    "vector",
+                    "ai",
+                    "ml",
+                ]
+                found_content = any(
+                    indicator in response_text for indicator in content_indicators
+                )
+                assert found_content, (
+                    f"Response should reference document content about AI/ML. "
+                    f"Got: {response_text}"
+                )
+
+    finally:
+        # Clean up temporary file
+        os.unlink(test_file_path)
 
 
 def test_memory_chatbot(converter, stepflow_runner):
@@ -301,9 +386,9 @@ def test_memory_chatbot(converter, stepflow_runner):
             else None
         )
 
-        assert db_path and Path(db_path).exists(), (
-            f"Database file not found at {db_path}"
-        )
+        assert (
+            db_path and Path(db_path).exists()
+        ), f"Database file not found at {db_path}"
 
         # Set up database environment for Langflow's storage methods
         import os
@@ -412,12 +497,12 @@ def test_memory_chatbot(converter, stepflow_runner):
             print(f"DEBUG - Bob sees Alex's messages (bad): {bob_sees_alex}")
 
             # Validate memory recall and session isolation
-            assert alex_remembered, (
-                f"Alex not remembered in Alex's session. Response: {our_response}"
-            )
-            assert bob_remembered, (
-                f"Bob not remembered in Bob's session. Response: {other_response}"
-            )
+            assert (
+                alex_remembered
+            ), f"Alex not remembered in Alex's session. Response: {our_response}"
+            assert (
+                bob_remembered
+            ), f"Bob not remembered in Bob's session. Response: {other_response}"
             assert not alex_sees_bob, (
                 f"Session isolation broken: Alex sees Bob's messages. "
                 f"Response: {our_response}"
@@ -430,15 +515,81 @@ def test_memory_chatbot(converter, stepflow_runner):
     # All temporary resources (database, config file) automatically cleaned up
 
 
-def test_document_qa():
-    """Test document QA: requires file input data."""
+def test_document_qa(converter, stepflow_runner):
+    """Test document QA: validates document loading and question answering."""
     if not has_openai_api_key():
         pytest.skip("Requires OPENAI_API_KEY environment variable")
 
-    # Document QA requires file upload integration
-    pytest.skip(
-        "Document QA requires file upload integration not available in test environment"
-    )
+    # Create temporary test document with meaningful content
+    import os
+    import tempfile
+
+    test_content = """# Machine Learning Fundamentals
+
+This document covers the basics of machine learning and artificial intelligence.
+
+## Key Concepts
+
+Machine learning is a subset of artificial intelligence that enables computers to
+learn and make decisions from data without being explicitly programmed for every
+scenario.
+
+### Types of Machine Learning
+1. Supervised Learning: Uses labeled data to train models
+2. Unsupervised Learning: Finds patterns in unlabeled data
+3. Reinforcement Learning: Learns through interaction and rewards
+
+## Applications
+Machine learning is used in recommendation systems, image recognition, natural
+language processing, and autonomous vehicles.
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(test_content)
+        test_file_path = f.name
+
+    try:
+        with StepflowConfigBuilder() as config:
+            # Test with file path provided as input data
+            result = execute_complete_flow_lifecycle(
+                flow_name="document_qa",
+                input_data={
+                    "message": (
+                        "What are the three types of machine learning mentioned "
+                        "in the document?"
+                    ),
+                    "file_path": test_file_path,  # Provide the file path
+                },
+                converter=converter,
+                stepflow_runner=stepflow_runner,
+                config_builder=config,
+                timeout=120.0,
+            )
+
+            # Should return a response about the document content
+            message_result = result["result"]
+            assert isinstance(message_result, dict)
+            assert "text" in message_result
+
+            # The response should mention machine learning types from the document
+            response_text = message_result["text"].lower()
+            # Should reference content from our test document
+            content_indicators = [
+                "supervised",
+                "unsupervised",
+                "reinforcement",
+                "machine learning",
+            ]
+            found_content = any(
+                indicator in response_text for indicator in content_indicators
+            )
+            assert (
+                found_content
+            ), f"Response should reference document content. Got: {response_text}"
+
+    finally:
+        # Clean up temporary file
+        os.unlink(test_file_path)
 
 
 def test_simple_agent(converter, stepflow_runner):
@@ -452,7 +603,7 @@ def test_simple_agent(converter, stepflow_runner):
 
         # Use a more complex calculation that requires actual computation
         complex_expression = "137 * 89 + 456 / 12 - 73"
-        expected_result = 137 * 89 + 456 / 12 - 73  # 12158.0
+        # Expected result: 137 * 89 + 456 / 12 - 73 = 12158.0
 
         # Use a unique session ID to avoid conflicts with other tests
         import uuid
@@ -483,9 +634,9 @@ def test_simple_agent(converter, stepflow_runner):
         # The result should be 12158.0, look for various formats
         result_patterns = ["12158", "12158.0", "12,158"]
         result_found = any(pattern in response_text for pattern in result_patterns)
-        assert result_found, (
-            f"Expected result (12158) not found in response: {response_text}"
-        )
+        assert (
+            result_found
+        ), f"Expected result (12158) not found in response: {response_text}"
 
         # CRITICAL: Verify that tools were used by checking database message history
         # If the calculator tool was invoked, there should be messages in the database
@@ -550,9 +701,9 @@ def test_langflow_server_availability(stepflow_runner):
 
                 # Should have langflow components available
                 langflow_components = [c for c in components if "langflow" in c.lower()]
-                assert len(langflow_components) > 0, (
-                    f"Should have Langflow components available: {components}"
-                )
+                assert (
+                    len(langflow_components) > 0
+                ), f"Should have Langflow components available: {components}"
 
     except Exception as e:
         pytest.skip(f"Langflow server not available: {e}")

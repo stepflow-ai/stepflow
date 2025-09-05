@@ -471,6 +471,16 @@ pass
                         "path": "session_id",
                     }
 
+        # Handle standalone components with workflow inputs
+        component_type = node_data.get("type", "")
+        if not dependency_node_ids and component_type == "File":
+            # For standalone File components, map workflow file_path to path parameter
+            # File component expects the path parameter to have file_path as a list
+            component_inputs["path"] = {
+                "$from": {"workflow": "input"},
+                "path": "file_path",
+            }
+
         # Map dependencies to component inputs based on edges
         if dependency_node_ids:
             dep_node_id = dependency_node_ids[0]
@@ -572,6 +582,7 @@ pass
         node_info = node_data.get("node", {})
         template = node_info.get("template", {})
         node_id = node.get("id", "")
+        component_type = node_data.get("type", "")
 
         # Check for session_id field that needs mapping
         if "session_id" in template:
@@ -580,6 +591,11 @@ pass
                 session_id_value = session_id_config.get("value")
                 if session_id_value == "" or session_id_value is None:
                     runtime_inputs["session_id"] = Value.input("$.session_id")
+
+        # Handle standalone File components with workflow input mapping
+        if not dependency_node_ids and component_type == "File":
+            # For standalone File components, map workflow file_path to path parameter
+            runtime_inputs["path"] = Value.input("$.file_path")
 
         return runtime_inputs
 
