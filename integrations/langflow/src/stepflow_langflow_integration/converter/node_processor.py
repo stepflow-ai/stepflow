@@ -73,7 +73,6 @@ class NodeProcessor:
             # Skip tool dependency nodes that will be handled by Agent tool sequences
             if self._is_tool_dependency_of_agent(node_id, all_nodes, dependencies):
                 print(
-                    f"DEBUG NodeProcessor: Skipping tool dependency {node_id} "
                     f"({component_type}) - handled by Agent tool sequence"
                 )
                 return None
@@ -129,7 +128,6 @@ class NodeProcessor:
                 import sys
 
                 print(
-                    f"DEBUG NodeProcessor: Routing {component_type} with code "
                     f"to UDF executor",
                     file=sys.stderr,
                 )
@@ -165,7 +163,6 @@ class NodeProcessor:
                 # Vector store with embedded configuration - use standalone server
                 # TODO: Phase 4 will route these through UDF executor too
                 print(
-                    f"DEBUG NodeProcessor: Routing {component_type} with embedded "
                     f"config to standalone server (temporary)"
                 )
                 component_path = f"/langflow/{component_type}"
@@ -177,7 +174,6 @@ class NodeProcessor:
                 import sys
 
                 print(
-                    f"DEBUG NodeProcessor: Routing built-in {component_type} "
                     f"through UDF executor",
                     file=sys.stderr,
                 )
@@ -302,12 +298,10 @@ class NodeProcessor:
         # Debug: Log embedded configuration preservation
         if embedding_config_count > 0:
             print(
-                f"DEBUG NodeProcessor: Preserved {embedding_config_count} "
                 f"embedding configs for {component_type}"
             )
         else:
             print(
-                f"DEBUG NodeProcessor: No embedding configs found for {component_type}"
             )
 
         # Return enhanced blob data with complete component information
@@ -330,7 +324,6 @@ class NodeProcessor:
         import sys
 
         print(
-            f"DEBUG NodeProcessor: Enhanced blob for {component_type} with metadata: "
             f"base_classes={base_classes}, display_name={display_name}",
             file=sys.stderr,
         )
@@ -397,7 +390,6 @@ pass
         import sys
 
         print(
-            f"DEBUG NodeProcessor: Created built-in blob for {component_type} "
             f"from module: {module_path}",
             file=sys.stderr,
         )
@@ -1297,7 +1289,6 @@ class MockGenericComponent(Component):
         agent_node_id = agent_node.get("id", "")
         component_type = agent_node.get("data", {}).get("type", "")
 
-        print(f"DEBUG: Creating tool sequence config for Agent {agent_node_id}")
 
         # Separate tool dependencies from other dependencies
         tool_configs: list[dict[str, Any]] = []
@@ -1311,7 +1302,6 @@ class MockGenericComponent(Component):
 
                 if self._is_tool_creator(dep_type):
                     # This is a tool dependency - create tool config
-                    print(f"DEBUG: Processing tool dependency: {dep_id} ({dep_type})")
 
                     # Create blob for tool component
                     tool_blob_data = self._prepare_udf_blob(dep_node, dep_type)
@@ -1319,7 +1309,7 @@ class MockGenericComponent(Component):
                     tool_blob_step = builder.add_step(
                         id=tool_blob_step_id,
                         component="/builtin/put_blob",
-                        input_data={"blob": tool_blob_data, "blob_type": "data"},
+                        input_data={"data": tool_blob_data, "blob_type": "data"},
                     )
 
                     # Use intelligent translation approach:
@@ -1344,6 +1334,8 @@ class MockGenericComponent(Component):
                     # This is a regular input dependency (like ChatInput)
                     if dep_type == "ChatInput":
                         other_inputs["input_value"] = Value.input.add_path("message")
+                        # Also extract session_id if available in the workflow input
+                        other_inputs["session_id_from_input"] = Value.input.add_path("session_id")
                     else:
                         dep_step_id = self._generate_step_id(dep_id, dep_type)
                         other_inputs["input_value"] = Value.step(dep_step_id, "result")
@@ -1352,9 +1344,15 @@ class MockGenericComponent(Component):
         if component_type == "Agent":
             template = agent_node.get("data", {}).get("node", {}).get("template", {})
 
-            # Add essential Agent parameters with default values
+            # Add essential Agent parameters with default values  
+            # Use session_id from ChatInput dependency if available, otherwise fallback to default
+            session_id_value = "default_session"
+            if "session_id_from_input" in other_inputs:
+                # If we have a ChatInput dependency with session_id, use it
+                session_id_value = other_inputs["session_id_from_input"] 
+            
             agent_params = {
-                "session_id": "default_session",  # Provide default session ID
+                "session_id": session_id_value,
                 "api_key": "",  # Will be populated by runtime environment
                 "model_name": template.get("model_name", {}).get(
                     "value", "gpt-3.5-turbo"
@@ -1367,10 +1365,12 @@ class MockGenericComponent(Component):
                 "verbose": template.get("verbose", {}).get("value", False),
             }
 
+            # Remove temporary session_id_from_input key before merging
+            other_inputs.pop("session_id_from_input", None)
+            
             # Merge agent parameters into other_inputs
             other_inputs.update(agent_params)
 
-            print(f"DEBUG: Added Agent parameters: {list(agent_params.keys())}")
 
         # Create blob for agent component
         agent_blob_data = self._prepare_udf_blob(agent_node, component_type)
@@ -1378,7 +1378,7 @@ class MockGenericComponent(Component):
         agent_blob_step = builder.add_step(
             id=agent_blob_step_id,
             component="/builtin/put_blob",
-            input_data={"blob": agent_blob_data, "blob_type": "data"},
+            input_data={"data": agent_blob_data, "blob_type": "data"},
         )
 
         # Apply intelligent translation: agent blob is also external to the fused step
