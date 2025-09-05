@@ -208,7 +208,7 @@ class StepflowStdioServer:
             reader = stdin
         else:
             loop = asyncio.get_event_loop()
-            # Use a larger limit because currently the message needs to fit in the buffer.
+            # Use a larger limit because the message needs to fit in the buffer.
             # TODO(#306): Extend stdio protocol to support larger inputs/outputs.
             reader = asyncio.StreamReader(limit=512 * 1024)
             protocol = asyncio.StreamReaderProtocol(reader)

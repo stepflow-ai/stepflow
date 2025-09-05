@@ -421,9 +421,7 @@ class StepflowConfigBuilder:
         application_token = self._env_vars.get("ASTRA_DB_APPLICATION_TOKEN")
 
         if not api_endpoint:
-            raise RuntimeError(
-                "ASTRA_DB_API_ENDPOINT environment variable is required"
-            )
+            raise RuntimeError("ASTRA_DB_API_ENDPOINT environment variable is required")
 
         if not application_token:
             raise RuntimeError(

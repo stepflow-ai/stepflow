@@ -389,6 +389,7 @@ class UDFExecutor:
         self._create_execution_environment()
 
         # Strategy: Prefer custom code when available, fallback to Langflow imports
+        component_class: type | None = None
 
         if (
             code
