@@ -23,7 +23,7 @@ import msgspec
 import yaml
 from stepflow_py import Flow, FlowBuilder, Step, Value
 
-from ..utils.errors import ConversionError
+from ..exceptions import ConversionError
 from .dependency_analyzer import DependencyAnalyzer
 from .node_processor import NodeProcessor
 from .schema_mapper import SchemaMapper

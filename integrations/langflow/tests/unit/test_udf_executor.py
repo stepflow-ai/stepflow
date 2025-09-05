@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from stepflow_langflow_integration.exceptions import ExecutionError
 from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
-from stepflow_langflow_integration.utils.errors import ExecutionError
 
 
 class TestUDFExecutor:

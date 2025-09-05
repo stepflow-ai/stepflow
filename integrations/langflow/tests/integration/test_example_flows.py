@@ -31,8 +31,8 @@ from typing import Any
 import pytest
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
-from stepflow_langflow_integration.testing.config_builder import StepflowConfigBuilder
-from stepflow_langflow_integration.testing.stepflow_binary import StepflowBinaryRunner
+from tests.helpers.testing.config_builder import StepflowConfigBuilder
+from tests.helpers.testing.stepflow_binary import StepflowBinaryRunner
 
 
 @pytest.fixture(scope="module")

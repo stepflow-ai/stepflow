@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
-from stepflow_langflow_integration.utils.errors import ConversionError
+from stepflow_langflow_integration.exceptions import ConversionError
 
 
 class TestLangflowConverter:

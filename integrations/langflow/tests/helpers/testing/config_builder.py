@@ -25,6 +25,7 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 
@@ -253,7 +254,8 @@ class StepflowConfigBuilder:
             cursor = conn.cursor()
 
             # Create the message table with schema matching Langflow's expectations
-            cursor.execute("""
+            cursor.execute(
+                """
             CREATE TABLE IF NOT EXISTS message (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -269,18 +271,25 @@ class StepflowConfigBuilder:
                 content_blocks TEXT,
                 flow_id TEXT
             )
-            """)
+            """
+            )
 
             # Create indices for performance
-            cursor.execute("""
+            cursor.execute(
+                """
             CREATE INDEX IF NOT EXISTS idx_message_timestamp ON message (timestamp)
-            """)
-            cursor.execute("""
+            """
+            )
+            cursor.execute(
+                """
             CREATE INDEX IF NOT EXISTS idx_message_session_id ON message (session_id)
-            """)
-            cursor.execute("""
+            """
+            )
+            cursor.execute(
+                """
             CREATE INDEX IF NOT EXISTS idx_message_error ON message (error)
-            """)
+            """
+            )
 
             conn.commit()
         finally:
@@ -368,7 +377,7 @@ class StepflowConfigBuilder:
         """
         api_key = self._env_vars.get("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError(
+            pytest.skip(
                 "OPENAI_API_KEY environment variable is required but not available"
             )
 
@@ -385,7 +394,7 @@ class StepflowConfigBuilder:
         """
         api_key = self._env_vars.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError(
+            pytest.skip(
                 "ANTHROPIC_API_KEY environment variable is required but not available"
             )
 
@@ -402,7 +411,7 @@ class StepflowConfigBuilder:
         """
         api_key = self._env_vars.get("GOOGLE_API_KEY")
         if not api_key:
-            raise RuntimeError(
+            pytest.skip(
                 "GOOGLE_API_KEY environment variable is required but not available"
             )
 
@@ -421,12 +430,10 @@ class StepflowConfigBuilder:
         application_token = self._env_vars.get("ASTRA_DB_APPLICATION_TOKEN")
 
         if not api_endpoint:
-            raise RuntimeError("ASTRA_DB_API_ENDPOINT environment variable is required")
+            pytest.skip("ASTRA_DB_API_ENDPOINT environment variable is required")
 
         if not application_token:
-            raise RuntimeError(
-                "ASTRA_DB_APPLICATION_TOKEN environment variable is required"
-            )
+            pytest.skip("ASTRA_DB_APPLICATION_TOKEN environment variable is required")
 
         return self.with_plugin_env(
             "langflow",

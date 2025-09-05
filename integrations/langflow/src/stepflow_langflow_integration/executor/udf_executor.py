@@ -21,7 +21,7 @@ from typing import Any
 
 from stepflow_py import StepflowContext
 
-from ..utils.errors import ExecutionError
+from ..exceptions import ExecutionError
 from .type_converter import TypeConverter
 
 

@@ -18,7 +18,7 @@ from typing import Any
 
 from stepflow_py import FlowBuilder, Value
 
-from ..utils.errors import ConversionError
+from ..exceptions import ConversionError
 from .schema_mapper import SchemaMapper
 
 
