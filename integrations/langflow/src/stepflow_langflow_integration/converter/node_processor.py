@@ -123,7 +123,6 @@ class NodeProcessor:
                 )
             elif custom_code:
                 # Any component with code - use UDF executor for real execution
-                import sys
 
                 # Routing to UDF executor
                 component_path = "/langflow/udf_executor"
@@ -164,7 +163,6 @@ class NodeProcessor:
                 )
             else:
                 # Components without custom code - create blob for built-in component
-                import sys
 
                 # Routing built-in component through UDF executor
                 component_path = "/langflow/udf_executor"
@@ -202,8 +200,6 @@ class NodeProcessor:
             return Value.step(step_handle.id, "result")
 
         except Exception as e:
-            import traceback
-
             raise ConversionError(
                 f"Error processing node {node.get('id', 'unknown')}: {e}"
             ) from e

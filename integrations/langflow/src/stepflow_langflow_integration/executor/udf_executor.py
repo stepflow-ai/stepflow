@@ -280,6 +280,7 @@ class UDFExecutor:
                     updated_parameters[embedding_field] = embeddings
                 except Exception as e:
                     # Failed to create embeddings configuration
+                    raise e
 
         return updated_parameters
 
@@ -778,7 +779,8 @@ class UDFExecutor:
                         return component_class
 
             except ImportError as e:
-                # Failed to import from metadata module
+                print(f"Import failed for {module_path}: {e}", file=sys.stderr)
+                pass
 
         # Fallback: Common built-in component import patterns
         builtin_imports = [
@@ -892,7 +894,7 @@ class UDFExecutor:
                         embeddings = OpenAIEmbeddings(**embedding_params)
                         component_parameters[embedding_field] = embeddings
                         # Created embeddings successfully
-                    except Exception as e:
+                    except Exception:
                         # Failed to create embeddings configuration
                         pass
 
