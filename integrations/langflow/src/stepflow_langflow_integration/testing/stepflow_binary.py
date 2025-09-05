@@ -58,6 +58,37 @@ class StepflowBinaryRunner:
                 "build stepflow-rs first."
             )
 
+    def _extract_json_result(self, stdout: str) -> dict[str, Any] | None:
+        """Legacy JSON extraction fallback for when --output file parsing fails.
+
+        This is a simplified fallback that tries basic JSON extraction from
+        mixed stdout output. The primary approach now uses --output files.
+
+        Args:
+            stdout: Raw stdout from stepflow command
+
+        Returns:
+            Parsed JSON data as dict, or {"output": raw_text} fallback
+        """
+        if not stdout.strip():
+            return {"output": ""}
+
+        lines = stdout.strip().split("\n")
+
+        # Look for complete JSON objects on individual lines (most reliable)
+        for line in reversed(lines):
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    parsed = json.loads(line)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError:
+                    continue
+
+        # Fallback - return raw output
+        return {"output": stdout.strip()}
+
     def validate_workflow(
         self,
         workflow_yaml: str,
@@ -115,7 +146,10 @@ class StepflowBinaryRunner:
         timeout: float = 60.0,
         input_format: str = "json",
     ) -> tuple[bool, dict[str, Any] | None, str, str]:
-        """Run a workflow using stepflow run command.
+        """Run a workflow using stepflow run command with clean output separation.
+
+        Uses stepflow's built-in --output and --log-file options to separate
+        result JSON from log output, eliminating the need for complex parsing.
 
         Args:
             workflow_yaml: YAML content of the workflow
@@ -126,11 +160,23 @@ class StepflowBinaryRunner:
 
         Returns:
             Tuple of (success, result_data, stdout, stderr)
+            - stdout contains clean JSON result
+            - stderr contains both original stderr and logs for debugging
         """
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(workflow_yaml)
             workflow_path = f.name
+
+        # Create temporary files for clean output separation
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as output_file:
+            output_path = output_file.name
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".log", delete=False
+        ) as log_file:
+            log_path = log_file.name
 
         try:
             cmd = [
@@ -141,6 +187,10 @@ class StepflowBinaryRunner:
                 "--config",
                 config_path,
                 f"--stdin-format={input_format}",
+                "--output",
+                output_path,
+                "--log-file",
+                log_path,
             ]
 
             # Pass input via stdin
@@ -161,80 +211,50 @@ class StepflowBinaryRunner:
 
             success = result.returncode == 0
             result_data = None
+            stdout_content = ""
+            stderr_content = result.stderr
 
-            if result.stdout.strip():
+            # Read the clean JSON output from the output file
+            if success and Path(output_path).exists():
                 try:
-                    # Try to parse JSON output - look for JSON patterns in the output
-                    # The JSON might be embedded in log output with ANSI codes
+                    with open(output_path) as f:
+                        output_content = f.read().strip()
+                    if output_content:
+                        result_data = json.loads(output_content)
+                        stdout_content = output_content  # For compatibility
+                except (json.JSONDecodeError, FileNotFoundError):
+                    # If output file parsing fails, fall back to stdout parsing
+                    if result.stdout.strip():
+                        result_data = self._extract_json_result(result.stdout)
+                        stdout_content = result.stdout
 
-                    # Find the last occurrence of {"outcome" and try to parse from there
-                    outcome_pos = result.stdout.rfind('{"outcome"')
-                    if outcome_pos != -1:
-                        # Extract from {"outcome" to find the matching }
-                        json_candidate = result.stdout[outcome_pos:]
+            # Read logs from log file and append to stderr for debugging
+            if Path(log_path).exists():
+                try:
+                    with open(log_path) as f:
+                        log_content = f.read().strip()
+                    if log_content:
+                        # Add logs to stderr for debugging (keeping original stderr too)
+                        stderr_content = (
+                            f"{stderr_content}\n--- Logs ---\n{log_content}".strip()
+                        )
+                except FileNotFoundError:
+                    pass
 
-                        # Find the end of the JSON by counting braces
-                        brace_count = 0
-                        end_pos = 0
-                        for i, char in enumerate(json_candidate):
-                            if char == "{":
-                                brace_count += 1
-                            elif char == "}":
-                                brace_count -= 1
-                                if brace_count == 0:
-                                    end_pos = i + 1
-                                    break
+            # Check if workflow execution actually succeeded based on outcome
+            if isinstance(result_data, dict) and result_data.get("outcome") == "failed":
+                success = False
 
-                        if end_pos > 0:
-                            json_str = json_candidate[:end_pos]
-                            # Clean up any stray characters before the JSON
-                            json_str = json_str.strip()
-                            if json_str.startswith('{"outcome"'):
-                                result_data = json.loads(json_str)
-                                # Check if workflow execution actually succeeded
-                                if (
-                                    isinstance(result_data, dict)
-                                    and result_data.get("outcome") == "failed"
-                                ):
-                                    success = False
-
-                    if result_data is None:
-                        # Fallback: try to parse line by line
-                        lines = result.stdout.strip().split("\n")
-                        json_line = None
-                        for line in reversed(lines):
-                            line = line.strip()
-                            if line.startswith("{") and line.endswith("}"):
-                                json_line = line
-                                break
-
-                        if json_line:
-                            result_data = json.loads(json_line)
-                            # Check if workflow execution actually succeeded
-                            if (
-                                isinstance(result_data, dict)
-                                and result_data.get("outcome") == "failed"
-                            ):
-                                success = False
-                        else:
-                            # No JSON found, treat as raw output
-                            if success:
-                                result_data = {"output": result.stdout.strip()}
-
-                except json.JSONDecodeError:
-                    # If not JSON, treat as raw output
-                    if success:
-                        result_data = {"output": result.stdout.strip()}
-
-            return success, result_data, result.stdout, result.stderr
+            return success, result_data, stdout_content, stderr_content
 
         except subprocess.TimeoutExpired as e:
             raise ExecutionError(
                 f"Stepflow run command timed out after {timeout}s"
             ) from e
         finally:
-            # Clean up temp file
-            Path(workflow_path).unlink(missing_ok=True)
+            # Clean up temp files
+            for temp_path in [workflow_path, output_path, log_path]:
+                Path(temp_path).unlink(missing_ok=True)
 
     def check_binary_availability(self) -> tuple[bool, str]:
         """Check if stepflow binary is available and working.
