@@ -87,22 +87,51 @@ class TestLangflowConverter:
     def test_step_ordering_with_dependencies(self, converter: LangflowConverter):
         """Test that steps are ordered based on dependencies, not node order."""
         # Create workflow with intentionally wrong node order
+        trivial_code = """
+from langflow.custom.custom_component.component import Component
+from langflow.io import Output
+
+class TrivialComponent(Component):
+    outputs = [Output(display_name="Output", name="output", method="build")]
+
+    def build(self) -> str:
+        return "trivial result"
+"""
+
         workflow_data = {
             "data": {
                 "nodes": [
                     {
                         "id": "output-node",  # This depends on others but appears first
-                        "data": {"type": "ChatOutput", "node": {"template": {}}},
+                        "data": {
+                            "type": "TrivialOutput",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
+                        },
                         "type": "genericNode",
                     },
                     {
                         "id": "input-node",  # This has no dependencies but appears last
-                        "data": {"type": "ChatInput", "node": {"template": {}}},
+                        "data": {
+                            "type": "TrivialInput",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
+                        },
                         "type": "genericNode",
                     },
                     {
                         "id": "middle-node",  # This depends on input but appears middle
-                        "data": {"type": "Prompt", "node": {"template": {}}},
+                        "data": {
+                            "type": "TrivialMiddle",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
+                        },
                         "type": "genericNode",
                     },
                 ],
@@ -161,35 +190,73 @@ class TestLangflowConverter:
 
     def test_complex_dependency_ordering(self, converter: LangflowConverter):
         """Test topological sorting with complex dependencies like memory_chatbot."""
-        # Simulate the memory_chatbot structure that was failing
+        # Simulate the memory_chatbot structure with trivial custom code
+        trivial_code = """
+from langflow.custom.custom_component.component import Component
+from langflow.io import Output
+
+class TrivialComponent(Component):
+    outputs = [Output(display_name="Output", name="output", method="build")]
+
+    def build(self) -> str:
+        return "trivial result"
+"""
+
         workflow_data = {
             "data": {
                 "nodes": [
                     {
                         "id": "ChatInput-1",
-                        "data": {"type": "ChatInput", "node": {"template": {}}},
+                        "data": {
+                            "type": "TrivialChatInput",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
+                        },
                         "type": "genericNode",
                     },
                     {
                         "id": "ChatOutput-2",
-                        "data": {"type": "ChatOutput", "node": {"template": {}}},
+                        "data": {
+                            "type": "TrivialChatOutput",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
+                        },
                         "type": "genericNode",
                     },
                     {
                         "id": "Memory-3",
-                        "data": {"type": "Memory", "node": {"template": {}}},
+                        "data": {
+                            "type": "TrivialMemory",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
+                        },
                         "type": "genericNode",
                     },
                     {
                         "id": "Prompt-4",
-                        "data": {"type": "Prompt", "node": {"template": {}}},
+                        "data": {
+                            "type": "TrivialPrompt",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
+                        },
                         "type": "genericNode",
                     },
                     {
                         "id": "LLM-5",
                         "data": {
-                            "type": "LanguageModelComponent",
-                            "node": {"template": {}},
+                            "type": "TrivialLLM",
+                            "node": {
+                                "template": {"code": {"value": trivial_code}},
+                                "outputs": [{"name": "output", "method": "build"}],
+                            },
                         },
                         "type": "genericNode",
                     },
@@ -325,31 +392,27 @@ class CustomComponent(Component):
             "Should contain custom component class"
         )
 
-    def test_component_routing_strategy_without_custom_code(self):
-        """Test that components without custom use built-in loading."""
+    def test_component_routing_strategy_rejects_incomplete_components(self):
+        """Test that components without custom code are rejected (unified approach)."""
         converter = LangflowConverter()
 
-        # Create workflow with built-in component (no custom code)
+        # Create workflow with component missing custom code (invalid scenario)
         workflow_data = {
             "data": {
                 "nodes": [
                     {
-                        "id": "builtin-component",
+                        "id": "incomplete-component",
                         "data": {
-                            "type": "BuiltinComponent",
+                            "type": "IncompleteComponent",
                             "node": {
                                 "template": {
                                     "param1": {"type": "str", "value": "test"}
-                                    # No "code" field - this is a built-in component
+                                    # No "code" field - this is incomplete/invalid
                                 },
                                 "outputs": [{"name": "output", "method": "build"}],
                                 "base_classes": ["Component"],
-                                "display_name": "Builtin Component",
-                                "metadata": {
-                                    "module": (
-                                        "langflow.components.builtin.BuiltinComponent"
-                                    )
-                                },
+                                "display_name": "Incomplete Component",
+                                "metadata": {},
                             },
                             "outputs": [{"name": "output", "method": "build"}],
                         },
@@ -359,33 +422,6 @@ class CustomComponent(Component):
             }
         }
 
-        workflow = converter.convert(workflow_data)
-
-        # Should still create UDF executor step but with dynamic code loading
-        step_components = [step.component for step in workflow.steps]
-        assert "/builtin/put_blob" in step_components, (
-            "Should create blob step for built-in component"
-        )
-        assert "/langflow/udf_executor" in step_components, (
-            "Should route built-in component to UDF executor"
-        )
-
-        # Find the blob step and verify it's marked as built-in
-        blob_steps = [
-            step for step in workflow.steps if step.component == "/builtin/put_blob"
-        ]
-        assert len(blob_steps) > 0, "Should have blob step for built-in component"
-
-        blob_step = blob_steps[0]
-        blob_data = blob_step.input.get("data", {})
-        assert blob_data.get("is_builtin") == True, (
-            "Should be marked as built-in component"
-        )
-
-        # Should either have dynamic loading code OR import code for built-in components
-        code = blob_data.get("code", "")
-        assert (
-            "Will be loaded dynamically" in code
-            or "from langflow.components" in code
-            or "import" in code
-        ), f"Should have dynamic loading or import code, got: {code[:100]}"
+        # Should raise ConversionError for components without custom code
+        with pytest.raises(ConversionError, match="has no custom code"):
+            converter.convert(workflow_data)

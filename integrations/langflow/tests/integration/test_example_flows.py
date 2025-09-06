@@ -135,48 +135,7 @@ def execute_complete_flow_lifecycle(
         return result_data
 
 
-# Simple flows - no external dependencies
-
-
-def test_simple_chat(converter, stepflow_runner):
-    """Test simple chat: direct passthrough workflow with no processing."""
-    with StepflowConfigBuilder() as config:
-        result = execute_complete_flow_lifecycle(
-            flow_name="simple_chat",
-            input_data={"message": "Hello from simple chat test"},
-            converter=converter,
-            stepflow_runner=stepflow_runner,
-            config_builder=config,
-            timeout=30.0,
-        )
-
-        # Simple chat should return the input message directly
-        assert result["result"] == "Hello from simple chat test"
-
-
 # API-dependent flows
-
-
-def test_openai_chat(converter, stepflow_runner):
-    """Test OpenAI chat: direct API integration with built-in LanguageModelComponent."""
-
-    with StepflowConfigBuilder() as config:
-        config.with_openai_env()
-        result = execute_complete_flow_lifecycle(
-            flow_name="openai_chat",
-            input_data={"message": "What is 2+2?"},
-            converter=converter,
-            stepflow_runner=stepflow_runner,
-            config_builder=config,
-            timeout=45.0,
-        )
-
-        # Should return a Langflow Message with text content
-        message_result = result["result"]
-        assert isinstance(message_result, dict)
-        assert "__langflow_type__" in message_result
-        assert "text" in message_result
-        assert len(message_result["text"]) > 0
 
 
 def test_basic_prompting(converter, stepflow_runner):
@@ -725,27 +684,3 @@ def test_execution_with_missing_input(converter, stepflow_runner):
             else:
                 # Failed gracefully - also good behavior
                 assert isinstance(result_data, dict) or "error" in stderr.lower()
-
-
-def test_execution_timeout(converter, stepflow_runner):
-    """Test execution timeout handling."""
-    # Use simple workflow with very short timeout
-    langflow_data = load_flow_fixture("simple_chat")
-    stepflow_workflow = converter.convert(langflow_data)
-    workflow_yaml = converter.to_yaml(stepflow_workflow)
-
-    # Use very short timeout - should either complete quickly or timeout
-    try:
-        with StepflowConfigBuilder() as config:
-            with config.to_temp_yaml() as config_path:
-                success, result_data, _, _ = stepflow_runner.run_workflow(
-                    workflow_yaml, {}, config_path=config_path, timeout=0.1
-                )
-
-                # If it completes, that's fine too (simple_chat is very simple)
-                if success:
-                    assert isinstance(result_data, dict)
-
-    except Exception:
-        # Timeout exceptions are expected and acceptable
-        pass

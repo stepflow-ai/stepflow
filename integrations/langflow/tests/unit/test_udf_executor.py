@@ -588,40 +588,6 @@ class TestUDFExecutorIntegration:
             if "OPENAI_API_KEY" in os.environ:
                 del os.environ["OPENAI_API_KEY"]
 
-    def test_find_component_class(self, executor_with_mocks: UDFExecutor):
-        """Test component class finding logic."""
-        # Mock execution environment with classes
-        exec_globals = {
-            "TestComponent": type,
-            "AnotherClass": str,
-            "not_a_class": "string_value",
-            "MyCustomComponent": type,
-        }
-
-        # Direct match
-        found_class = executor_with_mocks._find_component_class(
-            exec_globals, "TestComponent"
-        )
-        assert found_class is type
-
-        # Case insensitive match
-        found_class = executor_with_mocks._find_component_class(
-            exec_globals, "testcomponent"
-        )
-        assert found_class is type
-
-        # Not found
-        found_class = executor_with_mocks._find_component_class(
-            exec_globals, "NonexistentComponent"
-        )
-        assert found_class is None
-
-        # Not a class
-        found_class = executor_with_mocks._find_component_class(
-            exec_globals, "not_a_class"
-        )
-        assert found_class is None
-
 
 class TestUDFExecutorWithRealLangflowComponents:
     """Test UDFExecutor with real converted Langflow workflow components."""
@@ -709,88 +675,6 @@ class TestPrompt(Component):
 
         print(f"✅ Found {len(udf_steps)} UDF components in converted workflow")
         print(f"✅ First UDF step: {first_step.id} using {first_step.component}")
-
-    @pytest.mark.asyncio
-    async def test_custom_code_vs_standard_component_strategy(
-        self, executor: UDFExecutor, mock_context
-    ):
-        """Use custom code when available, standard imports otherwise."""
-
-        # Test Case 1: Component with custom code - should use the custom code
-        custom_code_blob = {
-            "code": """
-from langflow.custom.custom_component.component import Component
-from langflow.io import Output
-from langflow.schema.data import Data
-
-class CustomTestComponent(Component):
-    display_name = "Custom Test"
-    description = "Test component with custom implementation"
-
-    outputs = [
-        Output(display_name="Result", name="result", method="custom_method")
-    ]
-
-    def custom_method(self) -> Data:
-        return Data(data={"message": "Custom implementation executed"})
-""",
-            "template": {},
-            "component_type": "CustomTestComponent",
-            "outputs": [
-                {"name": "result", "method": "custom_method", "types": ["Data"]}
-            ],
-            "selected_output": "result",
-            "base_classes": [],
-            "metadata": {"module": "some.module.path"},
-            "is_builtin": False,
-        }
-
-        # Mock the blob retrieval
-        mock_context.get_blob.return_value = custom_code_blob
-
-        # Execute - should use custom code
-        input_data = {"blob_id": "test_custom_blob", "input": {}}
-        result = await executor.execute(input_data, mock_context)
-
-        # Verify custom code was executed
-        # Check the actual result structure
-        assert "result" in result
-        result_data = result["result"]
-
-        # The Data object should be serialized with __langflow_type__ and data field
-        if isinstance(result_data, dict) and "data" in result_data:
-            assert result_data["data"]["message"] == "Custom implementation executed"
-        else:
-            # Fallback: check if the message is in the result directly
-            assert "Custom implementation executed" in str(result_data)
-
-        # Test Case 2: Component without custom code - should try standard import
-        builtin_code_blob = {
-            "code": (
-                "# Built-in Langflow component: TestBuiltin\n"
-                "# Will be loaded dynamically by UDF executor\npass\n"
-            ),
-            "template": {},
-            "component_type": "TestBuiltin",
-            "outputs": [{"name": "result", "method": "build", "types": ["Data"]}],
-            "selected_output": "result",
-            "base_classes": [],
-            "metadata": {"module": "nonexistent.module.TestBuiltin"},
-            "is_builtin": True,
-        }
-
-        # Reset executor state for clean test
-        executor.compiled_components = {}
-        mock_context.get_blob.return_value = builtin_code_blob
-
-        # Execute - should try dynamic loading (will fail but with expected error)
-        input_data = {"blob_id": "test_builtin_blob", "input": {}}
-
-        with pytest.raises(ExecutionError) as exc_info:
-            await executor.execute(input_data, mock_context)
-
-        # Should fail with standard component loading error, not custom code error
-        assert "Could not load standard Langflow component" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_component_metadata_extraction_and_usage(
