@@ -15,7 +15,6 @@
 """New UDF executor with pre-compilation approach (no CachedStepflowContext needed)."""
 
 import inspect
-import os
 import sys
 from typing import Any
 
@@ -118,93 +117,6 @@ class UDFExecutor:
 
         return blob_ids
 
-    def _resolve_environment_variables(
-        self, parameters: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Resolve environment variable references in component parameters.
-
-        This resolves parameter values that reference environment variables,
-        like "ASTRA_DB_APPLICATION_TOKEN" -> actual token value from environment.
-
-        TODO: This is a workaround and should be removed for better architecture.
-        Instead of trying to resolve environment variables at runtime in UDF executor,
-        we should allow tests to edit/override specific fields in Langflow JSON fixtures
-        before conversion to Stepflow workflows. This would involve:
-
-        1. JSON editing utilities in the test framework to modify fixture values
-        2. Environment variable substitution at the test setup level
-        3. Direct field override mechanisms (e.g., set api_endpoint, database_name)
-        4. Remove this runtime environment variable resolution entirely
-
-        The current approach is problematic because:
-        - It couples the UDF executor to specific environment variable names
-        - It requires hardcoded fallback values for testing
-        - It mixes test concerns with production component execution logic
-        - It doesn't address the real issue: fixtures need parameterization
-
-        A better approach would be test-level fixture editing:
-        ```python
-        def test_vector_store_rag(converter, stepflow_runner):
-            flow_fixture = load_flow_fixture("vector_store_rag")
-
-            # Edit AstraDB nodes with environment-specific values
-            override_astradb_config(
-                flow_fixture,
-                {
-                    "api_endpoint": os.environ["ASTRA_DB_API_ENDPOINT"],
-                    "database_name": "langflow-test",
-                    "collection_name": "test_collection",
-                },
-            )
-
-            # Convert the edited fixture
-            stepflow_workflow = converter.convert(flow_fixture)
-            # ... rest of test
-        ```
-        """
-        import os
-
-        resolved = parameters.copy()
-
-        # Common environment variable patterns used by Langflow components
-        env_var_patterns = [
-            "ASTRA_DB_APPLICATION_TOKEN",
-            "ASTRA_DB_API_ENDPOINT",
-            "OPENAI_API_KEY",
-            "ANTHROPIC_API_KEY",
-            "GOOGLE_API_KEY",
-        ]
-
-        for key, value in resolved.items():
-            if isinstance(value, str) and value in env_var_patterns:
-                # Replace environment variable reference with actual value
-                env_value = os.environ.get(value)
-                if env_value:
-                    resolved[key] = env_value
-                    # Environment variable resolved
-                # else: Environment variable not found
-
-        # Special handling for AstraDB components with empty api_endpoint
-        # If api_endpoint is empty but we have ASTRA_DB_API_ENDPOINT env var, use it
-        if resolved.get("api_endpoint") == "" and "ASTRA_DB_API_ENDPOINT" in os.environ:
-            resolved["api_endpoint"] = os.environ["ASTRA_DB_API_ENDPOINT"]
-            # Auto-resolved empty api_endpoint from environment
-
-        # For testing purposes, provide fallback database and collection names
-        if resolved.get("database_name") == "":
-            # Try to derive database name from API endpoint
-            api_endpoint = resolved.get("api_endpoint", "")
-            if "4f913ede-cf76-4f98-b390-907743bafd85" in api_endpoint:
-                # This matches our test database
-                resolved["database_name"] = "langflow-test"
-                # Auto-resolved database_name for testing
-
-        if resolved.get("collection_name") == "":
-            resolved["collection_name"] = "test_collection"
-            # Auto-resolved collection_name for testing
-
-        return resolved
-
     def _process_embedded_configurations(
         self, parameters: dict[str, Any]
     ) -> dict[str, Any]:
@@ -216,7 +128,6 @@ class UDFExecutor:
         Returns:
             Updated parameters with embedded configurations processed
         """
-        import os
 
         updated_parameters = parameters.copy()
 
@@ -244,38 +155,6 @@ class UDFExecutor:
                         for key, value in embedding_params.items()
                         if value != ""
                     }
-
-                    # Handle API key from environment
-                    # Support both "api_key" and "openai_api_key" field names
-                    for api_key_field in ["api_key", "openai_api_key"]:
-                        if api_key_field in embedding_params:
-                            api_key_value = embedding_params[api_key_field]
-
-                            # Handle ${ENV_VAR} format
-                            if (
-                                isinstance(api_key_value, str)
-                                and api_key_value.startswith("${")
-                                and api_key_value.endswith("}")
-                            ):
-                                env_var = api_key_value[2:-1]
-                                actual_api_key = os.getenv(env_var)
-                                if actual_api_key:
-                                    embedding_params["api_key"] = actual_api_key
-                            # Handle direct environment variable name (OPENAI_API_KEY)
-                            elif (
-                                isinstance(api_key_value, str)
-                                and api_key_value == "OPENAI_API_KEY"
-                            ):
-                                actual_api_key = os.getenv("OPENAI_API_KEY")
-                                if actual_api_key:
-                                    embedding_params["api_key"] = actual_api_key
-                            # Remove the openai_api_key field if exists, use api_key
-                            if (
-                                api_key_field == "openai_api_key"
-                                and "api_key" in embedding_params
-                            ):
-                                del embedding_params["openai_api_key"]
-
                     embeddings = OpenAIEmbeddings(**embedding_params)
                     updated_parameters[embedding_field] = embeddings
                 except Exception as e:
@@ -377,10 +256,6 @@ class UDFExecutor:
 
         # Determine execution method with enhanced logic
         execution_method = self._determine_execution_method(outputs, selected_output)
-        if not execution_method:
-            execution_method = self._infer_execution_method_from_component_class(
-                component_class
-            )
         if not execution_method:
             raise ExecutionError(f"No execution method found for {component_type}")
 
@@ -549,8 +424,7 @@ class UDFExecutor:
         session_id = component_parameters.get("session_id", "default_session")
         component_instance._session_id = session_id
 
-        # Resolve environment variables in component parameters
-        resolved_parameters = self._resolve_environment_variables(component_parameters)
+        resolved_parameters = component_parameters
 
         # Process embedded configuration parameters (like _embedding_config_*)
         resolved_parameters = self._process_embedded_configurations(resolved_parameters)
@@ -644,7 +518,6 @@ class UDFExecutor:
     def _create_execution_environment(self) -> dict[str, Any]:
         """Create safe execution environment with Langflow imports."""
         exec_globals = globals().copy()
-        exec_globals["os"] = os
         exec_globals["sys"] = sys
 
         # Import common Langflow types
@@ -667,51 +540,6 @@ class UDFExecutor:
 
         return exec_globals
 
-    def _find_component_class(
-        self,
-        exec_globals: dict[str, Any],
-        component_type: str,
-        base_classes: list[str] = None,
-        metadata: dict[str, Any] = None,
-    ) -> type | None:
-        """Find component class in execution environment with enhanced detection."""
-        # Direct match first
-        component_class = exec_globals.get(component_type)
-        if component_class and isinstance(component_class, type):
-            return component_class  # type: ignore[no-any-return]
-
-        # Search with different matching strategies
-        component_type_lower = component_type.lower()
-        for name, obj in exec_globals.items():
-            if not isinstance(obj, type):
-                continue
-
-            name_lower = name.lower()
-            # Exact lowercase match
-            if name_lower == component_type_lower:
-                return obj
-            # Component suffix match
-            if name_lower == component_type_lower + "component":
-                return obj
-            # Component prefix match
-            if (
-                name_lower.endswith("component")
-                and name_lower[:-9] == component_type_lower
-            ):
-                return obj
-
-        # Enhanced search using base_classes information from Phase 1
-        if base_classes:
-            # Look for components that might inherit from specific Langflow base classes
-            from langflow.custom.custom_component.component import Component
-
-            for _name, obj in exec_globals.items():
-                if isinstance(obj, type) and issubclass(obj, Component):
-                    # This is a Langflow component, likely what we want
-                    return obj
-
-        return None
-
     async def _prepare_component_parameters(
         self, template: dict[str, Any], runtime_inputs: dict[str, Any]
     ) -> dict[str, Any]:
@@ -722,19 +550,6 @@ class UDFExecutor:
         for key, field_def in template.items():
             if isinstance(field_def, dict) and "value" in field_def:
                 value = field_def["value"]
-
-                # Handle environment variables
-                env_var = self._determine_environment_variable(key, value, field_def)
-                if env_var:
-                    actual_value = os.getenv(env_var)
-                    if actual_value:
-                        value = actual_value
-                    elif field_def.get("_input_type") == "SecretStrInput":
-                        print(
-                            f"⚠️  Environment variable {env_var} not found for {key}",
-                            file=sys.stderr,
-                        )
-
                 component_parameters[key] = value
 
             # Handle complex configuration objects (embedded components)
@@ -749,40 +564,6 @@ class UDFExecutor:
                         from langchain_openai import OpenAIEmbeddings
 
                         embedding_params = embedding_config.get("config", {})
-
-                        # Handle API key from environment
-                        # Support both "api_key" and "openai_api_key" field names
-                        for api_key_field in ["api_key", "openai_api_key"]:
-                            if api_key_field in embedding_params:
-                                api_key_value = embedding_params[api_key_field]
-                                # Found API key field in embedding params
-
-                                # Handle ${ENV_VAR} format
-                                if (
-                                    isinstance(api_key_value, str)
-                                    and api_key_value.startswith("${")
-                                    and api_key_value.endswith("}")
-                                ):
-                                    env_var = api_key_value[2:-1]
-                                    actual_api_key = os.getenv(env_var)
-                                    if actual_api_key:
-                                        embedding_params["api_key"] = actual_api_key
-                                        # Resolved environment variable to API key
-                                # Handle direct env var name (OPENAI_API_KEY)
-                                elif (
-                                    isinstance(api_key_value, str)
-                                    and api_key_value == "OPENAI_API_KEY"
-                                ):
-                                    actual_api_key = os.getenv("OPENAI_API_KEY")
-                                    if actual_api_key:
-                                        embedding_params["api_key"] = actual_api_key
-                                        # Resolved OPENAI_API_KEY to API key
-                                # Remove the openai_api_key field if exists, use api_key
-                                if (
-                                    api_key_field == "openai_api_key"
-                                    and "api_key" in embedding_params
-                                ):
-                                    del embedding_params["openai_api_key"]
 
                         embeddings = OpenAIEmbeddings(**embedding_params)
                         component_parameters[embedding_field] = embeddings
@@ -873,40 +654,6 @@ class UDFExecutor:
 
         return component_parameters
 
-    def _determine_environment_variable(
-        self, field_name: str, field_value: Any, field_config: dict[str, Any]
-    ) -> str | None:
-        """Determine environment variable name for a field."""
-        # Template string like "${OPENAI_API_KEY}"
-        if (
-            isinstance(field_value, str)
-            and field_value.startswith("${")
-            and field_value.endswith("}")
-        ):
-            return field_value[2:-1]
-
-        # Direct environment variable name (like "ANTHROPIC_API_KEY")
-        if (
-            isinstance(field_value, str)
-            and field_value.isupper()
-            and "_" in field_value
-            and field_value.endswith("_API_KEY")
-        ):
-            return field_value
-
-        # Secret input fields
-        if field_config.get("_input_type") == "SecretStrInput":
-            if field_name == "api_key":
-                return "OPENAI_API_KEY"
-            elif "openai" in field_name.lower():
-                return "OPENAI_API_KEY"
-            elif "anthropic" in field_name.lower():
-                return "ANTHROPIC_API_KEY"
-            else:
-                return field_name.upper()
-
-        return None
-
     def _determine_execution_method(
         self, outputs: list, selected_output: str | None
     ) -> str | None:
@@ -923,68 +670,6 @@ class UDFExecutor:
             method = outputs[0].get("method")
             if isinstance(method, str) and method:
                 return method
-
-        return None
-
-    def _infer_execution_method_from_component_class(
-        self, component_class: type
-    ) -> str | None:
-        """Infer execution method from component class."""
-        # Try to create a temporary instance to check available methods
-        try:
-            temp_instance = component_class()
-            return self._infer_execution_method_from_component(temp_instance)
-        except Exception:
-            # Fall back to static analysis if instantiation fails
-            common_methods = [
-                "build_prompt",
-                "process_message",
-                "build_model",
-                "execute",
-                "process",
-                "build",
-                "embed_query",
-                "run",
-                "invoke",
-            ]
-
-            for method_name in common_methods:
-                if hasattr(component_class, method_name):
-                    return method_name
-
-            return None
-
-    def _infer_execution_method_from_component(self, component_instance) -> str | None:
-        """Infer execution method by examining the component instance."""
-        # Check if the component has an outputs attribute we can examine
-        if hasattr(component_instance, "outputs"):
-            outputs = getattr(component_instance, "outputs", [])
-            if outputs and hasattr(outputs[0], "method"):
-                method = outputs[0].method
-                if isinstance(method, str):
-                    return method
-
-        # Look for common Langflow component method patterns
-        common_methods = [
-            "build_prompt",
-            "process_message",
-            "build_model",
-            "execute",
-            "process",
-            "build",
-            "embed_query",
-            "run",
-            "invoke",
-            "search_documents",  # For vector store components
-        ]
-
-        for method_name in common_methods:
-            if hasattr(component_instance, method_name):
-                return method_name
-
-        # If component has __call__, use that
-        if callable(component_instance):
-            return "__call__"
 
         return None
 

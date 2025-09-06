@@ -75,6 +75,7 @@ def execute_complete_flow_lifecycle(
     stepflow_runner: StepflowBinaryRunner,
     config_builder: StepflowConfigBuilder,
     timeout: float = 60.0,
+    flow_preprocessor=None,
 ) -> dict[str, Any]:
     """Execute complete flow lifecycle: convert → validate → execute.
 
@@ -85,6 +86,7 @@ def execute_complete_flow_lifecycle(
         stepflow_runner: StepflowBinaryRunner instance
         config_builder: StepflowConfigBuilder instance
         timeout: Execution timeout in seconds
+        flow_preprocessor: Optional function to preprocess langflow data
 
     Returns:
         Execution result dict
@@ -96,6 +98,11 @@ def execute_complete_flow_lifecycle(
 
     # Step 1: Load and convert
     langflow_data = load_flow_fixture(flow_name)
+
+    # Apply preprocessing if provided
+    if flow_preprocessor:
+        langflow_data = flow_preprocessor(langflow_data)
+
     stepflow_workflow = converter.convert(langflow_data)
     workflow_yaml = converter.to_yaml(stepflow_workflow)
 
@@ -143,6 +150,10 @@ def test_basic_prompting(converter, stepflow_runner):
 
     with StepflowConfigBuilder() as config:
         config.with_openai_env()
+
+        # Apply OpenAI substitution for LanguageModelComponent
+        from tests.helpers.fixture_preprocessing import substitute_openai_inputs
+
         result = execute_complete_flow_lifecycle(
             flow_name="basic_prompting",
             input_data={"message": "Write a haiku about testing"},
@@ -150,6 +161,7 @@ def test_basic_prompting(converter, stepflow_runner):
             stepflow_runner=stepflow_runner,
             config_builder=config,
             timeout=60.0,
+            flow_preprocessor=substitute_openai_inputs,
         )
 
         # Should return a Langflow Message with text content
@@ -205,7 +217,12 @@ retrieval-augmented generation (RAG). Popular solutions include:
 
     try:
         with StepflowConfigBuilder() as config:
-            config.with_openai_env().with_astra_db_env()
+            config.with_openai_env()
+
+            # Use component-based substitutions to set AstraDB and OpenAI values
+            from tests.helpers.fixture_preprocessing import (
+                substitute_astradb_and_openai_inputs,
+            )
 
             try:
                 result = execute_complete_flow_lifecycle(
@@ -218,6 +235,7 @@ retrieval-augmented generation (RAG). Popular solutions include:
                     stepflow_runner=stepflow_runner,
                     config_builder=config,
                     timeout=120.0,
+                    flow_preprocessor=substitute_astradb_and_openai_inputs,
                 )
 
                 # Should return a response about the document content
@@ -290,6 +308,9 @@ def test_memory_chatbot(converter, stepflow_runner):
     with StepflowConfigBuilder() as config:
         config.with_openai_env()
         config.add_shared_langflow_database()
+
+        # Apply OpenAI substitution for LanguageModelComponent
+        from tests.helpers.fixture_preprocessing import substitute_openai_inputs
 
         # Setup test data with different session IDs upfront
         our_session_id = "test-memory-session-123"
@@ -373,6 +394,10 @@ def test_memory_chatbot(converter, stepflow_runner):
 
         # Phase 2: Test end-to-end memory functionality
         langflow_data = load_flow_fixture("memory_chatbot")
+
+        # Apply OpenAI substitution for LanguageModelComponent
+        langflow_data = substitute_openai_inputs(langflow_data)
+
         stepflow_workflow = converter.convert(langflow_data)
         workflow_yaml = converter.to_yaml(stepflow_workflow)
 
@@ -473,6 +498,9 @@ language processing, and autonomous vehicles.
         with StepflowConfigBuilder() as config:
             config.with_openai_env()
 
+            # Apply OpenAI substitution for LanguageModelComponent
+            from tests.helpers.fixture_preprocessing import substitute_openai_inputs
+
             # Test with file path provided as input data
             result = execute_complete_flow_lifecycle(
                 flow_name="document_qa",
@@ -487,6 +515,7 @@ language processing, and autonomous vehicles.
                 stepflow_runner=stepflow_runner,
                 config_builder=config,
                 timeout=120.0,
+                flow_preprocessor=substitute_openai_inputs,
             )
 
             # Should return a response about the document content
@@ -523,6 +552,9 @@ def test_simple_agent(converter, stepflow_runner):
         # Set up shared database for agent memory operations
         config.add_shared_langflow_database()
 
+        # Apply OpenAI substitution for LanguageModelComponent
+        from tests.helpers.fixture_preprocessing import substitute_openai_inputs
+
         # Use a more complex calculation that requires actual computation
         complex_expression = "137 * 89 + 456 / 12 - 73"
         # Expected result: 137 * 89 + 456 / 12 - 73 = 12158.0
@@ -543,6 +575,7 @@ def test_simple_agent(converter, stepflow_runner):
             stepflow_runner=stepflow_runner,
             config_builder=config,
             timeout=120.0,  # Longer timeout for complex calculation
+            flow_preprocessor=substitute_openai_inputs,
         )
 
         # Should return a Langflow Message with text content containing result
