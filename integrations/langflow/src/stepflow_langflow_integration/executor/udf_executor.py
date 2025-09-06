@@ -350,51 +350,30 @@ class UDFExecutor:
         field_order = blob_data.get("field_order", [])
         icon = blob_data.get("icon", "")
 
-        if not code:
-            raise ExecutionError(f"No code found for component {component_type}")
-
         # Compiling component with metadata
 
         # Create execution environment with enhanced context
         self._create_execution_environment()
 
-        # Strategy: Prefer custom code when available, fallback to Langflow imports
-        component_class: type | None = None
-
-        if (
-            code
-            and code.strip()
-            and code.strip() != "pass"
-            and "# Will be loaded dynamically" not in code
-        ):
-            # Custom code available - use it (user's modifications/customizations)
-            # Using custom component code
-            try:
-                # Use Langflow's proper custom component evaluation
-                from langflow.custom.eval import eval_custom_component_code
-
-                component_class = eval_custom_component_code(code)
-                # Successfully evaluated custom code
-            except Exception as e:
-                raise ExecutionError(
-                    f"Failed to evaluate component code for {component_type}: {e}"
-                ) from e
-
-            if not component_class:
-                raise ExecutionError(
-                    f"eval_custom_component_code returned None for {component_type}"
-                )
-        else:
-            # No custom code - use standard Langflow component imports
-            # Loading standard Langflow component
-            component_class = self._try_dynamic_builtin_loading(
-                component_type, base_classes, metadata
+        if not code or not code.strip():
+            raise ExecutionError(
+                f"No code found for component {component_type}. "
+                f"All executable components should have custom code."
             )
-            if not component_class:
-                raise ExecutionError(
-                    f"Could not load standard Langflow component {component_type}"
-                )
-            # Using standard Langflow component
+
+        try:
+            from langflow.custom.eval import eval_custom_component_code
+
+            component_class = eval_custom_component_code(code)
+        except Exception as e:
+            raise ExecutionError(
+                f"Failed to evaluate component code for {component_type}: {e}"
+            ) from e
+
+        if not component_class:
+            raise ExecutionError(
+                f"eval_custom_component_code returned None for {component_type}"
+            )
 
         # Determine execution method with enhanced logic
         execution_method = self._determine_execution_method(outputs, selected_output)
@@ -730,92 +709,6 @@ class UDFExecutor:
                 if isinstance(obj, type) and issubclass(obj, Component):
                     # This is a Langflow component, likely what we want
                     return obj
-
-        # Try dynamic loading for built-in components if no class found in exec_globals
-        component_class = self._try_dynamic_builtin_loading(
-            component_type, base_classes, metadata or {}
-        )
-        if component_class:
-            return component_class
-
-        return None
-
-    def _try_dynamic_builtin_loading(
-        self, component_type: str, base_classes: list[str] = None, metadata: dict = None
-    ) -> type | None:
-        """Try to dynamically load built-in Langflow components using metadata.
-
-        Args:
-            component_type: Component type name
-            base_classes: Base class information for the component
-            metadata: Component metadata containing module path
-
-        Returns:
-            Component class if found, None otherwise
-        """
-        # Attempting dynamic loading of built-in component
-
-        # First try using the module path from component metadata (most accurate)
-        if metadata and "module" in metadata:
-            module_path = metadata["module"]
-            try:
-                import importlib
-
-                module = importlib.import_module(module_path)
-
-                # Extract class name from module path or use component_type
-                class_name = module_path.split(".")[-1]
-                if hasattr(module, class_name):
-                    component_class = getattr(module, class_name)
-                    if isinstance(component_class, type):
-                        # Found component at module path
-                        return component_class
-
-                # Fallback: try component_type as class name
-                if hasattr(module, component_type):
-                    component_class = getattr(module, component_type)
-                    if isinstance(component_class, type):
-                        # Found component class in module
-                        return component_class
-
-            except ImportError as e:
-                print(f"Import failed for {module_path}: {e}", file=sys.stderr)
-                pass
-
-        # Fallback: Common built-in component import patterns
-        builtin_imports = [
-            # Model components - Current Langflow 1.5.0 location
-            "langflow.components.models.language_model",  # LanguageModelComponent
-            # Input/Output components - Current Langflow 1.5.0 locations
-            "langflow.components.input_output.chat",  # ChatInput
-            "langflow.components.input_output.chat_output",  # ChatOutput
-            # Other common component locations
-            f"langflow.components.prompts.{component_type.lower()}",
-            f"langflow.components.helpers.{component_type.lower()}",
-            f"langflow.components.data.{component_type.lower()}",
-            f"langflow.components.models.{component_type.lower()}",
-            # Legacy paths (for backward compatibility)
-            "langflow.base.models.model",
-            "langflow.components.models.openai",
-            "langflow.components.models.anthropic",
-        ]
-
-        for import_path in builtin_imports:
-            try:
-                import importlib
-
-                module = importlib.import_module(import_path)
-
-                # Try multiple class name variations
-                class_names = [component_type, f"{component_type}Component"]
-                for class_name in class_names:
-                    if hasattr(module, class_name):
-                        component_class = getattr(module, class_name)
-                        if isinstance(component_class, type):
-                            return component_class
-
-            except ImportError:
-                continue
 
         return None
 

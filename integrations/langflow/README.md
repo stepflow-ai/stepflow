@@ -324,10 +324,6 @@ uv run stepflow-langflow execute tests/fixtures/langflow/simple_agent.json \
 # 6. Vector Store RAG - Complex retrieval augmented generation ✅ WORKING
 uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
   '{"message": "Find information about artificial intelligence"}'
-
-# 7. OpenAI Chat - Direct OpenAI API integration ✅ WORKING
-uv run stepflow-langflow execute tests/fixtures/langflow/openai_chat.json \
-  '{"message": "What is Python programming?"}'
 ```
 
 ### 💡 Workflow Input Patterns & Status
@@ -342,7 +338,6 @@ All workflows expect JSON input with a `message` field:
 | `document_qa.json` | `{"message": "Summarize this document"}` | Questions about documents | ✅ Working |
 | `simple_agent.json` | `{"message": "Calculate 42 * 17"}` | Tasks requiring tools/calculations | ⚠️ Partial (use --timeout 180) |
 | `vector_store_rag.json` | `{"message": "Explain machine learning"}` | Knowledge retrieval queries | ✅ Working |
-| `openai_chat.json` | `{"message": "Explain quantum computing"}` | Direct chat with LLM | ✅ Working |
 
 ### 🔍 Workflow Analysis
 
@@ -371,7 +366,6 @@ The following workflows work reliably with real API execution:
 - `memory_chatbot.json` - Conversational AI with memory
 - `document_qa.json` - Document-based question answering
 - `vector_store_rag.json` - Complex retrieval augmented generation
-- `openai_chat.json` - Direct OpenAI API integration
 
 #### ⚠️ Partially Working Workflows
 - `simple_agent.json` - Architecture complete but OpenAI Agent execution issues may cause timeouts
@@ -389,10 +383,6 @@ export ASTRA_DB_APPLICATION_TOKEN="your-astra-token"
 
 #### Quick Production Test
 ```bash
-# Test a working workflow with real API
-uv run stepflow-langflow execute tests/fixtures/langflow/openai_chat.json \
-  '{"message": "Hello, this is a production test!"}'
-
 # Test with extended timeout for complex workflows
 uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
   '{"message": "Explain deep learning"}' --timeout 120
