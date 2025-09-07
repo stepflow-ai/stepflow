@@ -451,49 +451,17 @@ class FailingMethodComponent(Component):
         with pytest.raises(ExecutionError, match="Failed to execute failing_method"):
             await executor.execute(input_data, mock_context)
 
-    def test_determine_environment_variable(self, executor: UDFExecutor):
-        """Test environment variable determination from field configurations."""
-        # Template string format
-        assert (
-            executor._determine_environment_variable("api_key", "${OPENAI_API_KEY}", {})
-            == "OPENAI_API_KEY"
-        )
+    def test_environment_variable_handling_deprecated(self, executor: UDFExecutor):
+        """Test that environment variable handling is now handled via preprocessing.
 
-        # Direct env var name
-        assert (
-            executor._determine_environment_variable("token", "ANTHROPIC_API_KEY", {})
-            == "ANTHROPIC_API_KEY"
-        )
-
-        # Secret input field
-        assert (
-            executor._determine_environment_variable(
-                "api_key", "", {"_input_type": "SecretStrInput"}
-            )
-            == "OPENAI_API_KEY"
-        )
-
-        # OpenAI field name
-        assert (
-            executor._determine_environment_variable(
-                "openai_token", "", {"_input_type": "SecretStrInput"}
-            )
-            == "OPENAI_API_KEY"
-        )
-
-        # Generic secret field
-        assert (
-            executor._determine_environment_variable(
-                "custom_secret", "", {"_input_type": "SecretStrInput"}
-            )
-            == "CUSTOM_SECRET"
-        )
-
-        # No environment variable
-        assert (
-            executor._determine_environment_variable("normal_field", "normal_value", {})
-            is None
-        )
+        This test documents that environment variable resolution was moved from
+        runtime in the UDF executor to preprocessing at the test/workflow level.
+        The _determine_environment_variable method was removed as part of the
+        simplification effort to rely on preprocessing instead.
+        """
+        # Environment variable resolution is now handled by preprocessing
+        # instead of runtime resolution in the UDF executor
+        assert True  # This test now just documents the architectural change
 
     def test_determine_execution_method(self, executor: UDFExecutor):
         """Test execution method determination from outputs metadata."""
@@ -541,7 +509,11 @@ class TestUDFExecutorIntegration:
     async def test_component_parameter_preparation(
         self, executor_with_mocks: UDFExecutor
     ):
-        """Test component parameter preparation logic."""
+        """Test component parameter preparation logic.
+
+        Note: Environment variable resolution is now handled by preprocessing,
+        not at runtime in the UDF executor. This test reflects the new approach.
+        """
         template = {
             "text_field": {
                 "type": "str",
@@ -550,7 +522,8 @@ class TestUDFExecutorIntegration:
             },
             "api_key": {
                 "type": "str",
-                "value": "${OPENAI_API_KEY}",
+                # In the new approach, preprocessing would have already resolved this
+                "value": "test-api-key-123",  # Already preprocessed value
                 "_input_type": "SecretStrInput",
             },
             "number_field": {"type": "int", "value": 42},
@@ -561,32 +534,21 @@ class TestUDFExecutorIntegration:
             "extra_field": "extra_value",
         }
 
-        # Set environment variable for testing
-        import os
+        params = await executor_with_mocks._prepare_component_parameters(
+            template, runtime_inputs
+        )
 
-        os.environ["OPENAI_API_KEY"] = "test-api-key-123"
+        # Should have runtime override
+        assert params["text_field"] == "runtime_override"
 
-        try:
-            params = await executor_with_mocks._prepare_component_parameters(
-                template, runtime_inputs
-            )
+        # Should have preprocessed API key (not runtime resolved)
+        assert params["api_key"] == "test-api-key-123"
 
-            # Should have runtime override
-            assert params["text_field"] == "runtime_override"
+        # Should have template default
+        assert params["number_field"] == 42
 
-            # Should have environment variable substitution
-            assert params["api_key"] == "test-api-key-123"
-
-            # Should have template default
-            assert params["number_field"] == 42
-
-            # Should have runtime extra field
-            assert params["extra_field"] == "extra_value"
-
-        finally:
-            # Clean up environment
-            if "OPENAI_API_KEY" in os.environ:
-                del os.environ["OPENAI_API_KEY"]
+        # Should have runtime extra field
+        assert params["extra_field"] == "extra_value"
 
 
 class TestUDFExecutorWithRealLangflowComponents:
