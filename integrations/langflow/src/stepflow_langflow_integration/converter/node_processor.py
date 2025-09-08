@@ -148,7 +148,7 @@ class NodeProcessor:
                     node_output_refs,
                     field_mapping,
                 )
-                
+
                 # Extract and add embedded configuration parameters as tweakable inputs
                 embedded_config_inputs = self._extract_embedded_config_inputs(node)
                 runtime_inputs.update(embedded_config_inputs)
@@ -911,21 +911,21 @@ class NodeProcessor:
 
     def _extract_embedded_config_inputs(self, node: dict[str, Any]) -> dict[str, Any]:
         """Extract embedded configuration parameters as tweakable inputs.
-        
+
         This method looks for embedded configuration fields (like _embedding_config_*)
         in the node template and extracts their parameter values as direct inputs
         that can be modified by the tweaks system.
-        
+
         Args:
             node: Langflow node with embedded configurations
-            
+
         Returns:
             Dict of parameter names to values that can be tweaked
         """
         embedded_inputs = {}
         node_data = node.get("data", {})
         template = node_data.get("node", {}).get("template", {})
-        
+
         # Look for embedded configuration fields
         for field_name, field_config in template.items():
             if field_name.startswith("_embedding_config_"):
@@ -938,5 +938,5 @@ class NodeProcessor:
                         for param_name, param_value in embedded_config.items():
                             # Use a prefixed name to avoid conflicts
                             embedded_inputs[f"embedded_{param_name}"] = param_value
-        
+
         return embedded_inputs

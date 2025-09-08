@@ -15,14 +15,12 @@
 """Tests for Stepflow-level tweaks functionality."""
 
 import pytest
-from stepflow_py import Flow, FlowBuilder, Step
 
 from stepflow_langflow_integration.converter.stepflow_tweaks import (
-    StepflowTweaks,
     apply_stepflow_tweaks,
 )
-from tests.helpers.tweaks_builder import TweaksBuilder
 from stepflow_langflow_integration.converter.translator import LangflowConverter
+from tests.helpers.tweaks_builder import TweaksBuilder
 
 
 class TestStepflowTweaks:
@@ -37,10 +35,15 @@ class TestStepflowTweaksIntegration:
         """Convert basic_prompting.json to a Flow object for testing."""
         import json
         from pathlib import Path
-        
+
         converter = LangflowConverter()
-        fixture_path = Path(__file__).parent.parent / "fixtures" / "langflow" / "basic_prompting.json"
-        
+        fixture_path = (
+            Path(__file__).parent.parent
+            / "fixtures"
+            / "langflow"
+            / "basic_prompting.json"
+        )
+
         if fixture_path.exists():
             with open(fixture_path) as f:
                 langflow_data = json.load(f)
@@ -54,7 +57,7 @@ class TestStepflowTweaksIntegration:
             "LanguageModelComponent-kboja": {  # Lowercase to match converted workflow
                 "api_key": "integration_test_key",
                 "temperature": 0.7,
-                "model_name": "gpt-4"
+                "model_name": "gpt-4",
             }
         }
 
@@ -63,12 +66,16 @@ class TestStepflowTweaksIntegration:
         # Find the LanguageModelComponent UDF executor step
         langflow_step = None
         for step in modified_flow.steps:
-            if (step.id == "langflow_languagemodelcomponent-kboja" and 
-                step.component == "/langflow/udf_executor"):
+            if (
+                step.id == "langflow_languagemodelcomponent-kboja"
+                and step.component == "/langflow/udf_executor"
+            ):
                 langflow_step = step
                 break
 
-        assert langflow_step is not None, "LanguageModelComponent UDF executor step not found"
+        assert langflow_step is not None, (
+            "LanguageModelComponent UDF executor step not found"
+        )
 
         # Verify tweaks were applied
         step_input = langflow_step.input["input"]
@@ -94,30 +101,22 @@ class TestTweaksBuilder:
         tweaks = builder.build()
 
         expected = {
-            "Component-123": {
-                "api_key": "test_key",
-                "temperature": 0.8
-            },
-            "AnotherComponent-456": {
-                "model": "gpt-4"
-            }
+            "Component-123": {"api_key": "test_key", "temperature": 0.8},
+            "AnotherComponent-456": {"model": "gpt-4"},
         }
 
         assert tweaks == expected
 
     def test_method_chaining(self):
         """Test that methods can be chained for fluent API."""
-        tweaks = (TweaksBuilder()
-                 .add_tweak("Component-123", "api_key", "test_key")
-                 .add_tweak("Component-123", "temperature", 0.8)
-                 .build())
+        tweaks = (
+            TweaksBuilder()
+            .add_tweak("Component-123", "api_key", "test_key")
+            .add_tweak("Component-123", "temperature", 0.8)
+            .build()
+        )
 
-        expected = {
-            "Component-123": {
-                "api_key": "test_key",
-                "temperature": 0.8
-            }
-        }
+        expected = {"Component-123": {"api_key": "test_key", "temperature": 0.8}}
 
         assert tweaks == expected
 
@@ -126,15 +125,17 @@ class TestTweaksBuilder:
         monkeypatch.setenv("TEST_API_KEY", "env_test_key")
         monkeypatch.setenv("TEST_TEMPERATURE", "0.9")
 
-        tweaks = (TweaksBuilder()
-                 .add_env_tweak("Component-123", "api_key", "TEST_API_KEY")
-                 .add_env_tweak("Component-123", "temperature", "TEST_TEMPERATURE")
-                 .build())
+        tweaks = (
+            TweaksBuilder()
+            .add_env_tweak("Component-123", "api_key", "TEST_API_KEY")
+            .add_env_tweak("Component-123", "temperature", "TEST_TEMPERATURE")
+            .build()
+        )
 
         expected = {
             "Component-123": {
                 "api_key": "env_test_key",
-                "temperature": "0.9"  # Environment variables are strings
+                "temperature": "0.9",  # Environment variables are strings
             }
         }
 
@@ -152,7 +153,9 @@ class TestTweaksBuilder:
         assert "MISSING_API_KEY" in builder.missing_env_vars
 
         # Should raise error on build
-        with pytest.raises(ValueError, match="Missing required environment variables: MISSING_API_KEY"):
+        with pytest.raises(
+            ValueError, match="Missing required environment variables: MISSING_API_KEY"
+        ):
             builder.build()
 
     def test_build_or_skip_with_missing_env_vars(self, monkeypatch):
@@ -163,22 +166,23 @@ class TestTweaksBuilder:
         builder.add_env_tweak("Component-123", "field", "MISSING_VAR")
 
         # Should call pytest.skip
-        with pytest.raises(pytest.skip.Exception, match="Missing required environment variables: MISSING_VAR"):
+        with pytest.raises(
+            pytest.skip.Exception,
+            match="Missing required environment variables: MISSING_VAR",
+        ):
             builder.build_or_skip()
 
     def test_build_or_skip_with_all_env_vars_present(self, monkeypatch):
         """Test that build_or_skip works normally when all env vars are present."""
         monkeypatch.setenv("PRESENT_VAR", "test_value")
 
-        tweaks = (TweaksBuilder()
-                 .add_env_tweak("Component-123", "field", "PRESENT_VAR")
-                 .build_or_skip())
+        tweaks = (
+            TweaksBuilder()
+            .add_env_tweak("Component-123", "field", "PRESENT_VAR")
+            .build_or_skip()
+        )
 
-        expected = {
-            "Component-123": {
-                "field": "test_value"
-            }
-        }
+        expected = {"Component-123": {"field": "test_value"}}
 
         assert tweaks == expected
 
@@ -186,17 +190,19 @@ class TestTweaksBuilder:
         """Test the convenience method for OpenAI tweaks."""
         monkeypatch.setenv("OPENAI_API_KEY", "openai_test_key")
 
-        tweaks = (TweaksBuilder()
-                 .add_openai_tweaks("LanguageModelComponent-abc123", 
-                                   temperature=0.7, 
-                                   model_name="gpt-4")
-                 .build())
+        tweaks = (
+            TweaksBuilder()
+            .add_openai_tweaks(
+                "LanguageModelComponent-abc123", temperature=0.7, model_name="gpt-4"
+            )
+            .build()
+        )
 
         expected = {
             "LanguageModelComponent-abc123": {
                 "api_key": "openai_test_key",
                 "temperature": 0.7,
-                "model_name": "gpt-4"
+                "model_name": "gpt-4",
             }
         }
 
@@ -206,16 +212,15 @@ class TestTweaksBuilder:
         """Test OpenAI tweaks with custom environment variable name."""
         monkeypatch.setenv("CUSTOM_OPENAI_KEY", "custom_key")
 
-        tweaks = (TweaksBuilder()
-                 .add_openai_tweaks("LanguageModelComponent-abc123", 
-                                   api_key_env="CUSTOM_OPENAI_KEY")
-                 .build())
+        tweaks = (
+            TweaksBuilder()
+            .add_openai_tweaks(
+                "LanguageModelComponent-abc123", api_key_env="CUSTOM_OPENAI_KEY"
+            )
+            .build()
+        )
 
-        expected = {
-            "LanguageModelComponent-abc123": {
-                "api_key": "custom_key"
-            }
-        }
+        expected = {"LanguageModelComponent-abc123": {"api_key": "custom_key"}}
 
         assert tweaks == expected
 
@@ -224,16 +229,14 @@ class TestTweaksBuilder:
         monkeypatch.setenv("ASTRA_DB_APPLICATION_TOKEN", "astra_token")
         monkeypatch.setenv("ASTRA_DB_API_ENDPOINT", "https://astra-endpoint.com")
 
-        tweaks = (TweaksBuilder()
-                 .add_astradb_tweaks("AstraDB-store-123")
-                 .build())
+        tweaks = TweaksBuilder().add_astradb_tweaks("AstraDB-store-123").build()
 
         expected = {
             "AstraDB-store-123": {
                 "token": "astra_token",
                 "api_endpoint": "https://astra-endpoint.com",
                 "database_name": "langflow-test",  # Default value
-                "collection_name": "test_collection"  # Default value
+                "collection_name": "test_collection",  # Default value
             }
         }
 
@@ -244,20 +247,24 @@ class TestTweaksBuilder:
         monkeypatch.setenv("ASTRA_DB_APPLICATION_TOKEN", "astra_token")
         monkeypatch.setenv("ASTRA_DB_API_ENDPOINT", "https://astra-endpoint.com")
 
-        tweaks = (TweaksBuilder()
-                 .add_astradb_tweaks("AstraDB-store-123",
-                                   database_name="custom_db",
-                                   collection_name="custom_collection",
-                                   extra_field="extra_value")
-                 .build())
+        tweaks = (
+            TweaksBuilder()
+            .add_astradb_tweaks(
+                "AstraDB-store-123",
+                database_name="custom_db",
+                collection_name="custom_collection",
+                extra_field="extra_value",
+            )
+            .build()
+        )
 
         expected = {
             "AstraDB-store-123": {
                 "token": "astra_token",
                 "api_endpoint": "https://astra-endpoint.com",
                 "database_name": "custom_db",
-                "collection_name": "custom_collection", 
-                "extra_field": "extra_value"
+                "collection_name": "custom_collection",
+                "extra_field": "extra_value",
             }
         }
 
@@ -267,36 +274,31 @@ class TestTweaksBuilder:
         """Test combining direct tweaks and environment variable tweaks."""
         monkeypatch.setenv("API_KEY", "env_api_key")
 
-        tweaks = (TweaksBuilder()
-                 .add_env_tweak("Component-123", "api_key", "API_KEY")
-                 .add_tweak("Component-123", "temperature", 0.5)
-                 .add_tweak("Component-456", "model", "claude-3")
-                 .build())
+        tweaks = (
+            TweaksBuilder()
+            .add_env_tweak("Component-123", "api_key", "API_KEY")
+            .add_tweak("Component-123", "temperature", 0.5)
+            .add_tweak("Component-456", "model", "claude-3")
+            .build()
+        )
 
         expected = {
-            "Component-123": {
-                "api_key": "env_api_key",
-                "temperature": 0.5
-            },
-            "Component-456": {
-                "model": "claude-3"
-            }
+            "Component-123": {"api_key": "env_api_key", "temperature": 0.5},
+            "Component-456": {"model": "claude-3"},
         }
 
         assert tweaks == expected
 
     def test_overwriting_tweaks(self):
-        """Test that later tweaks overwrite earlier ones for the same component/field."""
-        tweaks = (TweaksBuilder()
-                 .add_tweak("Component-123", "temperature", 0.3)
-                 .add_tweak("Component-123", "temperature", 0.7)  # Should overwrite
-                 .build())
+        """Test that later tweaks overwrite earlier ones."""
+        tweaks = (
+            TweaksBuilder()
+            .add_tweak("Component-123", "temperature", 0.3)
+            .add_tweak("Component-123", "temperature", 0.7)  # Should overwrite
+            .build()
+        )
 
-        expected = {
-            "Component-123": {
-                "temperature": 0.7
-            }
-        }
+        expected = {"Component-123": {"temperature": 0.7}}
 
         assert tweaks == expected
 

@@ -56,28 +56,29 @@ def stepflow_runner():
 @pytest.fixture(scope="module")
 def shared_config():
     """Create a shared Stepflow configuration with Langflow database for all tests.
-    
+
     This configuration includes:
     - Langflow component server
     - Shared database for memory/session handling
     - No environment variable setup (API keys now passed via tweaks)
     """
+    import asyncio
     import contextlib
+    import os
     import tempfile
     from pathlib import Path
-    import asyncio
-    import os
+
     import yaml
 
     # Create shared database path
     shared_db_path = Path(tempfile.gettempdir()) / "stepflow_langflow_shared_test.db"
-    
+
     # Initialize database if it doesn't exist
     if not shared_db_path.exists():
         # Initialize Langflow database using their service
         original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
         os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{shared_db_path}"
-        
+
         try:
             from langflow.services.deps import get_db_service, get_settings_service
             from langflow.services.manager import service_manager
@@ -96,10 +97,10 @@ def shared_config():
                 os.environ["LANGFLOW_DATABASE_URL"] = original_db_url
             else:
                 os.environ.pop("LANGFLOW_DATABASE_URL", None)
-    
+
     # Get path to langflow integration directory
     current_dir = Path(__file__).parent.parent.parent
-    
+
     # Create configuration dictionary
     config_dict = {
         "plugins": {
@@ -131,30 +132,37 @@ def shared_config():
     class InlineConfig:
         def __init__(self, config_dict):
             self._config = config_dict
-        
+
         @contextlib.contextmanager
         def to_temp_yaml(self):
             """Create temporary YAML config file with automatic cleanup."""
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yml", delete=False
+            ) as f:
                 yaml.dump(self._config, f, default_flow_style=False, sort_keys=False)
                 temp_path = Path(f.name)
-            
+
             try:
                 yield str(temp_path)
             finally:
                 temp_path.unlink(missing_ok=True)
-    
+
     yield InlineConfig(config_dict)
 
 
 class TestExecutor:
     """Encapsulates flow execution logic for cleaner test code."""
-    
-    def __init__(self, converter: LangflowConverter, stepflow_runner: StepflowBinaryRunner, shared_config: Any):
+
+    def __init__(
+        self,
+        converter: LangflowConverter,
+        stepflow_runner: StepflowBinaryRunner,
+        shared_config: Any,
+    ):
         self.converter = converter
         self.stepflow_runner = stepflow_runner
         self.shared_config = shared_config
-    
+
     def execute_flow(
         self,
         flow_name: str,
@@ -177,7 +185,9 @@ class TestExecutor:
             AssertionError: If any step fails
             pytest.skip: If dependencies not available
         """
-        from stepflow_langflow_integration.converter.stepflow_tweaks import apply_stepflow_tweaks
+        from stepflow_langflow_integration.converter.stepflow_tweaks import (
+            apply_stepflow_tweaks,
+        )
 
         # Step 1: Load and convert
         langflow_data = load_flow_fixture(flow_name)
@@ -253,7 +263,7 @@ def test_basic_prompting(test_executor):
 
     # Use test utilities to create tweaks for OpenAI components
     from tests.helpers.tweaks_builder import create_basic_prompting_tweaks
-    
+
     tweaks = create_basic_prompting_tweaks()
 
     result = test_executor.execute_flow(
@@ -317,7 +327,7 @@ retrieval-augmented generation (RAG). Popular solutions include:
     try:
         # Use test utilities to create tweaks for components
         from tests.helpers.tweaks_builder import create_vector_store_rag_tweaks
-        
+
         tweaks = create_vector_store_rag_tweaks()
 
         try:
@@ -399,10 +409,12 @@ def test_memory_chatbot(test_executor):
 
     # Use test utilities to create tweaks for OpenAI components
     from tests.helpers.tweaks_builder import TweaksBuilder
-    
+
     tweaks = (
         TweaksBuilder()
-        .add_openai_tweaks("LanguageModelComponent-n8krg")  # Correct ID for memory_chatbot
+        .add_openai_tweaks(
+            "LanguageModelComponent-n8krg"
+        )  # Correct ID for memory_chatbot
         .build_or_skip()
     )
 
@@ -449,14 +461,10 @@ def test_memory_chatbot(test_executor):
     db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
     # Extract path from sqlite:///path format
     db_path = (
-        db_url.replace("sqlite:///", "")
-        if db_url.startswith("sqlite:///")
-        else None
+        db_url.replace("sqlite:///", "") if db_url.startswith("sqlite:///") else None
     )
 
-    assert db_path and Path(db_path).exists(), (
-        f"Database file not found at {db_path}"
-    )
+    assert db_path and Path(db_path).exists(), f"Database file not found at {db_path}"
 
     # Set up database environment for Langflow's storage methods
     import os
@@ -505,7 +513,7 @@ def test_memory_chatbot(test_executor):
         timeout=60.0,
         tweaks=tweaks,
     )
-    
+
     other_response = result_other["result"]["text"]
 
     # Debug: Print the actual responses to see what each session is getting
@@ -526,8 +534,7 @@ def test_memory_chatbot(test_executor):
         f"Bob not remembered in Bob's session. Response: {other_response}"
     )
     assert not alex_sees_bob, (
-        f"Session isolation broken: Alex sees Bob's messages. "
-        f"Response: {our_response}"
+        f"Session isolation broken: Alex sees Bob's messages. Response: {our_response}"
     )
     assert not bob_sees_alex, (
         f"Session isolation broken: Bob sees Alex's messages. "
@@ -570,10 +577,12 @@ language processing, and autonomous vehicles.
     try:
         # Use test utilities to create tweaks for OpenAI components
         from tests.helpers.tweaks_builder import TweaksBuilder
-        
+
         tweaks = (
             TweaksBuilder()
-            .add_openai_tweaks("LanguageModelComponent-htmui")  # Correct ID for document_qa
+            .add_openai_tweaks(
+                "LanguageModelComponent-htmui"
+            )  # Correct ID for document_qa
             .build_or_skip()
         )
 
@@ -622,7 +631,7 @@ def test_simple_agent(test_executor):
 
     # Use test utilities to create tweaks for OpenAI components
     from tests.helpers.tweaks_builder import TweaksBuilder
-    
+
     # Agent component needs OpenAI API key tweaks
     tweaks = (
         TweaksBuilder()
@@ -673,9 +682,7 @@ def test_simple_agent(test_executor):
     db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
     # Extract path from sqlite:///path format
     db_path = (
-        db_url.replace("sqlite:///", "")
-        if db_url.startswith("sqlite:///")
-        else None
+        db_url.replace("sqlite:///", "") if db_url.startswith("sqlite:///") else None
     )
 
     tool_usage_verified = False
