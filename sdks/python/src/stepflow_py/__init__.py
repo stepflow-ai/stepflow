@@ -31,6 +31,8 @@ from .generated_flow import (
     ValueTemplate,
 )
 from .server import StepflowServer
+
+# Legacy import for backward compatibility
 from .stdio_server import StepflowStdioServer
 from .value import JsonPath, StepReference, Valuable, Value, WorkflowInput
 

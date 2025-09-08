@@ -186,21 +186,30 @@ def analyze(input_file: Path):
 
 @main.command()
 @click.option("--host", default="localhost", help="Server host")
-@click.option("--port", default=8000, help="Server port")
+@click.option("--port", default=5264, help="Server port")
 @click.option("--protocol-prefix", default="langflow", help="Protocol prefix")
-def serve(host: str, port: int, protocol_prefix: str):
+@click.option("--http", is_flag=True, help="Start in HTTP mode (default is STDIO)")
+def serve(host: str, port: int, protocol_prefix: str, http: bool):
     """Start the Langflow component server."""
-    try:
-        click.echo("🚀 Starting Langflow component server...")
-        click.echo(f"   Protocol prefix: {protocol_prefix}")
+    import asyncio
 
+    try:
         server = StepflowLangflowServer()
 
-        # For now, only stdio mode is supported
-        if host != "localhost" or port != 8000:
-            click.echo("⚠️  HTTP mode not yet implemented, falling back to stdio mode")
+        if http:
+            click.echo("🚀 Starting Langflow component server in HTTP mode...")
+            click.echo(f"   Host: {host}")
+            click.echo(f"   Port: {port}")
+            click.echo(f"   Protocol prefix: {protocol_prefix}")
 
-        server.run()
+            # Run the HTTP server
+            asyncio.run(server.serve(host=host, port=port))
+        else:
+            click.echo("🚀 Starting Langflow component server in STDIO mode...")
+            click.echo(f"   Protocol prefix: {protocol_prefix}")
+
+            # Run the STDIO server
+            server.run()
 
     except KeyboardInterrupt:
         click.echo("\n🛑 Server stopped")
@@ -467,6 +476,309 @@ stateStore:
     except (ConversionError, ValidationError) as e:
         click.echo(f"❌ Conversion failed: {e}", err=True)
         sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("input_json", type=str, default="{}")
+@click.option(
+    "--url",
+    type=str,
+    required=True,
+    help="Stepflow server URL (e.g., http://localhost:7837/api/v1)",
+)
+@click.option(
+    "--tweaks",
+    type=str,
+    help="JSON string of tweaks to apply (node_id -> {field: value})",
+)
+def convert_and_submit(
+    input_file: Path,
+    input_json: str,
+    url: str,
+    tweaks: str | None,
+):
+    """Convert Langflow workflow to Stepflow and submit it to a running server.
+
+    INPUT_FILE: Path to Langflow JSON workflow file
+    INPUT_JSON: JSON input data for the workflow (default: {})
+
+    This command converts a Langflow workflow to Stepflow format and submits it
+    to a running Stepflow server for execution.
+    """
+    import subprocess
+    import tempfile
+
+    try:
+        # Parse input JSON
+        try:
+            json.loads(input_json)  # Validate JSON format
+        except json.JSONDecodeError as e:
+            click.echo(f"❌ Invalid input JSON: {e}", err=True)
+            sys.exit(1)
+
+        click.echo(f"🔄 Converting {input_file}...")
+
+        # Convert Langflow to Stepflow (no tweaks at conversion time)
+        converter = LangflowConverter()
+        stepflow_yaml = converter.convert_file(input_file)
+
+        click.echo("✅ Conversion completed")
+
+        # Apply tweaks if provided
+        if tweaks:
+            try:
+                parsed_tweaks = json.loads(tweaks)
+                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+
+                # Parse the YAML, apply tweaks
+                import yaml
+
+                workflow_dict = yaml.safe_load(stepflow_yaml)
+                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                    workflow_dict, parsed_tweaks
+                )
+                stepflow_yaml = yaml.dump(
+                    tweaked_dict,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                    width=120,
+                )
+
+                click.echo("✅ Tweaks applied")
+            except json.JSONDecodeError as e:
+                click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
+                sys.exit(1)
+            except Exception as e:
+                click.echo(f"❌ Error applying tweaks: {e}", err=True)
+                sys.exit(1)
+
+        # Create temporary files
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(stepflow_yaml)
+            workflow_file = f.name
+
+        try:
+            # Find stepflow binary
+            possible_paths = [
+                Path("../../stepflow-rs/target/debug/stepflow"),
+                Path("../../../stepflow-rs/target/debug/stepflow"),
+                Path("target/debug/stepflow"),
+            ]
+
+            binary_path = None
+            for path in possible_paths:
+                if path.exists():
+                    binary_path = path.resolve()
+                    break
+
+            if not binary_path:
+                click.echo(
+                    "❌ Stepflow binary not found. Please build the project first.",
+                    err=True,
+                )
+                sys.exit(1)
+
+            click.echo(f"🚀 Submitting workflow to {url}...")
+
+            # Submit with stepflow
+            cmd = [
+                str(binary_path),
+                "submit",
+                f"--url={url}",
+                f"--flow={workflow_file}",
+                f"--input-json={input_json}",
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+            if result.returncode == 0:
+                click.echo("✅ Workflow submitted successfully!")
+                click.echo("\n🎯 Results:")
+                try:
+                    # Try to pretty-print JSON output
+                    lines = result.stdout.strip().split("\n")
+                    for line in lines:
+                        if line.strip().startswith("{") and line.strip().endswith("}"):
+                            result_data = json.loads(line)
+                            click.echo(json.dumps(result_data, indent=2))
+                            break
+                    else:
+                        click.echo(result.stdout)
+                except Exception:
+                    click.echo(result.stdout)
+            else:
+                click.echo("❌ Workflow submission failed")
+                click.echo("STDOUT:", err=True)
+                click.echo(result.stdout, err=True)
+                click.echo("STDERR:", err=True)
+                click.echo(result.stderr, err=True)
+                sys.exit(1)
+
+        finally:
+            # Cleanup temporary file
+            import os
+
+            os.unlink(workflow_file)
+
+    except (ConversionError, ValidationError) as e:
+        click.echo(f"❌ Conversion failed: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("workflow_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("input_json", type=str)
+@click.option(
+    "--url",
+    type=str,
+    required=True,
+    help="Stepflow server URL (e.g., http://localhost:7837/api/v1)",
+)
+@click.option(
+    "--tweaks",
+    type=str,
+    help="JSON string of tweaks to apply (node_id -> {field: value})",
+)
+def run_flow(
+    workflow_file: Path,
+    input_json: str,
+    url: str,
+    tweaks: str | None,
+):
+    """Run a Stepflow workflow with tweaks on a running server.
+
+    WORKFLOW_FILE: Path to Stepflow YAML workflow file
+    INPUT_JSON: JSON input data for the workflow
+
+    This command submits a Stepflow workflow to a running server with optional tweaks.
+    """
+    import subprocess
+    import tempfile
+
+    try:
+        # Parse input JSON
+        try:
+            json.loads(input_json)  # Validate JSON format
+        except json.JSONDecodeError as e:
+            click.echo(f"❌ Invalid input JSON: {e}", err=True)
+            sys.exit(1)
+
+        # Load workflow
+        try:
+            import yaml
+
+            with open(workflow_file, encoding="utf-8") as f:
+                workflow_dict = yaml.safe_load(f)
+        except Exception as e:
+            click.echo(f"❌ Error loading workflow: {e}", err=True)
+            sys.exit(1)
+
+        # Apply tweaks if provided
+        if tweaks:
+            try:
+                parsed_tweaks = json.loads(tweaks)
+                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+
+                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                    workflow_dict, parsed_tweaks
+                )
+                tweaked_yaml = yaml.dump(
+                    tweaked_dict,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                    width=120,
+                )
+
+                # Write tweaked workflow to temp file
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".yaml", delete=False
+                ) as f:
+                    f.write(tweaked_yaml)
+                    temp_workflow_file = f.name
+
+                click.echo("✅ Tweaks applied")
+            except json.JSONDecodeError as e:
+                click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
+                sys.exit(1)
+            except Exception as e:
+                click.echo(f"❌ Error applying tweaks: {e}", err=True)
+                sys.exit(1)
+        else:
+            temp_workflow_file = str(workflow_file)
+
+        try:
+            # Find stepflow binary
+            possible_paths = [
+                Path("../../stepflow-rs/target/debug/stepflow"),
+                Path("../../../stepflow-rs/target/debug/stepflow"),
+                Path("target/debug/stepflow"),
+            ]
+
+            binary_path = None
+            for path in possible_paths:
+                if path.exists():
+                    binary_path = path.resolve()
+                    break
+
+            if not binary_path:
+                click.echo(
+                    "❌ Stepflow binary not found. Please build the project first.",
+                    err=True,
+                )
+                sys.exit(1)
+
+            click.echo(f"🚀 Running workflow on {url}...")
+
+            # Submit with stepflow
+            cmd = [
+                str(binary_path),
+                "submit",
+                f"--url={url}",
+                f"--flow={temp_workflow_file}",
+                f"--input-json={input_json}",
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+            if result.returncode == 0:
+                click.echo("✅ Workflow executed successfully!")
+                click.echo("\n🎯 Results:")
+                try:
+                    # Try to pretty-print JSON output
+                    lines = result.stdout.strip().split("\n")
+                    for line in lines:
+                        if line.strip().startswith("{") and line.strip().endswith("}"):
+                            result_data = json.loads(line)
+                            click.echo(json.dumps(result_data, indent=2))
+                            break
+                    else:
+                        click.echo(result.stdout)
+                except Exception:
+                    click.echo(result.stdout)
+            else:
+                click.echo("❌ Workflow execution failed")
+                click.echo("STDOUT:", err=True)
+                click.echo(result.stdout, err=True)
+                click.echo("STDERR:", err=True)
+                click.echo(result.stderr, err=True)
+                sys.exit(1)
+
+        finally:
+            # Cleanup temporary file if we created one
+            if tweaks and temp_workflow_file != str(workflow_file):
+                import os
+
+                os.unlink(temp_workflow_file)
+
     except Exception as e:
         click.echo(f"❌ Unexpected error: {e}", err=True)
         sys.exit(1)

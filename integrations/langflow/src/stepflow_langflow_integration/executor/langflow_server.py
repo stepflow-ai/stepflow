@@ -19,7 +19,7 @@ Clean architecture without CachedStepflowContext.
 
 from typing import Any
 
-from stepflow_py import StepflowContext, StepflowStdioServer
+from stepflow_py import StepflowContext, StepflowServer
 
 from .udf_executor import UDFExecutor
 
@@ -33,7 +33,7 @@ class StepflowLangflowServer:
 
     def __init__(self):
         """Initialize the Langflow component server."""
-        self.server = StepflowStdioServer()
+        self.server = StepflowServer()
         self.udf_executor = UDFExecutor()
 
         # Register components
@@ -60,9 +60,8 @@ class StepflowLangflowServer:
         # self.server.component(name="chat_input", func=self._chat_input)
 
     def run(self) -> None:
-        """Run the component server."""
-        # Langflow server starting
-        self.server.run()
+        """Run the component server in STDIO mode."""
+        self.server.start_stdio()
 
     async def serve(self, host: str = "localhost", port: int = 8000) -> None:
         """Run the component server in HTTP mode.
@@ -71,10 +70,7 @@ class StepflowLangflowServer:
             host: Server host
             port: Server port
         """
-        # This would require HTTP server implementation
-        # For now, fallback to stdio
-        _ = (host, port)  # Suppress unused parameter warnings
-        self.run()
+        await self.server.start_http(host=host, port=port)
 
 
 if __name__ == "__main__":
