@@ -6,7 +6,7 @@ A Python package for seamlessly integrating Langflow workflows with Stepflow, en
 
 - **🔄 One-Command Conversion & Execution**: Convert Langflow JSON to Stepflow YAML and execute in a single command
 - **🚀 Real Langflow Execution**: Execute actual Langflow components with full type preservation
-- **🧬 100% Component Compatibility**: Uses original Langflow component code and standard imports
+- **🔧 Tweaks System**: Modify component configurations (API keys, parameters) at execution time
 - **🛡️ Security First**: Safe JSON-only parsing without requiring full Langflow installation
 
 ## 🚀 Quick Start
@@ -21,33 +21,73 @@ uv sync --dev
 pip install -e .
 ```
 
-### Convert and Execute in One Command
+### Basic Execution
 
 ```bash
-# Execute with real Langflow components
-uv run stepflow-langflow execute my-workflow.json '{"message": "Hello!"}'
+# Execute with real Langflow components (requires OPENAI_API_KEY)
+export OPENAI_API_KEY="your-api-key-here"
+uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json '{"message": "Write a haiku about coding"}'
 
-# Dry-run to see converted workflow
-uv run stepflow-langflow execute my-workflow.json --dry-run
-
-# Keep files for debugging
-uv run stepflow-langflow execute my-workflow.json '{"message": "Hello!"}' --keep-files --output-dir ./debug
+# Execute without environment variables using tweaks
+uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json \
+  '{"message": "Write a haiku"}' \
+  --tweaks '{"LanguageModelComponent-xyz123": {"api_key": "your-api-key-here"}}'
 ```
 
-### Individual Commands
+### Using Tweaks for Configuration
+
+The tweaks system allows you to modify component configurations at execution time, perfect for:
+- Setting API keys without environment variables
+- Adjusting model parameters 
+- Debugging component configurations
 
 ```bash
-# Analyze workflow structure
+# Basic tweaks example - modify API key and temperature
+uv run stepflow-langflow execute my-workflow.json '{"message": "Hello"}' \
+  --tweaks '{"OpenAIComponent-abc123": {"api_key": "sk-...", "temperature": 0.7}}'
+
+# Multiple component tweaks
+uv run stepflow-langflow execute my-workflow.json '{"message": "Hello"}' \
+  --tweaks '{
+    "LanguageModelComponent-xyz": {"api_key": "sk-..."},
+    "EmbeddingComponent-def": {"api_key": "sk-...", "model": "text-embedding-3-small"}
+  }'
+```
+
+### Debugging and Inspection
+
+```bash
+# Dry-run to see converted workflow without execution
+uv run stepflow-langflow execute my-workflow.json --dry-run
+
+# Apply tweaks and see the modified workflow
+uv run stepflow-langflow execute my-workflow.json --dry-run \
+  --tweaks '{"LanguageModelComponent-xyz": {"temperature": 0.9}}'
+
+# Keep temporary files for debugging
+uv run stepflow-langflow execute my-workflow.json '{"message": "Hello"}' \
+  --keep-files --output-dir ./debug
+
+# Analyze workflow structure before execution
 uv run stepflow-langflow analyze my-workflow.json
 
-# Convert Langflow JSON to Stepflow YAML
-uv run stepflow-langflow convert my-workflow.json output.yaml --pretty
+# Convert to Stepflow YAML for inspection
+uv run stepflow-langflow convert my-workflow.json output.yaml
+```
 
-# Validate a Langflow workflow
-uv run stepflow-langflow validate my-workflow.json
+### Finding Component IDs for Tweaks
 
-# Start the component server
-uv run stepflow-langflow serve
+To apply tweaks, you need the component IDs from your Langflow workflow:
+
+```bash
+# Method 1: Analyze the workflow to see component structure
+uv run stepflow-langflow analyze my-workflow.json
+
+# Method 2: Dry-run to see the converted Stepflow YAML with component IDs
+uv run stepflow-langflow execute my-workflow.json --dry-run
+
+# Method 3: Open the Langflow JSON file and look for node IDs
+# Component IDs follow the pattern: ComponentType-nodeId (e.g., "LanguageModelComponent-kBOja")
 ```
 
 ## 🛠️ CLI Reference
@@ -101,44 +141,6 @@ uv run stepflow-langflow validate workflow.json
 uv run stepflow-langflow serve
 ```
 
-## 🔧 Manual Stepflow Integration
-
-For advanced use cases, you can integrate manually with Stepflow:
-
-### 1. Configure Stepflow
-
-Create `stepflow-config.yml`:
-
-```yaml
-plugins:
-  builtin:
-    type: builtin
-  langflow:
-    type: stepflow
-    transport: stdio
-    command: uv
-    args: ["--project", "path/to/langflow/integration", "run", "stepflow-langflow-server"]
-
-routes:
-  "/langflow/{*component}":
-    - plugin: langflow
-  "/builtin/{*component}":
-    - plugin: builtin
-
-stateStore:
-  type: inMemory
-```
-
-### 2. Convert and Run
-
-```bash
-# Convert workflow
-uv run stepflow-langflow convert my-workflow.json my-workflow.yaml
-
-# Run with Stepflow
-cargo run -- run --flow my-workflow.yaml --input input.json --config stepflow-config.yml
-```
-
 ## 🐍 Python API
 
 ```python
@@ -161,78 +163,7 @@ with open("output.yaml", "w") as f:
     f.write(stepflow_yaml)
 ```
 
-## 🏗️ How It Works
-
-The integration follows a multi-stage approach for maximum compatibility and safety:
-
-### 1. **JSON-First Parsing**
-- Directly parses Langflow JSON export files
-- No Langflow installation required for conversion
-- Secure: no code execution during parsing phase
-
-### 2. **Dependency Analysis & Topological Sorting**
-- Maps Langflow edges to Stepflow step dependencies
-- Uses Kahn's algorithm for proper execution ordering
-- Handles complex dependency graphs with validation
-
-### 3. **Schema Discovery**
-- Extracts component input/output schemas from JSON metadata
-- Maps Langflow types to Stepflow type system
-- Preserves native type semantics
-
-### 4. **UDF Component Execution**
-- Stores original Langflow component code as blobs
-- Executes via `UDFExecutor` for 100% compatibility
-- Supports bidirectional communication with Stepflow runtime
-
-### 5. **Type Preservation**
-- Maintains Langflow `Message`, `Data`, `DataFrame` types
-- Handles complex nested object serialization
-- Automatic type conversion between systems
-
-## 📦 Supported Components
-
-The integration supports all Langflow component types through UDF execution:
-
-### Compatibility Matrix
-
-| Component Type | Support Status | Conversion Method |
-|---------------|----------------|-------------------|
-| ChatInput | ✅ Full | UDF Executor |
-| ChatOutput | ✅ Full | UDF Executor |
-| PromptTemplate | ✅ Full | UDF Executor |
-| LanguageModelComponent | ✅ Full | UDF Executor |
-| OpenAI/Anthropic Models | ✅ Full | UDF Executor |
-| Agent Components | ✅ Full | UDF Executor |
-| Calculator/Tool Components | ✅ Full | UDF Executor |
-| Memory Components | ✅ Full | UDF Executor |
-| Vector Store/Embeddings | ✅ Full | UDF Executor |
-| Text Splitter/Loaders | ✅ Full | UDF Executor |
-| File Components | ✅ Full | UDF Executor |
-| Custom Components | ✅ Full | UDF Executor |
-| Note/Documentation | ✅ Preserved | Filtered out |
-
-### Langflow Features Support
-
-| Feature | Support Status | Notes |
-|---------|----------------|-------|
-| Component Dependencies | ✅ Full | Converted to Stepflow step dependencies |
-| Environment Variables | ✅ Full | API keys and secrets passed through |
-| Custom Python Components | ✅ Full | UDF execution preserves all functionality |
-| Template Variables | ✅ Full | Resolved during component execution |
-| Dropdown/Selection Fields | ✅ Full | Configuration preserved |
-| File Uploads | ✅ Full | File content passed as input data |
-| Multi-output Components | ✅ Full | Output selection preserved |
-
 ## 🧪 Testing & Development
-
-### Test Suite Overview
-
-The integration includes comprehensive testing across multiple levels:
-
-- **Unit Tests**: Component conversion, dependency analysis, UDF execution
-- **Integration Tests**: Complete workflow lifecycle testing (convert → validate → execute)
-- **Real Execution**: End-to-end testing with actual Langflow components and APIs
 
 ### Running Tests
 
@@ -243,12 +174,8 @@ uv run pytest
 # Run with coverage
 uv run pytest --cov=stepflow_langflow_integration --cov-report=html
 
-# Run specific test categories
-uv run pytest tests/unit/                    # Unit tests only
-uv run pytest tests/integration/             # Integration tests (example flows)
-
-# Run the complete test suite (as used in CI)
-uv run python -m pytest tests/ -v
+# Run integration tests with example flows
+uv run pytest tests/integration/
 ```
 
 ### Development Setup
@@ -257,164 +184,162 @@ uv run python -m pytest tests/ -v
 # Development installation with all dependencies
 uv sync --dev
 
-# Code formatting
+# Code formatting and linting
 uv run ruff format
-
-# Linting
 uv run ruff check --fix
 
 # Type checking
 uv run mypy src tests
-
-# Run development server
-uv run stepflow-langflow serve
 ```
 
-## 🔮 Future Improvements
 
-### Planned Features
-- **HTTP Transport**: Support for remote Langflow component servers
-- **Streaming Support**: Real-time workflow execution updates
-- **Performance Optimizations**: Parallel component execution, caching
-- **Enhanced Type System**: Better Langflow ↔ Stepflow type mapping
+## 📚 Example Flows
 
-### Recent Improvements
-- **Extended Agent Timeout**: Agent workflow execution timeout increased from 30s to 180s to accommodate complex agent loops and tool sequences
-- **Agent Execution Optimization**: Enhanced Agent component handling with database bypass and memory isolation for Stepflow environment
+The `tests/fixtures/langflow/` directory contains example workflows from official Langflow starter projects that work with real Langflow component execution.
 
-### Potential Enhancements
-- **Debug Tools**: Enhanced workflow debugging and profiling
-- **Agent Execution Refinement**: Further optimization of OpenAI Agent execution reliability
-- **Native Component Mappings**: Direct Stepflow equivalents for common components (performance optimization)
+### Available Example Flows
 
-## 📚 Examples
+All workflows accept a `"message"` field as their primary input:
 
-The `tests/fixtures/langflow/` directory contains example workflows from official Langflow starter projects. **Examples work with real Langflow component execution** with API keys configured.
+| Workflow | Description | Status |
+|----------|-------------|---------|
+| `simple_chat.json` | Direct message passthrough | ✅ Working |
+| `basic_prompting.json` | LLM with prompt template | ✅ Working |
+| `memory_chatbot.json` | Conversational AI with memory | ✅ Working |
+| `document_qa.json` | Document-based Q&A | ✅ Working |
+| `vector_store_rag.json` | Retrieval augmented generation | ✅ Working |
+| `simple_agent.json` | AI agent with tools | ⚠️ Use --timeout 180 |
 
-### 🚀 Quick Test Commands
+### Running Example Flows
 
-All workflows accept a `"message"` field as their primary input. **Integration Status: Core workflows fully working with real execution.**
-
-#### Real Execution Examples
+#### With Environment Variables
 ```bash
-# Working workflows with real Langflow component execution
-# Requires OPENAI_API_KEY environment variable
+# Set API key in environment
+export OPENAI_API_KEY="sk-your-key-here"
 
-# 1. Simple Chat - Direct passthrough workflow ✅ WORKING
-uv run stepflow-langflow execute tests/fixtures/langflow/simple_chat.json \
-  '{"message": "Hello from real execution!"}'
-
-# 2. Basic Prompting - LLM with template processing ✅ WORKING
+# Run any example flow
 uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json \
   '{"message": "Write a haiku about coding"}'
-
-# 3. Memory Chatbot - Conversational AI with memory ✅ WORKING
-uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json \
-  '{"message": "Remember my name is Alice"}'
-
-# 4. Document Q&A - Document-based question answering ✅ WORKING
-uv run stepflow-langflow execute tests/fixtures/langflow/document_qa.json \
-  '{"message": "What is the main topic of this document?"}'
-
-# 5. Simple Agent - AI agent with calculator/tools ⚠️ PARTIAL (OpenAI Agent execution issues)
-# Note: Architecture works, but Agent execution may timeout. Use extended timeout:
-uv run stepflow-langflow execute tests/fixtures/langflow/simple_agent.json \
-  '{"message": "Calculate 15 * 23 and explain the result"}' --timeout 180
-
-# 6. Vector Store RAG - Complex retrieval augmented generation ✅ WORKING
-uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
-  '{"message": "Find information about artificial intelligence"}'
 ```
 
-### 💡 Workflow Input Patterns & Status
+#### With Tweaks (No Environment Variables)
+```bash
+# First, find the component ID that needs API key configuration
+uv run stepflow-langflow analyze tests/fixtures/langflow/basic_prompting.json
+
+# Then execute with tweaks
+uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json \
+  '{"message": "Write a haiku about coding"}' \
+  --tweaks '{"LanguageModelComponent-kBOja": {"api_key": "sk-your-key-here"}}'
+```
+
+### Complex Example: Vector Store RAG
+
+This example demonstrates using tweaks with multiple components:
+
+```bash
+# Analyze to find component IDs
+uv run stepflow-langflow analyze tests/fixtures/langflow/vector_store_rag.json
+
+# Execute with multiple component tweaks
+uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
+  '{"message": "Explain machine learning"}' \
+  --tweaks '{
+    "LanguageModelComponent-abc123": {
+      "api_key": "sk-your-openai-key",
+      "temperature": 0.7
+    },
+    "EmbeddingComponent-def456": {
+      "api_key": "sk-your-openai-key",
+      "model": "text-embedding-3-small"
+    }
+  }'
+```
+
+### Workflow Input Patterns
 
 All workflows expect JSON input with a `message` field:
 
-| Workflow | Input Example | Description | Real Execution Status |
-|----------|---------------|-------------|----------------------|
-| `simple_chat.json` | `{"message": "Hello there!"}` | Basic greeting or question | ✅ Working |
-| `basic_prompting.json` | `{"message": "Write a poem about nature"}` | Creative prompts for LLM | ✅ Working |
-| `memory_chatbot.json` | `{"message": "Remember I like coffee"}` | Conversational input with memory | ✅ Working |
-| `document_qa.json` | `{"message": "Summarize this document"}` | Questions about documents | ✅ Working |
-| `simple_agent.json` | `{"message": "Calculate 42 * 17"}` | Tasks requiring tools/calculations | ⚠️ Partial (use --timeout 180) |
-| `vector_store_rag.json` | `{"message": "Explain machine learning"}` | Knowledge retrieval queries | ✅ Working |
+| Input Example | Use Case |
+|---------------|----------|
+| `{"message": "Hello there!"}` | Basic greeting or question |
+| `{"message": "Write a poem about nature"}` | Creative prompts for LLM |
+| `{"message": "Remember I like coffee"}` | Conversational input with memory |
+| `{"message": "Summarize this document"}` | Questions about documents |
+| `{"message": "Calculate 42 * 17"}` | Tasks requiring tools/calculations |
+| `{"message": "Explain machine learning"}` | Knowledge retrieval queries |
 
-### 🔍 Workflow Analysis
-
-Understand workflow structure before execution:
+### Debugging Workflows
 
 ```bash
-# Analyze workflow complexity and dependencies
+# Analyze workflow structure and find component IDs
 uv run stepflow-langflow analyze tests/fixtures/langflow/vector_store_rag.json
 
 # View converted workflow without execution
 uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json --dry-run
 
-# Keep temporary files for debugging
+# Keep temporary files for inspection
 uv run stepflow-langflow execute tests/fixtures/langflow/memory_chatbot.json \
-  '{"message": "Test"}'  --keep-files --output-dir ./debug
+  '{"message": "Test"}' --keep-files --output-dir ./debug
 ```
 
-### 🎯 Production Execution Status
+## 🔧 Advanced Usage
 
-**Integration Status: Core workflows fully operational in production.**
+### Working with Your Own Flows
 
-#### ✅ Fully Working Workflows (Real Execution)
-The following workflows work reliably with real API execution:
-- `simple_chat.json` - Direct passthrough workflow
-- `basic_prompting.json` - LLM with template processing
-- `memory_chatbot.json` - Conversational AI with memory
-- `document_qa.json` - Document-based question answering
-- `vector_store_rag.json` - Complex retrieval augmented generation
-
-#### ⚠️ Partially Working Workflows
-- `simple_agent.json` - Architecture complete but OpenAI Agent execution issues may cause timeouts
-  - **Workaround**: Use extended timeout (`--timeout 180`) and validate with `` first
-
-#### Environment Requirements
 ```bash
-# Required environment variable for real execution
-export OPENAI_API_KEY="your-openai-api-key-here"
+# Convert your Langflow export to Stepflow
+uv run stepflow-langflow convert your-workflow.json your-workflow.yaml
 
-# Optional: For vector store workflows requiring AstraDB
-export ASTRA_DB_API_ENDPOINT="your-astra-endpoint"
-export ASTRA_DB_APPLICATION_TOKEN="your-astra-token"
+# Analyze your workflow structure
+uv run stepflow-langflow analyze your-workflow.json
+
+# Execute with custom configuration
+uv run stepflow-langflow execute your-workflow.json \
+  '{"your_input": "value"}' \
+  --tweaks '{"YourComponent-id": {"api_key": "sk-..."}}'
 ```
 
-#### Quick Production Test
+### Tweaks System Reference
+
+Tweaks modify component configurations at execution time:
+
+```json
+{
+  "ComponentType-nodeId": {
+    "field_name": "new_value",
+    "api_key": "sk-your-key",
+    "temperature": 0.8,
+    "model": "gpt-4"
+  }
+}
+```
+
+Common tweak patterns:
+- **API Keys**: `{"api_key": "sk-your-key"}`
+- **Model Parameters**: `{"temperature": 0.7, "max_tokens": 1000}`
+- **Model Selection**: `{"model": "gpt-4", "provider": "openai"}`
+- **Custom Settings**: Any component field can be modified
+
+### Manual Stepflow Integration
+
+For advanced use cases with custom Stepflow configurations:
+
 ```bash
-# Test with extended timeout for complex workflows
-uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
-  '{"message": "Explain deep learning"}' --timeout 120
+# Convert workflow
+uv run stepflow-langflow convert workflow.json workflow.yaml
+
+# Create custom stepflow-config.yml
+# Run with Stepflow directly
+cargo run -- run --flow workflow.yaml --input input.json --config stepflow-config.yml
 ```
 
-## 🏛️ Architecture Notes
+## 🆘 Support
 
-### Design Principles
-- **Security First**: No arbitrary code execution during conversion
-- **Compatibility**: Maintain full Langflow component behavior
-- **Performance**: Efficient conversion and execution
-- **Testability**: Comprehensive test coverage with multiple execution modes
-
-### Key Components
-- **`LangflowConverter`**: Core conversion logic with topological sorting
-- **`UDFExecutor`**: Langflow component code execution engine
-- **`DependencyAnalyzer`**: Workflow dependency graph analysis
-- **`StepflowBinaryRunner`**: Integration testing utilities
-
-### Integration Points
-- **Stepflow Protocol**: JSON-RPC communication with Stepflow runtime
-- **Blob Storage**: Component code and data persistence
-- **Type System**: Seamless type conversion between systems
-- **Error Handling**: Robust error propagation and reporting
+- **Examples**: Comprehensive examples in `tests/fixtures/langflow/`  
+- **Issues**: Report bugs via [GitHub Issues](https://github.com/stepflow-ai/stepflow/issues)
+- **Testing**: Use `--dry-run` mode for safe experimentation
 
 ## 📄 License
 
 This project follows the same Apache 2.0 license as the main Stepflow project.
-
-## 🆘 Support
-
-- **Documentation**: This README and inline code documentation
-- **Issues**: Report bugs via [GitHub Issues](https://github.com/stepflow-ai/stepflow/issues)
-- **Examples**: Comprehensive examples in `tests/fixtures/langflow/`
-- **Testing**: Use `` mode for safe experimentation
