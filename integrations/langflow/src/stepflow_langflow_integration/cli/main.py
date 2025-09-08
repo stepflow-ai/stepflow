@@ -21,6 +21,7 @@ from pathlib import Path
 import click
 from dotenv import load_dotenv
 
+from ..converter.stepflow_tweaks import apply_stepflow_tweaks, apply_stepflow_tweaks_to_dict
 from ..converter.translator import LangflowConverter
 from ..exceptions import ConversionError, ValidationError
 from ..executor.langflow_server import StepflowLangflowServer
@@ -61,6 +62,68 @@ def convert(input_file: Path, output_file: Path | None):
     except (ConversionError, ValidationError) as e:
         click.echo(f"❌ Conversion failed: {e}", err=True)
         sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("stepflow_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("output_file", type=click.Path(path_type=Path), required=False)
+@click.option("--tweaks", type=str, required=True, help="JSON string of tweaks to apply (node_id -> {field: value})")
+def tweak(stepflow_file: Path, output_file: Path | None, tweaks: str):
+    """Apply tweaks to a Stepflow YAML workflow file.
+
+    STEPFLOW_FILE: Path to Stepflow YAML workflow file
+    OUTPUT_FILE: Path for output file (optional, prints to stdout if not provided)
+    
+    Tweaks should be JSON format:
+    --tweaks '{"LanguageModelComponent-kBOja": {"api_key": "new_key"}}'
+    """
+    try:
+        # Parse tweaks
+        try:
+            parsed_tweaks = json.loads(tweaks)
+        except json.JSONDecodeError as e:
+            click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
+            sys.exit(1)
+
+        click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+
+        # Load workflow
+        try:
+            import yaml
+            
+            with open(stepflow_file, encoding="utf-8") as f:
+                workflow_dict = yaml.safe_load(f)
+        except Exception as e:
+            click.echo(f"❌ Error loading workflow: {e}", err=True)
+            sys.exit(1)
+
+        # Apply tweaks
+        tweaked_dict = apply_stepflow_tweaks_to_dict(workflow_dict, parsed_tweaks)
+        
+        # Convert back to YAML
+        import yaml
+        tweaked_yaml = yaml.dump(
+            tweaked_dict,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            width=120,
+        )
+
+        if output_file:
+            # Write to file
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(tweaked_yaml)
+            click.echo(f"✅ Tweaked workflow written to {output_file}")
+        else:
+            # Write to stdout
+            click.echo(tweaked_yaml)
+
+        click.echo("✅ Tweaks applied successfully")
+
     except Exception as e:
         click.echo(f"❌ Unexpected error: {e}", err=True)
         sys.exit(1)
@@ -159,6 +222,7 @@ def serve(host: str, port: int, protocol_prefix: str):
     type=click.Path(path_type=Path),
     help="Directory to save temporary files",
 )
+@click.option("--tweaks", type=str, help="JSON string of tweaks to apply (node_id -> {field: value})")
 def execute(
     input_file: Path,
     input_json: str,
@@ -168,11 +232,15 @@ def execute(
     dry_run: bool,
     keep_files: bool,
     output_dir: Path | None,
+    tweaks: str | None,
 ):
     """Convert and execute a Langflow workflow using Stepflow.
 
     INPUT_FILE: Path to Langflow JSON workflow file
     INPUT_JSON: JSON input data for the workflow (default: {})
+    
+    Tweaks can be provided as JSON string to modify component configurations:
+    --tweaks '{"LanguageModelComponent-kBOja": {"api_key": "new_key", "temperature": 0.8}}'
     """
     import shutil
     import subprocess
@@ -189,11 +257,38 @@ def execute(
 
         click.echo(f"🔄 Converting {input_file}...")
 
-        # Convert Langflow to Stepflow
+        # Convert Langflow to Stepflow (no tweaks at conversion time)
         converter = LangflowConverter()
         stepflow_yaml = converter.convert_file(input_file)
 
         click.echo("✅ Conversion completed")
+
+        # Apply tweaks if provided (before dry-run check)
+        if tweaks:
+            try:
+                parsed_tweaks = json.loads(tweaks)
+                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+                
+                # Parse the YAML, apply tweaks
+                import yaml
+                
+                workflow_dict = yaml.safe_load(stepflow_yaml)
+                tweaked_dict = apply_stepflow_tweaks_to_dict(workflow_dict, parsed_tweaks)
+                stepflow_yaml = yaml.dump(
+                    tweaked_dict,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                    width=120,
+                )
+                    
+                click.echo("✅ Tweaks applied")
+            except json.JSONDecodeError as e:
+                click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
+                sys.exit(1)
+            except Exception as e:
+                click.echo(f"❌ Error applying tweaks: {e}", err=True)
+                sys.exit(1)
 
         if dry_run:
             click.echo("\n📄 Converted workflow:")
@@ -210,7 +305,7 @@ def execute(
         workflow_file = temp_dir / "workflow.yaml"
         config_file = temp_dir / "stepflow-config.yml"
 
-        # Write workflow file
+        # Write workflow file (tweaks already applied if provided)
         with open(workflow_file, "w", encoding="utf-8") as f:
             f.write(stepflow_yaml)
 
