@@ -69,7 +69,7 @@ class StepflowTweaks:
         # Deep copy to avoid mutating original
         modified_flow = copy.deepcopy(flow)
 
-        for step in modified_flow.steps:
+        for step in (modified_flow.steps or []):
             # Check if this is a Langflow UDF executor step
             if self._is_langflow_udf_step(step):
                 langflow_node_id = self._extract_langflow_node_id(step.id)
