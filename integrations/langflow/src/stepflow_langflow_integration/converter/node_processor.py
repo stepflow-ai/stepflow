@@ -121,6 +121,42 @@ class NodeProcessor:
                     node_output_refs,
                     field_mapping,
                 )
+            elif has_embedded_config and component_type in [
+                "AstraDB",
+                "VectorStore",
+                "Chroma",
+                "FAISS",
+                "Pinecone",
+            ]:
+                # Vector store with embedded configuration - route through UDF executor
+                # to enable tweaks on embedded configuration parameters
+                component_path = "/langflow/udf_executor"
+
+                # Create blob for the component code
+                blob_data = self._prepare_udf_blob(node, component_type)
+                blob_step_id = f"{step_id}_blob"
+                blob_step_handle = builder.add_step(
+                    id=blob_step_id,
+                    component="/builtin/put_blob",
+                    input_data={"data": blob_data, "blob_type": "data"},
+                )
+
+                # Extract runtime inputs including embedded configuration parameters
+                runtime_inputs = self._extract_runtime_inputs_for_builder(
+                    node,
+                    dependencies.get(node_id, []),
+                    node_output_refs,
+                    field_mapping,
+                )
+
+                # Extract and add embedded configuration parameters as tweakable inputs
+                embedded_config_inputs = self._extract_embedded_config_inputs(node)
+                runtime_inputs.update(embedded_config_inputs)
+
+                step_input = {
+                    "blob_id": Value.step(blob_step_handle.id, "blob_id"),
+                    "input": runtime_inputs,
+                }
             elif custom_code:
                 # Any component with code - use UDF executor for real execution
 
@@ -147,20 +183,6 @@ class NodeProcessor:
                         field_mapping,
                     ),
                 }
-            elif has_embedded_config and component_type in [
-                "AstraDB",
-                "VectorStore",
-                "Chroma",
-                "FAISS",
-                "Pinecone",
-            ]:
-                # Vector store with embedded configuration - use standalone server
-                # TODO: Phase 4 will route these through UDF executor too
-                # Routing with embedded configuration to standalone server
-                component_path = f"/langflow/{component_type}"
-                step_input = self._extract_component_inputs_for_builder(
-                    node, dependencies.get(node_id, []), all_nodes, node_output_refs
-                )
             else:
                 # All executable components should have custom code
                 # If we reach here, the fixture may be incomplete
@@ -886,3 +908,35 @@ class NodeProcessor:
                             return True
 
         return False
+
+    def _extract_embedded_config_inputs(self, node: dict[str, Any]) -> dict[str, Any]:
+        """Extract embedded configuration parameters as tweakable inputs.
+
+        This method looks for embedded configuration fields (like _embedding_config_*)
+        in the node template and extracts their parameter values as direct inputs
+        that can be modified by the tweaks system.
+
+        Args:
+            node: Langflow node with embedded configurations
+
+        Returns:
+            Dict of parameter names to values that can be tweaked
+        """
+        embedded_inputs = {}
+        node_data = node.get("data", {})
+        template = node_data.get("node", {}).get("template", {})
+
+        # Look for embedded configuration fields
+        for field_name, field_config in template.items():
+            if field_name.startswith("_embedding_config_"):
+                # Extract embedded config value
+                if isinstance(field_config, dict):
+                    config_value = field_config.get("value", {})
+                    if isinstance(config_value, dict):
+                        embedded_config = config_value.get("config", {})
+                        # Add each embedded parameter as a direct input
+                        for param_name, param_value in embedded_config.items():
+                            # Use a prefixed name to avoid conflicts
+                            embedded_inputs[f"embedded_{param_name}"] = param_value
+
+        return embedded_inputs

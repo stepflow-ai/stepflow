@@ -31,7 +31,6 @@ from typing import Any
 import pytest
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
-from tests.helpers.testing.config_builder import StepflowConfigBuilder
 from tests.helpers.testing.stepflow_binary import StepflowBinaryRunner
 
 
@@ -54,6 +53,194 @@ def stepflow_runner():
         pytest.skip(f"Stepflow binary not found: {e}")
 
 
+@pytest.fixture(scope="module")
+def shared_config():
+    """Create a shared Stepflow configuration with Langflow database for all tests.
+
+    This configuration includes:
+    - Langflow component server
+    - Shared database for memory/session handling
+    - No environment variable setup (API keys now passed via tweaks)
+    """
+    import asyncio
+    import contextlib
+    import os
+    import tempfile
+    from pathlib import Path
+
+    import yaml
+
+    # Create shared database path
+    shared_db_path = Path(tempfile.gettempdir()) / "stepflow_langflow_shared_test.db"
+
+    # Initialize database if it doesn't exist
+    if not shared_db_path.exists():
+        # Initialize Langflow database using their service
+        original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
+        os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{shared_db_path}"
+
+        try:
+            from langflow.services.deps import get_db_service, get_settings_service
+            from langflow.services.manager import service_manager
+
+            # Clear any existing service cache
+            if hasattr(service_manager, "_services"):
+                service_manager._services.clear()
+
+            # Initialize services and create database
+            get_settings_service()
+            db_service = get_db_service()
+            db_service.reload_engine()
+            asyncio.run(db_service.create_db_and_tables())
+        finally:
+            if original_db_url:
+                os.environ["LANGFLOW_DATABASE_URL"] = original_db_url
+            else:
+                os.environ.pop("LANGFLOW_DATABASE_URL", None)
+
+    # Get path to langflow integration directory
+    current_dir = Path(__file__).parent.parent.parent
+
+    # Create configuration dictionary
+    config_dict = {
+        "plugins": {
+            "builtin": {"type": "builtin"},
+            "langflow": {
+                "type": "stepflow",
+                "transport": "stdio",
+                "command": "uv",
+                "args": [
+                    "--project",
+                    str(current_dir),
+                    "run",
+                    "stepflow-langflow-server",
+                ],
+                "env": {
+                    "LANGFLOW_DATABASE_URL": f"sqlite:///{shared_db_path}",
+                    "LANGFLOW_AUTO_LOGIN": "false",
+                },
+            },
+        },
+        "routes": {
+            "/langflow/{*component}": [{"plugin": "langflow"}],
+            "/builtin/{*component}": [{"plugin": "builtin"}],
+        },
+        "stateStore": {"type": "inMemory"},
+    }
+
+    # Create a simple config object with the methods we need
+    class InlineConfig:
+        def __init__(self, config_dict):
+            self._config = config_dict
+
+        @contextlib.contextmanager
+        def to_temp_yaml(self):
+            """Create temporary YAML config file with automatic cleanup."""
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yml", delete=False
+            ) as f:
+                yaml.dump(self._config, f, default_flow_style=False, sort_keys=False)
+                temp_path = Path(f.name)
+
+            try:
+                yield str(temp_path)
+            finally:
+                temp_path.unlink(missing_ok=True)
+
+    yield InlineConfig(config_dict)
+
+
+class TestExecutor:
+    """Encapsulates flow execution logic for cleaner test code."""
+
+    def __init__(
+        self,
+        converter: LangflowConverter,
+        stepflow_runner: StepflowBinaryRunner,
+        shared_config: Any,
+    ):
+        self.converter = converter
+        self.stepflow_runner = stepflow_runner
+        self.shared_config = shared_config
+
+    def execute_flow(
+        self,
+        flow_name: str,
+        input_data: dict[str, Any],
+        timeout: float = 60.0,
+        tweaks: dict[str, dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Execute complete flow lifecycle: convert → validate → execute.
+
+        Args:
+            flow_name: Name of flow fixture (without .json extension)
+            input_data: Input data for workflow execution
+            timeout: Execution timeout in seconds
+            tweaks: Optional Stepflow-level tweaks to apply
+
+        Returns:
+            Execution result dict
+
+        Raises:
+            AssertionError: If any step fails
+            pytest.skip: If dependencies not available
+        """
+        from stepflow_langflow_integration.converter.stepflow_tweaks import (
+            apply_stepflow_tweaks,
+        )
+
+        # Step 1: Load and convert
+        langflow_data = load_flow_fixture(flow_name)
+        stepflow_workflow = self.converter.convert(langflow_data)
+
+        # Apply tweaks if provided
+        if tweaks:
+            stepflow_workflow = apply_stepflow_tweaks(stepflow_workflow, tweaks)
+
+        workflow_yaml = self.converter.to_yaml(stepflow_workflow)
+
+        # Use the shared config for execution
+        with self.shared_config.to_temp_yaml() as config_path:
+            # Step 2: Validate
+            success, stdout, stderr = self.stepflow_runner.validate_workflow(
+                workflow_yaml, config_path=config_path
+            )
+            assert success, (
+                f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+            )
+
+            # Step 3: Execute
+            success, result_data, stdout, stderr = self.stepflow_runner.run_workflow(
+                workflow_yaml,
+                input_data,
+                config_path=config_path,
+                timeout=timeout,
+            )
+
+            if not success:
+                pytest.fail(
+                    f"Workflow execution failed:\nResult: {result_data}\n"
+                    f"STDOUT: {stdout}\nSTDERR: {stderr}"
+                )
+
+            # Step 4: Basic result validation
+            assert isinstance(result_data, dict), (
+                f"Expected dict result, got {type(result_data)}"
+            )
+            assert result_data.get("outcome") == "success", (
+                f"Execution failed: {result_data}"
+            )
+            assert "result" in result_data, f"No result field in output: {result_data}"
+
+            return result_data
+
+
+@pytest.fixture(scope="module")
+def test_executor(converter, stepflow_runner, shared_config):
+    """Create a TestExecutor with all necessary dependencies."""
+    return TestExecutor(converter, stepflow_runner, shared_config)
+
+
 def load_flow_fixture(flow_name: str) -> dict[str, Any]:
     """Load Langflow JSON fixture by name."""
     fixtures_dir = Path(__file__).parent.parent / "fixtures" / "langflow"
@@ -68,112 +255,34 @@ def load_flow_fixture(flow_name: str) -> dict[str, Any]:
         return json.load(f)
 
 
-def execute_complete_flow_lifecycle(
-    flow_name: str,
-    input_data: dict[str, Any],
-    converter: LangflowConverter,
-    stepflow_runner: StepflowBinaryRunner,
-    config_builder: StepflowConfigBuilder,
-    timeout: float = 60.0,
-    flow_preprocessor=None,
-) -> dict[str, Any]:
-    """Execute complete flow lifecycle: convert → validate → execute.
-
-    Args:
-        flow_name: Name of flow fixture (without .json extension)
-        input_data: Input data for workflow execution
-        converter: LangflowConverter instance
-        stepflow_runner: StepflowBinaryRunner instance
-        config_builder: StepflowConfigBuilder instance
-        timeout: Execution timeout in seconds
-        flow_preprocessor: Optional function to preprocess langflow data
-
-    Returns:
-        Execution result dict
-
-    Raises:
-        AssertionError: If any step fails
-        pytest.skip: If dependencies not available
-    """
-
-    # Step 1: Load and convert
-    langflow_data = load_flow_fixture(flow_name)
-
-    # Apply preprocessing if provided
-    if flow_preprocessor:
-        langflow_data = flow_preprocessor(langflow_data)
-
-    stepflow_workflow = converter.convert(langflow_data)
-    workflow_yaml = converter.to_yaml(stepflow_workflow)
-
-    # Create config file once and reuse it
-    with config_builder.to_temp_yaml() as config_path:
-        # Step 2: Validate
-        success, stdout, stderr = stepflow_runner.validate_workflow(
-            workflow_yaml, config_path=config_path
-        )
-        assert success, (
-            f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
-        )
-
-        # Step 3: Execute
-        success, result_data, stdout, stderr = stepflow_runner.run_workflow(
-            workflow_yaml,
-            input_data,
-            config_path=config_path,
-            timeout=timeout,
-        )
-
-        if not success:
-            pytest.fail(
-                f"Workflow execution failed:\nResult: {result_data}\n"
-                f"STDOUT: {stdout}\nSTDERR: {stderr}"
-            )
-
-        # Step 4: Basic result validation
-        assert isinstance(result_data, dict), (
-            f"Expected dict result, got {type(result_data)}"
-        )
-        assert result_data.get("outcome") == "success", (
-            f"Execution failed: {result_data}"
-        )
-        assert "result" in result_data, f"No result field in output: {result_data}"
-
-        return result_data
-
-
 # API-dependent flows
 
 
-def test_basic_prompting(converter, stepflow_runner):
+def test_basic_prompting(test_executor):
     """Test basic prompting: custom Prompt + LanguageModelComponent with OpenAI API."""
 
-    with StepflowConfigBuilder() as config:
-        config.with_openai_env()
+    # Use test utilities to create tweaks for OpenAI components
+    from tests.helpers.tweaks_builder import create_basic_prompting_tweaks
 
-        # Apply OpenAI substitution for LanguageModelComponent
-        from tests.helpers.fixture_preprocessing import substitute_openai_inputs
+    tweaks = create_basic_prompting_tweaks()
 
-        result = execute_complete_flow_lifecycle(
-            flow_name="basic_prompting",
-            input_data={"message": "Write a haiku about testing"},
-            converter=converter,
-            stepflow_runner=stepflow_runner,
-            config_builder=config,
-            timeout=60.0,
-            flow_preprocessor=substitute_openai_inputs,
-        )
+    result = test_executor.execute_flow(
+        flow_name="basic_prompting",
+        input_data={"message": "Write a haiku about testing"},
+        timeout=60.0,
+        tweaks=tweaks,
+    )
 
-        # Should return a Langflow Message with text content
-        message_result = result["result"]
-        assert isinstance(message_result, dict)
-        assert "__langflow_type__" in message_result
-        assert "text" in message_result
-        # Haiku should have some structure (multiple lines)
-        assert len(message_result["text"].split("\n")) >= 3
+    # Should return a Langflow Message with text content
+    message_result = result["result"]
+    assert isinstance(message_result, dict)
+    assert "__langflow_type__" in message_result
+    assert "text" in message_result
+    # Haiku should have some structure (multiple lines)
+    assert len(message_result["text"].split("\n")) >= 3
 
 
-def test_vector_store_rag(converter, stepflow_runner):
+def test_vector_store_rag(test_executor):
     """Test vector store RAG: complex workflow with embeddings and retrieval."""
 
     # Create temporary test document for RAG processing
@@ -216,77 +325,71 @@ retrieval-augmented generation (RAG). Popular solutions include:
         test_file_path = f.name
 
     try:
-        with StepflowConfigBuilder() as config:
-            config.with_openai_env()
+        # Use test utilities to create tweaks for components
+        from tests.helpers.tweaks_builder import create_vector_store_rag_tweaks
 
-            # Use component-based substitutions to set AstraDB and OpenAI values
-            from tests.helpers.fixture_preprocessing import (
-                substitute_astradb_and_openai_inputs,
+        tweaks = create_vector_store_rag_tweaks()
+
+        try:
+            result = test_executor.execute_flow(
+                flow_name="vector_store_rag",
+                input_data={
+                    "message": "What is the main topic of the document?",
+                    "file_path": test_file_path,  # Provide the file path
+                },
+                timeout=120.0,
+                tweaks=tweaks,
             )
 
-            try:
-                result = execute_complete_flow_lifecycle(
-                    flow_name="vector_store_rag",
-                    input_data={
-                        "message": "What is the main topic of the document?",
-                        "file_path": test_file_path,  # Provide the file path
-                    },
-                    converter=converter,
-                    stepflow_runner=stepflow_runner,
-                    config_builder=config,
-                    timeout=120.0,
-                    flow_preprocessor=substitute_astradb_and_openai_inputs,
-                )
+            # Should return a response about the document content
+            message_result = result["result"]
+            assert isinstance(message_result, dict)
+            assert "text" in message_result
 
-                # Should return a response about the document content
-                message_result = result["result"]
-                assert isinstance(message_result, dict)
-                assert "text" in message_result
+            # Should reference AI/ML content from our comprehensive document
+            response_text = message_result["text"].lower()
+            content_indicators = [
+                "artificial intelligence",
+                "machine learning",
+                "deep learning",
+                "transformer",
+                "vector",
+                "ai",
+                "ml",
+            ]
+            found_content = any(
+                indicator in response_text for indicator in content_indicators
+            )
+            assert found_content, (
+                f"Response should reference document content about AI/ML. "
+                f"Got: {response_text}"
+            )
 
-                # Should reference AI/ML content from our comprehensive document
-                response_text = message_result["text"].lower()
-                content_indicators = [
-                    "artificial intelligence",
-                    "machine learning",
-                    "deep learning",
-                    "transformer",
-                    "vector",
-                    "ai",
-                    "ml",
-                ]
-                found_content = any(
-                    indicator in response_text for indicator in content_indicators
-                )
-                assert found_content, (
-                    f"Response should reference document content about AI/ML. "
-                    f"Got: {response_text}"
-                )
-
-            except Exception as e:
-                error_message = str(e)
-                # Check for known issues that should be skipped vs. real failures
-                if (
-                    "authentication" in error_message.lower()
-                    or "unauthorized" in error_message.lower()
-                    or "api_key" in error_message.lower()
-                    or "token" in error_message.lower()
-                ):
-                    pytest.fail(f"AstraDB authentication issue: {error_message}")
-                elif (
-                    "network" in error_message.lower()
-                    or "connection" in error_message.lower()
-                ):
-                    pytest.fail(f"AstraDB connectivity issue: {error_message}")
-                else:
-                    # This is a real test failure, not an infrastructure issue
-                    raise
+        except Exception as e:
+            error_message = str(e)
+            # Check for known issues that should be skipped vs. real failures
+            if (
+                "authentication" in error_message.lower()
+                or "unauthorized" in error_message.lower()
+                or "api_key" in error_message.lower()
+                or "token" in error_message.lower()
+            ):
+                pytest.fail(f"AstraDB authentication issue: {error_message}")
+            elif (
+                "network" in error_message.lower()
+                or "connection" in error_message.lower()
+            ):
+                pytest.fail(f"AstraDB connectivity issue: {error_message}")
+            else:
+                # This is a real test failure, not an infrastructure issue
+                raise
 
     finally:
         # Clean up temporary file
         os.unlink(test_file_path)
 
 
-def test_memory_chatbot(converter, stepflow_runner):
+def test_memory_chatbot(test_executor):
     """Test memory chatbot: validates session handling and memory retrieval.
 
     This test verifies that:
@@ -304,167 +407,144 @@ def test_memory_chatbot(converter, stepflow_runner):
     handling.
     """
 
-    # Ultra-clean context manager approach with automatic resource cleanup
-    with StepflowConfigBuilder() as config:
-        config.with_openai_env()
-        config.add_shared_langflow_database()
+    # Use test utilities to create tweaks for OpenAI components
+    from tests.helpers.tweaks_builder import TweaksBuilder
 
-        # Apply OpenAI substitution for LanguageModelComponent
-        from tests.helpers.fixture_preprocessing import substitute_openai_inputs
+    tweaks = (
+        TweaksBuilder()
+        .add_openai_tweaks(
+            "LanguageModelComponent-n8krg"
+        )  # Correct ID for memory_chatbot
+        .build_or_skip()
+    )
 
-        # Setup test data with different session IDs upfront
-        our_session_id = "test-memory-session-123"
-        other_session_id = "other-session-456"
+    # Setup test data with different session IDs upfront
+    our_session_id = "test-memory-session-123"
+    other_session_id = "other-session-456"
 
-        # Phase 1: Pre-populate database with messages using proper Langflow objects
-        # This ensures proper data types and schema compatibility
-        import asyncio
+    # Phase 1: Pre-populate database with messages using proper Langflow objects
+    # This ensures proper data types and schema compatibility
+    import asyncio
 
-        from langflow.memory import astore_message
-        from langflow.schema.message import Message
+    from langflow.memory import astore_message
+    from langflow.schema.message import Message
 
-        # Create proper Message objects to store
-        alex_user_msg = Message(
-            text="My name is Alex",
-            sender="User",
-            sender_name="User",
-            session_id=our_session_id,
-        )
-        alex_ai_msg = Message(
-            text="Hello Alex! Nice to meet you.",
-            sender="AI",
-            sender_name="Assistant",
-            session_id=our_session_id,
-        )
-        bob_user_msg = Message(
-            text="My name is Bob",
-            sender="User",
-            sender_name="User",
-            session_id=other_session_id,
-        )
-        bob_ai_msg = Message(
-            text="Hello Bob! Great to meet you.",
-            sender="AI",
-            sender_name="Assistant",
-            session_id=other_session_id,
-        )
+    # Create proper Message objects to store
+    alex_user_msg = Message(
+        text="My name is Alex",
+        sender="User",
+        sender_name="User",
+        session_id=our_session_id,
+    )
+    alex_ai_msg = Message(
+        text="Hello Alex! Nice to meet you.",
+        sender="AI",
+        sender_name="Assistant",
+        session_id=our_session_id,
+    )
+    bob_user_msg = Message(
+        text="My name is Bob",
+        sender="User",
+        sender_name="User",
+        session_id=other_session_id,
+    )
+    bob_ai_msg = Message(
+        text="Hello Bob! Great to meet you.",
+        sender="AI",
+        sender_name="Assistant",
+        session_id=other_session_id,
+    )
 
-        # Configure Langflow to use our shared database
-        # Extract database path from the plugin environment variables
-        langflow_plugin_config = config._config["plugins"]["langflow"]
-        db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
-        # Extract path from sqlite:///path format
-        db_path = (
-            db_url.replace("sqlite:///", "")
-            if db_url.startswith("sqlite:///")
-            else None
-        )
+    # Configure Langflow to use our shared database
+    # Extract database path from the plugin environment variables
+    langflow_plugin_config = test_executor.shared_config._config["plugins"]["langflow"]
+    db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
+    # Extract path from sqlite:///path format
+    db_path = (
+        db_url.replace("sqlite:///", "") if db_url.startswith("sqlite:///") else None
+    )
 
-        assert db_path and Path(db_path).exists(), (
-            f"Database file not found at {db_path}"
-        )
+    assert db_path and Path(db_path).exists(), f"Database file not found at {db_path}"
 
-        # Set up database environment for Langflow's storage methods
-        import os
+    # Set up database environment for Langflow's storage methods
+    import os
 
-        # Temporarily clear any existing database URL to force re-initialization
-        original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
-        os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{db_path}"
+    # Temporarily clear any existing database URL to force re-initialization
+    original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
+    os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{db_path}"
 
-        try:
-            # Store messages using Langflow's proper async storage method
-            import uuid
+    try:
+        # Store messages using Langflow's proper async storage method
+        import uuid
 
-            test_flow_id = uuid.uuid4()  # Generate a proper UUID for flow_id
+        test_flow_id = uuid.uuid4()  # Generate a proper UUID for flow_id
 
-            async def store_test_messages():
-                await astore_message(alex_user_msg, flow_id=test_flow_id)
-                await astore_message(alex_ai_msg, flow_id=test_flow_id)
-                await astore_message(bob_user_msg, flow_id=test_flow_id)
-                await astore_message(bob_ai_msg, flow_id=test_flow_id)
+        async def store_test_messages():
+            await astore_message(alex_user_msg, flow_id=test_flow_id)
+            await astore_message(alex_ai_msg, flow_id=test_flow_id)
+            await astore_message(bob_user_msg, flow_id=test_flow_id)
+            await astore_message(bob_ai_msg, flow_id=test_flow_id)
 
-            # Run the async function synchronously
-            asyncio.run(store_test_messages())
-        finally:
-            # Restore original database URL if it existed
-            if original_db_url:
-                os.environ["LANGFLOW_DATABASE_URL"] = original_db_url
-            else:
-                os.environ.pop("LANGFLOW_DATABASE_URL", None)
+        # Run the async function synchronously
+        asyncio.run(store_test_messages())
+    finally:
+        # Restore original database URL if it existed
+        if original_db_url:
+            os.environ["LANGFLOW_DATABASE_URL"] = original_db_url
+        else:
+            os.environ.pop("LANGFLOW_DATABASE_URL", None)
 
-        # Phase 2: Test end-to-end memory functionality
-        langflow_data = load_flow_fixture("memory_chatbot")
+    # Phase 2: Test end-to-end memory functionality
+    # Apply tweaks and execute the complete lifecycle
+    result = test_executor.execute_flow(
+        flow_name="memory_chatbot",
+        input_data={"message": "What is my name?", "session_id": our_session_id},
+        timeout=60.0,
+        tweaks=tweaks,
+    )
 
-        # Apply OpenAI substitution for LanguageModelComponent
-        langflow_data = substitute_openai_inputs(langflow_data)
+    # Check for the known Langflow bug
+    our_response = result["result"]["text"]
 
-        stepflow_workflow = converter.convert(langflow_data)
-        workflow_yaml = converter.to_yaml(stepflow_workflow)
+    # Test Bob's session
+    result_other = test_executor.execute_flow(
+        flow_name="memory_chatbot",
+        input_data={"message": "What is my name?", "session_id": other_session_id},
+        timeout=60.0,
+        tweaks=tweaks,
+    )
 
-        with config.to_temp_yaml() as config_path:
-            # Test Alex's session
-            success, result_data, stdout, stderr = stepflow_runner.run_workflow(
-                workflow_yaml,
-                {"message": "What is my name?", "session_id": our_session_id},
-                config_path=config_path,
-                timeout=60.0,
-            )
+    other_response = result_other["result"]["text"]
 
-            # Check for the known Langflow bug
-            error_text = stderr + " " + stdout
-            if result_data and isinstance(result_data, dict) and "error" in result_data:
-                error_text += " " + str(result_data.get("error", {}))
+    # Debug: Print the actual responses to see what each session is getting
 
-            if "int' object has no attribute 'replace'" in error_text:
-                raise AssertionError(
-                    "Langflow Memory component bug encountered: "
-                    "'int' object has no attribute 'replace'"
-                )
+    alex_remembered = "Alex" in our_response or "alex" in our_response.lower()
+    bob_remembered = "Bob" in other_response or "bob" in other_response.lower()
 
-            assert success, f"Workflow execution failed: {error_text}"
+    # Check for session isolation - Alex shouldn't see Bob's messages and
+    # vice versa
+    alex_sees_bob = "Bob" in our_response or "bob" in our_response.lower()
+    bob_sees_alex = "Alex" in other_response or "alex" in other_response.lower()
 
-            # Test Bob's session
-            success_other, result_other, _, _ = stepflow_runner.run_workflow(
-                workflow_yaml,
-                {"message": "What is my name?", "session_id": other_session_id},
-                config_path=config_path,
-                timeout=60.0,
-            )
-
-            assert success_other, "Bob's session workflow execution failed"
-
-            # Debug: Print the actual responses to see what each session is getting
-            our_response = result_data["result"]["text"]
-            other_response = result_other["result"]["text"]
-
-            alex_remembered = "Alex" in our_response or "alex" in our_response.lower()
-            bob_remembered = "Bob" in other_response or "bob" in other_response.lower()
-
-            # Check for session isolation - Alex shouldn't see Bob's messages and
-            # vice versa
-            alex_sees_bob = "Bob" in our_response or "bob" in our_response.lower()
-            bob_sees_alex = "Alex" in other_response or "alex" in other_response.lower()
-
-            # Validate memory recall and session isolation
-            assert alex_remembered, (
-                f"Alex not remembered in Alex's session. Response: {our_response}"
-            )
-            assert bob_remembered, (
-                f"Bob not remembered in Bob's session. Response: {other_response}"
-            )
-            assert not alex_sees_bob, (
-                f"Session isolation broken: Alex sees Bob's messages. "
-                f"Response: {our_response}"
-            )
-            assert not bob_sees_alex, (
-                f"Session isolation broken: Bob sees Alex's messages. "
-                f"Response: {other_response}"
-            )
+    # Validate memory recall and session isolation
+    assert alex_remembered, (
+        f"Alex not remembered in Alex's session. Response: {our_response}"
+    )
+    assert bob_remembered, (
+        f"Bob not remembered in Bob's session. Response: {other_response}"
+    )
+    assert not alex_sees_bob, (
+        f"Session isolation broken: Alex sees Bob's messages. Response: {our_response}"
+    )
+    assert not bob_sees_alex, (
+        f"Session isolation broken: Bob sees Alex's messages. "
+        f"Response: {other_response}"
+    )
 
     # All temporary resources (database, config file) automatically cleaned up
 
 
-def test_document_qa(converter, stepflow_runner):
+def test_document_qa(test_executor):
     """Test document QA: validates document loading and question answering."""
 
     # Create temporary test document with meaningful content
@@ -495,180 +575,178 @@ language processing, and autonomous vehicles.
         test_file_path = f.name
 
     try:
-        with StepflowConfigBuilder() as config:
-            config.with_openai_env()
+        # Use test utilities to create tweaks for OpenAI components
+        from tests.helpers.tweaks_builder import TweaksBuilder
 
-            # Apply OpenAI substitution for LanguageModelComponent
-            from tests.helpers.fixture_preprocessing import substitute_openai_inputs
+        tweaks = (
+            TweaksBuilder()
+            .add_openai_tweaks(
+                "LanguageModelComponent-htmui"
+            )  # Correct ID for document_qa
+            .build_or_skip()
+        )
 
-            # Test with file path provided as input data
-            result = execute_complete_flow_lifecycle(
-                flow_name="document_qa",
-                input_data={
-                    "message": (
-                        "What are the three types of machine learning mentioned "
-                        "in the document?"
-                    ),
-                    "file_path": test_file_path,  # Provide the file path
-                },
-                converter=converter,
-                stepflow_runner=stepflow_runner,
-                config_builder=config,
-                timeout=120.0,
-                flow_preprocessor=substitute_openai_inputs,
-            )
+        # Test with file path provided as input data
+        result = test_executor.execute_flow(
+            flow_name="document_qa",
+            input_data={
+                "message": (
+                    "What are the three types of machine learning mentioned "
+                    "in the document?"
+                ),
+                "file_path": test_file_path,  # Provide the file path
+            },
+            timeout=120.0,
+            tweaks=tweaks,
+        )
 
-            # Should return a response about the document content
-            message_result = result["result"]
-            assert isinstance(message_result, dict)
-            assert "text" in message_result
+        # Should return a response about the document content
+        message_result = result["result"]
+        assert isinstance(message_result, dict)
+        assert "text" in message_result
 
-            # The response should mention machine learning types from the document
-            response_text = message_result["text"].lower()
-            # Should reference content from our test document
-            content_indicators = [
-                "supervised",
-                "unsupervised",
-                "reinforcement",
-                "machine learning",
-            ]
-            found_content = any(
-                indicator in response_text for indicator in content_indicators
-            )
-            assert found_content, (
-                f"Response should reference document content. Got: {response_text}"
-            )
+        # The response should mention machine learning types from the document
+        response_text = message_result["text"].lower()
+        # Should reference content from our test document
+        content_indicators = [
+            "supervised",
+            "unsupervised",
+            "reinforcement",
+            "machine learning",
+        ]
+        found_content = any(
+            indicator in response_text for indicator in content_indicators
+        )
+        assert found_content, (
+            f"Response should reference document content. Got: {response_text}"
+        )
 
     finally:
         # Clean up temporary file
         os.unlink(test_file_path)
 
 
-def test_simple_agent(converter, stepflow_runner):
+def test_simple_agent(test_executor):
     """Test simple agent: tool coordination with Calculator and URL components."""
 
-    with StepflowConfigBuilder() as config:
-        config.with_openai_env()
-        # Set up shared database for agent memory operations
-        config.add_shared_langflow_database()
+    # Use test utilities to create tweaks for OpenAI components
+    from tests.helpers.tweaks_builder import TweaksBuilder
 
-        # Apply OpenAI substitution for LanguageModelComponent
-        from tests.helpers.fixture_preprocessing import substitute_openai_inputs
+    # Agent component needs OpenAI API key tweaks
+    tweaks = (
+        TweaksBuilder()
+        .add_openai_tweaks("Agent-D0Kx2")  # Agent component ID from the flow
+        .build_or_skip()
+    )
 
-        # Use a more complex calculation that requires actual computation
-        complex_expression = "137 * 89 + 456 / 12 - 73"
-        # Expected result: 137 * 89 + 456 / 12 - 73 = 12158.0
+    # Use a more complex calculation that requires actual computation
+    complex_expression = "137 * 89 + 456 / 12 - 73"
+    # Expected result: 137 * 89 + 456 / 12 - 73 = 12158.0
 
-        # Use a unique session ID to avoid conflicts with other tests
-        import uuid
+    # Use a unique session ID to avoid conflicts with other tests
+    import uuid
 
-        unique_session_id = f"agent_test_{uuid.uuid4().hex[:8]}"
+    unique_session_id = f"agent_test_{uuid.uuid4().hex[:8]}"
 
-        result = execute_complete_flow_lifecycle(
-            flow_name="simple_agent",
-            input_data={
-                "message": f"Calculate this exact expression: {complex_expression}. "
-                f"Show your work and give me the precise numerical result.",
-                "session_id": unique_session_id,
-            },
-            converter=converter,
-            stepflow_runner=stepflow_runner,
-            config_builder=config,
-            timeout=120.0,  # Longer timeout for complex calculation
-            flow_preprocessor=substitute_openai_inputs,
+    result = test_executor.execute_flow(
+        flow_name="simple_agent",
+        input_data={
+            "message": f"Calculate this exact expression: {complex_expression}. "
+            f"Show your work and give me the precise numerical result.",
+            "session_id": unique_session_id,
+        },
+        timeout=120.0,  # Longer timeout for complex calculation
+        tweaks=tweaks,
+    )
+
+    # Should return a Langflow Message with text content containing result
+    message_result = result["result"]
+    assert isinstance(message_result, dict)
+    assert "__langflow_type__" in message_result
+    assert "text" in message_result
+
+    # Verify the complex calculation result is present
+    response_text = message_result["text"].lower()
+    # The result should be 12158.0, look for various formats
+    result_patterns = ["12158", "12158.0", "12,158"]
+    result_found = any(pattern in response_text for pattern in result_patterns)
+    assert result_found, (
+        f"Expected result (12158) not found in response: {response_text}"
+    )
+
+    # CRITICAL: Verify that tools were used by checking database message history
+    # If the calculator tool was invoked, there should be messages in the database
+
+    # Extract database path from the plugin environment variables
+    langflow_plugin_config = test_executor.shared_config._config["plugins"]["langflow"]
+    db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
+    # Extract path from sqlite:///path format
+    db_path = (
+        db_url.replace("sqlite:///", "") if db_url.startswith("sqlite:///") else None
+    )
+
+    tool_usage_verified = False
+
+    if db_path:
+        import sqlite3
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Get messages from our specific session that contain our calculation
+        # This verifies that tools were used for this specific test run
+        # Note: Agent uses formatted numbers with commas and mathematical symbols
+        cursor.execute(
+            """
+            SELECT text FROM message
+            WHERE session_id = ?
+            AND (text LIKE ? OR text LIKE ? OR text LIKE ?)
+        """,
+            (unique_session_id, "%12,193%", "%12,158%", "%137 × 89%"),
         )
+        matching_messages = cursor.fetchall()
+        conn.close()
 
-        # Should return a Langflow Message with text content containing result
-        message_result = result["result"]
-        assert isinstance(message_result, dict)
-        assert "__langflow_type__" in message_result
-        assert "text" in message_result
+        # If we found any messages with our calculation, tools were used
+        if matching_messages:
+            tool_usage_verified = True
 
-        # Verify the complex calculation result is present
-        response_text = message_result["text"].lower()
-        # The result should be 12158.0, look for various formats
-        result_patterns = ["12158", "12158.0", "12,158"]
-        result_found = any(pattern in response_text for pattern in result_patterns)
-        assert result_found, (
-            f"Expected result (12158) not found in response: {response_text}"
-        )
+    assert tool_usage_verified, (
+        f"No evidence of calculator tool usage found in database. "
+        f"Expression: {complex_expression}"
+    )
 
-        # CRITICAL: Verify that tools were used by checking database message history
-        # If the calculator tool was invoked, there should be messages in the database
-
-        # Extract database path from the plugin environment variables
-        langflow_plugin_config = config._config["plugins"]["langflow"]
-        db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
-        # Extract path from sqlite:///path format
-        db_path = (
-            db_url.replace("sqlite:///", "")
-            if db_url.startswith("sqlite:///")
-            else None
-        )
-
-        tool_usage_verified = False
-
-        if db_path:
-            import sqlite3
-
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-
-            # Get messages from our specific session that contain our calculation
-            # This verifies that tools were used for this specific test run
-            # Note: Agent uses formatted numbers with commas and mathematical symbols
-            cursor.execute(
-                """
-                SELECT text FROM message
-                WHERE session_id = ?
-                AND (text LIKE ? OR text LIKE ? OR text LIKE ?)
-            """,
-                (unique_session_id, "%12,193%", "%12,158%", "%137 × 89%"),
-            )
-            matching_messages = cursor.fetchall()
-            conn.close()
-
-            # If we found any messages with our calculation, tools were used
-            if matching_messages:
-                tool_usage_verified = True
-
-        assert tool_usage_verified, (
-            f"No evidence of calculator tool usage found in database. "
-            f"Expression: {complex_expression}"
-        )
-
-        # Test passes - tools were verified to be used
+    # Test passes - tools were verified to be used
 
 
 # Utility and infrastructure tests
 
 
-def test_langflow_server_availability(stepflow_runner):
+def test_langflow_server_availability(test_executor):
     """Test that Langflow component server can be started and responds."""
     # Test component listing to verify server works
     try:
-        with StepflowConfigBuilder() as config:
-            with config.to_temp_yaml() as config_path:
-                success, components, stderr = stepflow_runner.list_components(
-                    config_path=config_path
-                )
-                assert success, f"Component listing failed: {stderr}"
+        with test_executor.shared_config.to_temp_yaml() as config_path:
+            success, components, stderr = test_executor.stepflow_runner.list_components(
+                config_path=config_path
+            )
+            assert success, f"Component listing failed: {stderr}"
 
-                # Should have langflow components available
-                langflow_components = [c for c in components if "langflow" in c.lower()]
-                assert len(langflow_components) > 0, (
-                    f"Should have Langflow components available: {components}"
-                )
+            # Should have langflow components available
+            langflow_components = [c for c in components if "langflow" in c.lower()]
+            assert len(langflow_components) > 0, (
+                f"Should have Langflow components available: {components}"
+            )
 
     except Exception as e:
         pytest.skip(f"Langflow server not available: {e}")
 
 
-def test_blob_storage_integration(converter):
+def test_blob_storage_integration(test_executor):
     """Test that blob storage works for component code."""
     # Use basic_prompting which definitely has custom components
     langflow_data = load_flow_fixture("basic_prompting")
-    stepflow_workflow = converter.convert(langflow_data)
+    stepflow_workflow = test_executor.converter.convert(langflow_data)
 
     # Should have blob steps for component code storage
     blob_steps = [
@@ -691,29 +769,28 @@ def test_blob_storage_integration(converter):
 # Error handling tests
 
 
-def test_execution_with_missing_input(converter, stepflow_runner):
+def test_execution_with_missing_input(test_executor):
     """Test execution with missing required input - workflows handle gracefully."""
     # Modern Langflow workflows often have good defaults and handle
     # missing input gracefully. This test verifies that our integration
     # doesn't crash with empty input
 
     langflow_data = load_flow_fixture("basic_prompting")
-    stepflow_workflow = converter.convert(langflow_data)
-    workflow_yaml = converter.to_yaml(stepflow_workflow)
+    stepflow_workflow = test_executor.converter.convert(langflow_data)
+    workflow_yaml = test_executor.converter.to_yaml(stepflow_workflow)
 
     # Execute without providing input - should either succeed with
     # defaults or fail gracefully
-    with StepflowConfigBuilder() as config:
-        with config.to_temp_yaml() as config_path:
-            success, result_data, _, stderr = stepflow_runner.run_workflow(
-                workflow_yaml, {}, config_path=config_path, timeout=15.0
-            )
+    with test_executor.shared_config.to_temp_yaml() as config_path:
+        success, result_data, _, stderr = test_executor.stepflow_runner.run_workflow(
+            workflow_yaml, {}, config_path=config_path, timeout=15.0
+        )
 
-            # Either outcome is acceptable - we're testing that it doesn't crash
-            if success:
-                # Succeeded with defaults - good behavior
-                assert isinstance(result_data, dict)
-                assert result_data.get("outcome") == "success"
-            else:
-                # Failed gracefully - also good behavior
-                assert isinstance(result_data, dict) or "error" in stderr.lower()
+        # Either outcome is acceptable - we're testing that it doesn't crash
+        if success:
+            # Succeeded with defaults - good behavior
+            assert isinstance(result_data, dict)
+            assert result_data.get("outcome") == "success"
+        else:
+            # Failed gracefully - also good behavior
+            assert isinstance(result_data, dict) or "error" in stderr.lower()

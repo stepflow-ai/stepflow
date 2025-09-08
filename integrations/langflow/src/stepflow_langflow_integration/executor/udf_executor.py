@@ -118,16 +118,20 @@ class UDFExecutor:
         return blob_ids
 
     def _process_embedded_configurations(
-        self, parameters: dict[str, Any]
+        self, parameters: dict[str, Any], runtime_inputs: dict[str, Any] = None
     ) -> dict[str, Any]:
         """Process embedded configuration parameters like _embedding_config_*.
 
         Args:
             parameters: Component parameters containing embedded configurations
+            runtime_inputs: Runtime inputs that may contain embedded_*
+                parameter overrides
 
         Returns:
             Updated parameters with embedded configurations processed
         """
+        if runtime_inputs is None:
+            runtime_inputs = {}
 
         updated_parameters = parameters.copy()
 
@@ -148,6 +152,14 @@ class UDFExecutor:
                     from langchain_openai import OpenAIEmbeddings
 
                     embedding_params = embedding_config.get("config", {}).copy()
+
+                    # Override with embedded_* parameters from runtime inputs
+                    # TODO(#315): Improve mapping of input/tweaks to embedded steps.
+                    for runtime_key, runtime_value in runtime_inputs.items():
+                        if runtime_key.startswith("embedded_"):
+                            # Map embedded_openai_api_key -> openai_api_key, etc.
+                            param_name = runtime_key.replace("embedded_", "")
+                            embedding_params[param_name] = runtime_value
 
                     # Remove empty string values that should be None or omitted
                     embedding_params = {
@@ -427,7 +439,9 @@ class UDFExecutor:
         resolved_parameters = component_parameters
 
         # Process embedded configuration parameters (like _embedding_config_*)
-        resolved_parameters = self._process_embedded_configurations(resolved_parameters)
+        resolved_parameters = self._process_embedded_configurations(
+            resolved_parameters, runtime_inputs
+        )
 
         # Configure component
         if hasattr(component_instance, "set_attributes"):
