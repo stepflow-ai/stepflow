@@ -94,7 +94,7 @@ def _handle_exception(e: Exception, id: RequestId) -> MethodError:
 
 
 class StepflowServer:
-    """Core Stepflow server with component registry and business logic."""
+    """Unified Stepflow server with component registry and transport methods."""
 
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
@@ -559,3 +559,31 @@ class StepflowServer:
         if func is None:
             return decorator
         return decorator(func)
+
+    def start_stdio(
+        self,
+        stdin: Any = None,  # asyncio.StreamReader | None
+        stdout: Any = None,  # asyncio.StreamWriter | None
+    ) -> None:
+        """Start the server using STDIO transport.
+
+        Args:
+            stdin: Optional StreamReader to read from (defaults to sys.stdin)
+            stdout: Optional StreamWriter to write to (defaults to sys.stdout)
+        """
+        from .stdio_server import StepflowStdioServer
+
+        stdio_server = StepflowStdioServer(server=self)
+        stdio_server.run(stdin=stdin, stdout=stdout)
+
+    async def start_http(self, host: str = "localhost", port: int = 8080) -> None:
+        """Start the server using HTTP transport.
+
+        Args:
+            host: Server host (default: localhost)
+            port: Server port (default: 8080)
+        """
+        from .http_server import StepflowHttpServer
+
+        http_server = StepflowHttpServer(server=self, host=host, port=port)
+        await http_server.run()

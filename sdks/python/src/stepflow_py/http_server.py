@@ -375,6 +375,10 @@ class StepflowHttpServer:
         server = uvicorn.Server(config)
         await server.serve()
 
+    def component(self, *args, **kwargs):
+        """Delegate component registration to the underlying server."""
+        return self.server.component(*args, **kwargs)
+
     def langchain_component(self, *args, **kwargs):
         """Delegate langchain_component registration to the underlying server."""
         return self.server.langchain_component(*args, **kwargs)
