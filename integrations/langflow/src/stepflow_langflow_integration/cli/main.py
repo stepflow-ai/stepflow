@@ -418,11 +418,11 @@ stateStore:
             if result.returncode == 0:
                 click.echo("✅ Execution completed successfully!")
                 click.echo("\n🎯 Results:")
-                
+
                 # Read clean JSON result from output file
                 workflow_success = True
                 result_data = None
-                
+
                 try:
                     if output_file.exists():
                         with open(output_file) as f:
@@ -430,7 +430,7 @@ stateStore:
                         if output_content:
                             result_data = json.loads(output_content)
                             click.echo(json.dumps(result_data, indent=2))
-                            
+
                             # Check if workflow outcome is success
                             outcome = result_data.get("outcome", "unknown")
                             if outcome != "success":
@@ -444,13 +444,15 @@ stateStore:
                         if result.stdout.strip():
                             lines = result.stdout.strip().split("\n")
                             for line in lines:
-                                if line.strip().startswith("{") and line.strip().endswith("}"):
+                                if line.strip().startswith(
+                                    "{"
+                                ) and line.strip().endswith("}"):
                                     result_data = json.loads(line)
                                     click.echo(json.dumps(result_data, indent=2))
                                     break
                             else:
                                 click.echo(result.stdout)
-                        
+
                 except Exception as e:
                     # Fallback to stdout if file parsing fails
                     if result.stdout:
@@ -470,7 +472,7 @@ stateStore:
                 if result.stderr:
                     click.echo("STDERR:", err=True)
                     click.echo(result.stderr, err=True)
-                
+
                 # Also show logs from log file if available for debugging
                 if log_file.exists():
                     try:
@@ -481,7 +483,7 @@ stateStore:
                             click.echo(log_content, err=True)
                     except Exception:
                         pass
-                        
+
                 sys.exit(1)
 
         except subprocess.TimeoutExpired:
