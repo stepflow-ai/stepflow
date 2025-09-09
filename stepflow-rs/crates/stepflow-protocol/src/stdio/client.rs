@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::ops::DerefMut;
+use std::ops::DerefMut as _;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
@@ -22,9 +22,9 @@ use crate::lazy_value::LazyValue;
 use crate::protocol::{Method, ProtocolMethod, ProtocolNotification};
 use crate::{MethodRequest, Notification, RequestId};
 use tokio::{
+    sync::RwLock,
     sync::{mpsc, oneshot},
     task::JoinHandle,
-    sync::RwLock,
 };
 use tracing::Instrument as _;
 
@@ -114,10 +114,9 @@ impl StdioClientHandle {
     async fn send(&self, msg: &(dyn erased_serde::Serialize + Send + Sync)) -> Result<()> {
         let msg = serde_json::to_string(&msg).change_context(TransportError::Send)?;
 
-        let send_result = self.outgoing_tx
-            .send(msg)
-            .await;
-        self.handle_channel_error(send_result, TransportError::Send).await?;
+        let send_result = self.outgoing_tx.send(msg).await;
+        self.handle_channel_error(send_result, TransportError::Send)
+            .await?;
 
         Ok(())
     }
@@ -132,13 +131,15 @@ impl StdioClientHandle {
 
         self.pending_tx
             .send((id.clone(), response_tx))
-            .await.change_context(TransportError::Send)?;
+            .await
+            .change_context(TransportError::Send)?;
 
         let request = MethodRequest::new(id.clone(), method, Some(params));
         self.send(&request).await?;
-        let response = response_rx
-            .await;
-        let response = self.handle_channel_error(response, TransportError::Recv).await?
+        let response = response_rx.await;
+        let response = self
+            .handle_channel_error(response, TransportError::Recv)
+            .await?
             .owned_response()?;
 
         // This is an assertion since the routing should only send the response for the
