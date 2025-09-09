@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::ops::DerefMut as _;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
@@ -21,6 +22,7 @@ use crate::lazy_value::LazyValue;
 use crate::protocol::{Method, ProtocolMethod, ProtocolNotification};
 use crate::{MethodRequest, Notification, RequestId};
 use tokio::{
+    sync::RwLock,
     sync::{mpsc, oneshot},
     task::JoinHandle,
 };
@@ -35,10 +37,7 @@ use crate::error::{Result, TransportError};
 pub struct StdioClient {
     outgoing_tx: mpsc::Sender<String>,
     pending_tx: mpsc::Sender<(RequestId, oneshot::Sender<OwnedJson>)>,
-    // TODO: Use the handle. We should actually check it for errors
-    // before bubbling other (less meaningful) errors up.
-    #[allow(dead_code)]
-    loop_handle: JoinHandle<Result<()>>,
+    loop_handle: Arc<RwLock<JoinHandle<Result<()>>>>,
 }
 
 impl StdioClient {
@@ -57,6 +56,7 @@ impl StdioClient {
             )
             .instrument(recv_span),
         );
+        let loop_handle = Arc::new(RwLock::new(loop_handle));
 
         Ok(Self {
             outgoing_tx,
@@ -69,15 +69,18 @@ impl StdioClient {
         StdioClientHandle {
             outgoing_tx: self.outgoing_tx.clone(),
             pending_tx: self.pending_tx.clone(),
+            loop_handle: self.loop_handle.clone(),
         }
     }
 }
 
 #[derive(Clone)]
 pub struct StdioClientHandle {
+    /// Channel to send outgoing JSON lines to.
     outgoing_tx: mpsc::Sender<String>,
     /// Channel to send new pending requests to.
     pending_tx: mpsc::Sender<(RequestId, oneshot::Sender<OwnedJson>)>,
+    loop_handle: Arc<RwLock<JoinHandle<Result<()>>>>,
 }
 
 impl StdioClientHandle {
@@ -111,10 +114,9 @@ impl StdioClientHandle {
     async fn send(&self, msg: &(dyn erased_serde::Serialize + Send + Sync)) -> Result<()> {
         let msg = serde_json::to_string(&msg).change_context(TransportError::Send)?;
 
-        self.outgoing_tx
-            .send(msg)
-            .await
-            .change_context(TransportError::Send)?;
+        let send_result = self.outgoing_tx.send(msg).await;
+        self.handle_channel_error(send_result, TransportError::Send)
+            .await?;
 
         Ok(())
     }
@@ -130,19 +132,49 @@ impl StdioClientHandle {
         self.pending_tx
             .send((id.clone(), response_tx))
             .await
-            .map_err(|_| TransportError::Send)?;
+            .change_context(TransportError::Send)?;
 
         let request = MethodRequest::new(id.clone(), method, Some(params));
         self.send(&request).await?;
-
-        let response = response_rx
-            .await
-            .change_context(TransportError::Recv)?
+        let response = response_rx.await;
+        let response = self
+            .handle_channel_error(response, TransportError::Recv)
+            .await?
             .owned_response()?;
 
         // This is an assertion since the routing should only send the response for the
         // registered ID to the pending one-shot channel.
         debug_assert_eq!(response.response().id(), &id);
         response.into_success_value()
+    }
+
+    async fn handle_channel_error<T, E: error_stack::Context>(
+        &self,
+        result: Result<T, E>,
+        transport_error: TransportError,
+    ) -> Result<T> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(e) => {
+                if !self.loop_handle.read().await.is_finished() {
+                    return Err(error_stack::report!(e).change_context(transport_error));
+                }
+
+                let mut write = self.loop_handle.write().await;
+                let result = write.deref_mut().await;
+                match result {
+                    Ok(Ok(())) => {
+                        tracing::error!("Subprocess exited successfully.");
+                    }
+                    Ok(Err(e)) => {
+                        tracing::error!("Error running receive loop: {e})");
+                    }
+                    Err(e) => {
+                        tracing::error!("Panic in receive loop: {e}");
+                    }
+                };
+                error_stack::bail!(transport_error)
+            }
+        }
     }
 }
