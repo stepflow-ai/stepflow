@@ -151,34 +151,44 @@ class StepflowStdioServer:
     async def _process_messages(self, writer: asyncio.StreamWriter):
         """Process messages from both incoming and outgoing queues asynchronously."""
         print("Starting process messages", file=sys.stderr)
+        
+        # Create persistent tasks for queue monitoring
+        incoming_task = asyncio.create_task(self._incoming_queue.get())
+        outgoing_task = asyncio.create_task(self._outgoing_queue.get())
+
+        # Keep track of active message handling tasks
+        pending = {incoming_task, outgoing_task}
+        
         while True:
-            # Wait for either incoming or outgoing messages
             try:
-                # Use asyncio.wait with FIRST_COMPLETED to handle both queues
-                incoming_task = asyncio.create_task(self._incoming_queue.get())
-                outgoing_task = asyncio.create_task(self._outgoing_queue.get())
+                # Wait for either incoming/outgoing messages or completion of active tasks
+                
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
 
-                done, pending = await asyncio.wait(
-                    [incoming_task, outgoing_task], return_when=asyncio.FIRST_COMPLETED
-                )
-
-                # Cancel pending tasks
-                for task in pending:
-                    task.cancel()
-
-                # Handle completed task
+                # Handle completed tasks
                 for task in done:
                     if task == incoming_task:
                         # Handle incoming message
                         request_bytes = task.result()
-                        asyncio.create_task(
+                        print(f"Processing Received: {request_bytes}", file=sys.stderr)
+                        # Create and track the message handling task
+                        handler_task = asyncio.create_task(
                             self._handle_incoming_message(request_bytes)
                         )
+                        pending.add(handler_task)
+                        # Create new incoming task for next message
+                        incoming_task = asyncio.create_task(self._incoming_queue.get())
+                        pending.add(incoming_task)
+                        
                     elif task == outgoing_task:
                         # Handle outgoing message
                         outgoing_message = task.result()
                         await self._send_outgoing_message(outgoing_message, writer)
 
+                        # Create new outgoing task for next message
+                        outgoing_task = asyncio.create_task(self._outgoing_queue.get())
+                        pending.add(outgoing_task)
+                        
             except Exception as e:
                 print(f"Error in message processing loop: {e}", file=sys.stderr)
 
