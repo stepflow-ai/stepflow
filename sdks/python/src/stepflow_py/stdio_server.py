@@ -151,19 +151,19 @@ class StepflowStdioServer:
     async def _process_messages(self, writer: asyncio.StreamWriter):
         """Process messages from both incoming and outgoing queues asynchronously."""
         print("Starting process messages", file=sys.stderr)
-        
+
         # Create persistent tasks for queue monitoring
         incoming_task = asyncio.create_task(self._incoming_queue.get())
         outgoing_task = asyncio.create_task(self._outgoing_queue.get())
 
         # Keep track of active message handling tasks
         pending = {incoming_task, outgoing_task}
-        
+
         while True:
             try:
-                # Wait for either incoming/outgoing messages or completion of active tasks
-                
-                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
 
                 # Handle completed tasks
                 for task in done:
@@ -179,7 +179,7 @@ class StepflowStdioServer:
                         # Create new incoming task for next message
                         incoming_task = asyncio.create_task(self._incoming_queue.get())
                         pending.add(incoming_task)
-                        
+
                     elif task == outgoing_task:
                         # Handle outgoing message
                         outgoing_message = task.result()
@@ -188,7 +188,7 @@ class StepflowStdioServer:
                         # Create new outgoing task for next message
                         outgoing_task = asyncio.create_task(self._outgoing_queue.get())
                         pending.add(outgoing_task)
-                        
+
             except Exception as e:
                 print(f"Error in message processing loop: {e}", file=sys.stderr)
 
