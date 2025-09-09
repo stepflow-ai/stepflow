@@ -351,14 +351,6 @@ def execute(
     transport: stdio
     command: uv
     args: ["--project", "{current_dir}", "run", "stepflow-langflow-server"]
-    env:  # Environment variables to propagate to the Langflow subprocess
-      OPENAI_API_KEY: "${{OPENAI_API_KEY}}"
-      ANTHROPIC_API_KEY: "${{ANTHROPIC_API_KEY}}"
-      GOOGLE_API_KEY: "${{GOOGLE_API_KEY}}"
-      COHERE_API_KEY: "${{COHERE_API_KEY}}"
-      HUGGINGFACE_API_TOKEN: "${{HUGGINGFACE_API_TOKEN}}"
-      ASTRA_DB_API_ENDPOINT: "${{ASTRA_DB_API_ENDPOINT}}"
-      ASTRA_DB_APPLICATION_TOKEN: "${{ASTRA_DB_APPLICATION_TOKEN}}"
 
 routes:
   "/langflow/{{*component}}":
@@ -403,13 +395,19 @@ stateStore:
         click.echo(f"   • Input: {input_json}")
         click.echo(f"   • Timeout: {timeout}s")
 
-        # Execute with stepflow
+        # Create output and log files for clean separation
+        output_file = temp_dir / "result.json"
+        log_file = temp_dir / "execution.log"
+
+        # Execute with stepflow using clean output separation
         cmd = [
             str(binary_path),
             "run",
             f"--flow={workflow_file}",
             f"--config={config_file}",
             f"--input-json={input_json}",
+            f"--output={output_file}",
+            f"--log-file={log_file}",
         ]
 
         try:
@@ -420,16 +418,19 @@ stateStore:
             if result.returncode == 0:
                 click.echo("✅ Execution completed successfully!")
                 click.echo("\n🎯 Results:")
-                # Try to pretty-print JSON output and check outcome
+                
+                # Read clean JSON result from output file
                 workflow_success = True
+                result_data = None
+                
                 try:
-                    # Look for JSON in the output
-                    lines = result.stdout.strip().split("\n")
-                    for line in lines:
-                        if line.strip().startswith("{") and line.strip().endswith("}"):
-                            result_data = json.loads(line)
+                    if output_file.exists():
+                        with open(output_file) as f:
+                            output_content = f.read().strip()
+                        if output_content:
+                            result_data = json.loads(output_content)
                             click.echo(json.dumps(result_data, indent=2))
-
+                            
                             # Check if workflow outcome is success
                             outcome = result_data.get("outcome", "unknown")
                             if outcome != "success":
@@ -438,12 +439,23 @@ stateStore:
                                     f"\n❌ Workflow failed with outcome: {outcome}",
                                     err=True,
                                 )
-                            break
                     else:
-                        click.echo(result.stdout)
+                        # Fallback to stdout parsing if output file doesn't exist
+                        if result.stdout.strip():
+                            lines = result.stdout.strip().split("\n")
+                            for line in lines:
+                                if line.strip().startswith("{") and line.strip().endswith("}"):
+                                    result_data = json.loads(line)
+                                    click.echo(json.dumps(result_data, indent=2))
+                                    break
+                            else:
+                                click.echo(result.stdout)
+                        
                 except Exception as e:
-                    click.echo(result.stdout)
-                    click.echo(f"\n⚠️  Could not parse result JSON: {e}", err=True)
+                    # Fallback to stdout if file parsing fails
+                    if result.stdout:
+                        click.echo(result.stdout)
+                    click.echo(f"\n⚠️  Could not parse result: {e}", err=True)
 
                 # Exit with error code if workflow failed
                 if not workflow_success:
@@ -452,10 +464,24 @@ stateStore:
                     )  # Use exit code 2 for workflow failure vs 1 for system failure
             else:
                 click.echo("❌ Execution failed")
-                click.echo("STDOUT:", err=True)
-                click.echo(result.stdout, err=True)
-                click.echo("STDERR:", err=True)
-                click.echo(result.stderr, err=True)
+                if result.stdout:
+                    click.echo("STDOUT:", err=True)
+                    click.echo(result.stdout, err=True)
+                if result.stderr:
+                    click.echo("STDERR:", err=True)
+                    click.echo(result.stderr, err=True)
+                
+                # Also show logs from log file if available for debugging
+                if log_file.exists():
+                    try:
+                        with open(log_file) as f:
+                            log_content = f.read().strip()
+                        if log_content:
+                            click.echo("LOGS:", err=True)
+                            click.echo(log_content, err=True)
+                    except Exception:
+                        pass
+                        
                 sys.exit(1)
 
         except subprocess.TimeoutExpired:
