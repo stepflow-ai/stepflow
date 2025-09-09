@@ -266,6 +266,7 @@ def execute(
     import shutil
     import subprocess
     import tempfile
+    import time
     from pathlib import Path
 
     try:
@@ -411,12 +412,15 @@ stateStore:
         ]
 
         try:
+            start_time = time.time()
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=timeout
             )
+            end_time = time.time()
+            duration = end_time - start_time
 
             if result.returncode == 0:
-                click.echo("✅ Execution completed successfully!")
+                click.echo(f"✅ Execution completed successfully in {duration:.2f}s!")
                 click.echo("\n🎯 Results:")
 
                 # Read clean JSON result from output file
@@ -465,7 +469,7 @@ stateStore:
                         2
                     )  # Use exit code 2 for workflow failure vs 1 for system failure
             else:
-                click.echo("❌ Execution failed")
+                click.echo(f"❌ Execution failed in {duration:.2f}s")
                 if result.stdout:
                     click.echo("STDOUT:", err=True)
                     click.echo(result.stdout, err=True)

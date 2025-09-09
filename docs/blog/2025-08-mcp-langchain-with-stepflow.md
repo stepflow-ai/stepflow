@@ -15,6 +15,8 @@ In the rapidly evolving landscape of AI applications, the ability to orchestrate
 
 While invoking MCP tools from within an agent is nothing new, in this post we are building a practical, modular "flow" on top of Stepflow's declarative workflow engine. This system will generate research questions, analyze text, create structured notes, and save everything to an organized file structure. All this will be orchestrated through a declarative YAML workflow that's easy to understand and modify.
 
+<!-- truncate -->
+
 ## The Challenge: Bridging AI and Tools with Flows
 
 There has been a lot of news recently about the challenges of building modern AI applications in enterprise. Getting on the AI bandwagon has led to a lot of initial implementations that miss the mark, assuming that an LLM and some context are all that is needed. Modern AI applications need more than just language models and some context. They need to:

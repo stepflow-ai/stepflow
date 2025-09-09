@@ -1,5 +1,7 @@
 announcements:
   label: "Announcements"
+examples:
+  label: "Examples"
 releases:
   label: 'Releases'
   permalink: '/releases'
