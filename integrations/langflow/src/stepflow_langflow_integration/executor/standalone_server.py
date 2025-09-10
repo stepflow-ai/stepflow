@@ -52,7 +52,8 @@ async def udf_executor_component(
 
 def main():
     """Main entry point for the Langflow component server."""
-    import nest_asyncio
+    import nest_asyncio # type: ignore
+
     nest_asyncio.apply()
     # Start the server - this handles all the asyncio setup correctly
     server.run()
