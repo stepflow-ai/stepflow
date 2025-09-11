@@ -41,11 +41,12 @@ dependencies = [
     "msgspec>=0.19.0",
     "click>=8.0",
     "jsonschema>=4.17.0",
-    "langflow>=1.5.0",  # Required for component execution
-    "python-dotenv>=1.0.0",  # For .env file support
-    "openai>=1.0.0",  # For OpenAI API integration
-    "langchain_core>=0.1.0",  # For core LangChain functionality
-    "langchain_openai>=0.1.0",  # For LangChain OpenAI integration
+    "langflow>=1.5.0", # Required for component execution
+    "python-dotenv>=1.0.0", # For .env file support
+    "openai>=1.0.0", # For OpenAI API integration
+    "langchain_core>=0.1.0", # For core LangChain functionality
+    "langchain_openai>=0.1.0", # For LangChain OpenAI integration
+    "nest-asyncio>=1.6.0",
 ]
 
 [dependency-groups]
