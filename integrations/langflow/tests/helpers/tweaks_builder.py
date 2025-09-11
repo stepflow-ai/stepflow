@@ -193,9 +193,8 @@ def create_vector_store_rag_tweaks() -> dict[str, dict[str, Any]]:
         .add_openai_tweaks("LanguageModelComponent-1uhuk")  # Lowercase 'k'
         .add_astradb_tweaks("AstraDB-jsrrt")  # Lowercase
         .add_astradb_tweaks("AstraDB-w6nb4")  # Lowercase
-        # Add embedded OpenAI API key tweaks for AstraDB components
-        .add_env_tweak("AstraDB-jsrrt", "embedded_openai_api_key", "OPENAI_API_KEY")
-        .add_env_tweak("AstraDB-w6nb4", "embedded_openai_api_key", "OPENAI_API_KEY")
+        .add_env_tweak("OpenAIEmbeddings-v0rcw", "openai_api_key", "OPENAI_API_KEY")
+        .add_env_tweak("OpenAIEmbeddings-oFtHy", "openai_api_key", "OPENAI_API_KEY")
         .build_or_skip()
     )
 
