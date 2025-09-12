@@ -28,6 +28,9 @@ sys.path.insert(0, str(package_root))
 
 from stepflow_py import StepflowContext, StepflowStdioServer
 
+from stepflow_langflow_integration.components.component_tool import (
+    component_tool_executor,
+)
 from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
 
 # Create server instance (following the exact pattern from stepflow_py/main.py)
@@ -44,6 +47,15 @@ async def udf_executor_component(
 ) -> dict[str, Any]:
     """Execute a Langflow UDF component."""
     return await udf_executor.execute(input_data, context)
+
+
+# Register the component tool wrapper component
+@server.component(name="component_tool")
+async def component_tool_component(
+    input_data: dict[str, Any], context: StepflowContext
+) -> dict[str, Any]:
+    """Create tool wrappers from Langflow components."""
+    return await component_tool_executor(input_data, context)
 
 
 # All Langflow components now route through the UDF executor for real execution
