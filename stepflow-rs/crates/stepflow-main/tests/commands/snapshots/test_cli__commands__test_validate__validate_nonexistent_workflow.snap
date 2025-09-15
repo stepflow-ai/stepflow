@@ -11,13 +11,6 @@ info:
 success: false
 exit_code: 1
 ----- stdout -----
-🔧 Validating configuration...
-✅ Found 1 plugin(s) configured
-❌ No routing rules configured in stepflow-config.yml
-⚠️  Plugin 'builtin' is not referenced by any routing rule
-❌ Configuration has 1 issue(s)
-📋 Validating workflow: nonexistent.yaml
-❌ Workflow validation failed for nonexistent.yaml: Missing file: nonexistent.yaml
-❌ Validation completed with 2 failure(s)
 
 ----- stderr -----
+Missing file: nonexistent.yaml

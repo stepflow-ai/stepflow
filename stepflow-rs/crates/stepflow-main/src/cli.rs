@@ -24,7 +24,9 @@ use crate::{
     serve::serve,
     submit::submit,
     test::TestOptions,
-    validate, visualize,
+    validate,
+    validation_display::display_diagnostics,
+    visualize,
 };
 
 /// Stepflow command line application.
@@ -397,8 +399,20 @@ impl Cli {
                 let flow: Arc<Flow> = load(&flow_path)?;
                 let flow_dir = flow_path.parent();
                 let config = config_args.load_config(flow_dir)?;
-                let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
+                // Validate workflow and configuration before execution
+                let diagnostics =
+                    stepflow_analysis::validate(&flow, &config.plugins, &config.routing)
+                        .change_context(crate::MainError::ValidationError(
+                            "Validation failed".to_string(),
+                        ))?;
+
+                let failure_count = display_diagnostics(&diagnostics);
+                if failure_count > 0 {
+                    std::process::exit(1);
+                }
+
+                let executor = WorkflowLoader::create_executor_from_config(config).await?;
                 let input = input_args.parse_input(true)?;
 
                 let flow_id =

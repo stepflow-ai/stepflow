@@ -10,9 +10,11 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use stepflow_core::workflow::{BaseRef, Component, Expr, Flow, Step, ValueTemplate, WorkflowRef};
+use stepflow_plugin::routing::RoutingConfig;
 
 use crate::Result;
 use crate::diagnostics::{DiagnosticMessage, Diagnostics};
@@ -349,6 +351,78 @@ fn collect_step_dependencies(
     Ok(())
 }
 
+/// Validate both workflow and configuration together
+pub fn validate(
+    flow: &Flow,
+    plugins: &IndexMap<String, impl std::fmt::Debug>,
+    routing: &RoutingConfig,
+) -> Result<Diagnostics> {
+    let mut diagnostics = validate_workflow(flow)?;
+    validate_config(plugins, routing, &mut diagnostics);
+    Ok(diagnostics)
+}
+
+/// Validate configuration structure and consistency
+fn validate_config(
+    plugins: &IndexMap<String, impl std::fmt::Debug>,
+    routing: &RoutingConfig,
+    diagnostics: &mut Diagnostics,
+) {
+    // Check that at least one plugin is configured
+    if plugins.is_empty() {
+        diagnostics.add(
+            DiagnosticMessage::NoPluginsConfigured,
+            vec!["plugins".to_string()],
+        );
+    }
+
+    // Check that routing rules exist
+    if routing.routes.is_empty() {
+        diagnostics.add(
+            DiagnosticMessage::NoRoutingRulesConfigured,
+            vec!["routes".to_string()],
+        );
+    }
+
+    // Validate routing rules reference existing plugins
+    for (path, rules) in &routing.routes {
+        for (rule_index, rule) in rules.iter().enumerate() {
+            if !plugins.contains_key(rule.plugin.as_ref()) {
+                diagnostics.add(
+                    DiagnosticMessage::InvalidRouteReference {
+                        route_path: path.clone(),
+                        rule_index,
+                        plugin: rule.plugin.as_ref().to_string(),
+                    },
+                    vec![
+                        "routes".to_string(),
+                        path.clone(),
+                        rule_index.to_string(),
+                        "plugin".to_string(),
+                    ],
+                );
+            }
+        }
+    }
+
+    // Check for unused plugins (plugins not referenced by any routing rule)
+    for plugin_name in plugins.keys() {
+        let is_referenced = routing
+            .routes
+            .values()
+            .flatten()
+            .any(|rule| rule.plugin.as_ref() == plugin_name);
+        if !is_referenced {
+            diagnostics.add(
+                DiagnosticMessage::UnusedPlugin {
+                    plugin: plugin_name.clone(),
+                },
+                vec!["plugins".to_string(), plugin_name.clone()],
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -528,5 +602,158 @@ mod tests {
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         assert_eq!(error, 0, "Expected no error diagnostics for valid builtin");
         // Should have warnings but no errors for valid builtin components
+    }
+
+    #[test]
+    fn test_valid_config() {
+        use std::collections::HashMap;
+        use stepflow_plugin::routing::{RouteRule, RoutingConfig};
+
+        let mut plugins = IndexMap::new();
+        plugins.insert("builtin".to_string(), ());
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            "/{*component}".to_string(),
+            vec![RouteRule {
+                plugin: "builtin".into(),
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                component: None,
+            }],
+        );
+
+        let routing = RoutingConfig { routes };
+
+        let mut diagnostics = Diagnostics::new();
+        validate_config(&plugins, &routing, &mut diagnostics);
+
+        let (fatal, error, _warning) = diagnostics.counts();
+        assert_eq!(fatal, 0, "Expected no fatal diagnostics");
+        assert_eq!(error, 0, "Expected no error diagnostics");
+    }
+
+    #[test]
+    fn test_no_plugins_configured() {
+        use stepflow_plugin::routing::RoutingConfig;
+
+        let plugins: IndexMap<String, ()> = IndexMap::new();
+        let routing = RoutingConfig::default();
+
+        let mut diagnostics = Diagnostics::new();
+        validate_config(&plugins, &routing, &mut diagnostics);
+
+        let (fatal, error, warning) = diagnostics.counts();
+        assert_eq!(fatal, 0);
+        assert_eq!(error, 0);
+        assert_eq!(warning, 2, "Expected warning diagnostics");
+        assert!(
+            diagnostics
+                .diagnostics
+                .iter()
+                .any(|d| matches!(d.message, DiagnosticMessage::NoPluginsConfigured))
+        );
+        assert!(
+            diagnostics
+                .diagnostics
+                .iter()
+                .any(|d| matches!(d.message, DiagnosticMessage::NoRoutingRulesConfigured))
+        );
+    }
+
+    #[test]
+    fn test_invalid_route_reference() {
+        use std::collections::HashMap;
+        use stepflow_plugin::routing::{RouteRule, RoutingConfig};
+
+        let mut plugins = IndexMap::new();
+        plugins.insert("builtin".to_string(), ());
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            "/{*component}".to_string(),
+            vec![RouteRule {
+                plugin: "nonexistent".into(), // Invalid plugin reference
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                component: None,
+            }],
+        );
+
+        let routing = RoutingConfig { routes };
+
+        let mut diagnostics = Diagnostics::new();
+        validate_config(&plugins, &routing, &mut diagnostics);
+
+        let (_fatal, error, _warning) = diagnostics.counts();
+        assert!(error > 0, "Expected error diagnostics");
+        assert!(
+            diagnostics
+                .diagnostics
+                .iter()
+                .any(|d| matches!(d.message, DiagnosticMessage::InvalidRouteReference { .. }))
+        );
+    }
+
+    #[test]
+    fn test_unused_plugin() {
+        use stepflow_plugin::routing::RoutingConfig;
+
+        let mut plugins = IndexMap::new();
+        plugins.insert("builtin".to_string(), ());
+        plugins.insert("unused".to_string(), ()); // Plugin not referenced by any route
+
+        let routing = RoutingConfig::default(); // No routes
+
+        let mut diagnostics = Diagnostics::new();
+        validate_config(&plugins, &routing, &mut diagnostics);
+
+        let (_fatal, _error, warning) = diagnostics.counts();
+        assert!(warning > 0, "Expected warning diagnostics");
+        assert!(
+            diagnostics
+                .diagnostics
+                .iter()
+                .any(|d| matches!(d.message, DiagnosticMessage::UnusedPlugin { .. }))
+        );
+    }
+
+    #[test]
+    fn test_combined_validation() {
+        use std::collections::HashMap;
+        use stepflow_plugin::routing::{RouteRule, RoutingConfig};
+
+        let flow = FlowBuilder::test_flow()
+            .description("A test workflow")
+            .step(create_test_step(
+                "step1",
+                json!({"$from": {"workflow": "input"}}),
+            ))
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
+
+        let mut plugins = IndexMap::new();
+        plugins.insert("builtin".to_string(), ());
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            "/{*component}".to_string(),
+            vec![RouteRule {
+                plugin: "builtin".into(),
+                conditions: vec![],
+                component_allow: None,
+                component_deny: None,
+                component: None,
+            }],
+        );
+
+        let routing = RoutingConfig { routes };
+
+        let diagnostics = validate(&flow, &plugins, &routing).unwrap();
+        let (fatal, error, _warning) = diagnostics.counts();
+        assert_eq!(fatal, 0, "Expected no fatal diagnostics");
+        assert_eq!(error, 0, "Expected no error diagnostics");
     }
 }
