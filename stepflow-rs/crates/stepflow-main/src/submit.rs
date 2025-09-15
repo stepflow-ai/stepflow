@@ -15,15 +15,19 @@ use error_stack::ResultExt as _;
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Flow, ValueRef};
-use stepflow_server::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
 use stepflow_server::error::ErrorResponse;
+use stepflow_server::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
 use url::Url;
 
 /// Display a server error response with enhanced stack information
 fn display_server_error(status: reqwest::StatusCode, response_text: &str, context: &str) {
     // Try to parse as structured error response first
     if let Ok(error_response) = serde_json::from_str::<ErrorResponse>(response_text) {
-        tracing::error!("Server returned error {}: {}", context, error_response.message);
+        tracing::error!(
+            "Server returned error {}: {}",
+            context,
+            error_response.message
+        );
 
         if !error_response.stack.is_empty() {
             tracing::error!("Error stack trace:");
@@ -56,7 +60,12 @@ fn display_server_error(status: reqwest::StatusCode, response_text: &str, contex
         }
     } else {
         // Fallback to simple error display if parsing fails
-        tracing::error!("Server returned error {} {}: {}", context, status, response_text);
+        tracing::error!(
+            "Server returned error {} {}: {}",
+            context,
+            status,
+            response_text
+        );
     }
 }
 
@@ -205,7 +214,11 @@ mod tests {
 
         // Test that this doesn't panic - actual output verification would require
         // tracing subscriber setup which is complex for unit tests
-        display_server_error(reqwest::StatusCode::INTERNAL_SERVER_ERROR, error_json, "executing workflow");
+        display_server_error(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            error_json,
+            "executing workflow",
+        );
     }
 
     #[test]
@@ -214,7 +227,11 @@ mod tests {
         let error_text = "Internal Server Error";
 
         // This should fallback to simple error display
-        display_server_error(reqwest::StatusCode::INTERNAL_SERVER_ERROR, error_text, "test operation");
+        display_server_error(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            error_text,
+            "test operation",
+        );
     }
 
     #[test]

@@ -25,7 +25,10 @@ use uuid::Uuid;
 /// Other `error_stack::Report` types will automatically convert to internal errors.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ErrorResponse {
-    #[serde(serialize_with = "serialize_status_code", deserialize_with = "deserialize_status_code")]
+    #[serde(
+        serialize_with = "serialize_status_code",
+        deserialize_with = "deserialize_status_code"
+    )]
     pub code: StatusCode,
     pub message: String,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
@@ -81,7 +84,7 @@ fn deserialize_status_code<'de, D>(d: D) -> Result<StatusCode, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    use serde::Deserialize;
+    use serde::Deserialize as _;
     let code = u16::deserialize(d)?;
     StatusCode::from_u16(code).map_err(serde::de::Error::custom)
 }
@@ -121,13 +124,12 @@ impl<T: error_stack::Context> From<error_stack::Report<T>> for ErrorResponse {
 
         // Extract global backtrace if available
         let global_backtrace = {
-            let mut backtrace_iter = report.frames()
-                .into_iter()
-                .filter_map(|frame| {
-                    frame.sources()
-                        .into_iter()
-                        .find_map(|source| source.downcast_ref::<std::backtrace::Backtrace>())
-                });
+            let mut backtrace_iter = report.frames().filter_map(|frame| {
+                frame
+                    .sources()
+                    .iter()
+                    .find_map(|source| source.downcast_ref::<std::backtrace::Backtrace>())
+            });
             backtrace_iter.next().map(|bt| bt.to_string())
         };
 
@@ -135,15 +137,20 @@ impl<T: error_stack::Context> From<error_stack::Report<T>> for ErrorResponse {
             match frame.kind() {
                 error_stack::FrameKind::Context(context) => {
                     // If we have accumulated attachments, add them to the previous entry
-                    if !current_attachments.is_empty() && !stack.is_empty() {
-                        if let Some(last_entry) = stack.last_mut() {
-                            last_entry.attachments.extend(current_attachments.drain(..));
-                        }
+                    if !current_attachments.is_empty()
+                        && !stack.is_empty()
+                        && let Some(last_entry) = stack.last_mut()
+                    {
+                        last_entry.attachments.append(&mut current_attachments);
                     }
 
                     // Add the context as a new stack entry
                     // Only include backtrace on the first (top-level) error to avoid duplication
-                    let backtrace = if stack.is_empty() { global_backtrace.clone() } else { None };
+                    let backtrace = if stack.is_empty() {
+                        global_backtrace.clone()
+                    } else {
+                        None
+                    };
 
                     stack.push(ErrorStackEntry {
                         error: context.to_string(),
@@ -151,27 +158,26 @@ impl<T: error_stack::Context> From<error_stack::Report<T>> for ErrorResponse {
                         backtrace,
                     });
                 }
-                error_stack::FrameKind::Attachment(attachment_kind) => {
-                    match attachment_kind {
-                        error_stack::AttachmentKind::Printable(printable) => {
-                            current_attachments.push(printable.to_string());
-                        }
-                        error_stack::AttachmentKind::Opaque(opaque) => {
-                            current_attachments.push(format!("<opaque attachment: {:p}>", opaque));
-                        }
-                        _ => {
-                            current_attachments.push("<unknown attachment>".to_string());
-                        }
+                error_stack::FrameKind::Attachment(attachment_kind) => match attachment_kind {
+                    error_stack::AttachmentKind::Printable(printable) => {
+                        current_attachments.push(printable.to_string());
                     }
-                }
+                    error_stack::AttachmentKind::Opaque(opaque) => {
+                        current_attachments.push(format!("<opaque attachment: {:p}>", opaque));
+                    }
+                    _ => {
+                        current_attachments.push("<unknown attachment>".to_string());
+                    }
+                },
             }
         }
 
         // Add any remaining attachments to the last entry
-        if !current_attachments.is_empty() && !stack.is_empty() {
-            if let Some(last_entry) = stack.last_mut() {
-                last_entry.attachments.extend(current_attachments);
-            }
+        if !current_attachments.is_empty()
+            && !stack.is_empty()
+            && let Some(last_entry) = stack.last_mut()
+        {
+            last_entry.attachments.extend(current_attachments);
         }
 
         ErrorResponse {
