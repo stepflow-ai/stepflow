@@ -96,6 +96,7 @@ pub async fn store_flow(
             .map_err(|_| ErrorResponse {
                 code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 message: "Failed to store flow".to_string(),
+                stack: vec![],
             })?;
         Some(flow_id)
     };
@@ -132,6 +133,7 @@ pub async fn get_flow(
         .map_err(|_| ErrorResponse {
             code: axum::http::StatusCode::NOT_FOUND,
             message: "Flow not found".to_string(),
+            stack: vec![],
         })?;
 
     // Check if it's a flow blob and deserialize
@@ -139,6 +141,7 @@ pub async fn get_flow(
         return Err(ErrorResponse {
             code: axum::http::StatusCode::BAD_REQUEST,
             message: "Blob is not a flow".to_string(),
+            stack: vec![],
         });
     }
 
@@ -146,6 +149,7 @@ pub async fn get_flow(
         serde_json::from_value(blob_data.data().as_ref().clone()).map_err(|_| ErrorResponse {
             code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             message: "Failed to deserialize flow".to_string(),
+            stack: vec![],
         })?;
 
     let flow = Arc::new(flow);
@@ -164,6 +168,7 @@ pub async fn get_flow(
                 message: format!(
                     "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
                 ),
+                stack: vec![],
             });
         }
     };
