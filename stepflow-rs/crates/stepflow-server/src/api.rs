@@ -67,6 +67,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         debug::DebugStepRequest,
         debug::DebugStepResponse,
         debug::DebugRunnableResponse,
+        health::HealthQuery,
         health::HealthResponse,
         runs::CreateRunRequest,
         runs::CreateRunResponse,
