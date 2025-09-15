@@ -113,6 +113,20 @@ pub enum DiagnosticMessage {
         field: String,
         reason: String,
     },
+
+    // Configuration validation diagnostics
+    #[serde(rename_all = "camelCase")]
+    NoPluginsConfigured,
+    #[serde(rename_all = "camelCase")]
+    NoRoutingRulesConfigured,
+    #[serde(rename_all = "camelCase")]
+    InvalidRouteReference {
+        route_path: String,
+        rule_index: usize,
+        plugin: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    UnusedPlugin { plugin: String },
 }
 
 impl DiagnosticMessage {
@@ -139,6 +153,12 @@ impl DiagnosticMessage {
             DiagnosticMessage::MissingWorkflowName => DiagnosticLevel::Warning,
             DiagnosticMessage::MissingWorkflowDescription => DiagnosticLevel::Warning,
             DiagnosticMessage::UnvalidatedFieldAccess { .. } => DiagnosticLevel::Warning,
+
+            // Configuration diagnostics
+            DiagnosticMessage::NoPluginsConfigured => DiagnosticLevel::Warning,
+            DiagnosticMessage::NoRoutingRulesConfigured => DiagnosticLevel::Warning,
+            DiagnosticMessage::InvalidRouteReference { .. } => DiagnosticLevel::Error,
+            DiagnosticMessage::UnusedPlugin { .. } => DiagnosticLevel::Warning,
         }
     }
 
@@ -219,6 +239,25 @@ impl DiagnosticMessage {
             } => {
                 format!("Field access '{field}' on step '{step_id}' cannot be validated: {reason}")
             }
+            DiagnosticMessage::NoPluginsConfigured => "No plugins configured".to_string(),
+            DiagnosticMessage::NoRoutingRulesConfigured => {
+                "No routing rules configured".to_string()
+            }
+            DiagnosticMessage::InvalidRouteReference {
+                route_path,
+                rule_index,
+                plugin,
+            } => {
+                format!(
+                    "Routing rule {} for path '{}' references unknown plugin '{}'",
+                    rule_index + 1,
+                    route_path,
+                    plugin
+                )
+            }
+            DiagnosticMessage::UnusedPlugin { plugin } => {
+                format!("Plugin '{}' is not referenced by any routing rule", plugin)
+            }
         }
     }
 
@@ -240,6 +279,10 @@ impl DiagnosticMessage {
             DiagnosticMessage::MissingWorkflowName => None,
             DiagnosticMessage::MissingWorkflowDescription => None,
             DiagnosticMessage::UnvalidatedFieldAccess { step_id, .. } => Some(step_id),
+            DiagnosticMessage::NoPluginsConfigured => None,
+            DiagnosticMessage::NoRoutingRulesConfigured => None,
+            DiagnosticMessage::InvalidRouteReference { .. } => None,
+            DiagnosticMessage::UnusedPlugin { .. } => None,
         }
     }
 

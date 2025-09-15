@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use crate::{Result, error::MainError};
+use crate::{Result, error::MainError, validation_display::display_diagnostics};
 use error_stack::ResultExt as _;
 use std::sync::Arc;
 use stepflow_core::FlowResult;
@@ -60,10 +60,18 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
         .await
         .change_context(MainError::ServerError)?;
 
+    // Display validation results
+    let failure_count = display_diagnostics(&store_result.analysis_result.diagnostics);
+
     // Check if the workflow was stored successfully
     let flow_id = store_result.flow_id.ok_or_else(|| {
-        tracing::error!("Workflow validation failed - flow was not stored");
-        MainError::Configuration
+        // If validation failed, the error details were already shown by display_diagnostics
+        if failure_count > 0 {
+            tracing::error!("Workflow validation failed - see diagnostics above");
+        } else {
+            tracing::error!("Workflow was not stored for unknown reasons");
+        }
+        MainError::ValidationError("Workflow validation failed".to_string())
     })?;
 
     // Step 2: Execute the workflow by hash

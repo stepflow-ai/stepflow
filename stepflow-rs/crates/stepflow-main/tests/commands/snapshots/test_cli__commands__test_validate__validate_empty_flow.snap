@@ -12,11 +12,6 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-🔧 Validating configuration...
-✅ Found 1 plugin(s) configured
-✅ Found 1 routing rule(s) configured
-✅ Configuration is valid
-📋 Validating workflow: tests/empty/empty_flow.yaml
 📊 Validation results: 0 fatal, 0 errors, 5 warnings
 
 ⚠️  Warnings:
@@ -25,6 +20,5 @@ exit_code: 0
   WARN Field access '$.numbers.b' on step 'workflow_input' cannot be validated: no input schema available (output.b_value)
   WARN Field access '$.items[0]' on step 'workflow_input' cannot be validated: no input schema available (output.first_item)
   WARN Field access '$.numbers' on step 'workflow_input' cannot be validated: no input schema available (output.nested_data)
-✅ Validation passed with no errors
 
 ----- stderr -----
