@@ -23,20 +23,20 @@ use uuid::Uuid;
 /// conversion to `ErrorResponse`.
 ///
 /// Other `error_stack::Report` types will automatically convert to internal errors.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ErrorResponse {
-    #[serde(serialize_with = "serialize_status_code")]
+    #[serde(serialize_with = "serialize_status_code", deserialize_with = "deserialize_status_code")]
     pub code: StatusCode,
     pub message: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub stack: Vec<ErrorStackEntry>,
 }
 
 /// A single entry in the error stack
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ErrorStackEntry {
     pub error: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub attachments: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backtrace: Option<String>,
@@ -75,6 +75,15 @@ where
     S: serde::Serializer,
 {
     s.serialize_u16(code.as_u16())
+}
+
+fn deserialize_status_code<'de, D>(d: D) -> Result<StatusCode, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let code = u16::deserialize(d)?;
+    StatusCode::from_u16(code).map_err(serde::de::Error::custom)
 }
 
 impl IntoResponse for ErrorResponse {

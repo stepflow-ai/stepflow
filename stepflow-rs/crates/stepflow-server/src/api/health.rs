@@ -53,7 +53,7 @@ pub async fn health_check(Query(params): Query<HealthQuery>) -> Result<Json<Heal
     if let Some(error_type) = params.error.as_ref() {
         return match error_type.as_str() {
             "bad_request" => {
-                use error_stack::{report, ResultExt};
+                use error_stack::report;
                 let backtrace = std::backtrace::Backtrace::capture();
                 Err(report!(ServerError::ExecutionNotFound(uuid::Uuid::new_v4()))
                     .attach(backtrace)
@@ -72,7 +72,7 @@ pub async fn health_check(Query(params): Query<HealthQuery>) -> Result<Json<Heal
                     .into())
             },
             "stack" => {
-                use error_stack::{report, ResultExt};
+                use error_stack::report;
                 // Create a more complex error stack with backtrace
                 let backtrace = std::backtrace::Backtrace::capture();
                 Err(report!(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Database connection failed"))

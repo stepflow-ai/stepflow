@@ -16,7 +16,7 @@
 //! It contains all the API endpoints, request/response types, and server startup logic.
 
 mod api;
-mod error;
+pub mod error;
 mod startup;
 
 pub use api::*;

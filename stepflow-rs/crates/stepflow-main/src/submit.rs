@@ -12,29 +12,12 @@
 
 use crate::{Result, error::MainError, validation_display::display_diagnostics};
 use error_stack::ResultExt as _;
-use serde::Deserialize;
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Flow, ValueRef};
 use stepflow_server::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
+use stepflow_server::error::ErrorResponse;
 use url::Url;
-
-/// Error response structure for client-side deserialization
-#[derive(Debug, Deserialize)]
-struct ErrorResponse {
-    pub message: String,
-    #[serde(default)]
-    pub stack: Vec<ErrorStackEntry>,
-}
-
-/// A single entry in the error stack
-#[derive(Debug, Deserialize)]
-struct ErrorStackEntry {
-    pub error: String,
-    #[serde(default)]
-    pub attachments: Vec<String>,
-    pub backtrace: Option<String>,
-}
 
 /// Display a server error response with enhanced stack information
 fn display_server_error(status: reqwest::StatusCode, response_text: &str, context: &str) {
