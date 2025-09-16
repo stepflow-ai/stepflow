@@ -23,7 +23,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use stepflow_core::workflow::Flow;
-use stepflow_core::{BlobId, FlowResult};
+use stepflow_core::{BlobId, FlowError, FlowResult};
 use walkdir::WalkDir;
 
 /// Normalize run_id fields in FlowResult for consistent testing
@@ -32,6 +32,13 @@ fn normalize_flow_result(result: FlowResult) -> FlowResult {
         FlowResult::Success(result) => {
             let normalized_value = normalize_json_value(result.as_ref().clone());
             FlowResult::Success(normalized_value.into())
+        }
+        FlowResult::Failed(error) => {
+            FlowResult::Failed(FlowError {
+                code: error.code,
+                message: error.message,
+                data: error.data.map(|data| normalize_json_value(data.clone_value()).into()),
+            })
         }
         other => other,
     }
@@ -50,17 +57,18 @@ fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
             for key in keys {
                 let mut val = map.remove(&key).unwrap();
 
-                // Normalize run_id fields to a fixed value for testing
                 if key == "run_id" && val.is_string() {
+                    // Normalize run_id fields to a fixed value for testing
                     val = Value::String("00000000-0000-0000-0000-000000000000".to_string());
                 }
-                // Strip backtraces from error stack entries for consistent testing.
-                // We could make this a bit stricter by only doing it to the top level
-                // `error.data.stack.*.backtrace` fields.
                 else if key == "backtrace" {
                     // Remove backtrace field entirely to avoid CI environment differences
+                    //
+                    // We could make this a bit stricter by only doing it to the top level
+                    // `error.data.stack.*.backtrace` fields.
                     continue;
                 } else {
+                    // Recursively normalize field values.
                     val = normalize_json_value(val);
                 }
 
