@@ -37,7 +37,7 @@ fn normalize_flow_result(result: FlowResult) -> FlowResult {
     }
 }
 
-/// Recursively normalize run_id fields in JSON values
+/// Recursively normalize run_id fields and strip backtraces in JSON values
 fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
     use serde_json::{Map, Value};
 
@@ -53,6 +53,13 @@ fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
                 // Normalize run_id fields to a fixed value for testing
                 if key == "run_id" && val.is_string() {
                     val = Value::String("00000000-0000-0000-0000-000000000000".to_string());
+                }
+                // Strip backtraces from error stack entries for consistent testing.
+                // We could make this a bit stricter by only doing it to the top level
+                // `error.data.stack.*.backtrace` fields.
+                else if key == "backtrace" {
+                    // Remove backtrace field entirely to avoid CI environment differences
+                    continue;
                 } else {
                     val = normalize_json_value(val);
                 }
@@ -541,4 +548,66 @@ fn print_summary(results: &[WorkflowTestResult]) -> Result<usize> {
     }
 
     Ok(cases_fail + cases_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_normalize_strips_backtrace_fields() {
+        // Create a JSON structure with backtrace fields
+        let input = json!({
+            "outcome": "failed",
+            "error": {
+                "code": 500,
+                "message": "Test error",
+                "data": {
+                    "stack": [
+                        {
+                            "error": "Test error",
+                            "attachments": [],
+                            "backtrace": "   0: rust_begin_unwind\n           at /rustc/.../std/panicking.rs:584:5\n   1: core::panic::panic_fmt\n           at /rustc/.../core/panic.rs:142:14"
+                        }
+                    ]
+                }
+            }
+        });
+
+        let normalized = normalize_json_value(input);
+
+        // Verify that backtrace field is stripped
+        let error = &normalized["error"];
+        let stack = &error["data"]["stack"][0];
+
+        assert!(stack.get("backtrace").is_none(), "Backtrace field should be stripped");
+        assert_eq!(stack["error"], "Test error");
+        assert_eq!(stack["attachments"], json!([]));
+    }
+
+    #[test]
+    fn test_normalize_preserves_non_backtrace_fields() {
+        let input = json!({
+            "outcome": "success",
+            "result": {
+                "value": 42,
+                "run_id": "actual-run-id-123",
+                "metadata": {
+                    "timestamp": "2023-01-01T00:00:00Z",
+                    "some_backtrace_info": "should be preserved"
+                }
+            }
+        });
+
+        let normalized = normalize_json_value(input);
+
+        // Verify run_id is normalized
+        assert_eq!(normalized["result"]["run_id"], "00000000-0000-0000-0000-000000000000");
+
+        // Verify other fields are preserved
+        assert_eq!(normalized["result"]["value"], 42);
+        assert_eq!(normalized["result"]["metadata"]["timestamp"], "2023-01-01T00:00:00Z");
+        assert_eq!(normalized["result"]["metadata"]["some_backtrace_info"], "should be preserved");
+    }
 }
