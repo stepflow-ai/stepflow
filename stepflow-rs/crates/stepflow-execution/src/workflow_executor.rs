@@ -537,8 +537,7 @@ impl WorkflowExecutor {
         self.resolver
             .resolve_step(step_id)
             .await
-            .change_context(ExecutionError::ValueResolverFailure)
-            .attach_printable_lazy(|| format!("Failed to get output for step '{step_id}'"))
+            .change_context_lazy(|| ExecutionError::ResolveStepOutput(step_id.to_owned()))
     }
 
     /// Get the details of a specific step for inspection.
@@ -605,7 +604,7 @@ impl WorkflowExecutor {
 
         // Check skip condition if present
         if let Some(skip_if) = &step.skip_if
-            && self.should_skip_step(skip_if).await?
+            && self.should_skip_step(&step.id, skip_if).await?
         {
             let result = FlowResult::Skipped { reason: None };
             self.record_step_completion(step_index, &result).await?;
@@ -622,7 +621,7 @@ impl WorkflowExecutor {
             .resolver
             .resolve_template(&step.input)
             .await
-            .change_context(ExecutionError::ValueResolverFailure)?
+            .change_context_lazy(|| ExecutionError::ResolveStepInput(step.id.clone()))?
         {
             FlowResult::Success(result) => result,
             FlowResult::Skipped { .. } => {
@@ -706,7 +705,7 @@ impl WorkflowExecutor {
         self.resolver
             .resolve_template(self.flow.output())
             .await
-            .change_context(ExecutionError::ValueResolverFailure)
+            .change_context(ExecutionError::ResolveWorkflowOutput)
     }
 
     /// Get access to the state store for querying step results.
@@ -720,12 +719,12 @@ impl WorkflowExecutor {
     /// - If the expression resolves to a truthy value, the step is skipped
     /// - If the expression references skipped steps or fails, the step is NOT skipped
     ///   (allowing the step to potentially handle the skip/error via on_skip logic)
-    async fn should_skip_step(&self, skip_if: &Expr) -> Result<bool> {
+    async fn should_skip_step(&self, step_id: &str, skip_if: &Expr) -> Result<bool> {
         let resolved_value = self
             .resolver
             .resolve_expr(skip_if)
             .await
-            .change_context(ExecutionError::ValueResolverFailure)?;
+            .change_context_lazy(|| ExecutionError::ResolveSkipIf(step_id.to_owned()))?;
 
         match resolved_value {
             FlowResult::Success(result) => Ok(result.is_truthy()),
@@ -764,7 +763,7 @@ impl WorkflowExecutor {
 
                 // Check explicit skip condition (skip_if expression)
                 if let Some(skip_if) = &skip_if {
-                    let should_skip = self.should_skip_step(skip_if).await?;
+                    let should_skip = self.should_skip_step(&step_id, skip_if).await?;
                     tracing::debug!(
                         "Step {} skip condition evaluated to {}",
                         step_id,
@@ -784,7 +783,7 @@ impl WorkflowExecutor {
                     .resolver
                     .resolve_template(&step_input)
                     .await
-                    .change_context(ExecutionError::ValueResolverFailure)?;
+                    .change_context_lazy(|| ExecutionError::ResolveStepInput(step_id.clone()))?;
                 let step_input = match step_input {
                     FlowResult::Success(result) => result,
                     FlowResult::Skipped { .. } => {
@@ -799,7 +798,9 @@ impl WorkflowExecutor {
                             step_id,
                             error
                         );
-                        return Err(ExecutionError::StepFailed { step: step_id }.into());
+                        return Err(error_stack::report!(ExecutionError::StepFailed { step: step_id })
+                            .attach_printable(format!("Input resolution failed: {}", error.message))
+                            .attach_printable(format!("Error code: {}", error.code)));
                     }
                 };
 
@@ -914,8 +915,13 @@ pub(crate) async fn execute_step_async(
     let result = plugin
         .execute(&component, context, input)
         .await
-        .change_context(ExecutionError::StepFailed {
-            step: step.id.to_owned(),
+        .map_err(|error| {
+            error
+                .change_context(ExecutionError::StepFailed {
+                    step: step.id.to_owned(),
+                })
+                .attach_printable(format!("Component execution failed for step '{}'", step.id))
+                .attach_printable(format!("Component: {}", resolved_component))
         })?;
 
     match &result {
@@ -943,7 +949,7 @@ pub(crate) async fn execute_step_async(
                     let default_value = resolver
                         .resolve_template(&template)
                         .await
-                        .change_context(ExecutionError::ValueResolverFailure)?;
+                        .change_context_lazy(|| ExecutionError::ResolveDefaultValue(step.id.clone()))?;
                     match default_value {
                         FlowResult::Success(result) => Ok(FlowResult::Success(result)),
                         FlowResult::Skipped { .. } => {

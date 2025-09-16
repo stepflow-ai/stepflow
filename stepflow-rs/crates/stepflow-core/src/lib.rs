@@ -12,6 +12,7 @@
 
 pub mod blob;
 pub mod component;
+pub mod error_stack;
 pub mod schema;
 pub mod status;
 pub mod values;
@@ -22,3 +23,4 @@ pub use flow_result::*;
 
 // Re-export commonly used types
 pub use blob::{BlobData, BlobId, BlobType};
+pub use error_stack::{ErrorStack, ErrorStackEntry};

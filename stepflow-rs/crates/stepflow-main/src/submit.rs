@@ -87,10 +87,7 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
         .json(&store_request)
         .send()
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to store workflow: {}", e);
-            MainError::Configuration
-        })?;
+        .change_context(MainError::Configuration)?;
 
     if !store_response.status().is_success() {
         let status = store_response.status();

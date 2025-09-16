@@ -226,10 +226,7 @@ impl Context for StepflowExecutor {
                             FlowResult::Failed(error)
                         } else {
                             tracing::error!(?e, "Flow execution failed");
-                            FlowResult::Failed(stepflow_core::FlowError::new(
-                                500,
-                                format!("Flow execution failed: {e}"),
-                            ))
+                            FlowResult::Failed(stepflow_core::FlowError::from_error_stack(e))
                         }
                     }
                 };

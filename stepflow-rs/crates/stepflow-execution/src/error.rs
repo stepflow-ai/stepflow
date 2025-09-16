@@ -59,8 +59,16 @@ pub enum ExecutionError {
     ExecutionNotFound(Uuid),
     #[error("workflow '{0}' not found")]
     WorkflowNotFound(BlobId),
-    #[error("failed to resolve value")]
-    ValueResolverFailure,
+    #[error("failed to resolve input for step '{0}'")]
+    ResolveStepInput(String),
+    #[error("failed to resolve skip_if for step '{0}'")]
+    ResolveSkipIf(String),
+    #[error("failed to resolve value for step '{0}'")]
+    ResolveStepOutput(String),
+    #[error("failed to resolve default for error in step '{0}'")]
+    ResolveDefaultValue(String),
+    #[error("failed to resolve workflow output")]
+    ResolveWorkflowOutput,
 }
 
 impl ExecutionError {
