@@ -279,7 +279,7 @@ impl FlowResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use error_stack::{report, Context};
+    use error_stack::{Context, report};
 
     #[derive(Debug)]
     struct TestError(&'static str);
@@ -321,7 +321,11 @@ mod tests {
         let data = parsed.get("data").unwrap();
         assert!(data.get("stack").is_some());
 
-        let stack = data.get("stack").unwrap().as_array().expect("Stack should be array");
+        let stack = data
+            .get("stack")
+            .unwrap()
+            .as_array()
+            .expect("Stack should be array");
         assert!(!stack.is_empty(), "Stack should not be empty");
 
         // Check first stack entry
@@ -372,21 +376,39 @@ mod tests {
 
         // Verify data field structure
         let data = parsed.get("data").expect("Should have data field");
-        let stack = data.get("stack").expect("Should have stack field").as_array().expect("Stack should be array");
+        let stack = data
+            .get("stack")
+            .expect("Should have stack field")
+            .as_array()
+            .expect("Stack should be array");
 
         // Verify we have multiple stack entries
         assert!(stack.len() >= 2, "Should have multiple stack entries");
 
         // Verify first entry (most recent error)
         let first_entry = &stack[0];
-        assert_eq!(first_entry.get("error").unwrap().as_str(), Some("TestError: step execution failed"));
+        assert_eq!(
+            first_entry.get("error").unwrap().as_str(),
+            Some("TestError: step execution failed")
+        );
 
-        let attachments = first_entry.get("attachments").unwrap().as_array().expect("Should have attachments");
-        assert!(attachments.iter().any(|a| a.as_str().unwrap().contains("Plugin: langflow")));
+        let attachments = first_entry
+            .get("attachments")
+            .unwrap()
+            .as_array()
+            .expect("Should have attachments");
+        assert!(
+            attachments
+                .iter()
+                .any(|a| a.as_str().unwrap().contains("Plugin: langflow"))
+        );
 
         // Verify last entry (root cause)
         let last_entry = stack.last().unwrap();
-        assert_eq!(last_entry.get("error").unwrap().as_str(), Some("TestError: database connection failed"));
+        assert_eq!(
+            last_entry.get("error").unwrap().as_str(),
+            Some("TestError: database connection failed")
+        );
 
         println!("Verified data field structure: {}", json);
     }

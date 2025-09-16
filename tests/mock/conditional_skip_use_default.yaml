@@ -70,4 +70,12 @@ test:
       outcome: failed
       error:
         code: 500
-        message: 'Flow execution failed: step "dependent_step" failed'
+        message: step "dependent_step" failed
+        data:
+          stack:
+          - error: step "dependent_step" failed
+            attachments:
+            - 'Component: /handle_skip'
+            - Component execution failed for step 'dependent_step'
+            - 'No behavior defined for /handle_skip on {"input":"world"}'
+          - error: error executing user-defined function

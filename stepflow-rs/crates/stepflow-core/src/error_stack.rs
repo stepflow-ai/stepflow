@@ -72,11 +72,7 @@ impl ErrorStack {
                     error_stack::AttachmentKind::Printable(printable) => {
                         current_attachments.push(printable.to_string());
                     }
-                    error_stack::AttachmentKind::Opaque(opaque) => {
-                        current_attachments.push(format!("<opaque attachment: {:p}>", opaque));
-                    }
                     _ => {
-                        current_attachments.push("<unknown attachment>".to_string());
                     }
                 },
             }

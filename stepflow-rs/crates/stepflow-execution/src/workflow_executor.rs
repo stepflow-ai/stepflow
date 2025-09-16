@@ -798,9 +798,11 @@ impl WorkflowExecutor {
                             step_id,
                             error
                         );
-                        return Err(error_stack::report!(ExecutionError::StepFailed { step: step_id })
-                            .attach_printable(format!("Input resolution failed: {}", error.message))
-                            .attach_printable(format!("Error code: {}", error.code)));
+                        return Err(error_stack::report!(ExecutionError::StepFailed {
+                            step: step_id
+                        })
+                        .attach_printable(format!("Input resolution failed: {}", error.message))
+                        .attach_printable(format!("Error code: {}", error.code)));
                     }
                 };
 
@@ -949,7 +951,9 @@ pub(crate) async fn execute_step_async(
                     let default_value = resolver
                         .resolve_template(&template)
                         .await
-                        .change_context_lazy(|| ExecutionError::ResolveDefaultValue(step.id.clone()))?;
+                        .change_context_lazy(|| {
+                            ExecutionError::ResolveDefaultValue(step.id.clone())
+                        })?;
                     match default_value {
                         FlowResult::Success(result) => Ok(FlowResult::Success(result)),
                         FlowResult::Skipped { .. } => {

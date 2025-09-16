@@ -12,8 +12,8 @@
 
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use stepflow_core::{BlobId, ErrorStack, ErrorStackEntry};
 use stepflow_core::status::ExecutionStatus;
+use stepflow_core::{BlobId, ErrorStack, ErrorStackEntry};
 use uuid::Uuid;
 
 /// Error response structure.
@@ -34,7 +34,6 @@ pub struct ErrorResponse {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub stack: Vec<ErrorStackEntry>,
 }
-
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
