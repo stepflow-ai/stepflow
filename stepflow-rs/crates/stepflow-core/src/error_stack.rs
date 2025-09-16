@@ -48,10 +48,12 @@ impl ErrorStack {
             match frame.kind() {
                 error_stack::FrameKind::Context(context) => {
                     // If we have accumulated attachments, add them to the previous entry
-                    if !current_attachments.is_empty() && !stack_entries.is_empty()
-                        && let Some(last_entry) = stack_entries.last_mut() {
-                            last_entry.attachments.append(&mut current_attachments);
-                        }
+                    if !current_attachments.is_empty()
+                        && !stack_entries.is_empty()
+                        && let Some(last_entry) = stack_entries.last_mut()
+                    {
+                        last_entry.attachments.append(&mut current_attachments);
+                    }
 
                     // Add the context as a new stack entry
                     // Only include backtrace on the first (top-level) error to avoid duplication
@@ -67,17 +69,21 @@ impl ErrorStack {
                         backtrace,
                     });
                 }
-                error_stack::FrameKind::Attachment(attachment_kind) => if let error_stack::AttachmentKind::Printable(printable) = attachment_kind {
-                    current_attachments.push(printable.to_string());
-                },
+                error_stack::FrameKind::Attachment(attachment_kind) => {
+                    if let error_stack::AttachmentKind::Printable(printable) = attachment_kind {
+                        current_attachments.push(printable.to_string());
+                    }
+                }
             }
         }
 
         // Add any remaining attachments to the last entry
-        if !current_attachments.is_empty() && !stack_entries.is_empty()
-            && let Some(last_entry) = stack_entries.last_mut() {
-                last_entry.attachments.extend(current_attachments);
-            }
+        if !current_attachments.is_empty()
+            && !stack_entries.is_empty()
+            && let Some(last_entry) = stack_entries.last_mut()
+        {
+            last_entry.attachments.extend(current_attachments);
+        }
 
         Self {
             stack: stack_entries,

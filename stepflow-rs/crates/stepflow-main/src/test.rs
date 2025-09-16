@@ -33,13 +33,13 @@ fn normalize_flow_result(result: FlowResult) -> FlowResult {
             let normalized_value = normalize_json_value(result.as_ref().clone());
             FlowResult::Success(normalized_value.into())
         }
-        FlowResult::Failed(error) => {
-            FlowResult::Failed(FlowError {
-                code: error.code,
-                message: error.message,
-                data: error.data.map(|data| normalize_json_value(data.clone_value()).into()),
-            })
-        }
+        FlowResult::Failed(error) => FlowResult::Failed(FlowError {
+            code: error.code,
+            message: error.message,
+            data: error
+                .data
+                .map(|data| normalize_json_value(data.clone_value()).into()),
+        }),
         other => other,
     }
 }
@@ -60,8 +60,7 @@ fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
                 if key == "run_id" && val.is_string() {
                     // Normalize run_id fields to a fixed value for testing
                     val = Value::String("00000000-0000-0000-0000-000000000000".to_string());
-                }
-                else if key == "backtrace" {
+                } else if key == "backtrace" {
                     // Remove backtrace field entirely to avoid CI environment differences
                     //
                     // We could make this a bit stricter by only doing it to the top level
@@ -589,7 +588,10 @@ mod tests {
         let error = &normalized["error"];
         let stack = &error["data"]["stack"][0];
 
-        assert!(stack.get("backtrace").is_none(), "Backtrace field should be stripped");
+        assert!(
+            stack.get("backtrace").is_none(),
+            "Backtrace field should be stripped"
+        );
         assert_eq!(stack["error"], "Test error");
         assert_eq!(stack["attachments"], json!([]));
     }
@@ -611,11 +613,20 @@ mod tests {
         let normalized = normalize_json_value(input);
 
         // Verify run_id is normalized
-        assert_eq!(normalized["result"]["run_id"], "00000000-0000-0000-0000-000000000000");
+        assert_eq!(
+            normalized["result"]["run_id"],
+            "00000000-0000-0000-0000-000000000000"
+        );
 
         // Verify other fields are preserved
         assert_eq!(normalized["result"]["value"], 42);
-        assert_eq!(normalized["result"]["metadata"]["timestamp"], "2023-01-01T00:00:00Z");
-        assert_eq!(normalized["result"]["metadata"]["some_backtrace_info"], "should be preserved");
+        assert_eq!(
+            normalized["result"]["metadata"]["timestamp"],
+            "2023-01-01T00:00:00Z"
+        );
+        assert_eq!(
+            normalized["result"]["metadata"]["some_backtrace_info"],
+            "should be preserved"
+        );
     }
 }
