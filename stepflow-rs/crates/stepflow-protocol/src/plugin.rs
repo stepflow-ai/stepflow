@@ -116,18 +116,23 @@ impl PluginConfig for StepflowPluginConfig {
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         let max_retries = self.max_retries;
 
-        match self.transport {
-            StepflowTransport::Stdio { command, args, env } => {
-                let launcher = Launcher::try_new(working_directory.to_owned(), command, args, env)?;
+        let transport = self.transport.clone();
+        match transport {
+            StepflowTransport::Stdio { ref command, ref args, ref env } => {
+                let launcher = Launcher::try_new(working_directory.to_owned(), command.clone(), args.clone(), env.clone())?;
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedStdio(launcher),
                     max_retries,
+                    transport,
+                    working_directory.to_owned(),
                 )))
             }
-            StepflowTransport::Http { url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
-                StepflowPluginState::UninitializedHttp(url),
+            StepflowTransport::Http { ref url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
+                StepflowPluginState::UninitializedHttp(url.clone()),
                 max_retries,
+                transport,
+                working_directory.to_owned(),
             ))),
         }
     }
@@ -136,13 +141,18 @@ impl PluginConfig for StepflowPluginConfig {
 pub struct StepflowPlugin {
     state: RwLock<StepflowPluginState>,
     max_retries: u32,
+    // Keep original config to restore state after clearing client handle
+    original_config: StepflowTransport,
+    working_directory: std::path::PathBuf,
 }
 
 impl StepflowPlugin {
-    fn new(state: StepflowPluginState, max_retries: u32) -> Self {
+    fn new(state: StepflowPluginState, max_retries: u32, original_config: StepflowTransport, working_directory: std::path::PathBuf) -> Self {
         Self {
             state: RwLock::new(state),
             max_retries,
+            original_config,
+            working_directory,
         }
     }
 }
@@ -163,6 +173,30 @@ impl StepflowPlugin {
         }
     }
 
+    /// Clear the current client handle, forcing recreation on next use
+    async fn clear_client_handle(&self) {
+        let mut guard = self.state.write().await;
+        if matches!(*guard, StepflowPluginState::Initialized(_)) {
+            // Restore original uninitialized state instead of Empty
+            match &self.original_config {
+                StepflowTransport::Stdio { command, args, env } => {
+                    match Launcher::try_new(self.working_directory.clone(), command.clone(), args.clone(), env.clone()) {
+                        Ok(launcher) => {
+                            *guard = StepflowPluginState::UninitializedStdio(launcher);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to recreate launcher during clear: {e:?}");
+                            *guard = StepflowPluginState::Empty;
+                        }
+                    }
+                }
+                StepflowTransport::Http { url } => {
+                    *guard = StepflowPluginState::UninitializedHttp(url.clone());
+                }
+            }
+        }
+    }
+
     /// Get client handle, creating it if necessary
     async fn get_or_create_client_handle(&self, context: Arc<dyn Context>) -> Result<StepflowClientHandle> {
         // First try to get existing handle
@@ -178,6 +212,46 @@ impl StepflowPlugin {
     fn is_transport_error(error: &error_stack::Report<PluginError>) -> bool {
         // Look for TransportError in the error chain
         error.contains::<crate::error::TransportError>()
+    }
+
+    /// Wait for restart counter to increase beyond the initial value
+    async fn wait_for_restart_count_change(
+        &self,
+        initial_count: Option<super::stdio::client::RestartCounter>,
+        restart_rx: &mut Option<tokio::sync::watch::Receiver<super::stdio::client::RestartCounter>>,
+    ) -> Result<()> {
+        if let (Some(initial), Some(restart_rx)) = (initial_count, restart_rx) {
+            // Check if restart already happened
+            let current_count = *restart_rx.borrow();
+            if current_count > initial {
+                return Ok(());
+            }
+
+            // Wait for counter to increase with timeout
+            let timeout = std::time::Duration::from_secs(10);
+            match tokio::time::timeout(timeout, restart_rx.changed()).await {
+                Ok(Ok(())) => {
+                    let new_count = *restart_rx.borrow();
+                    if new_count > initial {
+                        Ok(())
+                    } else {
+                        // Continue anyway if counter didn't increase
+                        Ok(())
+                    }
+                }
+                Ok(Err(_)) => {
+                    tracing::warn!("Restart counter channel closed");
+                    Err(PluginError::Execution).attach_printable("restart counter channel closed")
+                }
+                Err(_) => {
+                    tracing::warn!("Timeout waiting for process restart");
+                    Err(PluginError::Execution).attach_printable("restart timeout")
+                }
+            }
+        } else {
+            // HTTP transport doesn't need restart synchronization
+            Ok(())
+        }
     }
 
 
@@ -301,6 +375,20 @@ impl Plugin for StepflowPlugin {
 
         for attempt in 1..=max_attempts {
             tracing::debug!("Attempting component execution (attempt {attempt}/{max_attempts})");
+
+            // Get restart counter BEFORE attempting execution
+            let (initial_restart_count, mut restart_rx) = if let Ok(handle) = self.client_handle().await {
+                match &handle {
+                    StepflowClientHandle::Stdio(stdio_handle) => {
+                        let (count, rx) = stdio_handle.restart_counter();
+                        (Some(count), Some(rx))
+                    },
+                    StepflowClientHandle::Http(_) => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+
             match self.try_execute_component(component, &context, &input, attempt).await {
                 Ok(result) => {
                     if attempt > 1 {
@@ -315,8 +403,11 @@ impl Plugin for StepflowPlugin {
                         "Component execution failed (attempt {attempt}/{max_attempts}) due to transport error, will retry: {e:?}"
                     );
 
-                    // Brief delay before retry (process restart happens automatically by recv_message_loop)
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    // Clear the invalid client handle so next attempt gets a fresh one
+                    self.clear_client_handle().await;
+
+                    // Wait for restart counter to increase (indicating restart completion)
+                    self.wait_for_restart_count_change(initial_restart_count, &mut restart_rx).await?;
                     continue;
                 }
                 Err(e) => {

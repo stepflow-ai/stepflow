@@ -19,7 +19,7 @@ use tokio::{
     process::{Child, ChildStderr, ChildStdin, ChildStdout},
     sync::{
         mpsc::{self, error::TryRecvError},
-        oneshot,
+        oneshot, watch,
     },
     time::sleep,
 };
@@ -29,7 +29,7 @@ use crate::OwnedJson;
 use crate::error::{Result, TransportError};
 use crate::{Message, MessageHandlerRegistry, RequestId};
 
-use super::launcher::Launcher;
+use super::{launcher::Launcher, client::RestartCounter};
 
 struct ReceiveMessageLoop {
     child: Child,
@@ -64,37 +64,81 @@ impl ReceiveMessageLoop {
         })
     }
 
-    /// Clear all pending requests (called on process restart)
-    fn clear_pending_requests(&mut self, pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>) {
+    /// Clear in-flight requests that were sent to the old process (called on process restart)
+    fn clear_inflight_requests(&mut self, pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>) {
         let count = self.pending_requests.len();
-        tracing::debug!("clear_pending_requests called, found {count} pending requests in map");
+        tracing::debug!("clear_inflight_requests called, found {count} in-flight requests in map");
 
-        // Clear requests already in the HashMap
+        // Clear requests already in the HashMap - these were sent to the old process
+        // and will never receive responses after restart
         if count > 0 {
-            tracing::warn!("Clearing {count} pending requests from map due to process restart");
-            for (request_id, _) in &self.pending_requests {
-                tracing::debug!("Will clear pending request from map: {request_id}");
+            tracing::warn!("Clearing {count} in-flight requests from map due to process restart");
+            for (request_id, sender) in self.pending_requests.drain() {
+                tracing::debug!("Closing in-flight request from map: {request_id}");
+                // Send a transport error response to close the waiting client
+                let error_response = OwnedJson::try_new(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {
+                        "code": -32603,
+                        "message": "Process crashed during request execution"
+                    }
+                }).to_string());
+
+                match error_response {
+                    Ok(response) => {
+                        if let Err(_) = sender.send(response) {
+                            tracing::debug!("Failed to send error response to closed request {request_id}");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to create error response for request {request_id}: {e:?}");
+                        // Drop the sender to signal an error
+                    }
+                }
             }
-            self.pending_requests.clear();
-        }
-
-        // Also drain any pending requests from the channel that haven't been processed yet
-        let mut channel_count = 0;
-        while let Ok((request_id, _sender)) = pending_rx.try_recv() {
-            channel_count += 1;
-            tracing::debug!("Clearing pending request from channel: {request_id}");
-            // The sender gets dropped here, causing RecvError on the client side
-        }
-
-        if channel_count > 0 {
-            tracing::warn!("Cleared {channel_count} pending requests from channel due to process restart");
-        }
-
-        let total_cleared = count + channel_count;
-        if total_cleared > 0 {
-            tracing::info!("Total pending requests cleared during restart: {total_cleared} (map: {count}, channel: {channel_count})");
+            tracing::info!("Cleared {count} in-flight requests that were sent to old process");
         } else {
-            tracing::debug!("No pending requests to clear during restart");
+            tracing::debug!("No in-flight requests to clear during restart");
+        }
+
+        // Also clear any pending requests still in the channel that were sent during the crash
+        let mut pending_count = 0;
+        loop {
+            match pending_rx.try_recv() {
+                Ok((request_id, sender)) => {
+                    pending_count += 1;
+                    tracing::debug!("Closing pending request from channel during restart: {request_id}");
+                    // Send error response similar to in-flight requests
+                    let error_response = OwnedJson::try_new(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32603,
+                            "message": "Process crashed during request execution"
+                        }
+                    }).to_string());
+
+                    match error_response {
+                        Ok(response) => {
+                            if let Err(_) = sender.send(response) {
+                                tracing::debug!("Failed to send error response to closed pending request {request_id}");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to create error response for pending request {request_id}: {e:?}");
+                        }
+                    }
+                }
+                Err(mpsc::error::TryRecvError::Empty) => break,
+                Err(mpsc::error::TryRecvError::Disconnected) => {
+                    tracing::warn!("Pending channel is disconnected during restart");
+                    break;
+                }
+            }
+        }
+        if pending_count > 0 {
+            tracing::info!("Cleared {pending_count} pending requests from channel during restart");
         }
     }
 
@@ -102,8 +146,9 @@ impl ReceiveMessageLoop {
     fn restart_process(&mut self, pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>) -> Result<()> {
         tracing::info!("Restarting process: {:?} {:?}", self.launcher.command, self.launcher.args);
 
-        // Clear any pending requests from the previous process
-        self.clear_pending_requests(pending_rx);
+        // Clear in-flight requests that were sent to the old process
+        // Also clear pending requests in the channel that were sent during the crash
+        self.clear_inflight_requests(pending_rx);
 
         // Kill the old process if it's still running
         if let Err(e) = self.child.start_kill() {
@@ -296,6 +341,7 @@ pub async fn recv_message_loop(
     mut outgoing_rx: mpsc::Receiver<String>,
     mut pending_rx: mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>,
     context: Arc<dyn Context>,
+    restart_counter_tx: watch::Sender<RestartCounter>,
 ) -> Result<()> {
     let mut recv_loop = ReceiveMessageLoop::try_new(launcher, outgoing_tx)?;
     let mut restart_count = 0;
@@ -344,6 +390,11 @@ pub async fn recv_message_loop(
                         tracing::info!("Process restart {restart_count}/{max_restart_attempts} successful");
                         // Double the backoff for next time, up to maximum
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
+
+                        // Notify restart completion
+                        if let Err(e) = restart_counter_tx.send(restart_count) {
+                            tracing::warn!("Failed to send restart counter: {e:?}");
+                        }
                         continue;
                     }
                     Err(restart_error) => {
@@ -374,6 +425,11 @@ pub async fn recv_message_loop(
                     Ok(()) => {
                         tracing::info!("Process restart {restart_count}/{max_restart_attempts} successful after error");
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
+
+                        // Notify restart completion
+                        if let Err(e) = restart_counter_tx.send(restart_count) {
+                            tracing::warn!("Failed to send restart counter: {e:?}");
+                        }
                         continue;
                     }
                     Err(restart_error) => {

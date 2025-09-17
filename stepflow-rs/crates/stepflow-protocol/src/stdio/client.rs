@@ -23,13 +23,16 @@ use crate::protocol::{Method, ProtocolMethod, ProtocolNotification};
 use crate::{MethodRequest, Notification, RequestId};
 use tokio::{
     sync::RwLock,
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
     task::JoinHandle,
 };
 use tracing::Instrument as _;
 
 use super::{launcher::Launcher, recv_message_loop::recv_message_loop};
 use crate::error::{Result, TransportError};
+
+/// Restart counter that increments each time the subprocess is restarted
+pub type RestartCounter = u64;
 
 /// Manages a client process spawned from a command.
 ///
@@ -38,12 +41,14 @@ pub struct StdioClient {
     outgoing_tx: mpsc::Sender<String>,
     pending_tx: mpsc::Sender<(RequestId, oneshot::Sender<OwnedJson>)>,
     loop_handle: Arc<RwLock<JoinHandle<Result<()>>>>,
+    restart_counter_tx: watch::Sender<RestartCounter>,
 }
 
 impl StdioClient {
     pub async fn try_new(launcher: Launcher, context: Arc<dyn Context>) -> Result<Self> {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
         let (pending_tx, pending_rx) = mpsc::channel(100);
+        let (restart_counter_tx, _restart_counter_rx) = watch::channel(0);
 
         let launcher = Arc::new(launcher);
         let recv_span = tracing::info_span!("recv_message_loop", command = ?launcher.command, args = ?launcher.args);
@@ -54,6 +59,7 @@ impl StdioClient {
                 outgoing_rx,
                 pending_rx,
                 context,
+                restart_counter_tx.clone(),
             )
             .instrument(recv_span),
         );
@@ -63,6 +69,7 @@ impl StdioClient {
             outgoing_tx,
             pending_tx,
             loop_handle,
+            restart_counter_tx,
         })
     }
 
@@ -71,6 +78,7 @@ impl StdioClient {
             outgoing_tx: self.outgoing_tx.clone(),
             pending_tx: self.pending_tx.clone(),
             loop_handle: self.loop_handle.clone(),
+            restart_counter_tx: self.restart_counter_tx.clone(),
         }
     }
 }
@@ -82,6 +90,7 @@ pub struct StdioClientHandle {
     /// Channel to send new pending requests to.
     pending_tx: mpsc::Sender<(RequestId, oneshot::Sender<OwnedJson>)>,
     loop_handle: Arc<RwLock<JoinHandle<Result<()>>>>,
+    restart_counter_tx: watch::Sender<RestartCounter>,
 }
 
 impl StdioClientHandle {
@@ -147,6 +156,14 @@ impl StdioClientHandle {
         // registered ID to the pending one-shot channel.
         debug_assert_eq!(response.response().id(), &id);
         response.into_success_value()
+    }
+
+    /// Get current restart counter and a receiver to watch for restart count increases
+    /// Returns the current restart count and a receiver to monitor future increments
+    pub fn restart_counter(&self) -> (RestartCounter, watch::Receiver<RestartCounter>) {
+        let current_count = *self.restart_counter_tx.borrow();
+        let receiver = self.restart_counter_tx.subscribe();
+        (current_count, receiver)
     }
 
     async fn handle_channel_error<T, E: error_stack::Context>(
