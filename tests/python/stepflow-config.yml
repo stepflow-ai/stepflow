@@ -6,6 +6,7 @@ plugins:
     transport: stdio
     command: uv
     args: [--project, "../../sdks/python", run, stepflow_py]
+    max_retries: 3
 routes:
   "/python/{component}":
     - plugin: python

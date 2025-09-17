@@ -45,6 +45,7 @@ impl StdioClient {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
         let (pending_tx, pending_rx) = mpsc::channel(100);
 
+        let launcher = Arc::new(launcher);
         let recv_span = tracing::info_span!("recv_message_loop", command = ?launcher.command, args = ?launcher.args);
         let loop_handle = tokio::spawn(
             recv_message_loop(

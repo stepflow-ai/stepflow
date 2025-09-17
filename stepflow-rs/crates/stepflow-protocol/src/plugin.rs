@@ -82,9 +82,16 @@ impl StepflowClientHandle {
 pub struct StepflowPluginConfig {
     #[serde(flatten)]
     pub transport: StepflowTransport,
+    /// Maximum number of retry attempts for component execution (default: 3)
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+fn default_max_retries() -> u32 {
+    3
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "transport")]
 pub enum StepflowTransport {
     #[serde(rename = "stdio")]
@@ -107,16 +114,20 @@ impl PluginConfig for StepflowPluginConfig {
         self,
         working_directory: &std::path::Path,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
+        let max_retries = self.max_retries;
+
         match self.transport {
             StepflowTransport::Stdio { command, args, env } => {
                 let launcher = Launcher::try_new(working_directory.to_owned(), command, args, env)?;
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedStdio(launcher),
+                    max_retries,
                 )))
             }
             StepflowTransport::Http { url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
                 StepflowPluginState::UninitializedHttp(url),
+                max_retries,
             ))),
         }
     }
@@ -124,12 +135,14 @@ impl PluginConfig for StepflowPluginConfig {
 
 pub struct StepflowPlugin {
     state: RwLock<StepflowPluginState>,
+    max_retries: u32,
 }
 
 impl StepflowPlugin {
-    fn new(state: StepflowPluginState) -> Self {
+    fn new(state: StepflowPluginState, max_retries: u32) -> Self {
         Self {
             state: RwLock::new(state),
+            max_retries,
         }
     }
 }
@@ -148,6 +161,64 @@ impl StepflowPlugin {
             StepflowPluginState::Initialized(handle) => Ok(handle.clone()),
             _ => Err(PluginError::Execution).attach_printable("client not initialized"),
         }
+    }
+
+    /// Get client handle, creating it if necessary
+    async fn get_or_create_client_handle(&self, context: Arc<dyn Context>) -> Result<StepflowClientHandle> {
+        // First try to get existing handle
+        if let Ok(handle) = self.client_handle().await {
+            return Ok(handle);
+        }
+
+        // If not initialized, create a new client
+        self.create_client(context).await
+    }
+
+    /// Check if an error is a transport error that should trigger process restart and retry
+    fn is_transport_error(error: &error_stack::Report<PluginError>) -> bool {
+        // Look for TransportError in the error chain
+        error.contains::<crate::error::TransportError>()
+    }
+
+
+    /// Execute component with a single attempt (extracted from original execute method)
+    async fn try_execute_component(
+        &self,
+        component: &Component,
+        context: &ExecutionContext,
+        input: &ValueRef,
+        attempt: u32,
+    ) -> Result<FlowResult> {
+        let step_id = context
+            .step_id()
+            .ok_or_else(|| {
+                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing step ID")))
+            })?
+            .to_owned();
+
+        let run_id = context.run_id();
+        let flow_id = context
+            .flow_id()
+            .ok_or_else(|| {
+                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing flow ID")))
+            })?
+            .clone();
+
+        // Use get_or_create_client_handle to handle reinitialization after restart
+        let client_handle = self.get_or_create_client_handle(context.context().clone()).await?;
+        let response = client_handle
+            .method(&ComponentExecuteParams {
+                component: component.clone(),
+                input: input.clone(),
+                step_id,
+                run_id: run_id.to_string(),
+                flow_id,
+                attempt,
+            })
+            .await
+            .change_context(PluginError::Execution)?;
+
+        Ok(FlowResult::Success(response.output))
     }
 
     async fn create_client(&self, context: Arc<dyn Context>) -> Result<StepflowClientHandle> {
@@ -225,33 +296,46 @@ impl Plugin for StepflowPlugin {
         context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        let step_id = context
-            .step_id()
-            .ok_or_else(|| {
-                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing step ID")))
-            })?
-            .to_owned();
+        let max_attempts = self.max_retries;
+        tracing::debug!("Starting component execution with max_retries={max_attempts}");
 
-        let run_id = context.run_id();
-        let flow_id = context
-            .flow_id()
-            .ok_or_else(|| {
-                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing flow ID")))
-            })?
-            .clone();
+        for attempt in 1..=max_attempts {
+            tracing::debug!("Attempting component execution (attempt {attempt}/{max_attempts})");
+            match self.try_execute_component(component, &context, &input, attempt).await {
+                Ok(result) => {
+                    if attempt > 1 {
+                        tracing::info!("Component execution succeeded on attempt {attempt}/{max_attempts}");
+                    } else {
+                        tracing::debug!("Component execution succeeded on first attempt");
+                    }
+                    return Ok(result);
+                }
+                Err(e) if attempt < max_attempts && Self::is_transport_error(&e) => {
+                    tracing::warn!(
+                        "Component execution failed (attempt {attempt}/{max_attempts}) due to transport error, will retry: {e:?}"
+                    );
 
-        let client_handle = self.client_handle().await?;
-        let response = client_handle
-            .method(&ComponentExecuteParams {
-                component: component.clone(),
-                input,
-                step_id,
-                run_id: run_id.to_string(),
-                flow_id,
-            })
-            .await
-            .change_context(PluginError::Execution)?;
+                    // Brief delay before retry (process restart happens automatically by recv_message_loop)
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+                Err(e) => {
+                    if Self::is_transport_error(&e) {
+                        tracing::error!(
+                            "Component execution failed after {max_attempts} attempts (transport error): {e:?}"
+                        );
+                    } else {
+                        tracing::debug!(
+                            "Component execution failed (non-transport error, no retry): {e:?}"
+                        );
+                    }
+                    tracing::debug!("Error chain analysis: contains TransportError={}", e.contains::<crate::error::TransportError>());
+                    return Err(e);
+                }
+            }
+        }
 
-        Ok(FlowResult::Success(response.output))
+        // This should never be reached due to the loop logic, but satisfy the compiler
+        unreachable!("execute loop should have returned or errored")
     }
 }

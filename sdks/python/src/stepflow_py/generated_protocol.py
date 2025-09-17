@@ -220,6 +220,13 @@ class ComponentExecuteParams(Struct, kw_only=True):
     step_id: Annotated[str, Meta(description='The ID of the step being executed.')]
     run_id: Annotated[str, Meta(description='The ID of the workflow run.')]
     flow_id: Annotated[BlobId, Meta(description='The ID of the flow being executed.')]
+    attempt: Annotated[
+        int,
+        Meta(
+            description='The attempt number for this execution (1-based, for retry logic).',
+            ge=0,
+        ),
+    ]
 
 
 class PutBlobParams(Struct, kw_only=True):

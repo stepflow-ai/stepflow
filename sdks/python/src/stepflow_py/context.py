@@ -61,6 +61,7 @@ class StepflowContext:
         step_id: str | None = None,
         run_id: str | None = None,
         flow_id: str | None = None,
+        attempt: int = 1,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
@@ -68,6 +69,7 @@ class StepflowContext:
         self._step_id = step_id
         self._run_id = run_id
         self._flow_id = flow_id
+        self._attempt = attempt
 
     async def _send_request(
         self, method: Method, params: Any, result_type: type[T]
@@ -155,6 +157,11 @@ class StepflowContext:
     def flow_id(self) -> str | None:
         """Get the current flow ID, or None if not available."""
         return self._flow_id
+
+    @property
+    def attempt(self) -> int:
+        """Get the current attempt number (1-based, for retry logic)."""
+        return self._attempt
 
     async def evaluate_flow(self, flow: Flow, input: Any) -> Any:
         """Evaluate a flow with the given input.

@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use error_stack::ResultExt as _;
 use stepflow_plugin::Context;
@@ -21,6 +21,7 @@ use tokio::{
         mpsc::{self, error::TryRecvError},
         oneshot,
     },
+    time::sleep,
 };
 use tokio_stream::{StreamExt as _, wrappers::LinesStream};
 
@@ -37,10 +38,11 @@ struct ReceiveMessageLoop {
     from_child_stderr: LinesStream<BufReader<ChildStderr>>,
     pending_requests: HashMap<RequestId, oneshot::Sender<OwnedJson>>,
     outgoing_tx: mpsc::Sender<String>,
+    launcher: Arc<Launcher>,
 }
 
 impl ReceiveMessageLoop {
-    fn try_new(launcher: Launcher, outgoing_tx: mpsc::Sender<String>) -> Result<Self> {
+    fn try_new(launcher: Arc<Launcher>, outgoing_tx: mpsc::Sender<String>) -> Result<Self> {
         let env: std::collections::HashMap<String, String> = std::env::vars().collect();
         let mut child = launcher.spawn(&env)?;
 
@@ -58,7 +60,75 @@ impl ReceiveMessageLoop {
             from_child_stderr,
             pending_requests: HashMap::new(),
             outgoing_tx,
+            launcher,
         })
+    }
+
+    /// Clear all pending requests (called on process restart)
+    fn clear_pending_requests(&mut self, pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>) {
+        let count = self.pending_requests.len();
+        tracing::debug!("clear_pending_requests called, found {count} pending requests in map");
+
+        // Clear requests already in the HashMap
+        if count > 0 {
+            tracing::warn!("Clearing {count} pending requests from map due to process restart");
+            for (request_id, _) in &self.pending_requests {
+                tracing::debug!("Will clear pending request from map: {request_id}");
+            }
+            self.pending_requests.clear();
+        }
+
+        // Also drain any pending requests from the channel that haven't been processed yet
+        let mut channel_count = 0;
+        while let Ok((request_id, _sender)) = pending_rx.try_recv() {
+            channel_count += 1;
+            tracing::debug!("Clearing pending request from channel: {request_id}");
+            // The sender gets dropped here, causing RecvError on the client side
+        }
+
+        if channel_count > 0 {
+            tracing::warn!("Cleared {channel_count} pending requests from channel due to process restart");
+        }
+
+        let total_cleared = count + channel_count;
+        if total_cleared > 0 {
+            tracing::info!("Total pending requests cleared during restart: {total_cleared} (map: {count}, channel: {channel_count})");
+        } else {
+            tracing::debug!("No pending requests to clear during restart");
+        }
+    }
+
+    /// Restart the process with the same launcher configuration
+    fn restart_process(&mut self, pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>) -> Result<()> {
+        tracing::info!("Restarting process: {:?} {:?}", self.launcher.command, self.launcher.args);
+
+        // Clear any pending requests from the previous process
+        self.clear_pending_requests(pending_rx);
+
+        // Kill the old process if it's still running
+        if let Err(e) = self.child.start_kill() {
+            tracing::warn!("Failed to kill old process: {e}");
+        }
+
+        // Spawn a new process
+        let env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        let mut new_child = self.launcher.spawn(&env)?;
+
+        let new_stdin = new_child.stdin.take().expect("stdin requested");
+        let new_stdout = new_child.stdout.take().expect("stdout requested");
+        let new_stdout = LinesStream::new(BufReader::new(new_stdout).lines());
+
+        let new_stderr = new_child.stderr.take().expect("stderr requested");
+        let new_stderr = LinesStream::new(BufReader::new(new_stderr).lines());
+
+        // Replace the old process and streams
+        self.child = new_child;
+        self.to_child = new_stdin;
+        self.from_child_stdout = new_stdout;
+        self.from_child_stderr = new_stderr;
+
+        tracing::info!("Process restart completed successfully");
+        Ok(())
     }
 
     fn check_child_status(&mut self) -> Result<()> {
@@ -182,6 +252,7 @@ impl ReceiveMessageLoop {
         id: &RequestId,
     ) -> Option<oneshot::Sender<OwnedJson>> {
         if let Some(pending) = self.pending_requests.remove(id) {
+            tracing::debug!("Found pending request {id} in map");
             Some(pending)
         } else {
             // We haven't seen the pending request, so we'll receive from
@@ -191,9 +262,11 @@ impl ReceiveMessageLoop {
             // should have published to the pending channel
             // before sending the request -- if we've already
             // the response we believe it should be there.
+            tracing::debug!("Pending request {id} not in map, checking pending_rx channel");
             loop {
                 match pending_rx.try_recv() {
                     Ok((pending_id, pending_request)) => {
+                        tracing::debug!("Received pending request {pending_id} from channel");
                         if &pending_id == id {
                             return Some(pending_request);
                         }
@@ -218,13 +291,17 @@ impl ReceiveMessageLoop {
 }
 
 pub async fn recv_message_loop(
-    launcher: Launcher,
+    launcher: Arc<Launcher>,
     outgoing_tx: mpsc::Sender<String>,
     mut outgoing_rx: mpsc::Receiver<String>,
     mut pending_rx: mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>,
     context: Arc<dyn Context>,
 ) -> Result<()> {
     let mut recv_loop = ReceiveMessageLoop::try_new(launcher, outgoing_tx)?;
+    let mut restart_count = 0;
+    let max_restart_attempts = 5;
+    let mut backoff_duration = Duration::from_secs(1);
+    const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
     loop {
         match recv_loop
@@ -232,18 +309,79 @@ pub async fn recv_message_loop(
             .await
         {
             Ok(true) => {
-                // Continue the loop.
+                // Continue the loop - reset restart count on successful operation
+                restart_count = 0;
+                backoff_duration = Duration::from_secs(1);
             }
             Ok(false) => {
-                // Exit the loop.
-                break;
+                // Process exited cleanly - check if it was successful or not
+                if let Some(status) = recv_loop.child.try_wait().change_context(TransportError::Spawn)? {
+                    if status.success() {
+                        tracing::info!("Process exited successfully, stopping recv loop");
+                        break;
+                    } else {
+                        tracing::warn!("Process exited with failure status: {status}");
+                        // Treat failed exit as restart case
+                    }
+                } else {
+                    tracing::info!("Process termination detected, stopping recv loop");
+                    break;
+                }
+
+                // Attempt restart for failed exits
+                if restart_count >= max_restart_attempts {
+                    tracing::error!("Maximum restart attempts ({max_restart_attempts}) exceeded, giving up");
+                    return Err(TransportError::RecvLoop.into());
+                }
+
+                restart_count += 1;
+                tracing::warn!("Attempting restart {restart_count}/{max_restart_attempts} after {backoff_duration:?} delay");
+
+                sleep(backoff_duration).await;
+
+                match recv_loop.restart_process(&mut pending_rx) {
+                    Ok(()) => {
+                        tracing::info!("Process restart {restart_count}/{max_restart_attempts} successful");
+                        // Double the backoff for next time, up to maximum
+                        backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
+                        continue;
+                    }
+                    Err(restart_error) => {
+                        tracing::error!("Process restart {restart_count}/{max_restart_attempts} failed: {restart_error:?}");
+                        backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
+                        continue; // Try again on next iteration
+                    }
+                }
             }
             Err(mut e) => {
-                tracing::info!("Error in recv loop: {e:?}. Checking child status.");
+                tracing::warn!("Error in recv loop: {e:?}. Checking child status.");
                 if let Err(child_error) = recv_loop.check_child_status() {
                     e.extend_one(child_error);
                 }
-                return Err(TransportError::RecvLoop.into());
+
+                // Attempt restart for errors too
+                if restart_count >= max_restart_attempts {
+                    tracing::error!("Maximum restart attempts ({max_restart_attempts}) exceeded after error, giving up: {e:?}");
+                    return Err(TransportError::RecvLoop.into());
+                }
+
+                restart_count += 1;
+                tracing::warn!("Attempting restart {restart_count}/{max_restart_attempts} after error, delay: {backoff_duration:?}");
+
+                sleep(backoff_duration).await;
+
+                match recv_loop.restart_process(&mut pending_rx) {
+                    Ok(()) => {
+                        tracing::info!("Process restart {restart_count}/{max_restart_attempts} successful after error");
+                        backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
+                        continue;
+                    }
+                    Err(restart_error) => {
+                        tracing::error!("Process restart {restart_count}/{max_restart_attempts} failed after error: {restart_error:?}");
+                        backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
+                        continue;
+                    }
+                }
             }
         }
     }
