@@ -29,7 +29,7 @@ use crate::OwnedJson;
 use crate::error::{Result, TransportError};
 use crate::{Message, MessageHandlerRegistry, RequestId};
 
-use super::{launcher::Launcher, client::RestartCounter};
+use super::{client::RestartCounter, launcher::Launcher};
 
 struct ReceiveMessageLoop {
     child: Child,
@@ -65,7 +65,10 @@ impl ReceiveMessageLoop {
     }
 
     /// Clear in-flight requests that were sent to the old process (called on process restart)
-    fn clear_inflight_requests(&mut self, pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>) {
+    fn clear_inflight_requests(
+        &mut self,
+        pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>,
+    ) {
         let count = self.pending_requests.len();
         tracing::debug!("clear_inflight_requests called, found {count} in-flight requests in map");
 
@@ -76,23 +79,30 @@ impl ReceiveMessageLoop {
             for (request_id, sender) in self.pending_requests.drain() {
                 tracing::debug!("Closing in-flight request from map: {request_id}");
                 // Send a transport error response to close the waiting client
-                let error_response = OwnedJson::try_new(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {
-                        "code": -32603,
-                        "message": "Process crashed during request execution"
-                    }
-                }).to_string());
+                let error_response = OwnedJson::try_new(
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {
+                            "code": -32603,
+                            "message": "Process crashed during request execution"
+                        }
+                    })
+                    .to_string(),
+                );
 
                 match error_response {
                     Ok(response) => {
-                        if let Err(_) = sender.send(response) {
-                            tracing::debug!("Failed to send error response to closed request {request_id}");
+                        if sender.send(response).is_err() {
+                            tracing::debug!(
+                                "Failed to send error response to closed request {request_id}"
+                            );
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to create error response for request {request_id}: {e:?}");
+                        tracing::error!(
+                            "Failed to create error response for request {request_id}: {e:?}"
+                        );
                         // Drop the sender to signal an error
                     }
                 }
@@ -108,25 +118,34 @@ impl ReceiveMessageLoop {
             match pending_rx.try_recv() {
                 Ok((request_id, sender)) => {
                     pending_count += 1;
-                    tracing::debug!("Closing pending request from channel during restart: {request_id}");
+                    tracing::debug!(
+                        "Closing pending request from channel during restart: {request_id}"
+                    );
                     // Send error response similar to in-flight requests
-                    let error_response = OwnedJson::try_new(serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "error": {
-                            "code": -32603,
-                            "message": "Process crashed during request execution"
-                        }
-                    }).to_string());
+                    let error_response = OwnedJson::try_new(
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": request_id,
+                            "error": {
+                                "code": -32603,
+                                "message": "Process crashed during request execution"
+                            }
+                        })
+                        .to_string(),
+                    );
 
                     match error_response {
                         Ok(response) => {
-                            if let Err(_) = sender.send(response) {
-                                tracing::debug!("Failed to send error response to closed pending request {request_id}");
+                            if sender.send(response).is_err() {
+                                tracing::debug!(
+                                    "Failed to send error response to closed pending request {request_id}"
+                                );
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Failed to create error response for pending request {request_id}: {e:?}");
+                            tracing::error!(
+                                "Failed to create error response for pending request {request_id}: {e:?}"
+                            );
                         }
                     }
                 }
@@ -143,8 +162,15 @@ impl ReceiveMessageLoop {
     }
 
     /// Restart the process with the same launcher configuration
-    fn restart_process(&mut self, pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>) -> Result<()> {
-        tracing::info!("Restarting process: {:?} {:?}", self.launcher.command, self.launcher.args);
+    fn restart_process(
+        &mut self,
+        pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>,
+    ) -> Result<()> {
+        tracing::info!(
+            "Restarting process: {:?} {:?}",
+            self.launcher.command,
+            self.launcher.args
+        );
 
         // Clear in-flight requests that were sent to the old process
         // Also clear pending requests in the channel that were sent during the crash
@@ -361,7 +387,11 @@ pub async fn recv_message_loop(
             }
             Ok(false) => {
                 // Process exited cleanly - check if it was successful or not
-                if let Some(status) = recv_loop.child.try_wait().change_context(TransportError::Spawn)? {
+                if let Some(status) = recv_loop
+                    .child
+                    .try_wait()
+                    .change_context(TransportError::Spawn)?
+                {
                     if status.success() {
                         tracing::info!("Process exited successfully, stopping recv loop");
                         break;
@@ -376,18 +406,24 @@ pub async fn recv_message_loop(
 
                 // Attempt restart for failed exits
                 if restart_count >= max_restart_attempts {
-                    tracing::error!("Maximum restart attempts ({max_restart_attempts}) exceeded, giving up");
+                    tracing::error!(
+                        "Maximum restart attempts ({max_restart_attempts}) exceeded, giving up"
+                    );
                     return Err(TransportError::RecvLoop.into());
                 }
 
                 restart_count += 1;
-                tracing::warn!("Attempting restart {restart_count}/{max_restart_attempts} after {backoff_duration:?} delay");
+                tracing::warn!(
+                    "Attempting restart {restart_count}/{max_restart_attempts} after {backoff_duration:?} delay"
+                );
 
                 sleep(backoff_duration).await;
 
                 match recv_loop.restart_process(&mut pending_rx) {
                     Ok(()) => {
-                        tracing::info!("Process restart {restart_count}/{max_restart_attempts} successful");
+                        tracing::info!(
+                            "Process restart {restart_count}/{max_restart_attempts} successful"
+                        );
                         // Double the backoff for next time, up to maximum
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
 
@@ -398,7 +434,9 @@ pub async fn recv_message_loop(
                         continue;
                     }
                     Err(restart_error) => {
-                        tracing::error!("Process restart {restart_count}/{max_restart_attempts} failed: {restart_error:?}");
+                        tracing::error!(
+                            "Process restart {restart_count}/{max_restart_attempts} failed: {restart_error:?}"
+                        );
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
                         continue; // Try again on next iteration
                     }
@@ -412,18 +450,24 @@ pub async fn recv_message_loop(
 
                 // Attempt restart for errors too
                 if restart_count >= max_restart_attempts {
-                    tracing::error!("Maximum restart attempts ({max_restart_attempts}) exceeded after error, giving up: {e:?}");
+                    tracing::error!(
+                        "Maximum restart attempts ({max_restart_attempts}) exceeded after error, giving up: {e:?}"
+                    );
                     return Err(TransportError::RecvLoop.into());
                 }
 
                 restart_count += 1;
-                tracing::warn!("Attempting restart {restart_count}/{max_restart_attempts} after error, delay: {backoff_duration:?}");
+                tracing::warn!(
+                    "Attempting restart {restart_count}/{max_restart_attempts} after error, delay: {backoff_duration:?}"
+                );
 
                 sleep(backoff_duration).await;
 
                 match recv_loop.restart_process(&mut pending_rx) {
                     Ok(()) => {
-                        tracing::info!("Process restart {restart_count}/{max_restart_attempts} successful after error");
+                        tracing::info!(
+                            "Process restart {restart_count}/{max_restart_attempts} successful after error"
+                        );
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
 
                         // Notify restart completion
@@ -433,7 +477,9 @@ pub async fn recv_message_loop(
                         continue;
                     }
                     Err(restart_error) => {
-                        tracing::error!("Process restart {restart_count}/{max_restart_attempts} failed after error: {restart_error:?}");
+                        tracing::error!(
+                            "Process restart {restart_count}/{max_restart_attempts} failed after error: {restart_error:?}"
+                        );
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
                         continue;
                     }

@@ -118,8 +118,17 @@ impl PluginConfig for StepflowPluginConfig {
 
         let transport = self.transport.clone();
         match transport {
-            StepflowTransport::Stdio { ref command, ref args, ref env } => {
-                let launcher = Launcher::try_new(working_directory.to_owned(), command.clone(), args.clone(), env.clone())?;
+            StepflowTransport::Stdio {
+                ref command,
+                ref args,
+                ref env,
+            } => {
+                let launcher = Launcher::try_new(
+                    working_directory.to_owned(),
+                    command.clone(),
+                    args.clone(),
+                    env.clone(),
+                )?;
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedStdio(launcher),
@@ -147,7 +156,12 @@ pub struct StepflowPlugin {
 }
 
 impl StepflowPlugin {
-    fn new(state: StepflowPluginState, max_retries: u32, original_config: StepflowTransport, working_directory: std::path::PathBuf) -> Self {
+    fn new(
+        state: StepflowPluginState,
+        max_retries: u32,
+        original_config: StepflowTransport,
+        working_directory: std::path::PathBuf,
+    ) -> Self {
         Self {
             state: RwLock::new(state),
             max_retries,
@@ -180,7 +194,12 @@ impl StepflowPlugin {
             // Restore original uninitialized state instead of Empty
             match &self.original_config {
                 StepflowTransport::Stdio { command, args, env } => {
-                    match Launcher::try_new(self.working_directory.clone(), command.clone(), args.clone(), env.clone()) {
+                    match Launcher::try_new(
+                        self.working_directory.clone(),
+                        command.clone(),
+                        args.clone(),
+                        env.clone(),
+                    ) {
                         Ok(launcher) => {
                             *guard = StepflowPluginState::UninitializedStdio(launcher);
                         }
@@ -198,7 +217,10 @@ impl StepflowPlugin {
     }
 
     /// Get client handle, creating it if necessary
-    async fn get_or_create_client_handle(&self, context: Arc<dyn Context>) -> Result<StepflowClientHandle> {
+    async fn get_or_create_client_handle(
+        &self,
+        context: Arc<dyn Context>,
+    ) -> Result<StepflowClientHandle> {
         // First try to get existing handle
         if let Ok(handle) = self.client_handle().await {
             return Ok(handle);
@@ -254,7 +276,6 @@ impl StepflowPlugin {
         }
     }
 
-
     /// Execute component with a single attempt (extracted from original execute method)
     async fn try_execute_component(
         &self,
@@ -279,7 +300,9 @@ impl StepflowPlugin {
             .clone();
 
         // Use get_or_create_client_handle to handle reinitialization after restart
-        let client_handle = self.get_or_create_client_handle(context.context().clone()).await?;
+        let client_handle = self
+            .get_or_create_client_handle(context.context().clone())
+            .await?;
         let response = client_handle
             .method(&ComponentExecuteParams {
                 component: component.clone(),
@@ -377,22 +400,28 @@ impl Plugin for StepflowPlugin {
             tracing::debug!("Attempting component execution (attempt {attempt}/{max_attempts})");
 
             // Get restart counter BEFORE attempting execution
-            let (initial_restart_count, mut restart_rx) = if let Ok(handle) = self.client_handle().await {
-                match &handle {
-                    StepflowClientHandle::Stdio(stdio_handle) => {
-                        let (count, rx) = stdio_handle.restart_counter();
-                        (Some(count), Some(rx))
-                    },
-                    StepflowClientHandle::Http(_) => (None, None),
-                }
-            } else {
-                (None, None)
-            };
+            let (initial_restart_count, mut restart_rx) =
+                if let Ok(handle) = self.client_handle().await {
+                    match &handle {
+                        StepflowClientHandle::Stdio(stdio_handle) => {
+                            let (count, rx) = stdio_handle.restart_counter();
+                            (Some(count), Some(rx))
+                        }
+                        StepflowClientHandle::Http(_) => (None, None),
+                    }
+                } else {
+                    (None, None)
+                };
 
-            match self.try_execute_component(component, &context, &input, attempt).await {
+            match self
+                .try_execute_component(component, &context, &input, attempt)
+                .await
+            {
                 Ok(result) => {
                     if attempt > 1 {
-                        tracing::info!("Component execution succeeded on attempt {attempt}/{max_attempts}");
+                        tracing::info!(
+                            "Component execution succeeded on attempt {attempt}/{max_attempts}"
+                        );
                     } else {
                         tracing::debug!("Component execution succeeded on first attempt");
                     }
@@ -407,7 +436,8 @@ impl Plugin for StepflowPlugin {
                     self.clear_client_handle().await;
 
                     // Wait for restart counter to increase (indicating restart completion)
-                    self.wait_for_restart_count_change(initial_restart_count, &mut restart_rx).await?;
+                    self.wait_for_restart_count_change(initial_restart_count, &mut restart_rx)
+                        .await?;
                     continue;
                 }
                 Err(e) => {
@@ -420,7 +450,10 @@ impl Plugin for StepflowPlugin {
                             "Component execution failed (non-transport error, no retry): {e:?}"
                         );
                     }
-                    tracing::debug!("Error chain analysis: contains TransportError={}", e.contains::<crate::error::TransportError>());
+                    tracing::debug!(
+                        "Error chain analysis: contains TransportError={}",
+                        e.contains::<crate::error::TransportError>()
+                    );
                     return Err(e);
                 }
             }
