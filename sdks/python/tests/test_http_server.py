@@ -199,6 +199,7 @@ class ServerHelper:
                     step_id="test_step",
                     run_id="test-run-id",
                     flow_id="test-flow-id",
+                    attempt=1,
                 ),
             )
         else:

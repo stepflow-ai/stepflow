@@ -219,6 +219,7 @@ async def test_handle_component_execute(server):
             step_id="test_step",
             run_id="test-run-id",
             flow_id="test-flow-id",
+            attempt=1,
         ),
     )
     response = await server.handle_message(request)
@@ -248,6 +249,7 @@ async def test_handle_component_execute_invalid_input(server):
             step_id="test_step",
             run_id="test-run-id",
             flow_id="test-flow-id",
+            attempt=1,
         ),
     )
 
@@ -333,6 +335,7 @@ async def test_component_execute_with_context(server):
             step_id="test_step",
             run_id="test-run-id",
             flow_id="test-flow-id",
+            attempt=1,
         ),
     )
 
@@ -370,6 +373,7 @@ async def test_server_responses_include_jsonrpc(server):
             step_id="test_step",
             run_id="test-run-id",
             flow_id="test-flow-id",
+            attempt=1,
         ),
     )
 
@@ -450,6 +454,7 @@ def test_requires_context():
                     step_id="test_step",
                     run_id="test-run-id",
                     flow_id="test-flow-id",
+                    attempt=1,
                 ),
             ),
             "expected": False,
@@ -467,6 +472,7 @@ def test_requires_context():
                     step_id="test_step",
                     run_id="test-run-id",
                     flow_id="test-flow-id",
+                    attempt=1,
                 ),
             ),
             "expected": True,
@@ -484,6 +490,7 @@ def test_requires_context():
                     step_id="test_step",
                     run_id="test-run-id",
                     flow_id="test-flow-id",
+                    attempt=1,
                 ),
             ),
             "expected": False,

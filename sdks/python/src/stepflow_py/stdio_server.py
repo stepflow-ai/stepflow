@@ -65,6 +65,7 @@ class StepflowStdioServer:
         step_id = None
         run_id = None
         flow_id = None
+        attempt = 1
 
         # Extract execution parameters from component execution requests
         if (
@@ -75,6 +76,7 @@ class StepflowStdioServer:
             step_id = message.params.step_id
             run_id = message.params.run_id
             flow_id = message.params.flow_id
+            attempt = message.params.attempt
 
         return StepflowContext(
             self._outgoing_queue,
@@ -83,6 +85,7 @@ class StepflowStdioServer:
             step_id=step_id,
             run_id=run_id,
             flow_id=flow_id,
+            attempt=attempt,
         )
 
     def get_components(self):

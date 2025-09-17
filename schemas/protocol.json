@@ -139,6 +139,12 @@
         "flow_id": {
           "description": "The ID of the flow being executed.",
           "$ref": "#/$defs/BlobId"
+        },
+        "attempt": {
+          "description": "The attempt number for this execution (1-based, for retry logic).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
         }
       },
       "required": [
@@ -146,7 +152,8 @@
         "input",
         "step_id",
         "run_id",
-        "flow_id"
+        "flow_id",
+        "attempt"
       ]
     },
     "Component": {

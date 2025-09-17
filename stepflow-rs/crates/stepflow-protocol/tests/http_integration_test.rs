@@ -79,6 +79,7 @@ async fn test_http_plugin_creation_failure() {
         transport: StepflowTransport::Http {
             url: "http://127.0.0.1:18080".to_string(),
         },
+        max_retries: 3,
     };
 
     let plugin = config
@@ -135,6 +136,7 @@ async fn test_http_protocol_integration() {
         transport: StepflowTransport::Http {
             url: "http://127.0.0.1:18081".to_string(),
         },
+        max_retries: 3,
     };
 
     let plugin = config
@@ -277,6 +279,7 @@ async fn test_http_plugin_lifecycle() {
         transport: StepflowTransport::Http {
             url: "http://127.0.0.1:18082".to_string(),
         },
+        max_retries: 3,
     };
 
     let plugin = config

@@ -32,6 +32,8 @@ pub struct ComponentExecuteParams {
     pub run_id: String,
     /// The ID of the flow being executed.
     pub flow_id: stepflow_core::BlobId,
+    /// The attempt number for this execution (1-based, for retry logic).
+    pub attempt: u32,
 }
 
 /// Sent from the component server back to Stepflow with the result of the component execution.
