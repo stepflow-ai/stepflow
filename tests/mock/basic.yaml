@@ -72,4 +72,12 @@ test:
       outcome: failed
       error:
         code: 500
-        message: 'Flow execution failed: step "step1" failed'
+        message: step "step1" failed
+        data:
+          stack:
+          - error: step "step1" failed
+            attachments:
+            - 'Component: /one_output'
+            - Component execution failed for step 'step1'
+            - 'No behavior defined for /one_output on {"input":"world"}'
+          - error: error executing user-defined function

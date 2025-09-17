@@ -161,12 +161,13 @@ impl Plugin for MockPlugin {
         #[cfg(test)]
         tracing::debug!("Mock plugin executing component: {}", component);
 
+        let input_value = input.value();
         let output = mock_component
             .behaviors
             .get(&input)
             .ok_or(PluginError::UdfExecution)
             .attach_printable_lazy(|| {
-                format!("No behavior defined for {component} on {input:?}")
+                format!("No behavior defined for {component} on {input_value}")
             })?;
 
         match output {

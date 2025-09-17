@@ -29,9 +29,15 @@ use utoipa::openapi::{AllOfBuilder, RefOr};
 /// The value is projected to a subfield of the `Arc` when accessed.
 // TODO: Look at expanding ValueRef representaiton to be an explicit enum
 // allowing expansion of templates without duplicating literal sub-trees.
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Clone, PartialEq, Hash, Eq)]
 #[repr(transparent)]
 pub struct ValueRef<T: 'static = serde_json::Value>(ArcRef<'static, serde_json::Value, T>);
+
+impl<T: std::fmt::Debug> std::fmt::Debug for ValueRef<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl Default for ValueRef {
     fn default() -> Self {
@@ -172,6 +178,10 @@ impl ValueRef<serde_json::Value> {
             }
             _ => None,
         }
+    }
+
+    pub fn value(&self) -> &serde_json::Value {
+        self.0.as_ref()
     }
 
     /// Clone the underlying JSON value

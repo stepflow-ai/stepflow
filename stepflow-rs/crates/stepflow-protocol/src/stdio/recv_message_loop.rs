@@ -119,7 +119,6 @@ impl ReceiveMessageLoop {
             }
             Some(line) = self.from_child_stdout.next() => {
                 let line = line.change_context(TransportError::Recv)?;
-                tracing::info!("Received line from child: {line:?}");
                 let msg = OwnedJson::try_new(line).change_context(TransportError::Recv)?;
 
                 let message = msg.message();

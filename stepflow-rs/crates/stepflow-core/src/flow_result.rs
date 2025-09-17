@@ -15,6 +15,7 @@ use std::borrow::Cow;
 use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
 
+use crate::error_stack::ErrorStack;
 use crate::workflow::ValueRef;
 
 /// An error reported from within a flow or step.
@@ -51,6 +52,27 @@ impl FlowError {
             data: Some(data),
             ..self
         })
+    }
+
+    /// Create a FlowError from an error_stack::Report, preserving the full stack trace
+    pub fn from_error_stack<T: error_stack::Context>(report: error_stack::Report<T>) -> Self {
+        // Extract the root error as the main message
+        let message = report.current_context().to_string();
+
+        // Create ErrorStack using the shared implementation
+        let error_stack = ErrorStack::from_error_stack(report);
+
+        // Serialize the error stack to ValueRef for the data field
+        let data = match serde_json::to_value(&error_stack) {
+            Ok(value) => Some(ValueRef::new(value)),
+            Err(_) => None, // If serialization fails, proceed without stack data
+        };
+
+        Self {
+            code: 500, // Default to internal server error for system errors
+            message: message.into(),
+            data,
+        }
     }
 }
 
@@ -251,5 +273,143 @@ impl FlowResult {
             Self::Failed(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use error_stack::{Context, report};
+
+    #[derive(Debug)]
+    struct TestError(&'static str);
+
+    impl std::fmt::Display for TestError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "TestError: {}", self.0)
+        }
+    }
+
+    impl Context for TestError {}
+
+    #[test]
+    fn test_flow_error_from_error_stack_serialization() {
+        // Create a test error stack
+        let report = report!(TestError("root cause"))
+            .attach_printable("Additional context")
+            .change_context(TestError("higher level error"));
+
+        // Convert to FlowError
+        let flow_error = FlowError::from_error_stack(report);
+
+        // Verify basic fields
+        assert_eq!(flow_error.code, 500);
+        assert_eq!(flow_error.message, "TestError: higher level error");
+        assert!(flow_error.data.is_some());
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&flow_error).expect("Should serialize successfully");
+        println!("FlowError JSON: {}", json);
+
+        // Verify data field is included in JSON
+        assert!(json.contains("\"data\":"));
+
+        // Parse back to verify structure
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Should parse back");
+        assert!(parsed.get("data").is_some());
+
+        let data = parsed.get("data").unwrap();
+        assert!(data.get("stack").is_some());
+
+        let stack = data
+            .get("stack")
+            .unwrap()
+            .as_array()
+            .expect("Stack should be array");
+        assert!(!stack.is_empty(), "Stack should not be empty");
+
+        // Check first stack entry
+        let first_entry = &stack[0];
+        assert!(first_entry.get("error").is_some());
+        assert!(first_entry.get("attachments").is_some());
+    }
+
+    #[test]
+    fn test_flow_result_failed_serialization() {
+        // Create a test error stack
+        let report = report!(TestError("component failed"))
+            .attach_printable("Step execution error")
+            .change_context(TestError("workflow step failed"));
+
+        let flow_error = FlowError::from_error_stack(report);
+        let flow_result = FlowResult::Failed(flow_error);
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&flow_result).expect("Should serialize successfully");
+        println!("FlowResult JSON: {}", json);
+
+        // Verify the full structure
+        assert!(json.contains("\"outcome\":\"failed\""));
+        assert!(json.contains("\"error\":{"));
+        assert!(json.contains("\"data\":{"));
+        assert!(json.contains("\"stack\":["));
+    }
+
+    #[test]
+    fn test_data_field_structure_and_content() {
+        // Create a complex error stack with multiple contexts and attachments
+        let report = report!(TestError("database connection failed"))
+            .attach_printable("Connection timeout: 30s")
+            .attach_printable("Host: localhost:5432")
+            .change_context(TestError("plugin initialization failed"))
+            .attach_printable("Plugin: langflow")
+            .change_context(TestError("step execution failed"));
+
+        let flow_error = FlowError::from_error_stack(report);
+
+        // Verify data field exists and is Some
+        assert!(flow_error.data.is_some(), "Data field should be populated");
+
+        // Serialize and parse to verify exact structure
+        let json = serde_json::to_string(&flow_error).expect("Should serialize successfully");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Should parse back");
+
+        // Verify data field structure
+        let data = parsed.get("data").expect("Should have data field");
+        let stack = data
+            .get("stack")
+            .expect("Should have stack field")
+            .as_array()
+            .expect("Stack should be array");
+
+        // Verify we have multiple stack entries
+        assert!(stack.len() >= 2, "Should have multiple stack entries");
+
+        // Verify first entry (most recent error)
+        let first_entry = &stack[0];
+        assert_eq!(
+            first_entry.get("error").unwrap().as_str(),
+            Some("TestError: step execution failed")
+        );
+
+        let attachments = first_entry
+            .get("attachments")
+            .unwrap()
+            .as_array()
+            .expect("Should have attachments");
+        assert!(
+            attachments
+                .iter()
+                .any(|a| a.as_str().unwrap().contains("Plugin: langflow"))
+        );
+
+        // Verify last entry (root cause)
+        let last_entry = stack.last().unwrap();
+        assert_eq!(
+            last_entry.get("error").unwrap().as_str(),
+            Some("TestError: database connection failed")
+        );
+
+        println!("Verified data field structure: {}", json);
     }
 }
