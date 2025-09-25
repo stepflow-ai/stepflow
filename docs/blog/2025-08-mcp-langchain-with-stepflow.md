@@ -199,7 +199,7 @@ cd ../sdks/python
 uv add --group dev langchain-core
 
 # Run the workflow with MCP integration
-cd ../stepflow-rs
+cd ../../stepflow-rs
 ./target/release/stepflow run \
   --flow=../examples/research-assistant/workflow.yaml \
   --input=../examples/research-assistant/input_ai_workflows.json \
@@ -346,7 +346,7 @@ cd stepflow/examples/research-assistant
 # Install dependencies and run
 cd ../../stepflow-rs && cargo build --release
 cd ../sdks/python && uv add --group dev langchain-core
-cd ../stepflow-rs
+cd ../../stepflow-rs
 ./target/release/stepflow run \
   --flow=../examples/research-assistant/workflow.yaml \
   --input=../examples/research-assistant/input_ai_workflows.json \
