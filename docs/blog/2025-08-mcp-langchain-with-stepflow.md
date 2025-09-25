@@ -190,16 +190,15 @@ This ensures type safety across language boundaries – from Rust orchestrator t
 Setup is straightforward:
 
 ```bash
-# Build Stepflow
-cd stepflow-rs
-cargo build --release
-
 # Install LangChain dependencies
-cd ../sdks/python
+cd ./sdks/python
 uv add --group dev langchain-core
 
-# Run the workflow with MCP integration
+# Build Stepflow
 cd ../../stepflow-rs
+cargo build --release
+
+# Run the workflow with MCP integration
 ./target/release/stepflow run \
   --flow=../examples/research-assistant/workflow.yaml \
   --input=../examples/research-assistant/input_ai_workflows.json \
@@ -344,9 +343,8 @@ git clone https://github.com/stepflow-ai/stepflow
 cd stepflow/examples/research-assistant
 
 # Install dependencies and run
+cd ../../sdks/python && uv add --group dev langchain-core
 cd ../../stepflow-rs && cargo build --release
-cd ../sdks/python && uv add --group dev langchain-core
-cd ../../stepflow-rs
 ./target/release/stepflow run \
   --flow=../examples/research-assistant/workflow.yaml \
   --input=../examples/research-assistant/input_ai_workflows.json \
