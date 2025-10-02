@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.4.0"></a> [Stepflow Python SDK 0.4.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.4.0) - 2025-10-02
+### Bug Fixes
+
+- Better future management for process messages ([#325](https://github.com/stepflow-ai/stepflow/pull/325))
+
+### Features
+
+- Allow Python components/UDFs to signal skip ([#239](https://github.com/stepflow-ai/stepflow/pull/239))
+- Remove duplicate types ([#240](https://github.com/stepflow-ai/stepflow/pull/240))
+- Get Vector Store Rag flow working ([#309](https://github.com/stepflow-ai/stepflow/pull/309))
+- Add HTTP protocol support for Langflow component server ([#319](https://github.com/stepflow-ai/stepflow/pull/319))
+- Restart stdio subprocess; retry components ([#336](https://github.com/stepflow-ai/stepflow/pull/336))
+
+### Miscellaneous Tasks
+
+- Use workflow rather than repository dispatch ([#237](https://github.com/stepflow-ai/stepflow/pull/237))
+- Add Langflow to CI ([#243](https://github.com/stepflow-ai/stepflow/pull/243))
+
 ## <a id="0.3.0"></a> [Stepflow Python SDK 0.3.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.3.0) - 2025-08-25
 ### Bug Fixes
 
