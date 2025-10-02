@@ -42,7 +42,7 @@ dependencies = [
     "click>=8.0",
     "jsonschema>=4.17.0",
     "pydantic>=2.0.0", # For BaseModel serialization and SecretStr handling
-    "langflow>=1.5.0", # Required for component execution
+    "langflow==1.5.0.post2", # Pinned to known working version
     "python-dotenv>=1.0.0", # For .env file support
     "openai>=1.0.0", # For OpenAI API integration
     "langchain_core>=0.1.0", # For core LangChain functionality
