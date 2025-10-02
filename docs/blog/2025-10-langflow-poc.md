@@ -7,7 +7,7 @@ authors:
   - benchambers
   - natemccall
 tags: [announcements]
-draft: true
+draft: false
 ---
 
 # Langflow on Stepflow POC
@@ -25,7 +25,7 @@ We configured it to fetch content from `stepflow.org/docs`, and saved it as [flo
 
 ![Blog Content Flow](https://github.com/stepflow-ai/stepflow/blob/main/docs/static/img/2025-09-langflow-poc-flow.png?raw=true)
 
-The following command converts the Langflow file to Stepflow and executes it. As this uses the OpenAI API, you will need set the `OPENAI_API_KEY` environment variable before running the following. If you dont have an OpenAI API key, you can get one [here](https://platform.openai.com/api-keys).
+The following command converts the Langflow file to Stepflow and executes it. As this uses the OpenAI API, you will need to set the `OPENAI_API_KEY` environment variable before running the following. If you dont have an OpenAI API key, you can get one [here](https://platform.openai.com/api-keys).
 
 ```sh
 cd integrations/langflow
@@ -33,16 +33,12 @@ uv run stepflow-langflow execute ../../docs/static/files/2025-09-langflow-poc-fl
     --tweaks '{ "LanguageModelComponent-icleF": { "api_key": "$OPENAI_API_KEY" } }'
 ```
 
-The Langflow workflow fetches documentation from stepflow.org, parses it, and uses GPT-4 to generate a blog post based on the provided instructions.
+The Langflow workflow fetches documentation from [stepflow.org](https://stepflow.org/docs/introduction), parses it, and uses GPT-4 to generate a blog post based on the provided instructions.
 
 
 :::note[Tweaks]
 As with Langflow, [tweaks](https://docs.langflow.org/concepts-publish#input-schema) are overlays that allow changing the inputs to specific 'components' prior to execution.
 To run other flows you will likely need to specify different component names for the tweaks. You can run `stepflow-langflow analyze flow.json` to discover component IDs in your workflow.
-:::
-
-:::tip[Version Compatibility]
-This integration has been tested with Langflow 1.5.0.post2. The integration pins to this version in `pyproject.toml` for stability.
 :::
 
 Refer to the [integration README](https://github.com/stepflow-ai/stepflow/blob/main/integrations/langflow/README.md) for more details.
@@ -61,6 +57,11 @@ The translation process walks the Langflow graph and produces equivalent Stepflo
 - An **executor step** that loads and runs the code using the custom UDF executor
 
 This approach preserves the original Langflow component implementations while adapting them to Stepflow's execution model.
+
+For non-serializable components, we use the following strategies:
+
+- **Embeddings**: the base class isn't serialiazble, but all of the embeddings we have used extend Pydantic models, so we can serialize them to JSON.
+- **Components as tools**: rather than executing the component and returning it, we return the code for the component and pass that into the agent, which detects and it instantiates the component-as-tool for execution.
 
 ### Transformation Example
 
