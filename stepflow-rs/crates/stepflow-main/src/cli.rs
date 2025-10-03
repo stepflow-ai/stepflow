@@ -143,7 +143,7 @@ pub enum Command {
         inputs_path: PathBuf,
 
         /// Maximum number of concurrent executions on the server. Defaults to number of inputs if not specified.
-        #[arg(long="max-concurrent", value_name = "N")]
+        #[arg(long = "max-concurrent", value_name = "N")]
         max_concurrent: Option<usize>,
 
         /// Path to write batch results (JSONL format - one result per line).
@@ -469,7 +469,14 @@ impl Cli {
                 output_path,
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
-                submit_batch(url, flow, &inputs_path, max_concurrent, output_path.as_deref()).await?;
+                submit_batch(
+                    url,
+                    flow,
+                    &inputs_path,
+                    max_concurrent,
+                    output_path.as_deref(),
+                )
+                .await?;
             }
             Command::Serve { port, config_args } => {
                 let config = config_args.load_config(None)?;

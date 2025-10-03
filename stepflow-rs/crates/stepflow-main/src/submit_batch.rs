@@ -10,13 +10,22 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use crate::{Result, error::MainError, submit::display_server_error, validation_display::display_diagnostics};
+// Allow println for CLI output
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
+use crate::{
+    Result, error::MainError, submit::display_server_error, validation_display::display_diagnostics,
+};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead as _, BufReader};
 use std::path::Path;
 use std::time::Instant;
-use stepflow_core::{BlobId, workflow::{Flow, ValueRef}};
+use stepflow_core::{
+    BlobId,
+    workflow::{Flow, ValueRef},
+};
 use stepflow_server::{StoreFlowRequest, StoreFlowResponse};
 use stepflow_state::BatchDetails;
 use url::Url;
@@ -93,9 +102,7 @@ pub async fn submit_batch(
 
     // Step 1: Store the flow to get its hash
     println!("Storing workflow...");
-    let store_request = StoreFlowRequest {
-        flow,
-    };
+    let store_request = StoreFlowRequest { flow };
 
     let store_url = service_url
         .join("/api/v1/flows")
@@ -216,11 +223,15 @@ pub async fn submit_batch(
         let failed = stats.failed_runs;
         let bar_width = 40;
         let filled = (completed as f64 / total_runs as f64 * bar_width as f64) as usize;
-        let bar: String = "=".repeat(filled) + &">".to_string() + &" ".repeat(bar_width - filled.saturating_sub(1));
+        let bar: String = "=".repeat(filled)
+            + ">"
+            + &" ".repeat(bar_width - filled.saturating_sub(1));
 
-        print!("\r[{}] {}/{} completed, {} running, {} failed",
-               bar, completed, total_runs, running, failed);
-        use std::io::Write;
+        print!(
+            "\r[{}] {}/{} completed, {} running, {} failed",
+            bar, completed, total_runs, running, failed
+        );
+        use std::io::Write as _;
         let _ = std::io::stdout().flush();
 
         // Check if all runs are complete
@@ -303,18 +314,23 @@ pub async fn submit_batch(
                 "status": output_info.status,
                 "result": output_info.result,
             });
-            output_lines.push(serde_json::to_string(&output_entry)
-                .change_context(MainError::Configuration)?);
+            output_lines.push(
+                serde_json::to_string(&output_entry).change_context(MainError::Configuration)?,
+            );
         }
 
-        std::fs::write(
-            output_path,
-            output_lines.join("\n") + "\n"
-        )
-        .change_context(MainError::Configuration)
-        .attach_printable(format!("Failed to write output file: {}", output_path.display()))?;
+        std::fs::write(output_path, output_lines.join("\n") + "\n")
+            .change_context(MainError::Configuration)
+            .attach_printable(format!(
+                "Failed to write output file: {}",
+                output_path.display()
+            ))?;
 
-        println!("Output written to: {} ({} results)", output_path.display(), output_lines.len());
+        println!(
+            "Output written to: {} ({} results)",
+            output_path.display(),
+            output_lines.len()
+        );
     }
 
     // Exit with error code if any failures

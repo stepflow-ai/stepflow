@@ -1358,7 +1358,9 @@ impl StateStore for SqliteStateStore {
         let filters = filters.clone();
 
         async move {
-            let mut sql = "SELECT id, flow_id, flow_name, total_runs, status, created_at FROM batches".to_string();
+            let mut sql =
+                "SELECT id, flow_id, flow_name, total_runs, status, created_at FROM batches"
+                    .to_string();
             let mut conditions = Vec::new();
             let mut bind_values: Vec<String> = Vec::new();
 
@@ -1406,8 +1408,8 @@ impl StateStore for SqliteStateStore {
             let mut batches = Vec::new();
             for row in rows {
                 let batch_id_str: String = row.get("id");
-                let batch_id = Uuid::parse_str(&batch_id_str)
-                    .change_context(StateError::Internal)?;
+                let batch_id =
+                    Uuid::parse_str(&batch_id_str).change_context(StateError::Internal)?;
 
                 let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
                     .change_context(StateError::Internal)?;
@@ -1457,7 +1459,8 @@ impl StateStore for SqliteStateStore {
                 FROM batch_runs br
                 JOIN runs r ON br.run_id = r.id
                 WHERE br.batch_id = ?
-            "#.to_string();
+            "#
+            .to_string();
 
             let mut bind_values: Vec<String> = vec![batch_id.to_string()];
             let mut extra_conditions = Vec::new();
@@ -1514,8 +1517,7 @@ impl StateStore for SqliteStateStore {
             let mut results = Vec::new();
             for row in rows {
                 let run_id_str: String = row.get("id");
-                let run_id = Uuid::parse_str(&run_id_str)
-                    .change_context(StateError::Internal)?;
+                let run_id = Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
 
                 let status_str: String = row.get("status");
                 let status = match status_str.as_str() {
@@ -1580,8 +1582,8 @@ impl StateStore for SqliteStateStore {
             match row {
                 Some(row) => {
                     let batch_id_str: String = row.get("batch_id");
-                    let batch_id = Uuid::parse_str(&batch_id_str)
-                        .change_context(StateError::Internal)?;
+                    let batch_id =
+                        Uuid::parse_str(&batch_id_str).change_context(StateError::Internal)?;
                     let batch_input_index = row.get::<i64, _>("batch_input_index") as usize;
 
                     Ok(Some((batch_id, batch_input_index)))

@@ -616,7 +616,9 @@ pub struct RunFilters {
 }
 
 /// Batch execution status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum BatchStatus {
     /// Batch is currently running
@@ -646,6 +648,7 @@ pub struct BatchMetadata {
 /// Calculated batch statistics (not stored, computed via queries)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct BatchStatistics {
     pub completed_runs: usize,
     pub running_runs: usize,
@@ -654,17 +657,6 @@ pub struct BatchStatistics {
     pub paused_runs: usize,
 }
 
-impl Default for BatchStatistics {
-    fn default() -> Self {
-        Self {
-            completed_runs: 0,
-            running_runs: 0,
-            failed_runs: 0,
-            cancelled_runs: 0,
-            paused_runs: 0,
-        }
-    }
-}
 
 /// Complete batch details for API responses
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]

@@ -915,9 +915,9 @@ impl StateStore for InMemoryStateStore {
             let mut results: Vec<(RunSummary, usize)> = runs
                 .iter()
                 .filter_map(|(run_id, batch_input_index)| {
-                    metadata.get(run_id).map(|details| {
-                        (details.summary.clone(), *batch_input_index)
-                    })
+                    metadata
+                        .get(run_id)
+                        .map(|details| (details.summary.clone(), *batch_input_index))
                 })
                 .filter(|(summary, _)| {
                     // Apply status filter
@@ -1377,10 +1377,7 @@ mod tests {
         }
 
         // List all batches
-        let all_batches = store
-            .list_batches(&BatchFilters::default())
-            .await
-            .unwrap();
+        let all_batches = store.list_batches(&BatchFilters::default()).await.unwrap();
         assert_eq!(all_batches.len(), 5);
 
         // Filter by status

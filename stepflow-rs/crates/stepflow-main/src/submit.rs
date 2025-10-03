@@ -20,7 +20,11 @@ use stepflow_server::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, Sto
 use url::Url;
 
 /// Display a server error response with enhanced stack information
-pub(crate) fn display_server_error(status: reqwest::StatusCode, response_text: &str, context: &str) {
+pub(crate) fn display_server_error(
+    status: reqwest::StatusCode,
+    response_text: &str,
+    context: &str,
+) {
     // Try to parse as structured error response first
     if let Ok(error_response) = serde_json::from_str::<ErrorResponse>(response_text) {
         tracing::error!(

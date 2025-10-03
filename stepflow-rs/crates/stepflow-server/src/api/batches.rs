@@ -15,11 +15,11 @@ use axum::{
     response::Json,
 };
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use std::sync::Arc;
 use stepflow_core::{BlobId, workflow::ValueRef};
 use stepflow_execution::StepflowExecutor;
 use stepflow_state::{BatchDetails, BatchFilters, BatchMetadata, BatchStatus, RunSummary};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
@@ -176,16 +176,14 @@ pub async fn create_batch(
                 run_id,
                 req.flow_id.clone(),
                 flow.name(),
-                None, // No flow label for batch execution
+                None,  // No flow label for batch execution
                 false, // Batch runs are not in debug mode
                 input.clone(),
             )
             .await?;
 
         // Link run to batch
-        state_store
-            .add_run_to_batch(batch_id, run_id, idx)
-            .await?;
+        state_store.add_run_to_batch(batch_id, run_id, idx).await?;
 
         run_inputs.push((run_id, input, idx));
     }
@@ -200,7 +198,13 @@ pub async fn create_batch(
         let mut tasks = vec![];
 
         for (run_id, input, _idx) in run_inputs {
-            let permit = semaphore.clone().acquire_owned().await.unwrap();
+            let permit = match semaphore.clone().acquire_owned().await {
+                Ok(permit) => permit,
+                Err(_) => {
+                    tracing::error!("Semaphore closed, aborting batch execution");
+                    break;
+                }
+            };
             let executor_ref = executor_clone.clone();
             let flow_ref = flow_clone.clone();
             let flow_id_ref = flow_id.clone();
@@ -222,8 +226,8 @@ pub async fn create_batch(
                                     stepflow_core::FlowResult::Success(_) => {
                                         stepflow_core::status::ExecutionStatus::Completed
                                     }
-                                    stepflow_core::FlowResult::Failed(_) |
-                                    stepflow_core::FlowResult::Skipped { .. } => {
+                                    stepflow_core::FlowResult::Failed(_)
+                                    | stepflow_core::FlowResult::Skipped { .. } => {
                                         stepflow_core::status::ExecutionStatus::Failed
                                     }
                                 };
@@ -231,7 +235,9 @@ pub async fn create_batch(
                                     stepflow_core::FlowResult::Success(r) => Some(r.clone()),
                                     _ => None,
                                 };
-                                let _ = state_store.update_run_status(run_id, status, result_ref).await;
+                                let _ = state_store
+                                    .update_run_status(run_id, status, result_ref)
+                                    .await;
                             }
                             Err(e) => {
                                 tracing::error!("Batch run {run_id} failed to get result: {e:?}");
