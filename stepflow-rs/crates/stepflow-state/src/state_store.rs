@@ -399,6 +399,118 @@ pub trait StateStore: Send + Sync {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
+
+    // Batch Execution Management
+
+    /// Create a new batch record.
+    ///
+    /// # Arguments
+    /// * `batch_id` - Unique identifier for the batch
+    /// * `flow_id` - Workflow blob ID
+    /// * `flow_name` - Optional workflow name
+    /// * `total_runs` - Total number of runs in the batch
+    ///
+    /// # Returns
+    /// Success if the batch was created
+    fn create_batch(
+        &self,
+        batch_id: Uuid,
+        flow_id: BlobId,
+        flow_name: Option<&str>,
+        total_runs: usize,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Link a run to a batch with its input index.
+    ///
+    /// # Arguments
+    /// * `batch_id` - Batch identifier
+    /// * `run_id` - Run identifier
+    /// * `batch_input_index` - Position in the batch input array
+    ///
+    /// # Returns
+    /// Success if the run was linked to the batch
+    fn add_run_to_batch(
+        &self,
+        batch_id: Uuid,
+        run_id: Uuid,
+        batch_input_index: usize,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Get batch metadata (without statistics).
+    ///
+    /// # Arguments
+    /// * `batch_id` - Batch identifier
+    ///
+    /// # Returns
+    /// Batch metadata if found
+    fn get_batch(
+        &self,
+        batch_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<BatchMetadata>, StateError>>;
+
+    /// Get batch statistics by querying associated runs.
+    ///
+    /// # Arguments
+    /// * `batch_id` - Batch identifier
+    ///
+    /// # Returns
+    /// Batch statistics computed from run states
+    fn get_batch_statistics(
+        &self,
+        batch_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<BatchStatistics, StateError>>;
+
+    /// Update batch status (for cancellation).
+    ///
+    /// # Arguments
+    /// * `batch_id` - Batch identifier
+    /// * `status` - New batch status
+    ///
+    /// # Returns
+    /// Success if the batch status was updated
+    fn update_batch_status(
+        &self,
+        batch_id: Uuid,
+        status: BatchStatus,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// List batches with optional filtering.
+    ///
+    /// # Arguments
+    /// * `filters` - Filters for batch queries
+    ///
+    /// # Returns
+    /// A vector of batch metadata matching the filters
+    fn list_batches(
+        &self,
+        filters: &BatchFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<BatchMetadata>, StateError>>;
+
+    /// List runs belonging to a batch with their input indices.
+    ///
+    /// # Arguments
+    /// * `batch_id` - Batch identifier
+    /// * `filters` - Filters for run queries
+    ///
+    /// # Returns
+    /// A vector of (run_summary, batch_input_index) tuples
+    fn list_batch_runs(
+        &self,
+        batch_id: Uuid,
+        filters: &RunFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(RunSummary, usize)>, StateError>>;
+
+    /// Get batch context for a specific run (if it belongs to a batch).
+    ///
+    /// # Arguments
+    /// * `run_id` - Run identifier
+    ///
+    /// # Returns
+    /// Optional (batch_id, batch_input_index) tuple if the run belongs to a batch
+    fn get_run_batch_context(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<(Uuid, usize)>, StateError>>;
 }
 
 /// The step result.
@@ -499,6 +611,77 @@ pub struct RunFilters {
     pub status: Option<ExecutionStatus>,
     pub flow_name: Option<String>,
     pub flow_label: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+/// Batch execution status
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum BatchStatus {
+    /// Batch is currently running
+    Running,
+    /// Batch has been cancelled
+    Cancelled,
+}
+
+impl Default for BatchStatus {
+    fn default() -> Self {
+        Self::Running
+    }
+}
+
+/// Immutable batch metadata
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchMetadata {
+    pub batch_id: Uuid,
+    pub flow_id: BlobId,
+    pub flow_name: Option<String>,
+    pub total_runs: usize,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub status: BatchStatus,
+}
+
+/// Calculated batch statistics (not stored, computed via queries)
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchStatistics {
+    pub completed_runs: usize,
+    pub running_runs: usize,
+    pub failed_runs: usize,
+    pub cancelled_runs: usize,
+    pub paused_runs: usize,
+}
+
+impl Default for BatchStatistics {
+    fn default() -> Self {
+        Self {
+            completed_runs: 0,
+            running_runs: 0,
+            failed_runs: 0,
+            cancelled_runs: 0,
+            paused_runs: 0,
+        }
+    }
+}
+
+/// Complete batch details for API responses
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchDetails {
+    #[serde(flatten)]
+    pub metadata: BatchMetadata,
+    #[serde(flatten)]
+    pub statistics: BatchStatistics,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Filters for listing batches
+#[derive(Debug, Clone, Default)]
+pub struct BatchFilters {
+    pub status: Option<BatchStatus>,
+    pub flow_name: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }

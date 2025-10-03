@@ -48,3 +48,29 @@ The workflow calculates:
 - `m_plus_n`: 3 + 4 = 7
 - `m_times_n`: 3 * 4 = 12
 - `m_plus_n_times_n`: (3 + 4) * 4 = 28
+
+## Batch Execution
+
+# Batch Execution Test
+
+This directory contains a test script for verifying the batch execution functionality.
+
+## Running the Test
+
+### Terminal 1: Start Stepflow Server
+
+```bash
+cd stepflow-rs
+cargo run -- serve --port 7837 --config ../examples/basic/stepflow-config.yml
+```
+
+### Terminal 2: Run Batch Test
+
+```bash
+cd examples/basic
+../../stepflow-rs/target/debug/stepflow submit-batch \
+  --url http://localhost:7837/api/v1 \
+  --flow workflow.yaml \
+  --inputs batch_inputs.jsonl \
+  --output batch_outputs.jsonl
+```

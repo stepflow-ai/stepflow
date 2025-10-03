@@ -22,8 +22,9 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
-    RunDetails, RunFilters, RunSummary, StateError, StateStore, StateWriteOperation, StepInfo,
-    StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
+    BatchFilters, BatchMetadata, BatchStatistics, BatchStatus, RunDetails, RunFilters, RunSummary,
+    StateError, StateStore, StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata,
+    WorkflowWithMetadata,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -1169,6 +1170,424 @@ impl StateStore for SqliteStateStore {
             }
 
             Ok(runnable_steps)
+        }
+        .boxed()
+    }
+
+    // Batch Execution Management
+
+    fn create_batch(
+        &self,
+        batch_id: Uuid,
+        flow_id: BlobId,
+        flow_name: Option<&str>,
+        total_runs: usize,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        let flow_name = flow_name.map(|s| s.to_string());
+
+        async move {
+            let sql = "INSERT INTO batches (id, flow_id, flow_name, total_runs, status) VALUES (?, ?, ?, ?, 'running')";
+
+            sqlx::query(sql)
+                .bind(batch_id.to_string())
+                .bind(flow_id.to_string())
+                .bind(flow_name)
+                .bind(total_runs as i64)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn add_run_to_batch(
+        &self,
+        batch_id: Uuid,
+        run_id: Uuid,
+        batch_input_index: usize,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql =
+                "INSERT INTO batch_runs (batch_id, run_id, batch_input_index) VALUES (?, ?, ?)";
+
+            sqlx::query(sql)
+                .bind(batch_id.to_string())
+                .bind(run_id.to_string())
+                .bind(batch_input_index as i64)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_batch(
+        &self,
+        batch_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<BatchMetadata>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql =
+                "SELECT id, flow_id, flow_name, total_runs, status, created_at FROM batches WHERE id = ?";
+
+            let row = sqlx::query(sql)
+                .bind(batch_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            match row {
+                Some(row) => {
+                    let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
+                        .change_context(StateError::Internal)?;
+                    let status_str: String = row.get("status");
+                    let status = match status_str.as_str() {
+                        "running" => BatchStatus::Running,
+                        "cancelled" => BatchStatus::Cancelled,
+                        _ => BatchStatus::Running, // Default fallback
+                    };
+
+                    let metadata = BatchMetadata {
+                        batch_id,
+                        flow_id,
+                        flow_name: row.get("flow_name"),
+                        total_runs: row.get::<i64, _>("total_runs") as usize,
+                        created_at: chrono::DateTime::parse_from_rfc3339(
+                            &row.get::<String, _>("created_at"),
+                        )
+                        .change_context(StateError::Internal)?
+                        .with_timezone(&chrono::Utc),
+                        status,
+                    };
+
+                    Ok(Some(metadata))
+                }
+                None => Ok(None),
+            }
+        }
+        .boxed()
+    }
+
+    fn get_batch_statistics(
+        &self,
+        batch_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<BatchStatistics, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = r#"
+                SELECT
+                    r.status,
+                    COUNT(*) as count
+                FROM batch_runs br
+                JOIN runs r ON br.run_id = r.id
+                WHERE br.batch_id = ?
+                GROUP BY r.status
+            "#;
+
+            let rows = sqlx::query(sql)
+                .bind(batch_id.to_string())
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut statistics = BatchStatistics::default();
+
+            for row in rows {
+                let status_str: String = row.get("status");
+                let count: i64 = row.get("count");
+                let count = count as usize;
+
+                match status_str.as_str() {
+                    "completed" => statistics.completed_runs = count,
+                    "running" => statistics.running_runs = count,
+                    "failed" => statistics.failed_runs = count,
+                    "cancelled" => statistics.cancelled_runs = count,
+                    "paused" => statistics.paused_runs = count,
+                    _ => {
+                        tracing::warn!("Unknown run status '{}' in batch statistics", status_str);
+                    }
+                }
+            }
+
+            Ok(statistics)
+        }
+        .boxed()
+    }
+
+    fn update_batch_status(
+        &self,
+        batch_id: Uuid,
+        status: BatchStatus,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let status_str = match status {
+                BatchStatus::Running => "running",
+                BatchStatus::Cancelled => "cancelled",
+            };
+
+            let sql = "UPDATE batches SET status = ? WHERE id = ?";
+
+            sqlx::query(sql)
+                .bind(status_str)
+                .bind(batch_id.to_string())
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn list_batches(
+        &self,
+        filters: &BatchFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<BatchMetadata>, StateError>> {
+        let pool = self.pool.clone();
+        let filters = filters.clone();
+
+        async move {
+            let mut sql = "SELECT id, flow_id, flow_name, total_runs, status, created_at FROM batches".to_string();
+            let mut conditions = Vec::new();
+            let mut bind_values: Vec<String> = Vec::new();
+
+            if let Some(ref status) = filters.status {
+                let status_str = match status {
+                    BatchStatus::Running => "running",
+                    BatchStatus::Cancelled => "cancelled",
+                };
+                conditions.push("status = ?".to_string());
+                bind_values.push(status_str.to_string());
+            }
+
+            if let Some(ref flow_name) = filters.flow_name {
+                conditions.push("flow_name = ?".to_string());
+                bind_values.push(flow_name.clone());
+            }
+
+            if !conditions.is_empty() {
+                sql.push_str(" WHERE ");
+                sql.push_str(&conditions.join(" AND "));
+            }
+
+            sql.push_str(" ORDER BY created_at DESC");
+
+            if let Some(limit) = filters.limit {
+                sql.push_str(" LIMIT ");
+                sql.push_str(&limit.to_string());
+
+                if let Some(offset) = filters.offset {
+                    sql.push_str(" OFFSET ");
+                    sql.push_str(&offset.to_string());
+                }
+            }
+
+            let mut query = sqlx::query(&sql);
+            for value in bind_values {
+                query = query.bind(value);
+            }
+
+            let rows = query
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut batches = Vec::new();
+            for row in rows {
+                let batch_id_str: String = row.get("id");
+                let batch_id = Uuid::parse_str(&batch_id_str)
+                    .change_context(StateError::Internal)?;
+
+                let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
+                    .change_context(StateError::Internal)?;
+
+                let status_str: String = row.get("status");
+                let status = match status_str.as_str() {
+                    "running" => BatchStatus::Running,
+                    "cancelled" => BatchStatus::Cancelled,
+                    _ => BatchStatus::Running,
+                };
+
+                let metadata = BatchMetadata {
+                    batch_id,
+                    flow_id,
+                    flow_name: row.get("flow_name"),
+                    total_runs: row.get::<i64, _>("total_runs") as usize,
+                    created_at: chrono::DateTime::parse_from_rfc3339(
+                        &row.get::<String, _>("created_at"),
+                    )
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc),
+                    status,
+                };
+
+                batches.push(metadata);
+            }
+
+            Ok(batches)
+        }
+        .boxed()
+    }
+
+    fn list_batch_runs(
+        &self,
+        batch_id: Uuid,
+        filters: &RunFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(RunSummary, usize)>, StateError>> {
+        let pool = self.pool.clone();
+        let filters = filters.clone();
+
+        async move {
+            let mut sql = r#"
+                SELECT
+                    r.id, r.flow_id, r.flow_name, r.flow_label, r.status,
+                    r.debug_mode, r.created_at, r.completed_at,
+                    br.batch_input_index
+                FROM batch_runs br
+                JOIN runs r ON br.run_id = r.id
+                WHERE br.batch_id = ?
+            "#.to_string();
+
+            let mut bind_values: Vec<String> = vec![batch_id.to_string()];
+            let mut extra_conditions = Vec::new();
+
+            if let Some(ref status) = filters.status {
+                let status_str = match status {
+                    ExecutionStatus::Running => "running",
+                    ExecutionStatus::Completed => "completed",
+                    ExecutionStatus::Failed => "failed",
+                    ExecutionStatus::Cancelled => "cancelled",
+                    ExecutionStatus::Paused => "paused",
+                };
+                extra_conditions.push("r.status = ?".to_string());
+                bind_values.push(status_str.to_string());
+            }
+
+            if let Some(ref flow_name) = filters.flow_name {
+                extra_conditions.push("r.flow_name = ?".to_string());
+                bind_values.push(flow_name.clone());
+            }
+
+            if let Some(ref flow_label) = filters.flow_label {
+                extra_conditions.push("r.flow_label = ?".to_string());
+                bind_values.push(flow_label.clone());
+            }
+
+            if !extra_conditions.is_empty() {
+                sql.push_str(" AND ");
+                sql.push_str(&extra_conditions.join(" AND "));
+            }
+
+            sql.push_str(" ORDER BY br.batch_input_index ASC");
+
+            if let Some(limit) = filters.limit {
+                sql.push_str(" LIMIT ");
+                sql.push_str(&limit.to_string());
+
+                if let Some(offset) = filters.offset {
+                    sql.push_str(" OFFSET ");
+                    sql.push_str(&offset.to_string());
+                }
+            }
+
+            let mut query = sqlx::query(&sql);
+            for value in bind_values {
+                query = query.bind(value);
+            }
+
+            let rows = query
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut results = Vec::new();
+            for row in rows {
+                let run_id_str: String = row.get("id");
+                let run_id = Uuid::parse_str(&run_id_str)
+                    .change_context(StateError::Internal)?;
+
+                let status_str: String = row.get("status");
+                let status = match status_str.as_str() {
+                    "running" => ExecutionStatus::Running,
+                    "completed" => ExecutionStatus::Completed,
+                    "failed" => ExecutionStatus::Failed,
+                    "cancelled" => ExecutionStatus::Cancelled,
+                    "paused" => ExecutionStatus::Paused,
+                    _ => ExecutionStatus::Running,
+                };
+
+                let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
+                    .change_context(StateError::Internal)?;
+
+                let batch_input_index = row.get::<i64, _>("batch_input_index") as usize;
+
+                let summary = RunSummary {
+                    run_id,
+                    flow_id,
+                    flow_name: row.get("flow_name"),
+                    flow_label: row.get("flow_label"),
+                    status,
+                    debug_mode: row.get("debug_mode"),
+                    created_at: chrono::DateTime::parse_from_rfc3339(
+                        &row.get::<String, _>("created_at"),
+                    )
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc),
+                    completed_at: row
+                        .get::<Option<String>, _>("completed_at")
+                        .map(|s| {
+                            chrono::DateTime::parse_from_rfc3339(&s)
+                                .change_context(StateError::Internal)
+                                .map(|dt| dt.with_timezone(&chrono::Utc))
+                        })
+                        .transpose()?,
+                };
+
+                results.push((summary, batch_input_index));
+            }
+
+            Ok(results)
+        }
+        .boxed()
+    }
+
+    fn get_run_batch_context(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<(Uuid, usize)>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "SELECT batch_id, batch_input_index FROM batch_runs WHERE run_id = ?";
+
+            let row = sqlx::query(sql)
+                .bind(run_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            match row {
+                Some(row) => {
+                    let batch_id_str: String = row.get("batch_id");
+                    let batch_id = Uuid::parse_str(&batch_id_str)
+                        .change_context(StateError::Internal)?;
+                    let batch_input_index = row.get::<i64, _>("batch_input_index") as usize;
+
+                    Ok(Some((batch_id, batch_input_index)))
+                }
+                None => Ok(None),
+            }
         }
         .boxed()
     }

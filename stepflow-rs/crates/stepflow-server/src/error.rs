@@ -48,17 +48,24 @@ pub enum ServerError {
     },
     #[error("Execution '{0}' is still running and cannot be deleted")]
     ExecutionStillRunning(Uuid),
+    #[error("Batch '{0}' not found")]
+    BatchNotFound(Uuid),
+    #[error("Batch '{batch_id}' cannot be cancelled (status: {status:?})")]
+    BatchNotCancellable {
+        batch_id: Uuid,
+        status: stepflow_state::BatchStatus,
+    },
 }
 
 impl ServerError {
     pub fn status_code(&self) -> StatusCode {
         match self {
-            ServerError::ExecutionNotFound(_) | ServerError::WorkflowNotFound(_) => {
-                StatusCode::NOT_FOUND
-            }
-            ServerError::ExecutionNotCancellable { .. } | ServerError::ExecutionStillRunning(_) => {
-                StatusCode::CONFLICT
-            }
+            ServerError::ExecutionNotFound(_)
+            | ServerError::WorkflowNotFound(_)
+            | ServerError::BatchNotFound(_) => StatusCode::NOT_FOUND,
+            ServerError::ExecutionNotCancellable { .. }
+            | ServerError::ExecutionStillRunning(_)
+            | ServerError::BatchNotCancellable { .. } => StatusCode::CONFLICT,
         }
     }
 }
