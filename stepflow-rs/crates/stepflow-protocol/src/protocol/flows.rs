@@ -87,3 +87,96 @@ impl ProtocolMethod for GetFlowMetadataParams {
     const METHOD_NAME: Method = Method::FlowsGetMetadata;
     type Response = GetFlowMetadataResult;
 }
+
+/// Sent from the component server to Stepflow to submit a batch execution.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SubmitBatchParams {
+    /// The ID of the flow to evaluate (blob ID of the flow).
+    pub flow_id: BlobId,
+    /// The inputs to provide to the flow for each run.
+    pub inputs: Vec<ValueRef>,
+    /// Maximum number of concurrent executions (defaults to number of inputs if not specified).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_concurrency: Option<usize>,
+}
+
+/// Sent from Stepflow back to the component server with the batch submission result.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SubmitBatchResult {
+    /// The batch ID (UUID).
+    pub batch_id: String,
+    /// Total number of runs in the batch.
+    pub total_runs: usize,
+}
+
+impl ProtocolMethod for SubmitBatchParams {
+    const METHOD_NAME: Method = Method::FlowsSubmitBatch;
+    type Response = SubmitBatchResult;
+}
+
+/// Sent from the component server to Stepflow to get batch status and optionally results.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetBatchParams {
+    /// The batch ID to query.
+    pub batch_id: String,
+    /// If true, wait for batch completion before returning.
+    #[serde(default)]
+    pub wait: bool,
+    /// If true, include full outputs in response.
+    #[serde(default)]
+    pub include_results: bool,
+}
+
+/// Output information for a single run in a batch.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BatchOutputInfo {
+    /// Position in the batch input array.
+    pub batch_input_index: usize,
+    /// The execution status.
+    pub status: String,
+    /// The flow result (if completed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<FlowResult>,
+}
+
+/// Batch details including metadata and statistics.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BatchDetails {
+    /// The batch ID.
+    pub batch_id: String,
+    /// The flow ID.
+    pub flow_id: BlobId,
+    /// The flow name (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_name: Option<String>,
+    /// Total number of runs in the batch.
+    pub total_runs: usize,
+    /// Batch status (running | cancelled).
+    pub status: String,
+    /// Timestamp when the batch was created.
+    pub created_at: String,
+    /// Statistics for the batch.
+    pub completed_runs: usize,
+    pub running_runs: usize,
+    pub failed_runs: usize,
+    pub cancelled_runs: usize,
+    pub paused_runs: usize,
+    /// Completion timestamp (if all runs complete).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+}
+
+/// Sent from Stepflow back to the component server with batch details and optional outputs.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetBatchResult {
+    /// Always included: batch details with metadata and statistics.
+    pub details: BatchDetails,
+    /// Only included if include_results=true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outputs: Option<Vec<BatchOutputInfo>>,
+}
+
+impl ProtocolMethod for GetBatchParams {
+    const METHOD_NAME: Method = Method::FlowsGetBatch;
+    type Response = GetBatchResult;
+}

@@ -11,7 +11,6 @@
 // the License.
 
 use error_stack::ResultExt as _;
-use futures::future;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::{
@@ -47,6 +46,10 @@ struct MapInput {
 
     /// The list of items to process
     items: Vec<ValueRef>,
+
+    /// Maximum number of concurrent executions (optional, defaults to number of items)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_concurrency: Option<usize>,
 }
 
 /// Output from the map component
@@ -85,34 +88,17 @@ impl BuiltinComponent for MapComponent {
         let flow_id =
             stepflow_core::BlobId::from_flow(&flow).change_context(BuiltinError::Internal)?;
 
+        // Use batch execution API for efficient parallel processing
+        let results = context
+            .execute_batch(flow, flow_id, input.items, input.max_concurrency)
+            .await
+            .change_context(BuiltinError::Internal)?;
+
+        // Update counters
         let mut successful = 0u32;
         let mut failed = 0u32;
         let mut skipped = 0u32;
 
-        // Process each item in parallel
-        let tasks = input.items.into_iter().map(|item| {
-            let context = context.clone();
-            let flow = flow.clone();
-            let flow_id = flow_id.clone();
-
-            tokio::spawn(async move {
-                context
-                    .execute_flow(flow, flow_id, item)
-                    .await
-                    .change_context(BuiltinError::Internal)
-            })
-        });
-
-        // Wait for all tasks to complete
-        let results: Vec<FlowResult> = future::join_all(tasks)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()
-            .change_context(BuiltinError::Internal)?
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // Update counters
         for result in &results {
             match result {
                 FlowResult::Success(_) => successful += 1,
@@ -160,6 +146,7 @@ mod tests {
                 serde_json::json!(2).into(),
                 serde_json::json!(3).into(),
             ],
+            max_concurrency: None,
         };
 
         let input_value = serde_json::to_value(input).unwrap();
@@ -196,6 +183,7 @@ mod tests {
         let input = MapInput {
             workflow: test_flow,
             items: vec![],
+            max_concurrency: None,
         };
 
         let input_value = serde_json::to_value(input).unwrap();

@@ -46,6 +46,8 @@ class Method(Enum):
     blobs_get = 'blobs/get'
     flows_evaluate = 'flows/evaluate'
     flows_get_metadata = 'flows/get_metadata'
+    flows_submit_batch = 'flows/submit_batch'
+    flows_get_batch = 'flows/get_batch'
 
 
 class InitializeParams(Struct, kw_only=True):
@@ -123,6 +125,41 @@ class GetFlowMetadataParams(Struct, kw_only=True):
     ) = None
 
 
+class SubmitBatchParams(Struct, kw_only=True):
+    flow_id: Annotated[
+        BlobId,
+        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
+    ]
+    inputs: Annotated[
+        List[Value], Meta(description='The inputs to provide to the flow for each run.')
+    ]
+    max_concurrency: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum number of concurrent executions (defaults to number of inputs if not specified).',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
+
+
+class GetBatchParams(Struct, kw_only=True):
+    batch_id: Annotated[str, Meta(description='The batch ID to query.')]
+    wait: (
+        Annotated[
+            bool,
+            Meta(description='If true, wait for batch completion before returning.'),
+        ]
+        | None
+    ) = False
+    include_results: (
+        Annotated[bool, Meta(description='If true, include full outputs in response.')]
+        | None
+    ) = False
+
+
 class InitializeResult(Struct, kw_only=True):
     server_protocol_version: Annotated[
         int,
@@ -189,6 +226,39 @@ class GetFlowMetadataResult(Struct, kw_only=True):
             Meta(
                 description='Metadata for the specified step (only present if step_id was provided and found).\n\nThis contains step-specific metadata defined in the workflow file.\nWill be None if no step_id was provided in the request'
             ),
+        ]
+        | None
+    ) = None
+
+
+class SubmitBatchResult(Struct, kw_only=True):
+    batch_id: Annotated[str, Meta(description='The batch ID (UUID).')]
+    total_runs: Annotated[
+        int, Meta(description='Total number of runs in the batch.', ge=0)
+    ]
+
+
+class BatchDetails(Struct, kw_only=True):
+    batch_id: Annotated[str, Meta(description='The batch ID.')]
+    flow_id: Annotated[BlobId, Meta(description='The flow ID.')]
+    total_runs: Annotated[
+        int, Meta(description='Total number of runs in the batch.', ge=0)
+    ]
+    status: Annotated[str, Meta(description='Batch status (running | cancelled).')]
+    created_at: Annotated[
+        str, Meta(description='Timestamp when the batch was created.')
+    ]
+    completed_runs: Annotated[int, Meta(description='Statistics for the batch.', ge=0)]
+    running_runs: Annotated[int, Meta(ge=0)]
+    failed_runs: Annotated[int, Meta(ge=0)]
+    cancelled_runs: Annotated[int, Meta(ge=0)]
+    paused_runs: Annotated[int, Meta(ge=0)]
+    flow_name: (
+        Annotated[str | None, Meta(description='The flow name (optional).')] | None
+    ) = None
+    completed_at: (
+        Annotated[
+            str | None, Meta(description='Completion timestamp (if all runs complete).')
         ]
         | None
     ) = None
@@ -274,6 +344,19 @@ FlowResult = Annotated[
 ]
 
 
+class BatchOutputInfo(Struct, kw_only=True):
+    batch_input_index: Annotated[
+        int, Meta(description='Position in the batch input array.', ge=0)
+    ]
+    status: Annotated[str, Meta(description='The execution status.')]
+    result: (
+        Annotated[
+            FlowResult | None, Meta(description='The flow result (if completed).')
+        ]
+        | None
+    ) = None
+
+
 class MethodError(Struct, kw_only=True):
     id: RequestId
     error: Annotated[
@@ -305,7 +388,9 @@ class MethodRequest(Struct, kw_only=True):
         | GetBlobParams
         | PutBlobParams
         | EvaluateFlowParams
-        | GetFlowMetadataParams,
+        | GetFlowMetadataParams
+        | SubmitBatchParams
+        | GetBatchParams,
         Meta(
             description='The parameters for the method call. Set on method requests.',
             title='MethodParams',
@@ -324,6 +409,22 @@ class EvaluateFlowResult(Struct, kw_only=True):
     ]
 
 
+class GetBatchResult(Struct, kw_only=True):
+    details: Annotated[
+        BatchDetails,
+        Meta(
+            description='Always included: batch details with metadata and statistics.'
+        ),
+    ]
+    outputs: (
+        Annotated[
+            List[BatchOutputInfo],
+            Meta(description='Only included if include_results=true.'),
+        ]
+        | None
+    ) = None
+
+
 class MethodSuccess(Struct, kw_only=True):
     id: RequestId
     result: Annotated[
@@ -334,7 +435,9 @@ class MethodSuccess(Struct, kw_only=True):
         | GetBlobResult
         | PutBlobResult
         | EvaluateFlowResult
-        | GetFlowMetadataResult,
+        | GetFlowMetadataResult
+        | SubmitBatchResult
+        | GetBatchResult,
         Meta(
             description='The result of a successful method execution.',
             title='MethodResult',

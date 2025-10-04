@@ -49,6 +49,33 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
         fn working_directory(&self) -> &std::path::Path {
             std::path::Path::new(".")
         }
+        fn submit_batch(
+            &self,
+            _flow: Arc<stepflow_core::workflow::Flow>,
+            _flow_id: stepflow_core::BlobId,
+            _inputs: Vec<ValueRef>,
+            _max_concurrency: Option<usize>,
+        ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<uuid::Uuid>> {
+            async move { Ok(Uuid::new_v4()) }.boxed()
+        }
+        fn get_batch(
+            &self,
+            _batch_id: Uuid,
+            _wait: bool,
+            _include_results: bool,
+        ) -> futures::future::BoxFuture<
+            '_,
+            stepflow_plugin::Result<(
+                stepflow_state::BatchDetails,
+                Option<Vec<stepflow_state::BatchOutputInfo>>,
+            )>,
+        > {
+            async move {
+                use stepflow_plugin::PluginError;
+                Err(error_stack::report!(PluginError::Execution))
+            }
+            .boxed()
+        }
     }
 
     let test_context = Arc::new(TestContext {

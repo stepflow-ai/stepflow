@@ -18,15 +18,21 @@ Running Test Case test complex data structure
 Running Test Case test nested object structure
 tests/builtins/blob_test.yaml: 2/2 passed
 ----------
+Running Test Case test map with three prompts
+----------
+Running Test Case test map with empty list
+tests/builtins/map_test.yaml: 2/2 passed
+----------
 Running Test Case test nested flow execution
 tests/builtins/nested_eval.yaml: 1/1 passed
 tests/builtins/blob_test.yaml: 2/2 passed
+tests/builtins/map_test.yaml: 2/2 passed
 tests/builtins/nested_eval.yaml: 1/1 passed
 
 === Test Summary ===
-Files tested: 2
-Total test cases: 3
-Passed: 3
+Files tested: 3
+Total test cases: 5
+Passed: 5
 Failed: 0
 
 ----- stderr -----

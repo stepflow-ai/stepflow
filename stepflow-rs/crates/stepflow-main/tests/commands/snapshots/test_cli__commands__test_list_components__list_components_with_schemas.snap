@@ -253,6 +253,15 @@ Component: /map (plugin: builtin)
           "items": {
             "$ref": "#/$defs/Value"
           }
+        },
+        "max_concurrency": {
+          "description": "Maximum number of concurrent executions (optional, defaults to number of items)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
         }
       },
       "required": [

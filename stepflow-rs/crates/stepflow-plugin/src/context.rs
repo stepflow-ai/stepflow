@@ -96,6 +96,88 @@ pub trait Context: Send + Sync {
 
     /// Working directory of the Stepflow Config.
     fn working_directory(&self) -> &Path;
+
+    /// Submit a batch execution and return the batch ID immediately.
+    ///
+    /// This method creates a batch execution with multiple inputs and returns
+    /// a batch ID that can be used to query status and results.
+    ///
+    /// # Arguments
+    /// * `flow` - The workflow to execute
+    /// * `flow_id` - ID of the workflow
+    /// * `inputs` - Vector of input values, one for each run in the batch
+    /// * `max_concurrency` - Optional maximum number of concurrent executions
+    ///
+    /// # Returns
+    /// A unique batch ID for the submitted batch
+    fn submit_batch(
+        &self,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        inputs: Vec<ValueRef>,
+        max_concurrency: Option<usize>,
+    ) -> BoxFuture<'_, crate::Result<uuid::Uuid>>;
+
+    /// Get batch status and optionally results, with optional waiting.
+    ///
+    /// # Arguments
+    /// * `batch_id` - The batch ID to query
+    /// * `wait` - If true, wait for batch completion before returning
+    /// * `include_results` - If true, include full outputs in response
+    ///
+    /// # Returns
+    /// Tuple of (batch details, optional outputs)
+    fn get_batch(
+        &self,
+        batch_id: uuid::Uuid,
+        wait: bool,
+        include_results: bool,
+    ) -> BoxFuture<
+        '_,
+        crate::Result<(
+            stepflow_state::BatchDetails,
+            Option<Vec<stepflow_state::BatchOutputInfo>>,
+        )>,
+    >;
+
+    /// Convenience method: submit batch, wait for completion, and return results.
+    ///
+    /// This is equivalent to calling submit_batch followed by get_batch with wait=true and include_results=true.
+    fn execute_batch(
+        &self,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        inputs: Vec<ValueRef>,
+        max_concurrency: Option<usize>,
+    ) -> BoxFuture<'_, crate::Result<Vec<FlowResult>>> {
+        async move {
+            let batch_id = self
+                .submit_batch(flow, flow_id, inputs, max_concurrency)
+                .await?;
+            let (_details, outputs) = self.get_batch(batch_id, true, true).await?;
+            let outputs = outputs.expect("include_results=true should return outputs");
+
+            // Extract FlowResult from each BatchOutputInfo
+            let results: Vec<FlowResult> = outputs
+                .into_iter()
+                .map(|output_info| {
+                    output_info.result.unwrap_or_else(|| {
+                        // If no result, create a failed result based on status
+                        FlowResult::Failed(stepflow_core::FlowError::new(
+                            500,
+                            format!(
+                                "Run at index {} has no result (status: {:?})",
+                                output_info.batch_input_index, output_info.status
+                            ),
+                        ))
+                    })
+                })
+                .collect();
+
+            Ok(results)
+        }
+        .boxed()
+    }
 }
 
 /// Execution context that combines a Context with an execution ID.
@@ -261,5 +343,31 @@ impl Context for ExecutionContext {
 
     fn working_directory(&self) -> &Path {
         self.context.working_directory()
+    }
+
+    fn submit_batch(
+        &self,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        inputs: Vec<ValueRef>,
+        max_concurrency: Option<usize>,
+    ) -> BoxFuture<'_, crate::Result<uuid::Uuid>> {
+        self.context
+            .submit_batch(flow, flow_id, inputs, max_concurrency)
+    }
+
+    fn get_batch(
+        &self,
+        batch_id: uuid::Uuid,
+        wait: bool,
+        include_results: bool,
+    ) -> BoxFuture<
+        '_,
+        crate::Result<(
+            stepflow_state::BatchDetails,
+            Option<Vec<stepflow_state::BatchOutputInfo>>,
+        )>,
+    > {
+        self.context.get_batch(batch_id, wait, include_results)
     }
 }

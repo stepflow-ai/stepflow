@@ -114,14 +114,14 @@ async def map(input: MapInput, context: StepflowContext) -> MapOutput:
     """
     Apply a workflow to each item in a list and collect the results.
 
+    Uses batch execution API for efficient parallel processing.
     If any item is skipped or fails, the whole map component will be skipped or failed.
     """
     if not input.items:
         return MapOutput(results=[])
 
-    results = await asyncio.gather(
-        *[context.evaluate_flow_by_id(input.flow_id, item) for item in input.items]
-    )
+    # Use batch execution API with flow_id directly (no need to convert to Flow object)
+    results = await context.evaluate_batch_by_id(input.flow_id, input.items)
 
     return MapOutput(results=results)
 

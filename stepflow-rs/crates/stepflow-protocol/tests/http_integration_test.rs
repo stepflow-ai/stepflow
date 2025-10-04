@@ -69,6 +69,37 @@ impl Context for MockContext {
     {
         Box::pin(async { Err(PluginError::Execution.into()) })
     }
+
+    fn submit_batch(
+        &self,
+        _flow: Arc<Flow>,
+        _flow_id: BlobId,
+        _inputs: Vec<ValueRef>,
+        _max_concurrency: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<Uuid, error_stack::Report<PluginError>>> + Send>> {
+        Box::pin(async { Err(PluginError::Execution.into()) })
+    }
+
+    fn get_batch(
+        &self,
+        _batch_id: Uuid,
+        _wait: bool,
+        _include_results: bool,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        (
+                            stepflow_state::BatchDetails,
+                            Option<Vec<stepflow_state::BatchOutputInfo>>,
+                        ),
+                        error_stack::Report<PluginError>,
+                    >,
+                > + Send,
+        >,
+    > {
+        Box::pin(async { Err(PluginError::Execution.into()) })
+    }
 }
 
 /// Test that we can create an HTTP plugin and it fails gracefully when no server is running
