@@ -44,7 +44,7 @@ struct CreateBatchRequest {
 #[serde(rename_all = "camelCase")]
 struct CreateBatchResponse {
     batch_id: Uuid,
-    total_runs: usize,
+    total_inputs: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,10 +87,10 @@ pub async fn submit_batch(
 
     // Read and parse JSONL inputs
     let inputs = read_jsonl_inputs(inputs_path)?;
-    let total_runs = inputs.len();
-    println!("Total inputs: {}", total_runs);
+    let total_inputs = inputs.len();
+    println!("Total inputs: {}", total_inputs);
 
-    if total_runs == 0 {
+    if total_inputs == 0 {
         println!("\n⚠️  No inputs found in file");
         return Ok(());
     }
@@ -222,20 +222,19 @@ pub async fn submit_batch(
         let running = stats.running_runs;
         let failed = stats.failed_runs;
         let bar_width = 40;
-        let filled = (completed as f64 / total_runs as f64 * bar_width as f64) as usize;
-        let bar: String = "=".repeat(filled)
-            + ">"
-            + &" ".repeat(bar_width - filled.saturating_sub(1));
+        let filled = (completed as f64 / total_inputs as f64 * bar_width as f64) as usize;
+        let bar: String =
+            "=".repeat(filled) + ">" + &" ".repeat(bar_width - filled.saturating_sub(1));
 
         print!(
             "\r[{}] {}/{} completed, {} running, {} failed",
-            bar, completed, total_runs, running, failed
+            bar, completed, total_inputs, running, failed
         );
         use std::io::Write as _;
         let _ = std::io::stdout().flush();
 
         // Check if all runs are complete
-        if completed + failed >= total_runs {
+        if completed + failed >= total_inputs {
             break;
         }
     }
@@ -270,7 +269,7 @@ pub async fn submit_batch(
     // Display final statistics
     println!();
     println!("Final Statistics:");
-    println!("  Total: {}", total_runs);
+    println!("  Total: {}", total_inputs);
     println!("  ✅ Completed: {}", final_stats.completed_runs);
     println!("  ❌ Failed: {}", final_stats.failed_runs);
     println!("  ⏱️  Duration: {:.1}s", duration.as_secs_f64());

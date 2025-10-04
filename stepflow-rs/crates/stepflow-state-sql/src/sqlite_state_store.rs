@@ -1181,19 +1181,19 @@ impl StateStore for SqliteStateStore {
         batch_id: Uuid,
         flow_id: BlobId,
         flow_name: Option<&str>,
-        total_runs: usize,
+        total_inputs: usize,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
         let flow_name = flow_name.map(|s| s.to_string());
 
         async move {
-            let sql = "INSERT INTO batches (id, flow_id, flow_name, total_runs, status) VALUES (?, ?, ?, ?, 'running')";
+            let sql = "INSERT INTO batches (id, flow_id, flow_name, total_inputs, status) VALUES (?, ?, ?, ?, 'running')";
 
             sqlx::query(sql)
                 .bind(batch_id.to_string())
                 .bind(flow_id.to_string())
                 .bind(flow_name)
-                .bind(total_runs as i64)
+                .bind(total_inputs as i64)
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -1236,7 +1236,7 @@ impl StateStore for SqliteStateStore {
 
         async move {
             let sql =
-                "SELECT id, flow_id, flow_name, total_runs, status, created_at FROM batches WHERE id = ?";
+                "SELECT id, flow_id, flow_name, total_inputs, status, created_at FROM batches WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(batch_id.to_string())
@@ -1259,7 +1259,7 @@ impl StateStore for SqliteStateStore {
                         batch_id,
                         flow_id,
                         flow_name: row.get("flow_name"),
-                        total_runs: row.get::<i64, _>("total_runs") as usize,
+                        total_inputs: row.get::<i64, _>("total_inputs") as usize,
                         created_at: chrono::DateTime::parse_from_rfc3339(
                             &row.get::<String, _>("created_at"),
                         )
@@ -1359,7 +1359,7 @@ impl StateStore for SqliteStateStore {
 
         async move {
             let mut sql =
-                "SELECT id, flow_id, flow_name, total_runs, status, created_at FROM batches"
+                "SELECT id, flow_id, flow_name, total_inputs, status, created_at FROM batches"
                     .to_string();
             let mut conditions = Vec::new();
             let mut bind_values: Vec<String> = Vec::new();
@@ -1425,7 +1425,7 @@ impl StateStore for SqliteStateStore {
                     batch_id,
                     flow_id,
                     flow_name: row.get("flow_name"),
-                    total_runs: row.get::<i64, _>("total_runs") as usize,
+                    total_inputs: row.get::<i64, _>("total_inputs") as usize,
                     created_at: chrono::DateTime::parse_from_rfc3339(
                         &row.get::<String, _>("created_at"),
                     )

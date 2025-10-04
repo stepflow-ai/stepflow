@@ -206,7 +206,7 @@ async fn add_batch_execution_tables(pool: &SqlitePool) -> Result<(), StateError>
                 id TEXT PRIMARY KEY,
                 flow_id TEXT NOT NULL,
                 flow_name TEXT,
-                total_runs INTEGER NOT NULL,
+                total_inputs INTEGER NOT NULL,
                 status TEXT NOT NULL DEFAULT 'running',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (flow_id) REFERENCES blobs(id)

@@ -18,6 +18,7 @@ Usage: stepflow [OPTIONS] <COMMAND>
 
 Commands:
   run              Run a workflow directly
+  submit-batch     Submit a batch workflow to a Stepflow service for execution
   serve            Start a Stepflow service
   submit           Submit a workflow to a Stepflow service
   test             Run tests defined in workflow files or directories

@@ -43,8 +43,8 @@ pub struct CreateBatchRequest {
 pub struct CreateBatchResponse {
     /// The batch ID
     pub batch_id: Uuid,
-    /// Total number of runs in the batch
-    pub total_runs: usize,
+    /// Total number of inputs in the batch
+    pub total_inputs: usize,
     /// The batch status
     pub status: BatchStatus,
 }
@@ -157,16 +157,16 @@ pub async fn create_batch(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
 
-    let total_runs = req.inputs.len();
-    let max_concurrency = req.max_concurrency.unwrap_or(total_runs);
+    let total_inputs = req.inputs.len();
+    let max_concurrency = req.max_concurrency.unwrap_or(total_inputs);
 
     // Create batch record
     state_store
-        .create_batch(batch_id, req.flow_id.clone(), flow.name(), total_runs)
+        .create_batch(batch_id, req.flow_id.clone(), flow.name(), total_inputs)
         .await?;
 
     // Create run records and collect (run_id, input, index) tuples
-    let mut run_inputs = Vec::with_capacity(total_runs);
+    let mut run_inputs = Vec::with_capacity(total_inputs);
     for (idx, input) in req.inputs.into_iter().enumerate() {
         let run_id = Uuid::new_v4();
 
@@ -263,7 +263,7 @@ pub async fn create_batch(
 
     Ok(Json(CreateBatchResponse {
         batch_id,
-        total_runs,
+        total_inputs,
         status: BatchStatus::Running,
     }))
 }

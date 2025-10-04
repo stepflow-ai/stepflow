@@ -730,7 +730,7 @@ impl StateStore for InMemoryStateStore {
         batch_id: Uuid,
         flow_id: BlobId,
         flow_name: Option<&str>,
-        total_runs: usize,
+        total_inputs: usize,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let batches = self.batches.clone();
         let batch_runs = self.batch_runs.clone();
@@ -741,7 +741,7 @@ impl StateStore for InMemoryStateStore {
                 batch_id,
                 flow_id,
                 flow_name,
-                total_runs,
+                total_inputs,
                 created_at: chrono::Utc::now(),
                 status: BatchStatus::Running,
             };
@@ -1190,7 +1190,7 @@ mod tests {
         assert_eq!(batch.batch_id, batch_id);
         assert_eq!(batch.flow_id, flow_id);
         assert_eq!(batch.flow_name, Some("test-flow".to_string()));
-        assert_eq!(batch.total_runs, 10);
+        assert_eq!(batch.total_inputs, 10);
         assert_eq!(batch.status, BatchStatus::Running);
     }
 

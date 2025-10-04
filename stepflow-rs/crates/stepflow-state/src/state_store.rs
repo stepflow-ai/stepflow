@@ -408,7 +408,7 @@ pub trait StateStore: Send + Sync {
     /// * `batch_id` - Unique identifier for the batch
     /// * `flow_id` - Workflow blob ID
     /// * `flow_name` - Optional workflow name
-    /// * `total_runs` - Total number of runs in the batch
+    /// * `total_inputs` - Total number of input elements in the batch
     ///
     /// # Returns
     /// Success if the batch was created
@@ -417,7 +417,7 @@ pub trait StateStore: Send + Sync {
         batch_id: Uuid,
         flow_id: BlobId,
         flow_name: Option<&str>,
-        total_runs: usize,
+        total_inputs: usize,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Link a run to a batch with its input index.
@@ -640,7 +640,7 @@ pub struct BatchMetadata {
     pub batch_id: Uuid,
     pub flow_id: BlobId,
     pub flow_name: Option<String>,
-    pub total_runs: usize,
+    pub total_inputs: usize,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub status: BatchStatus,
 }
@@ -656,7 +656,6 @@ pub struct BatchStatistics {
     pub cancelled_runs: usize,
     pub paused_runs: usize,
 }
-
 
 /// Complete batch details for API responses
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
