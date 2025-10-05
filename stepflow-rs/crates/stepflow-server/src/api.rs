@@ -17,12 +17,14 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+mod batches;
 mod components;
 mod debug;
 mod flows;
 mod health;
 mod runs;
 
+const BATCH_TAG: &str = "Batch";
 const COMPONENT_TAG: &str = "Component";
 const FLOW_TAG: &str = "Flow";
 const RUN_TAG: &str = "Run";
@@ -39,6 +41,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         version = env!("CARGO_PKG_VERSION")
     ),
     tags(
+        (name = BATCH_TAG, description = "Batch API endpoints"),
         (name = COMPONENT_TAG, description = "Component API endpoints"),
         (name = FLOW_TAG, description = "Flow API endpoints"),
         (name = RUN_TAG, description = "Run API endpoints"),
@@ -60,8 +63,28 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         flows::store_flow,
         flows::get_flow,
         flows::delete_flow,
+        batches::create_batch,
+        batches::get_batch,
+        batches::list_batches,
+        batches::list_batch_runs,
+        batches::get_batch_outputs,
+        batches::cancel_batch,
     ),
     components(schemas(
+        batches::CreateBatchRequest,
+        batches::CreateBatchResponse,
+        batches::GetBatchResponse,
+        batches::ListBatchesResponse,
+        batches::ListBatchesQuery,
+        batches::BatchRunInfo,
+        batches::ListBatchRunsResponse,
+        batches::BatchOutputInfo,
+        batches::ListBatchOutputsResponse,
+        batches::CancelBatchResponse,
+        stepflow_state::BatchMetadata,
+        stepflow_state::BatchStatistics,
+        stepflow_state::BatchDetails,
+        stepflow_state::BatchStatus,
         components::ListComponentsResponse,
         components::ListComponentsQuery,
         debug::DebugStepRequest,
@@ -109,4 +132,10 @@ pub fn create_api_router() -> OpenApiRouter<Arc<StepflowExecutor>> {
         .routes(routes!(flows::store_flow))
         .routes(routes!(flows::get_flow))
         .routes(routes!(flows::delete_flow))
+        .routes(routes!(batches::create_batch))
+        .routes(routes!(batches::get_batch))
+        .routes(routes!(batches::list_batches))
+        .routes(routes!(batches::list_batch_runs))
+        .routes(routes!(batches::get_batch_outputs))
+        .routes(routes!(batches::cancel_batch))
 }

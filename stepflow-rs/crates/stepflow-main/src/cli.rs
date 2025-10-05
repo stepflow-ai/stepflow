@@ -23,6 +23,7 @@ use crate::{
     run::run,
     serve::serve,
     submit::submit,
+    submit_batch::submit_batch,
     test::TestOptions,
     validate,
     validation_display::display_diagnostics,
@@ -109,6 +110,45 @@ pub enum Command {
 
         #[command(flatten)]
         output_args: OutputArgs,
+    },
+    /// Submit a batch workflow to a Stepflow service for execution.
+    ///
+    /// This submits a workflow and multiple inputs from a JSONL file to a remote Stepflow server
+    /// for batch execution with concurrency control and progress tracking.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    ///
+    /// # Submit batch with default concurrency
+    ///
+    /// stepflow submit-batch --url=http://localhost:7837/api/v1 --flow=workflow.yaml --inputs=inputs.jsonl
+    ///
+    /// # Submit batch with limited concurrency and output file
+    ///
+    /// stepflow submit-batch --url=http://localhost:7837/api/v1 --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=10 --output=results.json
+    ///
+    /// ```
+    SubmitBatch {
+        /// The URL of the Stepflow service.
+        #[arg(long="url", value_name = "URL", value_hint = clap::ValueHint::Url)]
+        url: Url,
+
+        /// Path to the workflow file to execute.
+        #[arg(long="flow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        flow_path: PathBuf,
+
+        /// Path to JSONL file containing inputs (one JSON object per line).
+        #[arg(long="inputs", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        inputs_path: PathBuf,
+
+        /// Maximum number of concurrent executions on the server. Defaults to number of inputs if not specified.
+        #[arg(long = "max-concurrent", value_name = "N")]
+        max_concurrent: Option<usize>,
+
+        /// Path to write batch results (JSONL format - one result per line).
+        #[arg(long="output", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
+        output_path: Option<PathBuf>,
     },
     /// Start a Stepflow service.
     ///
@@ -380,6 +420,7 @@ impl Cli {
             "Executing CLI command: {}",
             match &self.command {
                 Command::Run { .. } => "run",
+                Command::SubmitBatch { .. } => "submit-batch",
                 Command::Test { .. } => "test",
                 Command::Serve { .. } => "serve",
                 Command::Submit { .. } => "submit",
@@ -419,6 +460,23 @@ impl Cli {
                     BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
                 let output = run(executor, flow, flow_id, input).await?;
                 output_args.write_output(output)?;
+            }
+            Command::SubmitBatch {
+                url,
+                flow_path,
+                inputs_path,
+                max_concurrent,
+                output_path,
+            } => {
+                let flow: Arc<Flow> = load(&flow_path)?;
+                submit_batch(
+                    url,
+                    flow,
+                    &inputs_path,
+                    max_concurrent,
+                    output_path.as_deref(),
+                )
+                .await?;
             }
             Command::Serve { port, config_args } => {
                 let config = config_args.load_config(None)?;

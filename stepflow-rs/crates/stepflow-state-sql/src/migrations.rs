@@ -25,6 +25,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
+    // Apply batch execution migration
+    apply_migration(pool, "002_add_batch_execution", || {
+        add_batch_execution_tables(pool)
+    })
+    .await?;
+
     Ok(())
 }
 
@@ -178,6 +184,64 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         "CREATE INDEX IF NOT EXISTS idx_flow_labels_name ON flow_labels(name)",
         "CREATE INDEX IF NOT EXISTS idx_flow_labels_flow_id ON flow_labels(flow_id)",
         "CREATE INDEX IF NOT EXISTS idx_flow_labels_created_at ON flow_labels(created_at)",
+    ];
+
+    // Execute index creation commands
+    for sql in index_commands {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .change_context(StateError::Initialization)?;
+    }
+
+    Ok(())
+}
+
+/// Add batch execution tables
+async fn add_batch_execution_tables(pool: &SqlitePool) -> Result<(), StateError> {
+    let table_commands = vec![
+        // Batches table for storing batch metadata
+        r#"
+            CREATE TABLE IF NOT EXISTS batches (
+                id TEXT PRIMARY KEY,
+                flow_id TEXT NOT NULL,
+                flow_name TEXT,
+                total_inputs INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (flow_id) REFERENCES blobs(id)
+            )
+        "#,
+        // Batch runs join table for linking batches to runs
+        r#"
+            CREATE TABLE IF NOT EXISTS batch_runs (
+                batch_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                batch_input_index INTEGER NOT NULL,
+                PRIMARY KEY (batch_id, run_id),
+                FOREIGN KEY (batch_id) REFERENCES batches(id),
+                FOREIGN KEY (run_id) REFERENCES runs(id)
+            )
+        "#,
+    ];
+
+    // Execute table creation commands
+    for sql in table_commands {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .change_context(StateError::Initialization)?;
+    }
+
+    // Create indexes for batch queries
+    let index_commands = vec![
+        // Batch indexes for efficient queries
+        "CREATE INDEX IF NOT EXISTS idx_batches_flow_name ON batches(flow_name)",
+        "CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)",
+        "CREATE INDEX IF NOT EXISTS idx_batches_created_at ON batches(created_at)",
+        // Batch runs indexes for efficient joins and reverse lookups
+        "CREATE INDEX IF NOT EXISTS idx_batch_runs_run_id ON batch_runs(run_id)",
+        "CREATE INDEX IF NOT EXISTS idx_batch_runs_batch_id ON batch_runs(batch_id, batch_input_index)",
     ];
 
     // Execute index creation commands
