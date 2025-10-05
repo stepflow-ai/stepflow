@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use dashmap::DashMap;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
@@ -30,9 +31,7 @@ use stepflow_core::{
 use uuid::Uuid;
 
 use crate::StateError;
-use tokio::sync::RwLock;
 
-type WorkflowLabelsMap = Arc<RwLock<HashMap<(String, String), WorkflowLabelMetadata>>>;
 /// Execution-specific state storage for a single workflow execution.
 #[derive(Debug)]
 struct ExecutionState {
@@ -64,45 +63,77 @@ impl Default for ExecutionState {
     }
 }
 
+/// Combined state for a workflow run.
+/// Groups all run-related data together under a single key.
+#[derive(Debug)]
+struct RunState {
+    /// Run metadata and input/result information
+    details: RunDetails,
+    /// Execution state (step results and ID mappings)
+    execution: ExecutionState,
+    /// Step information by step index
+    steps: HashMap<usize, StepInfo>,
+}
+
+impl RunState {
+    fn new(details: RunDetails) -> Self {
+        Self {
+            details,
+            execution: ExecutionState::default(),
+            steps: HashMap::new(),
+        }
+    }
+}
+
+/// Combined state for a batch.
+/// Groups batch metadata and associated runs together.
+#[derive(Debug)]
+struct BatchState {
+    /// Batch metadata
+    metadata: BatchMetadata,
+    /// List of (run_id, batch_input_index) tuples
+    runs: Vec<(Uuid, usize)>,
+}
+
+impl BatchState {
+    fn new(metadata: BatchMetadata) -> Self {
+        Self {
+            metadata,
+            runs: Vec::new(),
+        }
+    }
+}
+
 /// In-memory implementation of StateStore.
 ///
 /// This provides a simple, fast storage implementation suitable for
-/// single-process execution. In the future, this can be extended with
-/// persistent storage backends for distributed or long-running flows.
+/// single-process execution. Uses DashMap for concurrent access with
+/// fine-grained locking per key.
 pub struct InMemoryStateStore {
     /// Map from blob ID (SHA-256 hash) to stored JSON data
-    blobs: Arc<RwLock<HashMap<String, BlobData>>>,
-    /// Map from run_id to execution-specific state
-    executions: Arc<RwLock<HashMap<Uuid, ExecutionState>>>,
+    blobs: DashMap<String, BlobData>,
+    /// Map from run_id to combined run state
+    runs: DashMap<Uuid, RunState>,
     /// Map from flow hash to flow content
-    flows: Arc<RwLock<HashMap<String, Arc<Flow>>>>,
+    flows: DashMap<String, Arc<Flow>>,
     /// Map from (flow_name, label) to flow label metadata
-    flow_labels: WorkflowLabelsMap,
-    /// Map from run_id to execution details
-    execution_metadata: Arc<RwLock<HashMap<Uuid, RunDetails>>>,
-    /// Map from run_id to step info
-    step_info: Arc<RwLock<HashMap<Uuid, HashMap<usize, StepInfo>>>>,
-    /// Map from batch_id to batch metadata
-    batches: Arc<RwLock<HashMap<Uuid, BatchMetadata>>>,
-    /// Map from batch_id to vector of (run_id, batch_input_index) tuples
-    batch_runs: Arc<RwLock<HashMap<Uuid, Vec<(Uuid, usize)>>>>,
+    flow_labels: DashMap<(String, String), WorkflowLabelMetadata>,
+    /// Map from batch_id to combined batch state
+    batches: DashMap<Uuid, BatchState>,
     /// Reverse map from run_id to (batch_id, batch_input_index)
-    run_to_batch: Arc<RwLock<HashMap<Uuid, (Uuid, usize)>>>,
+    run_to_batch: DashMap<Uuid, (Uuid, usize)>,
 }
 
 impl InMemoryStateStore {
     /// Create a new in-memory state store.
     pub fn new() -> Self {
         Self {
-            blobs: Arc::new(RwLock::new(HashMap::new())),
-            executions: Arc::new(RwLock::new(HashMap::new())),
-            flows: Arc::new(RwLock::new(HashMap::new())),
-            flow_labels: Arc::new(RwLock::new(HashMap::new())),
-            execution_metadata: Arc::new(RwLock::new(HashMap::new())),
-            step_info: Arc::new(RwLock::new(HashMap::new())),
-            batches: Arc::new(RwLock::new(HashMap::new())),
-            batch_runs: Arc::new(RwLock::new(HashMap::new())),
-            run_to_batch: Arc::new(RwLock::new(HashMap::new())),
+            blobs: DashMap::new(),
+            runs: DashMap::new(),
+            flows: DashMap::new(),
+            flow_labels: DashMap::new(),
+            batches: DashMap::new(),
+            run_to_batch: DashMap::new(),
         }
     }
 
@@ -111,38 +142,46 @@ impl InMemoryStateStore {
     ///
     /// Note: This is a concrete implementation method, not part of the StateStore trait.
     /// Eviction strategies may evolve to be more nuanced (partial eviction, etc.).
-    pub async fn evict_execution(&self, run_id: Uuid) {
-        let mut executions = self.executions.write().await;
-        executions.remove(&run_id);
-
-        let mut metadata = self.execution_metadata.write().await;
-        metadata.remove(&run_id);
-
-        let mut step_info = self.step_info.write().await;
-        step_info.remove(&run_id);
+    pub fn evict_execution(&self, run_id: Uuid) {
+        self.runs.remove(&run_id);
     }
 
     /// Record the result of a step execution (private implementation method).
     ///
     /// This operation is executed synchronously since it's in-memory with no I/O cost.
     fn record_step_result(&self, run_id: Uuid, step_result: StepResult) {
-        // For in-memory store, execute synchronously - no I/O cost justifies async complexity
         let step_idx = step_result.step_idx();
 
-        // Block until we can get the lock - this is acceptable for in-memory operations
-        let mut executions = futures::executor::block_on(self.executions.write());
-        let execution_state = executions.entry(run_id).or_default();
+        // Get or create the run state and modify it
+        let mut entry = self.runs.entry(run_id).or_insert_with(|| {
+            // This shouldn't happen in normal operation, but handle it gracefully
+            RunState::new(RunDetails {
+                summary: RunSummary {
+                    run_id,
+                    flow_id: BlobId::new("0".repeat(64)).unwrap(),
+                    flow_name: None,
+                    flow_label: None,
+                    status: ExecutionStatus::Running,
+                    debug_mode: false,
+                    created_at: chrono::Utc::now(),
+                    completed_at: None,
+                },
+                input: ValueRef::new(serde_json::Value::Null),
+                result: None,
+            })
+        });
 
         // Ensure the vector has enough capacity
-        execution_state.ensure_capacity(step_idx);
+        entry.execution.ensure_capacity(step_idx);
 
         // Update the step_id_to_index mapping for fast lookup by ID
-        execution_state
+        entry
+            .execution
             .step_id_to_index
             .insert(step_result.step_id().to_string(), step_idx);
 
         // Store the result at the step index
-        execution_state.step_results[step_idx] = Some(step_result);
+        entry.execution.step_results[step_idx] = Some(step_result);
     }
 
     /// Update multiple steps to the same status (private implementation method).
@@ -154,13 +193,10 @@ impl InMemoryStateStore {
         status: stepflow_core::status::StepStatus,
         step_indices: bit_set::BitSet,
     ) {
-        // For in-memory store, execute synchronously
-        let mut step_info_guard = futures::executor::block_on(self.step_info.write());
-
-        if let Some(execution_steps) = step_info_guard.get_mut(&run_id) {
+        if let Some(mut run_state) = self.runs.get_mut(&run_id) {
             let now = chrono::Utc::now();
             for step_index in step_indices.iter() {
-                if let Some(step_info) = execution_steps.get_mut(&step_index) {
+                if let Some(step_info) = run_state.steps.get_mut(&step_index) {
                     step_info.status = status;
                     step_info.updated_at = now;
                 }
@@ -181,18 +217,13 @@ impl StateStore for InMemoryStateStore {
         data: ValueRef,
         blob_type: BlobType,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
-        let blobs = self.blobs.clone();
-
         async move {
             let blob_id = BlobId::from_content(&data).change_context(StateError::Internal)?;
             let blob_data = BlobData::from_value_ref(data, blob_type, blob_id.clone())
                 .change_context(StateError::Internal)?;
 
             // Store the data (overwrites are fine since content is identical)
-            {
-                let mut blobs = blobs.write().await;
-                blobs.insert(blob_id.as_str().to_string(), blob_data);
-            }
+            self.blobs.insert(blob_id.as_str().to_string(), blob_data);
 
             Ok(blob_id)
         }
@@ -203,12 +234,10 @@ impl StateStore for InMemoryStateStore {
         &self,
         blob_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>> {
-        let blobs = self.blobs.clone();
         let blob_id_str = blob_id.as_str().to_string();
 
         async move {
-            let blobs = blobs.read().await;
-            blobs.get(&blob_id_str).cloned().ok_or_else(|| {
+            self.blobs.get(&blob_id_str).map(|entry| entry.value().clone()).ok_or_else(|| {
                 error_stack::report!(StateError::BlobNotFound {
                     blob_id: blob_id_str.clone()
                 })
@@ -222,19 +251,18 @@ impl StateStore for InMemoryStateStore {
         run_id: Uuid,
         step_idx: usize,
     ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
-        let executions = self.executions.clone();
         let run_id_str = run_id.to_string();
 
         async move {
-            let executions = executions.read().await;
-            let execution_state = executions.get(&run_id).ok_or_else(|| {
+            let run_state = self.runs.get(&run_id).ok_or_else(|| {
                 error_stack::report!(StateError::StepResultNotFoundByIndex {
                     run_id: run_id_str.clone(),
                     step_idx,
                 })
             })?;
 
-            execution_state
+            run_state
+                .execution
                 .step_results
                 .get(step_idx)
                 .and_then(|opt| opt.as_ref())
@@ -253,17 +281,15 @@ impl StateStore for InMemoryStateStore {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>> {
-        let executions = self.executions.clone();
-
         async move {
-            let executions = executions.read().await;
-            let execution_state = match executions.get(&run_id) {
+            let run_state = match self.runs.get(&run_id) {
                 Some(state) => state,
                 None => return Ok(Vec::new()), // No execution found, return empty list
             };
 
             // Vec maintains natural ordering, so no sorting needed
-            let results: Vec<StepResult> = execution_state
+            let results: Vec<StepResult> = run_state
+                .execution
                 .step_results
                 .iter()
                 .filter_map(|opt| opt.as_ref().cloned())
@@ -295,12 +321,10 @@ impl StateStore for InMemoryStateStore {
         flow_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
         let flow_id = flow_id.clone();
-        let blobs = self.blobs.clone();
 
         async move {
             // Try to get the blob data directly
-            let blobs = blobs.read().await;
-            match blobs.get(flow_id.as_str()) {
+            match self.blobs.get(flow_id.as_str()) {
                 Some(blob_data) => {
                     // Use the typed accessor
                     if let Some(flow) = blob_data.as_flow() {
@@ -333,8 +357,6 @@ impl StateStore for InMemoryStateStore {
         name: &str,
         label: Option<&str>,
     ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>> {
-        let flows = self.flows.clone();
-        let flow_labels = self.flow_labels.clone();
         let name = name.to_string();
         let label = label.map(|s| s.to_string());
 
@@ -342,17 +364,15 @@ impl StateStore for InMemoryStateStore {
             match label {
                 Some(label_str) => {
                     // Get workflow by label
-                    let labels = flow_labels.read().await;
                     let key = (name, label_str);
 
-                    if let Some(label_metadata) = labels.get(&key) {
-                        let flows = flows.read().await;
-                        if let Some(workflow) = flows.get(&label_metadata.flow_id.to_string()) {
+                    if let Some(label_metadata) = self.flow_labels.get(&key) {
+                        if let Some(workflow) = self.flows.get(&label_metadata.flow_id.to_string()) {
                             return Ok(Some(WorkflowWithMetadata {
                                 workflow: workflow.clone(),
                                 flow_id: label_metadata.flow_id.clone(),
                                 created_at: label_metadata.created_at,
-                                label_info: Some(label_metadata.clone()),
+                                label_info: Some(label_metadata.value().clone()),
                             }));
                         }
                     }
@@ -374,7 +394,6 @@ impl StateStore for InMemoryStateStore {
         label: &str,
         flow_id: BlobId,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let workflow_labels = self.flow_labels.clone();
         let name = name.to_string();
         let label = label.to_string();
 
@@ -388,8 +407,7 @@ impl StateStore for InMemoryStateStore {
                 updated_at: now,
             };
 
-            let mut labels = workflow_labels.write().await;
-            labels.insert((name, label), workflow_label);
+            self.flow_labels.insert((name, label), workflow_label);
 
             Ok(())
         }
@@ -400,15 +418,13 @@ impl StateStore for InMemoryStateStore {
         &self,
         name: &str,
     ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>> {
-        let workflow_labels = self.flow_labels.clone();
         let name = name.to_string();
 
         async move {
-            let labels = workflow_labels.read().await;
-            let results: Vec<WorkflowLabelMetadata> = labels
+            let results: Vec<WorkflowLabelMetadata> = self.flow_labels
                 .iter()
-                .filter(|((n, _label), _workflow_label)| n == &name)
-                .map(|((_name, _label), workflow_label)| workflow_label.clone())
+                .filter(|entry| entry.key().0 == name)
+                .map(|entry| entry.value().clone())
                 .collect();
             Ok(results)
         }
@@ -416,14 +432,11 @@ impl StateStore for InMemoryStateStore {
     }
 
     fn list_flow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
-        let flows = self.flows.clone();
-
         async move {
-            let flows = flows.read().await;
             let mut names = std::collections::HashSet::new();
 
-            for flow in flows.values() {
-                if let Some(name) = flow.name() {
+            for entry in self.flows.iter() {
+                if let Some(name) = entry.value().name() {
                     names.insert(name.to_owned());
                 }
             }
@@ -440,14 +453,12 @@ impl StateStore for InMemoryStateStore {
         name: &str,
         label: &str,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let workflow_labels = self.flow_labels.clone();
         let name = name.to_string();
         let label = label.to_string();
 
         async move {
-            let mut labels = workflow_labels.write().await;
             let key = (name, label);
-            labels.remove(&key);
+            self.flow_labels.remove(&key);
 
             Ok(())
         }
@@ -463,7 +474,6 @@ impl StateStore for InMemoryStateStore {
         debug_mode: bool,
         input: ValueRef,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let metadata = self.execution_metadata.clone();
         let now = chrono::Utc::now();
         let execution_details = RunDetails {
             summary: RunSummary {
@@ -481,8 +491,7 @@ impl StateStore for InMemoryStateStore {
         };
 
         async move {
-            let mut metadata = metadata.write().await;
-            metadata.insert(run_id, execution_details);
+            self.runs.insert(run_id, RunState::new(execution_details));
             Ok(())
         }
         .boxed()
@@ -494,16 +503,13 @@ impl StateStore for InMemoryStateStore {
         status: ExecutionStatus,
         result: Option<ValueRef>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let metadata = self.execution_metadata.clone();
-
         async move {
-            let mut metadata = metadata.write().await;
-            if let Some(exec_metadata) = metadata.get_mut(&run_id) {
-                exec_metadata.summary.status = status;
-                exec_metadata.result = result.map(FlowResult::Success);
+            if let Some(mut run_state) = self.runs.get_mut(&run_id) {
+                run_state.details.summary.status = status;
+                run_state.details.result = result.map(FlowResult::Success);
 
                 if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed) {
-                    exec_metadata.summary.completed_at = Some(chrono::Utc::now());
+                    run_state.details.summary.completed_at = Some(chrono::Utc::now());
                 }
             }
             Ok(())
@@ -515,16 +521,8 @@ impl StateStore for InMemoryStateStore {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
-        let metadata = self.execution_metadata.clone();
-
         async move {
-            let metadata = metadata.read().await;
-            let exec_metadata = match metadata.get(&run_id) {
-                Some(metadata) => metadata,
-                None => return Ok(None),
-            };
-
-            Ok(Some(exec_metadata.clone()))
+            Ok(self.runs.get(&run_id).map(|run_state| run_state.details.clone()))
         }
         .boxed()
     }
@@ -533,38 +531,36 @@ impl StateStore for InMemoryStateStore {
         &self,
         filters: &RunFilters,
     ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
-        let metadata = self.execution_metadata.clone();
         let filters = filters.clone();
 
         async move {
-            let metadata = metadata.read().await;
-            let mut results: Vec<RunSummary> = metadata
-                .values()
+            let mut results: Vec<RunSummary> = self.runs
+                .iter()
+                .map(|entry| entry.details.summary.clone())
                 .filter(|exec| {
                     // Apply status filter
                     if let Some(ref status) = filters.status
-                        && &exec.summary.status != status
+                        && &exec.status != status
                     {
                         return false;
                     }
 
                     // Apply workflow name filter
                     if let Some(ref workflow_name) = filters.flow_name
-                        && exec.summary.flow_name.as_ref() != Some(workflow_name)
+                        && exec.flow_name.as_ref() != Some(workflow_name)
                     {
                         return false;
                     }
 
                     // Apply workflow label filter
                     if let Some(ref workflow_label) = filters.flow_label
-                        && exec.summary.flow_label.as_ref() != Some(workflow_label)
+                        && exec.flow_label.as_ref() != Some(workflow_label)
                     {
                         return false;
                     }
 
                     true
                 })
-                .map(|exec| exec.summary.clone())
                 .collect();
 
             // Sort by creation time (newest first)
@@ -596,18 +592,17 @@ impl StateStore for InMemoryStateStore {
         steps: &[StepInfo],
     ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
         let steps = steps.to_vec();
-        let step_info_map = self.step_info.clone();
 
         async move {
-            let mut step_info_guard = step_info_map.write().await;
-
             // Create a map from step_index to StepInfo for this execution
             let mut execution_steps = HashMap::new();
             for step in steps {
                 execution_steps.insert(step.step_index, step);
             }
 
-            step_info_guard.insert(run_id, execution_steps);
+            if let Some(mut run_state) = self.runs.get_mut(&run_id) {
+                run_state.steps = execution_steps;
+            }
             Ok(())
         }
         .boxed()
@@ -620,13 +615,11 @@ impl StateStore for InMemoryStateStore {
         status: stepflow_core::status::StepStatus,
     ) {
         // For in-memory store, execute synchronously
-        let mut step_info_guard = futures::executor::block_on(self.step_info.write());
-
-        if let Some(execution_steps) = step_info_guard.get_mut(&run_id)
-            && let Some(step_info) = execution_steps.get_mut(&step_index)
-        {
-            step_info.status = status;
-            step_info.updated_at = chrono::Utc::now();
+        if let Some(mut run_state) = self.runs.get_mut(&run_id) {
+            if let Some(step_info) = run_state.steps.get_mut(&step_index) {
+                step_info.status = status;
+                step_info.updated_at = chrono::Utc::now();
+            }
         }
     }
 
@@ -674,15 +667,11 @@ impl StateStore for InMemoryStateStore {
         &self,
         run_id: uuid::Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, crate::StateError>> {
-        let step_info_map = self.step_info.clone();
-
         async move {
-            let step_info_guard = step_info_map.read().await;
-
-            let step_infos = step_info_guard
+            let step_infos = self.runs
                 .get(&run_id)
-                .map(|execution_steps| {
-                    let mut steps: Vec<StepInfo> = execution_steps.values().cloned().collect();
+                .map(|run_state| {
+                    let mut steps: Vec<StepInfo> = run_state.steps.values().cloned().collect();
                     // Sort by step_index for consistent ordering
                     steps.sort_by_key(|step| step.step_index);
                     steps
@@ -698,20 +687,15 @@ impl StateStore for InMemoryStateStore {
         &self,
         run_id: uuid::Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, crate::StateError>> {
-        let step_info_map = self.step_info.clone();
-
         async move {
-            let step_info_guard = step_info_map.read().await;
-
-            // Get all step info for this execution
-            let execution_steps = step_info_guard.get(&run_id).cloned().unwrap_or_default();
-
-            // Find steps that are marked as runnable
             let mut runnable_steps = Vec::new();
 
-            for step_info in execution_steps.values() {
-                if step_info.status == stepflow_core::status::StepStatus::Runnable {
-                    runnable_steps.push(step_info.clone());
+            if let Some(run_state) = self.runs.get(&run_id) {
+                // Find steps that are marked as runnable
+                for step_info in run_state.steps.values() {
+                    if step_info.status == stepflow_core::status::StepStatus::Runnable {
+                        runnable_steps.push(step_info.clone());
+                    }
                 }
             }
 
@@ -732,8 +716,6 @@ impl StateStore for InMemoryStateStore {
         flow_name: Option<&str>,
         total_inputs: usize,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let batches = self.batches.clone();
-        let batch_runs = self.batch_runs.clone();
         let flow_name = flow_name.map(|s| s.to_string());
 
         async move {
@@ -746,12 +728,7 @@ impl StateStore for InMemoryStateStore {
                 status: BatchStatus::Running,
             };
 
-            let mut batches = batches.write().await;
-            batches.insert(batch_id, batch_metadata);
-
-            // Initialize empty run list for this batch
-            let mut batch_runs = batch_runs.write().await;
-            batch_runs.insert(batch_id, Vec::new());
+            self.batches.insert(batch_id, BatchState::new(batch_metadata));
 
             Ok(())
         }
@@ -764,19 +741,14 @@ impl StateStore for InMemoryStateStore {
         run_id: Uuid,
         batch_input_index: usize,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let batch_runs = self.batch_runs.clone();
-        let run_to_batch = self.run_to_batch.clone();
-
         async move {
-            // Add to batch_runs map
-            let mut batch_runs = batch_runs.write().await;
-            if let Some(runs) = batch_runs.get_mut(&batch_id) {
-                runs.push((run_id, batch_input_index));
+            // Add to batch's run list
+            if let Some(mut batch_state) = self.batches.get_mut(&batch_id) {
+                batch_state.runs.push((run_id, batch_input_index));
             }
 
             // Add to reverse map
-            let mut run_to_batch = run_to_batch.write().await;
-            run_to_batch.insert(run_id, (batch_id, batch_input_index));
+            self.run_to_batch.insert(run_id, (batch_id, batch_input_index));
 
             Ok(())
         }
@@ -787,11 +759,8 @@ impl StateStore for InMemoryStateStore {
         &self,
         batch_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<BatchMetadata>, StateError>> {
-        let batches = self.batches.clone();
-
         async move {
-            let batches = batches.read().await;
-            Ok(batches.get(&batch_id).cloned())
+            Ok(self.batches.get(&batch_id).map(|batch_state| batch_state.metadata.clone()))
         }
         .boxed()
     }
@@ -800,20 +769,17 @@ impl StateStore for InMemoryStateStore {
         &self,
         batch_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<BatchStatistics, StateError>> {
-        let batch_runs = self.batch_runs.clone();
-        let execution_metadata = self.execution_metadata.clone();
-
         async move {
-            let batch_runs = batch_runs.read().await;
-            let runs = batch_runs.get(&batch_id).cloned().unwrap_or_default();
-
-            let metadata = execution_metadata.read().await;
+            let runs = self.batches
+                .get(&batch_id)
+                .map(|batch_state| batch_state.runs.clone())
+                .unwrap_or_default();
 
             let mut stats = BatchStatistics::default();
 
             for (run_id, _) in runs {
-                if let Some(run_details) = metadata.get(&run_id) {
-                    match run_details.summary.status {
+                if let Some(run_state) = self.runs.get(&run_id) {
+                    match run_state.details.summary.status {
                         ExecutionStatus::Completed => stats.completed_runs += 1,
                         ExecutionStatus::Running => stats.running_runs += 1,
                         ExecutionStatus::Failed => stats.failed_runs += 1,
@@ -833,12 +799,9 @@ impl StateStore for InMemoryStateStore {
         batch_id: Uuid,
         status: BatchStatus,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let batches = self.batches.clone();
-
         async move {
-            let mut batches = batches.write().await;
-            if let Some(batch) = batches.get_mut(&batch_id) {
-                batch.status = status;
+            if let Some(mut batch_state) = self.batches.get_mut(&batch_id) {
+                batch_state.metadata.status = status;
             }
             Ok(())
         }
@@ -849,13 +812,12 @@ impl StateStore for InMemoryStateStore {
         &self,
         filters: &BatchFilters,
     ) -> BoxFuture<'_, error_stack::Result<Vec<BatchMetadata>, StateError>> {
-        let batches = self.batches.clone();
         let filters = filters.clone();
 
         async move {
-            let batches = batches.read().await;
-            let mut results: Vec<BatchMetadata> = batches
-                .values()
+            let mut results: Vec<BatchMetadata> = self.batches
+                .iter()
+                .map(|entry| entry.metadata.clone())
                 .filter(|batch| {
                     // Apply status filter
                     if let Some(ref status) = filters.status
@@ -873,7 +835,6 @@ impl StateStore for InMemoryStateStore {
 
                     true
                 })
-                .cloned()
                 .collect();
 
             // Sort by creation time (newest first)
@@ -902,22 +863,20 @@ impl StateStore for InMemoryStateStore {
         batch_id: Uuid,
         filters: &RunFilters,
     ) -> BoxFuture<'_, error_stack::Result<Vec<(RunSummary, usize)>, StateError>> {
-        let batch_runs = self.batch_runs.clone();
-        let execution_metadata = self.execution_metadata.clone();
         let filters = filters.clone();
 
         async move {
-            let batch_runs = batch_runs.read().await;
-            let runs = batch_runs.get(&batch_id).cloned().unwrap_or_default();
-
-            let metadata = execution_metadata.read().await;
+            let runs = self.batches
+                .get(&batch_id)
+                .map(|batch_state| batch_state.runs.clone())
+                .unwrap_or_default();
 
             let mut results: Vec<(RunSummary, usize)> = runs
                 .iter()
                 .filter_map(|(run_id, batch_input_index)| {
-                    metadata
+                    self.runs
                         .get(run_id)
-                        .map(|details| (details.summary.clone(), *batch_input_index))
+                        .map(|run_state| (run_state.details.summary.clone(), *batch_input_index))
                 })
                 .filter(|(summary, _)| {
                     // Apply status filter
@@ -970,11 +929,8 @@ impl StateStore for InMemoryStateStore {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<(Uuid, usize)>, StateError>> {
-        let run_to_batch = self.run_to_batch.clone();
-
         async move {
-            let run_to_batch = run_to_batch.read().await;
-            Ok(run_to_batch.get(&run_id).copied())
+            Ok(self.run_to_batch.get(&run_id).map(|entry| *entry.value()))
         }
         .boxed()
     }
@@ -1157,7 +1113,7 @@ mod tests {
         assert_eq!(retrieved, step_result);
 
         // Evict the execution
-        store.evict_execution(run_id).await;
+        store.evict_execution(run_id);
 
         // Verify the result no longer exists
         let result = store.get_step_result(run_id, 0).await;
