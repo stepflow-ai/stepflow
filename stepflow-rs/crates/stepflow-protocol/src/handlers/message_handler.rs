@@ -17,7 +17,9 @@ use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
 use super::blob_handlers::{GetBlobHandler, PutBlobHandler};
-use super::flow_handlers::{EvaluateFlowHandler, GetFlowMetadataHandler};
+use super::flow_handlers::{
+    EvaluateFlowHandler, GetBatchHandler, GetFlowMetadataHandler, SubmitBatchHandler,
+};
 use crate::error::TransportError;
 use crate::protocol::{Method, MethodRequest};
 
@@ -55,6 +57,8 @@ static INCOMING_HANDLERS: LazyLock<MessageHandlerRegistry> = LazyLock::new(|| {
     registry.register_method(Method::BlobsPut, Box::new(PutBlobHandler));
     registry.register_method(Method::FlowsEvaluate, Box::new(EvaluateFlowHandler));
     registry.register_method(Method::FlowsGetMetadata, Box::new(GetFlowMetadataHandler));
+    registry.register_method(Method::FlowsSubmitBatch, Box::new(SubmitBatchHandler));
+    registry.register_method(Method::FlowsGetBatch, Box::new(GetBatchHandler));
     registry
 });
 

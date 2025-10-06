@@ -3167,7 +3167,6 @@ version = "0.4.0"
 dependencies = [
  "dynosaur",
  "error-stack",
- "futures",
  "openai-api-rs",
  "schemars",
  "serde",
@@ -3233,6 +3232,7 @@ version = "0.4.0"
 dependencies = [
  "async-trait",
  "bit-set",
+ "chrono",
  "error-stack",
  "futures",
  "serde",
@@ -3328,6 +3328,7 @@ name = "stepflow-protocol"
 version = "0.4.0"
 dependencies = [
  "async-stream",
+ "chrono",
  "erased-serde",
  "error-stack",
  "futures",

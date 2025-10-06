@@ -677,6 +677,18 @@ pub struct BatchFilters {
     pub offset: Option<usize>,
 }
 
+/// Output information for a single run in a batch
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchOutputInfo {
+    /// Position in the batch input array
+    pub batch_input_index: usize,
+    /// The execution status
+    pub status: ExecutionStatus,
+    /// The flow result (if completed)
+    pub result: Option<FlowResult>,
+}
+
 /// Run details with resolved input and result blobs.
 #[derive(Debug)]
 pub struct RunWithBlobs {

@@ -59,6 +59,12 @@
             },
             {
               "$ref": "#/$defs/GetFlowMetadataParams"
+            },
+            {
+              "$ref": "#/$defs/SubmitBatchParams"
+            },
+            {
+              "$ref": "#/$defs/GetBatchParams"
             }
           ]
         }
@@ -98,7 +104,9 @@
         "blobs/put",
         "blobs/get",
         "flows/evaluate",
-        "flows/get_metadata"
+        "flows/get_metadata",
+        "flows/submit_batch",
+        "flows/get_batch"
       ]
     },
     "InitializeParams": {
@@ -264,6 +272,59 @@
         "flow_id"
       ]
     },
+    "SubmitBatchParams": {
+      "description": "Sent from the component server to Stepflow to submit a batch execution.",
+      "type": "object",
+      "properties": {
+        "flow_id": {
+          "description": "The ID of the flow to evaluate (blob ID of the flow).",
+          "$ref": "#/$defs/BlobId"
+        },
+        "inputs": {
+          "description": "The inputs to provide to the flow for each run.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Value"
+          }
+        },
+        "max_concurrency": {
+          "description": "Maximum number of concurrent executions (defaults to number of inputs if not specified).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "flow_id",
+        "inputs"
+      ]
+    },
+    "GetBatchParams": {
+      "description": "Sent from the component server to Stepflow to get batch status and optionally results.",
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "description": "The batch ID to query.",
+          "type": "string"
+        },
+        "wait": {
+          "description": "If true, wait for batch completion before returning.",
+          "type": "boolean",
+          "default": false
+        },
+        "include_results": {
+          "description": "If true, include full outputs in response.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "batch_id"
+      ]
+    },
     "MethodResponse": {
       "description": "Response to a method request.",
       "anyOf": [
@@ -313,6 +374,12 @@
             },
             {
               "$ref": "#/$defs/GetFlowMetadataResult"
+            },
+            {
+              "$ref": "#/$defs/SubmitBatchResult"
+            },
+            {
+              "$ref": "#/$defs/GetBatchResult"
             }
           ]
         }
@@ -588,6 +655,160 @@
       },
       "required": [
         "flow_metadata"
+      ]
+    },
+    "SubmitBatchResult": {
+      "description": "Sent from Stepflow back to the component server with the batch submission result.",
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "description": "The batch ID (UUID).",
+          "type": "string"
+        },
+        "total_runs": {
+          "description": "Total number of runs in the batch.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "batch_id",
+        "total_runs"
+      ]
+    },
+    "GetBatchResult": {
+      "description": "Sent from Stepflow back to the component server with batch details and optional outputs.",
+      "type": "object",
+      "properties": {
+        "details": {
+          "description": "Always included: batch details with metadata and statistics.",
+          "$ref": "#/$defs/BatchDetails"
+        },
+        "outputs": {
+          "description": "Only included if include_results=true.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/BatchOutputInfo"
+          }
+        }
+      },
+      "required": [
+        "details"
+      ]
+    },
+    "BatchDetails": {
+      "description": "Batch details including metadata and statistics.",
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "description": "The batch ID.",
+          "type": "string"
+        },
+        "flow_id": {
+          "description": "The flow ID.",
+          "$ref": "#/$defs/BlobId"
+        },
+        "flow_name": {
+          "description": "The flow name (optional).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_runs": {
+          "description": "Total number of runs in the batch.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "status": {
+          "description": "Batch status (running | cancelled).",
+          "type": "string"
+        },
+        "created_at": {
+          "description": "Timestamp when the batch was created.",
+          "type": "string"
+        },
+        "completed_runs": {
+          "description": "Statistics for the batch.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "running_runs": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "failed_runs": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "cancelled_runs": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "paused_runs": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "completed_at": {
+          "description": "Completion timestamp (if all runs complete).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "batch_id",
+        "flow_id",
+        "total_runs",
+        "status",
+        "created_at",
+        "completed_runs",
+        "running_runs",
+        "failed_runs",
+        "cancelled_runs",
+        "paused_runs"
+      ]
+    },
+    "BatchOutputInfo": {
+      "description": "Output information for a single run in a batch.",
+      "type": "object",
+      "properties": {
+        "batch_input_index": {
+          "description": "Position in the batch input array.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "status": {
+          "description": "The execution status.",
+          "type": "string"
+        },
+        "result": {
+          "description": "The flow result (if completed).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FlowResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "batch_input_index",
+        "status"
       ]
     },
     "MethodError": {

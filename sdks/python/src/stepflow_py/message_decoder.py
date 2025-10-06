@@ -33,6 +33,8 @@ from .generated_protocol import (
     Error,
     EvaluateFlowParams,
     EvaluateFlowResult,
+    GetBatchParams,
+    GetBatchResult,
     GetBlobParams,
     GetBlobResult,
     GetFlowMetadataParams,
@@ -51,6 +53,8 @@ from .generated_protocol import (
     PutBlobParams,
     PutBlobResult,
     RequestId,
+    SubmitBatchParams,
+    SubmitBatchResult,
 )
 
 
@@ -225,6 +229,10 @@ def _decode_params_for_method(method: Method, params_raw: Raw):
         return msgspec.json.decode(params_raw, type=EvaluateFlowParams)
     elif method == Method.flows_get_metadata:
         return msgspec.json.decode(params_raw, type=GetFlowMetadataParams)
+    elif method == Method.flows_submit_batch:
+        return msgspec.json.decode(params_raw, type=SubmitBatchParams)
+    elif method == Method.flows_get_batch:
+        return msgspec.json.decode(params_raw, type=GetBatchParams)
     else:
         raise StepflowProtocolError(f"Unknown method: {method.value}")
 
@@ -247,5 +255,9 @@ def _get_result_type_for_method(method: Method) -> type:
         return EvaluateFlowResult
     elif method == Method.flows_get_metadata:
         return GetFlowMetadataResult
+    elif method == Method.flows_submit_batch:
+        return SubmitBatchResult
+    elif method == Method.flows_get_batch:
+        return GetBatchResult
     else:
         raise StepflowProtocolError(f"Unknown method: {method.value}")

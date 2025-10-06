@@ -1,0 +1,108 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: Map Component Batch Execution Test
+description: Test the map component using batch execution with parallel processing
+
+input_schema:
+  type: object
+  properties:
+    prompts:
+      type: array
+      items:
+        type: string
+
+output_schema:
+  type: object
+  properties:
+    results:
+      type: array
+    successful:
+      type: integer
+    failed:
+      type: integer
+    skipped:
+      type: integer
+
+steps:
+- id: map_prompts
+  component: /builtin/map
+  input:
+    workflow:
+      $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
+        name: create-message
+        input_schema:
+          type: string
+        output_schema:
+          type: object
+        steps:
+        - id: create_msg
+          component: /builtin/create_messages
+          input:
+            user_prompt:
+              $from:
+                workflow: input
+        output:
+          $from:
+            step: create_msg
+    items:
+      $from:
+        workflow: input
+      path: prompts
+    max_concurrency: 2
+
+output:
+  results:
+    $from:
+      step: map_prompts
+    path: results
+  successful:
+    $from:
+      step: map_prompts
+    path: successful
+  failed:
+    $from:
+      step: map_prompts
+    path: failed
+  skipped:
+    $from:
+      step: map_prompts
+    path: skipped
+
+test:
+  cases:
+  - name: test map with three prompts
+    input:
+      prompts: ["Hello", "World", "Test"]
+    output:
+      outcome: success
+      result:
+        successful: 3
+        failed: 0
+        skipped: 0
+        results:
+        - outcome: success
+          result:
+            messages:
+            - role: user
+              content: "Hello"
+        - outcome: success
+          result:
+            messages:
+            - role: user
+              content: "World"
+        - outcome: success
+          result:
+            messages:
+            - role: user
+              content: "Test"
+
+  - name: test map with empty list
+    input:
+      prompts: []
+    output:
+      outcome: success
+      result:
+        successful: 0
+        failed: 0
+        skipped: 0
+        results: []

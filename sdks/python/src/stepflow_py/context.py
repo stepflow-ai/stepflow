@@ -21,12 +21,16 @@ from uuid import uuid4
 
 from stepflow_py.generated_flow import Flow
 from stepflow_py.generated_protocol import (
+    BatchDetails,
+    BatchOutputInfo,
     BlobType,
     EvaluateFlowParams,
     EvaluateFlowResult,
     FlowResultFailed,
     FlowResultSkipped,
     FlowResultSuccess,
+    GetBatchParams,
+    GetBatchResult,
     GetBlobResult,
     GetFlowMetadataParams,
     GetFlowMetadataResult,
@@ -36,6 +40,8 @@ from stepflow_py.generated_protocol import (
     MethodSuccess,
     PutBlobParams,
     PutBlobResult,
+    SubmitBatchParams,
+    SubmitBatchResult,
 )
 from stepflow_py.message_decoder import MessageDecoder
 
@@ -261,6 +267,186 @@ class StepflowContext:
             result["step_metadata"] = response.step_metadata
 
         return result
+
+    async def submit_batch(
+        self,
+        flow: Flow,
+        inputs: list[Any],
+        max_concurrency: int | None = None,
+    ) -> str:
+        """Submit a batch of inputs for parallel execution and return the batch ID.
+
+        Args:
+            flow: The flow definition to execute
+            inputs: List of inputs to process in parallel
+            max_concurrency: Maximum number of concurrent executions (optional)
+
+        Returns:
+            The batch ID for tracking the batch execution
+        """
+        import msgspec
+
+        # Convert Flow object to dict for blob storage
+        flow_dict = msgspec.to_builtins(flow)
+
+        # Store flow as a blob first
+        flow_id = await self.put_blob(flow_dict, BlobType.flow)
+
+        # Delegate to submit_batch_by_id
+        return await self.submit_batch_by_id(flow_id, inputs, max_concurrency)
+
+    async def submit_batch_by_id(
+        self,
+        flow_id: str,
+        inputs: list[Any],
+        max_concurrency: int | None = None,
+    ) -> str:
+        """Submit a batch of inputs for parallel execution using a flow ID.
+
+        Args:
+            flow_id: The blob ID of the flow to execute
+            inputs: List of inputs to process in parallel
+            max_concurrency: Maximum number of concurrent executions (optional)
+
+        Returns:
+            The batch ID for tracking the batch execution
+        """
+        params = SubmitBatchParams(
+            flow_id=flow_id,
+            inputs=inputs,
+            max_concurrency=max_concurrency,
+        )
+        response = await self._send_request(
+            Method.flows_submit_batch, params, SubmitBatchResult
+        )
+        return response.batch_id
+
+    async def get_batch(
+        self,
+        batch_id: str,
+        wait: bool = False,
+        include_results: bool = False,
+    ) -> tuple[BatchDetails, list[BatchOutputInfo] | None]:
+        """Get batch status and optionally wait for completion and retrieve results.
+
+        Args:
+            batch_id: The ID of the batch to retrieve
+            wait: If True, wait for batch completion before returning
+            include_results: If True, include the run results in the response
+
+        Returns:
+            A tuple of (batch_details, outputs) where outputs is None if
+            include_results is False
+        """
+        params = GetBatchParams(
+            batch_id=batch_id,
+            wait=wait,
+            include_results=include_results,
+        )
+        response = await self._send_request(
+            Method.flows_get_batch, params, GetBatchResult
+        )
+        return (response.details, response.outputs)
+
+    async def evaluate_batch(
+        self,
+        flow: Flow,
+        inputs: list[Any],
+        max_concurrency: int | None = None,
+    ) -> list[Any]:
+        """Submit a batch, wait for completion, and return all results.
+
+        This is a convenience method that combines submit_batch and get_batch
+        with wait=True and include_results=True.
+
+        Args:
+            flow: The flow definition to execute
+            inputs: List of inputs to process in parallel
+            max_concurrency: Maximum number of concurrent executions (optional)
+
+        Returns:
+            List of results corresponding to each input, in the same order
+
+        Raises:
+            Exception: If any of the runs failed or were skipped
+        """
+        import msgspec
+
+        # Convert Flow object to dict for blob storage
+        flow_dict = msgspec.to_builtins(flow)
+
+        # Store flow as a blob first
+        flow_id = await self.put_blob(flow_dict, BlobType.flow)
+
+        # Delegate to evaluate_batch_by_id
+        return await self.evaluate_batch_by_id(flow_id, inputs, max_concurrency)
+
+    async def evaluate_batch_by_id(
+        self,
+        flow_id: str,
+        inputs: list[Any],
+        max_concurrency: int | None = None,
+    ) -> list[Any]:
+        """Submit a batch by flow ID, wait for completion, and return all results.
+
+        This is a convenience method that combines submit_batch_by_id and get_batch
+        with wait=True and include_results=True.
+
+        Args:
+            flow_id: The blob ID of the flow to execute
+            inputs: List of inputs to process in parallel
+            max_concurrency: Maximum number of concurrent executions (optional)
+
+        Returns:
+            List of results corresponding to each input, in the same order
+
+        Raises:
+            Exception: If any of the runs failed or were skipped
+        """
+        from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
+
+        # Submit the batch
+        batch_id = await self.submit_batch_by_id(flow_id, inputs, max_concurrency)
+
+        # Wait for completion and get results
+        _details, outputs = await self.get_batch(
+            batch_id, wait=True, include_results=True
+        )
+
+        # Extract results from outputs
+        assert outputs is not None, "include_results=True should return outputs"
+
+        results = []
+        for output_info in outputs:
+            if output_info.result is None:
+                raise Exception(
+                    f"Run at index {output_info.batch_input_index} has no "
+                    f"result (status: {output_info.status})"
+                )
+
+            flow_result = output_info.result
+
+            # Check the outcome and either append the result or raise exception
+            if isinstance(flow_result, FlowResultSuccess):
+                results.append(flow_result.result)
+            elif isinstance(flow_result, FlowResultSkipped):
+                raise StepflowSkipped(
+                    f"Run at index {output_info.batch_input_index} was skipped"
+                )
+            elif isinstance(flow_result, FlowResultFailed):
+                error = flow_result.error
+                raise StepflowFailed(
+                    error_code=error.code,
+                    message=(
+                        f"Run at index {output_info.batch_input_index} "
+                        f"failed: {error.message}"
+                    ),
+                    data=error.data,
+                )
+            else:
+                raise Exception(f"Unexpected flow result type: {type(flow_result)}")
+
+        return results
 
     def log(self, message):
         """Log a message."""

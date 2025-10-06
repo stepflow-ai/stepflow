@@ -33,6 +33,10 @@ pub enum Method {
     FlowsEvaluate,
     #[serde(rename = "flows/get_metadata")]
     FlowsGetMetadata,
+    #[serde(rename = "flows/submit_batch")]
+    FlowsSubmitBatch,
+    #[serde(rename = "flows/get_batch")]
+    FlowsGetBatch,
 }
 
 impl std::fmt::Display for Method {
@@ -47,6 +51,8 @@ impl std::fmt::Display for Method {
             Method::BlobsGet => write!(f, "blobs/get"),
             Method::FlowsEvaluate => write!(f, "flows/evaluate"),
             Method::FlowsGetMetadata => write!(f, "flows/get_metadata"),
+            Method::FlowsSubmitBatch => write!(f, "flows/submit_batch"),
+            Method::FlowsGetBatch => write!(f, "flows/get_batch"),
         }
     }
 }
@@ -70,6 +76,8 @@ pub(crate) fn method_params(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::blobs::PutBlobParams>(),
         generator.subschema_for::<super::flows::EvaluateFlowParams>(),
         generator.subschema_for::<super::flows::GetFlowMetadataParams>(),
+        generator.subschema_for::<super::flows::SubmitBatchParams>(),
+        generator.subschema_for::<super::flows::GetBatchParams>(),
     ];
     json_schema!({
         "title": "MethodParams",
@@ -88,6 +96,8 @@ pub(crate) fn method_result(generator: &mut schemars::SchemaGenerator) -> Schema
         generator.subschema_for::<super::blobs::PutBlobResult>(),
         generator.subschema_for::<super::flows::EvaluateFlowResult>(),
         generator.subschema_for::<super::flows::GetFlowMetadataResult>(),
+        generator.subschema_for::<super::flows::SubmitBatchResult>(),
+        generator.subschema_for::<super::flows::GetBatchResult>(),
     ];
     json_schema!({
         "title": "MethodResult",

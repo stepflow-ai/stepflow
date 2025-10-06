@@ -35,6 +35,7 @@ which.workspace = true
 similar-asserts.workspace = true
 stepflow-state.workspace = true
 serde_json.workspace = true
+chrono.workspace = true
 
 [lints]
 workspace = true

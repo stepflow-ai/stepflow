@@ -435,6 +435,7 @@ impl HttpClientHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono;
     use futures::future::{BoxFuture, FutureExt as _};
     use std::path::Path;
     use std::sync::Arc;
@@ -479,6 +480,57 @@ mod tests {
 
         fn working_directory(&self) -> &Path {
             Path::new("/tmp")
+        }
+
+        fn submit_batch(
+            &self,
+            _flow: Arc<Flow>,
+            _flow_id: BlobId,
+            _inputs: Vec<ValueRef>,
+            _max_concurrency: Option<usize>,
+        ) -> BoxFuture<'_, PluginResult<Uuid>> {
+            async { Ok(Uuid::new_v4()) }.boxed()
+        }
+
+        fn get_batch(
+            &self,
+            _batch_id: Uuid,
+            _wait: bool,
+            _include_results: bool,
+        ) -> BoxFuture<
+            '_,
+            PluginResult<(
+                stepflow_state::BatchDetails,
+                Option<Vec<stepflow_state::BatchOutputInfo>>,
+            )>,
+        > {
+            async {
+                // Return a minimal batch details for testing
+                let dummy_flow_id = BlobId::new(
+                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                )
+                .unwrap();
+                let batch_details = stepflow_state::BatchDetails {
+                    metadata: stepflow_state::BatchMetadata {
+                        batch_id: Uuid::new_v4(),
+                        flow_id: dummy_flow_id,
+                        flow_name: None,
+                        total_inputs: 0,
+                        status: stepflow_state::BatchStatus::Running,
+                        created_at: chrono::Utc::now(),
+                    },
+                    statistics: stepflow_state::BatchStatistics {
+                        completed_runs: 0,
+                        running_runs: 0,
+                        failed_runs: 0,
+                        cancelled_runs: 0,
+                        paused_runs: 0,
+                    },
+                    completed_at: None,
+                };
+                Ok((batch_details, None))
+            }
+            .boxed()
         }
     }
 

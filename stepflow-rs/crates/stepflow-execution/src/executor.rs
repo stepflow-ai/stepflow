@@ -289,6 +289,248 @@ impl Context for StepflowExecutor {
     fn working_directory(&self) -> &std::path::Path {
         &self.working_directory
     }
+
+    /// Submit a batch execution and return the batch ID immediately.
+    fn submit_batch(
+        &self,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        inputs: Vec<ValueRef>,
+        max_concurrency: Option<usize>,
+    ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
+        let executor = self.executor();
+
+        async move {
+            let batch_id = Uuid::new_v4();
+            let state_store = executor.state_store();
+
+            let total_runs = inputs.len();
+            let max_concurrency = max_concurrency.unwrap_or(total_runs);
+
+            // Create batch record
+            state_store
+                .create_batch(batch_id, flow_id.clone(), flow.name(), total_runs)
+                .await
+                .change_context(stepflow_plugin::PluginError::Execution)?;
+
+            // Create run records and collect (run_id, input, index) tuples
+            let mut run_inputs = Vec::with_capacity(total_runs);
+            for (idx, input) in inputs.into_iter().enumerate() {
+                let run_id = Uuid::new_v4();
+
+                // Create run record
+                state_store
+                    .create_run(
+                        run_id,
+                        flow_id.clone(),
+                        flow.name(),
+                        None,  // No flow label for batch execution
+                        false, // Batch runs are not in debug mode
+                        input.clone(),
+                    )
+                    .await
+                    .change_context(stepflow_plugin::PluginError::Execution)?;
+
+                // Link run to batch
+                state_store
+                    .add_run_to_batch(batch_id, run_id, idx)
+                    .await
+                    .change_context(stepflow_plugin::PluginError::Execution)?;
+
+                run_inputs.push((run_id, input, idx));
+            }
+
+            // Spawn background task for batch execution
+            let executor_clone = executor.clone();
+            let flow_clone = flow.clone();
+            let flow_id_clone = flow_id.clone();
+
+            tokio::spawn(async move {
+                let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
+                let mut tasks = vec![];
+
+                for (run_id, input, _idx) in run_inputs {
+                    let permit = match semaphore.clone().acquire_owned().await {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            tracing::error!("Semaphore closed, aborting batch execution");
+                            break;
+                        }
+                    };
+                    let executor_ref = executor_clone.clone();
+                    let flow_ref = flow_clone.clone();
+                    let flow_id_ref = flow_id_clone.clone();
+
+                    let task = tokio::spawn(async move {
+                        let _permit = permit; // Hold permit during execution
+
+                        match executor_ref.submit_flow(flow_ref, flow_id_ref, input).await {
+                            Ok(submitted_run_id) => {
+                                // Wait for the result
+                                match executor_ref.flow_result(submitted_run_id).await {
+                                    Ok(flow_result) => {
+                                        // Update run status based on result
+                                        let state_store = executor_ref.state_store();
+                                        let status = match &flow_result {
+                                            stepflow_core::FlowResult::Success(_) => {
+                                                stepflow_core::status::ExecutionStatus::Completed
+                                            }
+                                            stepflow_core::FlowResult::Failed(_)
+                                            | stepflow_core::FlowResult::Skipped { .. } => {
+                                                stepflow_core::status::ExecutionStatus::Failed
+                                            }
+                                        };
+                                        let result_ref = match &flow_result {
+                                            stepflow_core::FlowResult::Success(r) => {
+                                                Some(r.clone())
+                                            }
+                                            _ => None,
+                                        };
+                                        let _ = state_store
+                                            .update_run_status(run_id, status, result_ref)
+                                            .await;
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            "Batch run {run_id} failed to get result: {e:?}"
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Batch run {run_id} failed to submit: {e:?}");
+                            }
+                        }
+                    });
+
+                    tasks.push(task);
+                }
+
+                // Wait for all tasks to complete
+                for task in tasks {
+                    let _ = task.await;
+                }
+
+                tracing::info!("Batch {batch_id} execution completed");
+            });
+
+            Ok(batch_id)
+        }
+        .boxed()
+    }
+
+    /// Get batch status and optionally results, with optional waiting.
+    fn get_batch(
+        &self,
+        batch_id: Uuid,
+        wait: bool,
+        include_results: bool,
+    ) -> BoxFuture<
+        '_,
+        stepflow_plugin::Result<(
+            stepflow_state::BatchDetails,
+            Option<Vec<stepflow_state::BatchOutputInfo>>,
+        )>,
+    > {
+        async move {
+            let state_store = self.state_store();
+
+            // If wait=true, poll until completion
+            if wait {
+                loop {
+                    // Get batch metadata to verify batch exists
+                    let _metadata = state_store
+                        .get_batch(batch_id)
+                        .await
+                        .change_context(stepflow_plugin::PluginError::Execution)?
+                        .ok_or_else(|| {
+                            error_stack::report!(stepflow_plugin::PluginError::Execution)
+                                .attach_printable(format!("Batch not found: {}", batch_id))
+                        })?;
+
+                    // Get batch statistics
+                    let statistics = state_store
+                        .get_batch_statistics(batch_id)
+                        .await
+                        .change_context(stepflow_plugin::PluginError::Execution)?;
+
+                    // Check if all runs complete
+                    if statistics.running_runs == 0 && statistics.paused_runs == 0 {
+                        break;
+                    }
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+            }
+
+            // Get current batch details
+            let metadata = state_store
+                .get_batch(batch_id)
+                .await
+                .change_context(stepflow_plugin::PluginError::Execution)?
+                .ok_or_else(|| {
+                    error_stack::report!(stepflow_plugin::PluginError::Execution)
+                        .attach_printable(format!("Batch not found: {}", batch_id))
+                })?;
+
+            let statistics = state_store
+                .get_batch_statistics(batch_id)
+                .await
+                .change_context(stepflow_plugin::PluginError::Execution)?;
+
+            // Calculate completion time if all runs are complete
+            let completed_at = if metadata.status == stepflow_state::BatchStatus::Cancelled
+                || (statistics.running_runs == 0 && statistics.paused_runs == 0)
+            {
+                Some(chrono::Utc::now())
+            } else {
+                None
+            };
+
+            let details = stepflow_state::BatchDetails {
+                metadata,
+                statistics,
+                completed_at,
+            };
+
+            // Get outputs if requested
+            let outputs = if include_results {
+                // Get runs for this batch
+                let filters = stepflow_state::RunFilters::default();
+                let batch_runs = state_store
+                    .list_batch_runs(batch_id, &filters)
+                    .await
+                    .change_context(stepflow_plugin::PluginError::Execution)?;
+
+                // Fetch run details for each to get results
+                let mut output_infos = Vec::new();
+                for (run_summary, batch_input_index) in batch_runs {
+                    let run_details = state_store
+                        .get_run(run_summary.run_id)
+                        .await
+                        .change_context(stepflow_plugin::PluginError::Execution)?;
+
+                    let result = run_details.and_then(|details| details.result);
+
+                    output_infos.push(stepflow_state::BatchOutputInfo {
+                        batch_input_index,
+                        status: run_summary.status,
+                        result,
+                    });
+                }
+
+                // Sort by batch_input_index to maintain input order
+                output_infos.sort_by_key(|o| o.batch_input_index);
+
+                Some(output_infos)
+            } else {
+                None
+            };
+
+            Ok((details, outputs))
+        }
+        .boxed()
+    }
 }
 
 #[cfg(test)]
