@@ -199,8 +199,22 @@ impl HttpClientHandle {
             // Handle SSE streaming response - this means we need bidirectional communication
             tracing::debug!(request_id = %id, "Starting SSE stream processing for bidirectional communication");
 
+            // Extract instance ID from response headers for routing bidirectional requests
+            let instance_id = response
+                .headers()
+                .get("Stepflow-Instance-Id")
+                .and_then(|v| v.to_str().ok())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+
+            if let Some(ref id) = instance_id {
+                tracing::debug!(instance_id = %id, "Extracted instance ID for bidirectional routing");
+            } else if response.headers().get("Stepflow-Instance-Id").is_some() {
+                tracing::warn!("Invalid or empty Stepflow-Instance-Id header value");
+            }
+
             // Create a bidirectional driver to handle the SSE stream
-            let driver = BidirectionalDriver::new(self.clone());
+            let driver = BidirectionalDriver::new(self.clone(), instance_id);
             let messages = self.sse_messages(response);
             driver.drive_to_completion(id, messages).await
         } else {
@@ -289,6 +303,7 @@ impl HttpClientHandle {
         incoming_method: Method,
         incoming_id: RequestId,
         owned_message: OwnedJson<Message<'static>>,
+        instance_id: Option<&str>,
     ) -> Result<()> {
         tracing::debug!(
             method = %incoming_method,
@@ -307,6 +322,7 @@ impl HttpClientHandle {
                 &incoming_id,
                 -32601,
                 &format!("Method not found: {incoming_method}"),
+                instance_id,
             )
             .await;
             return Ok(());
@@ -315,6 +331,7 @@ impl HttpClientHandle {
         // Handle the request asynchronously with concurrent outgoing message processing
         let context = self.context.clone();
         let client_handle = self.clone();
+        let instance_id = instance_id.map(|s| s.to_string());
 
         let future = async move {
             let (outgoing_tx, mut outgoing_rx) = mpsc::channel(100);
@@ -337,7 +354,7 @@ impl HttpClientHandle {
             let sender_future = async {
                 while let Some(outgoing_message) = outgoing_rx.recv().await {
                     if let Err(e) = client_handle
-                        .send_response_to_server(&outgoing_message)
+                        .send_response_to_server(&outgoing_message, instance_id.as_deref())
                         .await
                     {
                         tracing::error!(
@@ -372,6 +389,7 @@ impl HttpClientHandle {
                             &request.id,
                             -32601,
                             &format!("Failed to handle method {}: {:?}", request.method, e),
+                            instance_id.as_deref(),
                         )
                         .await;
                 }
@@ -382,7 +400,7 @@ impl HttpClientHandle {
     }
 
     /// Helper method to send JSON-RPC error responses back to server
-    async fn send_error_response(&self, request_id: &RequestId, code: i32, message: &str) {
+    async fn send_error_response(&self, request_id: &RequestId, code: i32, message: &str, instance_id: Option<&str>) {
         let error_response = serde_json::json!({
             "jsonrpc": "2.0",
             "id": request_id,
@@ -393,7 +411,7 @@ impl HttpClientHandle {
         });
 
         if let Err(e) = self
-            .send_response_to_server(&error_response.to_string())
+            .send_response_to_server(&error_response.to_string(), instance_id)
             .await
         {
             tracing::error!(
@@ -405,12 +423,23 @@ impl HttpClientHandle {
     }
 
     /// Send a response back to the server (used for bidirectional communication and notifications)
-    pub async fn send_response_to_server(&self, message: &str) -> Result<()> {
+    pub async fn send_response_to_server(&self, message: &str, instance_id: Option<&str>) -> Result<()> {
         tracing::debug!(message_size = message.len(), "Sending response to server");
+
+        // Clone headers and add instance ID if available for load balancer routing
+        let mut headers = self.request_headers.clone();
+        if let Some(id) = instance_id {
+            headers.insert(
+                "Stepflow-Instance-Id",
+                id.parse().unwrap(),
+            );
+            tracing::debug!(instance_id = %id, "Including instance ID in bidirectional response");
+        }
+
         let response = self
             .client
             .post(&self.url)
-            .headers(self.request_headers.clone())
+            .headers(headers)
             .body(message.to_string())
             .send()
             .await

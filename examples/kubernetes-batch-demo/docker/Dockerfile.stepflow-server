@@ -1,0 +1,46 @@
+# Multi-stage build for Stepflow runtime server
+
+# Build stage
+FROM rust:1.90-bookworm as builder
+
+WORKDIR /build
+
+# Copy workspace
+COPY ./Cargo.toml ./Cargo.lock ./
+COPY ./crates ./crates
+
+# Build release binary
+RUN cargo build --release --bin stepflow
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y \
+        ca-certificates \
+        libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binary from builder
+COPY --from=builder /build/target/release/stepflow /usr/local/bin/stepflow
+
+# Create app user
+RUN useradd -m -u 1000 stepflow
+
+# Create directories for config and data
+RUN mkdir -p /app/config /app/data && \
+    chown -R stepflow:stepflow /app
+
+USER stepflow
+WORKDIR /app
+
+# Expose API port
+EXPOSE 7840
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:7840/health || exit 1
+
+# Default command
+CMD ["stepflow", "serve", "--port", "7840", "--config", "/app/config/stepflow-config.yml"]

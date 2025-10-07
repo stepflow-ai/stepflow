@@ -1,0 +1,72 @@
+# Batch workflow for Kubernetes demo
+# Uses compute-intensive components to demonstrate load distribution
+
+name: batch-workflow
+description: Workflow for demonstrating batch execution across k8s pods
+
+input:
+  schema:
+    type: object
+    properties:
+      value:
+        type: number
+        description: Input value to process
+      iterations:
+        type: number
+        description: Number of iterations for compute-intensive task
+        default: 1000
+
+steps:
+  # Perform compute-intensive task
+  process:
+    component: /python/compute_intensive_task
+    input:
+      value:
+        $from:
+          workflow: input
+        path: value
+      iterations:
+        $from:
+          workflow: input
+        path: iterations
+
+  # Calculate fibonacci of the processed result (mod 20)
+  fibonacci:
+    component: /python/fibonacci
+    input:
+      value:
+        $from:
+          step: process
+        path: result
+        transform: "x % 20"  # Keep within fibonacci limit
+
+  # Square the fibonacci result
+  square:
+    component: /python/square
+    input:
+      value:
+        $from:
+          step: fibonacci
+        path: result
+
+output:
+  original_value:
+    $from:
+      workflow: input
+    path: value
+  processed_result:
+    $from:
+      step: process
+    path: result
+  processing_time_ms:
+    $from:
+      step: process
+    path: processing_time_ms
+  fibonacci_result:
+    $from:
+      step: fibonacci
+    path: result
+  final_result:
+    $from:
+      step: square
+    path: result

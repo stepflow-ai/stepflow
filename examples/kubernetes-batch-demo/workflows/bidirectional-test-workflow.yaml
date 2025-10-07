@@ -1,0 +1,40 @@
+# Bidirectional component test workflow
+# Tests instance affinity through Pingora load balancer
+
+schema: https://stepflow.org/schemas/v1/flow.json
+name: bidirectional-test-workflow
+description: Test bidirectional components with blob storage
+
+input_schema:
+  type: object
+  properties:
+    data:
+      type: object
+      description: Data to store as blob
+
+output_schema:
+  type: object
+  properties:
+    blob_id:
+      type: string
+    retrieved_data:
+      type: object
+
+steps:
+  - id: blob_test
+    component: /python/store_and_retrieve_blob
+    input:
+      data:
+        $from:
+          workflow: input
+        path: data
+
+output:
+  blob_id:
+    $from:
+      step: blob_test
+    path: blob_id
+  retrieved_data:
+    $from:
+      step: blob_test
+    path: retrieved_data

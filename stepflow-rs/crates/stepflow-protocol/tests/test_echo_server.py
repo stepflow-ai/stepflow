@@ -40,9 +40,31 @@ class EchoOutput(msgspec.Struct):
     echo: str
 
 
+class BidirectionalInput(msgspec.Struct):
+    data: dict
+
+
+class BidirectionalOutput(msgspec.Struct):
+    blob_id: str
+    retrieved_data: dict
+
+
 def echo_component(input: EchoInput) -> EchoOutput:
     """Simple echo component that returns the input message"""
     return EchoOutput(echo=f"Echo: {input.message}")
+
+
+async def bidirectional_component(input: BidirectionalInput, context) -> BidirectionalOutput:
+    """Component that uses bidirectional communication (blob storage)"""
+    from stepflow_py.context import StepflowContext
+
+    # Store the input data as a blob
+    blob_id = await context.put_blob(input.data)
+
+    # Retrieve the blob to verify round-trip
+    retrieved_data = await context.get_blob(blob_id)
+
+    return BidirectionalOutput(blob_id=blob_id, retrieved_data=retrieved_data)
 
 
 async def main():
@@ -59,6 +81,13 @@ async def main():
     # Register the echo component
     core_server.component(
         echo_component, name="echo", description="Echo component for testing"
+    )
+
+    # Register the bidirectional component
+    core_server.component(
+        bidirectional_component,
+        name="bidirectional_blob_test",
+        description="Bidirectional component for testing instance ID routing"
     )
 
     if args.http:

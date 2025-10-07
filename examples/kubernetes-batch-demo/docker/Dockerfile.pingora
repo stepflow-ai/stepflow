@@ -1,0 +1,43 @@
+# Dockerfile for Pingora Load Balancer
+# Provides instance-aware routing for Stepflow component servers
+
+FROM rust:1.83 as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    cmake \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Pingora load balancer source
+COPY pingora-lb/ .
+
+# Build release binary
+RUN cargo build --release
+
+# Runtime image
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy binary from builder
+COPY --from=builder /build/target/release/pingora-lb /usr/local/bin/pingora-lb
+
+# Create non-root user
+RUN useradd -m -u 1000 pingora && \
+    chown pingora:pingora /usr/local/bin/pingora-lb
+
+USER pingora
+
+# Expose load balancer port
+EXPOSE 8080
+
+# Run load balancer
+CMD ["pingora-lb"]

@@ -37,6 +37,7 @@ use crate::{Message, OwnedJson, RequestId};
 /// - Waiting for the final response
 pub struct BidirectionalDriver {
     client_handle: super::HttpClientHandle,
+    instance_id: Option<String>,
 }
 
 /// Result of processing an SSE message
@@ -48,9 +49,9 @@ enum SseMessageEvent {
 }
 
 impl BidirectionalDriver {
-    /// Create a new bidirectional driver
-    pub fn new(client_handle: super::HttpClientHandle) -> Self {
-        Self { client_handle }
+    /// Create a new bidirectional driver with optional instance ID for load balancer routing
+    pub fn new(client_handle: super::HttpClientHandle, instance_id: Option<String>) -> Self {
+        Self { client_handle, instance_id }
     }
 
     /// Drive the SSE stream until the expected response is received and all requests complete
@@ -163,10 +164,13 @@ impl BidirectionalDriver {
             "Spawning concurrent handler for bidirectional request"
         );
 
+        // Clone instance_id for the spawned task
+        let instance_id = self.instance_id.clone();
+
         // Spawn concurrent handler
         let handle = tokio::spawn(async move {
             if let Err(e) = client_handle
-                .handle_incoming_request(method, request_id.clone(), owned_json)
+                .handle_incoming_request(method, request_id.clone(), owned_json, instance_id.as_deref())
                 .await
             {
                 tracing::error!(
