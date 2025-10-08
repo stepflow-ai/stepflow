@@ -67,10 +67,9 @@ Start the Lima VM (automatically selects VZ or QEMU):
 - Sets up local Docker registry at localhost:5000
 - Mounts your stepflow project at `/home/lima.linux/stepflow`
 - Configures port forwarding:
-  - 6443 → k3s API server
-  - 8080 → HTTP services (maps to VM port 80)
-  - 8443 → HTTPS services (maps to VM port 443)
-  - 5000 → Local Docker registry
+  - 6443 → k3s API server (required for kubectl access)
+  - 8080 → HTTP services (Pingora load balancer, Stepflow server, component servers)
+  - 5000 → Local Docker registry (required for pushing images from Mac to k3s)
 
 **Expected output**:
 ```

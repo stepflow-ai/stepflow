@@ -45,17 +45,16 @@ ssh:
   loadDotSSHPubKeys: true
 
 # Port forwarding for k3s API and services
-# GRPC forwarding (recommended) - automatic port mapping
 portForwards:
+# k3s API server - Required for kubectl access from Mac
 - guestPort: 6443
   hostPort: 6443
   proto: tcp
+# HTTP services - Pingora load balancer, Stepflow server, component servers
 - guestPort: 80
   hostPort: 8080
   proto: tcp
-- guestPort: 443
-  hostPort: 8443
-  proto: tcp
+# Local Docker registry - Required for pushing images from Mac to k3s
 - guestPort: 5000
   hostPort: 5000
   proto: tcp
