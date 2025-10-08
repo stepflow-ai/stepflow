@@ -363,7 +363,7 @@ If you prefer to deploy step-by-step:
 
 ```bash
 # Build images
-./scripts/build-and-push.sh          # Component server
+./scripts/build-component-server.sh  # Component server
 ./scripts/build-pingora.sh           # Pingora load balancer
 ./scripts/build-stepflow-server.sh   # Stepflow runtime
 

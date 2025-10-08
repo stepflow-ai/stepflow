@@ -62,7 +62,7 @@ print_status "Step 1/4: Building Docker images..."
 echo ""
 
 print_info "Building component server..."
-if bash "$SCRIPT_DIR/build-and-push.sh"; then
+if bash "$SCRIPT_DIR/build-component-server.sh"; then
     print_info "✅ Component server build complete"
 else
     echo "❌ Error: Component server build failed"

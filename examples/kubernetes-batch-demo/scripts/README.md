@@ -23,12 +23,12 @@ export KUBECONFIG=$(pwd)/../kubeconfig
 
 ## Build Scripts
 
-### `build-and-push.sh`
+### `build-component-server.sh`
 Builds and pushes component server Docker image to local registry.
 
 **Usage:**
 ```bash
-./build-and-push.sh
+./build-component-server.sh
 ```
 
 ### `build-pingora.sh`
@@ -136,7 +136,7 @@ cd ../workflows
 ```
 start-lima-k3s.sh
   └── setup-kubectl.sh
-        └── build-and-push.sh
+        └── build-component-server.sh
         └── build-pingora.sh
         └── build-stepflow-server.sh
               └── deploy-all.sh

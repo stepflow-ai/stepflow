@@ -362,26 +362,4 @@ kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
 # From within cluster
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
   curl http://pingora-lb.stepflow-demo.svc.cluster.local:8080/health
-```
-
-## Future Enhancements
-
-### Phase 6: Horizontal Pod Autoscaling
-- Add HPA for component servers based on CPU/memory
-- Test scaling behavior under load
-- Document auto-scaling metrics
-
-### Phase 7: Persistent State
-- Replace in-memory state with PostgreSQL
-- Add workflow history and result persistence
-- Enable workflow replay and debugging
-
-### Phase 8: Monitoring
-- Add Prometheus metrics
-- Create Grafana dashboards
-- Set up alerting for failures
-
-### Phase 9: Advanced Routing
-- Implement component-specific routing rules
-- Add support for GPU-enabled component servers
-- Enable affinity-based scheduling
+```s
