@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: component-server
+  namespace: stepflow-demo
+  labels:
+    app: component-server
+    component: stepflow-component
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service - DNS returns all pod IPs for load balancer discovery
+  selector:
+    app: component-server
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  sessionAffinity: None

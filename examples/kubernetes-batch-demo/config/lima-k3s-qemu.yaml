@@ -1,0 +1,61 @@
+# Lima configuration for k3s with QEMU backend
+# Fallback for systems without VZ support
+# Requires: socket_vmnet installation (brew install socket_vmnet)
+# Run with: limactl start lima-k3s-qemu.yaml
+
+# VM type
+vmType: "qemu"
+
+# OS image
+images:
+- location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+  arch: "x86_64"
+- location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+  arch: "aarch64"
+
+# CPU and memory
+cpus: 4
+memory: "8GiB"
+disk: "50GiB"
+
+# Mount the stepflow project directory
+mounts:
+- location: "~/code/stepflow"
+  mountPoint: "/home/lima.linux/stepflow"
+  writable: true
+
+# Network configuration (requires socket_vmnet)
+networks:
+- lima: shared
+
+# Provision script to install k3s and dependencies
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    bash /home/lima.linux/stepflow/examples/kubernetes-batch-demo/config/provision-lima-system.sh
+
+- mode: user
+  script: |
+    #!/bin/bash
+    bash /home/lima.linux/stepflow/examples/kubernetes-batch-demo/config/provision-lima-user.sh
+
+# SSH configuration
+ssh:
+  localPort: 2222
+  loadDotSSHPubKeys: true
+
+# Port forwarding for k3s API and services
+portForwards:
+# k3s API server - Required for kubectl access from Mac
+- guestPort: 6443
+  hostPort: 6443
+  proto: tcp
+# HTTP services - Pingora load balancer, Stepflow server, component servers
+- guestPort: 80
+  hostPort: 8080
+  proto: tcp
+# Local Docker registry - Required for pushing images from Mac to k3s
+- guestPort: 5000
+  hostPort: 5000
+  proto: tcp

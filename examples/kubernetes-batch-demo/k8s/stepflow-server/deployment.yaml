@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-server
+  namespace: stepflow-demo
+  labels:
+    app: stepflow-server
+    component: runtime
+spec:
+  replicas: 1  # Single instance for simplicity (in-memory state store)
+  selector:
+    matchLabels:
+      app: stepflow-server
+  template:
+    metadata:
+      labels:
+        app: stepflow-server
+        component: runtime
+    spec:
+      containers:
+      - name: stepflow-server
+        image: localhost:5000/stepflow-server:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 7840
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        env:
+        - name: RUST_LOG
+          value: "info,stepflow_execution=debug,stepflow_protocol=debug"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      volumes:
+      - name: config
+        configMap:
+          name: stepflow-server-config

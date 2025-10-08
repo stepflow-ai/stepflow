@@ -1,0 +1,28 @@
+# Lima VM state
+*.lima/
+
+# k3s artifacts
+kubeconfig
+kubeconfig.*
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Build artifacts
+build/
+target/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+.DS_Store

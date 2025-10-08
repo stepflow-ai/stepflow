@@ -131,20 +131,31 @@ async fn test_http_plugin_creation_failure() {
 /// Integration test that starts a Python HTTP server and tests the streamable HTTP protocol
 #[tokio::test]
 async fn test_http_protocol_integration() {
-    // Skip test if we can't find the Python SDK
-    let python_sdk_path = std::path::Path::new("../../../sdks/python");
-    if !python_sdk_path.exists() {
-        eprintln!("Skipping HTTP integration test - Python SDK not found");
-        return;
-    }
+    // Get paths relative to CARGO_MANIFEST_DIR for stability
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let python_sdk_path = manifest_dir.join("../../../sdks/python");
+    let server_script = manifest_dir.join("tests/test_echo_server.py");
+
+    // Fail test if Python SDK not found (required for this test)
+    assert!(
+        python_sdk_path.exists(),
+        "Python SDK not found at {:?}. This test requires the Python SDK.",
+        python_sdk_path
+    );
+
+    // Fail test if echo server script not found
+    assert!(
+        server_script.exists(),
+        "Test echo server not found at {:?}. This test requires test_echo_server.py.",
+        server_script
+    );
 
     // Start the Python HTTP server
-    let server_script = std::path::Path::new("tests/test_echo_server.py");
     let mut python_server = Command::new("uv")
         .args([
             "run",
             "--project",
-            "../../../sdks/python",
+            python_sdk_path.to_str().unwrap(),
             "--extra",
             "http",
             "python",
@@ -153,7 +164,7 @@ async fn test_http_protocol_integration() {
             "--port",
             "18081",
         ])
-        .current_dir(std::env::current_dir().unwrap())
+        .current_dir(&manifest_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -298,12 +309,24 @@ async fn test_http_protocol_integration() {
 /// Test HTTP plugin with server that starts and stops
 #[tokio::test]
 async fn test_http_plugin_lifecycle() {
-    // Skip test if we can't find the Python SDK
-    let python_sdk_path = std::path::Path::new("../../../sdks/python");
-    if !python_sdk_path.exists() {
-        eprintln!("Skipping HTTP lifecycle test - Python SDK not found");
-        return;
-    }
+    // Get paths relative to CARGO_MANIFEST_DIR for stability
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let python_sdk_path = manifest_dir.join("../../../sdks/python");
+    let server_script = manifest_dir.join("tests/test_echo_server.py");
+
+    // Fail test if Python SDK not found (required for this test)
+    assert!(
+        python_sdk_path.exists(),
+        "Python SDK not found at {:?}. This test requires the Python SDK.",
+        python_sdk_path
+    );
+
+    // Fail test if echo server script not found
+    assert!(
+        server_script.exists(),
+        "Test echo server not found at {:?}. This test requires test_echo_server.py.",
+        server_script
+    );
 
     // Create streamable HTTP plugin (now the primary HTTP transport)
     let config = StepflowPluginConfig {
@@ -328,12 +351,11 @@ async fn test_http_plugin_lifecycle() {
     );
 
     // Start server
-    let server_script = std::path::Path::new("tests/test_echo_server.py");
     let mut python_server = Command::new("uv")
         .args([
             "run",
             "--project",
-            "../../../sdks/python",
+            python_sdk_path.to_str().unwrap(),
             "--extra",
             "http",
             "python",
@@ -342,7 +364,7 @@ async fn test_http_plugin_lifecycle() {
             "--port",
             "18082",
         ])
-        .current_dir(std::env::current_dir().unwrap())
+        .current_dir(&manifest_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

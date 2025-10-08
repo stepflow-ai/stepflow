@@ -72,13 +72,21 @@ class StepflowHttpServer:
         server: StepflowServer | None = None,
         host: str = "localhost",
         port: int = 8080,
+        instance_id: str | None = None,
     ):
         self.server = server or StepflowServer()
         self.host = host
         self.port = port
+        self.instance_id = instance_id or self._generate_instance_id()
         self.app = FastAPI(title="Stepflow Streamable HTTP Server")
         self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
         self._setup_routes()
+
+    def _generate_instance_id(self) -> str:
+        """Generate a default instance ID using UUID."""
+        import uuid
+
+        return uuid.uuid4().hex[:16]
 
     def _create_error_response(
         self,
@@ -131,12 +139,13 @@ class StepflowHttpServer:
 
         @self.app.get("/health")
         async def health_check():
-            """Health check endpoint for integration tests."""
+            """Health check endpoint for integration tests and load balancers."""
             import datetime
 
             return JSONResponse(
                 content={
                     "status": "healthy",
+                    "instanceId": self.instance_id,
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "service": "stepflow-python-http-server",
                 },
@@ -275,6 +284,7 @@ class StepflowHttpServer:
                         request, context, outgoing_queue
                     ),
                     media_type="text/event-stream",
+                    headers={"Stepflow-Instance-Id": self.instance_id},
                 )
             else:
                 # No context needed - delegate to core server
