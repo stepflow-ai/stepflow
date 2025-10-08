@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## <a id="0.4.0"></a> [Stepflow 0.4.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.4.0) - 2025-10-02
+## <a id="0.5.0"></a> [Stepflow 0.5.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.5.0) - 2025-10-08
 ### Bug Fixes
 
 - Update tracing-subscriber ([#242](https://github.com/stepflow-ai/stepflow/pull/242))
@@ -28,6 +28,10 @@ All notable changes to this project will be documented in this file.
 - Enhance error responses with full stack traces and attachments ([#332](https://github.com/stepflow-ai/stepflow/pull/332))
 - Improve error reporting with stack traces ([#333](https://github.com/stepflow-ai/stepflow/pull/333))
 - Restart stdio subprocess; retry components ([#336](https://github.com/stepflow-ai/stepflow/pull/336))
+- Add batch execution support with CLI and REST API ([#345](https://github.com/stepflow-ai/stepflow/pull/345))
+- Protocol support for batch execution ([#348](https://github.com/stepflow-ai/stepflow/pull/348))
+- Kubernetes + load balancer demo ([#349](https://github.com/stepflow-ai/stepflow/pull/349))
+- Separate binaries and update release infrastructure ([#355](https://github.com/stepflow-ai/stepflow/pull/355))
 
 ### Miscellaneous Tasks
 
@@ -38,10 +42,16 @@ All notable changes to this project will be documented in this file.
 - Undo dispatch changes ([#235](https://github.com/stepflow-ai/stepflow/pull/235))
 - Release stepflow-rs v0.3.0 ([#234](https://github.com/stepflow-ai/stepflow/pull/234))
 - Add Langflow to CI ([#243](https://github.com/stepflow-ai/stepflow/pull/243))
+- Release stepflow-rs v0.4.0 ([#341](https://github.com/stepflow-ai/stepflow/pull/341))
 
 ### Refactoring
 
 - Introduce Step/Flow builders ([#238](https://github.com/stepflow-ai/stepflow/pull/238))
+
+## <a id="0.4.0"></a> [Stepflow 0.4.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.4.0) - 2025-10-02
+
+Skipped -- didn't go out due to bugs in the release script.
+Changes will be included in 0.5.0.
 
 ## <a id="0.3.0"></a> [Stepflow 0.3.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.3.0) - 2025-08-25
 ### Documentation
