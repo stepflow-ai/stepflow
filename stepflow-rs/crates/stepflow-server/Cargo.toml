@@ -41,6 +41,7 @@ utoipa.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+stepflow-builtins.workspace = true
 stepflow-mock.workspace = true
 tracing-error.workspace = true
 tower.workspace = true

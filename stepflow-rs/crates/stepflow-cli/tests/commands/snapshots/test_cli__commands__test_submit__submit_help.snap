@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_submit.rs
+source: crates/stepflow-cli/tests/commands/test_submit.rs
 info:
   program: stepflow
   args:
@@ -11,9 +11,9 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-Submit a workflow to a Stepflow service.
+Submit a workflow to a Stepflow server.
 
-Submit a workflow to a running Stepflow service.
+Submit a workflow to a running Stepflow server.
 
 # Examples
 
@@ -25,7 +25,7 @@ stepflow submit --flow=workflow.yaml --input=input.json
 
 # Submit to remote server
 
-stepflow submit --url=http://production-server:7837 --flow=workflow.yaml --input-json='{"key": "value"}'
+stepflow submit --url=http://production-server:7840 --flow=workflow.yaml --input-json='{"key": "value"}'
 
 # Submit with inline YAML input
 

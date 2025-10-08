@@ -4033,6 +4033,7 @@ dependencies = [
  "serde",
  "serde_json",
  "stepflow-analysis",
+ "stepflow-builtins",
  "stepflow-config",
  "stepflow-core",
  "stepflow-execution",

@@ -25,14 +25,13 @@ use crate::cli::Cli;
 /// This ensures consistent ordering and fails if new commands are added without explicit positioning
 const COMMAND_ORDER: &[(&str, u32)] = &[
     ("run", 2),
-    ("serve", 3),
-    ("submit", 4),
-    ("submit-batch", 5),
-    ("test", 6),
-    ("list-components", 7),
-    ("repl", 8),
-    ("validate", 9),
-    ("visualize", 10),
+    ("submit", 3),
+    ("submit-batch", 4),
+    ("test", 5),
+    ("list-components", 6),
+    ("repl", 7),
+    ("validate", 8),
+    ("visualize", 9),
 ];
 
 /// Generate custom CLI index documentation with command list and links
@@ -266,11 +265,10 @@ mod tests {
 
         // Verify it contains links to command pages
         assert!(docs.contains("[`run`](./run.md)"));
-        assert!(docs.contains("[`serve`](./serve.md)"));
         assert!(docs.contains("[`validate`](./validate.md)"));
 
         // Verify it doesn't contain detailed command usage (that's for individual pages)
-        assert!(!docs.contains("Usage: stepflow-main run"));
+        assert!(!docs.contains("Usage: stepflow"));
         assert!(!docs.contains("**Command Overview:**"));
     }
 

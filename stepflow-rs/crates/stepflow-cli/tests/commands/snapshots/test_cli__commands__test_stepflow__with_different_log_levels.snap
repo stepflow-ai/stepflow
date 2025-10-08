@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_stepflow.rs
+source: crates/stepflow-cli/tests/commands/test_stepflow.rs
 info:
   program: stepflow
   args:
@@ -19,8 +19,7 @@ Usage: stepflow [OPTIONS] <COMMAND>
 Commands:
   run              Run a workflow directly
   submit-batch     Submit a batch workflow to a Stepflow service for execution
-  serve            Start a Stepflow service
-  submit           Submit a workflow to a Stepflow service
+  submit           Submit a workflow to a Stepflow server
   test             Run tests defined in workflow files or directories
   list-components  List all available components from a stepflow config
   repl             Start an interactive REPL for workflow development and debugging
