@@ -12,7 +12,6 @@ repository.workspace = true
 pingora = { version = "0.6", features = ["proxy"] }
 pingora-core = "0.6"
 pingora-http = "0.6"
-pingora-load-balancing = "0.6"
 pingora-proxy = "0.6"
 
 # Async runtime

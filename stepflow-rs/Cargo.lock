@@ -2460,37 +2460,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pingora-ketama"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f5dd8546b1874d5cfca594375c1cfb852c3dffd4f060428fa031a6e790dea18"
-dependencies = [
- "crc32fast",
-]
-
-[[package]]
-name = "pingora-load-balancing"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b5bb0314830a64b73b50b3782f3089f87947b61b4324c804d6f8d4ff9ce1c70"
-dependencies = [
- "arc-swap",
- "async-trait",
- "derivative",
- "fnv",
- "futures",
- "http",
- "log",
- "pingora-core",
- "pingora-error",
- "pingora-http",
- "pingora-ketama",
- "pingora-runtime",
- "rand 0.8.5",
- "tokio",
-]
-
-[[package]]
 name = "pingora-lru"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3916,7 +3885,6 @@ dependencies = [
  "serde_yaml_ng",
  "stepflow-builtins",
  "stepflow-components-mcp",
- "stepflow-core",
  "stepflow-execution",
  "stepflow-plugin",
  "stepflow-protocol",
@@ -3984,7 +3952,6 @@ dependencies = [
  "pingora",
  "pingora-core",
  "pingora-http",
- "pingora-load-balancing",
  "pingora-proxy",
  "reqwest",
  "serde",
@@ -4065,7 +4032,6 @@ dependencies = [
  "indexmap 2.11.4",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "stepflow-analysis",
  "stepflow-config",
  "stepflow-core",

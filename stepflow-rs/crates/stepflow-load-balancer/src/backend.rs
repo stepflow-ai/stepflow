@@ -98,16 +98,18 @@ impl BackendPool {
     /// Increment connection count for a backend by address
     pub fn increment_connections(&self, address: &str) {
         if let Ok(socket_addr) = address.parse::<SocketAddr>()
-            && let Some(backend) = self.backends.values().find(|b| b.address == socket_addr) {
-                backend.increment_connections();
-            }
+            && let Some(backend) = self.backends.values().find(|b| b.address == socket_addr)
+        {
+            backend.increment_connections();
+        }
     }
 
     /// Decrement connection count for a backend by address
     pub fn decrement_connections(&self, address: &str) {
         if let Ok(socket_addr) = address.parse::<SocketAddr>()
-            && let Some(backend) = self.backends.values().find(|b| b.address == socket_addr) {
-                backend.decrement_connections();
-            }
+            && let Some(backend) = self.backends.values().find(|b| b.address == socket_addr)
+        {
+            backend.decrement_connections();
+        }
     }
 }
