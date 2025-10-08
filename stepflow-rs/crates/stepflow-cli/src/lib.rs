@@ -18,8 +18,7 @@ mod error;
 mod list_components;
 mod repl;
 mod run;
-mod serve;
-mod stepflow_config;
+pub mod stepflow_config;
 mod submit;
 mod submit_batch;
 pub mod test;
@@ -28,6 +27,7 @@ mod validate;
 mod validation_display;
 mod visualize;
 
+pub use args::workflow::WorkflowLoader;
 pub use cli::Cli;
 pub use error::*;
 pub use run::run;

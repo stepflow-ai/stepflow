@@ -27,11 +27,12 @@ RUN apt-get update && \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Pingora load balancer source
-COPY pingora-lb/ .
+# Copy workspace files and load balancer source
+COPY ../../stepflow-rs/Cargo.toml Cargo.toml
+COPY ../../stepflow-rs/crates/stepflow-load-balancer crates/stepflow-load-balancer
 
 # Build release binary
-RUN cargo build --release
+RUN cargo build --release -p stepflow-load-balancer
 
 # Runtime image
 FROM debian:bookworm-slim
@@ -42,16 +43,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/pingora-lb /usr/local/bin/pingora-lb
+COPY --from=builder /build/target/release/stepflow-load-balancer /usr/local/bin/stepflow-load-balancer
 
 # Create non-root user
-RUN useradd -m -u 1000 pingora && \
-    chown pingora:pingora /usr/local/bin/pingora-lb
+RUN useradd -m -u 1000 stepflow && \
+    chown stepflow:stepflow /usr/local/bin/stepflow-load-balancer
 
-USER pingora
+USER stepflow
 
 # Expose load balancer port
 EXPOSE 8080
 
 # Run load balancer
-CMD ["pingora-lb"]
+CMD ["stepflow-load-balancer"]

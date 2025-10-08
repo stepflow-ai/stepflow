@@ -47,28 +47,28 @@ if ! limactl list | grep -q "$LIMA_INSTANCE.*Running"; then
     exit 1
 fi
 
-print_status "Building Pingora load balancer Docker image..."
+print_status "Building Stepflow load balancer Docker image..."
 
 # Build image inside Lima VM
-limactl shell --workdir /home/lima.linux/stepflow/examples/kubernetes-batch-demo "$LIMA_INSTANCE" bash << EOF
+limactl shell --workdir /home/lima.linux/stepflow "$LIMA_INSTANCE" bash << EOF
 set -e
 
 # Build the image (multi-stage build with Rust compilation)
-echo "Building Pingora image (this may take a few minutes)..."
-sudo docker build -f docker/Dockerfile.pingora -t localhost:5000/pingora-lb:latest .
+echo "Building Stepflow load balancer image (this may take a few minutes)..."
+sudo docker build -f examples/kubernetes-batch-demo/docker/Dockerfile.load-balancer -t localhost:5000/stepflow-load-balancer:latest .
 
 # Push to local registry
 echo "Pushing to local registry..."
-sudo docker push localhost:5000/pingora-lb:latest
+sudo docker push localhost:5000/stepflow-load-balancer:latest
 
-echo "✅ Pingora image built and pushed successfully!"
-sudo k3s ctr images list | grep pingora-lb || true
+echo "✅ Stepflow load balancer image built and pushed successfully!"
+sudo k3s ctr images list | grep stepflow-load-balancer || true
 EOF
 
-print_status "✅ Pingora load balancer image ready!"
-print_info "Image: localhost:5000/pingora-lb:latest"
+print_status "✅ Stepflow load balancer image ready!"
+print_info "Image: localhost:5000/stepflow-load-balancer:latest"
 
 echo ""
 echo "Next steps:"
-echo "  kubectl apply -k k8s/pingora-lb/"
-echo "  kubectl get pods -n stepflow-demo -l app=pingora-lb"
+echo "  kubectl apply -k k8s/load-balancer/"
+echo "  kubectl get pods -n stepflow-demo -l app=stepflow-load-balancer"

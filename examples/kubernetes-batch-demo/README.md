@@ -74,7 +74,7 @@ kubernetes-batch-demo/
 ├── scripts/                   # Setup and deployment scripts
 ├── k8s/                      # Kubernetes manifests
 │   ├── component-server/     # Component server deployment
-│   └── pingora-lb/          # Pingora load balancer
+│   └── load-balancer/        # Stepflow load balancer
 ├── docker/                   # Dockerfiles
 ├── workflows/                # Test workflows and configs
 └── docs/                     # Documentation

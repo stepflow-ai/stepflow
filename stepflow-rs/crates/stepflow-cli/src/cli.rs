@@ -21,7 +21,6 @@ use crate::{
     list_components::OutputFormat,
     repl::run_repl,
     run::run,
-    serve::serve,
     submit::submit,
     submit_batch::submit_batch,
     test::TestOptions,
@@ -150,34 +149,9 @@ pub enum Command {
         #[arg(long="output", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
         output_path: Option<PathBuf>,
     },
-    /// Start a Stepflow service.
+    /// Submit a workflow to a Stepflow server.
     ///
-    /// Start a Stepflow service that can accept workflow submissions via HTTP API.
-    ///
-    /// # Examples
-    ///
-    /// ```bash
-    ///
-    /// # Start server on default port (7837)
-    ///
-    /// stepflow serve
-    ///
-    /// # Start server on custom port with config
-    ///
-    /// stepflow serve --port=8080 --config=production-config.yml
-    ///
-    /// ```
-    Serve {
-        /// Port to run the service on.
-        #[arg(long, value_name = "PORT", default_value = "7837")]
-        port: u16,
-
-        #[command(flatten)]
-        config_args: ConfigArgs,
-    },
-    /// Submit a workflow to a Stepflow service.
-    ///
-    /// Submit a workflow to a running Stepflow service.
+    /// Submit a workflow to a running Stepflow server.
     ///
     /// # Examples
     ///
@@ -189,7 +163,7 @@ pub enum Command {
     ///
     /// # Submit to remote server
     ///
-    /// stepflow submit --url=http://production-server:7837 --flow=workflow.yaml --input-json='{"key": "value"}'
+    /// stepflow submit --url=http://production-server:7840 --flow=workflow.yaml --input-json='{"key": "value"}'
     ///
     /// # Submit with inline YAML input
     ///
@@ -422,7 +396,6 @@ impl Cli {
                 Command::Run { .. } => "run",
                 Command::SubmitBatch { .. } => "submit-batch",
                 Command::Test { .. } => "test",
-                Command::Serve { .. } => "serve",
                 Command::Submit { .. } => "submit",
                 Command::ListComponents { .. } => "list-components",
                 Command::Repl { .. } => "repl",
@@ -477,12 +450,6 @@ impl Cli {
                     output_path.as_deref(),
                 )
                 .await?;
-            }
-            Command::Serve { port, config_args } => {
-                let config = config_args.load_config(None)?;
-                let executor = WorkflowLoader::create_executor_from_config(config).await?;
-
-                serve(executor, port).await?;
             }
             Command::Submit {
                 url,

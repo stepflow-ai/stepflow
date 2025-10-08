@@ -1,5 +1,5 @@
 [package]
-name = "stepflow-main"
+name = "stepflow-cli"
 description = "Stepflow CLI."
 version.workspace = true
 authors.workspace = true

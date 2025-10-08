@@ -62,30 +62,30 @@ echo "📊 Component server status:"
 kubectl get pods -n stepflow-demo -l app=component-server -o wide
 echo ""
 
-# Step 5: Deploy Pingora load balancer
-echo "🔀 Deploying Pingora load balancer..."
-kubectl apply -k "$K8S_DIR/pingora-lb/"
+# Step 5: Deploy load balancer
+echo "🔀 Deploying Stepflow load balancer..."
+kubectl apply -k "$K8S_DIR/load-balancer/"
 echo ""
 
-# Step 6: Wait for Pingora to be ready
-echo "⏳ Waiting for Pingora pods to be ready (timeout: 60s)..."
-if kubectl wait --for=condition=Ready pods -l app=pingora-lb -n stepflow-demo --timeout=60s; then
-    echo "✅ Pingora load balancer ready"
+# Step 6: Wait for load balancer to be ready
+echo "⏳ Waiting for load balancer pods to be ready (timeout: 60s)..."
+if kubectl wait --for=condition=Ready pods -l app=stepflow-load-balancer -n stepflow-demo --timeout=60s; then
+    echo "✅ Stepflow load balancer ready"
 else
-    echo "❌ Pingora failed to become ready"
+    echo "❌ Load balancer failed to become ready"
     echo ""
     echo "Pod status:"
-    kubectl get pods -n stepflow-demo -l app=pingora-lb
+    kubectl get pods -n stepflow-demo -l app=stepflow-load-balancer
     echo ""
     echo "Pod logs:"
-    kubectl logs -n stepflow-demo -l app=pingora-lb --tail=50
+    kubectl logs -n stepflow-demo -l app=stepflow-load-balancer --tail=50
     exit 1
 fi
 echo ""
 
-# Step 7: Show Pingora status
-echo "📊 Pingora load balancer status:"
-kubectl get pods -n stepflow-demo -l app=pingora-lb -o wide
+# Step 7: Show load balancer status
+echo "📊 Load balancer status:"
+kubectl get pods -n stepflow-demo -l app=stepflow-load-balancer -o wide
 echo ""
 
 # Step 8: Show all services
@@ -98,18 +98,18 @@ echo "⏳ Waiting 15 seconds for backend discovery..."
 sleep 15
 echo ""
 
-# Step 10: Show Pingora logs to verify backend discovery
-echo "📋 Pingora backend discovery logs:"
-kubectl logs -n stepflow-demo -l app=pingora-lb --tail=30 | grep -E "(INFO|Backend|healthy|Discovered)" || true
+# Step 10: Show load balancer logs to verify backend discovery
+echo "📋 Load balancer backend discovery logs:"
+kubectl logs -n stepflow-demo -l app=stepflow-load-balancer --tail=30 | grep -E "(INFO|Backend|healthy|Discovered)" || true
 echo ""
 
 echo "✅ Deployment complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Port-forward to test: kubectl port-forward -n stepflow-demo service/pingora-lb 8080:8080"
+echo "  1. Port-forward to test: kubectl port-forward -n stepflow-demo service/stepflow-load-balancer 8080:8080"
 echo "  2. Test health endpoint: curl http://localhost:8080/health"
 echo "  3. Run workflows from workflows/ directory"
 echo ""
 echo "To view logs:"
 echo "  Component servers: kubectl logs -n stepflow-demo -l app=component-server -f"
-echo "  Pingora LB:        kubectl logs -n stepflow-demo -l app=pingora-lb -f"
+echo "  Load Balancer:        kubectl logs -n stepflow-demo -l app=stepflow-load-balancer -f"

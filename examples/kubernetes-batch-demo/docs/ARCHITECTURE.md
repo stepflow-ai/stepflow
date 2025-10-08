@@ -18,7 +18,7 @@ The demo showcases distributed component execution in Kubernetes while maintaini
 - Kubernetes service: `stepflow-server.stepflow-demo.svc.cluster.local:7840`
 
 **Configuration**:
-- Routes `/python/*` components to Pingora load balancer
+- Routes `/python/*` components to Load Balancer load balancer
 - Routes other components to built-in plugins
 - No persistent storage (workflows are stateless in this demo)
 
@@ -58,15 +58,15 @@ The demo showcases distributed component execution in Kubernetes while maintaini
 2. Component server responds with SSE stream including `Stepflow-Instance-Id` header
 3. During execution, component can call back to runtime (e.g., `put_blob`, `get_blob`)
 4. Runtime includes `Stepflow-Instance-Id` header in responses
-5. Pingora routes responses back to the correct pod instance
+5. Load Balancer routes responses back to the correct pod instance
 
-### 3. Pingora Load Balancer
+### 3. Load Balancer Load Balancer
 
 **Purpose**: Intelligent HTTP load balancing with SSE support and instance affinity
 
 **Deployment**:
 - 2 replicas for high availability
-- Kubernetes service: `pingora-lb.stepflow-demo.svc.cluster.local:8080`
+- Kubernetes service: `stepflow-load-balancer.stepflow-demo.svc.cluster.local:8080`
 
 **Features**:
 - Backend discovery via DNS (queries headless service)
@@ -86,7 +86,7 @@ Bidirectional Response (with instance ID) → Route to specific backend
 └─ Forward to pod-A specifically (maintains affinity)
 ```
 
-**Why Pingora?**
+**Why Load Balancer?**
 - Native SSE streaming support
 - Low latency (async Rust-based)
 - Fine-grained control over routing logic
@@ -113,7 +113,7 @@ Bidirectional Response (with instance ID) → Route to specific backend
 ### Simple Component Execution
 
 ```
-User → Stepflow Runtime → Pingora LB → Component Server
+User → Stepflow Runtime → Load Balancer LB → Component Server
                              ↓
                     (round-robin selection)
                              ↓
@@ -128,7 +128,7 @@ User → Stepflow Runtime → Pingora LB → Component Server
 
 ```
 1. Initial Request
-User → Stepflow Runtime → Pingora LB → Component Server Pod-A
+User → Stepflow Runtime → Load Balancer LB → Component Server Pod-A
                              ↓
                     (round-robin selection)
                              ↓
@@ -148,7 +148,7 @@ Runtime sends response with
 Stepflow-Instance-Id: pod-A
          ↓
 3. Instance Affinity Routing
-Pingora receives response
+Load Balancer receives response
          ↓
 Extract Stepflow-Instance-Id: pod-A
          ↓
@@ -174,7 +174,7 @@ Blob storage succeeds ✓
 │               │ Routes /python/* to         │
 │               ↓                             │
 │  ┌────────────────────────────────────┐    │
-│  │  pingora-lb (2 pods)               │    │
+│  │  stepflow-load-balancer (2 pods)               │    │
 │  │  Port: 8080                        │    │
 │  │  Load balancing + Instance routing │    │
 │  └────────────┬───────────────────────┘    │
@@ -205,12 +205,12 @@ Blob storage succeeds ✓
 
 ✅ **Component Servers**: Horizontally scalable via k8s replicas
 - Add more pods to handle more concurrent component executions
-- Pingora automatically discovers new backends
+- Load Balancer automatically discovers new backends
 - No configuration changes needed
 
-✅ **Pingora Load Balancer**: Can add more replicas
+✅ **Load Balancer Load Balancer**: Can add more replicas
 - Each replica does independent backend discovery
-- Service load-balances across Pingora instances
+- Service load-balances across Load Balancer instances
 
 ### What Doesn't Scale (By Design)
 
@@ -241,7 +241,7 @@ plugins:
   k8s_components:
     type: stepflow
     transport: http
-    url: "http://pingora-lb.stepflow-demo.svc.cluster.local:8080"
+    url: "http://stepflow-load-balancer.stepflow-demo.svc.cluster.local:8080"
 
 routes:
   "/python/{*component}":
@@ -256,7 +256,7 @@ stateStore:
 ### Kubernetes Resources
 - **Namespace**: `stepflow-demo`
 - **Component Server**: 3 replicas, headless service
-- **Pingora LB**: 2 replicas, ClusterIP service
+- **Load Balancer LB**: 2 replicas, ClusterIP service
 - **Stepflow Server**: 1 replica, ClusterIP service
 
 ## Security Considerations
@@ -277,18 +277,18 @@ stateStore:
 ## Performance Characteristics
 
 ### Latency
-- Component execution: ~5-10ms overhead (Pingora + network)
+- Component execution: ~5-10ms overhead (Load Balancer + network)
 - Bidirectional requests: ~2-5ms per runtime call
 - Total workflow latency: depends on component complexity
 
 ### Throughput
 - Component servers: ~100 req/sec per pod (Python HTTP)
-- Pingora LB: ~10,000 req/sec per pod (Rust async)
+- Load Balancer LB: ~10,000 req/sec per pod (Rust async)
 - Stepflow runtime: ~50 concurrent workflows (single instance, in-memory)
 
 ### Resource Usage
 - Component server pod: 100m CPU, 256Mi RAM
-- Pingora LB pod: 100m CPU, 128Mi RAM
+- Load Balancer LB pod: 100m CPU, 128Mi RAM
 - Stepflow runtime pod: 100m CPU, 256Mi RAM
 
 ## Comparison with Other Architectures
@@ -296,7 +296,7 @@ stateStore:
 ### vs. Local Stepflow + Port-forward to Component Server
 **Previous approach**: Stepflow runs on Mac, port-forward to component server service
 
-**Current approach**: Stepflow runs in k8s, routes through Pingora
+**Current approach**: Stepflow runs in k8s, routes through Load Balancer
 
 **Advantages**:
 - ✅ More realistic production setup
@@ -336,9 +336,9 @@ kubectl logs -n stepflow-demo -l app=component-server --tail=100
 kubectl logs -n stepflow-demo component-server-xxx-xxx -f
 ```
 
-### View Pingora Logs
+### View Load Balancer Logs
 ```bash
-kubectl logs -n stepflow-demo -l app=pingora-lb -f
+kubectl logs -n stepflow-demo -l app=stepflow-load-balancer -f
 ```
 
 ### Check Service Endpoints
@@ -346,8 +346,8 @@ kubectl logs -n stepflow-demo -l app=pingora-lb -f
 # Component server endpoints (should show 3 pod IPs)
 kubectl get endpoints -n stepflow-demo component-server
 
-# Pingora endpoints (should show 2 pod IPs)
-kubectl get endpoints -n stepflow-demo pingora-lb
+# Load Balancer endpoints (should show 2 pod IPs)
+kubectl get endpoints -n stepflow-demo stepflow-load-balancer
 ```
 
 ### Test Component Server Directly
@@ -357,9 +357,9 @@ kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
   curl http://component-server.stepflow-demo.svc.cluster.local:8080/health
 ```
 
-### Test Pingora Load Balancer
+### Test Load Balancer Load Balancer
 ```bash
 # From within cluster
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  curl http://pingora-lb.stepflow-demo.svc.cluster.local:8080/health
+  curl http://stepflow-load-balancer.stepflow-demo.svc.cluster.local:8080/health
 ```s

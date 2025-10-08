@@ -1,6 +1,6 @@
 # Testing Guide for Kubernetes Batch Demo
 
-This guide walks through testing the complete Kubernetes batch execution demo with Pingora load balancer and Stepflow runtime.
+This guide walks through testing the complete Kubernetes batch execution demo with Load Balancer load balancer and Stepflow runtime.
 
 ## Prerequisites
 
@@ -34,8 +34,8 @@ NAME                                READY   STATUS    RESTARTS   AGE
 component-server-xxx-xxx            1/1     Running   0          30s
 component-server-xxx-yyy            1/1     Running   0          30s
 component-server-xxx-zzz            1/1     Running   0          30s
-pingora-lb-xxx-xxx                  1/1     Running   0          30s
-pingora-lb-xxx-yyy                  1/1     Running   0          30s
+stepflow-load-balancer-xxx-xxx                  1/1     Running   0          30s
+stepflow-load-balancer-xxx-yyy                  1/1     Running   0          30s
 stepflow-server-xxx-xxx             1/1     Running   0          30s
 ```
 
@@ -74,7 +74,7 @@ kubectl get nodes
 Build all images:
 ```bash
 ./scripts/build-component-server.sh  # Component server
-./scripts/build-pingora.sh           # Pingora load balancer
+./scripts/build-load-balancer.sh           # Load Balancer load balancer
 ./scripts/build-stepflow-server.sh   # Stepflow runtime server
 ```
 
@@ -86,14 +86,14 @@ Deploy all services:
 ```bash
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -k k8s/component-server/
-kubectl apply -k k8s/pingora-lb/
+kubectl apply -k k8s/stepflow-load-balancer/
 kubectl apply -k k8s/stepflow-server/
 ```
 
 Wait for pods to be ready:
 ```bash
 kubectl wait --for=condition=Ready pods -l app=component-server -n stepflow-demo --timeout=120s
-kubectl wait --for=condition=Ready pods -l app=pingora-lb -n stepflow-demo --timeout=120s
+kubectl wait --for=condition=Ready pods -l app=stepflow-load-balancer -n stepflow-demo --timeout=120s
 kubectl wait --for=condition=Ready pods -l app=stepflow-server -n stepflow-demo --timeout=120s
 ```
 
@@ -144,7 +144,7 @@ Component execution distribution:
   component-server-yyy: 11 executions
   component-server-zzz: 12 executions
 
-Pingora routing decisions:
+Load Balancer routing decisions:
   10.42.0.41:8080: 23 requests
   10.42.0.42:8080: 22 requests
   10.42.0.43:8080: 25 requests
@@ -163,18 +163,18 @@ Pingora routing decisions:
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
   curl http://component-server.stepflow-demo.svc.cluster.local:8080/health
 
-# Via Pingora
+# Via Load Balancer
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  curl http://pingora-lb.stepflow-demo.svc.cluster.local:8080/health
+  curl http://stepflow-load-balancer.stepflow-demo.svc.cluster.local:8080/health
 
-# Via port-forward to Pingora (requires start-pingora-port-forward.sh)
+# Via port-forward to Load Balancer (requires start-load-balancer-port-forward.sh)
 curl http://localhost:8080/health
 ```
 
-### Check Pingora Backend Discovery
+### Check Load Balancer Backend Discovery
 
 ```bash
-kubectl exec -n stepflow-demo -it deployment/pingora-lb -- sh
+kubectl exec -n stepflow-demo -it deployment/stepflow-load-balancer -- sh
 # Inside pod:
 curl http://component-server.stepflow-demo.svc.cluster.local:8080/health
 ```
@@ -185,8 +185,8 @@ curl http://component-server.stepflow-demo.svc.cluster.local:8080/health
 # Component server logs
 kubectl logs -n stepflow-demo -l app=component-server -f
 
-# Pingora logs
-kubectl logs -n stepflow-demo -l app=pingora-lb -f
+# Load Balancer logs
+kubectl logs -n stepflow-demo -l app=stepflow-load-balancer -f
 
 # Follow specific pod
 kubectl logs -n stepflow-demo component-server-abc-12345678 -f
@@ -205,36 +205,36 @@ kubectl get pods -n stepflow-demo -l app=component-server -o json | \
 
 ### Verify Stepflow-Instance-Id Headers
 
-Add debug to Pingora logs:
+Add debug to Load Balancer logs:
 ```bash
-# Edit pingora deployment to set RUST_LOG=debug
-kubectl set env deployment/pingora-lb -n stepflow-demo RUST_LOG=debug
+# Edit load-balancer deployment to set RUST_LOG=debug
+kubectl set env deployment/stepflow-load-balancer -n stepflow-demo RUST_LOG=debug
 
 # Restart to apply
-kubectl rollout restart deployment/pingora-lb -n stepflow-demo
+kubectl rollout restart deployment/stepflow-load-balancer -n stepflow-demo
 
 # Check logs for instance ID headers
-kubectl logs -n stepflow-demo -l app=pingora-lb --tail=100 | grep "Instance ID header"
+kubectl logs -n stepflow-demo -l app=stepflow-load-balancer --tail=100 | grep "Instance ID header"
 ```
 
 ## Common Issues
 
-### Pingora can't discover backends
+### Load Balancer can't discover backends
 - Check DNS: `nslookup component-server.stepflow-demo.svc.cluster.local`
 - Check health endpoint: Pod may not be ready
-- Check Pingora logs for health check failures
+- Check Load Balancer logs for health check failures
 
 ### 503 Instance Not Available
 - Instance ID mismatch (pod restarted)
-- Pingora hasn't discovered new backend yet (wait 10s)
+- Load Balancer hasn't discovered new backend yet (wait 10s)
 - Client cached old instance ID
 
 ### SSE Stream Buffering
 - Check response headers include `X-Accel-Buffering: no`
-- Verify Pingora isn't buffering (check logs for "SSE stream detected")
+- Verify Load Balancer isn't buffering (check logs for "SSE stream detected")
 
 ### Uneven Load Distribution
-- Check connection counts in Pingora logs
+- Check connection counts in Load Balancer logs
 - Verify least-connections algorithm is working
 - Long-lived connections may cause imbalance
 

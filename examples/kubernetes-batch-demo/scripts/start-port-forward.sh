@@ -16,10 +16,10 @@
 set -e
 
 # Unified port-forward script for Kubernetes services
-# Usage: ./start-port-forward.sh [stepflow|pingora]
+# Usage: ./start-port-forward.sh [stepflow|lb]
 #
 # stepflow - Forward to Stepflow server (primary workflow)
-# pingora  - Forward to Pingora load balancer (debugging only)
+# lb       - Forward to load balancer (debugging only)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -60,20 +60,20 @@ case $SERVICE in
     USE_LIMA=false
     DESCRIPTION="Stepflow server (primary workflow)"
     ;;
-  pingora)
-    SERVICE_NAME="pingora-lb"
+  lb|load-balancer)
+    SERVICE_NAME="stepflow-load-balancer"
     LOCAL_PORT=80
     REMOTE_PORT=8080
     NAMESPACE="stepflow-demo"
     USE_LIMA=true
-    DESCRIPTION="Pingora load balancer (debugging only)"
+    DESCRIPTION="Stepflow load balancer (debugging only)"
     ;;
   *)
-    echo "Usage: $0 [stepflow|pingora]"
+    echo "Usage: $0 [stepflow|lb]"
     echo ""
     echo "Services:"
     echo "  stepflow - Forward to Stepflow server (default, primary workflow)"
-    echo "  pingora  - Forward to Pingora load balancer (debugging only)"
+    echo "  lb       - Forward to load balancer (debugging only)"
     exit 1
     ;;
 esac
@@ -82,8 +82,8 @@ echo ""
 print_status "🔌 Starting port-forward to $DESCRIPTION..."
 echo ""
 
-# Special warnings for pingora
-if [ "$SERVICE" = "pingora" ]; then
+# Special warnings for load balancer
+if [ "$SERVICE" = "lb" ] || [ "$SERVICE" = "load-balancer" ]; then
     print_warning "For workflow execution, use 'stepflow' instead"
     print_warning "This script is for direct component server access (debugging)"
     echo ""
@@ -102,7 +102,7 @@ if [ "$USE_LIMA" = "false" ]; then
     print_info "Starting port-forward: localhost:$LOCAL_PORT → $SERVICE_NAME.$NAMESPACE:$REMOTE_PORT"
     kubectl port-forward -n "$NAMESPACE" "service/$SERVICE_NAME" "$LOCAL_PORT:$REMOTE_PORT"
 else
-    # For pingora, use Lima
+    # For load balancer, use Lima
     # Check if Lima instance is running
     if ! limactl list | grep -q "$LIMA_INSTANCE.*Running"; then
         print_error "Lima instance '$LIMA_INSTANCE' is not running"

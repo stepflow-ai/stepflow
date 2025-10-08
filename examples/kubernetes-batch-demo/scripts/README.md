@@ -31,12 +31,12 @@ Builds and pushes component server Docker image to local registry.
 ./build-component-server.sh
 ```
 
-### `build-pingora.sh`
-Builds and pushes Pingora load balancer Docker image.
+### `build-load-balancer.sh`
+Builds and pushes Load balancer load balancer Docker image.
 
 **Usage:**
 ```bash
-./build-pingora.sh
+./build-load-balancer.sh
 ```
 
 ### `build-stepflow-server.sh`
@@ -58,14 +58,14 @@ Complete deployment automation. Builds all images and deploys all services.
 ```
 
 This script:
-1. Builds all Docker images (component server, Pingora, Stepflow runtime)
+1. Builds all Docker images (component server, Load balancer, Stepflow runtime)
 2. Creates stepflow-demo namespace
 3. Deploys all services
 4. Waits for pods to be ready
 5. Shows deployment status
 
 ### `deploy-k8s.sh`
-Deploys component servers and Pingora (legacy script, use `deploy-all.sh` instead).
+Deploys component servers and Load balancer (legacy script, use `deploy-all.sh` instead).
 
 **Usage:**
 ```bash
@@ -82,8 +82,8 @@ Unified port-forward script supporting multiple services.
 # Forward to Stepflow server (default, primary workflow)
 ./start-port-forward.sh stepflow
 
-# Forward to Pingora load balancer (debugging only)
-./start-port-forward.sh pingora
+# Forward to Load balancer load balancer (debugging only)
+./start-port-forward.sh load-balancer
 
 # Show help
 ./start-port-forward.sh
@@ -95,7 +95,7 @@ Unified port-forward script supporting multiple services.
   - Use for running test scripts that use Stepflow API
   - Required for normal workflow testing
 
-- **pingora** - Pingora load balancer on localhost:8080 🔧 **Debugging only**
+- **load-balancer** - Load balancer load balancer on localhost:8080 🔧 **Debugging only**
   - Use for direct component server access
   - Use for low-level debugging of component execution
   - Not needed for normal workflow testing
@@ -137,7 +137,7 @@ cd ../workflows
 start-lima-k3s.sh
   └── setup-kubectl.sh
         └── build-component-server.sh
-        └── build-pingora.sh
+        └── build-load-balancer.sh
         └── build-stepflow-server.sh
               └── deploy-all.sh
                     └── start-port-forward.sh stepflow

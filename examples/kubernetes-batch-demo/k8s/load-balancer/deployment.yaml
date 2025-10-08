@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pingora-lb
+  name: stepflow-load-balancer
   namespace: stepflow-demo
   labels:
-    app: pingora-lb
+    app: stepflow-load-balancer
     component: load-balancer
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: pingora-lb
+      app: stepflow-load-balancer
   template:
     metadata:
       labels:
-        app: pingora-lb
+        app: stepflow-load-balancer
         component: load-balancer
     spec:
       containers:
-      - name: pingora
-        image: localhost:5000/pingora-lb:latest
+      - name: load-balancer
+        image: localhost:5000/stepflow-load-balancer:latest
         imagePullPolicy: Always
         ports:
         - name: http

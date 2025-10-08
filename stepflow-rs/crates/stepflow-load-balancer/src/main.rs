@@ -11,16 +11,16 @@
 // the License.
 
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
-use once_cell::sync::Lazy;
+use arc_swap::ArcSwap;
 use pingora::prelude::*;
 use pingora::proxy::Session;
 use pingora::upstreams::peer::HttpPeer;
 use pingora_core::Result as PingoraResult;
 use pingora_http::RequestHeader;
 use pingora_proxy::{http_proxy_service, ProxyHttp};
-use std::sync::Arc;
+use std::sync::LazyLock;
 use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
 
 mod backend;
 mod discovery;
@@ -29,8 +29,9 @@ use backend::{Backend, BackendPool};
 use discovery::DiscoveryService;
 
 /// Global backend pool shared across all requests
-static BACKEND_POOL: Lazy<Arc<RwLock<BackendPool>>> =
-    Lazy::new(|| Arc::new(RwLock::new(BackendPool::new())));
+static BACKEND_POOL: LazyLock<ArcSwap<RwLock<BackendPool>>> = LazyLock::new(|| {
+    ArcSwap::from_pointee(RwLock::new(BackendPool::new()))
+});
 
 /// Stepflow load balancer proxy service
 pub struct StepflowLoadBalancer;
@@ -61,10 +62,10 @@ impl ProxyHttp for StepflowLoadBalancer {
         let backend = select_backend(request_header).await?;
 
         info!(
-            "Routing {} {} to {}",
-            request_header.method,
-            request_header.uri.path(),
-            backend.address
+            method = %request_header.method,
+            path = %request_header.uri.path(),
+            backend = %backend.address,
+            "Routing request"
         );
 
         // Store backend address in context for connection tracking
@@ -91,9 +92,10 @@ impl ProxyHttp for StepflowLoadBalancer {
     ) -> PingoraResult<()> {
         // Increment connection count when successfully connected to upstream
         if let Some(ref address) = ctx.backend_address {
-            let pool = BACKEND_POOL.read().await;
+            let pool_guard = BACKEND_POOL.load();
+            let pool = pool_guard.read().await;
             pool.increment_connections(address);
-            debug!("Incremented connection count for {}", address);
+            debug!(address = %address, "Incremented connection count");
         }
         Ok(())
     }
@@ -106,7 +108,7 @@ impl ProxyHttp for StepflowLoadBalancer {
     ) -> PingoraResult<()> {
         // Add headers for debugging
         upstream_request
-            .insert_header("X-Forwarded-By", "stepflow-pingora-lb")?;
+            .insert_header("X-Forwarded-By", "stepflow-load-balancer")?;
 
         Ok(())
     }
@@ -158,24 +160,26 @@ impl ProxyHttp for StepflowLoadBalancer {
         let response = session.response_written();
 
         info!(
-            "{} {} - Status: {}",
-            request_header.method,
-            request_header.uri.path(),
-            response.map(|r| r.status.as_u16()).unwrap_or(0)
+            method = %request_header.method,
+            path = %request_header.uri.path(),
+            status = response.map(|r| r.status.as_u16()).unwrap_or(0),
+            "Request completed"
         );
 
         // Decrement connection count when request completes
         if let Some(ref address) = ctx.backend_address {
-            let pool = BACKEND_POOL.read().await;
+            let pool_guard = BACKEND_POOL.load();
+            let pool = pool_guard.read().await;
             pool.decrement_connections(address);
-            debug!("Decremented connection count for {}", address);
+            debug!(address = %address, "Decremented connection count");
         }
     }
 }
 
 /// Select backend based on Stepflow-Instance-Id header or load balancing
 async fn select_backend(request_header: &RequestHeader) -> PingoraResult<Backend> {
-    let pool = BACKEND_POOL.read().await;
+    let pool_guard = BACKEND_POOL.load();
+    let pool = pool_guard.read().await;
 
     // Check for explicit instance routing
     if let Some(instance_id) = request_header
@@ -183,13 +187,17 @@ async fn select_backend(request_header: &RequestHeader) -> PingoraResult<Backend
         .get("Stepflow-Instance-Id")
         .and_then(|v| v.to_str().ok())
     {
-        debug!("Instance ID header found: {}", instance_id);
+        debug!(instance_id = %instance_id, "Instance ID header found");
 
         if let Some(backend) = pool.get_by_instance_id(instance_id) {
-            info!("Routing to instance: {} at {}", instance_id, backend.address);
+            info!(
+                instance_id = %instance_id,
+                address = %backend.address,
+                "Routing to specific instance"
+            );
             return Ok(backend.clone());
         } else {
-            warn!("Instance {} not found in healthy backends", instance_id);
+            warn!(instance_id = %instance_id, "Instance not found in healthy backends");
             return Err(Error::new_str("Instance not available"));
         }
     }
@@ -203,15 +211,21 @@ async fn select_backend(request_header: &RequestHeader) -> PingoraResult<Backend
 }
 
 fn main() -> anyhow::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+        )
+        .init();
 
-    info!("Starting Stepflow Pingora Load Balancer");
+    info!("Starting Stepflow Load Balancer");
 
     // Get upstream service configuration from environment
     let upstream_service = std::env::var("UPSTREAM_SERVICE")
         .unwrap_or_else(|_| "component-server.stepflow-demo.svc.cluster.local:8080".to_string());
 
-    info!("Upstream service: {}", upstream_service);
+    info!(upstream_service = %upstream_service, "Upstream service configuration");
 
     // Start backend discovery service in a separate thread with its own runtime
     let upstream_service_clone = upstream_service.clone();
@@ -220,7 +234,7 @@ fn main() -> anyhow::Result<()> {
         rt.block_on(async move {
             let discovery = DiscoveryService::new(upstream_service_clone);
             if let Err(e) = discovery.run().await {
-                error!("Discovery service error: {}", e);
+                error!(error = %e, "Discovery service error");
             }
         });
     });

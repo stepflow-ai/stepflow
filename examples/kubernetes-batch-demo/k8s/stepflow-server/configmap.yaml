@@ -17,15 +17,15 @@ data:
       builtin:
         type: builtin
 
-      # Kubernetes components via Pingora load balancer
+      # Kubernetes components via Stepflow load balancer
       k8s_components:
         type: stepflow
         transport: http
-        url: "http://pingora-lb.stepflow-demo.svc.cluster.local:8080"
+        url: "http://stepflow-load-balancer.stepflow-demo.svc.cluster.local:8080"
 
     routes:
-      # Route all /python/* components through Pingora
-      # Pingora handles instance routing via Stepflow-Instance-Id header
+      # Route all /python/* components through load balancer
+      # Load balancer handles instance routing via Stepflow-Instance-Id header
       "/python/{*component}":
         - plugin: k8s_components
 

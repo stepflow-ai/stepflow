@@ -202,9 +202,9 @@ kubectl logs -n stepflow-demo -l app=component-server --tail=500 --prefix 2>/dev
 
 echo ""
 
-# Pingora routing decisions
-print_info "Pingora routing decisions (last 50 requests):"
-kubectl logs -n stepflow-demo -l app=pingora-lb --tail=1000 --since=60s 2>/dev/null | \
+# Load balancer routing decisions
+print_info "Load balancer routing decisions (last 50 requests):"
+kubectl logs -n stepflow-demo -l app=stepflow-load-balancer --tail=1000 --since=60s 2>/dev/null | \
     grep "Routing POST /" | \
     tail -50 | \
     awk '{print $NF}' | \

@@ -12,11 +12,11 @@
 
 use crate::backend::Backend;
 use crate::BACKEND_POOL;
-use log::{debug, error, info, warn};
 use serde::Deserialize;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Deserialize)]
 struct HealthResponse {
@@ -46,21 +46,25 @@ impl DiscoveryService {
 
     /// Run discovery loop
     pub async fn run(&self) -> anyhow::Result<()> {
-        info!("Starting backend discovery for {}", self.upstream_service);
+        info!(
+            upstream_service = %self.upstream_service,
+            "Starting backend discovery"
+        );
 
         loop {
             match self.discover_backends().await {
                 Ok(backends) => {
-                    info!("Discovered {} healthy backends", backends.len());
+                    info!(count = backends.len(), "Discovered healthy backends");
 
                     // Update global backend pool
-                    let mut pool = BACKEND_POOL.write().await;
+                    let pool_guard = BACKEND_POOL.load();
+                    let mut pool = pool_guard.write().await;
                     pool.update_backends(backends);
 
                     debug!("Backend pool updated");
                 }
                 Err(e) => {
-                    error!("Backend discovery failed: {}", e);
+                    error!(error = %e, "Backend discovery failed");
                 }
             }
 
@@ -76,7 +80,11 @@ impl DiscoveryService {
             .to_socket_addrs()?
             .collect();
 
-        debug!("Resolved {} addresses for {}", addresses.len(), self.upstream_service);
+        debug!(
+            count = addresses.len(),
+            service = %self.upstream_service,
+            "Resolved addresses"
+        );
 
         // Health check each address
         let mut backends = Vec::new();
@@ -84,11 +92,15 @@ impl DiscoveryService {
         for addr in addresses {
             match self.health_check(&addr).await {
                 Ok(instance_id) => {
-                    info!("Backend {} is healthy (instance: {})", addr, instance_id);
+                    info!(
+                        address = %addr,
+                        instance_id = %instance_id,
+                        "Backend is healthy"
+                    );
                     backends.push(Backend::new(instance_id, addr));
                 }
                 Err(e) => {
-                    warn!("Backend {} health check failed: {}", addr, e);
+                    warn!(address = %addr, error = %e, "Backend health check failed");
                 }
             }
         }
@@ -108,7 +120,7 @@ impl DiscoveryService {
 
         // Get response text for debugging
         let response_text = response.text().await?;
-        debug!("Health check response from {}: {}", addr, response_text);
+        debug!(address = %addr, response = %response_text, "Health check response");
 
         // Parse JSON
         let health: HealthResponse = serde_json::from_str(&response_text)

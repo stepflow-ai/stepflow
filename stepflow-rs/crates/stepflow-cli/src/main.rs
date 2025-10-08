@@ -10,8 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use clap::Parser as _;
-use stepflow_main::{Cli, Result, args::init_tracing};
+use clap::Parser;
+use stepflow_cli::{Cli, Result, args::init_tracing};
 
 async fn run(cli: Cli) -> Result<()> {
     // Initialize tracing with the specified configuration
