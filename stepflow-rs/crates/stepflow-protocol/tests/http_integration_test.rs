@@ -295,7 +295,6 @@ async fn test_http_protocol_integration() {
     }
 }
 
-
 /// Test HTTP plugin with server that starts and stops
 #[tokio::test]
 async fn test_http_plugin_lifecycle() {
