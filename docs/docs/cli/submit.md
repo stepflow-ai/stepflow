@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 3
 ---
 
 # Command-Line Help for `submit`
@@ -12,9 +12,9 @@ This document contains the help content for the `submit` command-line program.
 
 ## `submit`
 
-Submit a workflow to a Stepflow service.
+Submit a workflow to a Stepflow server.
 
-Submit a workflow to a running Stepflow service.
+Submit a workflow to a running Stepflow server.
 
 # Examples
 
@@ -26,7 +26,7 @@ stepflow submit --flow=workflow.yaml --input=input.json
 
 # Submit to remote server
 
-stepflow submit --url=http://production-server:7837 --flow=workflow.yaml --input-json='{"key": "value"}'
+stepflow submit --url=http://production-server:7840 --flow=workflow.yaml --input-json='{"key": "value"}'
 
 # Submit with inline YAML input
 

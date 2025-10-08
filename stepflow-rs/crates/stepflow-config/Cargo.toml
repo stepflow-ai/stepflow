@@ -1,0 +1,30 @@
+[package]
+name = "stepflow-config"
+description = "Stepflow configuration handling and executor creation."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+error-stack.workspace = true
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+stepflow-builtins.workspace = true
+stepflow-components-mcp.workspace = true
+stepflow-execution.workspace = true
+stepflow-plugin.workspace = true
+stepflow-protocol.workspace = true
+stepflow-state.workspace = true
+stepflow-state-sql.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

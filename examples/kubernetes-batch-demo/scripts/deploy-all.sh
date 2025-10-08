@@ -70,11 +70,11 @@ else
 fi
 echo ""
 
-print_info "Building Pingora load balancer..."
-if bash "$SCRIPT_DIR/build-pingora.sh"; then
-    print_info "✅ Pingora build complete"
+print_info "Building Stepflow load balancer..."
+if bash "$SCRIPT_DIR/build-load-balancer.sh"; then
+    print_info "✅ Load balancer build complete"
 else
-    echo "❌ Error: Pingora build failed"
+    echo "❌ Error: Load balancer build failed"
     exit 1
 fi
 echo ""
@@ -104,8 +104,8 @@ print_info "Deploying component servers..."
 kubectl apply -k "$PROJECT_DIR/k8s/component-server/"
 echo ""
 
-print_info "Deploying Pingora load balancer..."
-kubectl apply -k "$PROJECT_DIR/k8s/pingora-lb/"
+print_info "Deploying Stepflow load balancer..."
+kubectl apply -k "$PROJECT_DIR/k8s/stepflow-load-balancer/"
 echo ""
 
 print_info "Deploying Stepflow runtime server..."
@@ -117,7 +117,7 @@ print_status "Step 4/4: Waiting for pods to be ready..."
 echo ""
 
 wait_for_pods "app=component-server" "component servers" || exit 1
-wait_for_pods "app=pingora-lb" "Pingora load balancer" || exit 1
+wait_for_pods "app=stepflow-load-balancer" "Stepflow load balancer" || exit 1
 wait_for_pods "app=stepflow-server" "Stepflow runtime server" || exit 1
 
 # Show deployment status

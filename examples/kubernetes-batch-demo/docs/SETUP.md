@@ -68,7 +68,7 @@ Start the Lima VM (automatically selects VZ or QEMU):
 - Mounts your stepflow project at `/home/lima.linux/stepflow`
 - Configures port forwarding:
   - 6443 → k3s API server (required for kubectl access)
-  - 8080 → HTTP services (Pingora load balancer, Stepflow server, component servers)
+  - 8080 → HTTP services (Load Balancer load balancer, Stepflow server, component servers)
   - 5000 → Local Docker registry (required for pushing images from Mac to k3s)
 
 **Expected output**:
@@ -351,7 +351,7 @@ cd examples/kubernetes-batch-demo
 ```
 
 This script will:
-1. Build all Docker images (component server, Pingora, Stepflow runtime)
+1. Build all Docker images (component server, Load Balancer, Stepflow runtime)
 2. Create the stepflow-demo namespace
 3. Deploy all services to k8s
 4. Wait for pods to be ready
@@ -363,18 +363,18 @@ If you prefer to deploy step-by-step:
 ```bash
 # Build images
 ./scripts/build-component-server.sh  # Component server
-./scripts/build-pingora.sh           # Pingora load balancer
+./scripts/build-load-balancer.sh           # Load Balancer load balancer
 ./scripts/build-stepflow-server.sh   # Stepflow runtime
 
 # Deploy services
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -k k8s/component-server/
-kubectl apply -k k8s/pingora-lb/
+kubectl apply -k k8s/stepflow-load-balancer/
 kubectl apply -k k8s/stepflow-server/
 
 # Wait for readiness
 kubectl wait --for=condition=Ready pods -l app=component-server -n stepflow-demo --timeout=120s
-kubectl wait --for=condition=Ready pods -l app=pingora-lb -n stepflow-demo --timeout=120s
+kubectl wait --for=condition=Ready pods -l app=stepflow-load-balancer -n stepflow-demo --timeout=120s
 kubectl wait --for=condition=Ready pods -l app=stepflow-server -n stepflow-demo --timeout=120s
 ```
 

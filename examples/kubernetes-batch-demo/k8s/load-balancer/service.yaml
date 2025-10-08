@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: stepflow-load-balancer
+  namespace: stepflow-demo
+  labels:
+    app: stepflow-load-balancer
+    component: load-balancer
+spec:
+  type: ClusterIP
+  selector:
+    app: stepflow-load-balancer
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  sessionAffinity: None

@@ -18,11 +18,13 @@ workspace = true
 [dependencies]
 axum.workspace = true
 chrono.workspace = true
+clap.workspace = true
 error-stack.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 stepflow-analysis.workspace = true
+stepflow-config.workspace = true
 stepflow-core.workspace = true
 stepflow-execution.workspace = true
 stepflow-plugin.workspace = true
@@ -32,6 +34,7 @@ tokio.workspace = true
 tower-http.workspace = true
 tower.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 utoipa-axum.workspace = true
 utoipa-swagger-ui.workspace = true
 utoipa.workspace = true
@@ -41,5 +44,8 @@ uuid.workspace = true
 stepflow-builtins.workspace = true
 stepflow-mock.workspace = true
 tracing-error.workspace = true
-tracing-subscriber.workspace = true
 tower.workspace = true
+
+[[bin]]
+name = "stepflow-server"
+path = "src/bin/main.rs"

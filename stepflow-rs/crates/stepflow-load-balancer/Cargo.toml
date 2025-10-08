@@ -1,0 +1,38 @@
+[package]
+name = "stepflow-load-balancer"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Pingora HTTP proxy framework
+pingora = { version = "0.6", features = ["proxy"] }
+pingora-core = "0.6"
+pingora-http = "0.6"
+pingora-proxy = "0.6"
+
+# Async runtime
+async-trait.workspace = true
+tokio.workspace = true
+
+# Tracing and logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# HTTP client for health checks
+reqwest.workspace = true
+
+# Utilities
+anyhow = "1.0"
+arc-swap = "1.7"
+itertools = "0.14"
+
+[lints]
+workspace = true

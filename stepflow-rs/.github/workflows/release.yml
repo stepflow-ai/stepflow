@@ -1,0 +1,368 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.4.0)'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cross: false
+          # Linux aarch64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+          # macOS x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            cross: false
+          # macOS aarch64 (Apple Silicon)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            cross: false
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            cross: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build binaries (native)
+        if: ${{ !matrix.cross }}
+        run: |
+          cargo build --release --target ${{ matrix.target }} \
+            --bin stepflow \
+            --bin stepflow-server \
+            --bin stepflow-load-balancer
+
+      - name: Build binaries (cross)
+        if: matrix.cross
+        run: |
+          cross build --release --target ${{ matrix.target }} \
+            --bin stepflow \
+            --bin stepflow-server \
+            --bin stepflow-load-balancer
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          TARGET="${{ matrix.target }}"
+          ARCHIVE_NAME="stepflow-${VERSION}-${TARGET}"
+
+          mkdir -p "dist/${ARCHIVE_NAME}"
+
+          # Copy binaries
+          cp "target/${TARGET}/release/stepflow" "dist/${ARCHIVE_NAME}/"
+          cp "target/${TARGET}/release/stepflow-server" "dist/${ARCHIVE_NAME}/"
+          cp "target/${TARGET}/release/stepflow-load-balancer" "dist/${ARCHIVE_NAME}/"
+
+          # Copy license and readme
+          cp LICENSE "dist/${ARCHIVE_NAME}/"
+          cp README.md "dist/${ARCHIVE_NAME}/" 2>/dev/null || echo "README.md not found"
+
+          # Create archive
+          cd dist
+          tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+
+          echo "Created: ${ARCHIVE_NAME}.tar.gz"
+          ls -lh "${ARCHIVE_NAME}.tar.gz"
+
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.VERSION }}"
+          $TARGET = "${{ matrix.target }}"
+          $ARCHIVE_NAME = "stepflow-${VERSION}-${TARGET}"
+
+          New-Item -ItemType Directory -Force -Path "dist\${ARCHIVE_NAME}"
+
+          # Copy binaries
+          Copy-Item "target\${TARGET}\release\stepflow.exe" "dist\${ARCHIVE_NAME}\"
+          Copy-Item "target\${TARGET}\release\stepflow-server.exe" "dist\${ARCHIVE_NAME}\"
+          Copy-Item "target\${TARGET}\release\stepflow-load-balancer.exe" "dist\${ARCHIVE_NAME}\"
+
+          # Copy license and readme
+          Copy-Item "LICENSE" "dist\${ARCHIVE_NAME}\"
+          if (Test-Path "README.md") { Copy-Item "README.md" "dist\${ARCHIVE_NAME}\" }
+
+          # Create archive
+          Compress-Archive -Path "dist\${ARCHIVE_NAME}" -DestinationPath "dist\${ARCHIVE_NAME}.zip"
+
+          Write-Host "Created: ${ARCHIVE_NAME}.zip"
+          Get-Item "dist\${ARCHIVE_NAME}.zip" | Select-Object Name, Length
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stepflow-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: stepflow-*
+          merge-multiple: true
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Organize artifacts
+        run: |
+          mkdir -p release-artifacts
+
+          # With merge-multiple, all archives are in the artifacts directory
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-artifacts/ \;
+
+          # Verify we have all expected archives
+          echo "Found artifacts:"
+          ls -lh release-artifacts/
+
+          EXPECTED_COUNT=5  # Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, Windows x86_64
+          ACTUAL_COUNT=$(ls release-artifacts/*.{tar.gz,zip} 2>/dev/null | wc -l)
+
+          if [ "$ACTUAL_COUNT" -lt "$EXPECTED_COUNT" ]; then
+            echo "Warning: Expected at least $EXPECTED_COUNT archives, found $ACTUAL_COUNT"
+            echo "This might indicate some builds failed"
+          fi
+
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: Release ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            release-artifacts/*
+          body: |
+            ## Stepflow ${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+
+            Download the appropriate archive for your platform:
+
+            - **Linux (x86_64)**: `stepflow-${{ steps.version.outputs.VERSION }}-x86_64-unknown-linux-gnu.tar.gz`
+            - **Linux (aarch64)**: `stepflow-${{ steps.outputs.VERSION }}-aarch64-unknown-linux-gnu.tar.gz`
+            - **macOS (Intel)**: `stepflow-${{ steps.version.outputs.VERSION }}-x86_64-apple-darwin.tar.gz`
+            - **macOS (Apple Silicon)**: `stepflow-${{ steps.version.outputs.VERSION }}-aarch64-apple-darwin.tar.gz`
+            - **Windows (x86_64)**: `stepflow-${{ steps.version.outputs.VERSION }}-x86_64-pc-windows-msvc.zip`
+
+            Extract and add the binaries to your PATH.
+
+            ### What's included
+
+            Each archive contains three binaries:
+            - `stepflow` - CLI for running workflows locally
+            - `stepflow-server` - HTTP server for workflow execution
+            - `stepflow-load-balancer` - Load balancer for distributed component servers
+
+            ### Checksums
+
+            See `SHA256SUMS` for file checksums.
+
+  build-docker-images:
+    name: Build Docker Images
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image:
+          - stepflow-server
+          - stepflow-load-balancer
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          # Remove 'v' prefix for Docker tags
+          VERSION="${VERSION#v}"
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "MAJOR=$(echo ${VERSION} | cut -d. -f1)" >> $GITHUB_OUTPUT
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stepflow-*-unknown-linux-*
+          path: artifacts-linux
+
+      - name: Organize Linux binaries by architecture
+        run: |
+          mkdir -p artifacts-x86_64 artifacts-aarch64
+
+          # Move x86_64 artifacts
+          if [ -d "artifacts-linux/stepflow-x86_64-unknown-linux-gnu" ]; then
+            mv artifacts-linux/stepflow-x86_64-unknown-linux-gnu/* artifacts-x86_64/
+          fi
+
+          # Move aarch64 artifacts
+          if [ -d "artifacts-linux/stepflow-aarch64-unknown-linux-gnu" ]; then
+            mv artifacts-linux/stepflow-aarch64-unknown-linux-gnu/* artifacts-aarch64/
+          fi
+
+          ls -la artifacts-x86_64/ artifacts-aarch64/
+
+      - name: Extract binaries
+        run: |
+          mkdir -p binaries/linux/amd64 binaries/linux/arm64
+
+          # Extract x86_64
+          cd artifacts-x86_64
+          tar xzf *.tar.gz
+          cp stepflow-*/stepflow-${{ matrix.image }} ../binaries/linux/amd64/${{ matrix.image }}
+          cd ..
+
+          # Extract aarch64
+          cd artifacts-aarch64
+          tar xzf *.tar.gz
+          cp stepflow-*/stepflow-${{ matrix.image }} ../binaries/linux/arm64/${{ matrix.image }}
+          cd ..
+
+          # Make executable
+          chmod +x binaries/linux/amd64/${{ matrix.image }}
+          chmod +x binaries/linux/arm64/${{ matrix.image }}
+
+          ls -lh binaries/linux/*/
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.VERSION }}
+            type=semver,pattern={{major}},value=${{ steps.version.outputs.VERSION }}
+            type=raw,value=latest
+
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile.${{ matrix.image }} << 'EOF'
+          FROM debian:bookworm-slim
+
+          RUN apt-get update && apt-get install -y \
+              ca-certificates \
+              && rm -rf /var/lib/apt/lists/*
+
+          ARG TARGETARCH
+          COPY binaries/linux/${TARGETARCH}/${{ matrix.image }} /usr/local/bin/${{ matrix.image }}
+
+          RUN useradd -m -u 1000 stepflow && \
+              chown stepflow:stepflow /usr/local/bin/${{ matrix.image }}
+
+          USER stepflow
+          WORKDIR /home/stepflow
+
+          ENTRYPOINT ["/usr/local/bin/${{ matrix.image }}"]
+          EOF
+
+          cat Dockerfile.${{ matrix.image }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.${{ matrix.image }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

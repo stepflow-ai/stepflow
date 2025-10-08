@@ -1,0 +1,19 @@
+---
+source: crates/stepflow-cli/tests/commands/test_stepflow.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+---
+success: false
+exit_code: 2
+----- stdout -----
+
+----- stderr -----
+error: 'stepflow' requires a subcommand but one was not provided
+  [subcommands: run, submit-batch, submit, test, list-components, repl, validate, visualize, help]
+
+Usage: stepflow [OPTIONS] <COMMAND>
+
+For more information, try '--help'.

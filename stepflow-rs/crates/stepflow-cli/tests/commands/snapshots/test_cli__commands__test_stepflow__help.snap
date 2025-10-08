@@ -1,0 +1,36 @@
+---
+source: crates/stepflow-cli/tests/commands/test_stepflow.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - "--help"
+---
+success: true
+exit_code: 0
+----- stdout -----
+Stepflow CLI.
+
+Usage: stepflow [OPTIONS] <COMMAND>
+
+Commands:
+  run              Run a workflow directly
+  submit-batch     Submit a batch workflow to a Stepflow service for execution
+  submit           Submit a workflow to a Stepflow server
+  test             Run tests defined in workflow files or directories
+  list-components  List all available components from a stepflow config
+  repl             Start an interactive REPL for workflow development and debugging
+  validate         Validate workflow files and configuration
+  visualize        Visualize workflow structure as a graph
+  help             Print this message or the help of the given subcommand(s)
+
+Options:
+      --log-level <LEVEL>        Set the log level for Stepflow [default: info] [possible values: trace, debug, info, warn, error]
+      --other-log-level <LEVEL>  Set the log level for other parts of Stepflow [default: warn] [possible values: trace, debug, info, warn, error]
+      --log-file <FILE>          Write logs to a file instead of stderr
+      --omit-stack-trace         Omit stack traces (line numbers of errors)
+  -h, --help                     Print help
+  -V, --version                  Print version
+
+----- stderr -----
