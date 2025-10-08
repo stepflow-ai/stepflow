@@ -85,6 +85,7 @@ class StepflowHttpServer:
     def _generate_instance_id(self) -> str:
         """Generate a default instance ID using UUID."""
         import uuid
+
         return uuid.uuid4().hex[:16]
 
     def _create_error_response(

@@ -400,7 +400,13 @@ impl HttpClientHandle {
     }
 
     /// Helper method to send JSON-RPC error responses back to server
-    async fn send_error_response(&self, request_id: &RequestId, code: i32, message: &str, instance_id: Option<&str>) {
+    async fn send_error_response(
+        &self,
+        request_id: &RequestId,
+        code: i32,
+        message: &str,
+        instance_id: Option<&str>,
+    ) {
         let error_response = serde_json::json!({
             "jsonrpc": "2.0",
             "id": request_id,
@@ -423,16 +429,17 @@ impl HttpClientHandle {
     }
 
     /// Send a response back to the server (used for bidirectional communication and notifications)
-    pub async fn send_response_to_server(&self, message: &str, instance_id: Option<&str>) -> Result<()> {
+    pub async fn send_response_to_server(
+        &self,
+        message: &str,
+        instance_id: Option<&str>,
+    ) -> Result<()> {
         tracing::debug!(message_size = message.len(), "Sending response to server");
 
         // Clone headers and add instance ID if available for load balancer routing
         let mut headers = self.request_headers.clone();
         if let Some(id) = instance_id {
-            headers.insert(
-                "Stepflow-Instance-Id",
-                id.parse().unwrap(),
-            );
+            headers.insert("Stepflow-Instance-Id", id.parse().unwrap());
             tracing::debug!(instance_id = %id, "Including instance ID in bidirectional response");
         }
 
