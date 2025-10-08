@@ -10,10 +10,10 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use crate::backend::Backend;
 use crate::BACKEND_POOL;
+use crate::backend::Backend;
 use serde::Deserialize;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs as _};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
@@ -76,9 +76,7 @@ impl DiscoveryService {
     /// Discover backends by resolving service DNS and health checking
     async fn discover_backends(&self) -> anyhow::Result<Vec<Backend>> {
         // Resolve service to get backend addresses
-        let addresses: Vec<SocketAddr> = self.upstream_service
-            .to_socket_addrs()?
-            .collect();
+        let addresses: Vec<SocketAddr> = self.upstream_service.to_socket_addrs()?.collect();
 
         debug!(
             count = addresses.len(),
@@ -112,19 +110,20 @@ impl DiscoveryService {
     async fn health_check(&self, addr: &SocketAddr) -> anyhow::Result<String> {
         let url = format!("http://{}/health", addr);
 
-        let response = self.client
-            .get(&url)
-            .send()
-            .await?
-            .error_for_status()?;
+        let response = self.client.get(&url).send().await?.error_for_status()?;
 
         // Get response text for debugging
         let response_text = response.text().await?;
         debug!(address = %addr, response = %response_text, "Health check response");
 
         // Parse JSON
-        let health: HealthResponse = serde_json::from_str(&response_text)
-            .map_err(|e| anyhow::anyhow!("Failed to parse health response: {}. Body: {}", e, response_text))?;
+        let health: HealthResponse = serde_json::from_str(&response_text).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse health response: {}. Body: {}",
+                e,
+                response_text
+            )
+        })?;
 
         if health.status != "healthy" {
             anyhow::bail!("Backend reports unhealthy status");

@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use clap::Parser;
+use clap::Parser as _;
 use stepflow_cli::{Cli, Result, args::init_tracing};
 
 async fn run(cli: Cli) -> Result<()> {

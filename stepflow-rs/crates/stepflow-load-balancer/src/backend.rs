@@ -12,10 +12,10 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use itertools::Itertools;
+use itertools::Itertools as _;
 
 /// Represents a backend component server instance
 #[derive(Debug, Clone)]
@@ -76,9 +76,7 @@ impl BackendPool {
 
     /// Get backend by instance ID
     pub fn get_by_instance_id(&self, instance_id: &str) -> Option<&Backend> {
-        self.backends
-            .get(instance_id)
-            .filter(|b| b.healthy)
+        self.backends.get(instance_id).filter(|b| b.healthy)
     }
 
     /// Select backend using least connections algorithm with round-robin for ties
@@ -99,19 +97,17 @@ impl BackendPool {
 
     /// Increment connection count for a backend by address
     pub fn increment_connections(&self, address: &str) {
-        if let Ok(socket_addr) = address.parse::<SocketAddr>() {
-            if let Some(backend) = self.backends.values().find(|b| b.address == socket_addr) {
+        if let Ok(socket_addr) = address.parse::<SocketAddr>()
+            && let Some(backend) = self.backends.values().find(|b| b.address == socket_addr) {
                 backend.increment_connections();
             }
-        }
     }
 
     /// Decrement connection count for a backend by address
     pub fn decrement_connections(&self, address: &str) {
-        if let Ok(socket_addr) = address.parse::<SocketAddr>() {
-            if let Some(backend) = self.backends.values().find(|b| b.address == socket_addr) {
+        if let Ok(socket_addr) = address.parse::<SocketAddr>()
+            && let Some(backend) = self.backends.values().find(|b| b.address == socket_addr) {
                 backend.decrement_connections();
             }
-        }
     }
 }

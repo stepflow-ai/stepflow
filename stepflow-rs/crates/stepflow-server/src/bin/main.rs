@@ -11,7 +11,7 @@
 // the License.
 
 use clap::Parser;
-use error_stack::{Report, ResultExt};
+use error_stack::{Report, ResultExt as _};
 use std::path::PathBuf;
 use stepflow_config::StepflowConfig;
 use thiserror::Error;
@@ -69,7 +69,9 @@ fn init_tracing(log_level: &str, log_format: &str) -> Result<()> {
     Ok(())
 }
 
-async fn create_executor(config_path: Option<PathBuf>) -> Result<std::sync::Arc<stepflow_execution::StepflowExecutor>> {
+async fn create_executor(
+    config_path: Option<PathBuf>,
+) -> Result<std::sync::Arc<stepflow_execution::StepflowExecutor>> {
     info!("Creating Stepflow executor from configuration");
 
     let config = if let Some(path) = config_path {
@@ -91,6 +93,7 @@ async fn create_executor(config_path: Option<PathBuf>) -> Result<std::sync::Arc<
 async fn main() {
     let args = Args::parse();
 
+    #[allow(clippy::print_stderr)]
     if let Err(e) = init_tracing(&args.log_level, &args.log_format) {
         eprintln!("Failed to initialize tracing: {e:?}");
         std::process::exit(1);
@@ -113,7 +116,7 @@ async fn main() {
     .await;
 
     if let Err(e) = result {
-        eprintln!("Server error: {e:?}");
+        tracing::error!("Server error: {e:?}");
         std::process::exit(1);
     }
 }

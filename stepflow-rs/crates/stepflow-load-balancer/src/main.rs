@@ -10,14 +10,14 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use async_trait::async_trait;
 use arc_swap::ArcSwap;
+use async_trait::async_trait;
 use pingora::prelude::*;
 use pingora::proxy::Session;
 use pingora::upstreams::peer::HttpPeer;
 use pingora_core::Result as PingoraResult;
 use pingora_http::RequestHeader;
-use pingora_proxy::{http_proxy_service, ProxyHttp};
+use pingora_proxy::{ProxyHttp, http_proxy_service};
 use std::sync::LazyLock;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
@@ -29,9 +29,8 @@ use backend::{Backend, BackendPool};
 use discovery::DiscoveryService;
 
 /// Global backend pool shared across all requests
-static BACKEND_POOL: LazyLock<ArcSwap<RwLock<BackendPool>>> = LazyLock::new(|| {
-    ArcSwap::from_pointee(RwLock::new(BackendPool::new()))
-});
+static BACKEND_POOL: LazyLock<ArcSwap<RwLock<BackendPool>>> =
+    LazyLock::new(|| ArcSwap::from_pointee(RwLock::new(BackendPool::new())));
 
 /// Stepflow load balancer proxy service
 pub struct StepflowLoadBalancer;
@@ -74,7 +73,7 @@ impl ProxyHttp for StepflowLoadBalancer {
         // Create peer for selected backend
         let peer = Box::new(HttpPeer::new(
             backend.address,
-            false, // TLS
+            false,         // TLS
             String::new(), // SNI
         ));
 
@@ -107,8 +106,7 @@ impl ProxyHttp for StepflowLoadBalancer {
         _ctx: &mut Self::CTX,
     ) -> PingoraResult<()> {
         // Add headers for debugging
-        upstream_request
-            .insert_header("X-Forwarded-By", "stepflow-load-balancer")?;
+        upstream_request.insert_header("X-Forwarded-By", "stepflow-load-balancer")?;
 
         Ok(())
     }
@@ -131,20 +129,18 @@ impl ProxyHttp for StepflowLoadBalancer {
             debug!("SSE stream detected, ensuring no buffering");
 
             // Ensure no buffering for SSE streams
-            upstream_response
-                .insert_header("X-Accel-Buffering", "no")?;
-            upstream_response
-                .insert_header("Cache-Control", "no-cache")?;
+            upstream_response.insert_header("X-Accel-Buffering", "no")?;
+            upstream_response.insert_header("Cache-Control", "no-cache")?;
         }
 
         // Add debug headers
-        if let Some(instance_id) = session.req_header()
+        if let Some(instance_id) = session
+            .req_header()
             .headers
             .get("Stepflow-Instance-Id")
             .and_then(|v| v.to_str().ok())
         {
-            upstream_response
-                .insert_header("X-Stepflow-Routed-Instance", instance_id)?;
+            upstream_response.insert_header("X-Stepflow-Routed-Instance", instance_id)?;
         }
 
         Ok(())
@@ -215,7 +211,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
 
