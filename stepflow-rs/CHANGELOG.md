@@ -2,58 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## <a id="0.5.0"></a> [Stepflow 0.5.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.5.0) - 2025-10-09
-### Bug Fixes
-
-- Update tracing-subscriber ([#242](https://github.com/stepflow-ai/stepflow/pull/242))
-
-### Documentation
-
-- Demonstrate operations concerns ([#171](https://github.com/stepflow-ai/stepflow/pull/171))
-- Update the CLI documentation ([#203](https://github.com/stepflow-ai/stepflow/pull/203))
-- Flesh out roadmap a little ([#211](https://github.com/stepflow-ai/stepflow/pull/211))
-- Update docs to use stepflow-ai GitHub org ([#212](https://github.com/stepflow-ai/stepflow/pull/212))
-- Lanchain mcp post and some concurency fixes resulting from such ([#241](https://github.com/stepflow-ai/stepflow/pull/241))
-
-### Features
-
-- Add schema field to flow ([#194](https://github.com/stepflow-ai/stepflow/pull/194))
-- Use blobs for flows ([#195](https://github.com/stepflow-ai/stepflow/pull/195))
-- Add extensible metadata to flows and steps ([#210](https://github.com/stepflow-ai/stepflow/pull/210))
-- Add a visualize command to the cli ([#221](https://github.com/stepflow-ai/stepflow/pull/221))
-- Allow empty flows ([#224](https://github.com/stepflow-ai/stepflow/pull/224))
-- Allow Python components/UDFs to signal skip ([#239](https://github.com/stepflow-ai/stepflow/pull/239))
-- Include process output in channel errors ([#323](https://github.com/stepflow-ai/stepflow/pull/323))
-- Share validation between submit and validate ([#331](https://github.com/stepflow-ai/stepflow/pull/331))
-- Enhance error responses with full stack traces and attachments ([#332](https://github.com/stepflow-ai/stepflow/pull/332))
-- Improve error reporting with stack traces ([#333](https://github.com/stepflow-ai/stepflow/pull/333))
-- Restart stdio subprocess; retry components ([#336](https://github.com/stepflow-ai/stepflow/pull/336))
-- Add batch execution support with CLI and REST API ([#345](https://github.com/stepflow-ai/stepflow/pull/345))
-- Protocol support for batch execution ([#348](https://github.com/stepflow-ai/stepflow/pull/348))
-- Kubernetes + load balancer demo ([#349](https://github.com/stepflow-ai/stepflow/pull/349))
-- Separate binaries and update release infrastructure ([#355](https://github.com/stepflow-ai/stepflow/pull/355))
-
-### Miscellaneous Tasks
-
-- Standardize on Stepflow capitalization ([#205](https://github.com/stepflow-ai/stepflow/pull/205))
-- All the plumbing, files, and scripts for ICLA setup and maintenance. ([#218](https://github.com/stepflow-ai/stepflow/pull/218))
-- License check revamp using correct license headers, configure licensure for such ([#223](https://github.com/stepflow-ai/stepflow/pull/223))
-- Update release scripts ([#228](https://github.com/stepflow-ai/stepflow/pull/228))
-- Undo dispatch changes ([#235](https://github.com/stepflow-ai/stepflow/pull/235))
-- Release stepflow-rs v0.3.0 ([#234](https://github.com/stepflow-ai/stepflow/pull/234))
-- Add Langflow to CI ([#243](https://github.com/stepflow-ai/stepflow/pull/243))
-- Release stepflow-rs v0.4.0 ([#341](https://github.com/stepflow-ai/stepflow/pull/341))
-- Release stepflow-rs v0.5.0 ([#356](https://github.com/stepflow-ai/stepflow/pull/356))
-- Remove verify-artifacts step; fix binaries ([#357](https://github.com/stepflow-ai/stepflow/pull/357))
-- Release stepflow-rs v0.5.0 ([#358](https://github.com/stepflow-ai/stepflow/pull/358))
-- No load balancer for windows ([#359](https://github.com/stepflow-ai/stepflow/pull/359))
-- Release stepflow-rs v0.5.0 ([#360](https://github.com/stepflow-ai/stepflow/pull/360))
-- Fix release script ([#362](https://github.com/stepflow-ai/stepflow/pull/362))
-
-### Refactoring
-
-- Introduce Step/Flow builders ([#238](https://github.com/stepflow-ai/stepflow/pull/238))
-
 ## <a id="0.4.0"></a> [Stepflow 0.4.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.4.0) - 2025-10-02
 
 Skipped -- didn't go out due to bugs in the release script.
