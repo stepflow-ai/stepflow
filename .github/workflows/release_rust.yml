@@ -151,7 +151,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: artifact-stepflow-${{ matrix.target }}
-          path: stepflow-rs/artifacts/stepflow-${{ matrix.target }}*
+          path: stepflow-rs/artifacts/*-${{ matrix.target }}*
           retention-days: 7
 
   build-docker:
@@ -359,33 +359,48 @@ jobs:
 
           # Create tar.gz archives for Unix targets (include all three binaries)
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin; do
-            binaries=""
+            mkdir -p "../temp-${target}"
+            has_binaries=false
+
             for binary_name in stepflow stepflow-server stepflow-load-balancer; do
               binary="${binary_name}-${target}"
               if [ -f "$binary" ]; then
-                binaries="$binaries $binary"
+                cp "$binary" "../temp-${target}/${binary_name}"
+                chmod +x "../temp-${target}/${binary_name}"
+                has_binaries=true
+                echo "Added ${binary_name} for ${target}"
               fi
             done
 
-            if [ -n "$binaries" ]; then
-              tar -czf "../archives/stepflow-${target}.tar.gz" $binaries
-              echo "Created archive for ${target} with binaries:$binaries"
+            if [ "$has_binaries" = true ]; then
+              cd "../temp-${target}"
+              tar -czf "../archives/stepflow-${target}.tar.gz" *
+              cd ../release-artifacts
+              echo "Created archive for ${target}"
+              rm -rf "../temp-${target}"
             fi
           done
 
           # Create zip archive for Windows target (only stepflow and stepflow-server)
           target="x86_64-pc-windows-msvc"
-          binaries=""
+          mkdir -p "../temp-${target}"
+          has_binaries=false
+
           for binary_name in stepflow stepflow-server; do
             binary="${binary_name}-${target}.exe"
             if [ -f "$binary" ]; then
-              binaries="$binaries $binary"
+              cp "$binary" "../temp-${target}/${binary_name}.exe"
+              has_binaries=true
+              echo "Added ${binary_name}.exe for ${target}"
             fi
           done
 
-          if [ -n "$binaries" ]; then
-            zip "../archives/stepflow-${target}.zip" $binaries
-            echo "Created archive for Windows with binaries:$binaries"
+          if [ "$has_binaries" = true ]; then
+            cd "../temp-${target}"
+            zip "../archives/stepflow-${target}.zip" *
+            cd ../release-artifacts
+            echo "Created archive for Windows"
+            rm -rf "../temp-${target}"
           fi
 
       - name: Create release notes
@@ -429,10 +444,37 @@ jobs:
           - `ghcr.io/${{ github.repository }}:alpine-${{ needs.determine-version.outputs.version }}`
 
           ### 📦 Installation
-          1. Download the appropriate archive for your platform using the links above
-          2. Extract the archive: `tar -xzf stepflow-*.tar.gz` (or unzip for Windows)
-          3. Make binaries executable (Unix): `chmod +x stepflow-* stepflow-server-* stepflow-load-balancer-*`
-          4. Move the binaries to a directory in your PATH or run directly
+
+          **Linux:**
+          ```bash
+          # Download and extract
+          tar -xzf stepflow-*.tar.gz
+
+          # Move to PATH (optional)
+          sudo mv stepflow stepflow-server stepflow-load-balancer /usr/local/bin/
+          ```
+
+          **macOS:**
+          ```bash
+          # Download and extract
+          tar -xzf stepflow-*.tar.gz
+
+          # Remove quarantine attribute (required for unsigned binaries)
+          xattr -d com.apple.quarantine stepflow stepflow-server stepflow-load-balancer
+
+          # Move to PATH (optional)
+          sudo mv stepflow stepflow-server stepflow-load-balancer /usr/local/bin/
+          ```
+
+          **Windows:**
+          ```powershell
+          # Extract the zip file
+          Expand-Archive stepflow-*.zip
+
+          # Add to PATH or run directly
+          ```
+
+          > **Note for macOS users:** These binaries are not signed or notarized. You must remove the quarantine attribute using `xattr -d com.apple.quarantine` before execution, or macOS Gatekeeper will block them.
           EOF
 
       - name: Create GitHub release with tag
