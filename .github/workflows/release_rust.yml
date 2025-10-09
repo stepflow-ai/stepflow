@@ -144,7 +144,6 @@ jobs:
         run: |
           mkdir artifacts
 
-          REM Copy Windows binaries (load-balancer is Unix-only)
           copy target\${{ matrix.target }}\release\stepflow.exe artifacts\stepflow-${{ matrix.target }}.exe
           copy target\${{ matrix.target }}\release\stepflow-server.exe artifacts\stepflow-server-${{ matrix.target }}.exe
 
