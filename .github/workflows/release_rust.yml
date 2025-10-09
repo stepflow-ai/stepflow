@@ -150,7 +150,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: stepflow-${{ matrix.target }}
+          name: artifact-stepflow-${{ matrix.target }}
           path: stepflow-rs/artifacts/stepflow-${{ matrix.target }}*
           retention-days: 7
 
@@ -206,7 +206,7 @@ jobs:
       - name: Download required binary
         uses: actions/download-artifact@v4
         with:
-          name: stepflow-${{ matrix.binary-target }}
+          name: artifact-stepflow-${{ matrix.binary-target }}
           path: ./binary/
 
       - name: Prepare binary
@@ -349,7 +349,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./release-artifacts
-          pattern: stepflow-*
+          pattern: artifact-stepflow-*
           merge-multiple: true
 
       - name: Create release archives
