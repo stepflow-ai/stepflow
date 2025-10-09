@@ -106,12 +106,20 @@ jobs:
         if: ${{ !matrix.cross }}
         working-directory: stepflow-rs
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
+          if [ "${{ matrix.os }}" = "windows-2022" ]; then
+            # Windows: Only build stepflow and stepflow-server (load-balancer is Unix-only)
+            cargo build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server
+          else
+            # Unix: Build all three binaries
+            cargo build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
+          fi
+        shell: bash
 
       - name: Build binaries (cross)
         if: matrix.cross
         working-directory: stepflow-rs
         run: |
+          # Cross builds are Unix-only, so always build all three binaries
           cross build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
 
       - name: Package binaries (Unix)
@@ -136,10 +144,9 @@ jobs:
         run: |
           mkdir artifacts
 
-          REM Copy all three binaries
+          REM Copy Windows binaries (load-balancer is Unix-only)
           copy target\${{ matrix.target }}\release\stepflow.exe artifacts\stepflow-${{ matrix.target }}.exe
           copy target\${{ matrix.target }}\release\stepflow-server.exe artifacts\stepflow-server-${{ matrix.target }}.exe
-          copy target\${{ matrix.target }}\release\stepflow-load-balancer.exe artifacts\stepflow-load-balancer-${{ matrix.target }}.exe
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -367,10 +374,10 @@ jobs:
             fi
           done
 
-          # Create zip archive for Windows target (include all three binaries)
+          # Create zip archive for Windows target (only stepflow and stepflow-server)
           target="x86_64-pc-windows-msvc"
           binaries=""
-          for binary_name in stepflow stepflow-server stepflow-load-balancer; do
+          for binary_name in stepflow stepflow-server; do
             binary="${binary_name}-${target}.exe"
             if [ -f "$binary" ]; then
               binaries="$binaries $binary"
@@ -389,10 +396,16 @@ jobs:
 
           📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[Full Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md)**
 
-          This release includes pre-built binaries for multiple platforms. Each archive contains three binaries:
+          This release includes pre-built binaries for multiple platforms.
+
+          **Unix platforms** (Linux, macOS) include three binaries:
           - `stepflow` - CLI tool for running workflows
           - `stepflow-server` - HTTP server for workflow execution
-          - `stepflow-load-balancer` - Load balancer for distributed deployments
+          - `stepflow-load-balancer` - Load balancer for distributed component servers
+
+          **Windows** includes two binaries (load-balancer is Unix-only):
+          - `stepflow.exe` - CLI tool for running workflows
+          - `stepflow-server.exe` - HTTP server for workflow execution
 
           ### 📥 Download Binaries
 
