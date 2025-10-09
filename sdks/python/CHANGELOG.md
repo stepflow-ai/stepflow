@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.5.0"></a> [Stepflow Python SDK 0.5.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.5.0) - 2025-10-09
+### Features
+
+- Protocol support for batch execution ([#348](https://github.com/stepflow-ai/stepflow/pull/348))
+- Kubernetes + load balancer demo ([#349](https://github.com/stepflow-ai/stepflow/pull/349))
+
 ## <a id="0.4.0"></a> [Stepflow Python SDK 0.4.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.4.0) - 2025-10-02
 ### Bug Fixes
 
