@@ -161,8 +161,58 @@ impl ReceiveMessageLoop {
         }
     }
 
+    /// Drain remaining output from crashed process before restarting.
+    ///
+    /// When a process crashes, there may be stderr/stdout lines still buffered
+    /// in the pipes (like exception tracebacks). This method attempts to read
+    /// all remaining output with a timeout to capture crash diagnostics.
+    async fn drain_remaining_output(&mut self) {
+        use tokio::time::{timeout, Duration};
+
+        tracing::info!("Draining remaining output from crashed process...");
+
+        // Use a short timeout to avoid blocking restart too long
+        let drain_timeout = Duration::from_millis(500);
+        let mut lines_drained = 0;
+
+        loop {
+            match timeout(drain_timeout, async {
+                tokio::select! {
+                    Some(stderr_line) = self.from_child_stderr.next() => {
+                        if let Ok(line) = stderr_line {
+                            tracing::info!("Component stderr (on crash): {line}");
+                            lines_drained += 1;
+                        }
+                        true
+                    }
+                    Some(stdout_line) = self.from_child_stdout.next() => {
+                        if let Ok(line) = stdout_line {
+                            tracing::info!("Component stdout (on crash): {line}");
+                            lines_drained += 1;
+                        }
+                        true
+                    }
+                    else => false
+                }
+            })
+            .await
+            {
+                Ok(true) => continue,      // Got a line, keep draining
+                Ok(false) | Err(_) => break, // No more lines or timeout
+            }
+        }
+
+        if lines_drained > 0 {
+            tracing::info!(
+                "Drained {lines_drained} lines from crashed process output"
+            );
+        } else {
+            tracing::info!("No remaining output from crashed process");
+        }
+    }
+
     /// Restart the process with the same launcher configuration
-    fn restart_process(
+    async fn restart_process(
         &mut self,
         pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>,
     ) -> Result<()> {
@@ -171,6 +221,10 @@ impl ReceiveMessageLoop {
             self.launcher.command,
             self.launcher.args
         );
+
+        // Drain any remaining output from the crashed process before restarting
+        // This captures stderr/stdout that may contain crash diagnostics (tracebacks, errors)
+        self.drain_remaining_output().await;
 
         // Clear in-flight requests that were sent to the old process
         // Also clear pending requests in the channel that were sent during the crash
@@ -419,7 +473,7 @@ pub async fn recv_message_loop(
 
                 sleep(backoff_duration).await;
 
-                match recv_loop.restart_process(&mut pending_rx) {
+                match recv_loop.restart_process(&mut pending_rx).await {
                     Ok(()) => {
                         tracing::info!(
                             "Process restart {restart_count}/{max_restart_attempts} successful"
@@ -463,7 +517,7 @@ pub async fn recv_message_loop(
 
                 sleep(backoff_duration).await;
 
-                match recv_loop.restart_process(&mut pending_rx) {
+                match recv_loop.restart_process(&mut pending_rx).await {
                     Ok(()) => {
                         tracing::info!(
                             "Process restart {restart_count}/{max_restart_attempts} successful after error"

@@ -115,6 +115,9 @@ class LangflowConverter:
             # Create field mapping from edges for proper UDF input handling
             field_mapping = self._build_field_mapping_from_edges(edges)
 
+            # Create output mapping from edges to track which output is used from each component
+            output_mapping = self._build_output_mapping_from_edges(edges)
+
             # Create node lookup for efficient processing
             node_lookup = {node["id"]: node for node in nodes}
 
@@ -141,6 +144,7 @@ class LangflowConverter:
                         builder,
                         node_output_refs,
                         field_mapping,
+                        output_mapping,
                     )
                     if output_ref is not None:
                         node_output_refs[node_id] = output_ref
@@ -157,6 +161,7 @@ class LangflowConverter:
                         builder,
                         node_output_refs,
                         field_mapping,
+                        output_mapping,
                     )
                     if output_ref is not None:
                         node_output_refs[node_id] = output_ref
@@ -310,6 +315,49 @@ class LangflowConverter:
                 field_mapping[target_id][source_id] = field_name
 
         return field_mapping
+
+    def _build_output_mapping_from_edges(
+        self, edges: list[dict[str, Any]]
+    ) -> dict[str, str]:
+        """Build output mapping from edges to track which output is used from each component.
+
+        Args:
+            edges: List of Langflow edges
+
+        Returns:
+            Dict mapping source_node_id -> output_name
+        """
+        output_mapping: dict[str, str] = {}
+
+        for edge in edges:
+            source_id = edge.get("source")
+
+            if not source_id:
+                continue
+
+            # Get source output name from edge data
+            edge_data = edge.get("data", {})
+            source_handle = edge_data.get("sourceHandle", {})
+
+            output_name = None
+            if isinstance(source_handle, dict):
+                output_name = source_handle.get("name")
+            elif isinstance(source_handle, str):
+                # Sometimes sourceHandle is a JSON string - handle this case
+                try:
+                    import json
+
+                    source_info = json.loads(source_handle.replace("œ", '"'))
+                    output_name = source_info.get("name")
+                except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+                    output_name = None
+
+            # Only store if we found an output name and don't have one already
+            # (first edge wins if component has multiple outgoing edges with different outputs)
+            if output_name and source_id not in output_mapping:
+                output_mapping[source_id] = output_name
+
+        return output_mapping
 
     def _generate_input_section(
         self, nodes: list[dict[str, Any]]

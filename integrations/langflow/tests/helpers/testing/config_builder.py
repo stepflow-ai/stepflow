@@ -197,6 +197,7 @@ class StepflowConfigBuilder:
 
         # Set up environment to point to our database
         original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
+        # SQLite URL format: sqlite:/// + absolute/path = sqlite:////absolute/path
         os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{database_path}"
 
         try:
@@ -350,6 +351,7 @@ class StepflowConfigBuilder:
         return self.with_plugin_env(
             "langflow",
             {
+                # SQLite URL format: sqlite:/// + absolute/path = sqlite:////absolute/path
                 "LANGFLOW_DATABASE_URL": f"sqlite:///{database_path}",
                 "LANGFLOW_AUTO_LOGIN": "false",
             },

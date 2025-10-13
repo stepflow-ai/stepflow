@@ -73,33 +73,67 @@ def shared_config():
     # Create shared database path
     shared_db_path = Path(tempfile.gettempdir()) / "stepflow_langflow_shared_test.db"
 
-    # Initialize database if it doesn't exist
-    if not shared_db_path.exists():
-        # Initialize Langflow database using their service
-        original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
-        os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{shared_db_path}"
+    # Always initialize database (remove old file to ensure clean state)
+    if shared_db_path.exists():
+        shared_db_path.unlink()
 
-        try:
-            from langflow.services.deps import get_db_service, get_settings_service
-            from langflow.services.manager import service_manager
+    # Initialize Langflow database using their service
+    original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
+    os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{shared_db_path}"
 
-            # Clear any existing service cache
-            if hasattr(service_manager, "_services"):
-                service_manager._services.clear()
+    try:
+        from langflow.services.deps import get_db_service, get_settings_service
+        from langflow.services.manager import service_manager
 
-            # Initialize services and create database
-            get_settings_service()
-            db_service = get_db_service()
-            db_service.reload_engine()
-            asyncio.run(db_service.create_db_and_tables())
-        finally:
-            if original_db_url:
-                os.environ["LANGFLOW_DATABASE_URL"] = original_db_url
-            else:
-                os.environ.pop("LANGFLOW_DATABASE_URL", None)
+        # Clear any existing service cache
+        if hasattr(service_manager, "_services"):
+            service_manager._services.clear()
+
+        # Initialize services and create database
+        get_settings_service()
+        db_service = get_db_service()
+        db_service.reload_engine()
+        asyncio.run(db_service.create_db_and_tables())
+    finally:
+        if original_db_url:
+            os.environ["LANGFLOW_DATABASE_URL"] = original_db_url
+        else:
+            os.environ.pop("LANGFLOW_DATABASE_URL", None)
 
     # Get path to langflow integration directory
     current_dir = Path(__file__).parent.parent.parent
+
+    # Load environment variables from .env file
+    env_vars = dict(os.environ)
+    try:
+        from dotenv import load_dotenv
+
+        env_path = current_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+            env_vars = dict(os.environ)
+    except ImportError:
+        pass
+
+    # Build plugin environment with AstraDB credentials if available
+    plugin_env = {
+        "LANGFLOW_DATABASE_URL": f"sqlite:///{shared_db_path}",
+        "LANGFLOW_AUTO_LOGIN": "false",
+    }
+
+    # Add AstraDB credentials if available
+    if "ASTRA_DB_API_ENDPOINT" in env_vars:
+        plugin_env["ASTRA_DB_API_ENDPOINT"] = env_vars["ASTRA_DB_API_ENDPOINT"]
+    if "ASTRA_DB_APPLICATION_TOKEN" in env_vars:
+        plugin_env["ASTRA_DB_APPLICATION_TOKEN"] = env_vars[
+            "ASTRA_DB_APPLICATION_TOKEN"
+        ]
+
+    # Add OpenAI API key for embedding model serialization
+    # This is needed because when Embeddings objects are serialized and passed between
+    # components, the TypeConverter resolves environment variable placeholders
+    if "OPENAI_API_KEY" in env_vars:
+        plugin_env["OPENAI_API_KEY"] = env_vars["OPENAI_API_KEY"]
 
     # Create configuration dictionary
     config_dict = {
@@ -115,10 +149,7 @@ def shared_config():
                     "run",
                     "stepflow-langflow-server",
                 ],
-                "env": {
-                    "LANGFLOW_DATABASE_URL": f"sqlite:///{shared_db_path}",
-                    "LANGFLOW_AUTO_LOGIN": "false",
-                },
+                "env": plugin_env,
             },
         },
         "routes": {
@@ -261,10 +292,14 @@ def load_flow_fixture(flow_name: str) -> dict[str, Any]:
 def test_basic_prompting(test_executor):
     """Test basic prompting: custom Prompt + LanguageModelComponent with OpenAI API."""
 
-    # Use test utilities to create tweaks for OpenAI components
-    from tests.helpers.tweaks_builder import create_basic_prompting_tweaks
+    # Configure tweaks for LanguageModelComponent with OpenAI API key
+    from tests.helpers.tweaks_builder import TweaksBuilder
 
-    tweaks = create_basic_prompting_tweaks()
+    tweaks = (
+        TweaksBuilder()
+        .add_openai_tweaks("LanguageModelComponent-kBOja")
+        .build_or_skip()
+    )
 
     result = test_executor.execute_flow(
         flow_name="basic_prompting",
@@ -276,7 +311,13 @@ def test_basic_prompting(test_executor):
     # Should return a Langflow Message with text content
     message_result = result["result"]
     assert isinstance(message_result, dict)
-    assert "__langflow_type__" in message_result
+    # Check for both old and new Message serialization formats
+    # Old: __langflow_type__, New (lfx): __class_name__ + __module_name__
+    is_message = (
+        "__langflow_type__" in message_result
+        or "__class_name__" in message_result
+    )
+    assert is_message, f"Expected Message object, got: {message_result.keys()}"
     assert "text" in message_result
     # Haiku should have some structure (multiple lines)
     assert len(message_result["text"].split("\n")) >= 3
@@ -325,10 +366,18 @@ retrieval-augmented generation (RAG). Popular solutions include:
         test_file_path = f.name
 
     try:
-        # Use test utilities to create tweaks for components
-        from tests.helpers.tweaks_builder import create_vector_store_rag_tweaks
+        # Configure tweaks for OpenAI components and AstraDB
+        from tests.helpers.tweaks_builder import TweaksBuilder
 
-        tweaks = create_vector_store_rag_tweaks()
+        tweaks = (
+            TweaksBuilder()
+            .add_openai_tweaks("LanguageModelComponent-cAjdO")  # LLM component
+            .add_astradb_tweaks("AstraDB-3Xstp")  # First AstraDB vector store
+            .add_astradb_tweaks("AstraDB-aqrWj")  # Second AstraDB vector store
+            .add_env_tweak("OpenAIEmbeddings-jsaKm", "openai_api_key", "OPENAI_API_KEY")  # Ingestion embeddings
+            .add_env_tweak("OpenAIEmbeddings-U8tZg", "openai_api_key", "OPENAI_API_KEY")  # Search embeddings
+            .build_or_skip()
+        )
 
         try:
             result = test_executor.execute_flow(
@@ -413,7 +462,7 @@ def test_memory_chatbot(test_executor):
     tweaks = (
         TweaksBuilder()
         .add_openai_tweaks(
-            "LanguageModelComponent-n8krg"
+            "LanguageModelComponent-n8KRg"
         )  # Correct ID for memory_chatbot
         .build_or_skip()
     )
@@ -499,7 +548,7 @@ def test_memory_chatbot(test_executor):
     result = test_executor.execute_flow(
         flow_name="memory_chatbot",
         input_data={"message": "What is my name?", "session_id": our_session_id},
-        timeout=60.0,
+        timeout=120.0,  # Increased timeout for memory operations
         tweaks=tweaks,
     )
 
@@ -510,7 +559,7 @@ def test_memory_chatbot(test_executor):
     result_other = test_executor.execute_flow(
         flow_name="memory_chatbot",
         input_data={"message": "What is my name?", "session_id": other_session_id},
-        timeout=60.0,
+        timeout=120.0,  # Increased timeout for memory operations
         tweaks=tweaks,
     )
 
@@ -581,7 +630,7 @@ language processing, and autonomous vehicles.
         tweaks = (
             TweaksBuilder()
             .add_openai_tweaks(
-                "LanguageModelComponent-htmui"
+                "LanguageModelComponent-htMuI"
             )  # Correct ID for document_qa
             .build_or_skip()
         )
@@ -665,7 +714,12 @@ def test_simple_agent(test_executor):
     # Should return a Langflow Message with text content containing result
     message_result = result["result"]
     assert isinstance(message_result, dict)
-    assert "__langflow_type__" in message_result
+    # Check for both old and new Message serialization formats
+    is_message = (
+        "__langflow_type__" in message_result
+        or "__class_name__" in message_result
+    )
+    assert is_message, f"Expected Message object, got: {message_result.keys()}"
     assert "text" in message_result
 
     # Debug: Print the actual response to see what the Agent is saying

@@ -36,13 +36,14 @@ classifiers = [
 ]
 
 dependencies = [
-    "stepflow-py>=0.4.0",
+    "stepflow-py>=0.6.0",
     "pyyaml>=6.0",
     "msgspec>=0.19.0",
     "click>=8.0",
     "jsonschema>=4.17.0",
     "pydantic>=2.0.0", # For BaseModel serialization and SecretStr handling
-    "langflow==1.5.0.post2", # Pinned to known working version
+    "langflow>=1.6.4", # Updated to 1.6.4 or higher
+    "lfx~=0.1.0",
     "python-dotenv>=1.0.0", # For .env file support
     "openai>=1.0.0", # For OpenAI API integration
     "langchain_core>=0.1.0", # For core LangChain functionality

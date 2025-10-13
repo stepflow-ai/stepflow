@@ -42,13 +42,9 @@ class StepflowTweaks:
 
         Args:
             tweaks: Dict mapping langflow_node_id -> {field_name: new_value}
-                   Node IDs should match original Langflow node IDs (case-insensitive)
+                   Node IDs should match original Langflow node IDs (case-sensitive)
         """
         self.tweaks = tweaks or {}
-        # Normalize keys to lowercase for matching
-        self.normalized_tweaks = {
-            node_id.lower(): node_tweaks for node_id, node_tweaks in self.tweaks.items()
-        }
 
     def apply_tweaks(self, flow: Flow) -> Flow:
         """Apply tweaks to a Stepflow workflow.
@@ -73,10 +69,8 @@ class StepflowTweaks:
             # Check if this is a Langflow UDF executor step
             if self._is_langflow_udf_step(step):
                 langflow_node_id = self._extract_langflow_node_id(step.id)
-                if langflow_node_id and langflow_node_id in self.normalized_tweaks:
-                    self._apply_step_tweaks(
-                        step, self.normalized_tweaks[langflow_node_id]
-                    )
+                if langflow_node_id and langflow_node_id in self.tweaks:
+                    self._apply_step_tweaks(step, self.tweaks[langflow_node_id])
 
         return modified_flow
 
@@ -99,17 +93,18 @@ class StepflowTweaks:
         """Extract original Langflow node ID from Stepflow step ID.
 
         Args:
-            step_id: Stepflow step ID (e.g., "langflow_languagemodelcomponent-kboja")
+            step_id: Stepflow step ID (e.g., "langflow_LanguageModelComponent-kBOja")
 
         Returns:
-            Original Langflow node ID (e.g., "languagemodelcomponent-kboja") or None
+            Original Langflow node ID (e.g., "LanguageModelComponent-kBOja") or None
         """
         if not step_id.startswith("langflow_"):
             return None
 
         # Extract the part after "langflow_": langflow_X -> X
+        # Preserve original case for case-sensitive matching
         node_id = step_id[len("langflow_") :]
-        return node_id.lower()
+        return node_id
 
     def _apply_step_tweaks(self, step, step_tweaks: dict[str, Any]) -> None:
         """Apply tweaks to a specific Stepflow UDF executor step.
@@ -184,11 +179,6 @@ def apply_stepflow_tweaks_to_dict(
     # Deep copy to avoid mutating original
     modified_dict = copy.deepcopy(workflow_dict)
 
-    # Normalize tweaks keys to lowercase
-    normalized_tweaks = {
-        node_id.lower(): node_tweaks for node_id, node_tweaks in tweaks.items()
-    }
-
     # Apply tweaks to steps
     for step_dict in modified_dict.get("steps", []):
         step_id = step_dict.get("id", "")
@@ -199,10 +189,10 @@ def apply_stepflow_tweaks_to_dict(
             and not step_id.endswith("_blob")
             and step_dict.get("component") == "/langflow/udf_executor"
         ):
-            # Extract Langflow node ID
-            langflow_node_id = step_id[len("langflow_") :].lower()
+            # Extract Langflow node ID (preserve case for case-sensitive matching)
+            langflow_node_id = step_id[len("langflow_") :]
 
-            if langflow_node_id in normalized_tweaks:
+            if langflow_node_id in tweaks:
                 # Ensure step has input section
                 if "input" not in step_dict:
                     step_dict["input"] = {}
@@ -210,9 +200,7 @@ def apply_stepflow_tweaks_to_dict(
                     step_dict["input"]["input"] = {}
 
                 # Apply tweaks
-                for field_name, new_value in normalized_tweaks[
-                    langflow_node_id
-                ].items():
+                for field_name, new_value in tweaks[langflow_node_id].items():
                     step_dict["input"]["input"][field_name] = new_value
 
     return modified_dict

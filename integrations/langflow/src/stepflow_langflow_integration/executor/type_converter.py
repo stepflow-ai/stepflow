@@ -207,47 +207,53 @@ class TypeConverter:
         Returns:
             Serialized object with type metadata
         """
+        # TODO(https://github.com/stepflow-ai/stepflow/issues/369)
+        # Eliminate the type adaptation when `langflow` and `lfx` types
+        # are interchangeable.
+
         # Import Langflow types dynamically to avoid import errors
         try:
             from langflow.schema.data import Data
-            from langflow.schema.dataframe import DataFrame
+            from langflow.schema.dataframe import DataFrame as LangflowDataFrame
             from langflow.schema.message import Message
         except ImportError:
-            # Fallback if Langflow not available
+            LangflowDataFrame = None
+            Data = None
+            Message = None
+
+        # Also try to import lfx types (new Langflow split package)
+        try:
+            from lfx.schema.dataframe import DataFrame as LfxDataFrame
+        except ImportError:
+            LfxDataFrame = None
+
+        # Create a tuple of DataFrame types to check
+        dataframe_types = tuple(t for t in [LangflowDataFrame, LfxDataFrame] if t is not None)
+
+        if not dataframe_types and not Data and not Message:
+            # No Langflow types available, return obj as-is
             return obj
 
-        if isinstance(obj, Message):
+        if Message and isinstance(obj, Message):
             serialized = obj.model_dump(mode="json")
             serialized["__langflow_type__"] = "Message"
             return serialized
-        elif isinstance(obj, Data):
+        elif Data and isinstance(obj, Data):
             serialized = obj.model_dump(mode="json")
             serialized["__langflow_type__"] = "Data"
             return serialized
-        elif isinstance(obj, DataFrame):
-            try:
-                # Convert DataFrame to serializable format
-                data_list = (
-                    obj.to_data_list()
-                    if hasattr(obj, "to_data_list")
-                    else obj.to_dict("records")
-                )
-                return {
-                    "__langflow_type__": "DataFrame",
-                    "data": [
-                        self.serialize_langflow_object(item) for item in data_list
-                    ],
-                    "text_key": getattr(obj, "text_key", "text"),
-                    "default_value": getattr(obj, "default_value", ""),
-                }
-            except Exception:
-                # Fallback to basic serialization
-                return {
-                    "__langflow_type__": "DataFrame",
-                    "data": (
-                        obj.to_dict("records") if hasattr(obj, "to_dict") else str(obj)
-                    ),
-                }
+        elif dataframe_types and isinstance(obj, dataframe_types):
+            # Convert DataFrame to JSON using pandas to_json with columnar format
+            # Using orient="split" is more efficient - it stores column names once
+            # instead of repeating them for every row
+            # Savings: ~45% for typical DataFrames with multiple columns
+            json_str = obj.to_json(orient="split")
+            return {
+                "__langflow_type__": "DataFrame",
+                "json_data": json_str,
+                "text_key": getattr(obj, "text_key", "text"),
+                "default_value": getattr(obj, "default_value", ""),
+            }
         elif isinstance(obj, str | int | float | bool | type(None)):
             # Simple serializable types
             return obj
@@ -319,7 +325,15 @@ class TypeConverter:
                 self.deserialize_to_langflow_type(item, expected_type) for item in obj
             ]
 
-        # Handle non-dict objects (primitives)
+        # Handle cross-package Message conversion (lfx.schema.message.Message -> langflow.schema.message.Message)
+        # This is needed because lfx and langflow have separate Message classes that are functionally identical
+        # but Python's type system treats them as different types
+        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Message":
+            converted = self._convert_lfx_message_to_langflow(obj)
+            if converted is not obj:
+                return converted
+
+        # Handle non-dict objects (primitives and unconverted objects)
         if not isinstance(obj, dict):
             return obj
 
@@ -330,9 +344,26 @@ class TypeConverter:
         # Import Langflow types dynamically
         try:
             from langflow.schema.data import Data
-            from langflow.schema.dataframe import DataFrame
+            from langflow.schema.dataframe import DataFrame as LangflowDataFrame
             from langflow.schema.message import Message
         except ImportError:
+            Data = None
+            LangflowDataFrame = None
+            Message = None
+
+        # Also try to import lfx types (new Langflow split package)
+        try:
+            from lfx.schema.dataframe import DataFrame as LfxDataFrame
+        except ImportError:
+            LfxDataFrame = None
+
+        # Prefer lfx types over langflow types for DataFrame
+        # This ensures compatibility with modern Langflow components that import from lfx.schema
+        # When DataFrame.to_data_list() is called, it returns Data objects from the same module
+        # which pass isinstance checks in component code (e.g., AstraDB imports from lfx.schema.data)
+        DataFrame = LfxDataFrame if LfxDataFrame else LangflowDataFrame
+
+        if not DataFrame and not Data and not Message:
             return obj
 
         langflow_type = obj.get("__langflow_type__")
@@ -340,33 +371,52 @@ class TypeConverter:
             # Remove type metadata
             obj_data = {k: v for k, v in obj.items() if k != "__langflow_type__"}
 
-            if langflow_type == "Message":
+            if langflow_type == "Message" and Message:
                 return Message(**obj_data)
-            elif langflow_type == "Data":
+            elif langflow_type == "Data" and Data:
                 return Data(**obj_data)
-            elif langflow_type == "DataFrame":
+            elif langflow_type == "DataFrame" and DataFrame:
                 try:
-                    data_list = obj_data.get("data", [])
+                    import json
+                    import pandas as pd
+
                     text_key = obj_data.get("text_key", "text")
                     default_value = obj_data.get("default_value", "")
 
-                    # Convert back to Data objects if needed
-                    if data_list and isinstance(data_list[0], dict):
-                        data_objects = [
-                            self.deserialize_to_langflow_type(item)
-                            for item in data_list
-                        ]
+                    # Deserialize from json_data format (columnar split format)
+                    json_str = obj_data.get("json_data")
+                    if not json_str:
+                        raise ValueError("DataFrame missing required json_data field")
+
+                    # Parse the JSON string
+                    if isinstance(json_str, str):
+                        split_data = json.loads(json_str)
                     else:
-                        data_objects = data_list
+                        split_data = json_str
+
+                    # Deserialize using pandas from split format
+                    import io
+                    json_io = io.StringIO(json_str if isinstance(json_str, str) else json.dumps(json_str))
+                    pd_df = pd.read_json(json_io, orient="split")
+                    data_list = pd_df.to_dict(orient="records")
+
+                    # Replace NaN values with None to avoid JSON serialization errors
+                    # Pandas converts null/None to NaN for numeric columns, but NaN is not
+                    # JSON-compliant and causes errors in strict JSON serializers (e.g., AstraDB)
+                    data_list = [
+                        {k: (None if pd.isna(v) else v) for k, v in record.items()}
+                        for record in data_list
+                    ]
 
                     return DataFrame(
-                        data=data_objects,
+                        data=data_list,
                         text_key=text_key,
                         default_value=default_value,
                     )
                 except Exception:
-                    # Failed to reconstruct, return raw data
-                    return obj_data.get("data", obj_data)
+                    # Failed to reconstruct, return the original dict so recovery logic can handle it
+                    # Don't return json_data string directly as that bypasses recovery
+                    return obj
 
         # Check for BaseModel serialization
         class_name = obj.get("__class_name__")
@@ -544,3 +594,33 @@ class TypeConverter:
             Callable tool object that can execute the component
         """
         return _create_tool_from_wrapper(tool_wrapper)
+
+    def _convert_lfx_message_to_langflow(self, obj: Any) -> Any:
+        """Convert lfx.schema.message.Message to langflow.schema.message.Message.
+
+        Args:
+            obj: Object that might be an lfx Message
+
+        Returns:
+            Langflow Message if conversion successful, otherwise original object
+        """
+        try:
+            from lfx.schema.message import Message as LfxMessage
+            from langflow.schema.message import Message as LangflowMessage
+
+            # Check if this is an lfx Message that needs conversion
+            if isinstance(obj, LfxMessage) and not isinstance(obj, LangflowMessage):
+                # Convert by extracting all attributes
+                return LangflowMessage(
+                    text=obj.text if hasattr(obj, "text") else "",
+                    sender=obj.sender if hasattr(obj, "sender") else None,
+                    sender_name=obj.sender_name if hasattr(obj, "sender_name") else None,
+                    session_id=obj.session_id if hasattr(obj, "session_id") else "",
+                    files=obj.files if hasattr(obj, "files") else None,
+                    properties=obj.properties if hasattr(obj, "properties") else None,
+                    content_blocks=obj.content_blocks if hasattr(obj, "content_blocks") else None,
+                )
+        except ImportError:
+            pass
+
+        return obj
