@@ -83,11 +83,11 @@ def shared_config():
 
     try:
         from langflow.services.deps import get_db_service, get_settings_service
-        from langflow.services.manager import service_manager
+        from lfx.services.manager import get_service_manager
 
         # Clear any existing service cache
-        if hasattr(service_manager, "_services"):
-            service_manager._services.clear()
+        service_manager = get_service_manager()
+        service_manager.teardown()
 
         # Initialize services and create database
         get_settings_service()
@@ -371,9 +371,9 @@ retrieval-augmented generation (RAG). Popular solutions include:
 
         tweaks = (
             TweaksBuilder()
-            .add_openai_tweaks("LanguageModelComponent-cAjdO")  # LLM component
-            .add_astradb_tweaks("AstraDB-3Xstp")  # First AstraDB vector store
-            .add_astradb_tweaks("AstraDB-aqrWj")  # Second AstraDB vector store
+            .add_openai_tweaks("LanguageModelComponent-Wqbva")  # LLM component
+            .add_astradb_tweaks("AstraDB-TCSqR")  # First AstraDB vector store
+            .add_astradb_tweaks("AstraDB-BteL9")  # Second AstraDB vector store
             .add_env_tweak("OpenAIEmbeddings-jsaKm", "openai_api_key", "OPENAI_API_KEY")  # Ingestion embeddings
             .add_env_tweak("OpenAIEmbeddings-U8tZg", "openai_api_key", "OPENAI_API_KEY")  # Search embeddings
             .build_or_skip()

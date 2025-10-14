@@ -167,7 +167,7 @@ impl ReceiveMessageLoop {
     /// in the pipes (like exception tracebacks). This method attempts to read
     /// all remaining output with a timeout to capture crash diagnostics.
     async fn drain_remaining_output(&mut self) {
-        use tokio::time::{timeout, Duration};
+        use tokio::time::{Duration, timeout};
 
         tracing::info!("Draining remaining output from crashed process...");
 
@@ -175,8 +175,7 @@ impl ReceiveMessageLoop {
         let drain_timeout = Duration::from_millis(500);
         let mut lines_drained = 0;
 
-        loop {
-            match timeout(drain_timeout, async {
+        while let Ok(true) = timeout(drain_timeout, async {
                 tokio::select! {
                     Some(stderr_line) = self.from_child_stderr.next() => {
                         if let Ok(line) = stderr_line {
@@ -196,16 +195,12 @@ impl ReceiveMessageLoop {
                 }
             })
             .await
-            {
-                Ok(true) => continue,      // Got a line, keep draining
-                Ok(false) | Err(_) => break, // No more lines or timeout
-            }
+        {
+            // Continue draining
         }
 
         if lines_drained > 0 {
-            tracing::info!(
-                "Drained {lines_drained} lines from crashed process output"
-            );
+            tracing::info!("Drained {lines_drained} lines from crashed process output");
         } else {
             tracing::info!("No remaining output from crashed process");
         }

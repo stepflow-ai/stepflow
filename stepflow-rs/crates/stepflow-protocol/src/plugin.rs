@@ -174,7 +174,6 @@ impl StepflowPlugin {
         self.create_client(context).await
     }
 
-
     /// Execute component with a single attempt (extracted from original execute method)
     async fn try_execute_component(
         &self,
@@ -292,9 +291,44 @@ impl Plugin for StepflowPlugin {
         context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        // Simply execute the component - no retry logic needed here.
-        // Process restarts are handled automatically by recv_message_loop when the process dies.
-        self.try_execute_component(component, &context, &input, 1)
-            .await
+        // Get the client handle (will create if not initialized)
+        let client_handle = self
+            .get_or_create_client_handle(context.context().clone())
+            .await?;
+
+        // For stdio transport, capture the restart counter before execution
+        let (initial_restart_count, mut restart_rx) = match &client_handle {
+            StepflowClientHandle::Stdio(stdio_handle) => {
+                let (count, rx) = stdio_handle.restart_counter();
+                (Some(count), Some(rx))
+            }
+            StepflowClientHandle::Http(_) => (None, None),
+        };
+
+        // First attempt
+        match self.try_execute_component(component, &context, &input, 1).await {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                // Only retry for stdio transport when subprocess was restarted
+                if let (Some(initial_count), Some(restart_rx)) = (initial_restart_count, restart_rx.as_mut()) {
+                    // Check if a restart occurred by comparing the current counter
+                    let current_count = *restart_rx.borrow_and_update();
+
+                    if current_count > initial_count {
+                        tracing::info!(
+                            "Component execution failed due to process restart (count: {} -> {}), retrying once",
+                            initial_count,
+                            current_count
+                        );
+
+                        // Retry the execution once with the restored subprocess
+                        return self.try_execute_component(component, &context, &input, 2).await;
+                    }
+                }
+
+                // No restart occurred or not stdio transport - propagate the error
+                Err(e)
+            }
+        }
     }
 }

@@ -202,11 +202,11 @@ class StepflowConfigBuilder:
 
         try:
             # Clear any existing service cache to force reinitialization
-            from langflow.services.manager import service_manager
+            from lfx.services.manager import get_service_manager
 
-            if hasattr(service_manager, "_services"):
-                # Clear the service cache to force reinitialization with new database
-                service_manager._services.clear()
+            # Teardown existing services to force reinitialization with new database
+            service_manager = get_service_manager()
+            service_manager.teardown()
 
             # Initialize settings service first (reads LANGFLOW_DATABASE_URL from env)
             get_settings_service()

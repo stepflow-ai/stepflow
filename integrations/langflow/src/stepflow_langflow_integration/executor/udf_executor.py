@@ -15,7 +15,6 @@
 """New UDF executor with pre-compilation approach (no CachedStepflowContext needed)."""
 
 import inspect
-import sys
 from typing import Any
 
 from stepflow_py import StepflowContext
@@ -106,10 +105,10 @@ class UDFExecutor:
             # This is already a serialized Langflow object
             return obj
 
-        # Handle Langflow Data objects
+        # Handle lfx Data objects (langflow.schema re-exports these from lfx)
         if hasattr(obj, "__class__") and obj.__class__.__name__ == "Data":
             try:
-                from langflow.schema.data import Data
+                from lfx.schema.data import Data
 
                 if isinstance(obj, Data):
                     # Convert Data object to serializable format
@@ -117,10 +116,10 @@ class UDFExecutor:
             except ImportError:
                 pass
 
-        # Handle Langflow Message objects
+        # Handle lfx Message objects (langflow.schema re-exports these from lfx)
         if hasattr(obj, "__class__") and obj.__class__.__name__ == "Message":
             try:
-                from langflow.schema.message import Message
+                from lfx.schema.message import Message
 
                 if isinstance(obj, Message):
                     # Convert Message object to serializable format
@@ -161,8 +160,8 @@ class UDFExecutor:
 
         # Compiling component with metadata
 
-        # Create execution environment with enhanced context
-        self._create_execution_environment()
+        # Patch PlaceholderGraph for lfx compatibility (needed for Agent components)
+        self._patch_placeholder_graph()
 
         if not code or not code.strip():
             raise ExecutionError(
@@ -270,10 +269,9 @@ class UDFExecutor:
         # Use __dict__ to set graph even if it's a read-only property
         component_instance.__dict__["graph"] = GraphContext(session_id)
 
-        # Convert any lfx Messages to langflow Messages for memory compatibility
-        # The langflow.memory module validates messages using isinstance checks
-        # that don't support CrossModuleModel, so we need explicit conversion
-        resolved_parameters = self._convert_lfx_messages_to_langflow(component_parameters)
+        # Note: No conversion needed - langflow.schema types are lfx.schema types
+        # (langflow re-exports from lfx, so isinstance checks work correctly)
+        resolved_parameters = component_parameters
 
         # Configure component
         if hasattr(component_instance, "set_attributes"):
@@ -305,65 +303,36 @@ class UDFExecutor:
         except Exception as e:
             raise ExecutionError(f"Failed to execute {execution_method}: {e}") from e
 
-    def _create_execution_environment(self) -> dict[str, Any]:
-        """Create safe execution environment with langflow types.
+    def _patch_placeholder_graph(self) -> None:
+        """Patch PlaceholderGraph to add vertices attribute for lfx compatibility.
 
-        Note: Module aliases (lfx.* -> langflow.*) are set up at module import time,
-        so component code using lfx imports will resolve to langflow modules.
-        This is needed because langflow>=1.6.4 uses lfx internally but the import
-        paths remain langflow.*.
+        lfx 0.1.12+ Agent components access graph.vertices, but PlaceholderGraph
+        doesn't have this attribute by default. This patch adds it.
         """
-        exec_globals = globals().copy()
-        exec_globals["sys"] = sys
+        from typing import NamedTuple
 
-        # Import langflow types (langflow>=1.6.4 uses lfx internally with CrossModuleModel support)
+        class EnhancedPlaceholderGraph(NamedTuple):
+            """Enhanced PlaceholderGraph with vertices for lfx compatibility."""
+
+            flow_id: str | None = None
+            flow_name: str | None = None
+            user_id: str | None = None
+            session_id: str | None = None
+            context: dict | None = None
+            vertices: list = []  # Add vertices attribute for lfx compatibility
+
+        # Patch lfx's PlaceholderGraph (langflow re-exports this, so patching lfx patches both)
+        # lfx 0.1.12+ uses PlaceholderGraph in agents/utils.py which imports from
+        # lfx.custom.custom_component.component
         try:
-            from langflow.custom.custom_component.component import Component
-            from langflow.schema.data import Data
-            from langflow.schema.dataframe import DataFrame
-            from langflow.schema.message import Message
-
-            # Replace PlaceholderGraph with a version that has vertices attribute
-            # This is needed because lfx Agent components access graph.vertices
-            # Both langflow and lfx have PlaceholderGraph - we need to patch the lfx version
-            from typing import NamedTuple
-
-            class EnhancedPlaceholderGraph(NamedTuple):
-                """Enhanced PlaceholderGraph with vertices for lfx compatibility."""
-
-                flow_id: str | None = None
-                flow_name: str | None = None
-                user_id: str | None = None
-                session_id: str | None = None
-                context: dict | None = None
-                vertices: list = []  # Add vertices attribute for lfx compatibility
-
-            # Patch langflow's PlaceholderGraph (used by Agent components)
-            try:
-                from langflow.custom.custom_component import (
-                    component as langflow_component_module,
-                )
-
-                langflow_component_module.PlaceholderGraph = EnhancedPlaceholderGraph
-            except ImportError:
-                # If langflow not available, that's okay
-                pass
-
-            # Note: Memory patching removed - langflow>=1.6.4 uses lfx internally with CrossModuleModel
-            # so isinstance checks work correctly across both type systems
-
-            exec_globals.update(
-                {
-                    "Message": Message,
-                    "Data": Data,
-                    "DataFrame": DataFrame,
-                    "Component": Component,
-                }
+            from lfx.custom.custom_component import (
+                component as lfx_component_module,
             )
-        except ImportError as e:
-            raise ExecutionError(f"Failed to import langflow components: {e}") from e
 
-        return exec_globals
+            lfx_component_module.PlaceholderGraph = EnhancedPlaceholderGraph
+        except ImportError:
+            # If lfx not available, that's okay
+            pass
 
     async def _prepare_component_parameters(
         self, template: dict[str, Any], runtime_inputs: dict[str, Any]
@@ -405,10 +374,9 @@ class UDFExecutor:
                     and not (hasattr(actual_value, "__class__") and actual_value.__class__.__name__ == "DataFrame")
                 ):
                     # DataFrame deserialization failed, try to manually recover
-                    # Use langflow.DataFrame (langflow>=1.6.4 uses lfx internally with CrossModuleModel)
-                    from langflow.schema.dataframe import DataFrame as LangflowDataFrame
+                    # Use lfx.DataFrame (langflow.schema re-exports from lfx)
+                    from lfx.schema.dataframe import DataFrame as LfxDataFrame
                     import pandas as pd
-                    import json as json_module
 
                     # Parse the json_data string
                     json_str = value.get("json_data")
@@ -441,8 +409,8 @@ class UDFExecutor:
                         ]
 
                         # Create DataFrame with list of dicts (not Data objects)
-                        # Use langflow.DataFrame (langflow>=1.6.4 uses lfx internally)
-                        actual_value = LangflowDataFrame(
+                        # Use lfx.DataFrame (langflow.schema re-exports from lfx)
+                        actual_value = LfxDataFrame(
                             data=data_list,
                             text_key=text_key,
                             default_value=default_value
@@ -486,7 +454,7 @@ class UDFExecutor:
                     if is_data_list:
                         # Convert list to DataFrame
                         try:
-                            from langflow.schema.dataframe import DataFrame
+                            from lfx.schema.dataframe import DataFrame
 
                             dataframe = DataFrame(data=actual_value)
                             component_parameters[key] = dataframe
@@ -559,59 +527,3 @@ class UDFExecutor:
         # Execute all sync methods directly - let components handle their execution
         return method()
 
-    def _convert_lfx_messages_to_langflow(self, obj: Any) -> Any:
-        """Recursively convert lfx.Message objects to langflow.Message for memory compatibility.
-
-        The langflow.memory module uses isinstance checks with langflow.Message,
-        which doesn't support CrossModuleModel. This converts lfx Messages to
-        langflow Messages to ensure compatibility.
-
-        Uses JSON serialization/deserialization to ensure nested objects
-        (like Properties, ContentBlock) are properly converted without
-        type mismatches.
-
-        Args:
-            obj: Object to convert (can be dict, list, Message, or primitive)
-
-        Returns:
-            Object with all lfx Messages converted to langflow Messages
-        """
-        # Handle lists
-        if isinstance(obj, list):
-            return [self._convert_lfx_messages_to_langflow(item) for item in obj]
-
-        # Handle dicts
-        if isinstance(obj, dict):
-            return {
-                key: self._convert_lfx_messages_to_langflow(value)
-                for key, value in obj.items()
-            }
-
-        # Handle Message objects
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Message":
-            try:
-                from lfx.schema.message import Message as LfxMessage
-                from langflow.schema.message import Message as LangflowMessage
-
-                # Only convert if it's an lfx Message
-                if isinstance(obj, LfxMessage):
-                    # Convert using JSON serialization for clean nested object handling
-                    # This ensures nested types like Properties/ContentBlock are converted
-                    msg_json = obj.model_dump_json()
-                    return LangflowMessage.model_validate_json(msg_json)
-            except ImportError:
-                pass
-            except Exception:
-                # Fallback to dict-based conversion if JSON fails
-                try:
-                    from lfx.schema.message import Message as LfxMessage
-                    from langflow.schema.message import Message as LangflowMessage
-
-                    if isinstance(obj, LfxMessage):
-                        msg_dict = obj.model_dump()
-                        return LangflowMessage(**msg_dict)
-                except Exception:
-                    pass
-
-        # Return unchanged for other types
-        return obj
