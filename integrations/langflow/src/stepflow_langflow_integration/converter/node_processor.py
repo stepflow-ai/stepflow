@@ -186,7 +186,10 @@ class NodeProcessor:
         return f"langflow_{base_id}"
 
     def _prepare_udf_blob(
-        self, node: dict[str, Any], component_type: str, output_mapping: dict[str, str] = None
+        self,
+        node: dict[str, Any],
+        component_type: str,
+        output_mapping: dict[str, str] = None,
     ) -> dict[str, Any]:
         """Prepare enhanced UDF blob data for component execution.
 

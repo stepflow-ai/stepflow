@@ -116,7 +116,8 @@ class StepflowTweaks:
                 f"  1. The workflow fixture was updated with new component IDs\n"
                 f"  2. The component ID has a typo\n"
                 f"  3. The wrong workflow is being tested\n\n"
-                f"Solution: Update the component IDs in your test to match the workflow."
+                f"Solution: Update the component IDs in your test to match "
+                f"the workflow."
             )
 
     def _is_langflow_udf_step(self, step) -> bool:

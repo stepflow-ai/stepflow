@@ -82,16 +82,16 @@ def shared_config():
     os.environ["LANGFLOW_DATABASE_URL"] = f"sqlite:///{shared_db_path}"
 
     try:
-        from langflow.services.deps import get_db_service, get_settings_service
-        from lfx.services.manager import get_service_manager
+        from langflow.services.utils import initialize_services, teardown_services
+        from lfx.services.deps import get_db_service
 
         # Clear any existing service cache
-        service_manager = get_service_manager()
-        service_manager.teardown()
+        asyncio.run(teardown_services())
 
-        # Initialize services and create database
-        get_settings_service()
+        # Re-initialize services and create database
+        asyncio.run(initialize_services())
         db_service = get_db_service()
+        assert db_service is not None, "Database service not available"
         db_service.reload_engine()
         asyncio.run(db_service.create_db_and_tables())
     finally:
@@ -314,8 +314,7 @@ def test_basic_prompting(test_executor):
     # Check for both old and new Message serialization formats
     # Old: __langflow_type__, New (lfx): __class_name__ + __module_name__
     is_message = (
-        "__langflow_type__" in message_result
-        or "__class_name__" in message_result
+        "__langflow_type__" in message_result or "__class_name__" in message_result
     )
     assert is_message, f"Expected Message object, got: {message_result.keys()}"
     assert "text" in message_result
@@ -374,8 +373,10 @@ retrieval-augmented generation (RAG). Popular solutions include:
             .add_openai_tweaks("LanguageModelComponent-Wqbva")  # LLM component
             .add_astradb_tweaks("AstraDB-TCSqR")  # First AstraDB vector store
             .add_astradb_tweaks("AstraDB-BteL9")  # Second AstraDB vector store
-            .add_env_tweak("OpenAIEmbeddings-jsaKm", "openai_api_key", "OPENAI_API_KEY")  # Ingestion embeddings
-            .add_env_tweak("OpenAIEmbeddings-U8tZg", "openai_api_key", "OPENAI_API_KEY")  # Search embeddings
+            # Ingestion embeddings
+            .add_env_tweak("OpenAIEmbeddings-jsaKm", "openai_api_key", "OPENAI_API_KEY")
+            # Search embeddings
+            .add_env_tweak("OpenAIEmbeddings-U8tZg", "openai_api_key", "OPENAI_API_KEY")
             .build_or_skip()
         )
 
@@ -716,8 +717,7 @@ def test_simple_agent(test_executor):
     assert isinstance(message_result, dict)
     # Check for both old and new Message serialization formats
     is_message = (
-        "__langflow_type__" in message_result
-        or "__class_name__" in message_result
+        "__langflow_type__" in message_result or "__class_name__" in message_result
     )
     assert is_message, f"Expected Message object, got: {message_result.keys()}"
     assert "text" in message_result

@@ -735,7 +735,9 @@ class EnhancedTestComponent(Component):
             "component_type": "ChatInput",
             "template": chat_input_node["data"]["node"]["template"],
             "outputs": chat_input_node["data"]["node"]["outputs"],
-            "selected_output": chat_input_node["data"].get("selected_output", "message"),
+            "selected_output": chat_input_node["data"].get(
+                "selected_output", "message"
+            ),
         }
 
     @pytest.fixture
@@ -815,10 +817,11 @@ class EnhancedTestComponent(Component):
     async def test_agent_component_execution_attempt(
         self, executor: UDFExecutor, mock_context, agent_component_blob
     ):
-        """Test Agent component execution (will fail without real API key but tests setup).
+        """Test Agent component execution (will fail without real API key).
 
         This test goes beyond just instantiation to attempt actual execution.
-        It will fail due to missing API key, but should NOT fail with PlaceholderGraph errors.
+        It will fail due to missing API key, but should NOT fail with
+        PlaceholderGraph errors.
         """
         mock_context.get_blob.return_value = agent_component_blob
 
@@ -847,10 +850,13 @@ class EnhancedTestComponent(Component):
                 f"PlaceholderGraph.vertices error detected: {error_msg}"
             )
             # Expected errors: API key, authentication, model errors
-            print(f"Expected error (not PlaceholderGraph): {type(e).__name__}: {error_msg[:200]}")
+            error_info = f"{type(e).__name__}: {error_msg[:200]}"
+            print(f"Expected error (not PlaceholderGraph): {error_info}")
 
     @pytest.mark.asyncio
-    async def test_prompt_component(self, executor: UDFExecutor, mock_context, prompt_component_data):
+    async def test_prompt_component(
+        self, executor: UDFExecutor, mock_context, prompt_component_data
+    ):
         """Test executing Prompt component with string-type system_message field.
 
         This test verifies that:
@@ -872,10 +878,14 @@ class EnhancedTestComponent(Component):
         mock_context.get_blob.return_value = blob_data
 
         # Prepare input data
+        template_text = (
+            "Answer the user as if you were a GenAI expert, enthusiastic "
+            "about helping them get started building something fresh."
+        )
         input_data = {
             "blob_id": blob_id,
             "input": {
-                "template": "Answer the user as if you were a GenAI expert, enthusiastic about helping them get started building something fresh.",
+                "template": template_text,
             },
         }
 
@@ -895,12 +905,9 @@ class EnhancedTestComponent(Component):
 
         # The Prompt component should return a Message object
         # Check for both old and new serialization formats
-        has_message_marker = (
-            "__langflow_type__" in output or "__class_name__" in output
-        )
-        assert has_message_marker, (
-            f"Expected Message object, got: {output.keys() if isinstance(output, dict) else type(output)}"
-        )
+        has_message_marker = "__langflow_type__" in output or "__class_name__" in output
+        output_desc = output.keys() if isinstance(output, dict) else type(output)
+        assert has_message_marker, f"Expected Message object, got: {output_desc}"
         assert "text" in output
         assert len(output["text"]) > 0
 
@@ -908,13 +915,15 @@ class EnhancedTestComponent(Component):
     async def test_language_model_message_to_string_conversion(
         self, executor: UDFExecutor, mock_context, basic_prompting_flow
     ):
-        """Test LanguageModelComponent receives string when Message is passed to str field.
+        """Test LanguageModelComponent receives string when Message passed.
 
-        This test verifies the fix for Langflow 1.6.4+ lfx components that expect
-        string values for MultilineInput fields, not Message objects.
+        This test verifies the fix for Langflow 1.6.4+ lfx components that
+        expect string values for MultilineInput fields, not Message objects.
         """
         nodes = basic_prompting_flow["data"]["nodes"]
-        lm_node = next(n for n in nodes if n["data"].get("type") == "LanguageModelComponent")
+        lm_node = next(
+            n for n in nodes if n["data"].get("type") == "LanguageModelComponent"
+        )
 
         # Create blob data for LanguageModelComponent component
         lm_blob_data = {
@@ -955,9 +964,9 @@ class EnhancedTestComponent(Component):
         except Exception as e:
             error_msg = str(e)
             # Should NOT have validation error about Message type
-            assert "Invalid value type" not in error_msg or "Message" not in error_msg, (
-                f"Should not have Message type validation error. Got: {error_msg}"
-            )
+            assert (
+                "Invalid value type" not in error_msg or "Message" not in error_msg
+            ), f"Should not have Message type validation error. Got: {error_msg}"
             # Other errors (like missing API key) are expected
             assert (
                 "api_key" in error_msg.lower()
@@ -1014,13 +1023,9 @@ class EnhancedTestComponent(Component):
             output = result
 
         # Should be a Message object (check for both old and new serialization)
-        has_message_marker = (
-            "__langflow_type__" in output
-            or "__class_name__" in output
-        )
-        assert has_message_marker, (
-            f"Expected Message object, got: {output.keys() if isinstance(output, dict) else type(output)}"
-        )
+        has_message_marker = "__langflow_type__" in output or "__class_name__" in output
+        output_desc = output.keys() if isinstance(output, dict) else type(output)
+        assert has_message_marker, f"Expected Message object, got: {output_desc}"
         assert "text" in output
         assert output["text"] == "Hello from the test!"
 

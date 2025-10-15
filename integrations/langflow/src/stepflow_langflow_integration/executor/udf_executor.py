@@ -170,7 +170,7 @@ class UDFExecutor:
             )
 
         try:
-            from langflow.custom.eval import eval_custom_component_code
+            from lfx.custom.eval import eval_custom_component_code
 
             component_class = eval_custom_component_code(code)
         except Exception as e:
@@ -263,7 +263,7 @@ class UDFExecutor:
         class GraphContext:
             def __init__(self, session_id: str):
                 self.session_id = session_id
-                self.vertices = []  # Empty list for compatibility with lfx processing
+                self.vertices: list[Any] = []  # Empty list for lfx compatibility
                 self.flow_id = None  # Optional attribute some components may expect
 
         # Use __dict__ to set graph even if it's a read-only property
@@ -321,15 +321,16 @@ class UDFExecutor:
             context: dict | None = None
             vertices: list = []  # Add vertices attribute for lfx compatibility
 
-        # Patch lfx's PlaceholderGraph (langflow re-exports this, so patching lfx patches both)
-        # lfx 0.1.12+ uses PlaceholderGraph in agents/utils.py which imports from
-        # lfx.custom.custom_component.component
+        # Patch lfx's PlaceholderGraph (langflow re-exports this, so patching
+        # lfx patches both). lfx 0.1.12+ uses PlaceholderGraph in
+        # agents/utils.py which imports from lfx.custom.custom_component.component
         try:
             from lfx.custom.custom_component import (
                 component as lfx_component_module,
             )
 
-            lfx_component_module.PlaceholderGraph = EnhancedPlaceholderGraph
+            # Use type: ignore because we're dynamically patching a class
+            lfx_component_module.PlaceholderGraph = EnhancedPlaceholderGraph  # type: ignore[assignment,misc]
         except ImportError:
             # If lfx not available, that's okay
             pass
@@ -344,13 +345,15 @@ class UDFExecutor:
         # Process template parameters
         for key, field_def in template.items():
             if isinstance(field_def, dict) and "value" in field_def:
-                # Skip handle inputs (those with input_types) if they have empty/placeholder values
-                # These are meant to receive data from connected steps, not use template defaults
+                # Skip handle inputs (those with input_types) if they have
+                # empty/placeholder values. These are meant to receive data from
+                # connected steps, not use template defaults
                 input_types = field_def.get("input_types", [])
                 value = field_def["value"]
 
                 # Skip if this is a handle input with an empty value
-                # Handle inputs should get their values from runtime_inputs (connected steps)
+                # Handle inputs should get their values from runtime_inputs
+                # (connected steps)
                 if input_types and (value == "" or value is None):
                     continue
 
@@ -371,18 +374,22 @@ class UDFExecutor:
                 if (
                     isinstance(value, dict)
                     and value.get("__langflow_type__") == "DataFrame"
-                    and not (hasattr(actual_value, "__class__") and actual_value.__class__.__name__ == "DataFrame")
+                    and not (
+                        hasattr(actual_value, "__class__")
+                        and actual_value.__class__.__name__ == "DataFrame"
+                    )
                 ):
                     # DataFrame deserialization failed, try to manually recover
                     # Use lfx.DataFrame (langflow.schema re-exports from lfx)
-                    from lfx.schema.dataframe import DataFrame as LfxDataFrame
                     import pandas as pd
+                    from lfx.schema.dataframe import DataFrame as LfxDataFrame
 
                     # Parse the json_data string
                     json_str = value.get("json_data")
                     if json_str and isinstance(json_str, str):
                         # Reconstruct DataFrame from split format
                         import io
+
                         json_io = io.StringIO(json_str)
                         pd_df = pd.read_json(json_io, orient="split")
 
@@ -413,7 +420,7 @@ class UDFExecutor:
                         actual_value = LfxDataFrame(
                             data=data_list,
                             text_key=text_key,
-                            default_value=default_value
+                            default_value=default_value,
                         )
 
                 # Check if we need to convert Message to string for lfx components
@@ -443,10 +450,17 @@ class UDFExecutor:
                 # Convert list to DataFrame if component accepts DataFrame
                 # This handles cases where File components output list[Data]
                 if "DataFrame" in input_types and actual_value:
-                    # Check if list contains Data-like objects (dicts with text, or Data instances)
+                    # Check if list contains Data-like objects (dicts with text,
+                    # or Data instances)
                     is_data_list = all(
-                        (isinstance(item, dict) and ("text" in item or "__class_name__" in item))
-                        or (hasattr(item, "__class__") and item.__class__.__name__ == "Data")
+                        (
+                            isinstance(item, dict)
+                            and ("text" in item or "__class_name__" in item)
+                        )
+                        or (
+                            hasattr(item, "__class__")
+                            and item.__class__.__name__ == "Data"
+                        )
                         for item in actual_value
                         if item is not None
                     )
@@ -526,4 +540,3 @@ class UDFExecutor:
         """Execute sync method safely in async context - real execution only."""
         # Execute all sync methods directly - let components handle their execution
         return method()
-

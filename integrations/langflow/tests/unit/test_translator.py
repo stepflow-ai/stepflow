@@ -304,12 +304,12 @@ class TrivialComponent(Component):
         # Find the main processing steps (not blob steps)
         # Step count may vary with routing improvements, focus on dependency ordering
         memory_steps = [
-            sid for sid in step_ids if "memory-3" in sid and "_blob" not in sid
+            sid for sid in step_ids if "Memory-3" in sid and "_blob" not in sid
         ]
         prompt_steps = [
-            sid for sid in step_ids if "prompt-4" in sid and "_blob" not in sid
+            sid for sid in step_ids if "Prompt-4" in sid and "_blob" not in sid
         ]
-        llm_steps = [sid for sid in step_ids if "llm-5" in sid and "_blob" not in sid]
+        llm_steps = [sid for sid in step_ids if "LLM-5" in sid and "_blob" not in sid]
 
         # Verify the main processing steps exist
         assert len(memory_steps) > 0, f"Expected memory processing step in {step_ids}"

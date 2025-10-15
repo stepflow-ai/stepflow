@@ -176,25 +176,25 @@ impl ReceiveMessageLoop {
         let mut lines_drained = 0;
 
         while let Ok(true) = timeout(drain_timeout, async {
-                tokio::select! {
-                    Some(stderr_line) = self.from_child_stderr.next() => {
-                        if let Ok(line) = stderr_line {
-                            tracing::info!("Component stderr (on crash): {line}");
-                            lines_drained += 1;
-                        }
-                        true
+            tokio::select! {
+                Some(stderr_line) = self.from_child_stderr.next() => {
+                    if let Ok(line) = stderr_line {
+                        tracing::info!("Component stderr (on crash): {line}");
+                        lines_drained += 1;
                     }
-                    Some(stdout_line) = self.from_child_stdout.next() => {
-                        if let Ok(line) = stdout_line {
-                            tracing::info!("Component stdout (on crash): {line}");
-                            lines_drained += 1;
-                        }
-                        true
-                    }
-                    else => false
+                    true
                 }
-            })
-            .await
+                Some(stdout_line) = self.from_child_stdout.next() => {
+                    if let Ok(line) = stdout_line {
+                        tracing::info!("Component stdout (on crash): {line}");
+                        lines_drained += 1;
+                    }
+                    true
+                }
+                else => false
+            }
+        })
+        .await
         {
             // Continue draining
         }

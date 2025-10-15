@@ -54,7 +54,7 @@ class TestStepflowTweaksIntegration:
     def test_real_workflow_tweaks_application(self, basic_prompting_flow):
         """Test tweaks application on a real converted workflow."""
         tweaks = {
-            "LanguageModelComponent-kboja": {  # Lowercase to match converted workflow
+            "LanguageModelComponent-kBOja": {  # Must match actual component ID
                 "api_key": "integration_test_key",
                 "temperature": 0.7,
                 "model_name": "gpt-4",
@@ -67,7 +67,7 @@ class TestStepflowTweaksIntegration:
         langflow_step = None
         for step in modified_flow.steps:
             if (
-                step.id == "langflow_languagemodelcomponent-kboja"
+                step.id == "langflow_LanguageModelComponent-kBOja"
                 and step.component == "/langflow/udf_executor"
             ):
                 langflow_step = step

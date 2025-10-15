@@ -335,6 +335,7 @@ class TypeConverter:
             elif langflow_type == "DataFrame":
                 try:
                     import json
+
                     import pandas as pd
 
                     text_key = obj_data.get("text_key", "text")
@@ -345,21 +346,19 @@ class TypeConverter:
                     if not json_str:
                         raise ValueError("DataFrame missing required json_data field")
 
-                    # Parse the JSON string
-                    if isinstance(json_str, str):
-                        split_data = json.loads(json_str)
-                    else:
-                        split_data = json_str
-
                     # Deserialize using pandas from split format
                     import io
-                    json_io = io.StringIO(json_str if isinstance(json_str, str) else json.dumps(json_str))
+
+                    json_io = io.StringIO(
+                        json_str if isinstance(json_str, str) else json.dumps(json_str)
+                    )
                     pd_df = pd.read_json(json_io, orient="split")
                     data_list = pd_df.to_dict(orient="records")
 
                     # Replace NaN values with None to avoid JSON serialization errors
-                    # Pandas converts null/None to NaN for numeric columns, but NaN is not
-                    # JSON-compliant and causes errors in strict JSON serializers (e.g., AstraDB)
+                    # Pandas converts null/None to NaN for numeric columns, but NaN
+                    # is not JSON-compliant and causes errors in strict JSON
+                    # serializers (e.g., AstraDB)
                     data_list = [
                         {k: (None if pd.isna(v) else v) for k, v in record.items()}
                         for record in data_list
@@ -371,8 +370,9 @@ class TypeConverter:
                         default_value=default_value,
                     )
                 except Exception:
-                    # Failed to reconstruct, return the original dict so recovery logic can handle it
-                    # Don't return json_data string directly as that bypasses recovery
+                    # Failed to reconstruct, return the original dict so recovery
+                    # logic can handle it. Don't return json_data string directly
+                    # as that bypasses recovery
                     return obj
 
         # Check for BaseModel serialization

@@ -306,11 +306,16 @@ impl Plugin for StepflowPlugin {
         };
 
         // First attempt
-        match self.try_execute_component(component, &context, &input, 1).await {
+        match self
+            .try_execute_component(component, &context, &input, 1)
+            .await
+        {
             Ok(result) => Ok(result),
             Err(e) => {
                 // Only retry for stdio transport when subprocess was restarted
-                if let (Some(initial_count), Some(restart_rx)) = (initial_restart_count, restart_rx.as_mut()) {
+                if let (Some(initial_count), Some(restart_rx)) =
+                    (initial_restart_count, restart_rx.as_mut())
+                {
                     // Check if a restart occurred by comparing the current counter
                     let current_count = *restart_rx.borrow_and_update();
 
@@ -322,7 +327,9 @@ impl Plugin for StepflowPlugin {
                         );
 
                         // Retry the execution once with the restored subprocess
-                        return self.try_execute_component(component, &context, &input, 2).await;
+                        return self
+                            .try_execute_component(component, &context, &input, 2)
+                            .await;
                     }
                 }
 

@@ -115,7 +115,8 @@ class LangflowConverter:
             # Create field mapping from edges for proper UDF input handling
             field_mapping = self._build_field_mapping_from_edges(edges)
 
-            # Create output mapping from edges to track which output is used from each component
+            # Create output mapping from edges to track which output is used from
+            # each component
             output_mapping = self._build_output_mapping_from_edges(edges)
 
             # Create node lookup for efficient processing
@@ -319,7 +320,7 @@ class LangflowConverter:
     def _build_output_mapping_from_edges(
         self, edges: list[dict[str, Any]]
     ) -> dict[str, str]:
-        """Build output mapping from edges to track which output is used from each component.
+        """Build output mapping from edges to track output usage per component.
 
         Args:
             edges: List of Langflow edges
@@ -353,7 +354,8 @@ class LangflowConverter:
                     output_name = None
 
             # Only store if we found an output name and don't have one already
-            # (first edge wins if component has multiple outgoing edges with different outputs)
+            # (first edge wins if component has multiple outgoing edges with
+            # different outputs)
             if output_name and source_id not in output_mapping:
                 output_mapping[source_id] = output_name
 
