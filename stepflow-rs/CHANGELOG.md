@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.6.0"></a> [Stepflow 0.6.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.6.0) - 2025-10-15
+### Features
+
+- Upgrade langflow integration to 1.6.4 with lfx support ([#370](https://github.com/stepflow-ai/stepflow/pull/370))
+
+### Miscellaneous Tasks
+
+- Update release_rust for multiple images ([#374](https://github.com/stepflow-ai/stepflow/pull/374))
+
 ## <a id="0.5.0"></a> [Stepflow 0.5.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.5.0) - 2025-10-09
 ### Bug Fixes
 
