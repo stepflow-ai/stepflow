@@ -18,12 +18,139 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
-import yaml
+import requests
 
 from stepflow_langflow_integration.exceptions import ExecutionError, ValidationError
+
+
+class StepflowServer:
+    """Running Stepflow server instance with lifecycle management.
+
+    This class manages a Stepflow server process and provides methods to
+    interact with it and retrieve stdout/stderr for debugging.
+    """
+
+    def __init__(
+        self,
+        process: subprocess.Popen,
+        url: str,
+        port: int,
+        config_path: str,
+    ):
+        """Initialize StepflowServer instance.
+
+        Args:
+            process: Running server subprocess
+            url: Base URL for API calls (e.g., "http://localhost:7837/api/v1")
+            port: Server port number
+            config_path: Path to config file used by server
+        """
+        self.process = process
+        self.url = url
+        self.port = port
+        self.config_path = config_path
+        self._stdout_buffer = StringIO()
+        self._stderr_buffer = StringIO()
+        self._stdout_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
+        self._stop_capture = threading.Event()
+
+        # Start capturing stdout/stderr in background threads
+        self._start_output_capture()
+
+    def _start_output_capture(self):
+        """Start background threads to capture stdout and stderr."""
+
+        def capture_stream(stream, buffer: StringIO, stop_event: threading.Event):
+            """Capture stream output to buffer until stop event is set."""
+            try:
+                for line in iter(stream.readline, ""):
+                    if stop_event.is_set():
+                        break
+                    buffer.write(line)
+            except Exception:
+                pass  # Ignore errors during capture
+
+        if self.process.stdout:
+            self._stdout_thread = threading.Thread(
+                target=capture_stream,
+                args=(self.process.stdout, self._stdout_buffer, self._stop_capture),
+                daemon=True,
+            )
+            self._stdout_thread.start()
+
+        if self.process.stderr:
+            self._stderr_thread = threading.Thread(
+                target=capture_stream,
+                args=(self.process.stderr, self._stderr_buffer, self._stop_capture),
+                daemon=True,
+            )
+            self._stderr_thread.start()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, *args):
+        """Context manager exit - ensures server is stopped."""
+        self.stop()
+
+    def stop(self):
+        """Stop the server and wait for cleanup."""
+        if self.process and self.process.poll() is None:
+            # Stop output capture first
+            self._stop_capture.set()
+
+            # Give threads a moment to finish
+            if self._stdout_thread:
+                self._stdout_thread.join(timeout=1.0)
+            if self._stderr_thread:
+                self._stderr_thread.join(timeout=1.0)
+
+            # Terminate server gracefully
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                # Force kill if graceful shutdown fails
+                self.process.kill()
+                self.process.wait(timeout=2.0)
+
+    def get_stdout(self) -> str:
+        """Get buffered stdout for debugging.
+
+        Returns:
+            All stdout output captured since server start
+        """
+        return self._stdout_buffer.getvalue()
+
+    def get_stderr(self) -> str:
+        """Get buffered stderr for debugging.
+
+        Returns:
+            All stderr output captured since server start
+        """
+        return self._stderr_buffer.getvalue()
+
+    def is_healthy(self) -> bool:
+        """Check if server is healthy via health endpoint.
+
+        Returns:
+            True if server responds to health check
+        """
+        try:
+            # Health endpoint is at /api/v1/health
+            health_url = f"{self.url}/health"
+            response = requests.get(health_url, timeout=2.0)
+            return response.status_code == 200
+        except Exception:
+            return False
 
 
 class StepflowBinaryRunner:
@@ -58,36 +185,194 @@ class StepflowBinaryRunner:
                 "build stepflow-rs first."
             )
 
-    def _extract_json_result(self, stdout: str) -> dict[str, Any] | None:
-        """Legacy JSON extraction fallback for when --output file parsing fails.
+        # Also locate the stepflow-server binary (in the same directory)
+        self.server_binary_path = self.binary_path.parent / "stepflow-server"
+        if not self.server_binary_path.exists():
+            raise FileNotFoundError(
+                f"Stepflow server binary not found at {self.server_binary_path}. "
+                "Please build stepflow-server first."
+            )
 
-        This is a simplified fallback that tries basic JSON extraction from
-        mixed stdout output. The primary approach now uses --output files.
+    def start_server(
+        self,
+        config_path: str,
+        port: int | None = None,
+        timeout: float = 30.0,
+    ) -> StepflowServer:
+        """Start a Stepflow server and return server instance.
 
         Args:
-            stdout: Raw stdout from stepflow command
+            config_path: Path to stepflow config file
+            port: Server port (if None, finds available port automatically)
+            timeout: Timeout for server startup health check
 
         Returns:
-            Parsed JSON data as dict, or {"output": raw_text} fallback
+            StepflowServer instance for interacting with the running server
+
+        Raises:
+            ExecutionError: If server fails to start or doesn't become healthy
         """
-        if not stdout.strip():
-            return {"output": ""}
+        import socket
 
-        lines = stdout.strip().split("\n")
+        # Find available port if not specified
+        if port is None:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("", 0))
+                s.listen(1)
+                port = s.getsockname()[1]
 
-        # Look for complete JSON objects on individual lines (most reliable)
-        for line in reversed(lines):
-            line = line.strip()
-            if line.startswith("{") and line.endswith("}"):
+        url = f"http://localhost:{port}/api/v1"
+
+        # Start server process using stepflow-server binary
+        cmd = [
+            str(self.server_binary_path),
+            "--port",
+            str(port),
+            "--config",
+            config_path,
+        ]
+
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=self.binary_path.parent,
+            )
+        except Exception as e:
+            raise ExecutionError(f"Failed to start Stepflow server: {e}") from e
+
+        # Create server instance
+        server = StepflowServer(process, url, port, config_path)
+
+        # Wait for server to become healthy
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if server.is_healthy():
+                return server
+
+            # Check if process died
+            if process.poll() is not None:
+                stdout = server.get_stdout()
+                stderr = server.get_stderr()
+                raise ExecutionError(
+                    f"Stepflow server process exited unexpectedly.\n"
+                    f"Exit code: {process.returncode}\n"
+                    f"STDOUT:\n{stdout}\n"
+                    f"STDERR:\n{stderr}"
+                )
+
+            time.sleep(0.5)
+
+        # Timeout - cleanup and raise error
+        stdout = server.get_stdout()
+        stderr = server.get_stderr()
+        server.stop()
+        raise ExecutionError(
+            f"Stepflow server failed to become healthy within {timeout}s.\n"
+            f"STDOUT:\n{stdout}\n"
+            f"STDERR:\n{stderr}"
+        )
+
+    def submit_workflow(
+        self,
+        server: StepflowServer,
+        workflow_yaml: str,
+        input_data: dict[str, Any],
+        timeout: float = 60.0,
+    ) -> tuple[bool, dict[str, Any] | None, str, str]:
+        """Submit workflow to running Stepflow server.
+
+        Args:
+            server: Running StepflowServer instance
+            workflow_yaml: YAML content of the workflow
+            input_data: Input data for the workflow
+            timeout: Command timeout in seconds
+
+        Returns:
+            Tuple of (success, result_data, stdout, stderr)
+
+        Raises:
+            ExecutionError: If submission fails
+        """
+        # Write workflow to temporary file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as workflow_file:
+            workflow_file.write(workflow_yaml)
+            workflow_path = workflow_file.name
+
+        # Create temporary output file for clean result parsing
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as output_file:
+            output_path = output_file.name
+
+        try:
+            # Use stepflow submit command
+            cmd = [
+                str(self.binary_path),
+                "submit",
+                "--url",
+                server.url,
+                "--flow",
+                workflow_path,
+                "--stdin-format=json",
+                "--output",
+                output_path,
+            ]
+
+            # Pass input via stdin
+            input_str = json.dumps(input_data)
+
+            result = subprocess.run(
+                cmd,
+                input=input_str,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=self.binary_path.parent,
+            )
+
+            success = result.returncode == 0
+            result_data = None
+            stdout_content = result.stdout
+            stderr_content = result.stderr
+
+            # Read the clean JSON output from the output file
+            if success and Path(output_path).exists():
                 try:
-                    parsed = json.loads(line)
-                    if isinstance(parsed, dict):
-                        return parsed
-                except json.JSONDecodeError:
-                    continue
+                    with open(output_path) as f:
+                        output_content = f.read().strip()
+                    if output_content:
+                        result_data = json.loads(output_content)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    # If output file parsing fails, there's nothing more to do
+                    pass
 
-        # Fallback - return raw output
-        return {"output": stdout.strip()}
+            # Check if workflow execution actually succeeded based on outcome
+            if isinstance(result_data, dict) and result_data.get("outcome") == "failed":
+                success = False
+
+            # If submission failed, include server logs in stderr for debugging
+            if not success:
+                server_stderr = server.get_stderr()
+                if server_stderr:
+                    stderr_content = "\n".join(
+                        (stderr_content, "--- Server Logs ---", server_stderr)
+                    ).strip()
+
+            return success, result_data, stdout_content, stderr_content
+
+        except subprocess.TimeoutExpired as e:
+            raise ExecutionError(
+                f"Stepflow submit command timed out after {timeout}s"
+            ) from e
+        finally:
+            # Clean up temp files
+            for temp_path in [workflow_path, output_path]:
+                Path(temp_path).unlink(missing_ok=True)
 
     def validate_workflow(
         self,
@@ -137,124 +422,6 @@ class StepflowBinaryRunner:
         finally:
             # Clean up temp file
             Path(workflow_path).unlink(missing_ok=True)
-
-    def run_workflow(
-        self,
-        workflow_yaml: str,
-        input_data: dict[str, Any],
-        config_path: str,
-        timeout: float = 60.0,
-        input_format: str = "json",
-    ) -> tuple[bool, dict[str, Any] | None, str, str]:
-        """Run a workflow using stepflow run command with clean output separation.
-
-        Uses stepflow's built-in --output and --log-file options to separate
-        result JSON from log output, eliminating the need for complex parsing.
-
-        Args:
-            workflow_yaml: YAML content of the workflow
-            input_data: Input data for the workflow
-            config_path: Path to stepflow config file
-            timeout: Command timeout in seconds
-            input_format: Input format ("json" or "yaml")
-
-        Returns:
-            Tuple of (success, result_data, stdout, stderr)
-            - stdout contains clean JSON result
-            - stderr contains both original stderr and logs for debugging
-        """
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(workflow_yaml)
-            workflow_path = f.name
-
-        # Create temporary files for clean output separation
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as output_file:
-            output_path = output_file.name
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".log", delete=False
-        ) as log_file:
-            log_path = log_file.name
-
-        try:
-            cmd = [
-                str(self.binary_path),
-                "run",
-                "--flow",
-                workflow_path,
-                "--config",
-                config_path,
-                f"--stdin-format={input_format}",
-                "--output",
-                output_path,
-                "--log-file",
-                log_path,
-            ]
-
-            # Pass input via stdin
-            input_str = (
-                json.dumps(input_data)
-                if input_format == "json"
-                else yaml.dump(input_data)
-            )
-
-            result = subprocess.run(
-                cmd,
-                input=input_str,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=self.binary_path.parent,
-            )
-
-            success = result.returncode == 0
-            result_data = None
-            stdout_content = ""
-            stderr_content = result.stderr
-
-            # Read the clean JSON output from the output file
-            if success and Path(output_path).exists():
-                try:
-                    with open(output_path) as f:
-                        output_content = f.read().strip()
-                    if output_content:
-                        result_data = json.loads(output_content)
-                        stdout_content = output_content  # For compatibility
-                except (json.JSONDecodeError, FileNotFoundError):
-                    # If output file parsing fails, fall back to stdout parsing
-                    if result.stdout.strip():
-                        result_data = self._extract_json_result(result.stdout)
-                        stdout_content = result.stdout
-
-            # Read logs from log file and append to stderr for debugging
-            if Path(log_path).exists():
-                try:
-                    with open(log_path) as f:
-                        log_content = f.read().strip()
-                    if log_content:
-                        # Add logs to stderr for debugging (keeping original stderr too)
-                        stderr_content = (
-                            f"{stderr_content}\n--- Logs ---\n{log_content}".strip()
-                        )
-                except FileNotFoundError:
-                    pass
-
-            # Check if workflow execution actually succeeded based on outcome
-            if isinstance(result_data, dict) and result_data.get("outcome") == "failed":
-                success = False
-
-            return success, result_data, stdout_content, stderr_content
-
-        except subprocess.TimeoutExpired as e:
-            raise ExecutionError(
-                f"Stepflow run command timed out after {timeout}s"
-            ) from e
-        finally:
-            # Clean up temp files
-            for temp_path in [workflow_path, output_path, log_path]:
-                Path(temp_path).unlink(missing_ok=True)
 
     def check_binary_availability(self) -> tuple[bool, str]:
         """Check if stepflow binary is available and working.

@@ -9017,6 +9017,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "requests" },
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
@@ -9052,6 +9053,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.26.0" },
     { name = "pytest-cov", specifier = ">=4.1.0" },
     { name = "pytest-mock", specifier = ">=3.14.1" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", specifier = ">=0.9.4" },
     { name = "types-pyyaml", specifier = ">=6.0.0" },
 ]
