@@ -2,6 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.6.0"></a> [Stepflow Python SDK 0.6.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.6.0) - 2025-10-15
 ## <a id="0.5.0"></a> [Stepflow Python SDK 0.5.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.5.0) - 2025-10-09
 ### Features
 
