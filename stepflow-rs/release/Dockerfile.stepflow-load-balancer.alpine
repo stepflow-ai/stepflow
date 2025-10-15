@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# Dockerfile for stepflow-load-balancer (Alpine base)
+#
+# This image runs the Stepflow load balancer for component servers.
+# Default port: 8080
+# Configure upstream via UPSTREAM_SERVICE environment variable
+
+FROM alpine:3.19
+
+# Install ca-certificates for HTTPS support
+RUN apk --no-cache add ca-certificates
+
+# Create non-root user
+RUN adduser -D -s /bin/sh stepflow
+
+# Copy the stepflow-load-balancer binary (path provided by build context)
+COPY stepflow-load-balancer /usr/local/bin/stepflow-load-balancer
+RUN chmod +x /usr/local/bin/stepflow-load-balancer
+
+USER stepflow
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/stepflow-load-balancer"]

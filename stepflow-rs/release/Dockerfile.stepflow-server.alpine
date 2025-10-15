@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# Dockerfile for stepflow-server (Alpine base)
+#
+# This image runs the Stepflow HTTP workflow execution server.
+# Default port: 7840
+# Listens on: 0.0.0.0 (all interfaces)
+
+FROM alpine:3.19
+
+# Install ca-certificates for HTTPS support
+RUN apk --no-cache add ca-certificates
+
+# Create non-root user
+RUN adduser -D -s /bin/sh stepflow
+
+# Copy the stepflow-server binary (path provided by build context)
+COPY stepflow-server /usr/local/bin/stepflow-server
+RUN chmod +x /usr/local/bin/stepflow-server
+
+USER stepflow
+
+EXPOSE 7840
+
+ENTRYPOINT ["/usr/local/bin/stepflow-server"]
+CMD ["--port", "7840"]

@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# Dockerfile for stepflow CLI (Alpine base)
+#
+# This image provides the Stepflow CLI tool for workflow execution.
+# Use this for running workflows from the command line.
+
+FROM alpine:3.19
+
+# Install ca-certificates for HTTPS support
+RUN apk --no-cache add ca-certificates
+
+# Create non-root user
+RUN adduser -D -s /bin/sh stepflow
+
+# Copy the stepflow binary (path provided by build context)
+COPY stepflow /usr/local/bin/stepflow
+RUN chmod +x /usr/local/bin/stepflow
+
+USER stepflow
+
+ENTRYPOINT ["/usr/local/bin/stepflow"]

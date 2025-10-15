@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+# Dockerfile for stepflow CLI (Debian base)
+#
+# This image provides the Stepflow CLI tool for workflow execution.
+# Use this for running workflows from the command line.
+
+FROM debian:bookworm-slim
+
+# Install ca-certificates for HTTPS support
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -r -s /bin/false stepflow
+
+# Copy the stepflow binary (path provided by build context)
+COPY stepflow /usr/local/bin/stepflow
+RUN chmod +x /usr/local/bin/stepflow
+
+USER stepflow
+
+ENTRYPOINT ["/usr/local/bin/stepflow"]

@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Dockerfile for stepflow-server (Debian base)
+#
+# This image runs the Stepflow HTTP workflow execution server.
+# Default port: 7840
+# Listens on: 0.0.0.0 (all interfaces)
+
+FROM debian:bookworm-slim
+
+# Install ca-certificates for HTTPS support
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -r -s /bin/false stepflow
+
+# Copy the stepflow-server binary (path provided by build context)
+COPY stepflow-server /usr/local/bin/stepflow-server
+RUN chmod +x /usr/local/bin/stepflow-server
+
+USER stepflow
+
+EXPOSE 7840
+
+ENTRYPOINT ["/usr/local/bin/stepflow-server"]
+CMD ["--port", "7840"]

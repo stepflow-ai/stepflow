@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+# Dockerfile for stepflow-load-balancer (Debian base)
+#
+# This image runs the Stepflow load balancer for component servers.
+# Default port: 8080
+# Configure upstream via UPSTREAM_SERVICE environment variable
+
+FROM debian:bookworm-slim
+
+# Install ca-certificates for HTTPS support
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -r -s /bin/false stepflow
+
+# Copy the stepflow-load-balancer binary (path provided by build context)
+COPY stepflow-load-balancer /usr/local/bin/stepflow-load-balancer
+RUN chmod +x /usr/local/bin/stepflow-load-balancer
+
+USER stepflow
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/stepflow-load-balancer"]
