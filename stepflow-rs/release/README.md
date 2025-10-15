@@ -57,46 +57,88 @@ docker run -v $(pwd):/workspace \
   run --flow /workspace/workflow.yaml --input /workspace/input.json
 ```
 
-## Building Locally
+## Building Docker Images Locally
 
-These Dockerfiles are used by the GitHub Actions release workflow, but can also be built locally.
+### Option 1: From a GitHub Release (Easiest)
 
-### Prerequisites
+Download binaries from an existing release and build Docker images:
 
-1. Build the binary for the target platform:
+```bash
+cd stepflow-rs/release
+
+# Download binaries from release (auto-detects repo from git remote)
+./download-release-binaries.sh 0.5.0
+
+# Build Docker images locally
+./build-docker-images.sh 0.5.0
+
+# Or push to a registry
+./build-docker-images.sh 0.5.0 ghcr.io/myorg/myrepo
+```
+
+This is useful for:
+- Testing Docker image changes without rebuilding binaries
+- Creating custom images from official releases
+- Reproducing release builds locally
+
+### Option 2: From Local Builds
+
+Build your own binaries and create Docker images:
+
 ```bash
 cd stepflow-rs
 
-# For native platform
-cargo build --release --bin stepflow-server
+# Build binaries for Linux targets
+cargo build --release --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
 
-# For Linux (from macOS using cross)
-cross build --release --target x86_64-unknown-linux-gnu --bin stepflow-server
-```
+# For cross-compilation (e.g., ARM64)
+cross build --release --target aarch64-unknown-linux-gnu \
+  --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
 
-2. Copy binary to release directory:
-```bash
-cp target/release/stepflow-server release/stepflow-server
-# or
-cp target/x86_64-unknown-linux-gnu/release/stepflow-server release/stepflow-server
-```
+# Copy binaries to release/binaries/ directory
+mkdir -p release/binaries
+cp target/release/stepflow release/binaries/stepflow-x86_64-unknown-linux-gnu
+cp target/release/stepflow-server release/binaries/stepflow-server-x86_64-unknown-linux-gnu
+cp target/release/stepflow-load-balancer release/binaries/stepflow-load-balancer-x86_64-unknown-linux-gnu
 
-### Building Images
-
-From the `stepflow-rs/release/` directory:
-
-```bash
+# Build Docker images
 cd release
-
-# Build stepflow-server (Debian)
-docker build -f Dockerfile.stepflow-server.debian -t stepflow-server:local .
-
-# Build stepflow-load-balancer (Alpine)
-docker build -f Dockerfile.stepflow-load-balancer.alpine -t stepflow-load-balancer:local .
-
-# Build stepflow CLI (Debian)
-docker build -f Dockerfile.stepflow.debian -t stepflow:local .
+./build-docker-images.sh dev-build
 ```
+
+### Script Usage
+
+**`download-release-binaries.sh`**
+```bash
+./download-release-binaries.sh <version> [repo]
+
+# Examples:
+./download-release-binaries.sh 0.5.0                  # Auto-detects repo from git remote
+./download-release-binaries.sh 0.5.0 myorg/myrepo    # Override repository
+```
+
+Downloads Linux binaries from a GitHub release into `./binaries/` directory.
+
+**Auto-detection:** The script automatically detects the repository from your git remote origin. If you're in the `stepflow-ai/stepflow` repo, just run `./download-release-binaries.sh 0.5.0` and it will download from the correct location.
+
+**`build-docker-images.sh`**
+```bash
+./build-docker-images.sh <version> [registry]
+
+# Examples:
+./build-docker-images.sh 1.2.3                    # Local build only
+./build-docker-images.sh 1.2.3 localhost:5000     # Push to local registry
+./build-docker-images.sh 1.2.3 ghcr.io/myorg/repo # Push to GHCR
+
+# Or use environment variable:
+PUSH=true ./build-docker-images.sh 1.2.3
+```
+
+Features:
+- Automatically skips missing binaries with warnings
+- Creates multi-platform manifests
+- Supports both Debian and Alpine base images
+- Creates major.minor version tags for semver releases
 
 **Note:** The `.dockerignore` file ensures only binaries are included in the build context, keeping builds fast and secure.
 
@@ -124,8 +166,14 @@ Docker will automatically pull the correct image for your platform.
 
 ```
 stepflow-rs/release/
-├── .dockerignore              # Minimal build context (binaries only)
-├── README.md                  # This file
+├── .dockerignore                      # Minimal build context (binaries only)
+├── README.md                          # This file
+├── build-docker-images.sh             # Build Docker images from binaries
+├── download-release-binaries.sh       # Download binaries from GitHub release
+├── binaries/                          # Directory for binaries (gitignored)
+│   ├── stepflow-x86_64-unknown-linux-gnu
+│   ├── stepflow-server-aarch64-unknown-linux-musl
+│   └── ... (other binaries)
 ├── Dockerfile.stepflow-server.debian
 ├── Dockerfile.stepflow-server.alpine
 ├── Dockerfile.stepflow-load-balancer.debian

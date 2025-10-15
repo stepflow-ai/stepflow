@@ -155,104 +155,15 @@ jobs:
           retention-days: 7
 
   build-docker:
-    name: Build Docker Images
+    name: Build and Push Docker Images
     runs-on: ubuntu-22.04
-    needs: build-binaries
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # stepflow-server images
-          - image: stepflow-server
-            base: debian
-            platform: linux/amd64
-            tag-suffix: amd64
-            timeout: 10
-            binary-target: x86_64-unknown-linux-gnu
-          - image: stepflow-server
-            base: debian
-            platform: linux/arm64
-            tag-suffix: arm64
-            timeout: 15
-            binary-target: aarch64-unknown-linux-gnu
-          - image: stepflow-server
-            base: alpine
-            platform: linux/amd64
-            tag-suffix: amd64
-            timeout: 10
-            binary-target: x86_64-unknown-linux-musl
-          - image: stepflow-server
-            base: alpine
-            platform: linux/arm64
-            tag-suffix: arm64
-            timeout: 15
-            binary-target: aarch64-unknown-linux-musl
-
-          # stepflow-load-balancer images
-          - image: stepflow-load-balancer
-            base: debian
-            platform: linux/amd64
-            tag-suffix: amd64
-            timeout: 10
-            binary-target: x86_64-unknown-linux-gnu
-          - image: stepflow-load-balancer
-            base: debian
-            platform: linux/arm64
-            tag-suffix: arm64
-            timeout: 15
-            binary-target: aarch64-unknown-linux-gnu
-          - image: stepflow-load-balancer
-            base: alpine
-            platform: linux/amd64
-            tag-suffix: amd64
-            timeout: 10
-            binary-target: x86_64-unknown-linux-musl
-          - image: stepflow-load-balancer
-            base: alpine
-            platform: linux/arm64
-            tag-suffix: arm64
-            timeout: 15
-            binary-target: aarch64-unknown-linux-musl
-
-          # stepflow CLI images
-          - image: stepflow
-            base: debian
-            platform: linux/amd64
-            tag-suffix: amd64
-            timeout: 10
-            binary-target: x86_64-unknown-linux-gnu
-          - image: stepflow
-            base: debian
-            platform: linux/arm64
-            tag-suffix: arm64
-            timeout: 15
-            binary-target: aarch64-unknown-linux-gnu
-          - image: stepflow
-            base: alpine
-            platform: linux/amd64
-            tag-suffix: amd64
-            timeout: 10
-            binary-target: x86_64-unknown-linux-musl
-          - image: stepflow
-            base: alpine
-            platform: linux/arm64
-            tag-suffix: arm64
-            timeout: 15
-            binary-target: aarch64-unknown-linux-musl
-
+    needs: [build-binaries, determine-version]
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Prepare
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -260,136 +171,38 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Download required binary
+      - name: Download all binary artifacts
         uses: actions/download-artifact@v4
         with:
-          name: artifact-stepflow-${{ matrix.binary-target }}
-          path: ./stepflow-rs/release/
+          path: ./artifacts
+          pattern: artifact-stepflow-*
+          merge-multiple: true
 
-      - name: Prepare build context
+      - name: Prepare binaries for Docker build
+        run: |
+          # Copy binaries to release/binaries directory with expected naming
+          mkdir -p stepflow-rs/release/binaries
+          cp ./artifacts/* stepflow-rs/release/binaries/
+          ls -lh stepflow-rs/release/binaries/
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker images
         run: |
           cd stepflow-rs/release
-          # Rename binary to simple name expected by Dockerfile
-          if [ "${{ matrix.image }}" = "stepflow-server" ]; then
-            mv stepflow-server-* stepflow-server
-          elif [ "${{ matrix.image }}" = "stepflow-load-balancer" ]; then
-            mv stepflow-load-balancer-* stepflow-load-balancer
-          else
-            # For stepflow CLI, need to handle both stepflow and other binaries
-            for f in stepflow-*; do
-              if [ "$f" != "stepflow-server-*" ] && [ "$f" != "stepflow-load-balancer-*" ]; then
-                mv "$f" stepflow 2>/dev/null && break
-              fi
-            done
-          fi
-          chmod +x stepflow* 2>/dev/null || true
-          ls -la
-      - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: ./stepflow-rs/release
-          platforms: ${{ matrix.platform }}
-          file: ./stepflow-rs/release/Dockerfile.${{ matrix.image }}.${{ matrix.base }}
-          # Don't use other tags since we're pushing by digest.
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-
-      - name: Test Docker image (${{ matrix.platform }})
-        timeout-minutes: 1
-        run: |
-          image_ref="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}"
-          echo "Testing image: $image_ref"
-
-          # Test based on image type
-          if [ "${{ matrix.image }}" = "stepflow" ]; then
-            docker run --platform ${{ matrix.platform }} --rm "$image_ref" --version || true
-            docker run --platform ${{ matrix.platform }} --rm "$image_ref" --help
-          elif [ "${{ matrix.image }}" = "stepflow-server" ]; then
-            docker run --platform ${{ matrix.platform }} --rm "$image_ref" --help
-          else
-            echo "Load balancer image built successfully (no CLI help available)"
-          fi
-
-      - name: Export digest
-        run: |
-          mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ matrix.image }}-${{ matrix.base }}-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge-multiplatform:
-    name: Create Multi-platform Images
-    runs-on: ubuntu-22.04
-    needs: [build-docker, determine-version]
-    strategy:
-      fail-fast: false
-      matrix:
-        image: [stepflow-server, stepflow-load-balancer, stepflow]
-        base: [debian, alpine]
-
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digests-${{ matrix.image }}-${{ matrix.base }}-*
-          merge-multiple: true
-      - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Prepare Env
-        run: |
-          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}" >> $GITHUB_ENV
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          flavor:
-            prefix=${{ matrix.base }}-
-          tags: |
-            type=semver,pattern={{version}},value=${{ needs.determine-version.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.determine-version.outputs.version }}
-            type=sha
-
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
-      - name: Inspect image
-        run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+          PUSH=true ./build-docker-images.sh \
+            ${{ needs.determine-version.outputs.version }} \
+            ${{ env.REGISTRY }}/${{ github.repository }}
 
   create-tag-and-release:
     name: Create Tag and Release
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-binaries, merge-multiplatform]
+    needs: [determine-version, build-binaries, build-docker]
     if: needs.determine-version.outputs.skip_tag == 'false'
     permissions:
       contents: write
@@ -558,7 +371,7 @@ jobs:
   summary:
     name: Build Summary
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-binaries, build-docker, merge-multiplatform, create-tag-and-release]
+    needs: [determine-version, build-binaries, build-docker, create-tag-and-release]
     if: always()
 
     steps:
@@ -576,15 +389,9 @@ jobs:
           fi
 
           if [ "${{ needs.build-docker.result }}" = "success" ]; then
-            echo "| Docker builds |  Success |" >> $GITHUB_STEP_SUMMARY
+            echo "| Docker builds & manifests |  Success |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Docker builds | L Failed |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.merge-multiplatform.result }}" = "success" ]; then
-            echo "| Multi-platform |  Success |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Multi-platform | L Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Docker builds & manifests | L Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ]; then
