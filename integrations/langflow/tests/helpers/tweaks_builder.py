@@ -181,37 +181,6 @@ class TweaksBuilder:
         return dict(self.tweaks)
 
 
-# Convenience functions for common flow-specific scenarios
-def create_vector_store_rag_tweaks() -> dict[str, dict[str, Any]]:
-    """Create tweaks for the vector_store_rag flow with known component IDs.
-
-    Returns:
-        Tweaks dictionary for vector_store_rag flow
-    """
-    return (
-        TweaksBuilder()
-        .add_openai_tweaks("LanguageModelComponent-1uhuk")  # Lowercase 'k'
-        .add_astradb_tweaks("AstraDB-jsrrt")  # Lowercase
-        .add_astradb_tweaks("AstraDB-w6nb4")  # Lowercase
-        .add_env_tweak("OpenAIEmbeddings-v0rcw", "openai_api_key", "OPENAI_API_KEY")
-        .add_env_tweak("OpenAIEmbeddings-oFtHy", "openai_api_key", "OPENAI_API_KEY")
-        .build_or_skip()
-    )
-
-
-def create_basic_prompting_tweaks() -> dict[str, dict[str, Any]]:
-    """Create tweaks for the basic_prompting flow.
-
-    Returns:
-        Tweaks dictionary for basic_prompting flow
-    """
-    return (
-        TweaksBuilder()
-        .add_openai_tweaks("LanguageModelComponent-kboja")  # Lowercase
-        .build_or_skip()
-    )
-
-
 # Generic helper functions
 def create_openai_test_tweaks(*component_ids: str) -> dict[str, dict[str, Any]]:
     """Create tweaks for multiple OpenAI components.

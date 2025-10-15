@@ -1,0 +1,37 @@
+{
+  "updated_at": "2025-10-14T16:20:41.085394+00:00",
+  "langflow_version": "1.6.4",
+  "lfx": {
+    "version": "0.1.11",
+    "source": "pypi",
+    "has_custom_module": true
+  },
+  "source": "installed_package",
+  "files": {
+    "basic_prompting.json": {
+      "source_name": "Basic Prompting.json",
+      "sha256": "3bbf7855b598f35f2605ae60feba6de17770ef001686d68bfadd65967cf51efa",
+      "size_bytes": 57105
+    },
+    "document_qa.json": {
+      "source_name": "Document Q&A.json",
+      "sha256": "b25865ec46db46d7c5cbe5de98145b29a05f9dded58719c42967e16d202456cd",
+      "size_bytes": 101422
+    },
+    "memory_chatbot.json": {
+      "source_name": "Memory Chatbot.json",
+      "sha256": "cbf66e98f7f98b7339c8a0b4ba12c286c09b77acf06d87946ca515a157a8ba20",
+      "size_bytes": 81159
+    },
+    "simple_agent.json": {
+      "source_name": "Simple Agent.json",
+      "sha256": "e438b611e4be3fdddb776eefb9268d420b033d0e12d16a1511ecc9cf36a8cccd",
+      "size_bytes": 122293
+    },
+    "vector_store_rag.json": {
+      "source_name": "Vector Store RAG.json",
+      "sha256": "825e8caf6c9c28c462c0c150f6abc994297c2449f4a60a0ab355f6895b00fe17",
+      "size_bytes": 362431
+    }
+  }
+}

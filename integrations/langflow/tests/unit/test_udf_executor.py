@@ -694,3 +694,394 @@ class EnhancedTestComponent(Component):
         assert compiled["base_classes"] == ["Message"]
         assert compiled["display_name"] == "Enhanced Test"
         assert compiled["metadata"]["module"] == "test.module.EnhancedTestComponent"
+
+    @pytest.fixture
+    def basic_prompting_flow(self):
+        """Load the basic_prompting flow fixture."""
+        import json
+        from pathlib import Path
+
+        flow_path = (
+            Path(__file__).parent.parent
+            / "fixtures"
+            / "langflow"
+            / "basic_prompting.json"
+        )
+        with open(flow_path) as f:
+            return json.load(f)
+
+    @pytest.fixture
+    def prompt_component_data(self, basic_prompting_flow):
+        """Extract Prompt component data from basic_prompting flow."""
+        nodes = basic_prompting_flow["data"]["nodes"]
+        prompt_node = next(n for n in nodes if n["data"]["type"] == "Prompt")
+
+        return {
+            "code": prompt_node["data"]["node"]["template"]["code"]["value"],
+            "component_type": "PromptComponent",
+            "template": prompt_node["data"]["node"]["template"],
+            "outputs": prompt_node["data"]["node"]["outputs"],
+            "selected_output": prompt_node["data"].get("selected_output", "prompt"),
+        }
+
+    @pytest.fixture
+    def chat_input_component_data(self, basic_prompting_flow):
+        """Extract ChatInput component data (lfx-based) from basic_prompting flow."""
+        nodes = basic_prompting_flow["data"]["nodes"]
+        chat_input_node = next(n for n in nodes if n["data"]["type"] == "ChatInput")
+
+        return {
+            "code": chat_input_node["data"]["node"]["template"]["code"]["value"],
+            "component_type": "ChatInput",
+            "template": chat_input_node["data"]["node"]["template"],
+            "outputs": chat_input_node["data"]["node"]["outputs"],
+            "selected_output": chat_input_node["data"].get(
+                "selected_output", "message"
+            ),
+        }
+
+    @pytest.fixture
+    def agent_component_blob(self):
+        """Agent component blob data from simple_agent.json flow.
+
+        This tests the PlaceholderGraph.vertices fix for lfx Agent components.
+        """
+        import json
+        import os
+
+        # Load Agent component data from simple_agent.json
+        fixture_path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "fixtures",
+            "langflow",
+            "simple_agent.json",
+        )
+        with open(fixture_path) as f:
+            flow = json.load(f)
+
+        # Find Agent node
+        for node in flow["data"]["nodes"]:
+            if "Agent" in node["data"]["node"]["display_name"]:
+                agent_data = node["data"]["node"]
+                return {
+                    "code": agent_data["template"]["code"]["value"],
+                    "template": agent_data["template"],
+                    "outputs": agent_data.get("outputs", []),
+                    "component_type": agent_data["display_name"],
+                    "base_classes": agent_data.get("base_classes", []),
+                    "display_name": agent_data["display_name"],
+                    "description": agent_data.get("description", ""),
+                    "selected_output": "response",
+                }
+        raise ValueError("Agent component not found in simple_agent.json")
+
+    @pytest.mark.asyncio
+    async def test_agent_component(
+        self, executor: UDFExecutor, mock_context, agent_component_blob
+    ):
+        """Test that Agent component can be compiled and instantiated.
+
+        This test validates the PlaceholderGraph.vertices fix by:
+        1. Compiling the Agent component from lfx
+        2. Instantiating the component
+        3. Accessing the graph.vertices attribute (which would fail without the fix)
+
+        The fix patches lfx.custom.custom_component.component.PlaceholderGraph
+        with an EnhancedPlaceholderGraph that includes the vertices attribute.
+        """
+        mock_context.get_blob.return_value = agent_component_blob
+
+        # Step 1: Compile the component
+        compiled_component = await executor._compile_component(agent_component_blob)
+        assert compiled_component is not None
+        assert compiled_component["component_type"] == "Agent"
+
+        # Step 2: Instantiate the component
+        component_class = compiled_component["class"]
+        component_instance = component_class()
+        assert component_instance is not None
+
+        # Step 3: Access graph property - this triggers PlaceholderGraph creation
+        graph = component_instance.graph
+        assert graph is not None
+
+        # Step 4: Access vertices attribute - this would fail without the fix
+        # The lfx Agent component code accesses graph.vertices internally
+        vertices = graph.vertices
+        assert vertices is not None
+        assert isinstance(vertices, list)
+        assert len(vertices) == 0  # Empty list for EnhancedPlaceholderGraph
+
+    @pytest.mark.asyncio
+    async def test_agent_component_execution_attempt(
+        self, executor: UDFExecutor, mock_context, agent_component_blob
+    ):
+        """Test Agent component execution (will fail without real API key).
+
+        This test goes beyond just instantiation to attempt actual execution.
+        It will fail due to missing API key, but should NOT fail with
+        PlaceholderGraph errors.
+        """
+        mock_context.get_blob.return_value = agent_component_blob
+
+        # Prepare minimal input for Agent execution
+        blob_id = "test_agent_execution"
+        input_data = {
+            "blob_id": blob_id,
+            "input": {
+                "input_value": "What is 2+2?",
+                "session_id": "test_session",
+                "api_key": "sk-test-fake-key",  # Fake key - will fail but tests setup
+                "model_name": "gpt-4",
+                "tools": [],  # No tools to simplify test
+            },
+        }
+
+        # Try to execute - expect failure due to API key, NOT PlaceholderGraph
+        try:
+            result = await executor.execute(input_data, mock_context)
+            # If it somehow succeeds with fake key, that's OK
+            print(f"Unexpected success: {result}")
+        except Exception as e:
+            error_msg = str(e)
+            # Should NOT have PlaceholderGraph.vertices error
+            assert "vertices" not in error_msg.lower(), (
+                f"PlaceholderGraph.vertices error detected: {error_msg}"
+            )
+            # Expected errors: API key, authentication, model errors
+            error_info = f"{type(e).__name__}: {error_msg[:200]}"
+            print(f"Expected error (not PlaceholderGraph): {error_info}")
+
+    @pytest.mark.asyncio
+    async def test_prompt_component(
+        self, executor: UDFExecutor, mock_context, prompt_component_data
+    ):
+        """Test executing Prompt component with string-type system_message field.
+
+        This test verifies that:
+        1. We can compile and execute a Prompt component from basic_prompting flow
+        2. The component successfully processes template input
+        3. The output is a Message object with text content
+        """
+        # Create blob data for the component
+        blob_data = {
+            "code": prompt_component_data["code"],
+            "component_type": prompt_component_data["component_type"],
+            "outputs": prompt_component_data["outputs"],
+            "selected_output": prompt_component_data["selected_output"],
+            "template": prompt_component_data["template"],
+        }
+
+        # Set up mock context
+        blob_id = "test-prompt-blob"
+        mock_context.get_blob.return_value = blob_data
+
+        # Prepare input data
+        template_text = (
+            "Answer the user as if you were a GenAI expert, enthusiastic "
+            "about helping them get started building something fresh."
+        )
+        input_data = {
+            "blob_id": blob_id,
+            "input": {
+                "template": template_text,
+            },
+        }
+
+        # Execute the component
+        result = await executor.execute(input_data, mock_context)
+
+        # Verify the result
+        assert isinstance(result, dict)
+
+        # Extract the actual output (may be wrapped in 'result' or 'output')
+        if "result" in result:
+            output = result["result"]
+        elif "output" in result:
+            output = result["output"]
+        else:
+            output = result
+
+        # The Prompt component should return a Message object
+        # Check for both old and new serialization formats
+        has_message_marker = "__langflow_type__" in output or "__class_name__" in output
+        output_desc = output.keys() if isinstance(output, dict) else type(output)
+        assert has_message_marker, f"Expected Message object, got: {output_desc}"
+        assert "text" in output
+        assert len(output["text"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_language_model_message_to_string_conversion(
+        self, executor: UDFExecutor, mock_context, basic_prompting_flow
+    ):
+        """Test LanguageModelComponent receives string when Message passed.
+
+        This test verifies the fix for Langflow 1.6.4+ lfx components that
+        expect string values for MultilineInput fields, not Message objects.
+        """
+        nodes = basic_prompting_flow["data"]["nodes"]
+        lm_node = next(
+            n for n in nodes if n["data"].get("type") == "LanguageModelComponent"
+        )
+
+        # Create blob data for LanguageModelComponent component
+        lm_blob_data = {
+            "code": lm_node["data"]["node"]["template"]["code"]["value"],
+            "component_type": "LanguageModelComponent",
+            "template": lm_node["data"]["node"]["template"],
+            "outputs": lm_node["data"]["node"]["outputs"],
+        }
+
+        # Create a Message object that will be passed to system_message field
+        message_obj = {
+            "__langflow_type__": "Message",
+            "text": "You are a helpful AI assistant.",
+            "sender": "User",
+            "sender_name": "User",
+            "session_id": "",
+        }
+
+        lm_blob_id = "test-lm-blob"
+        mock_context.get_blob.return_value = lm_blob_data
+
+        # Prepare input with Message object for string field
+        input_data = {
+            "blob_id": lm_blob_id,
+            "input": {
+                "input_value": "Hello, world!",
+                "system_message": message_obj,  # Message object for string field
+                "api_key": "fake-key-for-testing",
+            },
+        }
+
+        # The execution will fail because we don't have a real API key,
+        # but we want to verify it doesn't fail with a validation error
+        # about Message type being passed to MultilineInput
+        try:
+            await executor.execute(input_data, mock_context)
+            # If it succeeds, great! (won't happen without real API key)
+        except Exception as e:
+            error_msg = str(e)
+            # Should NOT have validation error about Message type
+            assert (
+                "Invalid value type" not in error_msg or "Message" not in error_msg
+            ), f"Should not have Message type validation error. Got: {error_msg}"
+            # Other errors (like missing API key) are expected
+            assert (
+                "api_key" in error_msg.lower()
+                or "openai" in error_msg.lower()
+                or "model" in error_msg.lower()
+                or "execute" in error_msg.lower()
+            ), f"Expected API/model error, got: {error_msg}"
+
+    @pytest.mark.asyncio
+    async def test_chat_input_lfx_component(
+        self, executor: UDFExecutor, mock_context, chat_input_component_data
+    ):
+        """Test executing ChatInput component (lfx-based) from basic_prompting flow.
+
+        This test verifies that:
+        1. We can compile and execute an lfx-based ChatInput component
+        2. The component accepts string input_value
+        3. The component returns a Message object
+        """
+        # Create blob data for the component
+        blob_data = {
+            "code": chat_input_component_data["code"],
+            "component_type": chat_input_component_data["component_type"],
+            "outputs": chat_input_component_data["outputs"],
+            "selected_output": chat_input_component_data["selected_output"],
+            "template": chat_input_component_data["template"],
+        }
+
+        # Set up mock context
+        blob_id = "test-chatinput-blob"
+        mock_context.get_blob.return_value = blob_data
+
+        # Prepare input data with string input_value
+        input_data = {
+            "blob_id": blob_id,
+            "input": {
+                "input_value": "Hello from the test!",
+                "should_store_message": False,  # Don't try to store without session
+            },
+        }
+
+        # Execute the component
+        result = await executor.execute(input_data, mock_context)
+
+        # Verify the result
+        assert isinstance(result, dict)
+
+        # Check for result/output (wrapped result) or direct Message fields
+        if "result" in result:
+            output = result["result"]
+        elif "output" in result:
+            output = result["output"]
+        else:
+            output = result
+
+        # Should be a Message object (check for both old and new serialization)
+        has_message_marker = "__langflow_type__" in output or "__class_name__" in output
+        output_desc = output.keys() if isinstance(output, dict) else type(output)
+        assert has_message_marker, f"Expected Message object, got: {output_desc}"
+        assert "text" in output
+        assert output["text"] == "Hello from the test!"
+
+    @pytest.mark.asyncio
+    async def test_chat_input_message_to_string_conversion(
+        self, executor: UDFExecutor, mock_context, chat_input_component_data
+    ):
+        """Test ChatInput component with Message object passed to string field.
+
+        This is a specific test for the Langflow 1.6.4+ fix where Message objects
+        need to be converted to strings when passed to MultilineInput fields.
+        """
+        # Create blob data
+        blob_data = {
+            "code": chat_input_component_data["code"],
+            "component_type": chat_input_component_data["component_type"],
+            "outputs": chat_input_component_data["outputs"],
+            "selected_output": chat_input_component_data["selected_output"],
+            "template": chat_input_component_data["template"],
+        }
+
+        blob_id = "test-chatinput-message-blob"
+        mock_context.get_blob.return_value = blob_data
+
+        # Pass a Message object to the input_value field (which expects str)
+        message_obj = {
+            "__class_name__": "Message",
+            "__module_name__": "lfx.schema.message",
+            "text": "Hello from Message object!",
+            "sender": "User",
+            "sender_name": "User",
+            "session_id": "",
+        }
+
+        input_data = {
+            "blob_id": blob_id,
+            "input": {
+                "input_value": message_obj,  # Message object for string field
+                "should_store_message": False,
+            },
+        }
+
+        # Execute - should convert Message to string automatically
+        result = await executor.execute(input_data, mock_context)
+
+        # Verify execution succeeded (component should extract text from Message)
+        assert isinstance(result, dict)
+
+        if "result" in result:
+            output = result["result"]
+        elif "output" in result:
+            output = result["output"]
+        else:
+            output = result
+
+        # Should have created a new Message with the text
+        assert "text" in output
+        # The text should be extracted from the input Message object
+        assert "Hello from Message object!" in output["text"]

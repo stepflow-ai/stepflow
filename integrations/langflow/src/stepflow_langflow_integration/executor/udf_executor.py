@@ -15,7 +15,6 @@
 """New UDF executor with pre-compilation approach (no CachedStepflowContext needed)."""
 
 import inspect
-import sys
 from typing import Any
 
 from stepflow_py import StepflowContext
@@ -106,10 +105,10 @@ class UDFExecutor:
             # This is already a serialized Langflow object
             return obj
 
-        # Handle Langflow Data objects
+        # Handle lfx Data objects (langflow.schema re-exports these from lfx)
         if hasattr(obj, "__class__") and obj.__class__.__name__ == "Data":
             try:
-                from langflow.schema.data import Data
+                from lfx.schema.data import Data
 
                 if isinstance(obj, Data):
                     # Convert Data object to serializable format
@@ -117,10 +116,10 @@ class UDFExecutor:
             except ImportError:
                 pass
 
-        # Handle Langflow Message objects
+        # Handle lfx Message objects (langflow.schema re-exports these from lfx)
         if hasattr(obj, "__class__") and obj.__class__.__name__ == "Message":
             try:
-                from langflow.schema.message import Message
+                from lfx.schema.message import Message
 
                 if isinstance(obj, Message):
                     # Convert Message object to serializable format
@@ -161,8 +160,8 @@ class UDFExecutor:
 
         # Compiling component with metadata
 
-        # Create execution environment with enhanced context
-        self._create_execution_environment()
+        # Patch PlaceholderGraph for lfx compatibility (needed for Agent components)
+        self._patch_placeholder_graph()
 
         if not code or not code.strip():
             raise ExecutionError(
@@ -171,7 +170,7 @@ class UDFExecutor:
             )
 
         try:
-            from langflow.custom.eval import eval_custom_component_code
+            from lfx.custom.eval import eval_custom_component_code
 
             component_class = eval_custom_component_code(code)
         except Exception as e:
@@ -259,14 +258,19 @@ class UDFExecutor:
         component_instance._session_id = session_id
 
         # Set up graph object for components that use self.graph.session_id (like Agent)
-        if not hasattr(component_instance, "graph"):
-            # Create a simple graph object with session_id
-            class GraphContext:
-                def __init__(self, session_id: str):
-                    self.session_id = session_id
+        # Some components (like Agent) have graph as a read-only property, so we need to
+        # set it via __dict__ to ensure it has vertices attribute for lfx compatibility
+        class GraphContext:
+            def __init__(self, session_id: str):
+                self.session_id = session_id
+                self.vertices: list[Any] = []  # Empty list for lfx compatibility
+                self.flow_id = None  # Optional attribute some components may expect
 
-            component_instance.graph = GraphContext(session_id)
+        # Use __dict__ to set graph even if it's a read-only property
+        component_instance.__dict__["graph"] = GraphContext(session_id)
 
+        # Note: No conversion needed - langflow.schema types are lfx.schema types
+        # (langflow re-exports from lfx, so isinstance checks work correctly)
         resolved_parameters = component_parameters
 
         # Configure component
@@ -299,30 +303,37 @@ class UDFExecutor:
         except Exception as e:
             raise ExecutionError(f"Failed to execute {execution_method}: {e}") from e
 
-    def _create_execution_environment(self) -> dict[str, Any]:
-        """Create safe execution environment with Langflow imports."""
-        exec_globals = globals().copy()
-        exec_globals["sys"] = sys
+    def _patch_placeholder_graph(self) -> None:
+        """Patch PlaceholderGraph to add vertices attribute for lfx compatibility.
 
-        # Import common Langflow types
+        lfx 0.1.12+ Agent components access graph.vertices, but PlaceholderGraph
+        doesn't have this attribute by default. This patch adds it.
+        """
+        from typing import NamedTuple
+
+        class EnhancedPlaceholderGraph(NamedTuple):
+            """Enhanced PlaceholderGraph with vertices for lfx compatibility."""
+
+            flow_id: str | None = None
+            flow_name: str | None = None
+            user_id: str | None = None
+            session_id: str | None = None
+            context: dict | None = None
+            vertices: list = []  # Add vertices attribute for lfx compatibility
+
+        # Patch lfx's PlaceholderGraph (langflow re-exports this, so patching
+        # lfx patches both). lfx 0.1.12+ uses PlaceholderGraph in
+        # agents/utils.py which imports from lfx.custom.custom_component.component
         try:
-            from langflow.custom.custom_component.component import Component
-            from langflow.schema.data import Data
-            from langflow.schema.dataframe import DataFrame
-            from langflow.schema.message import Message
-
-            exec_globals.update(
-                {
-                    "Message": Message,
-                    "Data": Data,
-                    "DataFrame": DataFrame,
-                    "Component": Component,
-                }
+            from lfx.custom.custom_component import (
+                component as lfx_component_module,
             )
-        except ImportError as e:
-            raise ExecutionError(f"Failed to import Langflow components: {e}") from e
 
-        return exec_globals
+            # Use type: ignore because we're dynamically patching a class
+            lfx_component_module.PlaceholderGraph = EnhancedPlaceholderGraph  # type: ignore[assignment,misc]
+        except ImportError:
+            # If lfx not available, that's okay
+            pass
 
     async def _prepare_component_parameters(
         self, template: dict[str, Any], runtime_inputs: dict[str, Any]
@@ -334,7 +345,18 @@ class UDFExecutor:
         # Process template parameters
         for key, field_def in template.items():
             if isinstance(field_def, dict) and "value" in field_def:
+                # Skip handle inputs (those with input_types) if they have
+                # empty/placeholder values. These are meant to receive data from
+                # connected steps, not use template defaults
+                input_types = field_def.get("input_types", [])
                 value = field_def["value"]
+
+                # Skip if this is a handle input with an empty value
+                # Handle inputs should get their values from runtime_inputs
+                # (connected steps)
+                if input_types and (value == "" or value is None):
+                    continue
+
                 component_parameters[key] = value
 
         # Add runtime inputs (these override template values)
@@ -346,26 +368,107 @@ class UDFExecutor:
                 or "__tool_wrapper__" in value
             ):
                 actual_value = self.type_converter.deserialize_to_langflow_type(value)
-                component_parameters[key] = actual_value
+
+                # Check if DataFrame deserialization failed
+                # When deserialization fails, it returns the original dict
+                if (
+                    isinstance(value, dict)
+                    and value.get("__langflow_type__") == "DataFrame"
+                    and not (
+                        hasattr(actual_value, "__class__")
+                        and actual_value.__class__.__name__ == "DataFrame"
+                    )
+                ):
+                    # DataFrame deserialization failed, try to manually recover
+                    # Use lfx.DataFrame (langflow.schema re-exports from lfx)
+                    import pandas as pd
+                    from lfx.schema.dataframe import DataFrame as LfxDataFrame
+
+                    # Parse the json_data string
+                    json_str = value.get("json_data")
+                    if json_str and isinstance(json_str, str):
+                        # Reconstruct DataFrame from split format
+                        import io
+
+                        json_io = io.StringIO(json_str)
+                        pd_df = pd.read_json(json_io, orient="split")
+
+                        # Convert to list of records (dicts, not Data objects)
+                        records = pd_df.to_dict(orient="records")
+
+                        # Replace NaN with None in records
+                        text_key = value.get("text_key", "text")
+                        default_value = value.get("default_value", "")
+
+                        def clean_value(v):
+                            """Clean pandas NaN values while handling arrays/lists."""
+                            try:
+                                # Handle scalar values
+                                return None if pd.isna(v) else v
+                            except (ValueError, TypeError):
+                                # If pd.isna raises ValueError (ambiguous array truth),
+                                # or TypeError (unhashable type), return the value as-is
+                                return v
+
+                        data_list = [
+                            {k: clean_value(v) for k, v in record.items()}
+                            for record in records
+                        ]
+
+                        # Create DataFrame with list of dicts (not Data objects)
+                        # Use lfx.DataFrame (langflow.schema re-exports from lfx)
+                        actual_value = LfxDataFrame(
+                            data=data_list,
+                            text_key=text_key,
+                            default_value=default_value,
+                        )
+
+                # Check if we need to convert Message to string for lfx components
+                # New lfx components (1.6.4+) are stricter about type validation
+                template_field = template.get(key, {})
+                field_type = template_field.get("type", "")
+
+                if (
+                    field_type == "str"
+                    and hasattr(actual_value, "__class__")
+                    and actual_value.__class__.__name__ == "Message"
+                    and hasattr(actual_value, "text")
+                ):
+                    # Extract text from Message for string-type fields
+                    component_parameters[key] = actual_value.text
+                else:
+                    component_parameters[key] = actual_value
             elif isinstance(value, list):
                 # Use the type converter's recursive deserialization for lists
                 # This will handle tool wrappers and other complex objects
                 actual_value = self.type_converter.deserialize_to_langflow_type(value)
 
-                # Check if we should convert list of Data objects to DataFrame
-                if actual_value and all(
-                    hasattr(item, "__class__") and item.__class__.__name__ == "Data"
-                    for item in actual_value
-                    if hasattr(item, "__class__")
-                ):
-                    # Check if component expects DataFrame input by looking at template
-                    template_field = template.get(key, {})
-                    input_types = template_field.get("input_types", [])
+                # Check if component expects DataFrame input by looking at template
+                template_field = template.get(key, {})
+                input_types = template_field.get("input_types", [])
 
-                    if "DataFrame" in input_types:
-                        # Convert list of Data objects to DataFrame
+                # Convert list to DataFrame if component accepts DataFrame
+                # This handles cases where File components output list[Data]
+                if "DataFrame" in input_types and actual_value:
+                    # Check if list contains Data-like objects (dicts with text,
+                    # or Data instances)
+                    is_data_list = all(
+                        (
+                            isinstance(item, dict)
+                            and ("text" in item or "__class_name__" in item)
+                        )
+                        or (
+                            hasattr(item, "__class__")
+                            and item.__class__.__name__ == "Data"
+                        )
+                        for item in actual_value
+                        if item is not None
+                    )
+
+                    if is_data_list:
+                        # Convert list to DataFrame
                         try:
-                            from langflow.schema.dataframe import DataFrame
+                            from lfx.schema.dataframe import DataFrame
 
                             dataframe = DataFrame(data=actual_value)
                             component_parameters[key] = dataframe

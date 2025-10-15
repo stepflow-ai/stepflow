@@ -82,13 +82,6 @@ impl StepflowClientHandle {
 pub struct StepflowPluginConfig {
     #[serde(flatten)]
     pub transport: StepflowTransport,
-    /// Maximum number of retry attempts for component execution (default: 3)
-    #[serde(default = "default_max_retries")]
-    pub max_retries: u32,
-}
-
-fn default_max_retries() -> u32 {
-    3
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -114,8 +107,6 @@ impl PluginConfig for StepflowPluginConfig {
         self,
         working_directory: &std::path::Path,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
-        let max_retries = self.max_retries;
-
         let transport = self.transport.clone();
         match transport {
             StepflowTransport::Stdio {
@@ -132,16 +123,10 @@ impl PluginConfig for StepflowPluginConfig {
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedStdio(launcher),
-                    max_retries,
-                    transport,
-                    working_directory.to_owned(),
                 )))
             }
             StepflowTransport::Http { ref url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
                 StepflowPluginState::UninitializedHttp(url.clone()),
-                max_retries,
-                transport,
-                working_directory.to_owned(),
             ))),
         }
     }
@@ -149,24 +134,12 @@ impl PluginConfig for StepflowPluginConfig {
 
 pub struct StepflowPlugin {
     state: RwLock<StepflowPluginState>,
-    max_retries: u32,
-    // Keep original config to restore state after clearing client handle
-    original_config: StepflowTransport,
-    working_directory: std::path::PathBuf,
 }
 
 impl StepflowPlugin {
-    fn new(
-        state: StepflowPluginState,
-        max_retries: u32,
-        original_config: StepflowTransport,
-        working_directory: std::path::PathBuf,
-    ) -> Self {
+    fn new(state: StepflowPluginState) -> Self {
         Self {
             state: RwLock::new(state),
-            max_retries,
-            original_config,
-            working_directory,
         }
     }
 }
@@ -187,35 +160,6 @@ impl StepflowPlugin {
         }
     }
 
-    /// Clear the current client handle, forcing recreation on next use
-    async fn clear_client_handle(&self) {
-        let mut guard = self.state.write().await;
-        if matches!(*guard, StepflowPluginState::Initialized(_)) {
-            // Restore original uninitialized state instead of Empty
-            match &self.original_config {
-                StepflowTransport::Stdio { command, args, env } => {
-                    match Launcher::try_new(
-                        self.working_directory.clone(),
-                        command.clone(),
-                        args.clone(),
-                        env.clone(),
-                    ) {
-                        Ok(launcher) => {
-                            *guard = StepflowPluginState::UninitializedStdio(launcher);
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to recreate launcher during clear: {e:?}");
-                            *guard = StepflowPluginState::Empty;
-                        }
-                    }
-                }
-                StepflowTransport::Http { url } => {
-                    *guard = StepflowPluginState::UninitializedHttp(url.clone());
-                }
-            }
-        }
-    }
-
     /// Get client handle, creating it if necessary
     async fn get_or_create_client_handle(
         &self,
@@ -228,52 +172,6 @@ impl StepflowPlugin {
 
         // If not initialized, create a new client
         self.create_client(context).await
-    }
-
-    /// Check if an error is a transport error that should trigger process restart and retry
-    fn is_transport_error(error: &error_stack::Report<PluginError>) -> bool {
-        // Look for TransportError in the error chain
-        error.contains::<crate::error::TransportError>()
-    }
-
-    /// Wait for restart counter to increase beyond the initial value
-    async fn wait_for_restart_count_change(
-        &self,
-        initial_count: Option<super::stdio::client::RestartCounter>,
-        restart_rx: &mut Option<tokio::sync::watch::Receiver<super::stdio::client::RestartCounter>>,
-    ) -> Result<()> {
-        if let (Some(initial), Some(restart_rx)) = (initial_count, restart_rx) {
-            // Check if restart already happened
-            let current_count = *restart_rx.borrow();
-            if current_count > initial {
-                return Ok(());
-            }
-
-            // Wait for counter to increase with timeout
-            let timeout = std::time::Duration::from_secs(10);
-            match tokio::time::timeout(timeout, restart_rx.changed()).await {
-                Ok(Ok(())) => {
-                    let new_count = *restart_rx.borrow();
-                    if new_count > initial {
-                        Ok(())
-                    } else {
-                        // Continue anyway if counter didn't increase
-                        Ok(())
-                    }
-                }
-                Ok(Err(_)) => {
-                    tracing::warn!("Restart counter channel closed");
-                    Err(PluginError::Execution).attach_printable("restart counter channel closed")
-                }
-                Err(_) => {
-                    tracing::warn!("Timeout waiting for process restart");
-                    Err(PluginError::Execution).attach_printable("restart timeout")
-                }
-            }
-        } else {
-            // HTTP transport doesn't need restart synchronization
-            Ok(())
-        }
     }
 
     /// Execute component with a single attempt (extracted from original execute method)
@@ -393,73 +291,51 @@ impl Plugin for StepflowPlugin {
         context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        let max_attempts = self.max_retries;
-        tracing::debug!("Starting component execution with max_retries={max_attempts}");
+        // Get the client handle (will create if not initialized)
+        let client_handle = self
+            .get_or_create_client_handle(context.context().clone())
+            .await?;
 
-        for attempt in 1..=max_attempts {
-            tracing::debug!("Attempting component execution (attempt {attempt}/{max_attempts})");
+        // For stdio transport, capture the restart counter before execution
+        let (initial_restart_count, mut restart_rx) = match &client_handle {
+            StepflowClientHandle::Stdio(stdio_handle) => {
+                let (count, rx) = stdio_handle.restart_counter();
+                (Some(count), Some(rx))
+            }
+            StepflowClientHandle::Http(_) => (None, None),
+        };
 
-            // Get restart counter BEFORE attempting execution
-            let (initial_restart_count, mut restart_rx) =
-                if let Ok(handle) = self.client_handle().await {
-                    match &handle {
-                        StepflowClientHandle::Stdio(stdio_handle) => {
-                            let (count, rx) = stdio_handle.restart_counter();
-                            (Some(count), Some(rx))
-                        }
-                        StepflowClientHandle::Http(_) => (None, None),
-                    }
-                } else {
-                    (None, None)
-                };
+        // First attempt
+        match self
+            .try_execute_component(component, &context, &input, 1)
+            .await
+        {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                // Only retry for stdio transport when subprocess was restarted
+                if let (Some(initial_count), Some(restart_rx)) =
+                    (initial_restart_count, restart_rx.as_mut())
+                {
+                    // Check if a restart occurred by comparing the current counter
+                    let current_count = *restart_rx.borrow_and_update();
 
-            match self
-                .try_execute_component(component, &context, &input, attempt)
-                .await
-            {
-                Ok(result) => {
-                    if attempt > 1 {
+                    if current_count > initial_count {
                         tracing::info!(
-                            "Component execution succeeded on attempt {attempt}/{max_attempts}"
+                            "Component execution failed due to process restart (count: {} -> {}), retrying once",
+                            initial_count,
+                            current_count
                         );
-                    } else {
-                        tracing::debug!("Component execution succeeded on first attempt");
-                    }
-                    return Ok(result);
-                }
-                Err(e) if attempt < max_attempts && Self::is_transport_error(&e) => {
-                    tracing::warn!(
-                        "Component execution failed (attempt {attempt}/{max_attempts}) due to transport error, will retry: {e:?}"
-                    );
 
-                    // Clear the invalid client handle so next attempt gets a fresh one
-                    self.clear_client_handle().await;
-
-                    // Wait for restart counter to increase (indicating restart completion)
-                    self.wait_for_restart_count_change(initial_restart_count, &mut restart_rx)
-                        .await?;
-                    continue;
-                }
-                Err(e) => {
-                    if Self::is_transport_error(&e) {
-                        tracing::error!(
-                            "Component execution failed after {max_attempts} attempts (transport error): {e:?}"
-                        );
-                    } else {
-                        tracing::debug!(
-                            "Component execution failed (non-transport error, no retry): {e:?}"
-                        );
+                        // Retry the execution once with the restored subprocess
+                        return self
+                            .try_execute_component(component, &context, &input, 2)
+                            .await;
                     }
-                    tracing::debug!(
-                        "Error chain analysis: contains TransportError={}",
-                        e.contains::<crate::error::TransportError>()
-                    );
-                    return Err(e);
                 }
+
+                // No restart occurred or not stdio transport - propagate the error
+                Err(e)
             }
         }
-
-        // This should never be reached due to the loop logic, but satisfy the compiler
-        unreachable!("execute loop should have returned or errored")
     }
 }

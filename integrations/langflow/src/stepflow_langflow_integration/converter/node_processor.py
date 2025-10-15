@@ -37,6 +37,7 @@ class NodeProcessor:
         builder: FlowBuilder,
         node_output_refs: dict[str, Any],
         field_mapping: dict[str, dict[str, str]] = None,
+        output_mapping: dict[str, str] = None,
     ) -> Any | None:
         """Process a Langflow node using flow builder architecture.
 
@@ -47,6 +48,8 @@ class NodeProcessor:
             builder: FlowBuilder instance
             node_output_refs: Mapping of node IDs to their output references
             field_mapping: Mapping of target nodes to their input field names
+                from edges
+            output_mapping: Mapping of source node IDs to their selected output names
                 from edges
 
         Returns:
@@ -107,6 +110,7 @@ class NodeProcessor:
                     dependencies,
                     node_output_refs,
                     field_mapping or {},
+                    output_mapping or {},
                 )
 
             # For regular components, create a UDF step
@@ -120,7 +124,7 @@ class NodeProcessor:
                 component_path = "/langflow/udf_executor"
 
                 # First create a blob step for the UDF code using auto ID generation
-                blob_data = self._prepare_udf_blob(node, component_type)
+                blob_data = self._prepare_udf_blob(node, component_type, output_mapping)
 
                 blob_step_id = f"{step_id}_blob"
                 blob_step_handle = builder.add_step(
@@ -175,19 +179,24 @@ class NodeProcessor:
         """
         # Always use the full node_id to ensure uniqueness
         # For any node_id with a suffix, keep it to ensure uniqueness
-        base_id = node_id.lower()
+        # Preserve original case for case-sensitive comparisons
+        base_id = node_id
 
         # Always use langflow prefix with the full base_id to guarantee uniqueness
         return f"langflow_{base_id}"
 
     def _prepare_udf_blob(
-        self, node: dict[str, Any], component_type: str
+        self,
+        node: dict[str, Any],
+        component_type: str,
+        output_mapping: dict[str, str] = None,
     ) -> dict[str, Any]:
         """Prepare enhanced UDF blob data for component execution.
 
         Args:
             node: Langflow node object
             component_type: Component type name
+            output_mapping: Mapping of node IDs to their selected output names
 
         Returns:
             Enhanced UDF blob data with complete component information
@@ -209,9 +218,14 @@ class NodeProcessor:
         # Use node outputs if available (more complete), fallback to data outputs
         final_outputs = node_outputs if node_outputs else outputs
 
+        # Determine selected output - use output mapping from edges if available
         selected_output = None
-        if final_outputs:
-            # For now, use the first output
+        node_id = node.get("id")
+        if output_mapping and node_id in output_mapping:
+            # Use the output specified in the edge
+            selected_output = output_mapping[node_id]
+        elif final_outputs:
+            # Fallback to the first output if no edge mapping found
             selected_output = final_outputs[0].get("name")
 
         # Extract additional component metadata from node_info
@@ -574,6 +588,7 @@ class NodeProcessor:
         dependencies: dict[str, list[str]],
         node_output_refs: dict[str, Any],
         field_mapping: dict[str, dict[str, str]],
+        output_mapping: dict[str, str],
     ) -> Any:
         """Create a component_tool step for tool-mode components.
 
