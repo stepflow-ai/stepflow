@@ -1,0 +1,5 @@
+# Downloaded or built binaries
+binaries/
+
+# Temporary build directories
+release-build/
