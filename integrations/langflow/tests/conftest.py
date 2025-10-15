@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
+from tests.helpers.testing.stepflow_binary import StepflowBinaryRunner
 
 
 # Load environment variables from .env file for tests
@@ -124,3 +125,16 @@ def simple_langflow_workflow() -> dict[str, Any]:
 def converter() -> LangflowConverter:
     """LangflowConverter instance for testing."""
     return LangflowConverter()
+
+
+@pytest.fixture(scope="module")
+def stepflow_runner():
+    """Create stepflow binary runner."""
+    try:
+        runner = StepflowBinaryRunner()
+        available, version = runner.check_binary_availability()
+        if not available:
+            pytest.skip(f"Stepflow binary not available: {version}")
+        return runner
+    except FileNotFoundError as e:
+        pytest.skip(f"Stepflow binary not found: {e}")
