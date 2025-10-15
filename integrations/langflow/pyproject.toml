@@ -65,6 +65,7 @@ dev = [
     "types-PyYAML>=6.0.0",
     "pandas-stubs>=2.0.0",
     "httpx>=0.25.0", # For testing HTTP components
+    "requests>=2.31.0", # For Stepflow server health checks in tests
     "black>=25.1.0",
     "psutil>=5.9.0", # For memory monitoring in OOM tests
 ]

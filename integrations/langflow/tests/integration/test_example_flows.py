@@ -61,9 +61,11 @@ def shared_config():
     - Langflow component server
     - Shared database for memory/session handling
     - No environment variable setup (API keys now passed via tweaks)
+
+    Returns a tuple of (config_dict, config_path) where config_path is a stable
+    temporary file that persists for the module scope.
     """
     import asyncio
-    import contextlib
     import os
     import tempfile
     from pathlib import Path
@@ -159,26 +161,36 @@ def shared_config():
         "stateStore": {"type": "inMemory"},
     }
 
-    # Create a simple config object with the methods we need
-    class InlineConfig:
-        def __init__(self, config_dict):
-            self._config = config_dict
+    # Write config to stable temporary file (persists for module scope)
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yml", delete=False
+    ) as config_file:
+        yaml.dump(config_dict, config_file, default_flow_style=False, sort_keys=False)
+        config_path = Path(config_file.name)
 
-        @contextlib.contextmanager
-        def to_temp_yaml(self):
-            """Create temporary YAML config file with automatic cleanup."""
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".yml", delete=False
-            ) as f:
-                yaml.dump(self._config, f, default_flow_style=False, sort_keys=False)
-                temp_path = Path(f.name)
+    # Return config dict and path
+    yield config_dict, str(config_path)
 
-            try:
-                yield str(temp_path)
-            finally:
-                temp_path.unlink(missing_ok=True)
+    # Cleanup after all tests in module complete
+    config_path.unlink(missing_ok=True)
 
-    yield InlineConfig(config_dict)
+
+@pytest.fixture(scope="module")
+def stepflow_server(stepflow_runner, shared_config):
+    """Start a Stepflow server for all tests in the module.
+
+    The server is shared across all tests for performance and runs with the
+    shared configuration.
+    """
+    config_dict, config_path = shared_config
+
+    # Start server
+    server = stepflow_runner.start_server(config_path=config_path, timeout=60.0)
+
+    yield server
+
+    # Stop server after all tests complete
+    server.stop()
 
 
 class TestExecutor:
@@ -188,11 +200,13 @@ class TestExecutor:
         self,
         converter: LangflowConverter,
         stepflow_runner: StepflowBinaryRunner,
-        shared_config: Any,
+        stepflow_server: Any,
+        config_path: str,
     ):
         self.converter = converter
         self.stepflow_runner = stepflow_runner
-        self.shared_config = shared_config
+        self.stepflow_server = stepflow_server
+        self.config_path = config_path
 
     def execute_flow(
         self,
@@ -201,7 +215,7 @@ class TestExecutor:
         timeout: float = 60.0,
         tweaks: dict[str, dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Execute complete flow lifecycle: convert → validate → execute.
+        """Execute complete flow lifecycle: convert → validate → submit to server.
 
         Args:
             flow_name: Name of flow fixture (without .json extension)
@@ -230,46 +244,51 @@ class TestExecutor:
 
         workflow_yaml = self.converter.to_yaml(stepflow_workflow)
 
-        # Use the shared config for execution
-        with self.shared_config.to_temp_yaml() as config_path:
-            # Step 2: Validate
-            success, stdout, stderr = self.stepflow_runner.validate_workflow(
-                workflow_yaml, config_path=config_path
-            )
-            assert success, (
-                f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+        # Step 2: Validate
+        success, stdout, stderr = self.stepflow_runner.validate_workflow(
+            workflow_yaml, config_path=self.config_path
+        )
+        assert success, (
+            f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+        )
+
+        # Step 3: Submit to server
+        success, result_data, stdout, stderr = self.stepflow_runner.submit_workflow(
+            self.stepflow_server,
+            workflow_yaml,
+            input_data,
+            timeout=timeout,
+        )
+
+        if not success:
+            # Include server logs in failure message
+            server_stdout = self.stepflow_server.get_stdout()
+            server_stderr = self.stepflow_server.get_stderr()
+            pytest.fail(
+                f"Workflow execution failed:\nResult: {result_data}\n"
+                f"Submit STDOUT: {stdout}\n"
+                f"Submit STDERR: {stderr}\n"
+                f"--- Server STDOUT ---\n{server_stdout}\n"
+                f"--- Server STDERR ---\n{server_stderr}"
             )
 
-            # Step 3: Execute
-            success, result_data, stdout, stderr = self.stepflow_runner.run_workflow(
-                workflow_yaml,
-                input_data,
-                config_path=config_path,
-                timeout=timeout,
-            )
+        # Step 4: Basic result validation
+        assert isinstance(result_data, dict), (
+            f"Expected dict result, got {type(result_data)}"
+        )
+        assert result_data.get("outcome") == "success", (
+            f"Execution failed: {result_data}"
+        )
+        assert "result" in result_data, f"No result field in output: {result_data}"
 
-            if not success:
-                pytest.fail(
-                    f"Workflow execution failed:\nResult: {result_data}\n"
-                    f"STDOUT: {stdout}\nSTDERR: {stderr}"
-                )
-
-            # Step 4: Basic result validation
-            assert isinstance(result_data, dict), (
-                f"Expected dict result, got {type(result_data)}"
-            )
-            assert result_data.get("outcome") == "success", (
-                f"Execution failed: {result_data}"
-            )
-            assert "result" in result_data, f"No result field in output: {result_data}"
-
-            return result_data
+        return result_data
 
 
 @pytest.fixture(scope="module")
-def test_executor(converter, stepflow_runner, shared_config):
+def test_executor(converter, stepflow_runner, stepflow_server, shared_config):
     """Create a TestExecutor with all necessary dependencies."""
-    return TestExecutor(converter, stepflow_runner, shared_config)
+    config_dict, config_path = shared_config
+    return TestExecutor(converter, stepflow_runner, stepflow_server, config_path)
 
 
 def load_flow_fixture(flow_name: str) -> dict[str, Any]:
@@ -507,7 +526,15 @@ def test_memory_chatbot(test_executor):
 
     # Configure Langflow to use our shared database
     # Extract database path from the plugin environment variables
-    langflow_plugin_config = test_executor.shared_config._config["plugins"]["langflow"]
+    # We need to access the config_dict from the fixture via the server
+
+    # Access shared config dict via the server's config
+    import yaml
+
+    with open(test_executor.config_path) as f:
+        config_dict = yaml.safe_load(f)
+
+    langflow_plugin_config = config_dict["plugins"]["langflow"]
     db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
     # Extract path from sqlite:///path format
     db_path = (
@@ -743,7 +770,12 @@ def test_simple_agent(test_executor):
     # If the calculator tool was invoked, there should be messages in the database
 
     # Extract database path from the plugin environment variables
-    langflow_plugin_config = test_executor.shared_config._config["plugins"]["langflow"]
+    import yaml
+
+    with open(test_executor.config_path) as f:
+        config_dict = yaml.safe_load(f)
+
+    langflow_plugin_config = config_dict["plugins"]["langflow"]
     db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
     # Extract path from sqlite:///path format
     db_path = (
@@ -846,17 +878,16 @@ def test_langflow_server_availability(test_executor):
     """Test that Langflow component server can be started and responds."""
     # Test component listing to verify server works
     try:
-        with test_executor.shared_config.to_temp_yaml() as config_path:
-            success, components, stderr = test_executor.stepflow_runner.list_components(
-                config_path=config_path
-            )
-            assert success, f"Component listing failed: {stderr}"
+        success, components, stderr = test_executor.stepflow_runner.list_components(
+            config_path=test_executor.config_path
+        )
+        assert success, f"Component listing failed: {stderr}"
 
-            # Should have langflow components available
-            langflow_components = [c for c in components if "langflow" in c.lower()]
-            assert len(langflow_components) > 0, (
-                f"Should have Langflow components available: {components}"
-            )
+        # Should have langflow components available
+        langflow_components = [c for c in components if "langflow" in c.lower()]
+        assert len(langflow_components) > 0, (
+            f"Should have Langflow components available: {components}"
+        )
 
     except Exception as e:
         pytest.skip(f"Langflow server not available: {e}")
@@ -899,18 +930,17 @@ def test_execution_with_missing_input(test_executor):
     stepflow_workflow = test_executor.converter.convert(langflow_data)
     workflow_yaml = test_executor.converter.to_yaml(stepflow_workflow)
 
-    # Execute without providing input - should either succeed with
+    # Execute without providing input via server - should either succeed with
     # defaults or fail gracefully
-    with test_executor.shared_config.to_temp_yaml() as config_path:
-        success, result_data, _, stderr = test_executor.stepflow_runner.run_workflow(
-            workflow_yaml, {}, config_path=config_path, timeout=15.0
-        )
+    success, result_data, _, stderr = test_executor.stepflow_runner.submit_workflow(
+        test_executor.stepflow_server, workflow_yaml, {}, timeout=15.0
+    )
 
-        # Either outcome is acceptable - we're testing that it doesn't crash
-        if success:
-            # Succeeded with defaults - good behavior
-            assert isinstance(result_data, dict)
-            assert result_data.get("outcome") == "success"
-        else:
-            # Failed gracefully - also good behavior
-            assert isinstance(result_data, dict) or "error" in stderr.lower()
+    # Either outcome is acceptable - we're testing that it doesn't crash
+    if success:
+        # Succeeded with defaults - good behavior
+        assert isinstance(result_data, dict)
+        assert result_data.get("outcome") == "success"
+    else:
+        # Failed gracefully - also good behavior
+        assert isinstance(result_data, dict) or "error" in stderr.lower()
