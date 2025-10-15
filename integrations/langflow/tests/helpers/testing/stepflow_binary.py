@@ -374,6 +374,128 @@ class StepflowBinaryRunner:
             for temp_path in [workflow_path, output_path]:
                 Path(temp_path).unlink(missing_ok=True)
 
+    def submit_batch(
+        self,
+        server: StepflowServer,
+        workflow_yaml: str,
+        inputs_jsonl_path: str,
+        max_concurrent: int | None = None,
+        output_path: str | None = None,
+        timeout: float = 300.0,
+    ) -> tuple[bool, dict[str, Any], str, str]:
+        """Submit batch workflow to Stepflow server.
+
+        Args:
+            server: Running StepflowServer instance
+            workflow_yaml: YAML content of the workflow
+            inputs_jsonl_path: Path to JSONL file with inputs (one JSON per line)
+            max_concurrent: Maximum number of concurrent executions
+            output_path: Optional path to write batch results (JSONL format)
+            timeout: Command timeout in seconds
+
+        Returns:
+            Tuple of (success, batch_stats, stdout, stderr)
+            batch_stats: {"total": N, "completed": N, "failed": N, "batch_id": uuid}
+        """
+        # Write workflow to temporary file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as workflow_file:
+            workflow_file.write(workflow_yaml)
+            workflow_path = workflow_file.name
+
+        try:
+            # Build command
+            cmd = [
+                str(self.binary_path),
+                "submit-batch",
+                "--url",
+                server.url,
+                "--flow",
+                workflow_path,
+                "--inputs",
+                inputs_jsonl_path,
+            ]
+
+            if max_concurrent is not None:
+                cmd.extend(["--max-concurrent", str(max_concurrent)])
+
+            if output_path is not None:
+                cmd.extend(["--output", output_path])
+
+            # Run batch submission
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=self.binary_path.parent,
+            )
+
+            success = result.returncode == 0
+            stdout_content = result.stdout
+            stderr_content = result.stderr
+
+            # Parse batch statistics from output
+            batch_stats: dict[str, Any] = {
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "batch_id": None,
+            }
+
+            # Try to extract statistics from stdout
+            if stdout_content:
+                lines = stdout_content.split("\n")
+                for line in lines:
+                    if "Batch ID:" in line:
+                        # Extract batch ID
+                        parts = line.split("Batch ID:")
+                        if len(parts) > 1:
+                            batch_stats["batch_id"] = parts[1].strip()
+                    elif "Total:" in line:
+                        # Extract total count
+                        parts = line.split("Total:")
+                        if len(parts) > 1:
+                            try:
+                                batch_stats["total"] = int(parts[1].strip())
+                            except ValueError:
+                                pass
+                    elif "Completed:" in line or "✅ Completed:" in line:
+                        # Extract completed count
+                        parts = line.split("Completed:")
+                        if len(parts) > 1:
+                            try:
+                                batch_stats["completed"] = int(parts[1].strip())
+                            except ValueError:
+                                pass
+                    elif "Failed:" in line or "❌ Failed:" in line:
+                        # Extract failed count
+                        parts = line.split("Failed:")
+                        if len(parts) > 1:
+                            try:
+                                batch_stats["failed"] = int(parts[1].strip())
+                            except ValueError:
+                                pass
+
+            # If submission failed, include server logs in stderr
+            if not success:
+                server_stderr = server.get_stderr()
+                if server_stderr:
+                    stderr_content = "\n".join(
+                        (stderr_content, "--- Server Logs ---", server_stderr)
+                    ).strip()
+
+            return success, batch_stats, stdout_content, stderr_content
+
+        except subprocess.TimeoutExpired as e:
+            raise ExecutionError(
+                f"Stepflow submit-batch command timed out after {timeout}s"
+            ) from e
+        finally:
+            # Clean up temp workflow file
+            Path(workflow_path).unlink(missing_ok=True)
+
     def validate_workflow(
         self,
         workflow_yaml: str,

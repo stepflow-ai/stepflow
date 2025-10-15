@@ -515,6 +515,173 @@ stateStore:
 
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("inputs_jsonl", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--url",
+    type=str,
+    required=True,
+    help="Stepflow server URL (e.g., http://localhost:7837/api/v1)",
+)
+@click.option(
+    "--tweaks",
+    type=str,
+    help="JSON string of tweaks to apply (node_id -> {field: value})",
+)
+@click.option(
+    "--max-concurrent",
+    type=int,
+    help="Maximum number of concurrent executions",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    help="Output JSONL file for batch results",
+)
+def submit_batch(
+    input_file: Path,
+    inputs_jsonl: Path,
+    url: str,
+    tweaks: str | None,
+    max_concurrent: int | None,
+    output: Path | None,
+):
+    """Convert Langflow workflow and submit batch execution to Stepflow server.
+
+    INPUT_FILE: Path to Langflow JSON workflow file
+    INPUTS_JSONL: Path to JSONL file with inputs (one JSON per line)
+
+    Requires a running Stepflow server. The workflow is converted once,
+    then all inputs are executed in batch.
+
+    Example:
+        stepflow-langflow submit-batch flow.json inputs.jsonl \\
+            --url http://localhost:7837/api/v1 \\
+            --tweaks '{"Component-123": {"api_key": "sk-..."}}' \\
+            --max-concurrent 5 \\
+            --output results.jsonl
+    """
+    import subprocess
+    import tempfile
+
+    try:
+        click.echo(f"🔄 Converting {input_file}...")
+
+        # Convert Langflow to Stepflow (once)
+        converter = LangflowConverter()
+        stepflow_yaml = converter.convert_file(input_file)
+
+        click.echo("✅ Conversion completed")
+
+        # Apply tweaks if provided (once)
+        if tweaks:
+            try:
+                parsed_tweaks = json.loads(tweaks)
+                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+
+                import yaml
+
+                workflow_dict = yaml.safe_load(stepflow_yaml)
+                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                    workflow_dict, parsed_tweaks
+                )
+                stepflow_yaml = yaml.dump(
+                    tweaked_dict,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                    width=120,
+                )
+
+                click.echo("✅ Tweaks applied")
+            except json.JSONDecodeError as e:
+                click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
+                sys.exit(1)
+            except Exception as e:
+                click.echo(f"❌ Error applying tweaks: {e}", err=True)
+                sys.exit(1)
+
+        # Write workflow to temporary file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as workflow_file:
+            workflow_file.write(stepflow_yaml)
+            workflow_path = workflow_file.name
+
+        try:
+            # Find stepflow binary
+            possible_paths = [
+                Path("../../stepflow-rs/target/debug/stepflow"),
+                Path("../../../stepflow-rs/target/debug/stepflow"),
+                Path("target/debug/stepflow"),
+            ]
+
+            binary_path = None
+            for path in possible_paths:
+                if path.exists():
+                    binary_path = path.resolve()
+                    break
+
+            if not binary_path:
+                click.echo(
+                    "❌ Stepflow binary not found. Please build the project first.",
+                    err=True,
+                )
+                sys.exit(1)
+
+            click.echo(f"🚀 Submitting batch to {url}...")
+            click.echo(f"   • Workflow: {input_file}")
+            click.echo(f"   • Inputs: {inputs_jsonl}")
+            if max_concurrent:
+                click.echo(f"   • Max concurrent: {max_concurrent}")
+            if output:
+                click.echo(f"   • Output: {output}")
+
+            # Build command
+            cmd = [
+                str(binary_path),
+                "submit-batch",
+                f"--url={url}",
+                f"--flow={workflow_path}",
+                f"--inputs={inputs_jsonl}",
+            ]
+
+            if max_concurrent is not None:
+                cmd.append(f"--max-concurrent={max_concurrent}")
+
+            if output is not None:
+                cmd.append(f"--output={output}")
+
+            # Submit batch (inherit stdout/stderr for progress display)
+            result = subprocess.run(
+                cmd,
+                timeout=300,  # 5 minute default timeout for batch
+            )
+
+            if result.returncode == 0:
+                click.echo("\n✅ Batch execution completed successfully!")
+            else:
+                click.echo("\n❌ Batch execution failed", err=True)
+                sys.exit(1)
+
+        finally:
+            # Cleanup temporary workflow file
+            import os
+
+            os.unlink(workflow_path)
+
+    except (ConversionError, ValidationError) as e:
+        click.echo(f"❌ Conversion failed: {e}", err=True)
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        click.echo("❌ Batch execution timed out", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Unexpected error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("input_json", type=str, default="{}")
 @click.option(
     "--url",

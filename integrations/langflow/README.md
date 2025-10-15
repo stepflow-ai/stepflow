@@ -125,6 +125,100 @@ uv run stepflow-langflow execute examples/basic_prompting.json '{"message": "Wri
 uv run stepflow-langflow execute examples/memory_chatbot.json --dry-run --keep-files
 ```
 
+### `submit-batch` Command
+
+Execute a Langflow workflow with multiple inputs using batch processing. This command converts the workflow once and then processes multiple inputs efficiently.
+
+```bash
+uv run stepflow-langflow submit-batch [OPTIONS] INPUT_FILE INPUTS_JSONL
+```
+
+**Arguments:**
+- `INPUT_FILE`: Path to Langflow JSON workflow file
+- `INPUTS_JSONL`: Path to JSONL file with batch inputs (one JSON object per line)
+
+**Options:**
+- `--url TEXT`: Stepflow server URL (required, e.g., `http://localhost:7837/api/v1`)
+- `--tweaks TEXT`: JSON tweaks to apply to the workflow (same format as `execute` command)
+- `--max-concurrent INTEGER`: Maximum number of concurrent executions (optional)
+- `--output PATH`: Path to output JSONL file for results (optional)
+
+**JSONL Input Format:**
+
+Each line in the inputs JSONL file should be a complete JSON object representing one execution input:
+
+```jsonl
+{"message": "Write a haiku about coding"}
+{"message": "Explain quantum computing"}
+{"message": "What is machine learning?"}
+{"message": "Tell me a joke"}
+{"message": "Summarize photosynthesis"}
+```
+
+**Output Format:**
+
+When `--output` is specified, results are written as JSONL with the following structure:
+
+```jsonl
+{"index": 0, "status": "completed", "result": {"outcome": "success", "result": {...}}}
+{"index": 1, "status": "failed", "result": {"outcome": "failure", "error": {...}}}
+{"index": 2, "status": "completed", "result": {"outcome": "success", "result": {...}}}
+```
+
+Each result includes:
+- `index`: Input index (0-based)
+- `status`: Either "completed" or "failed"
+- `result`: Workflow execution result or error details
+
+**Examples:**
+
+```bash
+# Basic batch execution with running server
+uv run stepflow-langflow submit-batch \
+  examples/basic_prompting.json \
+  inputs.jsonl \
+  --url http://localhost:7837/api/v1
+
+# Batch execution with tweaks (API keys, parameters)
+uv run stepflow-langflow submit-batch \
+  examples/basic_prompting.json \
+  inputs.jsonl \
+  --url http://localhost:7837/api/v1 \
+  --tweaks '{"LanguageModelComponent-kBOja": {"api_key": "sk-...", "temperature": 0.7}}'
+
+# Batch execution with concurrency limit and output file
+uv run stepflow-langflow submit-batch \
+  examples/vector_store_rag.json \
+  queries.jsonl \
+  --url http://localhost:7837/api/v1 \
+  --max-concurrent 5 \
+  --output results.jsonl
+
+# Complete workflow: start server, run batch, analyze results
+# Terminal 1: Start Stepflow server
+stepflow-server --port 7837 --config stepflow-config.yml
+
+# Terminal 2: Submit batch job
+uv run stepflow-langflow submit-batch \
+  examples/basic_prompting.json \
+  batch_inputs.jsonl \
+  --url http://localhost:7837/api/v1 \
+  --output batch_results.jsonl
+
+# Analyze results
+cat batch_results.jsonl | jq '.result.result'
+```
+
+**Exit Codes:**
+- Returns 0 if all executions completed successfully
+- Returns non-zero if any executions failed (results still written to output file)
+
+**Performance Characteristics:**
+- Workflow conversion happens once (not per input)
+- Tweaks are applied once (not per input)
+- Inputs are processed concurrently by the Stepflow server
+- Use `--max-concurrent` to control resource usage
+
 ### Other Commands
 
 ```bash
