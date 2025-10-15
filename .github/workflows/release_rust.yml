@@ -162,22 +162,79 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - base: debian
+          # stepflow-server images
+          - image: stepflow-server
+            base: debian
             platform: linux/amd64
             tag-suffix: amd64
             timeout: 10
             binary-target: x86_64-unknown-linux-gnu
-          - base: debian
+          - image: stepflow-server
+            base: debian
             platform: linux/arm64
             tag-suffix: arm64
             timeout: 15
             binary-target: aarch64-unknown-linux-gnu
-          - base: alpine
+          - image: stepflow-server
+            base: alpine
             platform: linux/amd64
             tag-suffix: amd64
             timeout: 10
             binary-target: x86_64-unknown-linux-musl
-          - base: alpine
+          - image: stepflow-server
+            base: alpine
+            platform: linux/arm64
+            tag-suffix: arm64
+            timeout: 15
+            binary-target: aarch64-unknown-linux-musl
+
+          # stepflow-load-balancer images
+          - image: stepflow-load-balancer
+            base: debian
+            platform: linux/amd64
+            tag-suffix: amd64
+            timeout: 10
+            binary-target: x86_64-unknown-linux-gnu
+          - image: stepflow-load-balancer
+            base: debian
+            platform: linux/arm64
+            tag-suffix: arm64
+            timeout: 15
+            binary-target: aarch64-unknown-linux-gnu
+          - image: stepflow-load-balancer
+            base: alpine
+            platform: linux/amd64
+            tag-suffix: amd64
+            timeout: 10
+            binary-target: x86_64-unknown-linux-musl
+          - image: stepflow-load-balancer
+            base: alpine
+            platform: linux/arm64
+            tag-suffix: arm64
+            timeout: 15
+            binary-target: aarch64-unknown-linux-musl
+
+          # stepflow CLI images
+          - image: stepflow
+            base: debian
+            platform: linux/amd64
+            tag-suffix: amd64
+            timeout: 10
+            binary-target: x86_64-unknown-linux-gnu
+          - image: stepflow
+            base: debian
+            platform: linux/arm64
+            tag-suffix: arm64
+            timeout: 15
+            binary-target: aarch64-unknown-linux-gnu
+          - image: stepflow
+            base: alpine
+            platform: linux/amd64
+            tag-suffix: amd64
+            timeout: 10
+            binary-target: x86_64-unknown-linux-musl
+          - image: stepflow
+            base: alpine
             platform: linux/arm64
             tag-suffix: arm64
             timeout: 15
@@ -207,39 +264,26 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: artifact-stepflow-${{ matrix.binary-target }}
-          path: ./binary/
+          path: ./stepflow-rs/release/
 
-      - name: Prepare binary
+      - name: Prepare build context
         run: |
-          chmod +x ./binary/stepflow-*
-
-      - name: Create Dockerfiles
-        run: |
-          pwd
-
-          cat > Dockerfile.debian << 'EOF'
-          # syntax=docker/dockerfile:1
-          FROM debian:bookworm-slim
-          RUN apt-get update && \
-              apt-get install -y ca-certificates && \
-              rm -rf /var/lib/apt/lists/* && \
-              useradd -r -s /bin/false stepflow
-          COPY binary/stepflow-* /usr/local/bin/stepflow
-          RUN chmod +x /usr/local/bin/stepflow
-          USER stepflow
-          ENTRYPOINT ["/usr/local/bin/stepflow"]
-          EOF
-
-          cat > Dockerfile.alpine << 'EOF'
-          # syntax=docker/dockerfile:1
-          FROM alpine:3.19
-          RUN apk --no-cache add ca-certificates && \
-              adduser -D -s /bin/sh stepflow
-          COPY binary/stepflow-* /usr/local/bin/stepflow
-          RUN chmod +x /usr/local/bin/stepflow
-          USER stepflow
-          ENTRYPOINT ["/usr/local/bin/stepflow"]
-          EOF
+          cd stepflow-rs/release
+          # Rename binary to simple name expected by Dockerfile
+          if [ "${{ matrix.image }}" = "stepflow-server" ]; then
+            mv stepflow-server-* stepflow-server
+          elif [ "${{ matrix.image }}" = "stepflow-load-balancer" ]; then
+            mv stepflow-load-balancer-* stepflow-load-balancer
+          else
+            # For stepflow CLI, need to handle both stepflow and other binaries
+            for f in stepflow-*; do
+              if [ "$f" != "stepflow-server-*" ] && [ "$f" != "stepflow-load-balancer-*" ]; then
+                mv "$f" stepflow 2>/dev/null && break
+              fi
+            done
+          fi
+          chmod +x stepflow* 2>/dev/null || true
+          ls -la
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
         with:
@@ -251,20 +295,28 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./stepflow-rs/release
           platforms: ${{ matrix.platform }}
-          file: Dockerfile.${{ matrix.base }}
+          file: ./stepflow-rs/release/Dockerfile.${{ matrix.image }}.${{ matrix.base }}
           # Don't use other tags since we're pushing by digest.
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Test Docker image (${{ matrix.platform }})
         timeout-minutes: 1
         run: |
-          image_ref="${{ env.REGISTRY }}/${{ github.repository }}@${{ steps.build.outputs.digest }}"
+          image_ref="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}"
           echo "Testing image: $image_ref"
-          docker run --platform ${{ matrix.platform }} --rm "$image_ref" --version || true
-          docker run --platform ${{ matrix.platform }} --rm "$image_ref" --help
+
+          # Test based on image type
+          if [ "${{ matrix.image }}" = "stepflow" ]; then
+            docker run --platform ${{ matrix.platform }} --rm "$image_ref" --version || true
+            docker run --platform ${{ matrix.platform }} --rm "$image_ref" --help
+          elif [ "${{ matrix.image }}" = "stepflow-server" ]; then
+            docker run --platform ${{ matrix.platform }} --rm "$image_ref" --help
+          else
+            echo "Load balancer image built successfully (no CLI help available)"
+          fi
 
       - name: Export digest
         run: |
@@ -275,7 +327,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.base }}-${{ env.PLATFORM_PAIR }}
+          name: digests-${{ matrix.image }}-${{ matrix.base }}-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -287,6 +339,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        image: [stepflow-server, stepflow-load-balancer, stepflow]
         base: [debian, alpine]
 
     permissions:
@@ -299,7 +352,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digests-${{ matrix.base }}-*
+          pattern: digests-${{ matrix.image }}-${{ matrix.base }}-*
           merge-multiple: true
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
@@ -309,7 +362,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare Env
         run: |
-          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}" >> $GITHUB_ENV
+          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}" >> $GITHUB_ENV
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Extract metadata (tags, labels) for Docker
@@ -439,9 +492,23 @@ jobs:
           - [stepflow-x86_64-pc-windows-msvc.zip](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-pc-windows-msvc.zip)
 
           ### 🐳 Docker Images
-          Docker images are also available at `ghcr.io/${{ github.repository }}` (CLI only):
-          - `ghcr.io/${{ github.repository }}:debian-${{ needs.determine-version.outputs.version }}`
-          - `ghcr.io/${{ github.repository }}:alpine-${{ needs.determine-version.outputs.version }}`
+          Docker images are available for three different components:
+
+          **Stepflow Server** (HTTP workflow execution server):
+          - `ghcr.io/${{ github.repository }}/stepflow-server:debian-${{ needs.determine-version.outputs.version }}`
+          - `ghcr.io/${{ github.repository }}/stepflow-server:alpine-${{ needs.determine-version.outputs.version }}`
+          - Default port: 7840
+          - Entry point: `stepflow-server --port 7840`
+
+          **Stepflow Load Balancer** (Component server load balancer):
+          - `ghcr.io/${{ github.repository }}/stepflow-load-balancer:debian-${{ needs.determine-version.outputs.version }}`
+          - `ghcr.io/${{ github.repository }}/stepflow-load-balancer:alpine-${{ needs.determine-version.outputs.version }}`
+          - Default port: 8080
+          - Configure via `UPSTREAM_SERVICE` environment variable
+
+          **Stepflow CLI** (Command-line workflow execution):
+          - `ghcr.io/${{ github.repository }}/stepflow:debian-${{ needs.determine-version.outputs.version }}`
+          - `ghcr.io/${{ github.repository }}/stepflow:alpine-${{ needs.determine-version.outputs.version }}`
 
           ### 📦 Installation
 
@@ -537,7 +604,10 @@ jobs:
           echo "- **Linux**: x86_64 (glibc + musl), ARM64 (glibc + musl)" >> $GITHUB_STEP_SUMMARY
           echo "- **macOS**: x86_64, ARM64" >> $GITHUB_STEP_SUMMARY
           echo "- **Windows**: x86_64" >> $GITHUB_STEP_SUMMARY
-          echo "- **Docker**: Debian + Alpine (multiplatform)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Images**: 3 components × 2 bases × 2 architectures" >> $GITHUB_STEP_SUMMARY
+          echo "  - stepflow-server (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
+          echo "  - stepflow-load-balancer (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
+          echo "  - stepflow (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY

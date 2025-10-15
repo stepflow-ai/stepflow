@@ -1,0 +1,7 @@
+# Ignore everything by default
+*
+
+# Only include the binaries we need
+!stepflow
+!stepflow-server
+!stepflow-load-balancer
