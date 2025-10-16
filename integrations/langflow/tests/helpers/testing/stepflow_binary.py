@@ -341,7 +341,9 @@ class StepflowBinaryRunner:
             stderr_content = result.stderr
 
             # Read the clean JSON output from the output file
-            if success and Path(output_path).exists():
+            # Always try to read it, even if returncode != 0
+            # (the CLI now exits with code 1 when workflows fail)
+            if Path(output_path).exists():
                 try:
                     with open(output_path) as f:
                         output_content = f.read().strip()
