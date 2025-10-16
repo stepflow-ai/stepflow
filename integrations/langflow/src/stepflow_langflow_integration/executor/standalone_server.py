@@ -64,7 +64,19 @@ async def component_tool_component(
 
 def main():
     """Main entry point for the Langflow component server."""
+    import logging
+    import os
+
     import nest_asyncio  # type: ignore
+
+    # Configure Python logging based on environment variables
+    # PYTHON_LOG_LEVEL: DEBUG, INFO, WARNING, ERROR (default: WARNING)
+    log_level = os.environ.get("PYTHON_LOG_LEVEL", "WARNING").upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.WARNING),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stderr,
+    )
 
     nest_asyncio.apply()
     # Start the server - this handles all the asyncio setup correctly
