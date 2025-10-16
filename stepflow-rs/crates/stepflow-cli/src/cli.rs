@@ -461,7 +461,12 @@ impl Cli {
                 let input = input_args.parse_input(true)?;
 
                 let output = submit(url, flow, input).await?;
-                output_args.write_output(output)?;
+                output_args.write_output(output.clone())?;
+
+                // Exit with non-zero status if workflow execution failed
+                if output.failed().is_some() {
+                    std::process::exit(1);
+                }
             }
             Command::Test {
                 paths,

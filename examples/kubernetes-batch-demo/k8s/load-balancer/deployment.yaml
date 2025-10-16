@@ -19,8 +19,8 @@ spec:
     spec:
       containers:
       - name: load-balancer
-        image: localhost:5000/stepflow-load-balancer:latest
-        imagePullPolicy: Always
+        image: ghcr.io/stepflow-ai/stepflow/stepflow-load-balancer:alpine-0.6.0
+        imagePullPolicy: IfNotPresent
         ports:
         - name: http
           containerPort: 8080
