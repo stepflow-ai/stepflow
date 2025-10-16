@@ -32,7 +32,7 @@ cd examples/kubernetes-batch-demo
 ./scripts/setup-kubectl.sh
 export KUBECONFIG=$(pwd)/kubeconfig
 
-# 3. Build and deploy all services (one command)
+# 3. Deploy all services (one command)
 ./scripts/deploy-all.sh
 
 # 4. Start port-forward to Stepflow server (in separate terminal)
@@ -43,7 +43,13 @@ cd workflows
 ./test-workflows.sh
 ```
 
-**Time:** ~15 minutes for first-time setup, ~60 seconds for testing
+**Time:** ~5 minutes for first-time setup, ~60 seconds for testing
+
+**Note:** The demo now uses released Docker images for `stepflow-server` and `stepflow-load-balancer`:
+- `ghcr.io/stepflow-ai/stepflow/stepflow-server:alpine-0.6.0`
+- `ghcr.io/stepflow-ai/stepflow/stepflow-load-balancer:alpine-0.6.0`
+
+Only the component server requires building locally (Python HTTP component server).
 
 **Expected output:**
 - Test 1: 10 simple workflows complete successfully

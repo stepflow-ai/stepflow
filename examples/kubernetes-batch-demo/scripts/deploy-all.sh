@@ -57,8 +57,8 @@ echo ""
 # Setup kubectl
 export KUBECONFIG="$PROJECT_DIR/kubeconfig"
 
-# Step 1: Build images
-print_status "Step 1/4: Building Docker images..."
+# Step 1: Build component server image (Python component server still needs local build)
+print_status "Step 1/3: Building component server Docker image..."
 echo ""
 
 print_info "Building component server..."
@@ -70,34 +70,18 @@ else
 fi
 echo ""
 
-print_info "Building Stepflow load balancer..."
-if bash "$SCRIPT_DIR/build-load-balancer.sh"; then
-    print_info "✅ Load balancer build complete"
-else
-    echo "❌ Error: Load balancer build failed"
-    exit 1
-fi
-echo ""
-
-print_info "Building Stepflow runtime server..."
-if bash "$SCRIPT_DIR/build-stepflow-server.sh"; then
-    print_info "✅ Stepflow server build complete"
-else
-    echo "❌ Error: Stepflow server build failed"
-    exit 1
-fi
-echo ""
-
-print_status "All Docker images built successfully!"
+print_info "Using released images for stepflow-server and load-balancer"
+print_info "  - ghcr.io/stepflow-ai/stepflow/stepflow-server:alpine-0.6.0"
+print_info "  - ghcr.io/stepflow-ai/stepflow/stepflow-load-balancer:alpine-0.6.0"
 echo ""
 
 # Step 2: Create namespace
-print_status "Step 2/4: Creating namespace..."
+print_status "Step 2/3: Creating namespace..."
 kubectl apply -f "$PROJECT_DIR/k8s/namespace.yaml"
 echo ""
 
 # Step 3: Deploy services
-print_status "Step 3/4: Deploying services..."
+print_status "Step 3/3: Deploying services..."
 echo ""
 
 print_info "Deploying component servers..."
@@ -105,7 +89,7 @@ kubectl apply -k "$PROJECT_DIR/k8s/component-server/"
 echo ""
 
 print_info "Deploying Stepflow load balancer..."
-kubectl apply -k "$PROJECT_DIR/k8s/stepflow-load-balancer/"
+kubectl apply -k "$PROJECT_DIR/k8s/load-balancer/"
 echo ""
 
 print_info "Deploying Stepflow runtime server..."
@@ -113,7 +97,7 @@ kubectl apply -k "$PROJECT_DIR/k8s/stepflow-server/"
 echo ""
 
 # Step 4: Wait for readiness
-print_status "Step 4/4: Waiting for pods to be ready..."
+print_status "Waiting for pods to be ready..."
 echo ""
 
 wait_for_pods "app=component-server" "component servers" || exit 1

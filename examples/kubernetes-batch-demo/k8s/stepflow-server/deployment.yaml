@@ -19,8 +19,13 @@ spec:
     spec:
       containers:
       - name: stepflow-server
-        image: localhost:5000/stepflow-server:latest
-        imagePullPolicy: Always
+        image: ghcr.io/stepflow-ai/stepflow/stepflow-server:alpine-0.6.0
+        imagePullPolicy: IfNotPresent
+        args:
+          - "--port"
+          - "7840"
+          - "--config"
+          - "/app/config/stepflow-config.yml"
         ports:
         - name: http
           containerPort: 7840
