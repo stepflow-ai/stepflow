@@ -27,7 +27,7 @@ stepflow-core.workspace = true
 stepflow-state.workspace = true
 thiserror.workspace = true
 trait-variant.workspace = true
-tracing.workspace = true
+log.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

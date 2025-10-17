@@ -17,7 +17,9 @@ use error_stack::ResultExt as _;
 use serde::de::DeserializeOwned;
 use stepflow_plugin::Context;
 
+use super::{launcher::Launcher, recv_message_loop::recv_message_loop};
 use crate::OwnedJson;
+use crate::error::{Result, TransportError};
 use crate::lazy_value::LazyValue;
 use crate::protocol::{Method, ProtocolMethod, ProtocolNotification};
 use crate::{MethodRequest, Notification, RequestId};
@@ -26,10 +28,6 @@ use tokio::{
     sync::{mpsc, oneshot, watch},
     task::JoinHandle,
 };
-use tracing::Instrument as _;
-
-use super::{launcher::Launcher, recv_message_loop::recv_message_loop};
-use crate::error::{Result, TransportError};
 
 /// Restart counter that increments each time the subprocess is restarted
 pub type RestartCounter = u64;
@@ -51,18 +49,19 @@ impl StdioClient {
         let (restart_counter_tx, _restart_counter_rx) = watch::channel(0);
 
         let launcher = Arc::new(launcher);
-        let recv_span = tracing::info_span!("recv_message_loop", command = ?launcher.command, args = ?launcher.args);
-        let loop_handle = tokio::spawn(
-            recv_message_loop(
-                launcher,
-                outgoing_tx.clone(),
-                outgoing_rx,
-                pending_rx,
-                context,
-                restart_counter_tx.clone(),
-            )
-            .instrument(recv_span),
+        log::info!(
+            "Starting recv_message_loop for command: {:?} with args: {:?}",
+            launcher.command,
+            launcher.args
         );
+        let loop_handle = tokio::spawn(recv_message_loop(
+            launcher,
+            outgoing_tx.clone(),
+            outgoing_rx,
+            pending_rx,
+            context,
+            restart_counter_tx.clone(),
+        ));
         let loop_handle = Arc::new(RwLock::new(loop_handle));
 
         Ok(Self {
@@ -182,13 +181,13 @@ impl StdioClientHandle {
                 let result = write.deref_mut().await;
                 match result {
                     Ok(Ok(())) => {
-                        tracing::error!("Subprocess exited successfully.");
+                        log::error!("Subprocess exited successfully.");
                     }
                     Ok(Err(e)) => {
-                        tracing::error!("Error running receive loop: {e})");
+                        log::error!("Error running receive loop: {e})");
                     }
                     Err(e) => {
-                        tracing::error!("Panic in receive loop: {e}");
+                        log::error!("Panic in receive loop: {e}");
                     }
                 };
                 error_stack::bail!(transport_error)

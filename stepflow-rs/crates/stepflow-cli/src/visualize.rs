@@ -151,7 +151,7 @@ impl FlowVisualizer {
             self.add_edges(&mut dot, analysis)?;
         } else {
             // If analysis failed due to validation errors, we can still show the basic structure
-            tracing::warn!(
+            log::warn!(
                 "Workflow analysis failed, showing basic structure without detailed dependencies"
             );
         }

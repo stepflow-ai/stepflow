@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use error_stack::ResultExt as _;
 use uuid::Uuid;
 
-use tracing;
+use log;
 
 use super::{ValueRef, ValueTemplate, ValueTemplateRepr};
 use crate::{
@@ -156,12 +156,12 @@ impl<L: ValueLoader> ValueResolver<L> {
         let path_result = if let Some(path) = expr.path() {
             match base_result {
                 FlowResult::Success(result) => {
-                    tracing::debug!("Resolving path '{}' on value: {:?}", path, result.as_ref());
+                    log::debug!("Resolving path '{}' on value: {:?}", path, result.as_ref());
                     if let Some(sub_value) = result.resolve_json_path(path) {
-                        tracing::debug!("Path '{}' resolved to: {:?}", path, sub_value.as_ref());
+                        log::debug!("Path '{}' resolved to: {:?}", path, sub_value.as_ref());
                         FlowResult::Success(sub_value)
                     } else {
-                        tracing::debug!("Path '{}' not found in value", path);
+                        log::debug!("Path '{}' not found in value", path);
                         return Err(ValueResolverError::UndefinedField {
                             field: path.to_string(),
                             value: result,

@@ -82,9 +82,6 @@ tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros", "process"
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
-tracing = "0.1.41"
-tracing-error = "0.2.1"
-tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt", "json", "local-time" ] }
 trait-variant = "0.1.2"
 url = { version = "2.5.4", features = ["serde"]}
 utoipa = { version = "5.3", features = ["axum_extras", "chrono", "indexmap", "rc_schema", "url", "uuid"] }

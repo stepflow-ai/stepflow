@@ -320,7 +320,7 @@ impl Plugin for StepflowPlugin {
                     let current_count = *restart_rx.borrow_and_update();
 
                     if current_count > initial_count {
-                        tracing::info!(
+                        log::info!(
                             "Component execution failed due to process restart (count: {} -> {}), retrying once",
                             initial_count,
                             current_count

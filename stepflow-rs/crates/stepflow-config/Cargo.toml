@@ -27,4 +27,4 @@ stepflow-state.workspace = true
 stepflow-state-sql.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
+log.workspace = true

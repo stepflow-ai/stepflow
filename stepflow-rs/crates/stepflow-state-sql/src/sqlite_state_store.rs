@@ -107,7 +107,7 @@ impl SqliteStateStore {
                 } => {
                     if let Err(e) = Self::record_step_result_sync(&pool, run_id, step_result).await
                     {
-                        tracing::error!("Failed to record step result: {:?}", e);
+                        log::error!("Failed to record step result: {:?}", e);
                     }
                 }
                 StateWriteOperation::UpdateStepStatuses {
@@ -118,7 +118,7 @@ impl SqliteStateStore {
                     if let Err(e) =
                         Self::update_step_statuses_sync(&pool, run_id, status, step_indices).await
                     {
-                        tracing::error!("Failed to update step statuses: {:?}", e);
+                        log::error!("Failed to update step statuses: {:?}", e);
                     }
                 }
                 StateWriteOperation::Flush {
@@ -321,7 +321,7 @@ impl StateStore for SqliteStateStore {
                 "data" => BlobType::Data,
                 _ => {
                     // Default to data for unknown types
-                    tracing::warn!("Unknown blob type '{}', defaulting to 'data'", type_str);
+                    log::warn!("Unknown blob type '{}', defaulting to 'data'", type_str);
                     BlobType::Data
                 }
             };
@@ -801,7 +801,7 @@ impl StateStore for SqliteStateStore {
                         "failed" => ExecutionStatus::Failed,
                         "paused" => ExecutionStatus::Paused,
                         _ => {
-                            tracing::warn!("Unrecognized execution status: {status_str}");
+                            log::warn!("Unrecognized execution status: {status_str}");
                             ExecutionStatus::Running
                         }
                     };
@@ -1033,7 +1033,7 @@ impl StateStore for SqliteStateStore {
                 step_indices,
             })
         {
-            tracing::error!("Failed to queue step status update: {:?}", e);
+            log::error!("Failed to queue step status update: {:?}", e);
         }
     }
 
@@ -1047,7 +1047,7 @@ impl StateStore for SqliteStateStore {
             run_id: Some(run_id),
             completion_notify: tx,
         }) {
-            tracing::error!("Failed to queue flush operation: {:?}", e);
+            log::error!("Failed to queue flush operation: {:?}", e);
             return async move { Err(error_stack::report!(StateError::Internal)) }.boxed();
         }
 
@@ -1313,7 +1313,7 @@ impl StateStore for SqliteStateStore {
                     "cancelled" => statistics.cancelled_runs = count,
                     "paused" => statistics.paused_runs = count,
                     _ => {
-                        tracing::warn!("Unknown run status '{}' in batch statistics", status_str);
+                        log::warn!("Unknown run status '{}' in batch statistics", status_str);
                     }
                 }
             }

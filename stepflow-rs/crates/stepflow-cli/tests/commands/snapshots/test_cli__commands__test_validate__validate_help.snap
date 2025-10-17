@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_validate.rs
+source: crates/stepflow-cli/tests/commands/test_validate.rs
 info:
   program: stepflow
   args:
@@ -31,25 +31,10 @@ Options:
       --flow <FILE>
           Path to the workflow file to validate
 
-      --log-level <LEVEL>
-          Set the log level for Stepflow
-          
-          [default: info]
-          [possible values: trace, debug, info, warn, error]
-
       --config <FILE>
           The path to the stepflow config file.
           
           If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
-
-      --other-log-level <LEVEL>
-          Set the log level for other parts of Stepflow
-          
-          [default: warn]
-          [possible values: trace, debug, info, warn, error]
-
-      --log-file <FILE>
-          Write logs to a file instead of stderr
 
       --omit-stack-trace
           Omit stack traces (line numbers of errors)

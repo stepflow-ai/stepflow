@@ -50,7 +50,7 @@ where
         match params.deserialize_to() {
             Ok(request) => request,
             Err(e) => {
-                tracing::error!(
+                log::error!(
                     "Failed to deserialize request parameters for {}: {e:#}",
                     request.method
                 );
@@ -61,7 +61,7 @@ where
         match serde_json::from_value(serde_json::Value::Null) {
             Ok(request) => request,
             Err(e) => {
-                tracing::error!("Failed to deserialize empty request parameters: {e}");
+                log::error!("Failed to deserialize empty request parameters: {e}");
                 return report_user_error(Error::invalid_parameters(&request.id)).await;
             }
         }
@@ -70,7 +70,7 @@ where
     let response = match handler(request).await {
         Ok(result) => result,
         Err(e) => {
-            tracing::error!("Method call failed: {e:?}");
+            log::error!("Method call failed: {e:?}");
             return report_user_error(e).await;
         }
     };
@@ -104,7 +104,7 @@ impl MethodHandler for PutBlobHandler {
                     .put_blob(request.data, request.blob_type)
                     .await
                     .map_err(|e| {
-                        tracing::error!("Failed to put blob: {e}");
+                        log::error!("Failed to put blob: {e}");
                         Error::internal("Failed to put blob")
                     })?;
                 Ok(crate::protocol::PutBlobResult { blob_id })
@@ -133,7 +133,7 @@ impl MethodHandler for GetBlobHandler {
                     .get_blob(&request.blob_id)
                     .await
                     .map_err(|e| {
-                        tracing::error!("Failed to get blob: {e}");
+                        log::error!("Failed to get blob: {e}");
                         Error::internal("Failed to get blob")
                     })?;
                 Ok(crate::protocol::GetBlobResult {

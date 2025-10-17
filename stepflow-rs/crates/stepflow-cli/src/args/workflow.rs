@@ -33,7 +33,7 @@ async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepflowExec
         .expect("working_directory");
 
     // Build the plugin router
-    tracing::info!("Routing Config: {:?}", config.routing);
+    log::info!("Routing Config: {:?}", config.routing);
     let mut plugin_router_builder = PluginRouter::builder().with_routing_config(config.routing);
 
     // Register plugins from IndexMap

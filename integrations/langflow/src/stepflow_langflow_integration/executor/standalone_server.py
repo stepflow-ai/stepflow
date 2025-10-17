@@ -71,6 +71,7 @@ def main():
 
     # Configure Python logging based on environment variables
     # PYTHON_LOG_LEVEL: DEBUG, INFO, WARNING, ERROR (default: WARNING)
+    # TODO(#388): improve component-server logging
     log_level = os.environ.get("PYTHON_LOG_LEVEL", "WARNING").upper()
     logging.basicConfig(
         level=getattr(logging, log_level, logging.WARNING),

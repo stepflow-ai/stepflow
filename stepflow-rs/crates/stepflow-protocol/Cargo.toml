@@ -27,7 +27,7 @@ subst.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
-tracing.workspace = true
+log.workspace = true
 uuid.workspace = true
 which.workspace = true
 

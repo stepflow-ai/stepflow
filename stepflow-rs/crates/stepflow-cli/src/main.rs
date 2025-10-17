@@ -11,15 +11,19 @@
 // the License.
 
 use clap::Parser as _;
-use stepflow_cli::{Cli, Result, args::init_tracing};
+use error_stack::ResultExt as _;
+use stepflow_cli::{Cli, Result};
+use stepflow_observability::init_observability;
 
 async fn run(cli: Cli) -> Result<()> {
-    // Initialize tracing with the specified configuration
-    init_tracing(
-        &cli.log_level,
-        &cli.other_log_level,
-        cli.log_file.as_deref(),
-    )?;
+    // Initialize observability with the specified configuration
+    // CLI runs workflows, so enable run diagnostic
+    let binary_config = stepflow_observability::BinaryObservabilityConfig {
+        service_name: "stepflow-cli",
+        include_run_diagnostic: true,
+    };
+    let _guard = init_observability(&cli.observability, binary_config)
+        .change_context(stepflow_cli::MainError::TracingInit)?;
 
     cli.execute().await
 }

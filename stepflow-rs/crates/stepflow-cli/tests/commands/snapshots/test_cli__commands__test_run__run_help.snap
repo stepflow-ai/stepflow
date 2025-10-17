@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_run.rs
+source: crates/stepflow-cli/tests/commands/test_run.rs
 info:
   program: stepflow
   args:
@@ -47,36 +47,18 @@ Options:
       --flow <FILE>
           Path to the workflow file to execute
 
-      --log-level <LEVEL>
-          Set the log level for Stepflow
-          
-          [default: info]
-          [possible values: trace, debug, info, warn, error]
-
       --config <FILE>
           The path to the stepflow config file.
           
           If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
-
-      --other-log-level <LEVEL>
-          Set the log level for other parts of Stepflow
-          
-          [default: warn]
-          [possible values: trace, debug, info, warn, error]
 
       --input <FILE>
           The path to the input file to execute the workflow with.
           
           Should be JSON or YAML. Format is inferred from file extension.
 
-      --log-file <FILE>
-          Write logs to a file instead of stderr
-
       --input-json <JSON>
           The input value as a JSON string
-
-      --omit-stack-trace
-          Omit stack traces (line numbers of errors)
 
       --input-yaml <YAML>
           The input value as a YAML string
@@ -88,6 +70,9 @@ Options:
           
           [default: json]
           [possible values: json, yaml]
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
 
       --output <FILE>
           Path to write the output to.

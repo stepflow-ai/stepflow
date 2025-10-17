@@ -48,7 +48,7 @@ impl MethodHandler for EvaluateFlowHandler {
                     .execute_flow_by_id(&request.flow_id, request.input)
                     .await
                     .map_err(|e| {
-                        tracing::error!("Failed to evaluate flow: {e}");
+                        log::error!("Failed to evaluate flow: {e}");
                         Error::internal("Failed to evaluate flow")
                     })?;
 
@@ -73,7 +73,7 @@ impl MethodHandler for GetFlowMetadataHandler {
                 // Fetch the flow from the state store
                 let flow_id = &request.flow_id;
                 let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
-                    tracing::error!("Failed to get flow blob: {e}");
+                    log::error!("Failed to get flow blob: {e}");
                     Error::not_found("flow", flow_id.as_str())
                 })?;
                 let flow = blob_data
@@ -116,7 +116,7 @@ impl MethodHandler for SubmitBatchHandler {
                 // Fetch the flow from the state store
                 let flow_id = &request.flow_id;
                 let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
-                    tracing::error!("Failed to get flow blob: {e}");
+                    log::error!("Failed to get flow blob: {e}");
                     Error::not_found("flow", flow_id.as_str())
                 })?;
                 let flow = blob_data
@@ -134,7 +134,7 @@ impl MethodHandler for SubmitBatchHandler {
                     )
                     .await
                     .map_err(|e| {
-                        tracing::error!("Failed to submit batch: {e}");
+                        log::error!("Failed to submit batch: {e}");
                         Error::internal("Failed to submit batch")
                     })?;
 
@@ -144,7 +144,7 @@ impl MethodHandler for SubmitBatchHandler {
                         .get_batch(batch_id)
                         .await
                         .map_err(|e| {
-                            tracing::error!("Failed to get batch metadata: {e}");
+                            log::error!("Failed to get batch metadata: {e}");
                             Error::internal("Failed to get batch metadata")
                         })?;
 
@@ -170,7 +170,7 @@ impl MethodHandler for GetBatchHandler {
             response_tx,
             |request: crate::protocol::GetBatchParams| async move {
                 let batch_id = uuid::Uuid::parse_str(&request.batch_id).map_err(|e| {
-                    tracing::error!("Invalid batch ID: {e}");
+                    log::error!("Invalid batch ID: {e}");
                     Error::invalid_value("batch_id", "valid UUID")
                 })?;
 
@@ -179,7 +179,7 @@ impl MethodHandler for GetBatchHandler {
                     .get_batch(batch_id, request.wait, request.include_results)
                     .await
                     .map_err(|e| {
-                        tracing::error!("Failed to get batch: {e}");
+                        log::error!("Failed to get batch: {e}");
                         Error::internal("Failed to get batch")
                     })?;
 
