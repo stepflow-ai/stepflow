@@ -269,12 +269,20 @@ See `CLAUDE.md` for detailed architecture and advanced patterns.
 
 ### Logging and Tracing
 
-- Use the `tracing` package for all logging and instrumentation
-- Use appropriate log levels (error, warn, info, debug, trace)
-- Include relevant context in log messages
-- Use structured logging where appropriate
-- Use spans for tracking operation context
-- Use events for discrete log messages
+**Use `log` for detailed debugging information:**
+- Internal state changes and variable values
+- Low-level operations and conditional branches
+- Use standard `log::info!`, `log::debug!`, etc. - trace context is automatic
+
+**Use `fastrace` for high-level execution structure:**
+- Workflow/step/component lifecycle (start/end)
+- Key inputs, outputs, and errors
+- Cross-system boundaries (HTTP, plugins, database)
+- Be conservative: only trace what support engineers need
+
+**Trace context is automatically injected into logs** - no manual propagation needed.
+
+See `CLAUDE.md` for detailed guidelines and examples.
 
 ## Making Contributions
 

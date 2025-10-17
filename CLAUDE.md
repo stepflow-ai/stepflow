@@ -417,12 +417,87 @@ fn my_async_method(&self) -> BoxFuture<'_, Result<String, Error>> {
 
 ### Logging and Tracing
 
-- Use the `tracing` package for all logging and instrumentation
-- Use appropriate log levels (error, warn, info, debug, trace)
-- Include relevant context in log messages
-- Use structured logging where appropriate
-- Use spans for tracking operation context
-- Use events for discrete log messages
+Stepflow uses separate systems for logging and distributed tracing:
+
+#### When to Use Logging (`log` crate)
+
+Use logging for detailed implementation information and debugging:
+
+- **Internal details**: Variable values, state changes, conditional logic
+- **Debug information**: Cache behavior, recovery operations, fallback handling
+- **Low-level operations**: Individual queries, parsing steps, data transformations
+- **Trace context is automatic**: All logs automatically include `trace_id` and `span_id` from active span
+
+Examples:
+```rust
+log::debug!("Resolved {} step inputs", count);
+log::info!("Step {} completed with result", step_id);
+log::error!("Failed to connect to plugin: {}", error);
+
+// Trace context is added automatically by the logger:
+// {"level":"INFO","message":"Step completed","trace_id":"a1b2c3...","span_id":"e5f6..."}
+```
+
+#### When to Use Tracing (`fastrace` crate)
+
+Use tracing for the structural, user-facing execution view:
+
+- **Execution structure**: When operations start/end (requests, workflows, steps, components)
+- **Key inputs/outputs**: Main operation parameters and results
+- **User-relevant errors**: Failures that affect workflow execution
+- **System boundaries**: HTTP requests, plugin calls, database operations, external APIs
+- **Guideline**: Be conservative - if a support engineer needs it to understand "what happened", trace it
+
+Examples:
+```rust
+// High-level operation
+#[trace(name = "execute_workflow")]
+async fn execute_workflow(run_id: Uuid, flow: Arc<Flow>, input: ValueRef) -> Result<FlowResult> {
+    // Automatic span with operation name
+    log::info!("Starting workflow execution");
+    // ... work ...
+}
+
+// Component boundary with dynamic name
+async fn execute_component(component: &str, input: ValueRef) -> Result<FlowResult> {
+    let _guard = LocalSpan::enter_with_local_parent(&format!("component:{}", component));
+    log::debug!("Executing component with input: {:?}", input);
+    // ... call plugin ...
+}
+
+// Record span events for key I/O
+let _guard = LocalSpan::enter_with_local_parent("step:transform");
+LocalSpan::add_property(|| ("input_size", input.len().to_string()));
+let result = transform(input).await?;
+LocalSpan::add_property(|| ("output_size", result.len().to_string()));
+```
+
+#### Trace Context in Logs
+
+The observability system automatically injects trace context into all log records:
+
+```rust
+// You write:
+log::info!("Step execution completed");
+
+// Logger outputs (JSON format):
+{
+  "timestamp": "2025-01-16T10:30:00Z",
+  "level": "INFO",
+  "message": "Step execution completed",
+  "trace_id": "a1b2c3d4e5f6g7h8...",
+  "span_id": "i9j0k1l2m3n4o5p6...",
+  "target": "stepflow_execution::workflow_executor",
+  "file": "workflow_executor.rs",
+  "line": 145
+}
+```
+
+This allows filtering logs by trace ID: "Show me all logs for this workflow run."
+
+#### Zero-Cost Tracing
+
+Fastrace uses zero-cost abstraction - when tracing is disabled, instrumentation has no runtime overhead. This makes it safe to instrument liberally in library code.
 
 ### Error Handling Patterns
 
