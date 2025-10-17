@@ -1,0 +1,25 @@
+[package]
+name = "stepflow-observability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+fastrace = { workspace = true }
+log = { workspace = true }
+logforth = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+error-stack = { workspace = true }
+
+[dev-dependencies]
+
+[[example]]
+name = "basic"
+path = "examples/basic.rs"
+
+[[example]]
+name = "run_diagnostic_context"
+path = "examples/run_diagnostic_context.rs"
