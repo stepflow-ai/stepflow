@@ -187,9 +187,10 @@ fn init_logging(
 
     // Special case: /dev/null means discard logs (used in tests)
     if let LogDestination::File(path) = config.log_destination()
-        && path == std::path::Path::new("/dev/null") {
-            return Ok(LogGuard);
-        }
+        && path == std::path::Path::new("/dev/null")
+    {
+        return Ok(LogGuard);
+    }
 
     let mut builder = logforth::starter_log::builder();
 
