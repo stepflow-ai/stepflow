@@ -201,7 +201,7 @@ pub async fn create_batch(
             let permit = match semaphore.clone().acquire_owned().await {
                 Ok(permit) => permit,
                 Err(_) => {
-                    tracing::error!("Semaphore closed, aborting batch execution");
+                    log::error!("Semaphore closed, aborting batch execution");
                     break;
                 }
             };
@@ -240,12 +240,12 @@ pub async fn create_batch(
                                     .await;
                             }
                             Err(e) => {
-                                tracing::error!("Batch run {run_id} failed to get result: {e:?}");
+                                log::error!("Batch run {run_id} failed to get result: {e:?}");
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Batch run {run_id} failed to submit: {e:?}");
+                        log::error!("Batch run {run_id} failed to submit: {e:?}");
                     }
                 }
             });
@@ -258,7 +258,7 @@ pub async fn create_batch(
             let _ = task.await;
         }
 
-        tracing::info!("Batch {batch_id} execution completed");
+        log::info!("Batch {batch_id} execution completed");
     });
 
     Ok(Json(CreateBatchResponse {

@@ -169,7 +169,7 @@ impl StepflowExecutor {
         // Recover state from the state store to ensure consistency
         let corrections_made = workflow_executor.recover_from_state_store().await?;
         if corrections_made > 0 {
-            tracing::info!(
+            log::info!(
                 "Recovery completed for run {}: fixed {} status mismatches",
                 run_id,
                 corrections_made
@@ -213,7 +213,7 @@ impl Context for StepflowExecutor {
 
             // Spawn the execution
             tokio::spawn(async move {
-                tracing::info!("Executing workflow using tracker-based execution");
+                log::info!("Executing workflow using tracker-based execution");
                 let state_store = executor.state_store.clone();
 
                 let result =
@@ -225,7 +225,7 @@ impl Context for StepflowExecutor {
                         if let Some(error) = e.downcast_ref::<FlowError>().cloned() {
                             FlowResult::Failed(error)
                         } else {
-                            tracing::error!(?e, "Flow execution failed");
+                            log::error!("Flow execution failed: {:?}", e);
                             FlowResult::Failed(stepflow_core::FlowError::from_error_stack(e))
                         }
                     }
@@ -353,7 +353,7 @@ impl Context for StepflowExecutor {
                     let permit = match semaphore.clone().acquire_owned().await {
                         Ok(permit) => permit,
                         Err(_) => {
-                            tracing::error!("Semaphore closed, aborting batch execution");
+                            log::error!("Semaphore closed, aborting batch execution");
                             break;
                         }
                     };
@@ -391,14 +391,14 @@ impl Context for StepflowExecutor {
                                             .await;
                                     }
                                     Err(e) => {
-                                        tracing::error!(
+                                        log::error!(
                                             "Batch run {run_id} failed to get result: {e:?}"
                                         );
                                     }
                                 }
                             }
                             Err(e) => {
-                                tracing::error!("Batch run {run_id} failed to submit: {e:?}");
+                                log::error!("Batch run {run_id} failed to submit: {e:?}");
                             }
                         }
                     });
@@ -411,7 +411,7 @@ impl Context for StepflowExecutor {
                     let _ = task.await;
                 }
 
-                tracing::info!("Batch {batch_id} execution completed");
+                log::info!("Batch {batch_id} execution completed");
             });
 
             Ok(batch_id)

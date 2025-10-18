@@ -197,7 +197,10 @@ impl HttpClientHandle {
 
         if content_type.contains("text/event-stream") {
             // Handle SSE streaming response - this means we need bidirectional communication
-            tracing::debug!(request_id = %id, "Starting SSE stream processing for bidirectional communication");
+            log::debug!(
+                "request_id={}: Starting SSE stream processing for bidirectional communication",
+                id
+            );
 
             // Extract instance ID from response headers for routing bidirectional requests
             let instance_id = response
@@ -208,9 +211,12 @@ impl HttpClientHandle {
                 .map(|s| s.to_string());
 
             if let Some(ref id) = instance_id {
-                tracing::debug!(instance_id = %id, "Extracted instance ID for bidirectional routing");
+                log::debug!(
+                    "instance_id={}: Extracted instance ID for bidirectional routing",
+                    id
+                );
             } else if response.headers().get("Stepflow-Instance-Id").is_some() {
-                tracing::warn!("Invalid or empty Stepflow-Instance-Id header value");
+                log::warn!("Invalid or empty Stepflow-Instance-Id header value");
             }
 
             // Create a bidirectional driver to handle the SSE stream
@@ -225,13 +231,17 @@ impl HttpClientHandle {
                 .change_context(TransportError::Recv)
                 .attach_printable("Failed to read response body")?;
 
-            tracing::debug!(request_id = %id, response_size = response_text.len(), "Received direct JSON response");
+            log::debug!(
+                "request_id={}, response_size={}: Received direct JSON response",
+                id,
+                response_text.len()
+            );
 
             let owned_json = OwnedJson::try_new(response_text)
                 .change_context(TransportError::Recv)
                 .attach_printable("Failed to parse response as JSON")?;
 
-            tracing::debug!(?owned_json, "Received JSON response");
+            log::debug!("Received JSON response: {:?}", owned_json);
 
             Ok(owned_json)
         }
@@ -251,7 +261,7 @@ impl HttpClientHandle {
                 let chunk = match chunk_result {
                     Ok(chunk) => chunk,
                     Err(e) => {
-                        tracing::warn!(error = %e, "Failed to read chunk from SSE stream, skipping");
+                        log::warn!("error={}", e);
                         continue;
                     }
                 };
@@ -260,7 +270,7 @@ impl HttpClientHandle {
                 let chunk_str = match std::str::from_utf8(&chunk) {
                     Ok(s) => s,
                     Err(e) => {
-                        tracing::warn!(error = %e, "Invalid UTF-8 in SSE stream, skipping chunk");
+                        log::warn!("error={}", e);
                         continue;
                     }
                 };
@@ -277,7 +287,7 @@ impl HttpClientHandle {
                         match OwnedJson::try_new(json_data) {
                             Ok(message) => yield message,
                             Err(e) => {
-                                tracing::warn!(error = ?e, "Failed to parse SSE message as JSON, skipping");
+                                log::warn!("error={:?}", e);
                                 continue;
                             }
                         }
@@ -305,18 +315,18 @@ impl HttpClientHandle {
         owned_message: OwnedJson<Message<'static>>,
         instance_id: Option<&str>,
     ) -> Result<()> {
-        tracing::debug!(
-            method = %incoming_method,
-            request_id = %incoming_id,
-            "Processing bidirectional request from server with concurrent message handling"
+        log::debug!(
+            "method={}, request_id={}: Processing bidirectional request from server with concurrent message handling",
+            incoming_method,
+            incoming_id
         );
 
         let Some(handler) = MessageHandlerRegistry::instance().get_method_handler(incoming_method)
         else {
-            tracing::warn!(
-                method = %incoming_method,
-                request_id = %incoming_id,
-                "No handler registered for bidirectional method"
+            log::warn!(
+                "method={}, request_id={}: No handler registered for bidirectional method",
+                incoming_method,
+                incoming_id
             );
             self.send_error_response(
                 &incoming_id,
@@ -340,10 +350,10 @@ impl HttpClientHandle {
             let request = match owned_message.message() {
                 Message::Request(req) => req,
                 _ => {
-                    tracing::error!(
-                        expected = "request",
-                        actual = ?owned_message.message(),
-                        "Invalid message type in bidirectional request handler"
+                    log::error!(
+                        "expected={}, actual={:?}: Invalid message type in bidirectional request handler",
+                        "request",
+                        owned_message.message()
                     );
                     return;
                 }
@@ -357,10 +367,10 @@ impl HttpClientHandle {
                         .send_response_to_server(&outgoing_message, instance_id.as_deref())
                         .await
                     {
-                        tracing::error!(
-                            request_id = %request.id,
-                            error = ?e,
-                            "Failed to send outgoing message"
+                        log::error!(
+                            "request_id={}, error={:?}: Failed to send outgoing message",
+                            request.id,
+                            e
                         );
                     }
                 }
@@ -372,17 +382,14 @@ impl HttpClientHandle {
             // Handle the result
             match handler_result {
                 Ok(()) => {
-                    tracing::debug!(
-                        request_id = %request.id,
-                        "Handler completed successfully"
-                    );
+                    log::debug!("request_id={}: Handler completed successfully", request.id);
                 }
                 Err(e) => {
-                    tracing::error!(
-                        method = %request.method,
-                        request_id = %request.id,
-                        error = ?e,
-                        "Handler execution failed for bidirectional request"
+                    log::error!(
+                        "method={}, request_id={}, error={:?}: Handler execution failed for bidirectional request",
+                        request.method,
+                        request.id,
+                        e
                     );
                     client_handle
                         .send_error_response(
@@ -420,10 +427,10 @@ impl HttpClientHandle {
             .send_response_to_server(&error_response.to_string(), instance_id)
             .await
         {
-            tracing::error!(
-                error = ?e,
-                request_id = %request_id,
-                "Failed to send error response for bidirectional request"
+            log::error!(
+                "error={:?}, request_id={}: Failed to send error response for bidirectional request",
+                e,
+                request_id
             );
         }
     }
@@ -434,13 +441,16 @@ impl HttpClientHandle {
         message: &str,
         instance_id: Option<&str>,
     ) -> Result<()> {
-        tracing::debug!(message_size = message.len(), "Sending response to server");
+        log::debug!("message_size={}: Sending response to server", message.len());
 
         // Clone headers and add instance ID if available for load balancer routing
         let mut headers = self.request_headers.clone();
         if let Some(id) = instance_id {
             headers.insert("Stepflow-Instance-Id", id.parse().unwrap());
-            tracing::debug!(instance_id = %id, "Including instance ID in bidirectional response");
+            log::debug!(
+                "instance_id={}: Including instance ID in bidirectional response",
+                id
+            );
         }
 
         let response = self
@@ -457,10 +467,10 @@ impl HttpClientHandle {
         let status = response.status();
         if status != reqwest::StatusCode::ACCEPTED {
             let response_text = response.text().await;
-            tracing::warn!(
-                status = %status,
-                response = ?response_text,
-                "Server returned unexpected status for response"
+            log::warn!(
+                "status={}, response={:?}: Server returned unexpected status for response",
+                status,
+                response_text
             );
         }
 

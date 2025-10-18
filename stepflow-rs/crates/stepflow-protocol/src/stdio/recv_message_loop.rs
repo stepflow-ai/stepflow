@@ -70,14 +70,14 @@ impl ReceiveMessageLoop {
         pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>,
     ) {
         let count = self.pending_requests.len();
-        tracing::debug!("clear_inflight_requests called, found {count} in-flight requests in map");
+        log::debug!("clear_inflight_requests called, found {count} in-flight requests in map");
 
         // Clear requests already in the HashMap - these were sent to the old process
         // and will never receive responses after restart
         if count > 0 {
-            tracing::warn!("Clearing {count} in-flight requests from map due to process restart");
+            log::warn!("Clearing {count} in-flight requests from map due to process restart");
             for (request_id, sender) in self.pending_requests.drain() {
-                tracing::debug!("Closing in-flight request from map: {request_id}");
+                log::debug!("Closing in-flight request from map: {request_id}");
                 // Send a transport error response to close the waiting client
                 let error_response = OwnedJson::try_new(
                     serde_json::json!({
@@ -94,22 +94,22 @@ impl ReceiveMessageLoop {
                 match error_response {
                     Ok(response) => {
                         if sender.send(response).is_err() {
-                            tracing::debug!(
+                            log::debug!(
                                 "Failed to send error response to closed request {request_id}"
                             );
                         }
                     }
                     Err(e) => {
-                        tracing::error!(
+                        log::error!(
                             "Failed to create error response for request {request_id}: {e:?}"
                         );
                         // Drop the sender to signal an error
                     }
                 }
             }
-            tracing::info!("Cleared {count} in-flight requests that were sent to old process");
+            log::info!("Cleared {count} in-flight requests that were sent to old process");
         } else {
-            tracing::debug!("No in-flight requests to clear during restart");
+            log::debug!("No in-flight requests to clear during restart");
         }
 
         // Also clear any pending requests still in the channel that were sent during the crash
@@ -118,7 +118,7 @@ impl ReceiveMessageLoop {
             match pending_rx.try_recv() {
                 Ok((request_id, sender)) => {
                     pending_count += 1;
-                    tracing::debug!(
+                    log::debug!(
                         "Closing pending request from channel during restart: {request_id}"
                     );
                     // Send error response similar to in-flight requests
@@ -137,13 +137,13 @@ impl ReceiveMessageLoop {
                     match error_response {
                         Ok(response) => {
                             if sender.send(response).is_err() {
-                                tracing::debug!(
+                                log::debug!(
                                     "Failed to send error response to closed pending request {request_id}"
                                 );
                             }
                         }
                         Err(e) => {
-                            tracing::error!(
+                            log::error!(
                                 "Failed to create error response for pending request {request_id}: {e:?}"
                             );
                         }
@@ -151,13 +151,13 @@ impl ReceiveMessageLoop {
                 }
                 Err(mpsc::error::TryRecvError::Empty) => break,
                 Err(mpsc::error::TryRecvError::Disconnected) => {
-                    tracing::warn!("Pending channel is disconnected during restart");
+                    log::warn!("Pending channel is disconnected during restart");
                     break;
                 }
             }
         }
         if pending_count > 0 {
-            tracing::info!("Cleared {pending_count} pending requests from channel during restart");
+            log::info!("Cleared {pending_count} pending requests from channel during restart");
         }
     }
 
@@ -169,7 +169,7 @@ impl ReceiveMessageLoop {
     async fn drain_remaining_output(&mut self) {
         use tokio::time::{Duration, timeout};
 
-        tracing::info!("Draining remaining output from crashed process...");
+        log::info!("Draining remaining output from crashed process...");
 
         // Use a short timeout to avoid blocking restart too long
         let drain_timeout = Duration::from_millis(500);
@@ -179,14 +179,14 @@ impl ReceiveMessageLoop {
             tokio::select! {
                 Some(stderr_line) = self.from_child_stderr.next() => {
                     if let Ok(line) = stderr_line {
-                        tracing::info!("Component stderr (on crash): {line}");
+                        log::info!("Component stderr (on crash): {line}");
                         lines_drained += 1;
                     }
                     true
                 }
                 Some(stdout_line) = self.from_child_stdout.next() => {
                     if let Ok(line) = stdout_line {
-                        tracing::info!("Component stdout (on crash): {line}");
+                        log::info!("Component stdout (on crash): {line}");
                         lines_drained += 1;
                     }
                     true
@@ -200,9 +200,9 @@ impl ReceiveMessageLoop {
         }
 
         if lines_drained > 0 {
-            tracing::info!("Drained {lines_drained} lines from crashed process output");
+            log::info!("Drained {lines_drained} lines from crashed process output");
         } else {
-            tracing::info!("No remaining output from crashed process");
+            log::info!("No remaining output from crashed process");
         }
     }
 
@@ -211,7 +211,7 @@ impl ReceiveMessageLoop {
         &mut self,
         pending_rx: &mut mpsc::Receiver<(RequestId, oneshot::Sender<OwnedJson>)>,
     ) -> Result<()> {
-        tracing::info!(
+        log::info!(
             "Restarting process: {:?} {:?}",
             self.launcher.command,
             self.launcher.args
@@ -227,7 +227,7 @@ impl ReceiveMessageLoop {
 
         // Kill the old process if it's still running
         if let Err(e) = self.child.start_kill() {
-            tracing::warn!("Failed to kill old process: {e}");
+            log::warn!("Failed to kill old process: {e}");
         }
 
         // Spawn a new process
@@ -247,7 +247,7 @@ impl ReceiveMessageLoop {
         self.from_child_stdout = new_stdout;
         self.from_child_stderr = new_stderr;
 
-        tracing::info!("Process restart completed successfully");
+        log::info!("Process restart completed successfully");
         Ok(())
     }
 
@@ -258,14 +258,14 @@ impl ReceiveMessageLoop {
             .change_context(TransportError::Spawn)?
             && !status.success()
         {
-            tracing::error!("Child process exited with status {status}");
+            log::error!("Child process exited with status {status}");
             return Err(TransportError::Spawn.into());
         }
         Ok(())
     }
 
     async fn send(&mut self, json: String) -> Result<()> {
-        tracing::debug!("Sending message to child: {json}");
+        log::debug!("Sending message to child: {json}");
         self.to_child
             .write_all(json.as_bytes())
             .await
@@ -287,13 +287,13 @@ impl ReceiveMessageLoop {
             child = self.child.wait() => {
                 match child {
                     Ok(status) if status.success() => {
-                        tracing::info!("Child process exited with status {status}");
+                        log::info!("Child process exited with status {status}");
                     }
                     Ok(status) => {
-                        tracing::error!("Child process exited with status {status}");
+                        log::error!("Child process exited with status {status}");
                     }
                     Err(e) => {
-                        tracing::error!("Child process exited with error: {e}");
+                        log::error!("Child process exited with error: {e}");
                     }
                 }
                 Ok(false)
@@ -304,7 +304,7 @@ impl ReceiveMessageLoop {
             }
             Some(stderr_line) = self.from_child_stderr.next() => {
                 let stderr_line = stderr_line.change_context(TransportError::Recv)?;
-                tracing::info!("Component stderr: {stderr_line}");
+                log::info!("Component stderr: {stderr_line}");
                 Ok(true)
             }
             Some(line) = self.from_child_stdout.next() => {
@@ -314,10 +314,10 @@ impl ReceiveMessageLoop {
                 let message = msg.message();
                 match message {
                     Message::Request(request) => {
-                        tracing::info!("Received request for method '{}'", request.method);
+                        log::info!("Received request for method '{}'", request.method);
 
                         let Some(handler) = MessageHandlerRegistry::instance().get_method_handler(request.method) else {
-                            tracing::warn!("No handler found for method '{}'", request.method);
+                            log::warn!("No handler found for method '{}'", request.method);
 
                             // Send an error response.
                             let response =  Message::Response(crate::MethodResponse::error(
@@ -337,21 +337,21 @@ impl ReceiveMessageLoop {
                             };
 
                             if let Err(err) = handler.handle_message(request, outgoing_tx, context.clone()).await {
-                                tracing::error!("Error handling request for method '{}': {:?}", request.method, err);
+                                log::error!("Error handling request for method '{}': {:?}", request.method, err);
                             }
                         };
                         tokio::spawn(future);
                         Ok(true)
                     }
                     Message::Notification(notification) => {
-                        tracing::error!("Received unsupported notification for method '{}'", notification.method);
+                        log::error!("Received unsupported notification for method '{}'", notification.method);
                         Ok(true)
                     }
                     Message::Response(response) => {
-                        tracing::info!("Received response with id '{}'", response.id());
+                        log::info!("Received response with id '{}'", response.id());
                         if let Some(pending) = self.get_pending(pending_rx, response.id()) {
                             // Send the response to the pending request.
-                            tracing::info!("Sending response to pending request with id '{}'", response.id());
+                            log::info!("Sending response to pending request with id '{}'", response.id());
                             pending.send(msg).map_err(|_| TransportError::Send)?;
                         }
                         Ok(true)
@@ -359,7 +359,7 @@ impl ReceiveMessageLoop {
                 }
             }
             else => {
-                tracing::info!("Exiting recv loop");
+                log::info!("Exiting recv loop");
                 Ok(false)
             }
         }
@@ -372,7 +372,7 @@ impl ReceiveMessageLoop {
         id: &RequestId,
     ) -> Option<oneshot::Sender<OwnedJson>> {
         if let Some(pending) = self.pending_requests.remove(id) {
-            tracing::debug!("Found pending request {id} in map");
+            log::debug!("Found pending request {id} in map");
             Some(pending)
         } else {
             // We haven't seen the pending request, so we'll receive from
@@ -382,11 +382,11 @@ impl ReceiveMessageLoop {
             // should have published to the pending channel
             // before sending the request -- if we've already
             // the response we believe it should be there.
-            tracing::debug!("Pending request {id} not in map, checking pending_rx channel");
+            log::debug!("Pending request {id} not in map, checking pending_rx channel");
             loop {
                 match pending_rx.try_recv() {
                     Ok((pending_id, pending_request)) => {
-                        tracing::debug!("Received pending request {pending_id} from channel");
+                        log::debug!("Received pending request {pending_id} from channel");
                         if &pending_id == id {
                             return Some(pending_request);
                         }
@@ -395,12 +395,12 @@ impl ReceiveMessageLoop {
                     Err(TryRecvError::Empty) => {
                         // No more pending requests. This means the response we got
                         // is unexpected. We'll log it and move on.
-                        tracing::warn!("Unexpected response {id:?}");
+                        log::warn!("Unexpected response {id:?}");
                         break;
                     }
                     Err(TryRecvError::Disconnected) => {
                         // The pending_rx channel is closed, so we'll exit.
-                        tracing::warn!("Pending channel is closed.");
+                        log::warn!("Pending channel is closed.");
                         break;
                     }
                 }
@@ -442,27 +442,27 @@ pub async fn recv_message_loop(
                     .change_context(TransportError::Spawn)?
                 {
                     if status.success() {
-                        tracing::info!("Process exited successfully, stopping recv loop");
+                        log::info!("Process exited successfully, stopping recv loop");
                         break;
                     } else {
-                        tracing::warn!("Process exited with failure status: {status}");
+                        log::warn!("Process exited with failure status: {status}");
                         // Treat failed exit as restart case
                     }
                 } else {
-                    tracing::info!("Process termination detected, stopping recv loop");
+                    log::info!("Process termination detected, stopping recv loop");
                     break;
                 }
 
                 // Attempt restart for failed exits
                 if restart_count >= max_restart_attempts {
-                    tracing::error!(
+                    log::error!(
                         "Maximum restart attempts ({max_restart_attempts}) exceeded, giving up"
                     );
                     return Err(TransportError::RecvLoop.into());
                 }
 
                 restart_count += 1;
-                tracing::warn!(
+                log::warn!(
                     "Attempting restart {restart_count}/{max_restart_attempts} after {backoff_duration:?} delay"
                 );
 
@@ -470,7 +470,7 @@ pub async fn recv_message_loop(
 
                 match recv_loop.restart_process(&mut pending_rx).await {
                     Ok(()) => {
-                        tracing::info!(
+                        log::info!(
                             "Process restart {restart_count}/{max_restart_attempts} successful"
                         );
                         // Double the backoff for next time, up to maximum
@@ -478,12 +478,12 @@ pub async fn recv_message_loop(
 
                         // Notify restart completion
                         if let Err(e) = restart_counter_tx.send(restart_count) {
-                            tracing::warn!("Failed to send restart counter: {e:?}");
+                            log::warn!("Failed to send restart counter: {e:?}");
                         }
                         continue;
                     }
                     Err(restart_error) => {
-                        tracing::error!(
+                        log::error!(
                             "Process restart {restart_count}/{max_restart_attempts} failed: {restart_error:?}"
                         );
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
@@ -492,21 +492,21 @@ pub async fn recv_message_loop(
                 }
             }
             Err(mut e) => {
-                tracing::warn!("Error in recv loop: {e:?}. Checking child status.");
+                log::warn!("Error in recv loop: {e:?}. Checking child status.");
                 if let Err(child_error) = recv_loop.check_child_status() {
                     e.extend_one(child_error);
                 }
 
                 // Attempt restart for errors too
                 if restart_count >= max_restart_attempts {
-                    tracing::error!(
+                    log::error!(
                         "Maximum restart attempts ({max_restart_attempts}) exceeded after error, giving up: {e:?}"
                     );
                     return Err(TransportError::RecvLoop.into());
                 }
 
                 restart_count += 1;
-                tracing::warn!(
+                log::warn!(
                     "Attempting restart {restart_count}/{max_restart_attempts} after error, delay: {backoff_duration:?}"
                 );
 
@@ -514,19 +514,19 @@ pub async fn recv_message_loop(
 
                 match recv_loop.restart_process(&mut pending_rx).await {
                     Ok(()) => {
-                        tracing::info!(
+                        log::info!(
                             "Process restart {restart_count}/{max_restart_attempts} successful after error"
                         );
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);
 
                         // Notify restart completion
                         if let Err(e) = restart_counter_tx.send(restart_count) {
-                            tracing::warn!("Failed to send restart counter: {e:?}");
+                            log::warn!("Failed to send restart counter: {e:?}");
                         }
                         continue;
                     }
                     Err(restart_error) => {
-                        tracing::error!(
+                        log::error!(
                             "Process restart {restart_count}/{max_restart_attempts} failed after error: {restart_error:?}"
                         );
                         backoff_duration = std::cmp::min(backoff_duration * 2, MAX_BACKOFF);

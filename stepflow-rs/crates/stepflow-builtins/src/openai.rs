@@ -118,7 +118,7 @@ impl BuiltinComponent for OpenAIComponent {
             .with_api_key(api_key)
             .build()
             .map_err(|e| {
-                tracing::error!("OpenAI client error: {:?}", e);
+                log::error!("OpenAI client error: {:?}", e);
                 BuiltinError::OpenAI(e.to_string())
             })?;
 

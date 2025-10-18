@@ -77,7 +77,7 @@ impl BidirectionalDriver {
                             break;
                         }
                         SseMessageEvent::StreamEnded => {
-                            tracing::debug!("SSE stream ended, waiting for pending requests to complete");
+                            log::debug!("SSE stream ended, waiting for pending requests to complete");
                             break;
                         }
                         SseMessageEvent::Continue => {
@@ -99,7 +99,7 @@ impl BidirectionalDriver {
         // Return the final response if we received it, otherwise error
         match final_response {
             Some(response) => {
-                tracing::info!(request_id = %expected_id, ?response, "All bidirectional requests completed, returning final response");
+                log::info!("request_id={}", expected_id);
                 Ok(response)
             }
             None => Err(error_stack::Report::new(TransportError::Recv)
@@ -129,19 +129,22 @@ impl BidirectionalDriver {
                     }
                     Message::Response(response) => {
                         if response.id() == expected_id {
-                            tracing::info!(request_id = %expected_id, "Received final response, will complete after pending requests");
+                            log::info!("request_id={}", expected_id);
                             Ok(SseMessageEvent::FinalResponse(owned_json))
                         } else {
-                            tracing::warn!(
-                                expected_id = %expected_id,
-                                received_id = %response.id(),
-                                "Received response for unexpected request ID"
+                            log::warn!(
+                                "expected_id={}, received_id={}: Received response for unexpected request ID",
+                                expected_id,
+                                response.id()
                             );
                             Ok(SseMessageEvent::Continue)
                         }
                     }
                     Message::Notification(notification) => {
-                        tracing::debug!(method = %notification.method, "Received notification from server");
+                        log::debug!(
+                            "method={}: Received notification from server",
+                            notification.method
+                        );
                         // Notifications are fire-and-forget, no response needed
                         Ok(SseMessageEvent::Continue)
                     }
@@ -161,10 +164,10 @@ impl BidirectionalDriver {
     ) {
         let client_handle = self.client_handle.clone();
 
-        tracing::debug!(
-            method = %method,
-            request_id = %request_id,
-            "Spawning concurrent handler for bidirectional request"
+        log::debug!(
+            "method={}, request_id={}: Spawning concurrent handler for bidirectional request",
+            method,
+            request_id
         );
 
         // Clone instance_id for the spawned task
@@ -181,11 +184,11 @@ impl BidirectionalDriver {
                 )
                 .await
             {
-                tracing::error!(
-                    method = %method,
-                    request_id = %request_id,
-                    error = ?e,
-                    "Failed to handle bidirectional request"
+                log::error!(
+                    "method={}, request_id={}, error={:?}: Failed to handle bidirectional request",
+                    method,
+                    request_id,
+                    e
                 );
             }
         });
@@ -199,9 +202,12 @@ impl BidirectionalDriver {
         task_result: Option<Result<(), tokio::task::JoinError>>,
     ) {
         if let Some(Err(join_err)) = task_result {
-            tracing::error!(error = ?join_err, "Bidirectional request handler panicked");
+            log::error!(
+                "error={:?}: Bidirectional request handler panicked",
+                join_err
+            );
         } else {
-            tracing::debug!("Bidirectional request handler completed successfully");
+            log::debug!("Bidirectional request handler completed successfully");
         }
     }
 
@@ -210,16 +216,19 @@ impl BidirectionalDriver {
         &self,
         mut pending_requests: FuturesUnordered<JoinHandle<()>>,
     ) {
-        tracing::debug!(
-            pending_count = pending_requests.len(),
-            "Waiting for remaining bidirectional requests to complete"
+        log::debug!(
+            "pending_count={}: Waiting for remaining bidirectional requests to complete",
+            pending_requests.len()
         );
 
         while let Some(task_result) = pending_requests.next().await {
             if let Err(join_err) = task_result {
-                tracing::error!(error = ?join_err, "Bidirectional request handler panicked during cleanup");
+                log::error!(
+                    "error={:?}: Bidirectional request handler panicked during cleanup",
+                    join_err
+                );
             } else {
-                tracing::debug!("Bidirectional request handler completed during cleanup");
+                log::debug!("Bidirectional request handler completed during cleanup");
             }
         }
     }

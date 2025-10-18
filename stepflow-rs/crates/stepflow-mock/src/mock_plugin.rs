@@ -159,7 +159,7 @@ impl Plugin for MockPlugin {
             .attach_printable_lazy(|| component.clone())?;
         // Debug logging for tests only - not included in production builds
         #[cfg(test)]
-        tracing::debug!("Mock plugin executing component: {}", component);
+        log::debug!("Mock plugin executing component: {}", component);
 
         let input_value = input.value();
         let output = mock_component

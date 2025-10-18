@@ -90,12 +90,12 @@ pub async fn start_server(
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
-    tracing::info!("🚀 Stepflow server starting on http://localhost:{}", port);
-    tracing::info!(
+    log::info!("🚀 Stepflow server starting on http://localhost:{}", port);
+    log::info!(
         "📖 Swagger UI available at http://localhost:{}/swagger-ui",
         port
     );
-    tracing::info!(
+    log::info!(
         "📄 OpenAPI spec available at http://localhost:{}/api/v1/openapi.json",
         port
     );

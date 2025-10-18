@@ -10,24 +10,39 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
+use stepflow_observability::{
+    BinaryObservabilityConfig, LogFormat, ObservabilityConfig, ObservabilityGuard,
+    init_observability,
+};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
+static mut TEST_GUARD: Option<ObservabilityGuard> = None;
 
 /// Makes sure logging is initialized for test.
 ///
 /// This needs to be called on each test.
 pub fn init_test_logging() {
     INIT_TEST_LOGGING.call_once(|| {
-        // We don't use a test writer for end to end tests.
-        let fmt_layer = tracing_subscriber::fmt::layer();
+        let config = ObservabilityConfig {
+            log_level: log::LevelFilter::Trace,
+            other_log_level: None,
+            log_format: LogFormat::Text,
+            log_file: None,
+            trace_enabled: false,
+            otlp_endpoint: None,
+        };
 
-        tracing_subscriber::registry()
-            .with(EnvFilter::new("stepflow_=trace,info"))
-            .with(fmt_layer)
-            .with(tracing_error::ErrorLayer::default())
-            .try_init()
-            .unwrap();
+        let binary_config = BinaryObservabilityConfig {
+            service_name: "stepflow-cli-tests",
+            include_run_diagnostic: true,
+        };
+
+        let guard =
+            init_observability(&config, binary_config).expect("Failed to initialize observability");
+        // SAFETY: This is safe because we're inside a Once call, ensuring single initialization
+        unsafe {
+            TEST_GUARD = Some(guard);
+        }
     });
 }
 

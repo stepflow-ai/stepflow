@@ -18,9 +18,12 @@ pingora-proxy = "0.6"
 async-trait.workspace = true
 tokio.workspace = true
 
-# Tracing and logging
-tracing.workspace = true
-tracing-subscriber.workspace = true
+# CLI
+clap.workspace = true
+
+# Logging
+log.workspace = true
+stepflow-observability.workspace = true
 
 # Serialization
 serde.workspace = true

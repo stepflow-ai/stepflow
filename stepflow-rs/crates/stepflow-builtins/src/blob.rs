@@ -73,7 +73,7 @@ impl BuiltinComponent for PutBlobComponent {
         let data_ref = ValueRef::new(input.data);
 
         // DEBUG: Log what's being stored
-        tracing::debug!("put_blob storing data: {:?}", data_ref.as_ref());
+        log::debug!("put_blob storing data: {:?}", data_ref.as_ref());
 
         // Create the blob through the execution context
         let blob_id = context
@@ -82,7 +82,7 @@ impl BuiltinComponent for PutBlobComponent {
             .await
             .change_context(BuiltinError::Internal)?;
 
-        tracing::debug!("put_blob created blob with ID: {}", blob_id.as_str());
+        log::debug!("put_blob created blob with ID: {}", blob_id.as_str());
 
         let output = PutBlobOutput {
             blob_id: blob_id.as_str().to_string(),
@@ -153,13 +153,13 @@ impl BuiltinComponent for GetBlobComponent {
             .await
             .change_context(BuiltinError::Internal)?;
 
-        tracing::debug!("get_blob retrieved data: {:?}", data_ref.data().as_ref());
+        log::debug!("get_blob retrieved data: {:?}", data_ref.data().as_ref());
 
         let output = GetBlobOutput {
             data: data_ref.data().as_ref().clone(),
         };
 
-        tracing::debug!("get_blob output structure: {:?}", output);
+        log::debug!("get_blob output structure: {:?}", output);
 
         let output_value = serde_json::to_value(output).change_context(BuiltinError::Internal)?;
 

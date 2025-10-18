@@ -12,6 +12,7 @@
 
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
+use log::{debug, error, info, warn};
 use pingora::prelude::*;
 use pingora::proxy::Session;
 use pingora::upstreams::peer::HttpPeer;
@@ -19,8 +20,8 @@ use pingora_core::Result as PingoraResult;
 use pingora_http::RequestHeader;
 use pingora_proxy::{ProxyHttp, http_proxy_service};
 use std::sync::LazyLock;
+use stepflow_observability::{ObservabilityConfig, init_observability};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
 
 mod backend;
 mod discovery;
@@ -61,10 +62,10 @@ impl ProxyHttp for StepflowLoadBalancer {
         let backend = select_backend(request_header).await?;
 
         info!(
-            method = %request_header.method,
-            path = %request_header.uri.path(),
-            backend = %backend.address,
-            "Routing request"
+            "Routing request: method={}, path={}, backend={}",
+            request_header.method,
+            request_header.uri.path(),
+            backend.address
         );
 
         // Store backend address in context for connection tracking
@@ -94,7 +95,7 @@ impl ProxyHttp for StepflowLoadBalancer {
             let pool_guard = BACKEND_POOL.load();
             let pool = pool_guard.read().await;
             pool.increment_connections(address);
-            debug!(address = %address, "Incremented connection count");
+            debug!("Incremented connection count: address={}", address);
         }
         Ok(())
     }
@@ -156,10 +157,10 @@ impl ProxyHttp for StepflowLoadBalancer {
         let response = session.response_written();
 
         info!(
-            method = %request_header.method,
-            path = %request_header.uri.path(),
-            status = response.map(|r| r.status.as_u16()).unwrap_or(0),
-            "Request completed"
+            "Request completed: method={}, path={}, status={}",
+            request_header.method,
+            request_header.uri.path(),
+            response.map(|r| r.status.as_u16()).unwrap_or(0)
         );
 
         // Decrement connection count when request completes
@@ -167,7 +168,7 @@ impl ProxyHttp for StepflowLoadBalancer {
             let pool_guard = BACKEND_POOL.load();
             let pool = pool_guard.read().await;
             pool.decrement_connections(address);
-            debug!(address = %address, "Decremented connection count");
+            debug!("Decremented connection count: address={}", address);
         }
     }
 }
@@ -183,17 +184,19 @@ async fn select_backend(request_header: &RequestHeader) -> PingoraResult<Backend
         .get("Stepflow-Instance-Id")
         .and_then(|v| v.to_str().ok())
     {
-        debug!(instance_id = %instance_id, "Instance ID header found");
+        debug!("Instance ID header found: instance_id={}", instance_id);
 
         if let Some(backend) = pool.get_by_instance_id(instance_id) {
             info!(
-                instance_id = %instance_id,
-                address = %backend.address,
-                "Routing to specific instance"
+                "Routing to specific instance: instance_id={}, address={}",
+                instance_id, backend.address
             );
             return Ok(backend.clone());
         } else {
-            warn!(instance_id = %instance_id, "Instance not found in healthy backends");
+            warn!(
+                "Instance not found in healthy backends: instance_id={}",
+                instance_id
+            );
             return Err(Error::new_str("Instance not available"));
         }
     }
@@ -206,31 +209,56 @@ async fn select_backend(request_header: &RequestHeader) -> PingoraResult<Backend
         .ok_or_else(|| Error::new_str("No healthy backends available"))
 }
 
+/// Stepflow Load Balancer
+#[derive(clap::Parser, Debug)]
+#[command(name = "stepflow-load-balancer")]
+#[command(about = "Stepflow Load Balancer", long_about = None)]
+struct Args {
+    /// Observability configuration
+    #[command(flatten)]
+    observability: ObservabilityConfig,
+
+    /// Upstream service address
+    #[arg(
+        long,
+        default_value = "component-server.stepflow-demo.svc.cluster.local:8080",
+        env = "UPSTREAM_SERVICE"
+    )]
+    upstream_service: String,
+
+    /// Address to bind the load balancer
+    #[arg(long, default_value = "0.0.0.0:8080", env = "BIND_ADDRESS")]
+    bind_address: String,
+}
+
 fn main() -> anyhow::Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    use clap::Parser as _;
+
+    let args = Args::parse();
+
+    // Initialize observability
+    // Load balancer doesn't execute workflows, so disable run diagnostic
+    let binary_config = stepflow_observability::BinaryObservabilityConfig {
+        service_name: "stepflow-load-balancer",
+        include_run_diagnostic: false,
+    };
+    let _guard = init_observability(&args.observability, binary_config)
+        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     info!("Starting Stepflow Load Balancer");
-
-    // Get upstream service configuration from environment
-    let upstream_service = std::env::var("UPSTREAM_SERVICE")
-        .unwrap_or_else(|_| "component-server.stepflow-demo.svc.cluster.local:8080".to_string());
-
-    info!(upstream_service = %upstream_service, "Upstream service configuration");
+    info!(
+        "Upstream service configuration: upstream_service={}",
+        args.upstream_service
+    );
 
     // Start backend discovery service in a separate thread with its own runtime
-    let upstream_service_clone = upstream_service.clone();
+    let upstream_service = args.upstream_service.clone();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let discovery = DiscoveryService::new(upstream_service_clone);
+            let discovery = DiscoveryService::new(upstream_service);
             if let Err(e) = discovery.run().await {
-                error!(error = %e, "Discovery service error");
+                error!("Discovery service error: {}", e);
             }
         });
     });
@@ -241,12 +269,12 @@ fn main() -> anyhow::Result<()> {
 
     // Create load balancer service
     let mut lb = http_proxy_service(&server.configuration, StepflowLoadBalancer);
-    lb.add_tcp("0.0.0.0:8080");
+    lb.add_tcp(&args.bind_address);
 
     // Add service to server
     server.add_service(lb);
 
-    info!("Load balancer listening on 0.0.0.0:8080");
+    info!("Load balancer listening on {}", args.bind_address);
 
     // Run server
     server.run_forever();

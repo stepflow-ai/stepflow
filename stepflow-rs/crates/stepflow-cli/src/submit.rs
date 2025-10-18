@@ -27,21 +27,21 @@ pub(crate) fn display_server_error(
 ) {
     // Try to parse as structured error response first
     if let Ok(error_response) = serde_json::from_str::<ErrorResponse>(response_text) {
-        tracing::error!(
+        log::error!(
             "Server returned error {}: {}",
             context,
             error_response.message
         );
 
         if !error_response.stack.is_empty() {
-            tracing::error!("Error stack trace:");
+            log::error!("Error stack trace:");
             for (i, entry) in error_response.stack.iter().enumerate() {
-                tracing::error!("  {}. {}", i + 1, entry.error);
+                log::error!("  {}. {}", i + 1, entry.error);
 
                 // Display attachments if present
                 if !entry.attachments.is_empty() {
                     for attachment in &entry.attachments {
-                        tracing::error!("     • {}", attachment);
+                        log::error!("     • {}", attachment);
                     }
                 }
 
@@ -49,14 +49,14 @@ pub(crate) fn display_server_error(
                 if let Some(backtrace) = &entry.backtrace {
                     let lines: Vec<_> = backtrace.lines().collect();
                     if !lines.is_empty() {
-                        tracing::error!("     Backtrace ({} frames):", lines.len());
+                        log::error!("     Backtrace ({} frames):", lines.len());
                         // Show first few frames for context
                         lines.iter().take(5).for_each(|line| {
-                            tracing::error!("       {}", line);
+                            log::error!("       {}", line);
                         });
                         if lines.len() > 5 {
-                            tracing::error!("       ... ({} more frames)", lines.len() - 5);
-                            tracing::error!("       Set RUST_LOG=debug for full backtrace");
+                            log::error!("       ... ({} more frames)", lines.len() - 5);
+                            log::error!("       Set RUST_LOG=debug for full backtrace");
                         }
                     }
                 }
@@ -64,7 +64,7 @@ pub(crate) fn display_server_error(
         }
     } else {
         // Fallback to simple error display if parsing fails
-        tracing::error!(
+        log::error!(
             "Server returned error {} {}: {}",
             context,
             status,
@@ -115,9 +115,9 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
     let flow_id = store_result.flow_id.ok_or_else(|| {
         // If validation failed, the error details were already shown by display_diagnostics
         if failure_count > 0 {
-            tracing::error!("Workflow validation failed - see diagnostics above");
+            log::error!("Workflow validation failed - see diagnostics above");
         } else {
-            tracing::error!("Workflow was not stored for unknown reasons");
+            log::error!("Workflow was not stored for unknown reasons");
         }
         MainError::ValidationError("Workflow validation failed".to_string())
     })?;
@@ -139,7 +139,7 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
         .send()
         .await
         .map_err(|e| {
-            tracing::error!("Failed to execute workflow: {}", e);
+            log::error!("Failed to execute workflow: {}", e);
             MainError::Configuration
         })?;
 
@@ -154,7 +154,7 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
     }
 
     let execute_result: CreateRunResponse = execute_response.json().await.map_err(|e| {
-        tracing::error!("Failed to parse execute response: {}", e);
+        log::error!("Failed to parse execute response: {}", e);
         MainError::Configuration
     })?;
 
@@ -162,7 +162,7 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
     match execute_result.result {
         Some(result) => Ok(result),
         None => {
-            tracing::error!("No result in response");
+            log::error!("No result in response");
             Err(MainError::Configuration.into())
         }
     }

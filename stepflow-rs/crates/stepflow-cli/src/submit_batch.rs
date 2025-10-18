@@ -136,9 +136,9 @@ pub async fn submit_batch(
     // Check if the workflow was stored successfully
     let flow_id = store_result.flow_id.ok_or_else(|| {
         if failure_count > 0 {
-            tracing::error!("Workflow validation failed - see diagnostics above");
+            log::error!("Workflow validation failed - see diagnostics above");
         } else {
-            tracing::error!("Workflow was not stored for unknown reasons");
+            log::error!("Workflow was not stored for unknown reasons");
         }
         MainError::ValidationError("Workflow validation failed".to_string())
     })?;

@@ -12,10 +12,11 @@
 
 use clap::Parser;
 use error_stack::{Report, ResultExt as _};
+use log::info;
 use std::path::PathBuf;
 use stepflow_config::StepflowConfig;
+use stepflow_observability::{ObservabilityConfig, init_observability};
 use thiserror::Error;
-use tracing::info;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -44,29 +45,9 @@ struct Args {
     #[arg(short, long, env = "STEPFLOW_CONFIG")]
     config: Option<PathBuf>,
 
-    /// Log level (trace, debug, info, warn, error)
-    #[arg(long, default_value = "info", env = "RUST_LOG")]
-    log_level: String,
-
-    /// Log format (json, pretty)
-    #[arg(long, default_value = "pretty", env = "STEPFLOW_LOG_FORMAT")]
-    log_format: String,
-}
-
-fn init_tracing(log_level: &str, log_format: &str) -> Result<()> {
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level));
-
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .with_target(false);
-
-    match log_format {
-        "json" => subscriber.json().init(),
-        _ => subscriber.init(),
-    }
-
-    Ok(())
+    /// Observability configuration
+    #[command(flatten)]
+    observability: ObservabilityConfig,
 }
 
 async fn create_executor(
@@ -94,15 +75,23 @@ async fn main() {
     let args = Args::parse();
 
     #[allow(clippy::print_stderr)]
-    if let Err(e) = init_tracing(&args.log_level, &args.log_format) {
-        eprintln!("Failed to initialize tracing: {e:?}");
-        std::process::exit(1);
-    }
+    let _guard = {
+        let binary_config = stepflow_observability::BinaryObservabilityConfig {
+            service_name: "stepflow-server",
+            include_run_diagnostic: true,
+        };
+        match init_observability(&args.observability, binary_config) {
+            Ok(guard) => guard,
+            Err(e) => {
+                eprintln!("Failed to initialize observability: {e:?}");
+                std::process::exit(1);
+            }
+        }
+    };
 
     info!(
-        port = args.port,
-        config = ?args.config,
-        "Starting Stepflow server"
+        "Starting Stepflow server: port={}, config={:?}",
+        args.port, args.config
     );
 
     let result = async {
@@ -116,7 +105,7 @@ async fn main() {
     .await;
 
     if let Err(e) = result {
-        tracing::error!("Server error: {e:?}");
+        log::error!("Server error: {e:?}");
         std::process::exit(1);
     }
 }

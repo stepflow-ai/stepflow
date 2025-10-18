@@ -20,15 +20,16 @@ async-trait.workspace = true
 bit-set.workspace = true
 error-stack.workspace = true
 futures.workspace = true
+log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 stepflow-analysis.workspace = true
+stepflow-observability.workspace = true
 stepflow-plugin.workspace = true
 stepflow-core.workspace = true
 stepflow-state.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 

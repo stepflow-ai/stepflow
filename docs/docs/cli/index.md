@@ -21,7 +21,4 @@ Stepflow provides several commands for executing workflows in different ways. Th
 
 All commands support these global options:
 
-- `--log-level <LEVEL>` - Set the log level for Stepflow
-- `--other-log-level <LEVEL>` - Set the log level for other parts of Stepflow
-- `--log-file <FILE>` - Write logs to a file instead of stderr
 - `--omit-stack-trace <OMIT_STACK_TRACE>` - Omit stack traces (line numbers of errors)

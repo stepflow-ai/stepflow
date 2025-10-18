@@ -166,7 +166,7 @@ impl StepflowConfig {
             .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
         // Build the plugin router
-        tracing::info!("Routing Config: {:?}", self.routing);
+        log::info!("Routing Config: {:?}", self.routing);
         let mut plugin_router_builder = PluginRouter::builder().with_routing_config(self.routing);
 
         // Register plugins from IndexMap

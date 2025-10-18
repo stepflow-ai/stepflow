@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_visualize.rs
+source: crates/stepflow-cli/tests/commands/test_visualize.rs
 info:
   program: stepflow
   args:
@@ -37,20 +37,8 @@ Options:
       --flow <FILE>
           Path to the workflow file to visualize
 
-      --log-level <LEVEL>
-          Set the log level for Stepflow
-          
-          [default: info]
-          [possible values: trace, debug, info, warn, error]
-
   -o, --output <FILE>
           Path to write the visualization output. If not specified, outputs DOT format to stdout
-
-      --other-log-level <LEVEL>
-          Set the log level for other parts of Stepflow
-          
-          [default: warn]
-          [possible values: trace, debug, info, warn, error]
 
       --format <FORMAT>
           Output format for the visualization
@@ -62,14 +50,8 @@ Options:
           
           [default: svg]
 
-      --log-file <FILE>
-          Write logs to a file instead of stderr
-
       --no-servers
           Hide component server information from nodes
-
-      --omit-stack-trace
-          Omit stack traces (line numbers of errors)
 
       --no-details
           Hide detailed tooltips and metadata
@@ -78,6 +60,9 @@ Options:
           The path to the stepflow config file.
           
           If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
 
   -h, --help
           Print help (see a summary with '-h')

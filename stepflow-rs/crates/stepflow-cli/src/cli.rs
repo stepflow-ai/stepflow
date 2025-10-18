@@ -16,7 +16,7 @@ use stepflow_core::{BlobId, workflow::Flow};
 use url::Url;
 
 use crate::{
-    args::{ConfigArgs, InputArgs, LogLevel, OutputArgs, WorkflowLoader, load},
+    args::{ConfigArgs, InputArgs, OutputArgs, WorkflowLoader, load},
     error::Result,
     list_components::OutputFormat,
     repl::run_repl,
@@ -35,27 +35,9 @@ use crate::{
 #[derive(clap::Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
-    /// Set the log level for Stepflow.
-    #[arg(
-        long = "log-level",
-        value_name = "LEVEL",
-        default_value = "info",
-        global = true
-    )]
-    pub log_level: LogLevel,
-
-    /// Set the log level for other parts of Stepflow.
-    #[arg(
-        long = "other-log-level",
-        value_name = "LEVEL",
-        default_value = "warn",
-        global = true
-    )]
-    pub other_log_level: LogLevel,
-
-    /// Write logs to a file instead of stderr.
-    #[arg(long = "log-file", value_name = "FILE", value_hint = clap::ValueHint::FilePath, global = true)]
-    pub log_file: Option<PathBuf>,
+    /// Observability configuration
+    #[command(flatten)]
+    pub observability: stepflow_observability::ObservabilityConfig,
 
     /// Omit stack traces (line numbers of errors).
     #[arg(long = "omit-stack-trace", global = true)]
@@ -390,7 +372,7 @@ pub enum Command {
 
 impl Cli {
     pub async fn execute(self) -> Result<()> {
-        tracing::debug!(
+        log::debug!(
             "Executing CLI command: {}",
             match &self.command {
                 Command::Run { .. } => "run",
@@ -525,7 +507,7 @@ impl Cli {
                         None
                     }
                     Err(_) => {
-                        tracing::warn!(
+                        log::warn!(
                             "Could not load configuration, visualization will not show component server routing"
                         );
                         None

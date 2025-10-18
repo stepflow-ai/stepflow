@@ -55,7 +55,7 @@ impl PluginRouter {
             .get_route_and_component(input)
             .change_context(PluginError::InvalidInput)?;
 
-        tracing::info!(
+        log::info!(
             "Component '{component_path}' routed to '{resolved_component}' on plugin '{}'",
             route_rule.rule.plugin
         );

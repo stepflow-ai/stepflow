@@ -13,22 +13,25 @@
 //! Basic example demonstrating logging with automatic trace context injection
 
 use stepflow_observability::{
-    BinaryObservabilityConfig, LogDestination, LogFormat, ObservabilityConfig,
-    fastrace::prelude::*, init_observability,
+    BinaryObservabilityConfig, LogFormat, ObservabilityConfig, fastrace::prelude::*,
+    init_observability,
 };
 
 fn main() {
     let config = ObservabilityConfig {
         log_level: log::LevelFilter::Debug,
+        other_log_level: None,
         log_format: LogFormat::Json,
-        log_destination: LogDestination::Stdout,
+        log_file: None,
         trace_enabled: true,
-        binary_config: BinaryObservabilityConfig::default(), // No run diagnostic
         otlp_endpoint: None,
-        service_name: "example".to_string(),
     };
 
-    let _guard = init_observability(config).unwrap();
+    let binary_config = BinaryObservabilityConfig {
+        service_name: "example",
+        include_run_diagnostic: false, // No run diagnostic for this example
+    };
+    let _guard = init_observability(&config, binary_config).unwrap();
 
     // Test basic logging
     log::info!("Starting example - no trace context");

@@ -84,12 +84,12 @@ impl Launcher {
             command.env(key, substituted_value);
         }
 
-        tracing::info!("Spawning child process: {:?}", command);
+        log::info!("Spawning child process: {:?}", command);
         // Finally, spawn the child process.
         match command.spawn() {
             Ok(child) => Ok(child),
             Err(e) => {
-                tracing::error!(
+                log::error!(
                     "Failed to spawn child process '{} {:?}': {e}",
                     self.command.display(),
                     self.args

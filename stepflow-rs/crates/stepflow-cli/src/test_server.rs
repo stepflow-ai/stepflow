@@ -161,7 +161,7 @@ impl TestServerManager {
             self.wait_for_port(port, config.startup_timeout_ms).await?;
         }
 
-        tracing::info!("✓ Started test server '{name}' on port {port}");
+        log::info!("✓ Started test server '{name}' on port {port}");
         Ok(server)
     }
 
@@ -207,21 +207,21 @@ impl TestServerManager {
             let check_timeout = Duration::from_millis(health_check.timeout_ms);
             match tokio::time::timeout(check_timeout, client.get(&health_url).send()).await {
                 Ok(Ok(response)) if response.status().is_success() => {
-                    tracing::info!("✓ Health check passed for server '{}'", server.name);
+                    log::info!("✓ Health check passed for server '{}'", server.name);
                     return Ok(());
                 }
                 Ok(Ok(response)) => {
-                    tracing::warn!(
+                    log::warn!(
                         "✗ Health check failed for server '{}': HTTP {}",
                         server.name,
                         response.status()
                     );
                 }
                 Ok(Err(e)) => {
-                    tracing::warn!("✗ Health check error for server '{}': {}", server.name, e);
+                    log::warn!("✗ Health check error for server '{}': {}", server.name, e);
                 }
                 Err(_) => {
-                    tracing::warn!(
+                    log::warn!(
                         "✗ Health check timeout for server '{}' (attempt {}/{})",
                         server.name,
                         attempt,
@@ -264,14 +264,14 @@ impl TestServerManager {
     /// Stop all running servers.
     pub async fn stop_all_servers(self) -> Result<()> {
         if !self.servers.is_empty() {
-            tracing::info!("Stopping {} test servers...", self.servers.len());
+            log::info!("Stopping {} test servers...", self.servers.len());
 
             for server in self.servers {
                 let server_name = server.name.clone();
                 if let Err(e) = server.stop().await {
-                    tracing::warn!("Failed to stop server '{server_name}': {e}");
+                    log::warn!("Failed to stop server '{server_name}': {e}");
                 } else {
-                    tracing::info!("✓ Stopped test server '{server_name}'");
+                    log::info!("✓ Stopped test server '{server_name}'");
                 }
             }
         }

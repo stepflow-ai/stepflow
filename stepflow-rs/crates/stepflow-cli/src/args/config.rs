@@ -81,12 +81,12 @@ fn load_config_impl(
         config_path = locate_config(flow_directory)?;
     }
 
-    tracing::info!("Loading config from {:?}", config_path);
+    log::info!("Loading config from {:?}", config_path);
 
     let mut config = if let Some(config_path) = config_path.as_ref() {
         load(config_path)?
     } else {
-        tracing::info!("No config file found, using default config with builtins only");
+        log::info!("No config file found, using default config with builtins only");
         StepflowConfig::default()
     };
 
@@ -101,7 +101,7 @@ fn load_config_impl(
                 Some(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         }
     }
-    tracing::info!("Using working directory: {:?}", config.working_directory);
+    log::info!("Using working directory: {:?}", config.working_directory);
     Ok(config)
 }
 

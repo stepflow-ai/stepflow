@@ -22,6 +22,7 @@ use stepflow_core::{
     values::{ValueRef, ValueResolver, ValueTemplate},
     workflow::{Expr, Flow},
 };
+use stepflow_observability::{RunIdGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
@@ -37,6 +38,15 @@ pub(crate) async fn execute_workflow(
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
 ) -> Result<FlowResult> {
+    // Set run_id in diagnostic context for all logs in this workflow execution
+    let _run_guard = RunIdGuard::new(run_id.to_string());
+
+    log::info!(
+        "Starting workflow execution: flow={}, run_id={}",
+        flow.name().unwrap_or("unnamed"),
+        run_id
+    );
+
     // Store workflow first (this is idempotent if workflow already exists)
     let computed_hash = state_store
         .store_flow(flow.clone())
@@ -45,7 +55,7 @@ pub(crate) async fn execute_workflow(
 
     // Verify the hash matches (should be the same if workflow is deterministic)
     if computed_hash != flow_id {
-        tracing::warn!(
+        log::warn!(
             "Flow hash mismatch: expected {}, computed {}",
             flow_id,
             computed_hash
@@ -68,7 +78,24 @@ pub(crate) async fn execute_workflow(
     let mut workflow_executor =
         WorkflowExecutor::new(executor, flow, flow_id, run_id, input, state_store)?;
 
-    workflow_executor.execute_to_completion().await
+    let result = workflow_executor.execute_to_completion().await;
+
+    match &result {
+        Ok(FlowResult::Success(_)) => {
+            log::info!("Workflow execution completed successfully");
+        }
+        Ok(FlowResult::Skipped { .. }) => {
+            log::info!("Workflow execution completed with skipped result");
+        }
+        Ok(FlowResult::Failed(error)) => {
+            log::warn!("Workflow execution failed: {}", error.message);
+        }
+        Err(e) => {
+            log::error!("Workflow execution error: {:?}", e);
+        }
+    }
+
+    result
 }
 
 /// Workflow executor that manages the execution of a single workflow.
@@ -207,7 +234,7 @@ impl WorkflowExecutor {
                 .cache_step_result(step_index, step_result.result().clone())
                 .await;
 
-            tracing::debug!(
+            log::debug!(
                 "Recovered step {} ({}), newly unblocked: [{}]",
                 step_index,
                 self.flow.step(step_index).id,
@@ -245,7 +272,7 @@ impl WorkflowExecutor {
 
                 if current_status != StepStatus::Runnable {
                     steps_to_fix.insert(step_index);
-                    tracing::info!(
+                    log::info!(
                         "Recovery: fixing status for step {} ({}) from {:?} to Runnable",
                         step_index,
                         self.flow.step(step_index).id,
@@ -272,13 +299,13 @@ impl WorkflowExecutor {
                 })
                 .change_context(ExecutionError::StateError)?;
 
-            tracing::info!(
+            log::info!(
                 "Recovery completed: recovered {} completed steps, fixed {} status mismatches",
                 recovered_steps.len(),
                 corrections_made
             );
         } else {
-            tracing::debug!(
+            log::debug!(
                 "Recovery completed: recovered {} completed steps, no status corrections needed",
                 recovered_steps.len()
             );
@@ -292,11 +319,11 @@ impl WorkflowExecutor {
     pub async fn execute_to_completion(&mut self) -> Result<FlowResult> {
         let mut running_tasks = FuturesUnordered::new();
 
-        tracing::debug!("Starting execution of {} steps", self.flow.steps().len());
+        log::debug!("Starting execution of {} steps", self.flow.steps().len());
 
         // Start initial unblocked steps
         let initial_unblocked = self.tracker.unblocked_steps();
-        tracing::debug!(
+        log::debug!(
             "Initially runnable steps: [{}]",
             initial_unblocked
                 .iter()
@@ -317,7 +344,7 @@ impl WorkflowExecutor {
 
             // Record the completed result in the state store (non-blocking)
             let step_id = &self.flow.step(completed_step_index).id;
-            tracing::debug!(
+            log::debug!(
                 "Step {} completed, newly unblocked steps: [{}]",
                 step_id,
                 newly_unblocked
@@ -496,7 +523,7 @@ impl WorkflowExecutor {
 
             // If no steps are runnable, we can't make progress
             if runnable.is_empty() {
-                tracing::warn!("No runnable steps. Unable to progress.");
+                log::warn!("No runnable steps. Unable to progress.");
                 break;
             }
 
@@ -764,7 +791,7 @@ impl WorkflowExecutor {
                 // Check explicit skip condition (skip_if expression)
                 if let Some(skip_if) = &skip_if {
                     let should_skip = self.should_skip_step(&step_id, skip_if).await?;
-                    tracing::debug!(
+                    log::debug!(
                         "Step {} skip condition evaluated to {}",
                         step_id,
                         should_skip
@@ -793,7 +820,7 @@ impl WorkflowExecutor {
                         continue;
                     }
                     FlowResult::Failed(error) => {
-                        tracing::error!(
+                        log::error!(
                             "Failed to resolve inputs for step {} - input resolution failed: {:?}",
                             step_id,
                             error
@@ -821,7 +848,7 @@ impl WorkflowExecutor {
 
     /// Skip a step and record the result.
     async fn skip_step(&mut self, step_id: &str, step_index: usize) -> Result<BitSet> {
-        tracing::debug!("Skipping step {} at index {}", step_id, step_index);
+        log::debug!("Skipping step {} at index {}", step_id, step_index);
 
         let newly_unblocked_from_skip = self.tracker.complete_step(step_index);
         let skip_result = FlowResult::Skipped { reason: None };
@@ -839,10 +866,10 @@ impl WorkflowExecutor {
                     step_result: StepResult::new(step_index, step_id, skip_result),
                 })
         {
-            tracing::error!("Failed to queue step result: {:?}", e);
+            log::error!("Failed to queue step result: {:?}", e);
         }
 
-        tracing::debug!(
+        log::debug!(
             "Step {} skipped, newly unblocked steps: [{}]",
             step_id,
             newly_unblocked_from_skip
@@ -863,7 +890,7 @@ impl WorkflowExecutor {
         running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
     ) -> Result<()> {
         let step = self.flow.step(step_index);
-        tracing::debug!("Starting execution of step {}", step.id);
+        log::debug!("Starting execution of step {}", step.id);
 
         // Get plugin and resolved component name for this step
         let (plugin, resolved_component) = self
@@ -910,6 +937,15 @@ pub(crate) async fn execute_step_async(
     context: ExecutionContext,
     resolver: &ValueResolver<StateValueLoader>,
 ) -> Result<FlowResult> {
+    // Set step_id in diagnostic context for all logs in this step execution
+    let _step_guard = StepIdGuard::new(step.id.as_str());
+
+    log::debug!(
+        "Executing step: component={}, step_id={}",
+        resolved_component,
+        step.id
+    );
+
     // Create a component from the resolved component name
     let component = stepflow_core::workflow::Component::from_string(resolved_component);
 
@@ -926,11 +962,13 @@ pub(crate) async fn execute_step_async(
                 .attach_printable(format!("Component: {}", resolved_component))
         })?;
 
+    log::debug!("Step execution completed: step_id={}", step.id);
+
     match &result {
         FlowResult::Failed(error) => {
             match step.on_error_or_default() {
                 stepflow_core::workflow::ErrorAction::Skip => {
-                    tracing::debug!(
+                    log::debug!(
                         "Step {} failed but configured to skip: {:?}",
                         step.id,
                         error
@@ -938,7 +976,7 @@ pub(crate) async fn execute_step_async(
                     Ok(FlowResult::Skipped { reason: None })
                 }
                 stepflow_core::workflow::ErrorAction::UseDefault { default_value } => {
-                    tracing::debug!(
+                    log::debug!(
                         "Step {} failed but using default value: {:?}",
                         step.id,
                         error
@@ -971,7 +1009,7 @@ pub(crate) async fn execute_step_async(
                 stepflow_core::workflow::ErrorAction::Fail => Ok(result),
                 stepflow_core::workflow::ErrorAction::Retry => {
                     // TODO: Implement retry logic
-                    tracing::warn!(
+                    log::warn!(
                         "Retry error action not yet implemented for step {}",
                         step.id
                     );

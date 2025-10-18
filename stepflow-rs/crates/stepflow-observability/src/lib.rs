@@ -30,8 +30,14 @@ mod run_diagnostic_context;
 pub use run_diagnostic_context::{RunDiagnostic, RunIdGuard, StepIdGuard, get_run_id, get_step_id};
 
 /// Binary-specific observability configuration
-#[derive(Clone, Debug, Default)]
+///
+/// This configuration is not exposed as CLI arguments and should be set programmatically
+/// based on the binary type.
+#[derive(Clone, Debug)]
 pub struct BinaryObservabilityConfig {
+    /// Service name for traces/logs
+    pub service_name: &'static str,
+
     /// Include run diagnostic (run_id, step_id) in logs
     ///
     /// Set to true for binaries that execute workflows (stepflow-server, CLI run command)
@@ -40,33 +46,59 @@ pub struct BinaryObservabilityConfig {
 }
 
 /// Configuration for observability (logging + tracing)
-#[derive(Clone, Debug)]
+#[derive(Debug, clap::Args)]
 pub struct ObservabilityConfig {
-    /// Log level filter
+    /// Log level filter for stepflow crates
+    #[arg(long, default_value = "info", env = "STEPFLOW_LOG_LEVEL", value_parser = parse_log_level)]
     pub log_level: log::LevelFilter,
 
+    /// Log level filter for non-stepflow crates (e.g., dependencies)
+    /// When None, uses the same level as log_level
+    #[arg(long, env = "STEPFLOW_OTHER_LOG_LEVEL", value_parser = parse_log_level)]
+    pub other_log_level: Option<log::LevelFilter>,
+
     /// Log output format
+    #[arg(long, default_value = "text", env = "STEPFLOW_LOG_FORMAT")]
     pub log_format: LogFormat,
 
-    /// Log output destination (exclusive - only one destination at a time)
-    pub log_destination: LogDestination,
+    /// Log to file (instead of stdout)
+    #[arg(long, env = "STEPFLOW_LOG_FILE")]
+    pub log_file: Option<std::path::PathBuf>,
 
     /// Enable distributed tracing
+    #[arg(long, env = "STEPFLOW_TRACE_ENABLED")]
     pub trace_enabled: bool,
-
-    /// Binary-specific configuration
-    pub binary_config: BinaryObservabilityConfig,
 
     /// OTLP endpoint (e.g., "http://localhost:4317")
     /// Used for both trace and log export when log_destination is LogDestination::OpenTelemetry
+    #[arg(long, env = "STEPFLOW_OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
+}
 
-    /// Service name for traces/logs
-    pub service_name: String,
+impl ObservabilityConfig {
+    /// Get the effective log destination based on the configuration
+    pub fn log_destination(&self) -> LogDestination<'_> {
+        match &self.log_file {
+            Some(path) => LogDestination::File(path),
+            None => LogDestination::Stdout,
+        }
+    }
+}
+
+fn parse_log_level(s: &str) -> std::result::Result<log::LevelFilter, String> {
+    match s.to_lowercase().as_str() {
+        "off" => Ok(log::LevelFilter::Off),
+        "error" => Ok(log::LevelFilter::Error),
+        "warn" => Ok(log::LevelFilter::Warn),
+        "info" => Ok(log::LevelFilter::Info),
+        "debug" => Ok(log::LevelFilter::Debug),
+        "trace" => Ok(log::LevelFilter::Trace),
+        _ => Err(format!("Invalid log level: {}", s)),
+    }
 }
 
 /// Log output format
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum LogFormat {
     /// Structured JSON logs
     Json,
@@ -74,29 +106,15 @@ pub enum LogFormat {
     Text,
 }
 
-/// Log output destination (exclusive - only one at a time)
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LogDestination {
+/// Log output destination (computed from configuration)
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum LogDestination<'a> {
     /// Log to stdout
     Stdout,
     /// Log to OpenTelemetry (uses otlp_endpoint from config)
     OpenTelemetry,
     /// Log to a file (appends)
-    File(std::path::PathBuf),
-}
-
-impl Default for ObservabilityConfig {
-    fn default() -> Self {
-        Self {
-            log_level: log::LevelFilter::Info,
-            log_format: LogFormat::Text,
-            log_destination: LogDestination::Stdout,
-            trace_enabled: false,
-            binary_config: BinaryObservabilityConfig::default(),
-            otlp_endpoint: None,
-            service_name: "stepflow".to_string(),
-        }
-    }
+    File(&'a std::path::Path),
 }
 
 /// Initialize observability (logging + tracing)
@@ -113,29 +131,34 @@ impl Default for ObservabilityConfig {
 ///
 /// let config = ObservabilityConfig {
 ///     log_level: log::LevelFilter::Info,
+///     other_log_level: Some(log::LevelFilter::Warn),  // Separate level for dependencies
 ///     log_format: LogFormat::Json,
-///     log_destination: LogDestination::Stdout,
+///     log_file: None,
 ///     trace_enabled: true,
-///     binary_config: BinaryObservabilityConfig {
-///         include_run_diagnostic: true,  // Enable for workflow execution binaries
-///     },
 ///     otlp_endpoint: None,
-///     service_name: "my-service".to_string(),
 /// };
 ///
-/// let _guard = init_observability(config).unwrap();
+/// let binary_config = BinaryObservabilityConfig {
+///     service_name: "my-service",
+///     include_run_diagnostic: true,  // Enable for workflow execution binaries
+/// };
+///
+/// let _guard = init_observability(&config, binary_config).unwrap();
 /// log::info!("Service started");
 /// ```
-pub fn init_observability(config: ObservabilityConfig) -> Result<ObservabilityGuard> {
+pub fn init_observability(
+    config: &ObservabilityConfig,
+    binary_config: BinaryObservabilityConfig,
+) -> Result<ObservabilityGuard> {
     // Initialize tracing first (so logger can access trace context)
     let trace_guard = if config.trace_enabled {
-        Some(init_tracing(&config)?)
+        Some(init_tracing(config)?)
     } else {
         None
     };
 
     // Initialize logging with trace context integration
-    let log_guard = init_logging(&config)?;
+    let log_guard = init_logging(config, &binary_config)?;
 
     Ok(ObservabilityGuard {
         _log_guard: log_guard,
@@ -143,162 +166,137 @@ pub fn init_observability(config: ObservabilityConfig) -> Result<ObservabilityGu
     })
 }
 
-fn init_logging(config: &ObservabilityConfig) -> Result<LogGuard> {
-    use logforth::append;
+fn init_logging(
+    config: &ObservabilityConfig,
+    binary_config: &BinaryObservabilityConfig,
+) -> Result<LogGuard> {
     use logforth::diagnostic::FastraceDiagnostic;
-    use logforth::layout::JsonLayout;
-    use logforth::layout::TextLayout;
-    use logforth::record::LevelFilter;
+    use logforth::filter::env_filter::EnvFilterBuilder;
 
-    // Convert log::LevelFilter to logforth::record::LevelFilter
-    let level_filter = match config.log_level {
-        log::LevelFilter::Off => LevelFilter::Off,
-        log::LevelFilter::Error => LevelFilter::Error,
-        log::LevelFilter::Warn => LevelFilter::Warn,
-        log::LevelFilter::Info => LevelFilter::Info,
-        log::LevelFilter::Debug => LevelFilter::Debug,
-        log::LevelFilter::Trace => LevelFilter::Trace,
-    };
+    // Helper to convert log level to string for EnvFilter
+    fn level_to_str(level: log::LevelFilter) -> &'static str {
+        match level {
+            log::LevelFilter::Off => "off",
+            log::LevelFilter::Error => "error",
+            log::LevelFilter::Warn => "warn",
+            log::LevelFilter::Info => "info",
+            log::LevelFilter::Debug => "debug",
+            log::LevelFilter::Trace => "trace",
+        }
+    }
 
-    let builder = logforth::starter_log::builder();
+    // Special case: /dev/null means discard logs (used in tests)
+    if let LogDestination::File(path) = config.log_destination()
+        && path == std::path::Path::new("/dev/null")
+    {
+        return Ok(LogGuard);
+    }
 
-    // Configure single exclusive destination with fastrace diagnostic (always)
-    // and optionally run diagnostic (if binary_config.include_run_diagnostic is true)
-    let builder = match (
-        &config.log_destination,
-        config.log_format,
-        config.binary_config.include_run_diagnostic,
-    ) {
-        (LogDestination::Stdout, LogFormat::Json, true) => builder.dispatch(|d| {
-            d.filter(level_filter)
-                .diagnostic(FastraceDiagnostic::default())
-                .diagnostic(RunDiagnostic)
-                .append(append::Stdout::default().with_layout(JsonLayout::default()))
-        }),
-        (LogDestination::Stdout, LogFormat::Json, false) => builder.dispatch(|d| {
-            d.filter(level_filter)
-                .diagnostic(FastraceDiagnostic::default())
-                .append(append::Stdout::default().with_layout(JsonLayout::default()))
-        }),
-        (LogDestination::Stdout, LogFormat::Text, true) => builder.dispatch(|d| {
-            d.filter(level_filter)
-                .diagnostic(FastraceDiagnostic::default())
-                .diagnostic(RunDiagnostic)
-                .append(append::Stdout::default().with_layout(TextLayout::default()))
-        }),
-        (LogDestination::Stdout, LogFormat::Text, false) => builder.dispatch(|d| {
-            d.filter(level_filter)
-                .diagnostic(FastraceDiagnostic::default())
-                .append(append::Stdout::default().with_layout(TextLayout::default()))
-        }),
-        (LogDestination::File(path), LogFormat::Json, true) => {
-            // Special case: /dev/null means discard logs (used in tests)
-            if path == std::path::Path::new("/dev/null") {
-                return Ok(LogGuard);
-            }
-            let file_append = append::file::FileBuilder::new(path.clone(), "app_log")
-                .layout(JsonLayout::default())
-                .build()
-                .map_err(|e| {
-                    error_stack::Report::new(ObservabilityError::LogInitError)
-                        .attach_printable(format!("Failed to create file appender for {:?}", path))
-                        .attach_printable(format!("{:?}", e))
-                })?;
-            builder.dispatch(|d| {
-                d.filter(level_filter)
-                    .diagnostic(FastraceDiagnostic::default())
-                    .diagnostic(RunDiagnostic)
-                    .append(file_append)
-            })
+    let mut builder = logforth::starter_log::builder();
+
+    // When other_log_level is specified, we need TWO separate dispatch chains with EnvFilter
+    // When other_log_level is None, we only need ONE dispatch chain
+    match config.other_log_level {
+        Some(other_level) => {
+            // Dual-level logging: separate dispatch for stepflow vs non-stepflow crates
+
+            // Build EnvFilter spec for stepflow crates: "stepflow_=<level>"
+            let stepflow_spec = format!("stepflow_={}", level_to_str(config.log_level));
+            let stepflow_filter = EnvFilterBuilder::from_spec(&stepflow_spec).build();
+
+            let destination = config.log_destination();
+            let format = config.log_format;
+
+            // Dispatch 1: stepflow_* crates at the main log level
+            builder = builder.dispatch(|d| {
+                let mut d = d
+                    .filter(stepflow_filter)
+                    .diagnostic(FastraceDiagnostic::default());
+
+                if binary_config.include_run_diagnostic {
+                    d = d.diagnostic(RunDiagnostic);
+                }
+
+                d.append(create_appender(destination, format))
+            });
+
+            // Build EnvFilter spec for everything except stepflow: "<level>,stepflow_=off"
+            // This sets a global level and then disables stepflow crates
+            let other_spec = format!("{},stepflow_=off", level_to_str(other_level));
+            let other_filter = EnvFilterBuilder::from_spec(&other_spec).build();
+
+            // Dispatch 2: non-stepflow crates at the other log level
+            builder = builder.dispatch(|d| {
+                let mut d = d
+                    .filter(other_filter)
+                    .diagnostic(FastraceDiagnostic::default());
+
+                if binary_config.include_run_diagnostic {
+                    d = d.diagnostic(RunDiagnostic);
+                }
+
+                d.append(create_appender(destination, format))
+            });
         }
-        (LogDestination::File(path), LogFormat::Json, false) => {
-            // Special case: /dev/null means discard logs (used in tests)
-            if path == std::path::Path::new("/dev/null") {
-                return Ok(LogGuard);
-            }
-            let file_append = append::file::FileBuilder::new(path.clone(), "app_log")
-                .layout(JsonLayout::default())
-                .build()
-                .map_err(|e| {
-                    error_stack::Report::new(ObservabilityError::LogInitError)
-                        .attach_printable(format!("Failed to create file appender for {:?}", path))
-                        .attach_printable(format!("{:?}", e))
-                })?;
-            builder.dispatch(|d| {
-                d.filter(level_filter)
-                    .diagnostic(FastraceDiagnostic::default())
-                    .append(file_append)
-            })
+        None => {
+            // Single-level logging: one dispatch chain for all crates with a global level filter
+            let filter_spec = level_to_str(config.log_level);
+            let filter = EnvFilterBuilder::from_spec(filter_spec).build();
+
+            let destination = config.log_destination();
+            let format = config.log_format;
+
+            builder = builder.dispatch(|d| {
+                let mut d = d.filter(filter).diagnostic(FastraceDiagnostic::default());
+
+                if binary_config.include_run_diagnostic {
+                    d = d.diagnostic(RunDiagnostic);
+                }
+
+                d.append(create_appender(destination, format))
+            });
         }
-        (LogDestination::File(path), LogFormat::Text, true) => {
-            // Special case: /dev/null means discard logs (used in tests)
-            if path == std::path::Path::new("/dev/null") {
-                return Ok(LogGuard);
-            }
-            let file_append = append::file::FileBuilder::new(path.clone(), "app_log")
-                .layout(TextLayout::default())
-                .build()
-                .map_err(|e| {
-                    error_stack::Report::new(ObservabilityError::LogInitError)
-                        .attach_printable(format!("Failed to create file appender for {:?}", path))
-                        .attach_printable(format!("{:?}", e))
-                })?;
-            builder.dispatch(|d| {
-                d.filter(level_filter)
-                    .diagnostic(FastraceDiagnostic::default())
-                    .diagnostic(RunDiagnostic)
-                    .append(file_append)
-            })
-        }
-        (LogDestination::File(path), LogFormat::Text, false) => {
-            // Special case: /dev/null means discard logs (used in tests)
-            if path == std::path::Path::new("/dev/null") {
-                return Ok(LogGuard);
-            }
-            let file_append = append::file::FileBuilder::new(path.clone(), "app_log")
-                .layout(TextLayout::default())
-                .build()
-                .map_err(|e| {
-                    error_stack::Report::new(ObservabilityError::LogInitError)
-                        .attach_printable(format!("Failed to create file appender for {:?}", path))
-                        .attach_printable(format!("{:?}", e))
-                })?;
-            builder.dispatch(|d| {
-                d.filter(level_filter)
-                    .diagnostic(FastraceDiagnostic::default())
-                    .append(file_append)
-            })
-        }
-        (LogDestination::OpenTelemetry, _, true) => {
-            // TODO: Implement OpenTelemetry log appender
-            // For now, fall back to stdout
-            eprintln!(
-                "WARNING: OpenTelemetry log output not yet implemented, falling back to stdout"
-            );
-            builder.dispatch(|d| {
-                d.filter(level_filter)
-                    .diagnostic(FastraceDiagnostic::default())
-                    .diagnostic(RunDiagnostic)
-                    .append(append::Stdout::default().with_layout(JsonLayout::default()))
-            })
-        }
-        (LogDestination::OpenTelemetry, _, false) => {
-            // TODO: Implement OpenTelemetry log appender
-            // For now, fall back to stdout
-            eprintln!(
-                "WARNING: OpenTelemetry log output not yet implemented, falling back to stdout"
-            );
-            builder.dispatch(|d| {
-                d.filter(level_filter)
-                    .diagnostic(FastraceDiagnostic::default())
-                    .append(append::Stdout::default().with_layout(JsonLayout::default()))
-            })
-        }
-    };
+    }
 
     builder.apply();
 
     Ok(LogGuard)
+}
+
+/// Create an appender based on configuration
+fn create_appender(destination: LogDestination, format: LogFormat) -> Box<dyn logforth::Append> {
+    use logforth::append;
+    use logforth::layout::JsonLayout;
+    use logforth::layout::TextLayout;
+
+    match (destination, format) {
+        (LogDestination::Stdout, LogFormat::Json) => {
+            Box::new(append::Stdout::default().with_layout(JsonLayout::default()))
+        }
+        (LogDestination::Stdout, LogFormat::Text) => {
+            Box::new(append::Stdout::default().with_layout(TextLayout::default()))
+        }
+        (LogDestination::File(path), LogFormat::Json) => {
+            // Note: Error handling moved to init_logging (checked before dispatch)
+            let file_appender = append::file::FileBuilder::new(path.to_path_buf(), "app_log")
+                .layout(JsonLayout::default())
+                .build()
+                .expect("File appender creation should have been validated");
+            Box::new(file_appender)
+        }
+        (LogDestination::File(path), LogFormat::Text) => {
+            let file_appender = append::file::FileBuilder::new(path.to_path_buf(), "app_log")
+                .layout(TextLayout::default())
+                .build()
+                .expect("File appender creation should have been validated");
+            Box::new(file_appender)
+        }
+        (LogDestination::OpenTelemetry, _) => {
+            // TODO: Implement OpenTelemetry log appender
+            // For now, fall back to stdout with JSON layout
+            Box::new(append::Stdout::default().with_layout(JsonLayout::default()))
+        }
+    }
 }
 
 fn init_tracing(config: &ObservabilityConfig) -> Result<TraceGuard> {
