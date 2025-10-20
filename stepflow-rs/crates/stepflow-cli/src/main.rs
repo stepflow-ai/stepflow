@@ -29,7 +29,8 @@ async fn run(cli: Cli) -> Result<()> {
 
     // Explicitly close observability to flush telemetry while tokio runtime is still active
     guard
-        .close().await
+        .close()
+        .await
         .change_context(stepflow_cli::MainError::TracingInit)?;
 
     result

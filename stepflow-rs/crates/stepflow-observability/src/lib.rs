@@ -88,32 +88,44 @@ impl ObservabilityConfig {
         match self.log_destination {
             LogDestinationType::File => {
                 if self.log_file.is_none() {
-                    return Err(error_stack::report!(ObservabilityError::ConfigValidationError)
-                        .attach_printable("log_destination is 'file' but log_file is not set"));
+                    return Err(
+                        error_stack::report!(ObservabilityError::ConfigValidationError)
+                            .attach_printable("log_destination is 'file' but log_file is not set"),
+                    );
                 }
             }
             LogDestinationType::Stdout => {
                 if self.log_file.is_some() {
-                    return Err(error_stack::report!(ObservabilityError::ConfigValidationError)
-                        .attach_printable("log_destination is 'stdout' but log_file is set"));
+                    return Err(
+                        error_stack::report!(ObservabilityError::ConfigValidationError)
+                            .attach_printable("log_destination is 'stdout' but log_file is set"),
+                    );
                 }
             }
             LogDestinationType::Otlp => {
                 if self.log_file.is_some() {
-                    return Err(error_stack::report!(ObservabilityError::ConfigValidationError)
-                        .attach_printable("log_destination is 'otlp' but log_file is set"));
+                    return Err(
+                        error_stack::report!(ObservabilityError::ConfigValidationError)
+                            .attach_printable("log_destination is 'otlp' but log_file is set"),
+                    );
                 }
                 if self.otlp_endpoint.is_none() {
-                    return Err(error_stack::report!(ObservabilityError::ConfigValidationError)
-                        .attach_printable("log_destination is 'otlp' but otlp_endpoint is not set"));
+                    return Err(
+                        error_stack::report!(ObservabilityError::ConfigValidationError)
+                            .attach_printable(
+                                "log_destination is 'otlp' but otlp_endpoint is not set",
+                            ),
+                    );
                 }
             }
         }
 
         // Validate trace_enabled requires otlp_endpoint
         if self.trace_enabled && self.otlp_endpoint.is_none() {
-            return Err(error_stack::report!(ObservabilityError::ConfigValidationError)
-                .attach_printable("trace_enabled is true but otlp_endpoint is not set"));
+            return Err(
+                error_stack::report!(ObservabilityError::ConfigValidationError)
+                    .attach_printable("trace_enabled is true but otlp_endpoint is not set"),
+            );
         }
 
         Ok(())
@@ -260,13 +272,28 @@ fn init_logging(
             // Dual-level logging: separate dispatch for stepflow vs non-stepflow crates
 
             // Dispatch 1: stepflow_* crates at the main log level
-            builder = add_dispatch(&format!("stepflow_={}", level_to_str(config.log_level)), config, binary_config, builder);
-            
+            builder = add_dispatch(
+                &format!("stepflow_={}", level_to_str(config.log_level)),
+                config,
+                binary_config,
+                builder,
+            );
+
             // Dispatch 2: non-stepflow crates at the other log level
-            builder = add_dispatch(&format!("{},stepflow_=off", level_to_str(other_level)), config, binary_config, builder);
+            builder = add_dispatch(
+                &format!("{},stepflow_=off", level_to_str(other_level)),
+                config,
+                binary_config,
+                builder,
+            );
         }
         None => {
-            builder = add_dispatch(&level_to_str(config.log_level), config, binary_config, builder);
+            builder = add_dispatch(
+                level_to_str(config.log_level),
+                config,
+                binary_config,
+                builder,
+            );
         }
     }
 
@@ -276,7 +303,12 @@ fn init_logging(
 }
 
 #[must_use]
-fn add_dispatch(filter_spec: &str, config: &ObservabilityConfig, binary_config: &BinaryObservabilityConfig, builder: logforth::starter_log::LogStarterBuilder) -> logforth::starter_log::LogStarterBuilder {
+fn add_dispatch(
+    filter_spec: &str,
+    config: &ObservabilityConfig,
+    binary_config: &BinaryObservabilityConfig,
+    builder: logforth::starter_log::LogStarterBuilder,
+) -> logforth::starter_log::LogStarterBuilder {
     use logforth::diagnostic::FastraceDiagnostic;
     use logforth::filter::env_filter::EnvFilterBuilder;
 
@@ -285,20 +317,28 @@ fn add_dispatch(filter_spec: &str, config: &ObservabilityConfig, binary_config: 
     let format = config.log_format;
 
     builder.dispatch(|d| {
-        let mut d = d
-            .filter(filter)
-            .diagnostic(FastraceDiagnostic::default());
+        let mut d = d.filter(filter).diagnostic(FastraceDiagnostic::default());
 
         if binary_config.include_run_diagnostic {
             d = d.diagnostic(RunDiagnostic);
         }
 
-        d.append(create_appender(destination, format, config.otlp_endpoint.as_deref(), binary_config.service_name))
+        d.append(create_appender(
+            destination,
+            format,
+            config.otlp_endpoint.as_deref(),
+            binary_config.service_name,
+        ))
     })
 }
 
 /// Create an appender based on configuration
-fn create_appender(destination: LogDestination, format: LogFormat, otlp_endpoint: Option<&str>, service_name: &'static str) -> Box<dyn logforth::Append> {
+fn create_appender(
+    destination: LogDestination,
+    format: LogFormat,
+    otlp_endpoint: Option<&str>,
+    service_name: &'static str,
+) -> Box<dyn logforth::Append> {
     use logforth::append;
     use logforth::layout::JsonLayout;
     use logforth::layout::TextLayout;
@@ -326,9 +366,9 @@ fn create_appender(destination: LogDestination, format: LogFormat, otlp_endpoint
             Box::new(file_appender)
         }
         (LogDestination::OpenTelemetry, _) => {
+            use logforth_append_opentelemetry::OpentelemetryLogBuilder;
             use opentelemetry_otlp::LogExporter;
             use opentelemetry_otlp::WithExportConfig;
-            use logforth_append_opentelemetry::OpentelemetryLogBuilder;
 
             // Use Zstd compression for efficient log transmission
             // Provides ~50-80% bandwidth reduction with minimal CPU overhead
@@ -342,8 +382,14 @@ fn create_appender(destination: LogDestination, format: LogFormat, otlp_endpoint
 
             let builder = OpentelemetryLogBuilder::new(service_name, log_exporter)
                 // Add service.name as a resource attribute per OpenTelemetry spec
-                .label(opentelemetry_semantic_conventions::resource::SERVICE_NAME, service_name)
-                .label(opentelemetry_semantic_conventions::resource::SERVICE_VERSION, env!("CARGO_PKG_VERSION"));
+                .label(
+                    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                    service_name,
+                )
+                .label(
+                    opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
+                    env!("CARGO_PKG_VERSION"),
+                );
 
             // TODO: Add env, etc. labels (`builder.label("env", "production");`)
             Box::new(builder.build())
@@ -357,9 +403,11 @@ fn init_tracing(
 ) -> Result<TraceGuard> {
     if let Some(endpoint) = &config.otlp_endpoint {
         // Create OpenTelemetry resource with service metadata
-        let resource = std::borrow::Cow::Owned(opentelemetry_sdk::Resource::builder()
-            .with_service_name(binary_config.service_name)
-            .build());
+        let resource = std::borrow::Cow::Owned(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name(binary_config.service_name)
+                .build(),
+        );
 
         // Create instrumentation library metadata
         let instrumentation_lib = opentelemetry::InstrumentationScope::builder("stepflow")

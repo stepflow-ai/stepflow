@@ -75,5 +75,8 @@ async fn main() {
     log::info!("After root span closed");
 
     // Explicitly close the guard to flush telemetry
-    guard.close().await.expect("Failed to flush observability data");
+    guard
+        .close()
+        .await
+        .expect("Failed to flush observability data");
 }

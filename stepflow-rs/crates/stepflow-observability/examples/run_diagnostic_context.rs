@@ -66,7 +66,10 @@ async fn main() {
     log::info!("After run_id cleared - no context");
 
     // Explicitly close the guard to flush telemetry
-    guard.close().await.expect("Failed to flush observability data");
+    guard
+        .close()
+        .await
+        .expect("Failed to flush observability data");
 }
 
 fn execute_step(step_name: &'static str) {
