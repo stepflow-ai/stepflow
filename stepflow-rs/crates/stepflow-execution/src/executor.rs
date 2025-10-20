@@ -219,6 +219,19 @@ impl Context for StepflowExecutor {
                 let state_store = executor.state_store.clone();
 
                 // Create root span for this flow execution
+                // Design decision: Use run_id as the trace_id
+                //
+                // Each workflow run is treated as a single distributed trace, with the run_id
+                // serving as both the business identifier and the OpenTelemetry trace ID.
+                //
+                // Benefits:
+                // - Direct correlation: Users can query traces by workflow run ID in Jaeger
+                // - Simplified mental model: One ID to track workflow execution
+                // - Better UX: "Show trace for run abc-123" vs "Find trace where run_id=abc-123"
+                //
+                // Trade-offs:
+                // - Semantic overlap between business ID and trace ID
+                // - Less flexible if we need multiple traces per run in the future
                 let root_span = Span::root(
                     "flow_execution",
                     SpanContext::new(TraceId(run_id.as_u128()), SpanId::default()),

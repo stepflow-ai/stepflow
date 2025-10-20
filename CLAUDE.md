@@ -499,6 +499,20 @@ This allows filtering logs by trace ID: "Show me all logs for this workflow run.
 
 Fastrace uses zero-cost abstraction - when tracing is disabled, instrumentation has no runtime overhead. This makes it safe to instrument liberally in library code.
 
+#### OTLP Compression
+
+Both trace and log OTLP exporters use **Zstd compression by default** for efficient network transmission.
+
+#### Trace ID and Run ID Relationship
+
+**Design Decision:** Stepflow uses the workflow `run_id` (UUID) as the OpenTelemetry `trace_id` for execution.
+
+Each flow execution is treated as a single distributed trace, with the `run_id` serving as both:
+- The business identifier for the flow run
+- The OpenTelemetry trace ID for the entire execution graph
+
+This design choice prioritizes developer experience and observability UX over theoretical purity.
+
 ### Error Handling Patterns
 
 #### Dual Error System

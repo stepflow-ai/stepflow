@@ -26,7 +26,7 @@
 pub use fastrace;
 pub use log;
 
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 
 mod run_diagnostic_context;
 pub use run_diagnostic_context::{RunDiagnostic, RunIdGuard, StepIdGuard, get_run_id, get_step_id};
@@ -330,10 +330,13 @@ fn create_appender(destination: LogDestination, format: LogFormat, otlp_endpoint
             use opentelemetry_otlp::WithExportConfig;
             use logforth_append_opentelemetry::OpentelemetryLogBuilder;
 
+            // Use Zstd compression for efficient log transmission
+            // Provides ~50-80% bandwidth reduction with minimal CPU overhead
             let log_exporter = LogExporter::builder()
                 .with_tonic()
                 .with_endpoint(otlp_endpoint.expect("Endpoint required for OTLP logging"))
                 .with_timeout(std::time::Duration::from_secs(5))
+                .with_compression(opentelemetry_otlp::Compression::Zstd)
                 .build()
                 .expect("Failed to create OTLP log exporter");
 
@@ -364,11 +367,13 @@ fn init_tracing(
             .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
             .build();
 
-        // Create OTLP exporter
+        // Create OTLP trace exporter with Zstd compression
+        // Provides ~50-80% bandwidth reduction with minimal CPU overhead
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
             .with_endpoint(endpoint)
             .with_timeout(std::time::Duration::from_secs(5))
+            .with_compression(opentelemetry_otlp::Compression::Zstd)
             .build()
             .map_err(|e| {
                 error_stack::report!(ObservabilityError::OtlpInitError)
