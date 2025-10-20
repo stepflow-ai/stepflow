@@ -11,12 +11,11 @@
 // the License.
 
 use stepflow_observability::{
-    BinaryObservabilityConfig, LogFormat, ObservabilityConfig, ObservabilityGuard,
-    init_observability,
+    BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig,
+    ObservabilityGuard, init_observability,
 };
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
-static mut TEST_GUARD: Option<ObservabilityGuard> = None;
 
 /// Makes sure logging is initialized for test.
 ///
@@ -26,6 +25,7 @@ pub fn init_test_logging() {
         let config = ObservabilityConfig {
             log_level: log::LevelFilter::Trace,
             other_log_level: None,
+            log_destination: LogDestinationType::Stdout,
             log_format: LogFormat::Text,
             log_file: None,
             trace_enabled: false,
@@ -39,10 +39,9 @@ pub fn init_test_logging() {
 
         let guard =
             init_observability(&config, binary_config).expect("Failed to initialize observability");
-        // SAFETY: This is safe because we're inside a Once call, ensuring single initialization
-        unsafe {
-            TEST_GUARD = Some(guard);
-        }
+        // For tests, we'll just leak the guard to avoid the panic on drop
+        // In tests, we don't care about flushing telemetry at the end
+        guard.leak();
     });
 }
 

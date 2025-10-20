@@ -11,6 +11,7 @@ fastrace = { workspace = true }
 fastrace-opentelemetry = { workspace = true }
 log = { workspace = true }
 logforth = { workspace = true }
+logforth-append-opentelemetry = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 error-stack = { workspace = true }
@@ -19,8 +20,10 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
+tokio = { workspace = true }
 
 [[example]]
 name = "basic"

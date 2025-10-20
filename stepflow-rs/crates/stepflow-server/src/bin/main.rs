@@ -75,7 +75,7 @@ async fn main() {
     let args = Args::parse();
 
     #[allow(clippy::print_stderr)]
-    let _guard = {
+    let guard = {
         let binary_config = stepflow_observability::BinaryObservabilityConfig {
             service_name: "stepflow-server",
             include_run_diagnostic: true,
@@ -103,6 +103,11 @@ async fn main() {
             .change_context(ServerError::ServerError)
     }
     .await;
+
+    // Close observability guard to flush telemetry before shutdown
+    if let Err(e) = guard.close().await {
+        log::error!("Failed to flush observability data: {e:?}");
+    }
 
     if let Err(e) = result {
         log::error!("Server error: {e:?}");

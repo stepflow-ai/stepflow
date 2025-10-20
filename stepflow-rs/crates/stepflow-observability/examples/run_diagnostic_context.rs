@@ -14,17 +14,19 @@
 //! along with trace context into all log records
 
 use stepflow_observability::{
-    BinaryObservabilityConfig, LogFormat, ObservabilityConfig, RunIdGuard, StepIdGuard,
-    fastrace::prelude::*, init_observability,
+    BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig, RunIdGuard,
+    StepIdGuard, fastrace::prelude::*, init_observability,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let config = ObservabilityConfig {
         log_level: log::LevelFilter::Debug,
         other_log_level: None,
+        log_destination: LogDestinationType::Stdout,
         log_format: LogFormat::Json,
         log_file: None,
-        trace_enabled: true,
+        trace_enabled: false,
         otlp_endpoint: None,
     };
 
@@ -32,7 +34,7 @@ fn main() {
         service_name: "example",
         include_run_diagnostic: true,
     };
-    let _guard = init_observability(&config, binary_config).unwrap();
+    let guard = init_observability(&config, binary_config).unwrap();
 
     // Log without any context
     log::info!("Starting workflow execution - no context yet");
@@ -62,6 +64,9 @@ fn main() {
     }
 
     log::info!("After run_id cleared - no context");
+
+    // Explicitly close the guard to flush telemetry
+    guard.close().await.expect("Failed to flush observability data");
 }
 
 fn execute_step(step_name: &'static str) {
