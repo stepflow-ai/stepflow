@@ -26,7 +26,7 @@
 pub use fastrace;
 pub use log;
 
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 
 mod run_diagnostic_context;
 pub use run_diagnostic_context::{RunDiagnostic, RunIdGuard, StepIdGuard, get_run_id, get_step_id};
@@ -59,11 +59,15 @@ pub struct ObservabilityConfig {
     #[arg(long, env = "STEPFLOW_OTHER_LOG_LEVEL", value_parser = parse_log_level)]
     pub other_log_level: Option<log::LevelFilter>,
 
-    /// Log output format
+    /// Log output destination
+    #[arg(long, default_value = "stdout", env = "STEPFLOW_LOG_DESTINATION")]
+    pub log_destination: LogDestinationType,
+
+    /// Log output format (only applies to stdout and file destinations)
     #[arg(long, default_value = "text", env = "STEPFLOW_LOG_FORMAT")]
     pub log_format: LogFormat,
 
-    /// Log to file (instead of stdout)
+    /// Log file path (only applies when log_destination is file)
     #[arg(long, env = "STEPFLOW_LOG_FILE")]
     pub log_file: Option<std::path::PathBuf>,
 
@@ -72,17 +76,76 @@ pub struct ObservabilityConfig {
     pub trace_enabled: bool,
 
     /// OTLP endpoint (e.g., "http://localhost:4317")
-    /// Used for both trace and log export when log_destination is LogDestination::OpenTelemetry
+    /// Required when log_destination is otlp or when trace_enabled is true
     #[arg(long, env = "STEPFLOW_OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
 }
 
 impl ObservabilityConfig {
-    /// Get the effective log destination based on the configuration
-    pub fn log_destination(&self) -> LogDestination<'_> {
-        match &self.log_file {
-            Some(path) => LogDestination::File(path),
-            None => LogDestination::Stdout,
+    /// Validate the configuration for internal consistency
+    pub fn validate(&self) -> Result<()> {
+        // Validate log_destination consistency
+        match self.log_destination {
+            LogDestinationType::File => {
+                if self.log_file.is_none() {
+                    return Err(
+                        error_stack::report!(ObservabilityError::ConfigValidationError)
+                            .attach_printable("log_destination is 'file' but log_file is not set"),
+                    );
+                }
+            }
+            LogDestinationType::Stdout => {
+                // Allow log_file to be set with stdout destination for backward compatibility
+                // The log_destination() method will auto-infer 'file' destination when log_file is set
+            }
+            LogDestinationType::Otlp => {
+                if self.log_file.is_some() {
+                    return Err(
+                        error_stack::report!(ObservabilityError::ConfigValidationError)
+                            .attach_printable("log_destination is 'otlp' but log_file is set"),
+                    );
+                }
+                if self.otlp_endpoint.is_none() {
+                    return Err(
+                        error_stack::report!(ObservabilityError::ConfigValidationError)
+                            .attach_printable(
+                                "log_destination is 'otlp' but otlp_endpoint is not set",
+                            ),
+                    );
+                }
+            }
+        }
+
+        // Validate trace_enabled requires otlp_endpoint
+        if self.trace_enabled && self.otlp_endpoint.is_none() {
+            return Err(
+                error_stack::report!(ObservabilityError::ConfigValidationError)
+                    .attach_printable("trace_enabled is true but otlp_endpoint is not set"),
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Get the effective log destination for internal use
+    ///
+    /// Auto-infers file destination when log_file is set, even if log_destination is stdout.
+    /// This provides backward compatibility with the old --log-file behavior.
+    fn log_destination(&self) -> LogDestination<'_> {
+        // If log_file is set, always use file destination (backward compatibility)
+        if let Some(log_file) = &self.log_file {
+            return LogDestination::File(log_file);
+        }
+
+        match self.log_destination {
+            LogDestinationType::Stdout => LogDestination::Stdout,
+            LogDestinationType::File => {
+                // This case is caught by validation - log_file must be set
+                panic!(
+                    "log_destination is 'file' but log_file is not set (should be caught by validate())"
+                )
+            }
+            LogDestinationType::Otlp => LogDestination::OpenTelemetry,
         }
     }
 }
@@ -108,6 +171,17 @@ pub enum LogFormat {
     Text,
 }
 
+/// Log destination type (CLI argument value)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum LogDestinationType {
+    /// Log to stdout
+    Stdout,
+    /// Log to a file
+    File,
+    /// Log to OpenTelemetry (OTLP)
+    Otlp,
+}
+
 /// Log output destination (computed from configuration)
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LogDestination<'a> {
@@ -128,16 +202,17 @@ pub enum LogDestination<'a> {
 ///
 /// ```no_run
 /// use stepflow_observability::{
-///     ObservabilityConfig, BinaryObservabilityConfig, LogFormat, LogDestination, init_observability
+///     ObservabilityConfig, BinaryObservabilityConfig, LogFormat, LogDestinationType, init_observability
 /// };
 ///
 /// let config = ObservabilityConfig {
 ///     log_level: log::LevelFilter::Info,
 ///     other_log_level: Some(log::LevelFilter::Warn),  // Separate level for dependencies
+///     log_destination: LogDestinationType::Stdout,
 ///     log_format: LogFormat::Json,
 ///     log_file: None,
 ///     trace_enabled: true,
-///     otlp_endpoint: None,
+///     otlp_endpoint: Some("http://localhost:4317".to_string()),
 /// };
 ///
 /// let binary_config = BinaryObservabilityConfig {
@@ -152,6 +227,9 @@ pub fn init_observability(
     config: &ObservabilityConfig,
     binary_config: BinaryObservabilityConfig,
 ) -> Result<ObservabilityGuard> {
+    // Validate configuration first
+    config.validate()?;
+
     // Initialize tracing first (so logger can access trace context)
     let trace_guard = if config.trace_enabled {
         Some(init_tracing(config, &binary_config)?)
@@ -163,8 +241,9 @@ pub fn init_observability(
     let log_guard = init_logging(config, &binary_config)?;
 
     Ok(ObservabilityGuard {
-        _log_guard: log_guard,
-        _trace_guard: trace_guard,
+        log_guard: Some(log_guard),
+        trace_guard,
+        closed: false,
     })
 }
 
@@ -172,9 +251,6 @@ fn init_logging(
     config: &ObservabilityConfig,
     binary_config: &BinaryObservabilityConfig,
 ) -> Result<LogGuard> {
-    use logforth::diagnostic::FastraceDiagnostic;
-    use logforth::filter::env_filter::EnvFilterBuilder;
-
     // Helper to convert log level to string for EnvFilter
     fn level_to_str(level: log::LevelFilter) -> &'static str {
         match level {
@@ -202,61 +278,29 @@ fn init_logging(
         Some(other_level) => {
             // Dual-level logging: separate dispatch for stepflow vs non-stepflow crates
 
-            // Build EnvFilter spec for stepflow crates: "stepflow_=<level>"
-            let stepflow_spec = format!("stepflow_={}", level_to_str(config.log_level));
-            let stepflow_filter = EnvFilterBuilder::from_spec(&stepflow_spec).build();
-
-            let destination = config.log_destination();
-            let format = config.log_format;
-
             // Dispatch 1: stepflow_* crates at the main log level
-            builder = builder.dispatch(|d| {
-                let mut d = d
-                    .filter(stepflow_filter)
-                    .diagnostic(FastraceDiagnostic::default());
-
-                if binary_config.include_run_diagnostic {
-                    d = d.diagnostic(RunDiagnostic);
-                }
-
-                d.append(create_appender(destination, format))
-            });
-
-            // Build EnvFilter spec for everything except stepflow: "<level>,stepflow_=off"
-            // This sets a global level and then disables stepflow crates
-            let other_spec = format!("{},stepflow_=off", level_to_str(other_level));
-            let other_filter = EnvFilterBuilder::from_spec(&other_spec).build();
+            builder = add_dispatch(
+                &format!("stepflow_={}", level_to_str(config.log_level)),
+                config,
+                binary_config,
+                builder,
+            );
 
             // Dispatch 2: non-stepflow crates at the other log level
-            builder = builder.dispatch(|d| {
-                let mut d = d
-                    .filter(other_filter)
-                    .diagnostic(FastraceDiagnostic::default());
-
-                if binary_config.include_run_diagnostic {
-                    d = d.diagnostic(RunDiagnostic);
-                }
-
-                d.append(create_appender(destination, format))
-            });
+            builder = add_dispatch(
+                &format!("{},stepflow_=off", level_to_str(other_level)),
+                config,
+                binary_config,
+                builder,
+            );
         }
         None => {
-            // Single-level logging: one dispatch chain for all crates with a global level filter
-            let filter_spec = level_to_str(config.log_level);
-            let filter = EnvFilterBuilder::from_spec(filter_spec).build();
-
-            let destination = config.log_destination();
-            let format = config.log_format;
-
-            builder = builder.dispatch(|d| {
-                let mut d = d.filter(filter).diagnostic(FastraceDiagnostic::default());
-
-                if binary_config.include_run_diagnostic {
-                    d = d.diagnostic(RunDiagnostic);
-                }
-
-                d.append(create_appender(destination, format))
-            });
+            builder = add_dispatch(
+                level_to_str(config.log_level),
+                config,
+                binary_config,
+                builder,
+            );
         }
     }
 
@@ -265,8 +309,43 @@ fn init_logging(
     Ok(LogGuard)
 }
 
+#[must_use]
+fn add_dispatch(
+    filter_spec: &str,
+    config: &ObservabilityConfig,
+    binary_config: &BinaryObservabilityConfig,
+    builder: logforth::starter_log::LogStarterBuilder,
+) -> logforth::starter_log::LogStarterBuilder {
+    use logforth::diagnostic::FastraceDiagnostic;
+    use logforth::filter::env_filter::EnvFilterBuilder;
+
+    let filter = EnvFilterBuilder::from_spec(filter_spec).build();
+    let destination = config.log_destination();
+    let format = config.log_format;
+
+    builder.dispatch(|d| {
+        let mut d = d.filter(filter).diagnostic(FastraceDiagnostic::default());
+
+        if binary_config.include_run_diagnostic {
+            d = d.diagnostic(RunDiagnostic);
+        }
+
+        d.append(create_appender(
+            destination,
+            format,
+            config.otlp_endpoint.as_deref(),
+            binary_config.service_name,
+        ))
+    })
+}
+
 /// Create an appender based on configuration
-fn create_appender(destination: LogDestination, format: LogFormat) -> Box<dyn logforth::Append> {
+fn create_appender(
+    destination: LogDestination,
+    format: LogFormat,
+    otlp_endpoint: Option<&str>,
+    service_name: &'static str,
+) -> Box<dyn logforth::Append> {
     use logforth::append;
     use logforth::layout::JsonLayout;
     use logforth::layout::TextLayout;
@@ -294,11 +373,33 @@ fn create_appender(destination: LogDestination, format: LogFormat) -> Box<dyn lo
             Box::new(file_appender)
         }
         (LogDestination::OpenTelemetry, _) => {
-            // TODO(#388): Implement OpenTelemetry log appender via logforth
-            // Logforth doesn't yet have built-in OTLP appender.
-            // For now, fall back to stdout with JSON layout.
-            // Alternative: Use opentelemetry-appender-log directly (requires different setup)
-            Box::new(append::Stdout::default().with_layout(JsonLayout::default()))
+            use logforth_append_opentelemetry::OpentelemetryLogBuilder;
+            use opentelemetry_otlp::LogExporter;
+            use opentelemetry_otlp::WithExportConfig;
+
+            // Use Zstd compression for efficient log transmission
+            // Provides ~50-80% bandwidth reduction with minimal CPU overhead
+            let log_exporter = LogExporter::builder()
+                .with_tonic()
+                .with_endpoint(otlp_endpoint.expect("Endpoint required for OTLP logging"))
+                .with_timeout(std::time::Duration::from_secs(5))
+                .with_compression(opentelemetry_otlp::Compression::Zstd)
+                .build()
+                .expect("Failed to create OTLP log exporter");
+
+            let builder = OpentelemetryLogBuilder::new(service_name, log_exporter)
+                // Add service.name as a resource attribute per OpenTelemetry spec
+                .label(
+                    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                    service_name,
+                )
+                .label(
+                    opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
+                    env!("CARGO_PKG_VERSION"),
+                );
+
+            // TODO: Add env, etc. labels (`builder.label("env", "production");`)
+            Box::new(builder.build())
         }
     }
 }
@@ -309,25 +410,26 @@ fn init_tracing(
 ) -> Result<TraceGuard> {
     if let Some(endpoint) = &config.otlp_endpoint {
         // Create OpenTelemetry resource with service metadata
-        let resource = std::borrow::Cow::Owned(opentelemetry_sdk::Resource::new(vec![
-            opentelemetry::KeyValue::new(
-                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-                binary_config.service_name,
-            ),
-        ]));
+        let resource = std::borrow::Cow::Owned(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name(binary_config.service_name)
+                .build(),
+        );
 
         // Create instrumentation library metadata
-        let instrumentation_lib = opentelemetry::InstrumentationLibrary::builder("stepflow")
+        let instrumentation_lib = opentelemetry::InstrumentationScope::builder("stepflow")
             .with_version(env!("CARGO_PKG_VERSION"))
             .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
             .build();
 
-        // Create OTLP exporter
-        let exporter = opentelemetry_otlp::new_exporter()
-            .tonic()
+        // Create OTLP trace exporter with Zstd compression
+        // Provides ~50-80% bandwidth reduction with minimal CPU overhead
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
             .with_endpoint(endpoint)
             .with_timeout(std::time::Duration::from_secs(5))
-            .build_span_exporter()
+            .with_compression(opentelemetry_otlp::Compression::Zstd)
+            .build()
             .map_err(|e| {
                 error_stack::report!(ObservabilityError::OtlpInitError)
                     .attach_printable(format!("Failed to create OTLP exporter: {}", e))
@@ -336,7 +438,6 @@ fn init_tracing(
         // Create OpenTelemetry reporter
         let reporter = fastrace_opentelemetry::OpenTelemetryReporter::new(
             exporter,
-            opentelemetry::trace::SpanKind::Internal,
             resource,
             instrumentation_lib,
         );
@@ -354,19 +455,102 @@ fn init_tracing(
 }
 
 /// Guard that ensures proper cleanup of observability systems
+///
+/// # Important
+///
+/// You must call [`ObservabilityGuard::close()`] before dropping this guard.
+/// Failing to do so will result in a panic, as the guard needs to flush telemetry
+/// data while the async runtime is still available.
+///
+/// # Example
+///
+/// ```no_run
+/// # use stepflow_observability::{ObservabilityConfig, BinaryObservabilityConfig, LogDestinationType, init_observability};
+/// # #[tokio::main]
+/// # async fn main() {
+/// # let config = ObservabilityConfig {
+/// #     log_level: log::LevelFilter::Info,
+/// #     other_log_level: None,
+/// #     log_destination: LogDestinationType::Stdout,
+/// #     log_format: stepflow_observability::LogFormat::Text,
+/// #     log_file: None,
+/// #     trace_enabled: false,
+/// #     otlp_endpoint: None,
+/// # };
+/// # let binary_config = BinaryObservabilityConfig {
+/// #     service_name: "my-service",
+/// #     include_run_diagnostic: true,
+/// # };
+/// let guard = init_observability(&config, binary_config).unwrap();
+///
+/// // ... application logic ...
+///
+/// // Explicitly close before dropping
+/// guard.close().await.expect("Failed to flush observability data");
+/// # }
+/// ```
 pub struct ObservabilityGuard {
-    _log_guard: LogGuard,
-    _trace_guard: Option<TraceGuard>,
+    #[allow(dead_code)] // Kept for future log flushing functionality
+    log_guard: Option<LogGuard>,
+    trace_guard: Option<TraceGuard>,
+    closed: bool,
+}
+
+impl ObservabilityGuard {
+    /// Explicitly close the observability guard and flush all pending telemetry.
+    ///
+    /// This must be called before the guard is dropped. It will flush both logs
+    /// and traces to their respective destinations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if flushing fails. This can happen if:
+    /// - The OTLP endpoint is unreachable
+    /// - The tokio runtime is shutting down
+    /// - Log/trace exporters encounter errors
+    pub async fn close(mut self) -> Result<()> {
+        self.closed = true;
+
+        // Flush logs first - this calls the logger's flush() method which will
+        // flush all appenders including OTLP
+        log::logger().flush();
+
+        // Flush traces
+        if self.trace_guard.is_some() {
+            fastrace::flush();
+
+            // Yield to the tokio runtime to allow async OTLP export to complete
+            // The flush() queues spans but the actual network I/O is async
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+
+        Ok(())
+    }
+
+    /// Leak the guard without flushing.
+    ///
+    /// This is intended for tests where we don't care about flushing telemetry
+    /// at the end and want to avoid the panic on drop.
+    #[doc(hidden)]
+    pub fn leak(mut self) {
+        self.closed = true;
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for ObservabilityGuard {
+    fn drop(&mut self) {
+        if !self.closed {
+            panic!(
+                "ObservabilityGuard must be explicitly closed by calling .close() before dropping. \
+                This ensures telemetry data is flushed while the async runtime is still available."
+            );
+        }
+    }
 }
 
 struct LogGuard;
 struct TraceGuard;
-
-impl Drop for TraceGuard {
-    fn drop(&mut self) {
-        fastrace::flush();
-    }
-}
 
 /// Errors that can occur during observability initialization
 #[derive(Debug, thiserror::Error)]
@@ -377,6 +561,8 @@ pub enum ObservabilityError {
     TraceInitError,
     #[error("Failed to initialize OTLP")]
     OtlpInitError,
+    #[error("Invalid observability configuration")]
+    ConfigValidationError,
 }
 
 pub type Result<T> = std::result::Result<T, error_stack::Report<ObservabilityError>>;

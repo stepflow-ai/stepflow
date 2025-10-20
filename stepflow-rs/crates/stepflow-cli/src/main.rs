@@ -22,10 +22,18 @@ async fn run(cli: Cli) -> Result<()> {
         service_name: "stepflow-cli",
         include_run_diagnostic: true,
     };
-    let _guard = init_observability(&cli.observability, binary_config)
+    let guard = init_observability(&cli.observability, binary_config)
         .change_context(stepflow_cli::MainError::TracingInit)?;
 
-    cli.execute().await
+    let result = cli.execute().await;
+
+    // Explicitly close observability to flush telemetry while tokio runtime is still active
+    guard
+        .close()
+        .await
+        .change_context(stepflow_cli::MainError::TracingInit)?;
+
+    result
 }
 
 #[tokio::main]

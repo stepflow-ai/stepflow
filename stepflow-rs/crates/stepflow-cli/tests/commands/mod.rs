@@ -34,5 +34,17 @@ fn stepflow() -> Command {
     command.current_dir(path);
     command.arg("--log-file=/dev/null");
     command.arg("--omit-stack-trace");
+
+    // Clear STEPFLOW environment variables to isolate tests from user's shell config
+    // This prevents test failures when user has STEPFLOW_TRACE_ENABLED=true or
+    // other observability settings that would require OTLP endpoints
+    command.env_remove("STEPFLOW_TRACE_ENABLED");
+    command.env_remove("STEPFLOW_OTLP_ENDPOINT");
+    command.env_remove("STEPFLOW_LOG_DESTINATION");
+    command.env_remove("STEPFLOW_LOG_LEVEL");
+    command.env_remove("STEPFLOW_LOG_FORMAT");
+    command.env_remove("STEPFLOW_LOG_FILE");
+    command.env_remove("STEPFLOW_OTHER_LOG_LEVEL");
+
     command
 }

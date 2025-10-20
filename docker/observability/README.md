@@ -20,7 +20,7 @@ Complete observability solution for Stepflow with metrics, logs, and distributed
 
 ```bash
 cd docker/observability
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 2. Configure Stepflow to Export Telemetry
@@ -30,6 +30,16 @@ Set these environment variables when running Stepflow:
 ```bash
 export STEPFLOW_TRACE_ENABLED=true
 export STEPFLOW_OTLP_ENDPOINT=http://localhost:4317
+export STEPFLOW_LOG_DESTINATION=otlp  # Send logs to OTLP endpoint
+export STEPFLOW_LOG_LEVEL=info
+```
+
+Or to keep logs local while sending traces:
+
+```bash
+export STEPFLOW_TRACE_ENABLED=true
+export STEPFLOW_OTLP_ENDPOINT=http://localhost:4317
+export STEPFLOW_LOG_DESTINATION=stdout  # Keep logs local
 export STEPFLOW_LOG_FORMAT=json
 export STEPFLOW_LOG_LEVEL=info
 ```
@@ -38,9 +48,10 @@ export STEPFLOW_LOG_LEVEL=info
 
 ```bash
 cd stepflow-rs
-cargo run -- run --flow examples/basic/workflow.yaml \
-  --input examples/basic/input1.json \
-  --config examples/basic/stepflow-config.yml
+cargo run --bin=stepflow -- \
+  run --flow ../examples/basic/workflow.yaml \
+  --input ../examples/basic/input1.json \
+  --config ../examples/basic/stepflow-config.yml
 ```
 
 ### 4. Access the UIs
@@ -122,18 +133,28 @@ cargo run -- run --flow examples/basic/workflow.yaml \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `STEPFLOW_TRACE_ENABLED` | `false` | Enable distributed tracing |
-| `STEPFLOW_OTLP_ENDPOINT` | - | OTLP endpoint (e.g., `http://localhost:4317`) |
+| `STEPFLOW_OTLP_ENDPOINT` | - | OTLP endpoint (e.g., `http://localhost:4317`). Required when `trace_enabled=true` or `log_destination=otlp` |
+| `STEPFLOW_LOG_DESTINATION` | `stdout` | Where to send logs: `stdout`, `file`, or `otlp` |
 | `STEPFLOW_LOG_LEVEL` | `info` | Log level: off, error, warn, info, debug, trace |
 | `STEPFLOW_OTHER_LOG_LEVEL` | - | Log level for dependencies (separate from Stepflow logs) |
-| `STEPFLOW_LOG_FORMAT` | `text` | Log format: `text` or `json` |
-| `STEPFLOW_LOG_FILE` | - | Log to file instead of stdout |
+| `STEPFLOW_LOG_FORMAT` | `text` | Log format: `text` or `json` (only applies to stdout/file destinations) |
+| `STEPFLOW_LOG_FILE` | - | Log file path (required when `log_destination=file`) |
 
 ### CLI Arguments
 
 ```bash
+# Send both logs and traces to OTLP
 stepflow run --flow workflow.yaml \
+  --log-destination otlp \
   --log-level debug \
+  --trace-enabled \
+  --otlp-endpoint http://localhost:4317
+
+# Or keep logs local while sending traces
+stepflow run --flow workflow.yaml \
+  --log-destination stdout \
   --log-format json \
+  --log-level debug \
   --trace-enabled \
   --otlp-endpoint http://localhost:4317
 ```
@@ -219,9 +240,12 @@ Pre-configured Grafana dashboards (auto-loaded on startup):
 ### No Logs in Loki
 
 **Check:**
-1. Verify `STEPFLOW_LOG_FORMAT=json` (structured logs work better)
-2. Check Loki logs: `docker-compose logs loki`
-3. Verify OTel Collector → Loki pipeline: `docker-compose logs otel-collector | grep loki`
+1. Verify `STEPFLOW_LOG_DESTINATION=otlp` (logs must be sent to OTLP endpoint)
+2. Verify `STEPFLOW_OTLP_ENDPOINT=http://localhost:4317`
+3. Check Loki logs: `docker-compose logs loki`
+4. Verify OTel Collector → Loki pipeline: `docker-compose logs otel-collector | grep loki`
+
+**Note:** When `log_destination=stdout` or `log_destination=file`, logs are NOT sent to OTLP and won't appear in Loki.
 
 ### No Metrics in Prometheus
 

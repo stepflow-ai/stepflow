@@ -13,17 +13,19 @@
 //! Basic example demonstrating logging with automatic trace context injection
 
 use stepflow_observability::{
-    BinaryObservabilityConfig, LogFormat, ObservabilityConfig, fastrace::prelude::*,
-    init_observability,
+    BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig,
+    fastrace::prelude::*, init_observability,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let config = ObservabilityConfig {
         log_level: log::LevelFilter::Debug,
         other_log_level: None,
+        log_destination: LogDestinationType::Stdout,
         log_format: LogFormat::Json,
         log_file: None,
-        trace_enabled: true,
+        trace_enabled: false,
         otlp_endpoint: None,
     };
 
@@ -31,7 +33,7 @@ fn main() {
         service_name: "example",
         include_run_diagnostic: false, // No run diagnostic for this example
     };
-    let _guard = init_observability(&config, binary_config).unwrap();
+    let guard = init_observability(&config, binary_config).unwrap();
 
     // Test basic logging
     log::info!("Starting example - no trace context");
@@ -72,5 +74,9 @@ fn main() {
 
     log::info!("After root span closed");
 
-    // Note: The guard will flush traces when dropped
+    // Explicitly close the guard to flush telemetry
+    guard
+        .close()
+        .await
+        .expect("Failed to flush observability data");
 }

@@ -213,11 +213,33 @@ impl Context for StepflowExecutor {
 
             // Spawn the execution
             tokio::spawn(async move {
+                use stepflow_observability::fastrace::prelude::*;
+
                 log::info!("Executing workflow using tracker-based execution");
                 let state_store = executor.state_store.clone();
 
-                let result =
-                    execute_workflow(executor, flow, flow_id, run_id, input, state_store).await;
+                // Create root span for this flow execution
+                // Design decision: Use run_id as the trace_id
+                //
+                // Each workflow run is treated as a single distributed trace, with the run_id
+                // serving as both the business identifier and the OpenTelemetry trace ID.
+                //
+                // Benefits:
+                // - Direct correlation: Users can query traces by workflow run ID in Jaeger
+                // - Simplified mental model: One ID to track workflow execution
+                // - Better UX: "Show trace for run abc-123" vs "Find trace where run_id=abc-123"
+                //
+                // Trade-offs:
+                // - Semantic overlap between business ID and trace ID
+                // - Less flexible if we need multiple traces per run in the future
+                let root_span = Span::root(
+                    "flow_execution",
+                    SpanContext::new(TraceId(run_id.as_u128()), SpanId::default()),
+                );
+
+                let result = execute_workflow(executor, flow, flow_id, run_id, input, state_store)
+                    .in_span(root_span)
+                    .await;
 
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,
