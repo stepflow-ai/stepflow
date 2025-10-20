@@ -12,7 +12,7 @@
 
 use stepflow_observability::{
     BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig,
-    ObservabilityGuard, init_observability,
+    init_observability,
 };
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();

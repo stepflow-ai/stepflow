@@ -63,13 +63,13 @@ Options:
           [default: json]
           [possible values: json, yaml]
 
-      --omit-stack-trace
-          Omit stack traces (line numbers of errors)
-
       --output <FILE>
           Path to write the output to.
           
           If not set, will write to stdout.
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
 
   -h, --help
           Print help (see a summary with '-h')

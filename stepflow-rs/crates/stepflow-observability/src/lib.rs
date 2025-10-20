@@ -95,12 +95,8 @@ impl ObservabilityConfig {
                 }
             }
             LogDestinationType::Stdout => {
-                if self.log_file.is_some() {
-                    return Err(
-                        error_stack::report!(ObservabilityError::ConfigValidationError)
-                            .attach_printable("log_destination is 'stdout' but log_file is set"),
-                    );
-                }
+                // Allow log_file to be set with stdout destination for backward compatibility
+                // The log_destination() method will auto-infer 'file' destination when log_file is set
             }
             LogDestinationType::Otlp => {
                 if self.log_file.is_some() {
@@ -132,11 +128,22 @@ impl ObservabilityConfig {
     }
 
     /// Get the effective log destination for internal use
+    ///
+    /// Auto-infers file destination when log_file is set, even if log_destination is stdout.
+    /// This provides backward compatibility with the old --log-file behavior.
     fn log_destination(&self) -> LogDestination<'_> {
+        // If log_file is set, always use file destination (backward compatibility)
+        if let Some(log_file) = &self.log_file {
+            return LogDestination::File(log_file);
+        }
+
         match self.log_destination {
             LogDestinationType::Stdout => LogDestination::Stdout,
             LogDestinationType::File => {
-                LogDestination::File(self.log_file.as_ref().expect("Validated in validate()"))
+                // This case is caught by validation - log_file must be set
+                panic!(
+                    "log_destination is 'file' but log_file is not set (should be caught by validate())"
+                )
             }
             LogDestinationType::Otlp => LogDestination::OpenTelemetry,
         }
@@ -459,6 +466,8 @@ fn init_tracing(
 ///
 /// ```no_run
 /// # use stepflow_observability::{ObservabilityConfig, BinaryObservabilityConfig, LogDestinationType, init_observability};
+/// # #[tokio::main]
+/// # async fn main() {
 /// # let config = ObservabilityConfig {
 /// #     log_level: log::LevelFilter::Info,
 /// #     other_log_level: None,
@@ -477,7 +486,8 @@ fn init_tracing(
 /// // ... application logic ...
 ///
 /// // Explicitly close before dropping
-/// guard.close().expect("Failed to flush observability data");
+/// guard.close().await.expect("Failed to flush observability data");
+/// # }
 /// ```
 pub struct ObservabilityGuard {
     #[allow(dead_code)] // Kept for future log flushing functionality

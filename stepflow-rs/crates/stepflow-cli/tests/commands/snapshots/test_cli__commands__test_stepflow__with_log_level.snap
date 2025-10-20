@@ -38,8 +38,19 @@ Options:
           
           [env: STEPFLOW_OTHER_LOG_LEVEL=]
 
+      --log-destination <LOG_DESTINATION>
+          Log output destination
+
+          Possible values:
+          - stdout: Log to stdout
+          - file:   Log to a file
+          - otlp:   Log to OpenTelemetry (OTLP)
+          
+          [env: STEPFLOW_LOG_DESTINATION=]
+          [default: stdout]
+
       --log-format <LOG_FORMAT>
-          Log output format
+          Log output format (only applies to stdout and file destinations)
 
           Possible values:
           - json: Structured JSON logs
@@ -49,7 +60,7 @@ Options:
           [default: text]
 
       --log-file <LOG_FILE>
-          Log to file (instead of stdout)
+          Log file path (only applies when log_destination is file)
           
           [env: STEPFLOW_LOG_FILE=]
 
@@ -59,7 +70,7 @@ Options:
           [env: STEPFLOW_TRACE_ENABLED=]
 
       --otlp-endpoint <OTLP_ENDPOINT>
-          OTLP endpoint (e.g., "http://localhost:4317") Used for both trace and log export when log_destination is LogDestination::OpenTelemetry
+          OTLP endpoint (e.g., "http://localhost:4317") Required when log_destination is otlp or when trace_enabled is true
           
           [env: STEPFLOW_OTLP_ENDPOINT=]
 

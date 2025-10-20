@@ -24,7 +24,7 @@ use stepflow_execution::StepflowExecutor;
 use stepflow_mock::MockPlugin;
 use stepflow_observability::{
     BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig,
-    ObservabilityGuard, init_observability,
+    init_observability,
 };
 use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
