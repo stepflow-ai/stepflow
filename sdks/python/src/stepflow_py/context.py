@@ -38,6 +38,7 @@ from stepflow_py.generated_protocol import (
     Method,
     MethodError,
     MethodSuccess,
+    ObservabilityContext,
     PutBlobParams,
     PutBlobResult,
     SubmitBatchParams,
@@ -68,6 +69,7 @@ class StepflowContext:
         run_id: str | None = None,
         flow_id: str | None = None,
         attempt: int = 1,
+        observability: ObservabilityContext | None = None,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
@@ -76,6 +78,7 @@ class StepflowContext:
         self._run_id = run_id
         self._flow_id = flow_id
         self._attempt = attempt
+        self._observability = observability
 
     async def _send_request(
         self, method: Method, params: Any, result_type: type[T]
@@ -127,7 +130,9 @@ class StepflowContext:
         Returns:
             The blob ID (SHA-256 hash) for the stored data
         """
-        params = PutBlobParams(data=data, blob_type=blob_type)
+        params = PutBlobParams(
+            data=data, blob_type=blob_type, observability=self._observability
+        )
         response = await self._send_request(Method.blobs_put, params, PutBlobResult)
         return response.blob_id
 
@@ -140,7 +145,9 @@ class StepflowContext:
         Returns:
             The JSON data associated with the blob ID
         """
-        params = {"blob_id": blob_id}
+        from stepflow_py.generated_protocol import GetBlobParams
+
+        params = GetBlobParams(blob_id=blob_id, observability=self._observability)
         response = await self._send_request(Method.blobs_get, params, GetBlobResult)
         return response.data
 
@@ -215,6 +222,7 @@ class StepflowContext:
         params = EvaluateFlowParams(
             flow_id=flow_id,
             input=input,
+            observability=self._observability,
         )
         evaluate_result = await self._send_request(
             Method.flows_evaluate, params, EvaluateFlowResult
@@ -257,6 +265,7 @@ class StepflowContext:
         params = GetFlowMetadataParams(
             step_id=target_step_id,
             flow_id=self._flow_id,
+            observability=self._observability,
         )
         response = await self._send_request(
             Method.flows_get_metadata, params, GetFlowMetadataResult
@@ -315,6 +324,7 @@ class StepflowContext:
             flow_id=flow_id,
             inputs=inputs,
             max_concurrency=max_concurrency,
+            observability=self._observability,
         )
         response = await self._send_request(
             Method.flows_submit_batch, params, SubmitBatchResult
@@ -342,6 +352,7 @@ class StepflowContext:
             batch_id=batch_id,
             wait=wait,
             include_results=include_results,
+            observability=self._observability,
         )
         response = await self._send_request(
             Method.flows_get_batch, params, GetBatchResult

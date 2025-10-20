@@ -66,6 +66,7 @@ class StepflowStdioServer:
         run_id = None
         flow_id = None
         attempt = 1
+        observability = None
 
         # Extract execution parameters from component execution requests
         if (
@@ -73,10 +74,11 @@ class StepflowStdioServer:
             and message.method == Method.components_execute
         ):
             assert isinstance(message.params, ComponentExecuteParams)
-            step_id = message.params.step_id
-            run_id = message.params.run_id
-            flow_id = message.params.flow_id
             attempt = message.params.attempt
+            observability = message.params.observability
+            step_id = observability.step_id
+            run_id = observability.run_id
+            flow_id = observability.flow_id
 
         return StepflowContext(
             self._outgoing_queue,
@@ -86,6 +88,7 @@ class StepflowStdioServer:
             run_id=run_id,
             flow_id=flow_id,
             attempt=attempt,
+            observability=observability,
         )
 
     def get_components(self):

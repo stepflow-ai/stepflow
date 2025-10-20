@@ -17,13 +17,16 @@ use stepflow_core::{BlobId, BlobType};
 
 use crate::protocol::Method;
 
-use super::ProtocolMethod;
+use super::{ObservabilityContext, ProtocolMethod};
 
 /// Sent from the component server to the Stepflow to retrieve the content of a specific blob.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetBlobParams {
     /// The ID of the blob to retrieve.
     pub blob_id: BlobId,
+    /// Observability context for tracing bidirectional calls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
 }
 
 /// Sent from the Stepflow back to the component server with the blob data and metadata.
@@ -43,6 +46,9 @@ impl ProtocolMethod for GetBlobParams {
 pub struct PutBlobParams {
     pub data: ValueRef,
     pub blob_type: BlobType,
+    /// Observability context for tracing bidirectional calls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
 }
 
 /// Sent from the Stepflow back to the component server with the ID of the stored blob.

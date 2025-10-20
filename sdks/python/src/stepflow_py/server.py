@@ -360,26 +360,71 @@ class StepflowServer:
             raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
         try:
-            # Parse input using component's input type
-            input_value: Any = msgspec.convert(params.input, type=component.input_type)
+            from opentelemetry import trace as otel_trace
 
-            # Execute component with or without context
-            args = [input_value]
-            if context is not None:
-                args.append(context)
+            from stepflow_py.observability import extract_trace_context, get_tracer
 
-            if inspect.iscoroutinefunction(component.function):
-                output = await component.function(*args)
-            else:
-                output = component.function(*args)
+            # Create a child span if trace context is available
+            tracer = get_tracer(__name__)
+            span_context = None
+            if params.observability.trace_id and params.observability.span_id:
+                span_context = extract_trace_context(
+                    params.observability.trace_id, params.observability.span_id
+                )
 
-            result = ComponentExecuteResult(output=output)
-            print(
-                f"Executed component {params.component} "
-                f"with input {input_value} produced {output}",
-                file=sys.stderr,
-            )
-            return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+            # Create OpenTelemetry context from span context
+            otel_context = None
+            if span_context:
+                otel_context = otel_trace.set_span_in_context(
+                    otel_trace.NonRecordingSpan(span_context)
+                )
+
+            # Create span for component execution
+            with tracer.start_as_current_span(
+                f"component:{params.component}",
+                context=otel_context,
+                attributes={
+                    "component": params.component,
+                    "attempt": params.attempt,
+                    **(
+                        {"run_id": params.observability.run_id}
+                        if params.observability.run_id
+                        else {}
+                    ),
+                    **(
+                        {"flow_id": params.observability.flow_id}
+                        if params.observability.flow_id
+                        else {}
+                    ),
+                    **(
+                        {"step_id": params.observability.step_id}
+                        if params.observability.step_id
+                        else {}
+                    ),
+                },
+            ):
+                # Parse input using component's input type
+                input_value: Any = msgspec.convert(
+                    params.input, type=component.input_type
+                )
+
+                # Execute component with or without context
+                args = [input_value]
+                if context is not None:
+                    args.append(context)
+
+                if inspect.iscoroutinefunction(component.function):
+                    output = await component.function(*args)
+                else:
+                    output = component.function(*args)
+
+                result = ComponentExecuteResult(output=output)
+                print(
+                    f"Executed component {params.component} "
+                    f"with input {input_value} produced {output}",
+                    file=sys.stderr,
+                )
+                return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
 
         except SkipStep as e:
             # Component requested to be skipped - return FlowResultSkipped

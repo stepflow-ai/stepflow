@@ -14,6 +14,7 @@ doctest = false
 async-stream.workspace = true
 erased-serde.workspace = true
 error-stack.workspace = true
+fastrace.workspace = true
 futures.workspace = true
 indexmap.workspace = true
 reqwest.workspace = true

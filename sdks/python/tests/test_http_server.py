@@ -35,6 +35,7 @@ from stepflow_py.generated_protocol import (
     MethodRequest,
     MethodSuccess,
     Notification,
+    ObservabilityContext,
 )
 from stepflow_py.http_server import StepflowHttpServer
 from stepflow_py.server import StepflowServer
@@ -196,10 +197,14 @@ class ServerHelper:
                 params=ComponentExecuteParams(
                     component=component or "/simple_component",
                     input=input_data or {"message": "test"},
-                    step_id="test_step",
-                    run_id="test-run-id",
-                    flow_id="test-flow-id",
                     attempt=1,
+                    observability=ObservabilityContext(
+                        trace_id=None,
+                        span_id=None,
+                        run_id="test-run-id",
+                        flow_id="test-flow-id",
+                        step_id="test_step",
+                    ),
                 ),
             )
         else:

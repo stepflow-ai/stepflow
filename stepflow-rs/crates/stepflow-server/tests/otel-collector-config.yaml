@@ -1,0 +1,38 @@
+# OpenTelemetry Collector configuration for integration testing
+# This configuration receives traces and logs via OTLP and exports them to JSONL files
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  # Export traces to a JSONL file for test verification
+  file/traces:
+    path: /output/traces.jsonl
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+
+  # Export logs to a JSONL file for test verification
+  file/logs:
+    path: /output/logs.jsonl
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+
+  # Also log to console for debugging
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file/traces, debug]
+    logs:
+      receivers: [otlp]
+      exporters: [file/logs, debug]

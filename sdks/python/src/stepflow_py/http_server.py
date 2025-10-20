@@ -263,12 +263,14 @@ class StepflowHttpServer:
                 run_id = None
                 flow_id = None
                 attempt = 1
+                observability = None
                 if request.method == Method.components_execute:
                     assert isinstance(request.params, ComponentExecuteParams)
-                    step_id = request.params.step_id
-                    run_id = request.params.run_id
-                    flow_id = request.params.flow_id
                     attempt = request.params.attempt
+                    observability = request.params.observability
+                    step_id = observability.step_id
+                    run_id = observability.run_id
+                    flow_id = observability.flow_id
 
                 context = StepflowContext(
                     outgoing_queue=outgoing_queue,
@@ -278,6 +280,7 @@ class StepflowHttpServer:
                     run_id=run_id,
                     flow_id=flow_id,
                     attempt=attempt,
+                    observability=observability,
                 )
                 return StreamingResponse(
                     self._execute_with_streaming_context(

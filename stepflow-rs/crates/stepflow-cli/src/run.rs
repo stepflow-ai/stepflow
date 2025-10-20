@@ -23,7 +23,7 @@ pub async fn run(
     flow: Arc<Flow>,
     flow_id: BlobId,
     input: stepflow_core::workflow::ValueRef,
-) -> Result<FlowResult> {
+) -> Result<(uuid::Uuid, FlowResult)> {
     let run_id = executor
         .submit_flow(flow, flow_id, input)
         .await
@@ -32,5 +32,5 @@ pub async fn run(
         .flow_result(run_id)
         .await
         .change_context(MainError::FlowExecution)?;
-    Ok(output)
+    Ok((run_id, output))
 }

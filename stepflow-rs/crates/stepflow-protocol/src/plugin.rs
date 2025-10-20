@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
@@ -29,7 +28,8 @@ use tokio::sync::RwLock;
 use crate::error::TransportError;
 use crate::http::{HttpClient, HttpClientHandle};
 use crate::protocol::{
-    ComponentExecuteParams, ComponentInfoParams, ComponentListParams, InitializeParams, Initialized,
+    ComponentExecuteParams, ComponentInfoParams, ComponentListParams, InitializeParams,
+    Initialized, ObservabilityContext,
 };
 use crate::stdio::{
     client::{StdioClient, StdioClientHandle},
@@ -182,20 +182,8 @@ impl StepflowPlugin {
         input: &ValueRef,
         attempt: u32,
     ) -> Result<FlowResult> {
-        let step_id = context
-            .step_id()
-            .ok_or_else(|| {
-                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing step ID")))
-            })?
-            .to_owned();
-
-        let run_id = context.run_id();
-        let flow_id = context
-            .flow_id()
-            .ok_or_else(|| {
-                error_stack::report!(PluginError::Internal(Cow::Borrowed("missing flow ID")))
-            })?
-            .clone();
+        // Create observability context from execution context
+        let observability = ObservabilityContext::from_execution_context(context);
 
         // Use get_or_create_client_handle to handle reinitialization after restart
         let client_handle = self
@@ -205,10 +193,8 @@ impl StepflowPlugin {
             .method(&ComponentExecuteParams {
                 component: component.clone(),
                 input: input.clone(),
-                step_id,
-                run_id: run_id.to_string(),
-                flow_id,
                 attempt,
+                observability,
             })
             .await
             .change_context(PluginError::Execution)?;
@@ -247,9 +233,17 @@ impl Plugin for StepflowPlugin {
     async fn init(&self, context: &Arc<dyn Context>) -> Result<()> {
         let client = self.create_client(context.clone()).await?;
 
+        // Create observability context for initialization (trace only, no flow/run)
+        let observability = ObservabilityContext::from_current_span();
+
         client
             .method(&InitializeParams {
                 runtime_protocol_version: 1,
+                observability: if observability.trace_id.is_some() {
+                    Some(observability)
+                } else {
+                    None
+                },
             })
             .await
             .change_context(PluginError::Initializing)?;

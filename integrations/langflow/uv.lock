@@ -9065,6 +9065,9 @@ source = { editable = "../../sdks/python" }
 dependencies = [
     { name = "jsonschema" },
     { name = "msgspec" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-sdk" },
     { name = "types-jsonschema" },
 ]
 
@@ -9074,6 +9077,9 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.17.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3" },
     { name = "msgspec", specifier = ">=0.19.0" },
+    { name = "opentelemetry-api", specifier = ">=1.20.0" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.20.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
     { name = "sse-starlette", marker = "extra == 'http'", specifier = ">=1.6.5" },
     { name = "types-jsonschema", specifier = ">=4.17.0" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },

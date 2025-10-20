@@ -34,9 +34,26 @@ from stepflow_py.generated_protocol import (
     InitializeParams,
     Method,
     MethodRequest,
+    ObservabilityContext,
 )
 from stepflow_py.server import ComponentEntry, StepflowServer
 from stepflow_py.stdio_server import StepflowStdioServer
+
+
+# Helper function to create test observability context
+def create_test_observability(
+    step_id: str = "test_step",
+    run_id: str = "test-run-id",
+    flow_id: str = "test-flow-id",
+) -> ObservabilityContext:
+    """Create an ObservabilityContext for testing."""
+    return ObservabilityContext(
+        trace_id=None,
+        span_id=None,
+        run_id=run_id,
+        flow_id=flow_id,
+        step_id=step_id,
+    )
 
 
 # Test message classes
@@ -216,10 +233,8 @@ async def test_handle_component_execute(server):
         params=ComponentExecuteParams(
             component="/test_component",
             input={"name": "Alice", "age": 25},
-            step_id="test_step",
-            run_id="test-run-id",
-            flow_id="test-flow-id",
             attempt=1,
+            observability=create_test_observability(),
         ),
     )
     response = await server.handle_message(request)
@@ -246,10 +261,8 @@ async def test_handle_component_execute_invalid_input(server):
         params=ComponentExecuteParams(
             component="/test_component",
             input={"invalid": "input"},
-            step_id="test_step",
-            run_id="test-run-id",
-            flow_id="test-flow-id",
             attempt=1,
+            observability=create_test_observability(),
         ),
     )
 
@@ -332,10 +345,8 @@ async def test_component_execute_with_context(server):
         params=ComponentExecuteParams(
             component="/context_component",
             input={"name": "Alice", "age": 25},
-            step_id="test_step",
-            run_id="test-run-id",
-            flow_id="test-flow-id",
             attempt=1,
+            observability=create_test_observability(),
         ),
     )
 
@@ -370,10 +381,8 @@ async def test_server_responses_include_jsonrpc(server):
         params=ComponentExecuteParams(
             component="/test_component",
             input={"name": "Test", "age": 30},
-            step_id="test_step",
-            run_id="test-run-id",
-            flow_id="test-flow-id",
             attempt=1,
+            observability=create_test_observability(),
         ),
     )
 
@@ -451,10 +460,8 @@ def test_requires_context():
                 params=ComponentExecuteParams(
                     component="/simple",
                     input={"message": "test"},
-                    step_id="test_step",
-                    run_id="test-run-id",
-                    flow_id="test-flow-id",
                     attempt=1,
+                    observability=create_test_observability(),
                 ),
             ),
             "expected": False,
@@ -469,10 +476,8 @@ def test_requires_context():
                 params=ComponentExecuteParams(
                     component="/context",
                     input={"message": "test"},
-                    step_id="test_step",
-                    run_id="test-run-id",
-                    flow_id="test-flow-id",
                     attempt=1,
+                    observability=create_test_observability(),
                 ),
             ),
             "expected": True,
@@ -487,10 +492,8 @@ def test_requires_context():
                 params=ComponentExecuteParams(
                     component="/nonexistent",
                     input={"message": "test"},
-                    step_id="test_step",
-                    run_id="test-run-id",
-                    flow_id="test-flow-id",
                     attempt=1,
+                    observability=create_test_observability(),
                 ),
             ),
             "expected": False,

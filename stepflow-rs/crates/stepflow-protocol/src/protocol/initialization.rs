@@ -15,13 +15,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::Method;
 
-use super::{ProtocolMethod, ProtocolNotification};
+use super::{ObservabilityContext, ProtocolMethod, ProtocolNotification};
 
 /// Sent from Stepflow to the component server to begin the initialization process.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct InitializeParams {
     /// Maximum version of the protocol being used by the Stepflow runtime.
     pub runtime_protocol_version: u32,
+    /// Observability context for tracing initialization (trace context only, no flow/run).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
 }
 
 /// Sent from the component server back to Stepflow with the result of initialization.

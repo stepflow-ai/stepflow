@@ -51,7 +51,7 @@ cd stepflow-rs
 cargo run --bin=stepflow -- \
   run --flow ../examples/basic/workflow.yaml \
   --input ../examples/basic/input1.json \
-  --config ../examples/basic/stepflow-config.yml
+  --config ../examples/basic/stepflow-config-tracing.yml
 ```
 
 ### 4. Access the UIs

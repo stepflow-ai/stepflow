@@ -1,0 +1,50 @@
+# Stepflow configuration with distributed tracing enabled
+#
+# This configuration enables OpenTelemetry tracing for both the Stepflow runtime
+# and the Python component server, sending traces to the same OTLP collector endpoint.
+#
+# Prerequisites:
+# - OTLP collector running (e.g., using docker-compose from docker/observability/)
+# - Set these environment variables for the Stepflow runtime:
+#     export STEPFLOW_TRACE_ENABLED=true
+#     export STEPFLOW_OTLP_ENDPOINT=http://localhost:4317
+#     export STEPFLOW_LOG_DESTINATION=otlp
+#     export STEPFLOW_LOG_LEVEL=info
+#
+# Usage:
+#   cargo run --bin stepflow -- run --flow examples/basic/workflow.yaml \
+#     --input-json '{"m": 3, "n": 4}' \
+#     --config examples/basic/stepflow-config-tracing.yml
+#
+# The run_id will be output to stderr and can be used to query traces:
+#   run_id: 6de7d554e5c44c3abfb0313b93579360
+#
+# Query traces by run_id in your observability platform (e.g., Jaeger, Grafana Tempo)
+# The run_id is formatted without hyphens for Jaeger trace ID compatibility
+
+plugins:
+  builtin:
+    type: builtin
+
+  python:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "stepflow_py"]
+    # Environment variables for Python component server tracing
+    # The Python SDK reads these variables to configure OpenTelemetry
+    env:
+      # OTLP endpoint for trace/log export (required for tracing)
+      STEPFLOW_OTLP_ENDPOINT: "http://localhost:4317"
+      # Enable tracing (default: true if endpoint is set)
+      STEPFLOW_TRACE_ENABLED: "true"
+      # Service name for traces (default: stepflow-python)
+      STEPFLOW_SERVICE_NAME: "stepflow-python-components"
+      # Note: Trace context (trace_id, span_id) is automatically propagated
+      # through the protocol's ObservabilityContext in each request
+
+routes:
+  "/builtin/{*component}":
+    - plugin: builtin
+  "/python/{*component}":
+    - plugin: python
