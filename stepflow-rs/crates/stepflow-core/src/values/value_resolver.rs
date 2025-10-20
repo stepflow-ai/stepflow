@@ -161,7 +161,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                         log::debug!("Path '{}' resolved to: {:?}", path, sub_value.as_ref());
                         FlowResult::Success(sub_value)
                     } else {
-                        log::debug!("Path '{}' not found in value", path);
+                        log::debug!("Path '{path}' not found in value");
                         return Err(ValueResolverError::UndefinedField {
                             field: path.to_string(),
                             value: result,

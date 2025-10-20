@@ -2467,16 +2467,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-appender-log"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "408345e3998e2e5b5b2a315d1be56c98118494f1f44e07a58aba79e88a9c4bed"
-dependencies = [
- "log",
- "opentelemetry",
-]
-
-[[package]]
 name = "opentelemetry-otlp"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4350,7 +4340,6 @@ dependencies = [
  "log",
  "logforth",
  "opentelemetry",
- "opentelemetry-appender-log",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
