@@ -256,7 +256,7 @@ impl DiagnosticMessage {
                 )
             }
             DiagnosticMessage::UnusedPlugin { plugin } => {
-                format!("Plugin '{}' is not referenced by any routing rule", plugin)
+                format!("Plugin '{plugin}' is not referenced by any routing rule")
             }
         }
     }

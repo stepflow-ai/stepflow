@@ -8,12 +8,17 @@ repository.workspace = true
 
 [dependencies]
 fastrace = { workspace = true }
+fastrace-opentelemetry = { workspace = true }
 log = { workspace = true }
 logforth = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 error-stack = { workspace = true }
 clap = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true }
 
 [dev-dependencies]
 

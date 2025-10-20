@@ -26,6 +26,8 @@
 pub use fastrace;
 pub use log;
 
+use opentelemetry_otlp::WithExportConfig;
+
 mod run_diagnostic_context;
 pub use run_diagnostic_context::{RunDiagnostic, RunIdGuard, StepIdGuard, get_run_id, get_step_id};
 
@@ -152,7 +154,7 @@ pub fn init_observability(
 ) -> Result<ObservabilityGuard> {
     // Initialize tracing first (so logger can access trace context)
     let trace_guard = if config.trace_enabled {
-        Some(init_tracing(config)?)
+        Some(init_tracing(config, &binary_config)?)
     } else {
         None
     };
@@ -292,23 +294,56 @@ fn create_appender(destination: LogDestination, format: LogFormat) -> Box<dyn lo
             Box::new(file_appender)
         }
         (LogDestination::OpenTelemetry, _) => {
-            // TODO: Implement OpenTelemetry log appender
-            // For now, fall back to stdout with JSON layout
+            // TODO(#388): Implement OpenTelemetry log appender via logforth
+            // Logforth doesn't yet have built-in OTLP appender.
+            // For now, fall back to stdout with JSON layout.
+            // Alternative: Use opentelemetry-appender-log directly (requires different setup)
             Box::new(append::Stdout::default().with_layout(JsonLayout::default()))
         }
     }
 }
 
-fn init_tracing(config: &ObservabilityConfig) -> Result<TraceGuard> {
-    if let Some(_endpoint) = &config.otlp_endpoint {
-        // TODO: Export traces to OTLP
-        // For now, use console reporter
-        fastrace::set_reporter(
-            fastrace::collector::ConsoleReporter,
-            fastrace::collector::Config::default(),
+fn init_tracing(
+    config: &ObservabilityConfig,
+    binary_config: &BinaryObservabilityConfig,
+) -> Result<TraceGuard> {
+    if let Some(endpoint) = &config.otlp_endpoint {
+        // Create OpenTelemetry resource with service metadata
+        let resource = std::borrow::Cow::Owned(opentelemetry_sdk::Resource::new(vec![
+            opentelemetry::KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                binary_config.service_name,
+            ),
+        ]));
+
+        // Create instrumentation library metadata
+        let instrumentation_lib = opentelemetry::InstrumentationLibrary::builder("stepflow")
+            .with_version(env!("CARGO_PKG_VERSION"))
+            .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
+            .build();
+
+        // Create OTLP exporter
+        let exporter = opentelemetry_otlp::new_exporter()
+            .tonic()
+            .with_endpoint(endpoint)
+            .with_timeout(std::time::Duration::from_secs(5))
+            .build_span_exporter()
+            .map_err(|e| {
+                error_stack::report!(ObservabilityError::OtlpInitError)
+                    .attach_printable(format!("Failed to create OTLP exporter: {}", e))
+            })?;
+
+        // Create OpenTelemetry reporter
+        let reporter = fastrace_opentelemetry::OpenTelemetryReporter::new(
+            exporter,
+            opentelemetry::trace::SpanKind::Internal,
+            resource,
+            instrumentation_lib,
         );
+
+        fastrace::set_reporter(reporter, fastrace::collector::Config::default());
     } else {
-        // Console reporter for development
+        // Console reporter for development (no OTLP endpoint configured)
         fastrace::set_reporter(
             fastrace::collector::ConsoleReporter,
             fastrace::collector::Config::default(),
