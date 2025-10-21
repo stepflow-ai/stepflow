@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_run.rs
+source: crates/stepflow-cli/tests/commands/test_run.rs
 info:
   program: stepflow
   args:
@@ -9,6 +9,14 @@ info:
     - "--flow=tests/builtins/blob_test.yaml"
     - "--config=tests/builtins/stepflow-config.yml"
     - "--input-json={\"data\": \"hello\"}"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -24,3 +32,4 @@ exit_code: 0
   WARN Field access '$.data' on step 'get_blob' cannot be validated: no output schema available (output.retrieved_data)
 {"outcome":"success","result":{"blob_id":"5aa762ae383fbb727af3c7a36d4940a5b8c40a989452d2304fc958ff3f354e7a","retrieved_data":"hello"}}
 ----- stderr -----
+run_id: [ID]

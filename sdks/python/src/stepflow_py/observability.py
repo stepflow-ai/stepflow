@@ -24,6 +24,7 @@ Configuration is done via environment variables:
 import logging
 import os
 import sys
+import typing
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -44,6 +45,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+if typing.TYPE_CHECKING:
+    from stepflow_py.generated_protocol import ObservabilityContext
 
 class ObservabilityConfig:
     """Configuration for OpenTelemetry observability.
@@ -173,3 +176,45 @@ def extract_trace_context(
     except (ValueError, TypeError) as e:
         logger.warning(f"Failed to parse trace context: {e}")
         return None
+
+
+def get_current_observability_context(
+    run_id: str | None = None,
+    flow_id: str | None = None,
+    step_id: str | None = None,
+) -> "ObservabilityContext | None":  # type: ignore
+    """Capture the current OpenTelemetry span context for bidirectional requests.
+
+    This extracts the trace_id and span_id from the current active span,
+    allowing bidirectional requests to properly propagate trace context.
+
+    Args:
+        run_id: Optional run ID to include in the context.
+        flow_id: Optional flow ID to include in the context.
+        step_id: Optional step ID to include in the context.
+
+    Returns:
+        ObservabilityContext with current span's trace_id and span_id,
+        or None if no span is active.
+    """
+    from stepflow_py.generated_protocol import ObservabilityContext
+
+    # Get the current span
+    current_span = trace.get_current_span()
+
+    # Check if span is valid and sampled
+    span_context = current_span.get_span_context()
+    if not span_context.is_valid:
+        return None
+
+    # Extract trace_id and span_id as hex strings
+    trace_id_hex = format(span_context.trace_id, "032x")
+    span_id_hex = format(span_context.span_id, "016x")
+
+    return ObservabilityContext(
+        trace_id=trace_id_hex,
+        span_id=span_id_hex,
+        run_id=run_id,
+        flow_id=flow_id,
+        step_id=step_id,
+    )

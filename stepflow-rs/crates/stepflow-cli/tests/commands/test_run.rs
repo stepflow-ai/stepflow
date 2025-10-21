@@ -13,6 +13,15 @@
 use super::stepflow;
 use insta_cmd::assert_cmd_snapshot;
 
+macro_rules! apply_run_filters {
+    {} => {
+        let mut settings = insta::Settings::clone_current();
+        // Run ID redaction
+        settings.add_filter(r"run_id: [a-f0-9]+", "run_id: [ID]");
+        let _bound = settings.bind_to_scope();
+    }
+}
+
 #[test]
 fn test_run_help() {
     assert_cmd_snapshot!(stepflow().arg("run").arg("--help"));
@@ -20,6 +29,7 @@ fn test_run_help() {
 
 #[test]
 fn test_run_basic_workflow_with_file_input() {
+    apply_run_filters!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")
@@ -30,6 +40,7 @@ fn test_run_basic_workflow_with_file_input() {
 
 #[test]
 fn test_run_basic_workflow_with_json_input() {
+    apply_run_filters!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")
@@ -40,6 +51,7 @@ fn test_run_basic_workflow_with_json_input() {
 
 #[test]
 fn test_run_basic_workflow_with_yaml_input() {
+    apply_run_filters!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")
@@ -50,6 +62,7 @@ fn test_run_basic_workflow_with_yaml_input() {
 
 #[test]
 fn test_run_with_custom_config() {
+    apply_run_filters!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")
@@ -61,6 +74,7 @@ fn test_run_with_custom_config() {
 
 #[test]
 fn test_run_nonexistent_workflow() {
+    apply_run_filters!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")
@@ -71,6 +85,7 @@ fn test_run_nonexistent_workflow() {
 
 #[test]
 fn test_run_invalid_input_json() {
+    apply_run_filters!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")
@@ -81,6 +96,7 @@ fn test_run_invalid_input_json() {
 
 #[test]
 fn test_run_empty_flow() {
+    apply_run_filters!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("run")

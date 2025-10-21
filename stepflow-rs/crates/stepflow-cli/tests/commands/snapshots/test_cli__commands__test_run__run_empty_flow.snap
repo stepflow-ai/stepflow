@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_run.rs
+source: crates/stepflow-cli/tests/commands/test_run.rs
 info:
   program: stepflow
   args:
@@ -9,6 +9,14 @@ info:
     - "--flow=tests/empty/empty_flow.yaml"
     - "--config=tests/empty/stepflow-config.yml"
     - "--input-json={\"message\": \"hello world\", \"numbers\": {\"a\": 10, \"b\": 20}, \"items\": [\"first\", \"second\", \"third\"]}"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -23,3 +31,4 @@ exit_code: 0
   WARN Field access '$.numbers' on step 'workflow_input' cannot be validated: no input schema available (output.nested_data)
 {"outcome":"success","result":{"message":"hello world","a_value":10,"b_value":20,"first_item":"first","nested_data":{"a":10,"b":20}}}
 ----- stderr -----
+run_id: [ID]

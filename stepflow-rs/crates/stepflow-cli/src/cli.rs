@@ -371,6 +371,7 @@ pub enum Command {
 }
 
 impl Cli {
+    #[allow(clippy::print_stderr)]
     pub async fn execute(self) -> Result<()> {
         log::debug!(
             "Executing CLI command: {}",

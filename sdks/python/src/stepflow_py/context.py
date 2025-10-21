@@ -80,6 +80,25 @@ class StepflowContext:
         self._attempt = attempt
         self._observability = observability
 
+    def current_observability_context(self) -> ObservabilityContext | None:
+        """Get the current observability context for bidirectional requests.
+
+        This captures the current OpenTelemetry span context and combines it
+        with the execution context (run_id, flow_id, step_id) to create proper
+        trace propagation for bidirectional calls.
+
+        Returns:
+            ObservabilityContext with current span as parent, or None if
+            no span is active.
+        """
+        from stepflow_py.observability import get_current_observability_context
+
+        return get_current_observability_context(
+            run_id=self._run_id,
+            flow_id=self._flow_id,
+            step_id=self._step_id,
+        )
+
     async def _send_request(
         self, method: Method, params: Any, result_type: type[T]
     ) -> T:
@@ -130,11 +149,22 @@ class StepflowContext:
         Returns:
             The blob ID (SHA-256 hash) for the stored data
         """
-        params = PutBlobParams(
-            data=data, blob_type=blob_type, observability=self._observability
-        )
-        response = await self._send_request(Method.blobs_put, params, PutBlobResult)
-        return response.blob_id
+        from stepflow_py.observability import get_tracer
+
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "put_blob",
+            attributes={
+                "blob_type": blob_type.value,
+            },
+        ):
+            params = PutBlobParams(
+                data=data,
+                blob_type=blob_type,
+                observability=self.current_observability_context(),
+            )
+            response = await self._send_request(Method.blobs_put, params, PutBlobResult)
+            return response.blob_id
 
     async def get_blob(self, blob_id: str) -> Any:
         """Retrieve JSON data by blob ID.
@@ -146,10 +176,20 @@ class StepflowContext:
             The JSON data associated with the blob ID
         """
         from stepflow_py.generated_protocol import GetBlobParams
+        from stepflow_py.observability import get_tracer
 
-        params = GetBlobParams(blob_id=blob_id, observability=self._observability)
-        response = await self._send_request(Method.blobs_get, params, GetBlobResult)
-        return response.data
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "get_blob",
+            attributes={
+                "blob_id": blob_id,
+            },
+        ):
+            params = GetBlobParams(
+                blob_id=blob_id, observability=self.current_observability_context()
+            )
+            response = await self._send_request(Method.blobs_get, params, GetBlobResult)
+            return response.data
 
     @property
     def session_id(self) -> str | None:
@@ -218,31 +258,40 @@ class StepflowContext:
             Exception: For system/runtime errors
         """
         from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
+        from stepflow_py.observability import get_tracer
 
-        params = EvaluateFlowParams(
-            flow_id=flow_id,
-            input=input,
-            observability=self._observability,
-        )
-        evaluate_result = await self._send_request(
-            Method.flows_evaluate, params, EvaluateFlowResult
-        )
-        flow_result = evaluate_result.result
-
-        # Check the outcome and either return the result or raise appropriate exception
-        if isinstance(flow_result, FlowResultSuccess):
-            return flow_result.result
-        elif isinstance(flow_result, FlowResultSkipped):
-            raise StepflowSkipped("Flow execution was skipped")
-        elif isinstance(flow_result, FlowResultFailed):
-            error = flow_result.error
-            raise StepflowFailed(
-                error_code=error.code,
-                message=error.message,
-                data=error.data,
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "evaluate_flow",
+            attributes={
+                "flow_id": flow_id,
+            },
+        ):
+            params = EvaluateFlowParams(
+                flow_id=flow_id,
+                input=input,
+                observability=self.current_observability_context(),
             )
-        else:
-            raise Exception(f"Unexpected flow result type: {type(flow_result)}")
+            evaluate_result = await self._send_request(
+                Method.flows_evaluate, params, EvaluateFlowResult
+            )
+            flow_result = evaluate_result.result
+
+            # Check the outcome and either return the result or
+            # raise appropriate exception
+            if isinstance(flow_result, FlowResultSuccess):
+                return flow_result.result
+            elif isinstance(flow_result, FlowResultSkipped):
+                raise StepflowSkipped("Flow execution was skipped")
+            elif isinstance(flow_result, FlowResultFailed):
+                error = flow_result.error
+                raise StepflowFailed(
+                    error_code=error.code,
+                    message=error.message,
+                    data=error.data,
+                )
+            else:
+                raise Exception(f"Unexpected flow result type: {type(flow_result)}")
 
     async def get_metadata(self, step_id: str | None = None) -> dict[str, Any]:
         """Get metadata for the current flow and optionally a specific step.
@@ -258,24 +307,34 @@ class StepflowContext:
             - step_metadata: Metadata for the specified step (if step_id
               provided and found)
         """
+        from stepflow_py.observability import get_tracer
+
         # Use provided step_id, or fall back to current step_id, or None
         target_step_id = step_id or self._step_id
 
-        assert self._flow_id is not None, "flow_id is not available in context"
-        params = GetFlowMetadataParams(
-            step_id=target_step_id,
-            flow_id=self._flow_id,
-            observability=self._observability,
-        )
-        response = await self._send_request(
-            Method.flows_get_metadata, params, GetFlowMetadataResult
-        )
+        tracer = get_tracer(__name__)
+        attributes: dict[str, str] = {}
+        if self._flow_id:
+            attributes["flow_id"] = str(self._flow_id)
+        if target_step_id:
+            attributes["step_id"] = target_step_id
 
-        result = {"flow_metadata": response.flow_metadata}
-        if response.step_metadata is not None:
-            result["step_metadata"] = response.step_metadata
+        with tracer.start_as_current_span("get_metadata", attributes=attributes):
+            assert self._flow_id is not None, "flow_id is not available in context"
+            params = GetFlowMetadataParams(
+                step_id=target_step_id,
+                flow_id=self._flow_id,
+                observability=self.current_observability_context(),
+            )
+            response = await self._send_request(
+                Method.flows_get_metadata, params, GetFlowMetadataResult
+            )
 
-        return result
+            result = {"flow_metadata": response.flow_metadata}
+            if response.step_metadata is not None:
+                result["step_metadata"] = response.step_metadata
+
+            return result
 
     async def submit_batch(
         self,
@@ -320,16 +379,27 @@ class StepflowContext:
         Returns:
             The batch ID for tracking the batch execution
         """
-        params = SubmitBatchParams(
-            flow_id=flow_id,
-            inputs=inputs,
-            max_concurrency=max_concurrency,
-            observability=self._observability,
-        )
-        response = await self._send_request(
-            Method.flows_submit_batch, params, SubmitBatchResult
-        )
-        return response.batch_id
+        from stepflow_py.observability import get_tracer
+
+        tracer = get_tracer(__name__)
+        attributes: dict[str, str | int] = {
+            "flow_id": flow_id,
+            "batch_size": len(inputs),
+        }
+        if max_concurrency is not None:
+            attributes["max_concurrency"] = max_concurrency
+
+        with tracer.start_as_current_span("submit_batch", attributes=attributes):
+            params = SubmitBatchParams(
+                flow_id=flow_id,
+                inputs=inputs,
+                max_concurrency=max_concurrency,
+                observability=self.current_observability_context(),
+            )
+            response = await self._send_request(
+                Method.flows_submit_batch, params, SubmitBatchResult
+            )
+            return response.batch_id
 
     async def get_batch(
         self,
@@ -348,16 +418,27 @@ class StepflowContext:
             A tuple of (batch_details, outputs) where outputs is None if
             include_results is False
         """
-        params = GetBatchParams(
-            batch_id=batch_id,
-            wait=wait,
-            include_results=include_results,
-            observability=self._observability,
-        )
-        response = await self._send_request(
-            Method.flows_get_batch, params, GetBatchResult
-        )
-        return (response.details, response.outputs)
+        from stepflow_py.observability import get_tracer
+
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "get_batch",
+            attributes={
+                "batch_id": batch_id,
+                "wait": wait,
+                "include_results": include_results,
+            },
+        ):
+            params = GetBatchParams(
+                batch_id=batch_id,
+                wait=wait,
+                include_results=include_results,
+                observability=self.current_observability_context(),
+            )
+            response = await self._send_request(
+                Method.flows_get_batch, params, GetBatchResult
+            )
+            return (response.details, response.outputs)
 
     async def evaluate_batch(
         self,
