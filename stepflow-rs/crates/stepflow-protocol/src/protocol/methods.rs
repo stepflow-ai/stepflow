@@ -12,8 +12,9 @@
 
 use schemars::{JsonSchema, Schema, json_schema};
 use serde::{Deserialize, Serialize};
+use strum::IntoStaticStr;
 
-#[derive(Serialize, Deserialize, Debug, JsonSchema, Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema, Hash, PartialEq, Eq, Clone, Copy, IntoStaticStr)]
 pub enum Method {
     #[serde(rename = "initialize")]
     Initialize,
@@ -39,6 +40,12 @@ pub enum Method {
     FlowsGetBatch,
 }
 
+impl Method {
+    pub fn as_str(&self) -> &'static str {
+        self.into()
+    }
+}
+
 impl std::fmt::Display for Method {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -60,6 +67,10 @@ impl std::fmt::Display for Method {
 pub trait ProtocolMethod {
     const METHOD_NAME: Method;
     type Response: Sync + Send + std::fmt::Debug;
+    
+    fn observability_context(&self) -> Option<&crate::protocol::ObservabilityContext> {
+        None
+    }
 }
 
 pub trait ProtocolNotification {

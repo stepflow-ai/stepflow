@@ -4657,6 +4657,7 @@ dependencies = [
  "stepflow-core",
  "stepflow-plugin",
  "stepflow-state",
+ "strum",
  "subst",
  "thiserror 2.0.17",
  "tokio",
