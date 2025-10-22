@@ -22,7 +22,7 @@ use stepflow_core::{
     values::{ValueRef, ValueResolver, ValueTemplate},
     workflow::{Expr, Flow},
 };
-use stepflow_observability::{RunIdGuard, StepIdGuard};
+use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
@@ -39,7 +39,7 @@ pub(crate) async fn execute_workflow(
     state_store: Arc<dyn StateStore>,
 ) -> Result<FlowResult> {
     // Set run_id in diagnostic context for all logs in this workflow execution
-    let _run_guard = RunIdGuard::new(run_id.to_string());
+    let _run_guard = RunInfoGuard::new(flow_id.to_string(), run_id.to_string());
 
     log::info!(
         "Starting workflow execution: flow={}, run_id={}",

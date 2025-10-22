@@ -29,7 +29,7 @@ pub use log;
 use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 
 mod run_diagnostic_context;
-pub use run_diagnostic_context::{RunDiagnostic, RunIdGuard, StepIdGuard, get_run_id, get_step_id};
+pub use run_diagnostic_context::{RunDiagnostic, RunInfoGuard, StepIdGuard, get_run_info, get_step_id};
 
 /// Binary-specific observability configuration
 ///
