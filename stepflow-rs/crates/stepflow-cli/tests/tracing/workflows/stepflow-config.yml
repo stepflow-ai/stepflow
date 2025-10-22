@@ -1,0 +1,25 @@
+# Stepflow configuration for tracing integration tests
+
+plugins:
+  builtin:
+    type: builtin
+
+  python:
+    type: stepflow
+    transport: stdio
+    command: uv
+    args: ["run", "--project", "../../../../../../sdks/python", "stepflow_py"]
+    env:
+      STEPFLOW_TRACE_ENABLED: "${STEPFLOW_TRACE_ENABLED:-false}"
+      STEPFLOW_OTLP_ENDPOINT: "${STEPFLOW_OTLP_ENDPOINT}"
+      STEPFLOW_SERVICE_NAME: "${STEPFLOW_SERVICE_NAME:-stepflow-python}"
+
+routes:
+  "/builtin/{*component}":
+    - plugin: builtin
+
+  "/python/{*component}":
+    - plugin: python
+
+stateStore:
+  type: inMemory

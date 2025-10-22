@@ -1,0 +1,73 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "Bidirectional Workflow for Tracing Tests"
+description: "Workflow with Python components that use StepflowContext (blob operations)"
+
+input_schema:
+  type: object
+  properties:
+    data:
+      type: array
+      items: { type: number }
+    multiplier:
+      type: number
+
+steps:
+  # Step 1: Store initial data using builtin
+  - id: store_input_data
+    component: /builtin/put_blob
+    input:
+      data: { $from: { workflow: input }, path: data }
+      blob_type: "data"
+
+  # Step 2: Create the Python function blob
+  - id: create_processor_function
+    component: /builtin/put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            data_blob_id: { type: string }
+            multiplier: { type: number }
+          required: [data_blob_id, multiplier]
+        code: |
+          async def process_data(input, context):
+              # Retrieve the original data from blob (bidirectional call)
+              original_data = await context.get_blob(input['data_blob_id'])
+              multiplier = input['multiplier']
+
+              # Process the data
+              processed = [x * multiplier for x in original_data]
+
+              # Store processed data as new blob (another bidirectional call)
+              processed_blob_id = await context.put_blob({
+                  'original': original_data,
+                  'processed': processed,
+                  'multiplier': multiplier
+              })
+
+              return {
+                  'processed_blob_id': processed_blob_id,
+                  'count': len(processed)
+              }
+          process_data
+      blob_type: "data"
+
+  # Step 3: Python UDF that retrieves blob and processes it
+  - id: process_data
+    component: /python/udf
+    input:
+      blob_id: { $from: { step: create_processor_function }, path: blob_id }
+      input:
+        data_blob_id: { $from: { step: store_input_data }, path: blob_id }
+        multiplier: { $from: { workflow: input }, path: multiplier }
+
+  # Step 4: Retrieve final result
+  - id: get_result
+    component: /builtin/get_blob
+    input:
+      blob_id: { $from: { step: process_data }, path: processed_blob_id }
+
+output:
+  processed_data: { $from: { step: get_result }, path: data }
+  count: { $from: { step: process_data }, path: count }

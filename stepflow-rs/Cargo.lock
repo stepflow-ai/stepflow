@@ -4468,6 +4468,7 @@ dependencies = [
  "stepflow-state-sql",
  "strum",
  "tempfile",
+ "testcontainers",
  "thiserror 2.0.17",
  "tokio",
  "url",
