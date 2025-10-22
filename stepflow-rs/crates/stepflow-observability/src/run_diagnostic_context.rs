@@ -125,10 +125,13 @@ mod tests {
             let _guard = RunInfoGuard::new("flow-1", "run-123");
 
             // run_id is set inside guard scope
-            assert_eq!(get_run_info(), Some(RunInfo {
-                flow_id: "flow-1".to_string(), 
-                run_id: "run-123".to_string(),
-            }));
+            assert_eq!(
+                get_run_info(),
+                Some(RunInfo {
+                    flow_id: "flow-1".to_string(),
+                    run_id: "run-123".to_string(),
+                })
+            );
         }
 
         // run_id is cleared when guard drops
@@ -159,41 +162,56 @@ mod tests {
 
         {
             let _run_guard = RunInfoGuard::new("flow-1", "run-456");
-            assert_eq!(get_run_info(), Some(RunInfo {
-                flow_id: "flow-1".to_string(),
-                run_id: "run-456".to_string()
-            }));
+            assert_eq!(
+                get_run_info(),
+                Some(RunInfo {
+                    flow_id: "flow-1".to_string(),
+                    run_id: "run-456".to_string()
+                })
+            );
             assert!(get_step_id().is_none());
 
             {
                 let _step_guard = StepIdGuard::new("step1");
-                assert_eq!(get_run_info(), Some(RunInfo {
-                    flow_id: "flow-1".to_string(),
-                    run_id: "run-456".to_string()
-                }));
+                assert_eq!(
+                    get_run_info(),
+                    Some(RunInfo {
+                        flow_id: "flow-1".to_string(),
+                        run_id: "run-456".to_string()
+                    })
+                );
                 assert_eq!(get_step_id(), Some("step1".to_string()));
             }
 
             // step_id cleared, run_id still set
-            assert_eq!(get_run_info(), Some(RunInfo {
-                flow_id: "flow-1".to_string(),
-                run_id: "run-456".to_string()
-            }));
+            assert_eq!(
+                get_run_info(),
+                Some(RunInfo {
+                    flow_id: "flow-1".to_string(),
+                    run_id: "run-456".to_string()
+                })
+            );
             assert!(get_step_id().is_none());
 
             {
                 let _step_guard = StepIdGuard::new("step2");
-                assert_eq!(get_run_info(), Some(RunInfo {
-                    flow_id: "flow-1".to_string(),
-                    run_id: "run-456".to_string()
-                }));
+                assert_eq!(
+                    get_run_info(),
+                    Some(RunInfo {
+                        flow_id: "flow-1".to_string(),
+                        run_id: "run-456".to_string()
+                    })
+                );
                 assert_eq!(get_step_id(), Some("step2".to_string()));
             }
 
-            assert_eq!(get_run_info(), Some(RunInfo {
-                flow_id: "flow-1".to_string(),
-                run_id: "run-456".to_string()
-            }));
+            assert_eq!(
+                get_run_info(),
+                Some(RunInfo {
+                    flow_id: "flow-1".to_string(),
+                    run_id: "run-456".to_string()
+                })
+            );
             assert!(get_step_id().is_none());
         }
 
