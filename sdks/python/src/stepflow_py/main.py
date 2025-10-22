@@ -23,11 +23,32 @@ server = StepflowStdioServer()
 
 def main():
     # Initialize observability before anything else
+    # Configuration via environment variables:
+    #   STEPFLOW_SERVICE_NAME: Service name for traces/logs (default: stepflow-python)
+    #   STEPFLOW_LOG_LEVEL: Log level (DEBUG, INFO, WARNING, ERROR, default: INFO)
+    #   STEPFLOW_LOG_DESTINATION: Where to log (stderr, file, otlp)
+    #                             Default: "otlp" if OTLP endpoint set, else "stderr"
+    #   STEPFLOW_LOG_FILE: File path for file logging
+    #   STEPFLOW_OTLP_ENDPOINT: OTLP endpoint for trace/log export
+    #   STEPFLOW_TRACE_ENABLED: Enable tracing (default: true)
     from stepflow_py.observability import setup_observability
 
     setup_observability()
 
-    parser = argparse.ArgumentParser(description="Stepflow Python SDK Server")
+    parser = argparse.ArgumentParser(
+        description="Stepflow Python SDK Server",
+        epilog="""
+Environment variables:
+  STEPFLOW_SERVICE_NAME      Service name for observability (default: stepflow-python)
+  STEPFLOW_LOG_LEVEL         Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)
+  STEPFLOW_LOG_DESTINATION   Log destination: stderr, file, otlp, or comma-separated
+                             Default: "otlp" if OTLP endpoint set, else "stderr"
+  STEPFLOW_LOG_FILE          File path if file logging is enabled
+  STEPFLOW_OTLP_ENDPOINT     OTLP endpoint for tracing/logging
+  STEPFLOW_TRACE_ENABLED     Enable tracing: true, false (default: true)
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
     parser.add_argument(
         "--port", type=int, default=8080, help="HTTP port (default: 8080)"

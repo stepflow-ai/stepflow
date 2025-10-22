@@ -63,24 +63,20 @@ async def component_tool_component(
 
 
 def main():
-    """Main entry point for the Langflow component server."""
-    import logging
-    import os
+    """Main entry point for the Langflow component server.
 
+    Logging is automatically configured by the SDK via setup_observability().
+    Configure via environment variables:
+    - STEPFLOW_LOG_LEVEL: Log level (DEBUG, INFO, WARNING, ERROR, default: INFO)
+    - STEPFLOW_LOG_DESTINATION: Log destination (stderr, file, otlp)
+    - STEPFLOW_OTLP_ENDPOINT: OTLP endpoint for tracing/logging
+    - STEPFLOW_SERVICE_NAME: Service name (default: stepflow-python)
+    """
     import nest_asyncio  # type: ignore
-
-    # Configure Python logging based on environment variables
-    # PYTHON_LOG_LEVEL: DEBUG, INFO, WARNING, ERROR (default: WARNING)
-    # TODO(#388): improve component-server logging
-    log_level = os.environ.get("PYTHON_LOG_LEVEL", "WARNING").upper()
-    logging.basicConfig(
-        level=getattr(logging, log_level, logging.WARNING),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        stream=sys.stderr,
-    )
 
     nest_asyncio.apply()
     # Start the server - this handles all the asyncio setup correctly
+    # and calls setup_observability() to configure logging
     server.run()
 
 

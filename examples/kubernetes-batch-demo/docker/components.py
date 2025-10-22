@@ -27,8 +27,7 @@ import time
 import os
 import uuid
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Get logger - configuration is handled by SDK's setup_observability()
 logger = logging.getLogger(__name__)
 
 # Generate instance ID for load balancer routing

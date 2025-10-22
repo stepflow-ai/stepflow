@@ -9,6 +9,41 @@ Python SDK for building Stepflow components and workflows.
 uv add stepflow-py
 ```
 
+## Configuration
+
+The SDK is configured via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `STEPFLOW_SERVICE_NAME` | Service name for observability | `stepflow-python` |
+| `STEPFLOW_LOG_LEVEL` | Log level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
+| `STEPFLOW_LOG_DESTINATION` | Log destination (stderr, file, otlp, comma-separated) | `otlp` if OTLP endpoint set, else `stderr` |
+| `STEPFLOW_LOG_FILE` | File path for file logging | - |
+| `STEPFLOW_OTLP_ENDPOINT` | OTLP endpoint (e.g., http://localhost:4317) | - |
+| `STEPFLOW_TRACE_ENABLED` | Enable distributed tracing | `true` |
+
+**Example with OTLP (logs and traces go to OTLP by default):**
+```bash
+STEPFLOW_SERVICE_NAME=my-python-components \
+STEPFLOW_OTLP_ENDPOINT=http://localhost:4317 \
+uv run stepflow_py
+```
+
+**Example with OTLP + stderr logging:**
+```bash
+STEPFLOW_SERVICE_NAME=my-components \
+STEPFLOW_LOG_DESTINATION=stderr,otlp \
+STEPFLOW_OTLP_ENDPOINT=http://localhost:4317 \
+uv run stepflow_py
+```
+
+**Example with only stderr logging (no OTLP):**
+```bash
+STEPFLOW_SERVICE_NAME=my-components \
+STEPFLOW_LOG_LEVEL=DEBUG \
+uv run stepflow_py
+```
+
 ## Usage
 
 ### Creating a Component Server
@@ -56,8 +91,10 @@ blob_id = await context.put_blob({"key": "value"})
 # Retrieve blob data
 data = await context.get_blob(blob_id)
 
-# Logging
-context.log("Debug message")
+# Logging (uses Python's standard logging with automatic diagnostic context)
+import logging
+logger = logging.getLogger(__name__)
+logger.info("Processing data")  # Automatically includes flow_id, run_id, step_id, etc.
 ```
 
 ## Development

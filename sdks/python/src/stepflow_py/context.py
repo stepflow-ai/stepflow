@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from typing import Any, TypeVar
 from uuid import uuid4
 
@@ -539,7 +538,3 @@ class StepflowContext:
                 raise Exception(f"Unexpected flow result type: {type(flow_result)}")
 
         return results
-
-    def log(self, message):
-        """Log a message."""
-        print(f"PYTHON: {message}", file=sys.stderr)

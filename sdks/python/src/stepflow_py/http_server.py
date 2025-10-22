@@ -21,6 +21,7 @@ replacing the previous HTTP + SSE session-based approach with simpler request/re
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from collections.abc import AsyncGenerator
 from typing import Any, assert_never
@@ -45,6 +46,8 @@ from .generated_protocol import (
 )
 from .message_decoder import MessageDecoder
 from .server import StepflowServer
+
+logger = logging.getLogger(__name__)
 
 try:
     import uvicorn
@@ -376,9 +379,8 @@ class StepflowHttpServer:
 
     async def run(self):
         """Start the HTTP server."""
-        print(
-            f"Starting Stepflow Streamable HTTP server on {self.host}:{self.port}",
-            file=sys.stderr,
+        logger.info(
+            f"Starting Stepflow Streamable HTTP server on {self.host}:{self.port}"
         )
 
         # Initialize the base server
