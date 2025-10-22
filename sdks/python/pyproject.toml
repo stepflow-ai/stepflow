@@ -38,6 +38,9 @@ dependencies = [
     "msgspec>=0.19.0",
     "jsonschema>=4.17.0",
     "types-jsonschema>=4.17.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
 ]
 
 [project.urls]
@@ -171,6 +174,12 @@ exclude = ["**/generated_*.py"]
 # types-* packages are type stubs for mypy and not directly imported
 ignore = ["DEP002"]
 extend_exclude = ["types-jsonschema"]
+
+# OpenTelemetry packages all provide the 'opentelemetry' module
+[tool.deptry.package_module_name_map]
+opentelemetry-api = "opentelemetry"
+opentelemetry-sdk = "opentelemetry"
+opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
 
 [tool.mypy]
 python_version = "3.11"

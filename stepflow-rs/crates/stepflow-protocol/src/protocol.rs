@@ -18,6 +18,7 @@ mod json_rpc;
 mod message_serde;
 mod messages;
 mod methods;
+mod observability;
 
 // Re-export core protocol types
 pub(crate) use blobs::*;
@@ -26,3 +27,4 @@ pub(crate) use flows::*;
 pub(crate) use initialization::*;
 pub(crate) use messages::*;
 pub(crate) use methods::*;
+pub use observability::ObservabilityContext;

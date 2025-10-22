@@ -937,32 +937,45 @@ pub(crate) async fn execute_step_async(
     context: ExecutionContext,
     resolver: &ValueResolver<StateValueLoader>,
 ) -> Result<FlowResult> {
+    use stepflow_observability::fastrace::prelude::*;
+
     // Set step_id in diagnostic context for all logs in this step execution
     let _step_guard = StepIdGuard::new(step.id.as_str());
 
-    log::debug!(
-        "Executing step: component={}, step_id={}",
-        resolved_component,
-        step.id
-    );
+    // Create a span for this step execution
+    let span = Span::enter_with_local_parent("step")
+        .with_property(|| ("step_id", step.id.clone()))
+        .with_property(|| ("component", resolved_component.to_string()));
 
-    // Create a component from the resolved component name
-    let component = stepflow_core::workflow::Component::from_string(resolved_component);
+    let result = async move {
+        log::debug!(
+            "Executing step: component={}, step_id={}",
+            resolved_component,
+            step.id
+        );
 
-    // Execute the component
-    let result = plugin
-        .execute(&component, context, input)
-        .await
-        .map_err(|error| {
-            error
-                .change_context(ExecutionError::StepFailed {
-                    step: step.id.to_owned(),
-                })
-                .attach_printable(format!("Component execution failed for step '{}'", step.id))
-                .attach_printable(format!("Component: {}", resolved_component))
-        })?;
+        // Create a component from the resolved component name
+        let component = stepflow_core::workflow::Component::from_string(resolved_component);
 
-    log::debug!("Step execution completed: step_id={}", step.id);
+        // Execute the component
+        let result = plugin
+            .execute(&component, context, input)
+            .await
+            .map_err(|error| {
+                error
+                    .change_context(ExecutionError::StepFailed {
+                        step: step.id.to_owned(),
+                    })
+                    .attach_printable(format!("Component execution failed for step '{}'", step.id))
+                    .attach_printable(format!("Component: {}", resolved_component))
+            })?;
+
+        log::debug!("Step execution completed: step_id={}", step.id);
+
+        Ok::<_, error_stack::Report<ExecutionError>>(result)
+    }
+    .in_span(span)
+    .await?;
 
     match &result {
         FlowResult::Failed(error) => {

@@ -22,6 +22,11 @@ server = StepflowStdioServer()
 
 
 def main():
+    # Initialize observability before anything else
+    from stepflow_py.observability import setup_observability
+
+    setup_observability()
+
     parser = argparse.ArgumentParser(description="Stepflow Python SDK Server")
     parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
     parser.add_argument(

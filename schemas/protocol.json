@@ -118,11 +118,71 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0
+        },
+        "observability": {
+          "description": "Observability context for tracing initialization (trace context only, no flow/run).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObservabilityContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "runtime_protocol_version"
       ]
+    },
+    "ObservabilityContext": {
+      "description": "Observability context for distributed tracing and logging.\n\nThis context is passed with protocol requests to enable trace correlation\nand structured logging across the Stepflow runtime and component servers.\n\n# Field Presence\n\n- `trace_id` and `span_id`: Present when tracing is enabled, None otherwise\n- `run_id` and `flow_id`: Present for workflow execution requests, None for init/discovery\n- `step_id`: Present for step-level execution, None for workflow-level operations",
+      "type": "object",
+      "properties": {
+        "trace_id": {
+          "description": "OpenTelemetry trace ID (128-bit, hex encoded).\n\nPresent when tracing is enabled, None otherwise.\nUsed to correlate all operations within a single trace.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "span_id": {
+          "description": "OpenTelemetry span ID (64-bit, hex encoded).\n\nUsed to establish parent-child span relationships.\nComponent servers should use this as the parent span when creating their spans.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "description": "The ID of the workflow run.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and associating operations with specific workflow runs.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flow_id": {
+          "description": "The ID of the flow being executed.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and understanding which workflow is being executed.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "step_id": {
+          "description": "The ID of the step being executed.\n\nPresent for step-level execution, None for workflow-level operations.\nUsed for filtering logs and associating operations with specific workflow steps.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "BlobId": {
+      "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+      "type": "string"
     },
     "ComponentExecuteParams": {
       "description": "Sent from Stepflow to the component server to execute a specific component with the provided input.",
@@ -136,32 +196,22 @@
           "description": "The input to the component.",
           "$ref": "#/$defs/Value"
         },
-        "step_id": {
-          "description": "The ID of the step being executed.",
-          "type": "string"
-        },
-        "run_id": {
-          "description": "The ID of the workflow run.",
-          "type": "string"
-        },
-        "flow_id": {
-          "description": "The ID of the flow being executed.",
-          "$ref": "#/$defs/BlobId"
-        },
         "attempt": {
           "description": "The attempt number for this execution (1-based, for retry logic).",
           "type": "integer",
           "format": "uint32",
           "minimum": 0
+        },
+        "observability": {
+          "description": "Observability context for tracing and logging.",
+          "$ref": "#/$defs/ObservabilityContext"
         }
       },
       "required": [
         "component",
         "input",
-        "step_id",
-        "run_id",
-        "flow_id",
-        "attempt"
+        "attempt",
+        "observability"
       ]
     },
     "Component": {
@@ -175,10 +225,6 @@
     },
     "Value": {
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
-    },
-    "BlobId": {
-      "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-      "type": "string"
     },
     "ComponentInfoParams": {
       "description": "Sent from Stepflow to the component server to request information about a specific component.",
@@ -204,6 +250,17 @@
         "blob_id": {
           "description": "The ID of the blob to retrieve.",
           "$ref": "#/$defs/BlobId"
+        },
+        "observability": {
+          "description": "Observability context for tracing bidirectional calls.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObservabilityContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -219,6 +276,17 @@
         },
         "blob_type": {
           "$ref": "#/$defs/BlobType"
+        },
+        "observability": {
+          "description": "Observability context for tracing bidirectional calls.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObservabilityContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -245,6 +313,17 @@
         "input": {
           "description": "The input to provide to the flow.",
           "$ref": "#/$defs/Value"
+        },
+        "observability": {
+          "description": "Observability context for tracing nested flow execution.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObservabilityContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -265,6 +344,17 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "observability": {
+          "description": "Observability context for tracing metadata requests.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObservabilityContext"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
@@ -295,6 +385,17 @@
           ],
           "format": "uint",
           "minimum": 0
+        },
+        "observability": {
+          "description": "Observability context for tracing batch submission.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObservabilityContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -319,6 +420,17 @@
           "description": "If true, include full outputs in response.",
           "type": "boolean",
           "default": false
+        },
+        "observability": {
+          "description": "Observability context for tracing batch queries.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObservabilityContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

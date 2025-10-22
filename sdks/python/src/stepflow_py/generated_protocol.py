@@ -50,14 +50,12 @@ class Method(Enum):
     flows_get_batch = 'flows/get_batch'
 
 
-class InitializeParams(Struct, kw_only=True):
-    runtime_protocol_version: Annotated[
-        int,
-        Meta(
-            description='Maximum version of the protocol being used by the Stepflow runtime.',
-            ge=0,
-        ),
-    ]
+BlobId = Annotated[
+    str,
+    Meta(
+        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
+    ),
+]
 
 
 Component = Annotated[
@@ -77,14 +75,6 @@ Value = Annotated[
 ]
 
 
-BlobId = Annotated[
-    str,
-    Meta(
-        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
-    ),
-]
-
-
 class ComponentInfoParams(Struct, kw_only=True):
     component: Annotated[
         Component, Meta(description='The component to get information about.')
@@ -95,69 +85,9 @@ class ComponentListParams(Struct, kw_only=True):
     pass
 
 
-class GetBlobParams(Struct, kw_only=True):
-    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
-
-
 class BlobType(Enum):
     flow = 'flow'
     data = 'data'
-
-
-class EvaluateFlowParams(Struct, kw_only=True):
-    flow_id: Annotated[
-        BlobId,
-        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
-    ]
-    input: Annotated[Value, Meta(description='The input to provide to the flow.')]
-
-
-class GetFlowMetadataParams(Struct, kw_only=True):
-    flow_id: Annotated[BlobId, Meta(description='The flow to retrieve metadata for.')]
-    step_id: (
-        Annotated[
-            str | None,
-            Meta(
-                description="The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response."
-            ),
-        ]
-        | None
-    ) = None
-
-
-class SubmitBatchParams(Struct, kw_only=True):
-    flow_id: Annotated[
-        BlobId,
-        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
-    ]
-    inputs: Annotated[
-        List[Value], Meta(description='The inputs to provide to the flow for each run.')
-    ]
-    max_concurrency: (
-        Annotated[
-            int | None,
-            Meta(
-                description='Maximum number of concurrent executions (defaults to number of inputs if not specified).',
-                ge=0,
-            ),
-        ]
-        | None
-    ) = None
-
-
-class GetBatchParams(Struct, kw_only=True):
-    batch_id: Annotated[str, Meta(description='The batch ID to query.')]
-    wait: (
-        Annotated[
-            bool,
-            Meta(description='If true, wait for batch completion before returning.'),
-        ]
-        | None
-    ) = False
-    include_results: (
-        Annotated[bool, Meta(description='If true, include full outputs in response.')]
-        | None
-    ) = False
 
 
 class InitializeResult(Struct, kw_only=True):
@@ -284,12 +214,57 @@ class Initialized(Struct, kw_only=True):
     pass
 
 
+class ObservabilityContext(Struct, kw_only=True):
+    trace_id: (
+        Annotated[
+            str | None,
+            Meta(
+                description='OpenTelemetry trace ID (128-bit, hex encoded).\n\nPresent when tracing is enabled, None otherwise.\nUsed to correlate all operations within a single trace.'
+            ),
+        ]
+        | None
+    ) = None
+    span_id: (
+        Annotated[
+            str | None,
+            Meta(
+                description='OpenTelemetry span ID (64-bit, hex encoded).\n\nUsed to establish parent-child span relationships.\nComponent servers should use this as the parent span when creating their spans.'
+            ),
+        ]
+        | None
+    ) = None
+    run_id: (
+        Annotated[
+            str | None,
+            Meta(
+                description='The ID of the workflow run.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and associating operations with specific workflow runs.'
+            ),
+        ]
+        | None
+    ) = None
+    flow_id: (
+        Annotated[
+            BlobId | None,
+            Meta(
+                description='The ID of the flow being executed.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and understanding which workflow is being executed.'
+            ),
+        ]
+        | None
+    ) = None
+    step_id: (
+        Annotated[
+            str | None,
+            Meta(
+                description='The ID of the step being executed.\n\nPresent for step-level execution, None for workflow-level operations.\nUsed for filtering logs and associating operations with specific workflow steps.'
+            ),
+        ]
+        | None
+    ) = None
+
+
 class ComponentExecuteParams(Struct, kw_only=True):
     component: Annotated[Component, Meta(description='The component to execute.')]
     input: Annotated[Value, Meta(description='The input to the component.')]
-    step_id: Annotated[str, Meta(description='The ID of the step being executed.')]
-    run_id: Annotated[str, Meta(description='The ID of the workflow run.')]
-    flow_id: Annotated[BlobId, Meta(description='The ID of the flow being executed.')]
     attempt: Annotated[
         int,
         Meta(
@@ -297,11 +272,119 @@ class ComponentExecuteParams(Struct, kw_only=True):
             ge=0,
         ),
     ]
+    observability: Annotated[
+        ObservabilityContext,
+        Meta(description='Observability context for tracing and logging.'),
+    ]
+
+
+class GetBlobParams(Struct, kw_only=True):
+    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing bidirectional calls.'),
+        ]
+        | None
+    ) = None
 
 
 class PutBlobParams(Struct, kw_only=True):
     data: Value
     blob_type: BlobType
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing bidirectional calls.'),
+        ]
+        | None
+    ) = None
+
+
+class EvaluateFlowParams(Struct, kw_only=True):
+    flow_id: Annotated[
+        BlobId,
+        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
+    ]
+    input: Annotated[Value, Meta(description='The input to provide to the flow.')]
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(
+                description='Observability context for tracing nested flow execution.'
+            ),
+        ]
+        | None
+    ) = None
+
+
+class GetFlowMetadataParams(Struct, kw_only=True):
+    flow_id: Annotated[BlobId, Meta(description='The flow to retrieve metadata for.')]
+    step_id: (
+        Annotated[
+            str | None,
+            Meta(
+                description="The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response."
+            ),
+        ]
+        | None
+    ) = None
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing metadata requests.'),
+        ]
+        | None
+    ) = None
+
+
+class SubmitBatchParams(Struct, kw_only=True):
+    flow_id: Annotated[
+        BlobId,
+        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
+    ]
+    inputs: Annotated[
+        List[Value], Meta(description='The inputs to provide to the flow for each run.')
+    ]
+    max_concurrency: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum number of concurrent executions (defaults to number of inputs if not specified).',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing batch submission.'),
+        ]
+        | None
+    ) = None
+
+
+class GetBatchParams(Struct, kw_only=True):
+    batch_id: Annotated[str, Meta(description='The batch ID to query.')]
+    wait: (
+        Annotated[
+            bool,
+            Meta(description='If true, wait for batch completion before returning.'),
+        ]
+        | None
+    ) = False
+    include_results: (
+        Annotated[bool, Meta(description='If true, include full outputs in response.')]
+        | None
+    ) = False
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing batch queries.'),
+        ]
+        | None
+    ) = None
 
 
 class ComponentInfo(Struct, kw_only=True):
@@ -377,26 +460,23 @@ class Notification(Struct, kw_only=True):
     jsonrpc: JsonRpc | None = '2.0'
 
 
-class MethodRequest(Struct, kw_only=True):
-    id: RequestId
-    method: Annotated[Method, Meta(description='The method being called.')]
-    params: Annotated[
-        InitializeParams
-        | ComponentExecuteParams
-        | ComponentInfoParams
-        | ComponentListParams
-        | GetBlobParams
-        | PutBlobParams
-        | EvaluateFlowParams
-        | GetFlowMetadataParams
-        | SubmitBatchParams
-        | GetBatchParams,
+class InitializeParams(Struct, kw_only=True):
+    runtime_protocol_version: Annotated[
+        int,
         Meta(
-            description='The parameters for the method call. Set on method requests.',
-            title='MethodParams',
+            description='Maximum version of the protocol being used by the Stepflow runtime.',
+            ge=0,
         ),
     ]
-    jsonrpc: JsonRpc | None = '2.0'
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(
+                description='Observability context for tracing initialization (trace context only, no flow/run).'
+            ),
+        ]
+        | None
+    ) = None
 
 
 class ComponentInfoResult(Struct, kw_only=True):
@@ -423,6 +503,28 @@ class GetBatchResult(Struct, kw_only=True):
         ]
         | None
     ) = None
+
+
+class MethodRequest(Struct, kw_only=True):
+    id: RequestId
+    method: Annotated[Method, Meta(description='The method being called.')]
+    params: Annotated[
+        InitializeParams
+        | ComponentExecuteParams
+        | ComponentInfoParams
+        | ComponentListParams
+        | GetBlobParams
+        | PutBlobParams
+        | EvaluateFlowParams
+        | GetFlowMetadataParams
+        | SubmitBatchParams
+        | GetBatchParams,
+        Meta(
+            description='The parameters for the method call. Set on method requests.',
+            title='MethodParams',
+        ),
+    ]
+    jsonrpc: JsonRpc | None = '2.0'
 
 
 class MethodSuccess(Struct, kw_only=True):

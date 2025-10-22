@@ -10,80 +10,15 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
-use crate::error::{Result, TransportError};
-use crate::lazy_value::LazyValue;
-use crate::{Error, MethodHandler, MethodResponse};
-use crate::{Message, MethodRequest};
-
-/// Helper function to handle a method call with request/response types.
-pub(super) async fn handle_method_call<'a, Req, Resp, F, Fut>(
-    request: &'a MethodRequest<'a>,
-    response_tx: mpsc::Sender<String>,
-    handler: F,
-) -> Result<()>
-where
-    Req: for<'de> Deserialize<'de>,
-    Resp: Serialize + std::fmt::Debug + Sync + Send,
-    F: FnOnce(Req) -> Fut,
-    Fut: Future<Output = Result<Resp, Error<'static>>> + 'a,
-{
-    let id = request.id.clone();
-    let report_user_error = async |error| {
-        let response = Message::Response(MethodResponse::error(id.clone(), error));
-        let response = serde_json::to_string(&response).change_context(TransportError::Send)?;
-
-        response_tx
-            .send(response)
-            .await
-            .change_context(TransportError::Send)?;
-        Ok(())
-    };
-
-    let request: Req = if let Some(params) = &request.params {
-        match params.deserialize_to() {
-            Ok(request) => request,
-            Err(e) => {
-                log::error!(
-                    "Failed to deserialize request parameters for {}: {e:#}",
-                    request.method
-                );
-                return report_user_error(Error::invalid_parameters(&request.id)).await;
-            }
-        }
-    } else {
-        match serde_json::from_value(serde_json::Value::Null) {
-            Ok(request) => request,
-            Err(e) => {
-                log::error!("Failed to deserialize empty request parameters: {e}");
-                return report_user_error(Error::invalid_parameters(&request.id)).await;
-            }
-        }
-    };
-
-    let response = match handler(request).await {
-        Ok(result) => result,
-        Err(e) => {
-            log::error!("Method call failed: {e:?}");
-            return report_user_error(e).await;
-        }
-    };
-    let response = Message::Response(MethodResponse::success(id, LazyValue::write_ref(&response)));
-    let response = serde_json::to_string(&response).change_context(TransportError::Send)?;
-
-    response_tx
-        .send(response)
-        .await
-        .change_context(TransportError::Send)?;
-
-    Ok(())
-}
+use super::handle_method_call;
+use crate::MethodRequest;
+use crate::error::TransportError;
+use crate::{Error, MethodHandler};
 
 /// Handler for put_blob method calls from component servers.
 pub struct PutBlobHandler;
@@ -98,7 +33,7 @@ impl MethodHandler for PutBlobHandler {
         handle_method_call(
             request,
             response_tx,
-            |request: crate::protocol::PutBlobParams| async move {
+            async move |request: crate::protocol::PutBlobParams| {
                 let blob_id = context
                     .state_store()
                     .put_blob(request.data, request.blob_type)
@@ -127,7 +62,7 @@ impl MethodHandler for GetBlobHandler {
         handle_method_call(
             request,
             response_tx,
-            |request: crate::protocol::GetBlobParams| async move {
+            async move |request: crate::protocol::GetBlobParams| {
                 let blob_data = context
                     .state_store()
                     .get_blob(&request.blob_id)

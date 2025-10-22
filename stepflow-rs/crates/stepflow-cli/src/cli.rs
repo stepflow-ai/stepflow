@@ -371,6 +371,7 @@ pub enum Command {
 }
 
 impl Cli {
+    #[allow(clippy::print_stderr)]
     pub async fn execute(self) -> Result<()> {
         log::debug!(
             "Executing CLI command: {}",
@@ -413,7 +414,9 @@ impl Cli {
 
                 let flow_id =
                     BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
-                let output = run(executor, flow, flow_id, input).await?;
+                let (run_id, output) = run(executor, flow, flow_id, input).await?;
+                // Output run_id without hyphens for Jaeger trace ID compatibility
+                eprintln!("run_id: {}", run_id.simple());
                 output_args.write_output(output)?;
             }
             Command::SubmitBatch {

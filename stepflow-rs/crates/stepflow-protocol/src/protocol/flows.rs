@@ -19,7 +19,7 @@ use stepflow_core::{BlobId, FlowResult};
 
 use crate::protocol::Method;
 
-use super::ProtocolMethod;
+use super::{ObservabilityContext, ProtocolMethod};
 
 /// Sent from the component server to the Stepflow to evaluate a flow with the provided input.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -28,6 +28,9 @@ pub struct EvaluateFlowParams {
     pub flow_id: BlobId,
     /// The input to provide to the flow.
     pub input: ValueRef,
+    /// Observability context for tracing nested flow execution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
 }
 
 /// Sent from the Stepflow back to the component server with the result of the flow evaluation.
@@ -59,6 +62,10 @@ pub struct GetFlowMetadataParams {
     /// If the step_id doesn't exist, step_metadata will be None in the response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub step_id: Option<String>,
+
+    /// Observability context for tracing metadata requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
 }
 
 /// Sent from Stepflow back to the component server with the requested metadata.
@@ -98,6 +105,9 @@ pub struct SubmitBatchParams {
     /// Maximum number of concurrent executions (defaults to number of inputs if not specified).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_concurrency: Option<usize>,
+    /// Observability context for tracing batch submission.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
 }
 
 /// Sent from Stepflow back to the component server with the batch submission result.
@@ -125,6 +135,9 @@ pub struct GetBatchParams {
     /// If true, include full outputs in response.
     #[serde(default)]
     pub include_results: bool,
+    /// Observability context for tracing batch queries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability: Option<ObservabilityContext>,
 }
 
 /// Output information for a single run in a batch.

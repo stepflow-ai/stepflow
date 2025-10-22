@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 use crate::error::TransportError;
 use crate::{Error, MethodHandler, MethodRequest};
 
-use super::blob_handlers::handle_method_call;
+use super::handle_method_call;
 
 /// Handler for flow evaluation method calls from component servers.
 pub struct EvaluateFlowHandler;
@@ -42,7 +42,7 @@ impl MethodHandler for EvaluateFlowHandler {
         handle_method_call(
             request,
             response_tx,
-            |request: crate::protocol::EvaluateFlowParams| async move {
+            async move |request: crate::protocol::EvaluateFlowParams| {
                 // Execute the flow using the shared utility
                 let result = context
                     .execute_flow_by_id(&request.flow_id, request.input)
@@ -69,7 +69,7 @@ impl MethodHandler for GetFlowMetadataHandler {
         handle_method_call(
             request,
             response_tx,
-            |request: crate::protocol::GetFlowMetadataParams| async move {
+            async move |request: crate::protocol::GetFlowMetadataParams| {
                 // Fetch the flow from the state store
                 let flow_id = &request.flow_id;
                 let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
@@ -112,7 +112,7 @@ impl MethodHandler for SubmitBatchHandler {
         handle_method_call(
             request,
             response_tx,
-            |request: crate::protocol::SubmitBatchParams| async move {
+            async move |request: crate::protocol::SubmitBatchParams| {
                 // Fetch the flow from the state store
                 let flow_id = &request.flow_id;
                 let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
@@ -168,7 +168,7 @@ impl MethodHandler for GetBatchHandler {
         handle_method_call(
             request,
             response_tx,
-            |request: crate::protocol::GetBatchParams| async move {
+            async move |request: crate::protocol::GetBatchParams| {
                 let batch_id = uuid::Uuid::parse_str(&request.batch_id).map_err(|e| {
                     log::error!("Invalid batch ID: {e}");
                     Error::invalid_value("batch_id", "valid UUID")

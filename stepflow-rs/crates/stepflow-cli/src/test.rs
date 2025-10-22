@@ -411,7 +411,7 @@ async fn run_single_flow_test(
         .await;
 
         match result {
-            Ok(actual_output) => {
+            Ok((_run_id, actual_output)) => {
                 let normalized_output = normalize_flow_result(actual_output);
                 match &test_case.output {
                     Some(expected_output) => {

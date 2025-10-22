@@ -12,6 +12,8 @@
 
 mod blob_handlers;
 mod flow_handlers;
+mod handle_method_call;
 mod message_handler;
 
+use handle_method_call::handle_method_call;
 pub(crate) use message_handler::*;

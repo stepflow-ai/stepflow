@@ -20,6 +20,7 @@ import msgspec
 
 from stepflow_py.context import StepflowContext
 from stepflow_py.exceptions import CodeCompilationError, SkipStep, StepflowValueError
+from stepflow_py.observability import get_tracer
 
 
 class UdfCompilationError(CodeCompilationError):
@@ -407,14 +408,18 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
             raise ValueError(f"Blob {input.blob_id} must contain 'input_schema' field")
 
         # Compile the function with validation built-in
-        try:
-            compiled_func = _compile_function(code, input_schema)
-        except UdfCompilationError as e:
-            # Re-raise with blob context for better tracing
-            e.blob_id = input.blob_id
-            if input.blob_id:
-                e.data["blob_id"] = input.blob_id
-            raise
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "compile_function",
+        ):
+            try:
+                compiled_func = _compile_function(code, input_schema)
+            except UdfCompilationError as e:
+                # Re-raise with blob context for better tracing
+                e.blob_id = input.blob_id
+                if input.blob_id:
+                    e.data["blob_id"] = input.blob_id
+                raise
 
         # Cache the compiled function with metadata
         _function_cache[input.blob_id] = {
