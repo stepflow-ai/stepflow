@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from typing import Any, TypeVar
 from uuid import uuid4
 

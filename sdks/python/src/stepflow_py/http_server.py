@@ -29,8 +29,6 @@ from typing import Any, assert_never
 import msgspec
 
 from .context import StepflowContext
-
-logger = logging.getLogger(__name__)
 from .exceptions import (
     StepflowError,
     StepflowProtocolError,
@@ -48,6 +46,8 @@ from .generated_protocol import (
 )
 from .message_decoder import MessageDecoder
 from .server import StepflowServer
+
+logger = logging.getLogger(__name__)
 
 try:
     import uvicorn

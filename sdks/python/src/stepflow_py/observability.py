@@ -31,7 +31,7 @@ import logging
 import os
 import sys
 import typing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -56,8 +56,8 @@ if typing.TYPE_CHECKING:
     from stepflow_py.generated_protocol import ObservabilityContext
 
 # Context variables for diagnostic context
-_diagnostic_context: contextvars.ContextVar[dict[str, str]] = contextvars.ContextVar(
-    "diagnostic_context", default={}
+_diagnostic_context: contextvars.ContextVar[dict[str, str] | None] = (
+    contextvars.ContextVar("diagnostic_context", default=None)
 )
 
 
@@ -116,7 +116,7 @@ class DiagnosticContextFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Add diagnostic context fields to the log record."""
-        context = _diagnostic_context.get()
+        context = _diagnostic_context.get() or {}
 
         # Add context fields to record
         record.flow_id = context.get("flow_id", "")
@@ -134,7 +134,9 @@ class StructuredJsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON with diagnostic context."""
         log_entry = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=UTC
+            ).isoformat(),
             "level": record.levelname,
             "message": record.getMessage(),
             "logger": record.name,
@@ -352,7 +354,7 @@ def get_diagnostic_context() -> dict[str, str]:
     Returns:
         Dictionary with current diagnostic context fields.
     """
-    return _diagnostic_context.get()
+    return _diagnostic_context.get() or {}
 
 
 def get_current_observability_context(

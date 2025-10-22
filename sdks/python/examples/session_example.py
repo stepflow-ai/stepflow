@@ -62,7 +62,8 @@ def session_aware_component(
     # Determine transport mode based on session_id presence
     transport_mode = "HTTP" if session_id is not None else "STDIO"
 
-    # Logging will automatically include diagnostic context (flow_id, run_id, step_id, trace_id, span_id)
+    # Logging will automatically include diagnostic context
+    # (flow_id, run_id, step_id, trace_id, span_id)
     logger.info(f"Processing message: {input.message}")
     logger.info(f"Transport mode: {transport_mode}")
 

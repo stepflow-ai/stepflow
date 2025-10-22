@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import inspect
-import sys
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -452,7 +451,9 @@ class StepflowServer:
             return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
         except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.error(f"Error executing component {params.component}: {e}", exc_info=True)
+            logger.error(
+                f"Error executing component {params.component}: {e}", exc_info=True
+            )
             raise StepflowExecutionError(f"Component execution failed: {str(e)}") from e
 
     def langchain_component(
