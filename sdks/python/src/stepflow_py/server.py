@@ -360,9 +360,24 @@ class StepflowServer:
             raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
         try:
+            import logging
+
             from opentelemetry import trace as otel_trace
 
-            from stepflow_py.observability import extract_trace_context, get_tracer
+            from stepflow_py.observability import (
+                extract_trace_context,
+                get_tracer,
+                set_diagnostic_context,
+            )
+
+            # Set diagnostic context for logging
+            set_diagnostic_context(
+                flow_id=params.observability.flow_id,
+                run_id=params.observability.run_id,
+                step_id=params.observability.step_id,
+            )
+
+            logger = logging.getLogger(__name__)
 
             # Create a child span if trace context is available
             tracer = get_tracer(__name__)
@@ -408,6 +423,11 @@ class StepflowServer:
                     params.input, type=component.input_type
                 )
 
+                logger.info(
+                    f"Executing component {params.component} (attempt {params.attempt})"
+                )
+                logger.debug(f"Component input: {input_value}")
+
                 # Execute component with or without context
                 args = [input_value]
                 if context is not None:
@@ -419,25 +439,20 @@ class StepflowServer:
                     output = component.function(*args)
 
                 result = ComponentExecuteResult(output=output)
-                print(
-                    f"Executed component {params.component} "
-                    f"with input {input_value} produced {output}",
-                    file=sys.stderr,
-                )
+                logger.info(f"Component {params.component} executed successfully")
+                logger.debug(f"Component output: {output}")
                 return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
 
         except SkipStep as e:
             # Component requested to be skipped - return FlowResultSkipped
             skip_result = FlowResultSkipped(reason=e.message)
             result = ComponentExecuteResult(output=skip_result)
-            print(
-                f"Skipped component {params.component}: {e.message}",
-                file=sys.stderr,
-            )
+            logger = logging.getLogger(__name__)
+            logger.info(f"Skipped component {params.component}: {e.message}")
             return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
         except Exception as e:
-            print("Error executing component:", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error executing component {params.component}: {e}", exc_info=True)
             raise StepflowExecutionError(f"Component execution failed: {str(e)}") from e
 
     def langchain_component(

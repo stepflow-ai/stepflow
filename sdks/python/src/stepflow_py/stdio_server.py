@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from collections.abc import Callable
 
@@ -30,6 +31,8 @@ from stepflow_py.generated_protocol import (
 )
 from stepflow_py.message_decoder import MessageDecoder
 from stepflow_py.server import ComponentEntry, StepflowServer, _handle_exception
+
+logger = logging.getLogger(__name__)
 
 
 class StepflowStdioServer:
@@ -105,7 +108,7 @@ class StepflowStdioServer:
         try:
             # Decode message using message decoder
             message, future = self._message_decoder.decode(request_bytes)
-            print(f"Received message: {message}", file=sys.stderr)
+            logger.debug(f"Received message: {message}")
 
             # Extract request ID for error handling
             request_id = getattr(message, "id", None)
@@ -114,7 +117,7 @@ class StepflowStdioServer:
             # has already been resolved by the MessageDecoder, so we're done
             if future is not None:
                 future.set_result(message)
-                print(f"Resolved pending request {request_id}", file=sys.stderr)
+                logger.debug(f"Resolved pending request {request_id}")
                 return
 
             # Otherwise, this is an incoming request that we need to handle
@@ -127,20 +130,20 @@ class StepflowStdioServer:
                     response = await self._server.handle_message(message)
             else:
                 # This shouldn't happen for incoming messages, but handle gracefully
-                print(f"Unexpected message type: {type(message)}", file=sys.stderr)
+                logger.warning(f"Unexpected message type: {type(message)}")
                 return
 
             if response is not None:
                 assert isinstance(message, MethodRequest)
                 # Encode and write response
-                print(f"Sending response: {response} to {message}", file=sys.stderr)
+                logger.debug(f"Sending response: {response} to {message}")
                 response_bytes = msgspec.json.encode(response) + b"\n"
                 sys.stdout.buffer.write(response_bytes)
                 sys.stdout.buffer.flush()
             else:
                 assert isinstance(message, Notification)
         except Exception as e:
-            print(f"Error in _handle_incoming_message: {e}", file=sys.stderr)
+            logger.error(f"Error in _handle_incoming_message: {e}", exc_info=True)
             if request_id is not None:
                 error_response = _handle_exception(e, id=request_id)
                 sys.stdout.buffer.write(msgspec.json.encode(error_response) + b"\n")
@@ -148,15 +151,12 @@ class StepflowStdioServer:
             else:
                 # If we can't identify the request, we can't send a proper error
                 # response so just log the error
-                print(
-                    f"Failed to handle message without request ID: {e}",
-                    file=sys.stderr,
-                )
+                logger.error(f"Failed to handle message without request ID: {e}")
             return
 
     async def _process_messages(self, writer: asyncio.StreamWriter):
         """Process messages from both incoming and outgoing queues asynchronously."""
-        print("Starting process messages", file=sys.stderr)
+        logger.debug("Starting process messages")
 
         # Create persistent tasks for queue monitoring
         incoming_task = asyncio.create_task(self._incoming_queue.get())
@@ -176,7 +176,7 @@ class StepflowStdioServer:
                     if task == incoming_task:
                         # Handle incoming message
                         request_bytes = task.result()
-                        print(f"Processing Received: {request_bytes}", file=sys.stderr)
+                        logger.debug(f"Processing Received: {request_bytes}")
                         # Create and track the message handling task
                         handler_task = asyncio.create_task(
                             self._handle_incoming_message(request_bytes)
@@ -196,7 +196,7 @@ class StepflowStdioServer:
                         pending.add(outgoing_task)
 
             except Exception as e:
-                print(f"Error in message processing loop: {e}", file=sys.stderr)
+                logger.error(f"Error in message processing loop: {e}", exc_info=True)
 
     async def _send_outgoing_message(self, message_data, writer: asyncio.StreamWriter):
         """Send an outgoing message to the runtime."""
@@ -204,9 +204,9 @@ class StepflowStdioServer:
             message_bytes = msgspec.json.encode(message_data) + b"\n"
             writer.write(message_bytes)
             await writer.drain()
-            print(f"Sent outgoing message: {message_data}", file=sys.stderr)
+            logger.debug(f"Sent outgoing message: {message_data}")
         except Exception as e:
-            print(f"Error sending outgoing message: {e}", file=sys.stderr)
+            logger.error(f"Error sending outgoing message: {e}", exc_info=True)
 
     async def start(
         self,
@@ -248,7 +248,7 @@ class StepflowStdioServer:
             while True:
                 line = await reader.readline()
                 if not line:
-                    print("Empty line received. Exiting", file=sys.stderr)
+                    logger.info("Empty line received. Exiting")
                     break
                 await self._incoming_queue.put(line)
         except KeyboardInterrupt:

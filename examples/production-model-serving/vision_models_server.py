@@ -53,8 +53,7 @@ import time
 import base64
 import io
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Get logger - configuration is handled by SDK's setup_observability()
 logger = logging.getLogger(__name__)
 
 # Early exit if SDK not available

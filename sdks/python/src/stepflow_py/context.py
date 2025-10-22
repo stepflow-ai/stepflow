@@ -539,7 +539,3 @@ class StepflowContext:
                 raise Exception(f"Unexpected flow result type: {type(flow_result)}")
 
         return results
-
-    def log(self, message):
-        """Log a message."""
-        print(f"PYTHON: {message}", file=sys.stderr)
