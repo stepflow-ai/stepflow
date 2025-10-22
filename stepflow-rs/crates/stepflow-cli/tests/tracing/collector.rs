@@ -10,13 +10,15 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+#![allow(clippy::print_stderr)]
+
 //! OTLP collector management for tracing integration tests
 
 use std::path::{Path, PathBuf};
 use testcontainers::{
-    GenericImage, ImageExt,
-    core::{IntoContainerPort, Mount, WaitFor},
-    runners::AsyncRunner,
+    GenericImage, ImageExt as _,
+    core::{IntoContainerPort as _, Mount, WaitFor},
+    runners::AsyncRunner as _,
 };
 
 /// RAII guard for OTLP collector
@@ -50,7 +52,7 @@ impl CollectorGuard {
 ///
 /// Returns a guard that will stop the collector when dropped
 pub async fn start_otlp_collector(test_name: &str) -> CollectorGuard {
-    println!("🔧 Starting OTLP collector for test: {}", test_name);
+    eprintln!("🔧 Starting OTLP collector for test: {}", test_name);
 
     // Ensure DOCKER_HOST is set for testcontainers
     if std::env::var("DOCKER_HOST").is_err() {
@@ -112,14 +114,14 @@ pub async fn start_otlp_collector(test_name: &str) -> CollectorGuard {
 
     let endpoint = format!("http://localhost:{}", otlp_port);
 
-    println!(
+    eprintln!(
         "✅ OTLP collector started on port {} in {:?}",
         otlp_port,
         start_time.elapsed()
     );
 
     // Give the collector time to fully initialize its gRPC endpoint
-    println!("⏳ Waiting for gRPC endpoint to be ready...");
+    eprintln!("⏳ Waiting for gRPC endpoint to be ready...");
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     CollectorGuard {

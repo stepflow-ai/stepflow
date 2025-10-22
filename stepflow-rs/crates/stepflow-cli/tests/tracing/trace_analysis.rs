@@ -10,6 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+#![allow(clippy::print_stderr)]
+
 //! Trace analysis utilities for test verification
 
 use super::otlp_types::{OtlpTrace, Span};
@@ -79,18 +81,18 @@ pub fn count_spans_in_trace(traces: &[OtlpTrace], trace_id: &str) -> usize {
 pub fn print_trace_tree(traces: &[OtlpTrace], trace_id: &str) {
     let root = find_root_span(traces, trace_id);
     if root.is_none() {
-        println!("No root span found for trace {}", trace_id);
+        eprintln!("No root span found for trace {}", trace_id);
         return;
     }
 
     let root = root.unwrap();
-    println!("Trace tree for {}:", trace_id);
+    eprintln!("Trace tree for {}:", trace_id);
     print_span_tree(traces, root, 0);
 }
 
 fn print_span_tree(traces: &[OtlpTrace], span: &Span, indent: usize) {
     let prefix = "  ".repeat(indent);
-    println!("{}{}", prefix, span);
+    eprintln!("{}{}", prefix, span);
 
     let children = find_child_spans(traces, &span.span_id());
     for child in children {

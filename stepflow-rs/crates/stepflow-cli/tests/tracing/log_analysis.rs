@@ -10,6 +10,9 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+#![allow(clippy::print_stderr)]
+#![allow(dead_code)]
+
 //! Log analysis utilities for test verification
 
 use super::otlp_log_types::{LogRecord, OtlpLogs};
@@ -70,9 +73,9 @@ pub fn verify_log_context(log_record: &LogRecord) -> bool {
 /// Print log records for debugging
 pub fn print_logs(logs: &[OtlpLogs], trace_id: &str) {
     let trace_logs = find_logs_by_trace(logs, trace_id);
-    println!("📋 Log records for trace {}:", trace_id);
+    eprintln!("📋 Log records for trace {}:", trace_id);
     for log in trace_logs {
-        println!(
+        eprintln!(
             "  [{:5}] {} (trace: {:.8}, span: {:.8})",
             log.severity_text,
             log.message(),

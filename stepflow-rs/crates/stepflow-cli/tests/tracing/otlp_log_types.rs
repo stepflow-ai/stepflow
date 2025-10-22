@@ -10,6 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+#![allow(dead_code)]
+
 //! Minimal OTLP log type definitions for parsing JSONL log exports
 
 use serde::Deserialize;

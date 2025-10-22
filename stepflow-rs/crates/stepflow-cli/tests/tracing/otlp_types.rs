@@ -100,7 +100,7 @@ impl fmt::Display for Span {
             if self.is_root() {
                 "ROOT".to_string()
             } else {
-                format!("{}", &self.parent_span_id[..8])
+                self.parent_span_id[..8].to_string()
             }
         )
     }

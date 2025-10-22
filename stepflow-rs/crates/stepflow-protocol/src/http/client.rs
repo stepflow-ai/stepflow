@@ -605,12 +605,11 @@ mod tests {
             "id": "test-string-id"
         });
 
-        if let Some(id_value) = request_with_string_id.get("id") {
-            if let Some(s) = id_value.as_str() {
+        if let Some(id_value) = request_with_string_id.get("id")
+            && let Some(s) = id_value.as_str() {
                 let request_id = RequestId::from(s.to_string());
                 assert_eq!(format!("{request_id}"), "test-string-id");
             }
-        }
 
         // Test integer ID
         let request_with_int_id = serde_json::json!({
@@ -619,11 +618,10 @@ mod tests {
             "id": 42
         });
 
-        if let Some(id_value) = request_with_int_id.get("id") {
-            if let Some(i) = id_value.as_i64() {
+        if let Some(id_value) = request_with_int_id.get("id")
+            && let Some(i) = id_value.as_i64() {
                 let request_id = RequestId::from(i);
                 assert_eq!(format!("{request_id}"), "42");
             }
-        }
     }
 }

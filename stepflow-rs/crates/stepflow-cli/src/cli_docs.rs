@@ -238,8 +238,8 @@ mod tests {
 
         // Compare subcommand documentation
         for (command_name, generated_docs) in subcommand_docs {
-            if let Some(existing_docs) = existing_docs.get(&command_name) {
-                if existing_docs.trim() != generated_docs.trim() {
+            if let Some(existing_docs) = existing_docs.get(&command_name)
+                && existing_docs.trim() != generated_docs.trim() {
                     panic!(
                         "CLI documentation for '{}' does not match generated version.\n\
                          Run with STEPFLOW_OVERWRITE_CLI_DOCS=1 to update.\n\
@@ -252,7 +252,6 @@ mod tests {
                         generated_docs.trim()
                     );
                 }
-            }
         }
     }
 

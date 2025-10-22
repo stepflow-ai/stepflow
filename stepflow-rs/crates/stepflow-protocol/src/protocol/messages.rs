@@ -360,11 +360,10 @@ mod tests {
             match obj {
                 serde_json::Value::Object(map) => {
                     // Check if this object has a title
-                    if let Some(serde_json::Value::String(title)) = map.get("title") {
-                        if !is_valid_python_class_name(title) {
+                    if let Some(serde_json::Value::String(title)) = map.get("title")
+                        && !is_valid_python_class_name(title) {
                             invalid_titles.push(title.clone());
                         }
-                    }
 
                     // Recursively search in all values
                     for value in map.values() {

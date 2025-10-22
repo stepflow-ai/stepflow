@@ -309,7 +309,6 @@ mod tests {
 
         // Serialize to JSON
         let json = serde_json::to_string(&flow_error).expect("Should serialize successfully");
-        println!("FlowError JSON: {}", json);
 
         // Verify data field is included in JSON
         assert!(json.contains("\"data\":"));
@@ -346,7 +345,6 @@ mod tests {
 
         // Serialize to JSON
         let json = serde_json::to_string(&flow_result).expect("Should serialize successfully");
-        println!("FlowResult JSON: {}", json);
 
         // Verify the full structure
         assert!(json.contains("\"outcome\":\"failed\""));
@@ -409,7 +407,5 @@ mod tests {
             last_entry.get("error").unwrap().as_str(),
             Some("TestError: database connection failed")
         );
-
-        println!("Verified data field structure: {}", json);
     }
 }

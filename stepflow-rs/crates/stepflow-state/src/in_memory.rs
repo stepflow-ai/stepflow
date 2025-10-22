@@ -1140,7 +1140,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_create_and_get() {
-        use crate::StateStore;
+        use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
         let batch_id = Uuid::new_v4();
@@ -1166,7 +1166,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_add_runs() {
-        use crate::StateStore;
+        use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
         let batch_id = Uuid::new_v4();
@@ -1227,7 +1227,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_statistics() {
-        use crate::StateStore;
+        use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
         let batch_id = Uuid::new_v4();
@@ -1241,13 +1241,11 @@ mod tests {
 
         // Create runs with different statuses
         let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
-        let statuses = vec![
-            ExecutionStatus::Completed,
+        let statuses = [ExecutionStatus::Completed,
             ExecutionStatus::Running,
             ExecutionStatus::Failed,
             ExecutionStatus::Cancelled,
-            ExecutionStatus::Paused,
-        ];
+            ExecutionStatus::Paused];
 
         for (idx, (run_id, status)) in run_ids.iter().zip(statuses.iter()).enumerate() {
             // Create run
@@ -1287,7 +1285,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_update_status() {
-        use crate::StateStore;
+        use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
         let batch_id = Uuid::new_v4();
@@ -1316,7 +1314,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_batches_with_filters() {
-        use crate::StateStore;
+        use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
         let flow_id = BlobId::new("a".repeat(64)).unwrap();
@@ -1395,7 +1393,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_batch_runs_with_filters() {
-        use crate::StateStore;
+        use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
         let batch_id = Uuid::new_v4();

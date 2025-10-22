@@ -10,6 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+#![allow(clippy::print_stderr)]
+
 //! Distributed tracing integration tests
 //!
 //! These tests verify end-to-end distributed tracing across Rust runtime and Python component
@@ -113,16 +115,16 @@ async fn test_simple_workflow_tracing() {
         .env("STEPFLOW_LOG_LEVEL", "info")
         .env("STEPFLOW_LOG_FORMAT", "json"); // Use JSON format for easier parsing
 
-    println!("🚀 Running simple workflow with tracing...");
+    eprintln!("🚀 Running simple workflow with tracing...");
     let output = cmd.output().expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     if !output.status.success() {
-        println!("❌ Command failed with status: {:?}", output.status);
-        println!("STDOUT:\n{}", stdout);
-        println!("STDERR:\n{}", stderr);
+        eprintln!("❌ Command failed with status: {:?}", output.status);
+        eprintln!("STDOUT:\n{}", stdout);
+        eprintln!("STDERR:\n{}", stderr);
     }
 
     assert!(
@@ -133,19 +135,19 @@ async fn test_simple_workflow_tracing() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    println!("Command STDOUT:\n{}", stdout);
-    println!("Command STDERR:\n{}", stderr);
+    eprintln!("Command STDOUT:\n{}", stdout);
+    eprintln!("Command STDERR:\n{}", stderr);
 
     // Wait for traces to be exported
-    println!("⏳ Waiting for traces to export...");
+    eprintln!("⏳ Waiting for traces to export...");
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Read and verify traces
     let trace_file = collector.trace_file();
-    println!("📁 Reading traces from: {}", trace_file.display());
+    eprintln!("📁 Reading traces from: {}", trace_file.display());
 
     let traces = read_traces(&trace_file);
-    println!("📦 Found {} trace records", traces.len());
+    eprintln!("📦 Found {} trace records", traces.len());
 
     if traces.is_empty() {
         panic!("No traces collected");
@@ -157,7 +159,7 @@ async fn test_simple_workflow_tracing() {
         .or_else(|| parse_run_id(&stdout))
         .or_else(|| find_most_recent_trace_id(&traces))
         .expect("Failed to find run_id (trace_id) from output or traces");
-    println!("📊 Run ID (trace_id): {}", run_id);
+    eprintln!("📊 Run ID (trace_id): {}", run_id);
 
     // Print trace tree for debugging
     print_trace_tree(&traces, &run_id);
@@ -198,10 +200,10 @@ async fn test_simple_workflow_tracing() {
         assert_eq!(child.name, "step", "Child span should be named 'step'");
     }
 
-    println!("✅ Simple workflow tracing test passed");
-    println!("   - Verified flow_execution root span");
-    println!("   - Verified 3 step spans as direct children");
-    println!("   - Verified trace_id == run_id");
+    eprintln!("✅ Simple workflow tracing test passed");
+    eprintln!("   - Verified flow_execution root span");
+    eprintln!("   - Verified 3 step spans as direct children");
+    eprintln!("   - Verified trace_id == run_id");
 }
 
 /// Test: Bidirectional workflow observability
@@ -231,16 +233,16 @@ async fn test_bidirectional_workflow_tracing() {
         .env("STEPFLOW_LOG_FORMAT", "json") // Use JSON format for easier parsing
         .env("STEPFLOW_SERVICE_NAME", "stepflow-test-python"); // For Python SDK
 
-    println!("🚀 Running bidirectional workflow with tracing...");
+    eprintln!("🚀 Running bidirectional workflow with tracing...");
     let output = cmd.output().expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     if !output.status.success() {
-        println!("❌ Command failed with status: {:?}", output.status);
-        println!("STDOUT:\n{}", stdout);
-        println!("STDERR:\n{}", stderr);
+        eprintln!("❌ Command failed with status: {:?}", output.status);
+        eprintln!("STDOUT:\n{}", stdout);
+        eprintln!("STDERR:\n{}", stderr);
     }
 
     assert!(
@@ -250,19 +252,19 @@ async fn test_bidirectional_workflow_tracing() {
         stderr
     );
 
-    println!("Command STDOUT:\n{}", stdout);
-    println!("Command STDERR:\n{}", stderr);
+    eprintln!("Command STDOUT:\n{}", stdout);
+    eprintln!("Command STDERR:\n{}", stderr);
 
     // Wait longer for traces (Python subprocess needs more time)
-    println!("⏳ Waiting for traces to export...");
+    eprintln!("⏳ Waiting for traces to export...");
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // Read and verify traces
     let trace_file = collector.trace_file();
-    println!("📁 Reading traces from: {}", trace_file.display());
+    eprintln!("📁 Reading traces from: {}", trace_file.display());
 
     let traces = read_traces(&trace_file);
-    println!("📦 Found {} trace records", traces.len());
+    eprintln!("📦 Found {} trace records", traces.len());
 
     if traces.is_empty() {
         panic!("No traces collected");
@@ -274,7 +276,7 @@ async fn test_bidirectional_workflow_tracing() {
         .or_else(|| parse_run_id(&stdout))
         .or_else(|| find_most_recent_trace_id(&traces))
         .expect("Failed to find run_id (trace_id) from output or traces");
-    println!("📊 Run ID (trace_id): {}", run_id);
+    eprintln!("📊 Run ID (trace_id): {}", run_id);
 
     // Convert trace_id (hex without hyphens) to UUID format (hex with hyphens)
     // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (8-4-4-4-12)
@@ -363,7 +365,7 @@ async fn test_bidirectional_workflow_tracing() {
         "Should find at least 2 get_blob spans from Python component"
     );
     assert!(
-        put_blob_spans.len() >= 1,
+        !put_blob_spans.is_empty(),
         "Should find at least 1 put_blob span from Python component"
     );
 
@@ -383,7 +385,7 @@ async fn test_bidirectional_workflow_tracing() {
 
     // 5. Verify complete trace structure
     let total_spans = count_spans_in_trace(&traces, &run_id);
-    println!("📊 Total spans in trace: {}", total_spans);
+    eprintln!("📊 Total spans in trace: {}", total_spans);
 
     // Print all unique span names for visibility
     let all_span_names: std::collections::HashSet<_> = traces
@@ -391,41 +393,41 @@ async fn test_bidirectional_workflow_tracing() {
         .flat_map(|t| t.all_spans())
         .map(|s| &s.name)
         .collect();
-    println!("📋 Unique span names in trace:");
+    eprintln!("📋 Unique span names in trace:");
     for name in &all_span_names {
-        println!("  - {}", name);
+        eprintln!("  - {}", name);
     }
 
-    println!("✅ Bidirectional workflow tracing test passed");
-    println!("   - Verified flow_execution root span");
-    println!("   - Verified 4 step spans as direct children");
-    println!(
+    eprintln!("✅ Bidirectional workflow tracing test passed");
+    eprintln!("   - Verified flow_execution root span");
+    eprintln!("   - Verified 4 step spans as direct children");
+    eprintln!(
         "   - Verified Python component execution span (component:/udf)"
     );
-    println!(
+    eprintln!(
         "   - Verified {} get_blob bidirectional calls",
         get_blob_spans.len()
     );
-    println!(
+    eprintln!(
         "   - Verified {} put_blob bidirectional calls",
         put_blob_spans.len()
     );
-    println!("   - Verified trace_id == run_id");
-    println!("   - Verified trace propagation across Rust ↔ Python boundary");
+    eprintln!("   - Verified trace_id == run_id");
+    eprintln!("   - Verified trace propagation across Rust ↔ Python boundary");
 
     // 6. Verify logs contain diagnostic context (run_id, trace_id, span_id)
     // Parse JSON logs from stdout
-    println!("📋 Verifying log diagnostic context...");
+    eprintln!("📋 Verifying log diagnostic context...");
 
     let json_logs: Vec<serde_json::Value> = stdout
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect();
 
-    println!("📦 Found {} JSON log records in stdout", json_logs.len());
+    eprintln!("📦 Found {} JSON log records in stdout", json_logs.len());
 
     // Find logs with run_id matching our workflow (use UUID format with hyphens)
-    println!("🔍 Looking for logs with run_id: {}", run_id_with_hyphens);
+    eprintln!("🔍 Looking for logs with run_id: {}", run_id_with_hyphens);
     let logs_with_run_id: Vec<_> = json_logs
         .iter()
         .filter(|log| {
@@ -441,7 +443,7 @@ async fn test_bidirectional_workflow_tracing() {
         !logs_with_run_id.is_empty(),
         "Should find log records with run_id matching workflow run_id"
     );
-    println!(
+    eprintln!(
         "✓ {}/{} log records have run_id attribute",
         logs_with_run_id.len(),
         json_logs.len()
@@ -459,7 +461,7 @@ async fn test_bidirectional_workflow_tracing() {
         !logs_with_flow_id.is_empty(),
         "Should find log records with flow_id attribute"
     );
-    println!(
+    eprintln!(
         "✓ {}/{} log records have flow_id attribute",
         logs_with_flow_id.len(),
         json_logs.len()
@@ -485,7 +487,7 @@ async fn test_bidirectional_workflow_tracing() {
     // Note: Logs that occur within workflow execution should have both run_id and trace context
     // Early initialization logs may only have run_id
     if !logs_with_trace_context.is_empty() {
-        println!(
+        eprintln!(
             "✓ {}/{} log records have trace context (trace_id, span_id)",
             logs_with_trace_context.len(),
             logs_with_run_id.len()
@@ -493,8 +495,8 @@ async fn test_bidirectional_workflow_tracing() {
 
         // Verify trace_id matches run_id (without hyphens)
         for log in &logs_with_trace_context {
-            if let Some(diags) = log.get("diags") {
-                if let Some(_log_trace_id) = diags.get("trace_id").and_then(|v| v.as_str()) {
+            if let Some(diags) = log.get("diags")
+                && let Some(_log_trace_id) = diags.get("trace_id").and_then(|v| v.as_str()) {
                     // trace_id is stored as decimal in logs, but we can verify run_id matches
                     if let Some(log_run_id) = diags.get("run_id").and_then(|v| v.as_str()) {
                         assert_eq!(
@@ -504,14 +506,13 @@ async fn test_bidirectional_workflow_tracing() {
                         );
                     }
                 }
-            }
         }
     }
 
-    println!("✅ Log verification passed");
-    println!("   - Verified {} log records with run_id", logs_with_run_id.len());
+    eprintln!("✅ Log verification passed");
+    eprintln!("   - Verified {} log records with run_id", logs_with_run_id.len());
     if !logs_with_trace_context.is_empty() {
-        println!(
+        eprintln!(
             "   - Verified {} logs have trace context (trace_id, span_id)",
             logs_with_trace_context.len()
         );
