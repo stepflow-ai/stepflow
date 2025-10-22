@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 if typing.TYPE_CHECKING:
     from stepflow_py.generated_protocol import ObservabilityContext
 
+
 class ObservabilityConfig:
     """Configuration for OpenTelemetry observability.
 
@@ -182,7 +183,7 @@ def get_current_observability_context(
     run_id: str | None = None,
     flow_id: str | None = None,
     step_id: str | None = None,
-) -> "ObservabilityContext | None":  # type: ignore
+) -> "ObservabilityContext | None":
     """Capture the current OpenTelemetry span context for bidirectional requests.
 
     This extracts the trace_id and span_id from the current active span,

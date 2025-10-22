@@ -15,10 +15,10 @@ use std::sync::Arc;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
-use crate::error::{ TransportError};
-use crate::{Error, MethodHandler,};
-use crate::{ MethodRequest};
 use super::handle_method_call;
+use crate::MethodRequest;
+use crate::error::TransportError;
+use crate::{Error, MethodHandler};
 
 /// Handler for put_blob method calls from component servers.
 pub struct PutBlobHandler;
@@ -43,8 +43,9 @@ impl MethodHandler for PutBlobHandler {
                         Error::internal("Failed to put blob")
                     })?;
                 Ok(crate::protocol::PutBlobResult { blob_id })
-            }
-        ).boxed()
+            },
+        )
+        .boxed()
     }
 }
 
@@ -62,7 +63,6 @@ impl MethodHandler for GetBlobHandler {
             request,
             response_tx,
             async move |request: crate::protocol::GetBlobParams| {
-                
                 let blob_data = context
                     .state_store()
                     .get_blob(&request.blob_id)
@@ -75,7 +75,8 @@ impl MethodHandler for GetBlobHandler {
                     data: blob_data.data(),
                     blob_type: blob_data.blob_type(),
                 })
-            }
-        ).boxed()
+            },
+        )
+        .boxed()
     }
 }

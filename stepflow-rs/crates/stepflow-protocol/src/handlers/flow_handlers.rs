@@ -53,7 +53,9 @@ impl MethodHandler for EvaluateFlowHandler {
                     })?;
 
                 Ok(crate::protocol::EvaluateFlowResult { result })
-            }).boxed()
+            },
+        )
+        .boxed()
     }
 }
 
@@ -94,7 +96,9 @@ impl MethodHandler for GetFlowMetadataHandler {
                     flow_metadata,
                     step_metadata,
                 })
-            }).boxed()
+            },
+        )
+        .boxed()
     }
 }
 
@@ -148,7 +152,9 @@ impl MethodHandler for SubmitBatchHandler {
                     batch_id: batch_id.to_string(),
                     total_runs: batch_metadata.map(|m| m.total_inputs).unwrap_or(0),
                 })
-            }).boxed()
+            },
+        )
+        .boxed()
     }
 }
 
@@ -162,7 +168,7 @@ impl MethodHandler for GetBatchHandler {
         handle_method_call(
             request,
             response_tx,
-    async move |request: crate::protocol::GetBatchParams| {
+            async move |request: crate::protocol::GetBatchParams| {
                 let batch_id = uuid::Uuid::parse_str(&request.batch_id).map_err(|e| {
                     log::error!("Invalid batch ID: {e}");
                     Error::invalid_value("batch_id", "valid UUID")
@@ -204,6 +210,8 @@ impl MethodHandler for GetBatchHandler {
                 });
 
                 Ok(crate::protocol::GetBatchResult { details, outputs })
-            }).boxed()
+            },
+        )
+        .boxed()
     }
 }

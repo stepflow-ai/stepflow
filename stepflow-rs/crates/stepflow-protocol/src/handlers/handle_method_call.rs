@@ -83,7 +83,9 @@ where
     let parent_span_context = extract_parent_span(request.observability_context());
 
     let result = if let Some(parent_ctx) = parent_span_context {
-        handler(request).in_span(Span::root(Req::METHOD_NAME.as_str(), parent_ctx)).await
+        handler(request)
+            .in_span(Span::root(Req::METHOD_NAME.as_str(), parent_ctx))
+            .await
     } else {
         handler(request).await
     };
