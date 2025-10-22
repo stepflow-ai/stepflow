@@ -14,7 +14,7 @@
 //! along with trace context into all log records
 
 use stepflow_observability::{
-    BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig, RunIdGuard,
+    BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig, RunInfoGuard,
     StepIdGuard, fastrace::prelude::*, init_observability,
 };
 
@@ -42,7 +42,7 @@ async fn main() {
     // Simulate workflow execution with run_id
     {
         // Set run_id for this workflow run
-        let _run_guard = RunIdGuard::new("run-12345");
+        let _run_guard = RunInfoGuard::new("flow-1", "run-12345");
 
         log::info!("Workflow started");
 
