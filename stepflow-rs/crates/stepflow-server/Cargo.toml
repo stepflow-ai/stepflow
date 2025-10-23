@@ -44,7 +44,6 @@ uuid.workspace = true
 stepflow-builtins.workspace = true
 stepflow-mock.workspace = true
 tower.workspace = true
-testcontainers.workspace = true
 
 [[bin]]
 name = "stepflow-server"

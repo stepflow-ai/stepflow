@@ -53,6 +53,7 @@ insta.workspace = true
 insta-cmd.workspace = true
 regex.workspace = true
 tempfile.workspace = true
+testcontainers.workspace = true
 
 [[bin]]
 name = "stepflow"

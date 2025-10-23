@@ -1,0 +1,36 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "Simple Workflow for Tracing Tests"
+description: "Multi-step workflow using only builtin components"
+
+input_schema:
+  type: object
+  properties:
+    message1:
+      type: string
+    message2:
+      type: string
+
+steps:
+  - id: create_msg1
+    component: /builtin/create_messages
+    input:
+      user_prompt: { $from: { workflow: input }, path: message1 }
+
+  - id: create_msg2
+    component: /builtin/create_messages
+    input:
+      user_prompt: { $from: { workflow: input }, path: message2 }
+
+  - id: store_result
+    component: /builtin/put_blob
+    input:
+      data:
+        msg1: { $from: { step: create_msg1 } }
+        msg2: { $from: { step: create_msg2 } }
+      blob_type: "data"
+
+output:
+  blob_id: { $from: { step: store_result }, path: blob_id }
+  messages:
+    first: { $from: { step: create_msg1 } }
+    second: { $from: { step: create_msg2 } }

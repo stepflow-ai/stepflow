@@ -529,9 +529,7 @@ mod tests {
             )
             .build();
 
-        let expected_flow = match expected_flow_built {
-            Flow::V1(flow_v1) => flow_v1,
-        };
+        let Flow::V1(expected_flow) = expected_flow_built;
 
         similar_asserts::assert_serde_eq!(latest, &expected_flow);
     }
