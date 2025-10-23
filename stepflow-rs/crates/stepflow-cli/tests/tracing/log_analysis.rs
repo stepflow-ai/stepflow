@@ -47,10 +47,7 @@ pub fn find_logs_by_trace<'a>(logs: &'a [OtlpLogs], trace_id: &str) -> Vec<&'a L
 }
 
 /// Find log records by severity level
-pub fn find_logs_by_severity<'a>(
-    logs: &'a [OtlpLogs],
-    severity: &str,
-) -> Vec<&'a LogRecord> {
+pub fn find_logs_by_severity<'a>(logs: &'a [OtlpLogs], severity: &str) -> Vec<&'a LogRecord> {
     logs.iter()
         .flat_map(|log| log.all_log_records())
         .filter(|record| record.severity_text == severity)
@@ -59,9 +56,7 @@ pub fn find_logs_by_severity<'a>(
 
 /// Count total log records
 pub fn count_log_records(logs: &[OtlpLogs]) -> usize {
-    logs.iter()
-        .flat_map(|log| log.all_log_records())
-        .count()
+    logs.iter().flat_map(|log| log.all_log_records()).count()
 }
 
 /// Check if logs have required diagnostic context fields

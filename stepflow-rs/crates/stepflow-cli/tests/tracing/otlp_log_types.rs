@@ -98,8 +98,7 @@ impl LogRecord {
 
     /// Check if this log belongs to a specific trace
     pub fn belongs_to_trace(&self, trace_id: &str) -> bool {
-        !self.trace_id.is_empty()
-            && self.trace_id.to_lowercase() == trace_id.to_lowercase()
+        !self.trace_id.is_empty() && self.trace_id.to_lowercase() == trace_id.to_lowercase()
     }
 
     /// Get the normalized trace_id (lowercase)

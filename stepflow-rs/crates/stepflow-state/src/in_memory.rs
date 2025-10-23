@@ -1241,11 +1241,13 @@ mod tests {
 
         // Create runs with different statuses
         let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
-        let statuses = [ExecutionStatus::Completed,
+        let statuses = [
+            ExecutionStatus::Completed,
             ExecutionStatus::Running,
             ExecutionStatus::Failed,
             ExecutionStatus::Cancelled,
-            ExecutionStatus::Paused];
+            ExecutionStatus::Paused,
+        ];
 
         for (idx, (run_id, status)) in run_ids.iter().zip(statuses.iter()).enumerate() {
             // Create run

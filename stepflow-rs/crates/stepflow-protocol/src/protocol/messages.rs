@@ -361,9 +361,10 @@ mod tests {
                 serde_json::Value::Object(map) => {
                     // Check if this object has a title
                     if let Some(serde_json::Value::String(title)) = map.get("title")
-                        && !is_valid_python_class_name(title) {
-                            invalid_titles.push(title.clone());
-                        }
+                        && !is_valid_python_class_name(title)
+                    {
+                        invalid_titles.push(title.clone());
+                    }
 
                     // Recursively search in all values
                     for value in map.values() {

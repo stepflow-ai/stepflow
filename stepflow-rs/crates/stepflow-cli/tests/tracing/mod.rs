@@ -280,7 +280,8 @@ async fn test_bidirectional_workflow_tracing() {
 
     // Convert trace_id (hex without hyphens) to UUID format (hex with hyphens)
     // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (8-4-4-4-12)
-    let run_id_with_hyphens = if run_id.len() == 32 && run_id.chars().all(|c| c.is_ascii_hexdigit()) {
+    let run_id_with_hyphens = if run_id.len() == 32 && run_id.chars().all(|c| c.is_ascii_hexdigit())
+    {
         format!(
             "{}-{}-{}-{}-{}",
             &run_id[0..8],
@@ -401,9 +402,7 @@ async fn test_bidirectional_workflow_tracing() {
     eprintln!("✅ Bidirectional workflow tracing test passed");
     eprintln!("   - Verified flow_execution root span");
     eprintln!("   - Verified 4 step spans as direct children");
-    eprintln!(
-        "   - Verified Python component execution span (component:/udf)"
-    );
+    eprintln!("   - Verified Python component execution span (component:/udf)");
     eprintln!(
         "   - Verified {} get_blob bidirectional calls",
         get_blob_spans.len()
@@ -449,7 +448,8 @@ async fn test_bidirectional_workflow_tracing() {
         json_logs.len()
     );
 
-    let logs_with_flow_id: Vec<_> = json_logs.iter()
+    let logs_with_flow_id: Vec<_> = json_logs
+        .iter()
         .filter(|log| {
             log.get("diags")
                 .and_then(|d| d.get("flow_id"))
@@ -496,21 +496,25 @@ async fn test_bidirectional_workflow_tracing() {
         // Verify trace_id matches run_id (without hyphens)
         for log in &logs_with_trace_context {
             if let Some(diags) = log.get("diags")
-                && let Some(_log_trace_id) = diags.get("trace_id").and_then(|v| v.as_str()) {
-                    // trace_id is stored as decimal in logs, but we can verify run_id matches
-                    if let Some(log_run_id) = diags.get("run_id").and_then(|v| v.as_str()) {
-                        assert_eq!(
-                            log_run_id.replace("-", "").to_lowercase(),
-                            run_id.to_lowercase(),
-                            "Log run_id (without hyphens) should match trace_id"
-                        );
-                    }
+                && let Some(_log_trace_id) = diags.get("trace_id").and_then(|v| v.as_str())
+            {
+                // trace_id is stored as decimal in logs, but we can verify run_id matches
+                if let Some(log_run_id) = diags.get("run_id").and_then(|v| v.as_str()) {
+                    assert_eq!(
+                        log_run_id.replace("-", "").to_lowercase(),
+                        run_id.to_lowercase(),
+                        "Log run_id (without hyphens) should match trace_id"
+                    );
                 }
+            }
         }
     }
 
     eprintln!("✅ Log verification passed");
-    eprintln!("   - Verified {} log records with run_id", logs_with_run_id.len());
+    eprintln!(
+        "   - Verified {} log records with run_id",
+        logs_with_run_id.len()
+    );
     if !logs_with_trace_context.is_empty() {
         eprintln!(
             "   - Verified {} logs have trace context (trace_id, span_id)",
