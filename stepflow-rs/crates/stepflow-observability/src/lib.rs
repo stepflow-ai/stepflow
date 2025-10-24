@@ -377,33 +377,61 @@ fn create_appender(
         (LogDestination::OpenTelemetry, _) => {
             use logforth_append_opentelemetry::OpentelemetryLogBuilder;
             use opentelemetry_otlp::LogExporter;
-            use opentelemetry_otlp::WithExportConfig;
 
-            // Use Zstd compression for efficient log transmission
-            // Provides ~50-80% bandwidth reduction with minimal CPU overhead
-            let log_exporter = LogExporter::builder()
-                .with_tonic()
-                .with_endpoint(otlp_endpoint.expect("Endpoint required for OTLP logging"))
-                .with_timeout(std::time::Duration::from_secs(5))
-                .with_compression(opentelemetry_otlp::Compression::Zstd)
-                .build()
-                .expect("Failed to create OTLP log exporter");
+            // Create OTLP log exporter with standard configuration
+            let log_exporter = configure_otlp_exporter(
+                LogExporter::builder().with_tonic(),
+                otlp_endpoint.expect("Endpoint required for OTLP logging"),
+            )
+            .build()
+            .expect("Failed to create OTLP log exporter");
 
-            let builder = OpentelemetryLogBuilder::new(service_name, log_exporter)
-                // Add service.name as a resource attribute per OpenTelemetry spec
-                .label(
-                    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-                    service_name,
-                )
-                .label(
-                    opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
-                    env!("CARGO_PKG_VERSION"),
-                );
+            // Start with base builder and add all resource attributes as labels
+            // Respects OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES
+            // Uses the same resource configuration as tracing for consistency
+            let mut builder = OpentelemetryLogBuilder::new(service_name, log_exporter);
+            for (key, value) in build_resource(service_name).iter() {
+                builder = builder.label(key.to_string(), value.to_string());
+            }
 
-            // TODO: Add env, etc. labels (`builder.label("env", "production");`)
             Box::new(builder.build())
         }
     }
+}
+
+/// Build OpenTelemetry resource with service metadata and environment variable detection
+///
+/// This creates a Resource that respects the standard OpenTelemetry environment variables:
+/// - OTEL_SERVICE_NAME: Override service name (highest priority)
+/// - OTEL_RESOURCE_ATTRIBUTES: Add custom resource attributes (e.g., "deployment.environment=prod,region=us-west")
+///
+/// The precedence order is:
+/// 1. OTEL_SERVICE_NAME (if set)
+/// 2. OTEL_RESOURCE_ATTRIBUTES service.name (if set)
+/// 3. Programmatic service_name parameter (default)
+fn build_resource(service_name: &'static str) -> opentelemetry_sdk::Resource {
+    opentelemetry_sdk::Resource::builder()
+        .with_service_name(service_name)
+        .with_detector(Box::new(
+            opentelemetry_sdk::resource::EnvResourceDetector::new(),
+        ))
+        .build()
+}
+
+/// Configure common OTLP exporter settings (endpoint, timeout, compression)
+///
+/// This generic helper applies standard configuration to any OTLP exporter builder
+/// that implements WithExportConfig and WithTonicConfig traits.
+/// Call with_tonic() on the builder before passing it to this function.
+fn configure_otlp_exporter<T>(builder: T, endpoint: &str) -> T
+where
+    T: WithExportConfig + WithTonicConfig,
+{
+    builder
+        .with_endpoint(endpoint)
+        .with_timeout(std::time::Duration::from_secs(5))
+        // Uses Zstd compression for ~50-80% bandwidth reduction with minimal CPU overhead
+        .with_compression(opentelemetry_otlp::Compression::Zstd)
 }
 
 fn init_tracing(
@@ -411,12 +439,9 @@ fn init_tracing(
     binary_config: &BinaryObservabilityConfig,
 ) -> Result<TraceGuard> {
     if let Some(endpoint) = &config.otlp_endpoint {
-        // Create OpenTelemetry resource with service metadata
-        let resource = std::borrow::Cow::Owned(
-            opentelemetry_sdk::Resource::builder()
-                .with_service_name(binary_config.service_name)
-                .build(),
-        );
+        // Build resource with environment variable support
+        // Respects OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES
+        let resource = std::borrow::Cow::Owned(build_resource(binary_config.service_name));
 
         // Create instrumentation library metadata
         let instrumentation_lib = opentelemetry::InstrumentationScope::builder("stepflow")
@@ -424,18 +449,16 @@ fn init_tracing(
             .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
             .build();
 
-        // Create OTLP trace exporter with Zstd compression
-        // Provides ~50-80% bandwidth reduction with minimal CPU overhead
-        let exporter = opentelemetry_otlp::SpanExporter::builder()
-            .with_tonic()
-            .with_endpoint(endpoint)
-            .with_timeout(std::time::Duration::from_secs(5))
-            .with_compression(opentelemetry_otlp::Compression::Zstd)
-            .build()
-            .map_err(|e| {
-                error_stack::report!(ObservabilityError::OtlpInitError)
-                    .attach_printable(format!("Failed to create OTLP exporter: {}", e))
-            })?;
+        // Create OTLP trace exporter with standard configuration
+        let exporter = configure_otlp_exporter(
+            opentelemetry_otlp::SpanExporter::builder().with_tonic(),
+            endpoint,
+        )
+        .build()
+        .map_err(|e| {
+            error_stack::report!(ObservabilityError::OtlpInitError)
+                .attach_printable(format!("Failed to create OTLP exporter: {}", e))
+        })?;
 
         // Create OpenTelemetry reporter
         let reporter = fastrace_opentelemetry::OpenTelemetryReporter::new(
