@@ -17,6 +17,7 @@
 import inspect
 from typing import Any
 
+from opentelemetry import trace
 from stepflow_py import StepflowContext
 
 from ..exceptions import ExecutionError
@@ -66,7 +67,6 @@ class UDFExecutor:
                 (used only for pre-compilation)
         """
         blob_ids_to_compile = self._extract_blob_ids(input_data)
-
         for blob_id in blob_ids_to_compile:
             if blob_id not in self.compiled_components:
                 try:
@@ -79,7 +79,8 @@ class UDFExecutor:
                         f"All components must have real Langflow code."
                     ) from e
 
-                compiled_component = await self._compile_component(blob_data)
+                # Pass blob_id to compilation for better tracing
+                compiled_component = await self._compile_component(blob_data, blob_id)
                 self.compiled_components[blob_id] = compiled_component
 
     def _extract_blob_ids(self, input_data: dict[str, Any]) -> set[str]:
@@ -141,7 +142,9 @@ class UDFExecutor:
         # Return unchanged for primitive types and unknown objects
         return obj
 
-    async def _compile_component(self, blob_data: dict[str, Any]) -> dict[str, Any]:
+    async def _compile_component(
+        self, blob_data: dict[str, Any], blob_id: str | None = None
+    ) -> dict[str, Any]:
         """Compile a component from enhanced blob data into an executable definition."""
         component_type = blob_data.get("component_type", "Unknown")
         code = blob_data.get("code", "")
@@ -158,50 +161,66 @@ class UDFExecutor:
         field_order = blob_data.get("field_order", [])
         icon = blob_data.get("icon", "")
 
-        # Compiling component with metadata
+        # Trace the compilation process
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+            f"compile_component:{component_type}",
+            attributes={
+                "component_type": component_type,
+                "display_name": display_name,
+                **({"blob_id": blob_id} if blob_id else {}),
+            }
+        ):
+            # Patch PlaceholderGraph for lfx compatibility (needed for Agent components)
+            self._patch_placeholder_graph()
 
-        # Patch PlaceholderGraph for lfx compatibility (needed for Agent components)
-        self._patch_placeholder_graph()
+            if not code or not code.strip():
+                raise ExecutionError(
+                    f"No code found for component {component_type}. "
+                    f"All executable components should have custom code."
+                )
 
-        if not code or not code.strip():
-            raise ExecutionError(
-                f"No code found for component {component_type}. "
-                f"All executable components should have custom code."
-            )
+            try:
+                from lfx.custom.eval import eval_custom_component_code
 
-        try:
-            from lfx.custom.eval import eval_custom_component_code
+                # Trace the actual code evaluation
+                with tracer.start_as_current_span(
+                    "eval_custom_component_code",
+                    attributes={
+                        "component_type": component_type,
+                        "code_length": len(code),
+                    }
+                ):
+                    component_class = eval_custom_component_code(code)
+            except Exception as e:
+                raise ExecutionError(
+                    f"Failed to evaluate component code for {component_type}: {e}"
+                ) from e
 
-            component_class = eval_custom_component_code(code)
-        except Exception as e:
-            raise ExecutionError(
-                f"Failed to evaluate component code for {component_type}: {e}"
-            ) from e
+            if not component_class:
+                raise ExecutionError(
+                    f"eval_custom_component_code returned None for {component_type}"
+                )
 
-        if not component_class:
-            raise ExecutionError(
-                f"eval_custom_component_code returned None for {component_type}"
-            )
+            # Determine execution method with enhanced logic
+            execution_method = self._determine_execution_method(outputs, selected_output)
+            if not execution_method:
+                raise ExecutionError(f"No execution method found for {component_type}")
 
-        # Determine execution method with enhanced logic
-        execution_method = self._determine_execution_method(outputs, selected_output)
-        if not execution_method:
-            raise ExecutionError(f"No execution method found for {component_type}")
-
-        return {
-            "class": component_class,
-            "template": template,
-            "execution_method": execution_method,
-            "component_type": component_type,
-            # Enhanced metadata for better component execution
-            "base_classes": base_classes,
-            "display_name": display_name,
-            "description": description,
-            "documentation": documentation,
-            "metadata": metadata,
-            "field_order": field_order,
-            "icon": icon,
-        }
+            return {
+                "class": component_class,
+                "template": template,
+                "execution_method": execution_method,
+                "component_type": component_type,
+                # Enhanced metadata for better component execution
+                "base_classes": base_classes,
+                "display_name": display_name,
+                "description": description,
+                "documentation": documentation,
+                "metadata": metadata,
+                "field_order": field_order,
+                "icon": icon,
+            }
 
     async def _execute_with_precompiled_components(
         self, input_data: dict[str, Any]
@@ -238,12 +257,22 @@ class UDFExecutor:
         template = compiled_component["template"]
         execution_method = compiled_component["execution_method"]
         component_type = compiled_component["component_type"]
+        display_name = compiled_component.get("display_name", component_type)
 
-        # Create component instance
-        try:
-            component_instance = component_class()
-        except Exception as e:
-            raise ExecutionError(f"Failed to instantiate {component_type}: {e}") from e
+        tracer = trace.get_tracer(__name__)
+
+        # Create component instance with tracing
+        with tracer.start_as_current_span(
+            f"instantiate_component:{component_type}",
+            attributes={
+                "component_type": component_type,
+                "display_name": display_name,
+            }
+        ):
+            try:
+                component_instance = component_class()
+            except Exception as e:
+                raise ExecutionError(f"Failed to instantiate {component_type}: {e}") from e
 
         # Prepare parameters
         component_parameters = await self._prepare_component_parameters(
@@ -280,7 +309,7 @@ class UDFExecutor:
 
         # Component configuration prepared for execution
 
-        # Execute component method
+        # Execute component method with tracing
         if not hasattr(component_instance, execution_method):
             available = [m for m in dir(component_instance) if not m.startswith("_")]
             raise ExecutionError(
@@ -290,18 +319,26 @@ class UDFExecutor:
 
         method = getattr(component_instance, execution_method)
 
-        try:
-            if inspect.iscoroutinefunction(method):
-                # Execute all async methods directly - including real Agent execution
-                result = await method()
-            else:
-                # Handle sync methods safely
-                result = await self._execute_sync_method_safely(method, component_type)
+        with tracer.start_as_current_span(
+            f"execute_method:{execution_method}",
+            attributes={
+                "component_type": component_type,
+                "display_name": display_name,
+                "execution_method": execution_method,
+            }
+        ):
+            try:
+                if inspect.iscoroutinefunction(method):
+                    # Execute all async methods directly - including real Agent execution
+                    result = await method()
+                else:
+                    # Handle sync methods safely
+                    result = await self._execute_sync_method_safely(method, component_type)
 
-            # Serialize Langflow objects to JSON-compatible format before returning
-            return self._serialize_langflow_objects(result)
-        except Exception as e:
-            raise ExecutionError(f"Failed to execute {execution_method}: {e}") from e
+                # Serialize Langflow objects to JSON-compatible format before returning
+                return self._serialize_langflow_objects(result)
+            except Exception as e:
+                raise ExecutionError(f"Failed to execute {execution_method}: {e}") from e
 
     def _patch_placeholder_graph(self) -> None:
         """Patch PlaceholderGraph to add vertices attribute for lfx compatibility.
