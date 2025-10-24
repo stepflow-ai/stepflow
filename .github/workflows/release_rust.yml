@@ -220,53 +220,57 @@ jobs:
 
       - name: Create release archives
         run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
           mkdir -p ./archives
           cd ./release-artifacts
 
           # Create tar.gz archives for Unix targets (include all three binaries)
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin; do
-            mkdir -p "../temp-${target}"
+            # Create versioned directory name
+            dir_name="stepflow-${VERSION}-${target}"
+            mkdir -p "../${dir_name}"
             has_binaries=false
 
             for binary_name in stepflow stepflow-server stepflow-load-balancer; do
               binary="${binary_name}-${target}"
               if [ -f "$binary" ]; then
-                cp "$binary" "../temp-${target}/${binary_name}"
-                chmod +x "../temp-${target}/${binary_name}"
+                cp "$binary" "../${dir_name}/${binary_name}"
+                chmod +x "../${dir_name}/${binary_name}"
                 has_binaries=true
                 echo "Added ${binary_name} for ${target}"
               fi
             done
 
             if [ "$has_binaries" = true ]; then
-              cd "../temp-${target}"
-              tar -czf "../archives/stepflow-${target}.tar.gz" *
-              cd ../release-artifacts
-              echo "Created archive for ${target}"
-              rm -rf "../temp-${target}"
+              cd ..
+              tar -czf "archives/stepflow-${VERSION}-${target}.tar.gz" "${dir_name}"
+              cd release-artifacts
+              echo "Created archive for ${target}: stepflow-${VERSION}-${target}.tar.gz"
+              rm -rf "../${dir_name}"
             fi
           done
 
           # Create zip archive for Windows target (only stepflow and stepflow-server)
           target="x86_64-pc-windows-msvc"
-          mkdir -p "../temp-${target}"
+          dir_name="stepflow-${VERSION}-${target}"
+          mkdir -p "../${dir_name}"
           has_binaries=false
 
           for binary_name in stepflow stepflow-server; do
             binary="${binary_name}-${target}.exe"
             if [ -f "$binary" ]; then
-              cp "$binary" "../temp-${target}/${binary_name}.exe"
+              cp "$binary" "../${dir_name}/${binary_name}.exe"
               has_binaries=true
               echo "Added ${binary_name}.exe for ${target}"
             fi
           done
 
           if [ "$has_binaries" = true ]; then
-            cd "../temp-${target}"
-            zip "../archives/stepflow-${target}.zip" *
-            cd ../release-artifacts
-            echo "Created archive for Windows"
-            rm -rf "../temp-${target}"
+            cd ..
+            zip -r "archives/stepflow-${VERSION}-${target}.zip" "${dir_name}"
+            cd release-artifacts
+            echo "Created archive for Windows: stepflow-${VERSION}-${target}.zip"
+            rm -rf "../${dir_name}"
           fi
 
       - name: Create release notes
@@ -290,19 +294,19 @@ jobs:
           ### 📥 Download Binaries
 
           **Linux (glibc)**
-          - [stepflow-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-unknown-linux-gnu.tar.gz)
-          - [stepflow-aarch64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-aarch64-unknown-linux-gnu.tar.gz)
+          - [stepflow-${{ needs.determine-version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz)
+          - [stepflow-${{ needs.determine-version.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz)
 
           **Linux (musl/Alpine)**
-          - [stepflow-x86_64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-unknown-linux-musl.tar.gz)
-          - [stepflow-aarch64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-aarch64-unknown-linux-musl.tar.gz)
+          - [stepflow-${{ needs.determine-version.outputs.version }}-x86_64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-x86_64-unknown-linux-musl.tar.gz)
+          - [stepflow-${{ needs.determine-version.outputs.version }}-aarch64-unknown-linux-musl.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-aarch64-unknown-linux-musl.tar.gz)
 
           **macOS**
-          - [stepflow-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-apple-darwin.tar.gz)
-          - [stepflow-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-aarch64-apple-darwin.tar.gz)
+          - [stepflow-${{ needs.determine-version.outputs.version }}-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-x86_64-apple-darwin.tar.gz)
+          - [stepflow-${{ needs.determine-version.outputs.version }}-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-aarch64-apple-darwin.tar.gz)
 
           **Windows**
-          - [stepflow-x86_64-pc-windows-msvc.zip](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-x86_64-pc-windows-msvc.zip)
+          - [stepflow-${{ needs.determine-version.outputs.version }}-x86_64-pc-windows-msvc.zip](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-x86_64-pc-windows-msvc.zip)
 
           ### 🐳 Docker Images
           Docker images are available for three different components:
@@ -327,8 +331,9 @@ jobs:
 
           **Linux:**
           ```bash
-          # Download and extract
-          tar -xzf stepflow-*.tar.gz
+          # Download and extract (creates a versioned directory)
+          tar -xzf stepflow-${{ needs.determine-version.outputs.version }}-*.tar.gz
+          cd stepflow-${{ needs.determine-version.outputs.version }}-*
 
           # Move to PATH (optional)
           sudo mv stepflow stepflow-server stepflow-load-balancer /usr/local/bin/
@@ -336,8 +341,9 @@ jobs:
 
           **macOS:**
           ```bash
-          # Download and extract
-          tar -xzf stepflow-*.tar.gz
+          # Download and extract (creates a versioned directory)
+          tar -xzf stepflow-${{ needs.determine-version.outputs.version }}-*.tar.gz
+          cd stepflow-${{ needs.determine-version.outputs.version }}-*
 
           # Remove quarantine attribute (required for unsigned binaries)
           xattr -d com.apple.quarantine stepflow stepflow-server stepflow-load-balancer
@@ -348,8 +354,9 @@ jobs:
 
           **Windows:**
           ```powershell
-          # Extract the zip file
-          Expand-Archive stepflow-*.zip
+          # Extract the zip file (creates a versioned directory)
+          Expand-Archive stepflow-${{ needs.determine-version.outputs.version }}-*.zip
+          cd stepflow-${{ needs.determine-version.outputs.version }}-*
 
           # Add to PATH or run directly
           ```
