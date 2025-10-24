@@ -17,8 +17,8 @@
 import inspect
 from typing import Any
 
-from opentelemetry import trace
 from stepflow_py import StepflowContext
+from stepflow_py.observability import get_tracer
 
 from ..exceptions import ExecutionError
 from .type_converter import TypeConverter
@@ -67,10 +67,16 @@ class UDFExecutor:
                 (used only for pre-compilation)
         """
         blob_ids_to_compile = self._extract_blob_ids(input_data)
+        tracer = get_tracer(__name__)
+
         for blob_id in blob_ids_to_compile:
             if blob_id not in self.compiled_components:
                 try:
-                    blob_data = await context.get_blob(blob_id)
+                    # Trace blob retrieval
+                    with tracer.start_as_current_span(
+                        "blob_get", attributes={"blob_id": blob_id}
+                    ):
+                        blob_data = await context.get_blob(blob_id)
                 except Exception as e:
                     # No fallback component generation - require real component code
                     # Failed to load blob - component code required
@@ -162,14 +168,14 @@ class UDFExecutor:
         icon = blob_data.get("icon", "")
 
         # Trace the compilation process
-        tracer = trace.get_tracer(__name__)
+        tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             f"compile_component:{component_type}",
             attributes={
                 "component_type": component_type,
                 "display_name": display_name,
                 **({"blob_id": blob_id} if blob_id else {}),
-            }
+            },
         ):
             # Patch PlaceholderGraph for lfx compatibility (needed for Agent components)
             self._patch_placeholder_graph()
@@ -189,7 +195,7 @@ class UDFExecutor:
                     attributes={
                         "component_type": component_type,
                         "code_length": len(code),
-                    }
+                    },
                 ):
                     component_class = eval_custom_component_code(code)
             except Exception as e:
@@ -203,7 +209,9 @@ class UDFExecutor:
                 )
 
             # Determine execution method with enhanced logic
-            execution_method = self._determine_execution_method(outputs, selected_output)
+            execution_method = self._determine_execution_method(
+                outputs, selected_output
+            )
             if not execution_method:
                 raise ExecutionError(f"No execution method found for {component_type}")
 
@@ -259,7 +267,7 @@ class UDFExecutor:
         component_type = compiled_component["component_type"]
         display_name = compiled_component.get("display_name", component_type)
 
-        tracer = trace.get_tracer(__name__)
+        tracer = get_tracer(__name__)
 
         # Create component instance with tracing
         with tracer.start_as_current_span(
@@ -267,12 +275,14 @@ class UDFExecutor:
             attributes={
                 "component_type": component_type,
                 "display_name": display_name,
-            }
+            },
         ):
             try:
                 component_instance = component_class()
             except Exception as e:
-                raise ExecutionError(f"Failed to instantiate {component_type}: {e}") from e
+                raise ExecutionError(
+                    f"Failed to instantiate {component_type}: {e}"
+                ) from e
 
         # Prepare parameters
         component_parameters = await self._prepare_component_parameters(
@@ -325,20 +335,23 @@ class UDFExecutor:
                 "component_type": component_type,
                 "display_name": display_name,
                 "execution_method": execution_method,
-            }
+            },
         ):
             try:
                 if inspect.iscoroutinefunction(method):
-                    # Execute all async methods directly - including real Agent execution
                     result = await method()
                 else:
                     # Handle sync methods safely
-                    result = await self._execute_sync_method_safely(method, component_type)
+                    result = await self._execute_sync_method_safely(
+                        method, component_type
+                    )
 
                 # Serialize Langflow objects to JSON-compatible format before returning
                 return self._serialize_langflow_objects(result)
             except Exception as e:
-                raise ExecutionError(f"Failed to execute {execution_method}: {e}") from e
+                raise ExecutionError(
+                    f"Failed to execute {execution_method}: {e}"
+                ) from e
 
     def _patch_placeholder_graph(self) -> None:
         """Patch PlaceholderGraph to add vertices attribute for lfx compatibility.
