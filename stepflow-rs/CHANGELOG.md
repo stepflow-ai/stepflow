@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.7.0"></a> [Stepflow 0.7.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.7.0) - 2025-10-27
+### Features
+
+- Use released containers; fix k8s demo ([#379](https://github.com/stepflow-ai/stepflow/pull/379))
+- Add stepflow-observability crate ([#386](https://github.com/stepflow-ai/stepflow/pull/386))
+- Migrate from tracing to log + fastrace observability ([#387](https://github.com/stepflow-ai/stepflow/pull/387))
+- Observability stack added as docker-compose, exporter for OTLP … ([#390](https://github.com/stepflow-ai/stepflow/pull/390))
+- OTLP logging support and observability improvements ([#391](https://github.com/stepflow-ai/stepflow/pull/391))
+- End-to-end distributed tracing for component servers ([#393](https://github.com/stepflow-ai/stepflow/pull/393))
+- Add flow_id to the diagnostic context ([#394](https://github.com/stepflow-ai/stepflow/pull/394))
+- Comprehensive distributed tracing integration tests ([#397](https://github.com/stepflow-ai/stepflow/pull/397))
+- Use standard OTLP environment variables ([#400](https://github.com/stepflow-ai/stepflow/pull/400))
+- Add distributed tracing for batch execution ([#401](https://github.com/stepflow-ai/stepflow/pull/401))
+
 ## <a id="0.6.0"></a> [Stepflow 0.6.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.6.0) - 2025-10-15
 ### Features
 
