@@ -19,6 +19,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use fastrace::prelude::SpanContext;
 use stepflow_core::FlowResult;
 use stepflow_core::{
     BlobId,
@@ -58,6 +59,7 @@ impl Context for MockContext {
         _flow: Arc<Flow>,
         _flow_id: BlobId,
         _input: ValueRef,
+        _parent_context: Option<SpanContext>,
     ) -> Pin<Box<dyn Future<Output = Result<Uuid, error_stack::Report<PluginError>>> + Send>> {
         Box::pin(async { Err(PluginError::Execution.into()) })
     }
@@ -76,6 +78,7 @@ impl Context for MockContext {
         _flow_id: BlobId,
         _inputs: Vec<ValueRef>,
         _max_concurrency: Option<usize>,
+        _parent_context: Option<SpanContext>,
     ) -> Pin<Box<dyn Future<Output = Result<Uuid, error_stack::Report<PluginError>>> + Send>> {
         Box::pin(async { Err(PluginError::Execution.into()) })
     }

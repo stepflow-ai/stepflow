@@ -5,6 +5,14 @@ info:
   args:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: false
 exit_code: 2
@@ -12,7 +20,7 @@ exit_code: 2
 
 ----- stderr -----
 error: 'stepflow' requires a subcommand but one was not provided
-  [subcommands: run, submit-batch, submit, test, list-components, repl, validate, visualize, help]
+  [subcommands: run, run-batch, submit-batch, submit, test, list-components, repl, validate, visualize, help]
 
 Usage: stepflow [OPTIONS] <COMMAND>
 

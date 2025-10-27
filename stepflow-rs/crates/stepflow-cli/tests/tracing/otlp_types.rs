@@ -56,6 +56,31 @@ pub struct Span {
     #[serde(default)]
     #[allow(dead_code)]
     pub kind: i32,
+    /// Span attributes (key-value pairs)
+    #[serde(default)]
+    pub attributes: Vec<KeyValue>,
+}
+
+/// Key-value attribute for spans
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyValue {
+    pub key: String,
+    pub value: AttributeValue,
+}
+
+/// Attribute value wrapper
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributeValue {
+    #[serde(default)]
+    pub string_value: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub int_value: Option<i64>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub bool_value: Option<bool>,
 }
 
 impl Span {
@@ -87,6 +112,14 @@ impl Span {
     /// Check if this span belongs to the given trace
     pub fn belongs_to_trace(&self, trace_id: &str) -> bool {
         self.trace_id() == trace_id.to_lowercase()
+    }
+
+    /// Get a string attribute value by key
+    pub fn get_string_attribute(&self, key: &str) -> Option<&str> {
+        self.attributes
+            .iter()
+            .find(|kv| kv.key == key)
+            .and_then(|kv| kv.value.string_value.as_deref())
     }
 }
 
@@ -129,6 +162,7 @@ mod tests {
             parent_span_id: "".to_string(),
             name: "root".to_string(),
             kind: 0,
+            attributes: vec![],
         };
         assert!(root_span.is_root());
 
@@ -138,6 +172,7 @@ mod tests {
             parent_span_id: "def456".to_string(),
             name: "child".to_string(),
             kind: 0,
+            attributes: vec![],
         };
         assert!(!child_span.is_root());
     }
@@ -150,6 +185,7 @@ mod tests {
             parent_span_id: "parent456".to_string(),
             name: "test".to_string(),
             kind: 0,
+            attributes: vec![],
         };
 
         assert!(span.has_parent("parent456"));
@@ -165,6 +201,7 @@ mod tests {
             parent_span_id: "".to_string(),
             name: "test".to_string(),
             kind: 0,
+            attributes: vec![],
         };
 
         assert!(span.belongs_to_trace("abc123def456"));

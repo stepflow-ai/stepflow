@@ -50,7 +50,12 @@ impl LastRun {
     /// Execute this workflow normally (non-debug mode)
     pub async fn execute_normal(&self, executor: &StepflowExecutor) -> Result<()> {
         let run_id = executor
-            .submit_flow(self.flow.clone(), self.flow_id.clone(), self.input.clone())
+            .submit_flow(
+                self.flow.clone(),
+                self.flow_id.clone(),
+                self.input.clone(),
+                None,
+            )
             .await
             .change_context(MainError::FlowExecution)?;
 

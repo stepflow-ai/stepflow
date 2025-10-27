@@ -34,8 +34,9 @@ use collector::start_otlp_collector;
 use insta_cmd::Command;
 use std::path::Path;
 use trace_analysis::{
-    count_spans_in_trace, find_child_spans, find_root_span, find_spans_by_name, print_trace_tree,
-    read_traces,
+    count_spans_in_trace, find_batch_span, find_child_spans, find_flow_span_by_run_id,
+    find_root_span, find_spans_by_name, print_trace_tree, read_traces,
+    verify_batch_span_attributes, verify_parent_child_relationship,
 };
 
 /// Create a stepflow command for testing
@@ -153,38 +154,40 @@ async fn test_simple_workflow_tracing() {
         panic!("No traces collected");
     }
 
-    // Parse run_id from output or find it from traces
-    // Prefer stderr (simple text format) over stdout (JSON with UUID format)
+    // Parse run_id from output
     let run_id = parse_run_id(&stderr)
         .or_else(|| parse_run_id(&stdout))
-        .or_else(|| find_most_recent_trace_id(&traces))
-        .expect("Failed to find run_id (trace_id) from output or traces");
-    eprintln!("📊 Run ID (trace_id): {}", run_id);
+        .expect("Failed to find run_id from output");
+    eprintln!("📊 Run ID: {}", run_id);
+
+    // Find the flow execution span by run_id attribute
+    let root_span = find_flow_span_by_run_id(&traces, &run_id);
+    assert!(
+        root_span.is_some(),
+        "Should find flow_execution span with run_id attribute"
+    );
+    let root_span = root_span.unwrap();
+
+    eprintln!("📊 Trace ID: {}", root_span.trace_id());
 
     // Print trace tree for debugging
-    print_trace_tree(&traces, &run_id);
+    print_trace_tree(&traces, &root_span.trace_id());
 
     // Verify the semantic structure of the trace matches workflow execution:
-    // - Run (flow_execution, trace_id == run_id)
+    // - Run (flow_execution with run_id attribute)
     //   - Step 1 (create_msg1)
     //   - Step 2 (create_msg2)
     //   - Step 3 (store_result)
 
-    // 1. Verify root span: flow_execution with trace_id == run_id
-    let root_span = find_root_span(&traces, &run_id);
-    assert!(
-        root_span.is_some(),
-        "Should find flow_execution root span with trace_id matching run_id"
-    );
-    let root_span = root_span.unwrap();
+    // 1. Verify root span attributes
     assert_eq!(
         root_span.name, "flow_execution",
         "Root span should be named 'flow_execution'"
     );
     assert_eq!(
-        root_span.trace_id(),
-        run_id.to_lowercase(),
-        "trace_id should match run_id"
+        root_span.get_string_attribute("run_id"),
+        Some(run_id.as_str()),
+        "Root span should have run_id attribute"
     );
 
     // 2. Verify step spans: 3 steps as direct children of flow_execution
@@ -202,8 +205,8 @@ async fn test_simple_workflow_tracing() {
 
     eprintln!("✅ Simple workflow tracing test passed");
     eprintln!("   - Verified flow_execution root span");
+    eprintln!("   - Verified run_id as span attribute");
     eprintln!("   - Verified 3 step spans as direct children");
-    eprintln!("   - Verified trace_id == run_id");
 }
 
 /// Test: Bidirectional workflow observability
@@ -521,4 +524,144 @@ async fn test_bidirectional_workflow_tracing() {
             logs_with_trace_context.len()
         );
     }
+}
+
+/// Test: Batch execution tracing
+///
+/// This test verifies that:
+/// - Batch execution creates a root batch_execution span
+/// - Each batch item creates a child flow_execution span
+/// - Batch span has correct attributes (batch.total_items, batch.max_concurrency)
+/// - All child spans maintain correct parent-child relationships
+/// - Trace IDs propagate correctly through the batch
+#[tokio::test]
+#[ignore] // Requires Docker for OTLP collector
+async fn test_batch_execution_tracing() {
+    let collector = start_otlp_collector("batch_execution").await;
+
+    // Run batch with tracing enabled
+    let mut cmd = stepflow();
+    cmd.arg("run-batch")
+        .arg("--flow=stepflow-rs/crates/stepflow-cli/tests/tracing/workflows/simple_workflow.yaml")
+        .arg("--config=stepflow-rs/crates/stepflow-cli/tests/tracing/workflows/stepflow-config.yml")
+        .arg("--inputs=stepflow-rs/crates/stepflow-cli/tests/tracing/workflows/batch_inputs.jsonl")
+        .arg("--max-concurrent=2")
+        .env("STEPFLOW_TRACE_ENABLED", "true")
+        .env("STEPFLOW_OTLP_ENDPOINT", collector.grpc_endpoint())
+        .env("STEPFLOW_LOG_LEVEL", "info")
+        .env("STEPFLOW_LOG_FORMAT", "json");
+
+    eprintln!("🚀 Running batch workflow with tracing...");
+    let output = cmd.output().expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if !output.status.success() {
+        eprintln!("❌ Command failed with status: {:?}", output.status);
+        eprintln!("STDOUT:\n{}", stdout);
+        eprintln!("STDERR:\n{}", stderr);
+    }
+
+    assert!(
+        output.status.success(),
+        "Command failed with status {:?}\nSTDERR:\n{}",
+        output.status,
+        stderr
+    );
+
+    eprintln!("Command STDOUT:\n{}", stdout);
+    eprintln!("Command STDERR:\n{}", stderr);
+
+    // Wait longer for traces (batch execution needs more time)
+    eprintln!("⏳ Waiting for traces to export...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(8)).await;
+
+    // Read and verify traces
+    let trace_file = collector.trace_file();
+    eprintln!("📁 Reading traces from: {}", trace_file.display());
+
+    let traces = read_traces(&trace_file);
+    eprintln!("📦 Found {} trace records", traces.len());
+
+    if traces.is_empty() {
+        panic!("No traces collected");
+    }
+
+    // Parse batch_id from stderr
+    let batch_id = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("batch_id: "))
+        .map(|id| id.trim().to_string())
+        .expect("Failed to find batch_id in output");
+    eprintln!("📊 Batch ID: {}", batch_id);
+
+    // Find the batch execution span by batch_id attribute
+    let batch_span = find_batch_span(&traces, &batch_id);
+    assert!(
+        batch_span.is_some(),
+        "Should find batch_execution span with batch_id attribute"
+    );
+    let batch_span = batch_span.unwrap();
+
+    eprintln!("📊 Trace ID: {}", batch_span.trace_id());
+
+    // Print trace tree for debugging
+    print_trace_tree(&traces, &batch_span.trace_id());
+
+    // Verify the semantic structure of the trace:
+    // - Batch (batch_execution with batch_id attribute)
+    //   - Flow 1 (flow_execution, child of batch)
+    //   - Flow 2 (flow_execution, child of batch)
+    //   - Flow 3 (flow_execution, child of batch)
+
+    // 1. Verify batch root span
+    assert_eq!(
+        batch_span.name, "batch_execution",
+        "Root span should be named 'batch_execution'"
+    );
+    assert_eq!(
+        batch_span.get_string_attribute("batch_id"),
+        Some(batch_id.as_str()),
+        "Batch span should have batch_id attribute"
+    );
+
+    // 2. Verify batch span attributes
+    verify_batch_span_attributes(batch_span, 3, 2)
+        .expect("Batch span should have correct attributes");
+
+    // 3. Verify flow execution children
+    let flow_children = find_child_spans(&traces, &batch_span.span_id());
+    assert_eq!(
+        flow_children.len(),
+        3,
+        "Should have exactly 3 flow_execution spans as children of batch_execution"
+    );
+
+    // All children should be named "flow_execution"
+    for child in &flow_children {
+        assert_eq!(
+            child.name, "flow_execution",
+            "Child span should be named 'flow_execution'"
+        );
+
+        // Verify parent-child relationship
+        verify_parent_child_relationship(child, batch_span)
+            .expect("Flow execution should be child of batch execution");
+
+        // Each flow should have step children
+        let step_children = find_child_spans(&traces, &child.span_id());
+        assert_eq!(
+            step_children.len(),
+            3,
+            "Each flow should have 3 step spans (create_msg1, create_msg2, store_result)"
+        );
+    }
+
+    eprintln!("✅ Batch execution tracing test passed");
+    eprintln!("   - Verified batch_execution root span");
+    eprintln!("   - Verified batch_id as span attribute");
+    eprintln!("   - Verified batch span attributes (total_items=3, max_concurrency=2)");
+    eprintln!("   - Verified 3 flow_execution spans as direct children");
+    eprintln!("   - Verified parent-child relationships");
 }

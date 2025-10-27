@@ -162,7 +162,7 @@ pub async fn create_run(
     use stepflow_plugin::Context as _;
 
     // Submit the flow for execution
-    let submitted_run_id = executor.submit_flow(flow, flow_id, input).await?;
+    let submitted_run_id = executor.submit_flow(flow, flow_id, input, None).await?;
 
     // Wait for the result (synchronous execution for the HTTP endpoint)
     let flow_result = executor.flow_result(submitted_run_id).await?;
