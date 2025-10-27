@@ -100,6 +100,92 @@ fn print_span_tree(traces: &[OtlpTrace], span: &Span, indent: usize) {
     }
 }
 
+/// Find batch execution span by batch ID attribute
+pub fn find_batch_span<'a>(traces: &'a [OtlpTrace], batch_id: &str) -> Option<&'a Span> {
+    traces
+        .iter()
+        .flat_map(|trace| trace.all_spans())
+        .find(|span| {
+            span.name == "batch_execution"
+                && span
+                    .get_string_attribute("batch_id")
+                    .map(|id| id == batch_id)
+                    .unwrap_or(false)
+        })
+}
+
+/// Find flow execution span by run ID attribute
+pub fn find_flow_span_by_run_id<'a>(traces: &'a [OtlpTrace], run_id: &str) -> Option<&'a Span> {
+    traces
+        .iter()
+        .flat_map(|trace| trace.all_spans())
+        .find(|span| {
+            span.name == "flow_execution"
+                && span
+                    .get_string_attribute("run_id")
+                    .map(|id| id == run_id)
+                    .unwrap_or(false)
+        })
+}
+
+/// Verify that a batch span has the expected attributes
+pub fn verify_batch_span_attributes(
+    span: &Span,
+    expected_total_items: usize,
+    expected_max_concurrency: usize,
+) -> Result<(), String> {
+    // Check batch.total_items attribute
+    let total_items = span
+        .get_string_attribute("batch.total_items")
+        .ok_or("Missing batch.total_items attribute")?;
+    if total_items != expected_total_items.to_string() {
+        return Err(format!(
+            "Expected batch.total_items={}, got {}",
+            expected_total_items, total_items
+        ));
+    }
+
+    // Check batch.max_concurrency attribute
+    let max_concurrency = span
+        .get_string_attribute("batch.max_concurrency")
+        .ok_or("Missing batch.max_concurrency attribute")?;
+    if max_concurrency != expected_max_concurrency.to_string() {
+        return Err(format!(
+            "Expected batch.max_concurrency={}, got {}",
+            expected_max_concurrency, max_concurrency
+        ));
+    }
+
+    Ok(())
+}
+
+/// Verify parent-child relationship between two spans
+pub fn verify_parent_child_relationship(
+    child_span: &Span,
+    parent_span: &Span,
+) -> Result<(), String> {
+    if !child_span.has_parent(&parent_span.span_id()) {
+        return Err(format!(
+            "Span '{}' (id={}) is not a child of span '{}' (id={})",
+            child_span.name,
+            &child_span.span_id()[..8],
+            parent_span.name,
+            &parent_span.span_id()[..8]
+        ));
+    }
+
+    // Verify they're in the same trace
+    if child_span.trace_id() != parent_span.trace_id() {
+        return Err(format!(
+            "Child span and parent span have different trace IDs: {} vs {}",
+            &child_span.trace_id()[..8],
+            &parent_span.trace_id()[..8]
+        ));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +207,7 @@ mod tests {
                             parent_span_id: "".to_string(),
                             name: "root".to_string(),
                             kind: 0,
+                            attributes: vec![],
                         },
                         Span {
                             trace_id: "trace1".to_string(),
@@ -128,6 +215,7 @@ mod tests {
                             parent_span_id: "span1".to_string(),
                             name: "child1".to_string(),
                             kind: 0,
+                            attributes: vec![],
                         },
                         Span {
                             trace_id: "trace1".to_string(),
@@ -135,6 +223,7 @@ mod tests {
                             parent_span_id: "span1".to_string(),
                             name: "child2".to_string(),
                             kind: 0,
+                            attributes: vec![],
                         },
                         Span {
                             trace_id: "trace1".to_string(),
@@ -142,6 +231,7 @@ mod tests {
                             parent_span_id: "span3".to_string(),
                             name: "grandchild".to_string(),
                             kind: 0,
+                            attributes: vec![],
                         },
                     ],
                 }],

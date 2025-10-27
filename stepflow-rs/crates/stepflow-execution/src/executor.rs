@@ -190,6 +190,7 @@ impl Context for StepflowExecutor {
     /// * `flow` - The workflow to execute
     /// * 'flow_id` - ID of the workflow
     /// * `input` - The input value for the workflow
+    /// * `parent_context` - Optional parent span context for distributed tracing
     ///
     /// # Returns
     /// A unique execution ID for the submitted workflow
@@ -198,6 +199,7 @@ impl Context for StepflowExecutor {
         flow: Arc<Flow>,
         flow_id: BlobId,
         input: ValueRef,
+        parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
     ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
         let executor = self.executor();
 
@@ -218,27 +220,24 @@ impl Context for StepflowExecutor {
                 log::info!("Executing workflow using tracker-based execution");
                 let state_store = executor.state_store.clone();
 
-                // Create root span for this flow execution
-                // Design decision: Use run_id as the trace_id
+                // Create span for this flow execution
+                // When parent_context is provided, create a child span within the parent's trace.
+                // Otherwise, create a new root span with a fresh trace_id.
                 //
-                // Each workflow run is treated as a single distributed trace, with the run_id
-                // serving as both the business identifier and the OpenTelemetry trace ID.
-                //
-                // Benefits:
-                // - Direct correlation: Users can query traces by workflow run ID in Jaeger
-                // - Simplified mental model: One ID to track workflow execution
-                // - Better UX: "Show trace for run abc-123" vs "Find trace where run_id=abc-123"
-                //
-                // Trade-offs:
-                // - Semantic overlap between business ID and trace ID
-                // - Less flexible if we need multiple traces per run in the future
-                let root_span = Span::root(
-                    "flow_execution",
-                    SpanContext::new(TraceId(run_id.as_u128()), SpanId::default()),
-                );
+                // Design: Always use unique trace_id, store run_id as span attribute
+                // - Consistent pattern across all executions (root, nested, batch)
+                // - run_id is queryable as a span attribute in trace viewers
+                // - trace_id represents the distributed trace tree, not business ID
+                let span_context = parent_context.unwrap_or_else(|| {
+                    // Generate fresh trace_id for new trace
+                    SpanContext::new(TraceId(Uuid::new_v4().as_u128()), SpanId::default())
+                });
+
+                let span = Span::root("flow_execution", span_context)
+                    .with_property(|| ("run_id", run_id.to_string()));
 
                 let result = execute_workflow(executor, flow, flow_id, run_id, input, state_store)
-                    .in_span(root_span)
+                    .in_span(span)
                     .await;
 
                 let flow_result = match result {
@@ -319,6 +318,7 @@ impl Context for StepflowExecutor {
         flow_id: BlobId,
         inputs: Vec<ValueRef>,
         max_concurrency: Option<usize>,
+        parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
     ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
         let executor = self.executor();
 
@@ -368,6 +368,23 @@ impl Context for StepflowExecutor {
             let flow_id_clone = flow_id.clone();
 
             tokio::spawn(async move {
+                use stepflow_observability::fastrace::prelude::*;
+
+                // Create span for batch execution
+                // When parent_context is provided, create a child span within the parent's trace.
+                // Otherwise, create a new root span with a fresh trace_id.
+                //
+                // Design: Always use unique trace_id, store batch_id as span attribute
+                let batch_span_context = parent_context.unwrap_or_else(|| {
+                    // Generate fresh trace_id for new trace
+                    SpanContext::new(TraceId(Uuid::new_v4().as_u128()), SpanId::default())
+                });
+
+                let _batch_span = Span::root("batch_execution", batch_span_context)
+                    .with_property(|| ("batch_id", batch_id.to_string()))
+                    .with_property(|| ("batch.total_items", total_runs.to_string()))
+                    .with_property(|| ("batch.max_concurrency", max_concurrency.to_string()));
+
                 let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
                 let mut tasks = vec![];
 
@@ -382,11 +399,17 @@ impl Context for StepflowExecutor {
                     let executor_ref = executor_clone.clone();
                     let flow_ref = flow_clone.clone();
                     let flow_id_ref = flow_id_clone.clone();
+                    // Pass the batch span context so child flows inherit the same trace
+                    let batch_ctx = batch_span_context;
 
                     let task = tokio::spawn(async move {
                         let _permit = permit; // Hold permit during execution
 
-                        match executor_ref.submit_flow(flow_ref, flow_id_ref, input).await {
+                        // Pass batch span context so each flow execution becomes a child span
+                        match executor_ref
+                            .submit_flow(flow_ref, flow_id_ref, input, Some(batch_ctx))
+                            .await
+                        {
                             Ok(submitted_run_id) => {
                                 // Wait for the result
                                 match executor_ref.flow_result(submitted_run_id).await {

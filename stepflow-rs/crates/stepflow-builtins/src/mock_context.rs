@@ -76,6 +76,7 @@ impl stepflow_plugin::Context for MockExecutor {
         _flow: Arc<Flow>,
         _flow_id: BlobId,
         _input: ValueRef,
+        _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
         Box::pin(async { Ok(Uuid::new_v4()) })
     }
@@ -105,6 +106,7 @@ impl stepflow_plugin::Context for MockExecutor {
         flow_id: BlobId,
         inputs: Vec<ValueRef>,
         _max_concurrency: Option<usize>,
+        _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
         let batches = self.batches.clone();
         Box::pin(async move {

@@ -512,6 +512,7 @@ mod tests {
             _flow: Arc<Flow>,
             _flow_id: BlobId,
             _input: ValueRef,
+            _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
         ) -> BoxFuture<'_, PluginResult<Uuid>> {
             async { Ok(Uuid::new_v4()) }.boxed()
         }
@@ -534,6 +535,7 @@ mod tests {
             _flow_id: BlobId,
             _inputs: Vec<ValueRef>,
             _max_concurrency: Option<usize>,
+            _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
         ) -> BoxFuture<'_, PluginResult<Uuid>> {
             async { Ok(Uuid::new_v4()) }.boxed()
         }

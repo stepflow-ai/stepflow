@@ -17,6 +17,7 @@ use stepflow_core::{
     BlobId, FlowResult,
     workflow::{Flow, ValueRef},
 };
+use stepflow_observability::fastrace::prelude::SpanContext;
 use stepflow_state::StateStore;
 use uuid::Uuid;
 
@@ -26,11 +27,18 @@ pub trait Context: Send + Sync {
     ///
     /// Implementation should use Arc::clone on self if it needs to pass ownership
     /// to spawned tasks or other async contexts.
+    ///
+    /// # Arguments
+    /// * `flow` - The workflow to execute
+    /// * `flow_id` - ID of the workflow
+    /// * `input` - The input value for the workflow
+    /// * `parent_context` - Optional parent span context for distributed tracing
     fn submit_flow(
         &self,
         flow: Arc<Flow>,
         flow_id: BlobId,
         input: ValueRef,
+        parent_context: Option<SpanContext>,
     ) -> BoxFuture<'_, crate::Result<Uuid>>;
 
     /// Retrieves the result of a previously submitted workflow.
@@ -44,7 +52,7 @@ pub trait Context: Send + Sync {
         input: ValueRef,
     ) -> BoxFuture<'_, crate::Result<FlowResult>> {
         async move {
-            let run_id = self.submit_flow(flow, flow_id, input).await?;
+            let run_id = self.submit_flow(flow, flow_id, input, None).await?;
             self.flow_result(run_id).await
         }
         .boxed()
@@ -107,6 +115,7 @@ pub trait Context: Send + Sync {
     /// * `flow_id` - ID of the workflow
     /// * `inputs` - Vector of input values, one for each run in the batch
     /// * `max_concurrency` - Optional maximum number of concurrent executions
+    /// * `parent_context` - Optional parent span context for distributed tracing
     ///
     /// # Returns
     /// A unique batch ID for the submitted batch
@@ -116,6 +125,7 @@ pub trait Context: Send + Sync {
         flow_id: BlobId,
         inputs: Vec<ValueRef>,
         max_concurrency: Option<usize>,
+        parent_context: Option<SpanContext>,
     ) -> BoxFuture<'_, crate::Result<uuid::Uuid>>;
 
     /// Get batch status and optionally results, with optional waiting.
@@ -152,7 +162,7 @@ pub trait Context: Send + Sync {
     ) -> BoxFuture<'_, crate::Result<Vec<FlowResult>>> {
         async move {
             let batch_id = self
-                .submit_batch(flow, flow_id, inputs, max_concurrency)
+                .submit_batch(flow, flow_id, inputs, max_concurrency, None)
                 .await?;
             let (_details, outputs) = self.get_batch(batch_id, true, true).await?;
             let outputs = outputs.expect("include_results=true should return outputs");
@@ -322,8 +332,10 @@ impl Context for ExecutionContext {
         flow: Arc<Flow>,
         flow_id: BlobId,
         input: ValueRef,
+        parent_context: Option<SpanContext>,
     ) -> BoxFuture<'_, crate::Result<Uuid>> {
-        self.context.submit_flow(flow, flow_id, input)
+        self.context
+            .submit_flow(flow, flow_id, input, parent_context)
     }
 
     /// Get the result of a workflow execution.
@@ -351,9 +363,10 @@ impl Context for ExecutionContext {
         flow_id: BlobId,
         inputs: Vec<ValueRef>,
         max_concurrency: Option<usize>,
+        parent_context: Option<SpanContext>,
     ) -> BoxFuture<'_, crate::Result<uuid::Uuid>> {
         self.context
-            .submit_batch(flow, flow_id, inputs, max_concurrency)
+            .submit_batch(flow, flow_id, inputs, max_concurrency, parent_context)
     }
 
     fn get_batch(

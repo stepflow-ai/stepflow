@@ -6,6 +6,14 @@ info:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
     - "--help"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -16,6 +24,7 @@ Usage: stepflow [OPTIONS] <COMMAND>
 
 Commands:
   run              Run a workflow directly
+  run-batch        Run a batch of workflows directly
   submit-batch     Submit a batch workflow to a Stepflow service for execution
   submit           Submit a workflow to a Stepflow server
   test             Run tests defined in workflow files or directories

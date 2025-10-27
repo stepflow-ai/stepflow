@@ -131,6 +131,7 @@ impl MethodHandler for SubmitBatchHandler {
                         request.flow_id,
                         request.inputs,
                         request.max_concurrency,
+                        None, // No parent context for protocol-level batch submissions
                     )
                     .await
                     .map_err(|e| {

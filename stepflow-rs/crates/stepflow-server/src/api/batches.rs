@@ -148,7 +148,8 @@ pub async fn create_batch(
     State(executor): State<Arc<StepflowExecutor>>,
     Json(req): Json<CreateBatchRequest>,
 ) -> Result<Json<CreateBatchResponse>, ErrorResponse> {
-    let batch_id = Uuid::new_v4();
+    use stepflow_plugin::Context as _;
+
     let state_store = executor.state_store();
 
     // Get the flow from the state store
@@ -158,108 +159,22 @@ pub async fn create_batch(
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
 
     let total_inputs = req.inputs.len();
-    let max_concurrency = req.max_concurrency.unwrap_or(total_inputs);
 
-    // Create batch record
-    state_store
-        .create_batch(batch_id, req.flow_id.clone(), flow.name(), total_inputs)
+    // Capture current span context for trace propagation
+    // Note: For now, batch API calls create independent traces.
+    // In the future, we could propagate trace context from HTTP headers.
+    let parent_context = None;
+
+    // Use executor's submit_batch method which handles tracing
+    let batch_id = executor
+        .submit_batch(
+            flow.clone(),
+            req.flow_id.clone(),
+            req.inputs,
+            req.max_concurrency,
+            parent_context,
+        )
         .await?;
-
-    // Create run records and collect (run_id, input, index) tuples
-    let mut run_inputs = Vec::with_capacity(total_inputs);
-    for (idx, input) in req.inputs.into_iter().enumerate() {
-        let run_id = Uuid::new_v4();
-
-        // Create run record
-        state_store
-            .create_run(
-                run_id,
-                req.flow_id.clone(),
-                flow.name(),
-                None,  // No flow label for batch execution
-                false, // Batch runs are not in debug mode
-                input.clone(),
-            )
-            .await?;
-
-        // Link run to batch
-        state_store.add_run_to_batch(batch_id, run_id, idx).await?;
-
-        run_inputs.push((run_id, input, idx));
-    }
-
-    // Spawn background task for batch execution
-    let executor_clone = executor.clone();
-    let flow_clone = flow.clone();
-    let flow_id = req.flow_id.clone();
-
-    tokio::spawn(async move {
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
-        let mut tasks = vec![];
-
-        for (run_id, input, _idx) in run_inputs {
-            let permit = match semaphore.clone().acquire_owned().await {
-                Ok(permit) => permit,
-                Err(_) => {
-                    log::error!("Semaphore closed, aborting batch execution");
-                    break;
-                }
-            };
-            let executor_ref = executor_clone.clone();
-            let flow_ref = flow_clone.clone();
-            let flow_id_ref = flow_id.clone();
-
-            let task = tokio::spawn(async move {
-                let _permit = permit; // Hold permit during execution
-
-                // Execute flow using Context trait method
-                use stepflow_plugin::Context as _;
-
-                match executor_ref.submit_flow(flow_ref, flow_id_ref, input).await {
-                    Ok(submitted_run_id) => {
-                        // Wait for the result
-                        match executor_ref.flow_result(submitted_run_id).await {
-                            Ok(flow_result) => {
-                                // Update run status based on result
-                                let state_store = executor_ref.state_store();
-                                let status = match &flow_result {
-                                    stepflow_core::FlowResult::Success(_) => {
-                                        stepflow_core::status::ExecutionStatus::Completed
-                                    }
-                                    stepflow_core::FlowResult::Failed(_)
-                                    | stepflow_core::FlowResult::Skipped { .. } => {
-                                        stepflow_core::status::ExecutionStatus::Failed
-                                    }
-                                };
-                                let result_ref = match &flow_result {
-                                    stepflow_core::FlowResult::Success(r) => Some(r.clone()),
-                                    _ => None,
-                                };
-                                let _ = state_store
-                                    .update_run_status(run_id, status, result_ref)
-                                    .await;
-                            }
-                            Err(e) => {
-                                log::error!("Batch run {run_id} failed to get result: {e:?}");
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Batch run {run_id} failed to submit: {e:?}");
-                    }
-                }
-            });
-
-            tasks.push(task);
-        }
-
-        // Wait for all tasks to complete
-        for task in tasks {
-            let _ = task.await;
-        }
-
-        log::info!("Batch {batch_id} execution completed");
-    });
 
     Ok(Json(CreateBatchResponse {
         batch_id,

@@ -25,7 +25,7 @@ pub async fn run(
     input: stepflow_core::workflow::ValueRef,
 ) -> Result<(uuid::Uuid, FlowResult)> {
     let run_id = executor
-        .submit_flow(flow, flow_id, input)
+        .submit_flow(flow, flow_id, input, None)
         .await
         .change_context(MainError::FlowExecution)?;
     let output = executor
