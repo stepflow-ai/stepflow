@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.7.0"></a> [Stepflow Python SDK 0.7.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.7.0) - 2025-10-27
+### Features
+
+- Add stepflow-observability crate ([#386](https://github.com/stepflow-ai/stepflow/pull/386))
+- OTLP logging support and observability improvements ([#391](https://github.com/stepflow-ai/stepflow/pull/391))
+- End-to-end distributed tracing for component servers ([#393](https://github.com/stepflow-ai/stepflow/pull/393))
+- Standardize Python SDK logging ([#396](https://github.com/stepflow-ai/stepflow/pull/396))
+
 ## <a id="0.6.0"></a> [Stepflow Python SDK 0.6.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.6.0) - 2025-10-15
 ## <a id="0.5.0"></a> [Stepflow Python SDK 0.5.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.5.0) - 2025-10-09
 ### Features
