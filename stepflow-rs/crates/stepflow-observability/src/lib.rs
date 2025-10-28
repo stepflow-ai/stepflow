@@ -28,6 +28,9 @@ pub use log;
 
 use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 
+mod metrics;
+pub use metrics::record_workflow_execution;
+
 mod run_diagnostic_context;
 pub use run_diagnostic_context::{
     RunDiagnostic, RunInfoGuard, StepIdGuard, get_run_info, get_step_id,
@@ -77,8 +80,12 @@ pub struct ObservabilityConfig {
     #[arg(long, env = "STEPFLOW_TRACE_ENABLED")]
     pub trace_enabled: bool,
 
+    /// Enable metrics collection and export
+    #[arg(long, env = "STEPFLOW_METRICS_ENABLED")]
+    pub metrics_enabled: bool,
+
     /// OTLP endpoint (e.g., "http://localhost:4317")
-    /// Required when log_destination is otlp or when trace_enabled is true
+    /// Required when log_destination is otlp, trace_enabled is true, or metrics_enabled is true
     #[arg(long, env = "STEPFLOW_OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
 }
@@ -123,6 +130,14 @@ impl ObservabilityConfig {
             return Err(
                 error_stack::report!(ObservabilityError::ConfigValidationError)
                     .attach_printable("trace_enabled is true but otlp_endpoint is not set"),
+            );
+        }
+
+        // Validate metrics_enabled requires otlp_endpoint
+        if self.metrics_enabled && self.otlp_endpoint.is_none() {
+            return Err(
+                error_stack::report!(ObservabilityError::ConfigValidationError)
+                    .attach_printable("metrics_enabled is true but otlp_endpoint is not set"),
             );
         }
 
@@ -239,12 +254,20 @@ pub fn init_observability(
         None
     };
 
+    // Initialize metrics if enabled
+    let metrics_guard = if config.metrics_enabled {
+        Some(init_metrics(config, &binary_config)?)
+    } else {
+        None
+    };
+
     // Initialize logging with trace context integration
     let log_guard = init_logging(config, &binary_config)?;
 
     Ok(ObservabilityGuard {
         log_guard: Some(log_guard),
         trace_guard,
+        metrics_guard,
         closed: false,
     })
 }
@@ -479,6 +502,42 @@ fn init_tracing(
     Ok(TraceGuard)
 }
 
+fn init_metrics(
+    config: &ObservabilityConfig,
+    binary_config: &BinaryObservabilityConfig,
+) -> Result<MetricsGuard> {
+    if let Some(endpoint) = &config.otlp_endpoint {
+        let resource = build_resource(binary_config.service_name);
+
+        let exporter = configure_otlp_exporter(
+            opentelemetry_otlp::MetricExporter::builder().with_tonic(),
+            endpoint,
+        )
+        .build()
+        .map_err(|e| {
+            error_stack::report!(ObservabilityError::OtlpInitError)
+                .attach_printable(format!("Failed to create metrics exporter: {}", e))
+        })?;
+
+        let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(exporter)
+            .with_interval(std::time::Duration::from_secs(10))
+            .build();
+
+        let provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+            .with_reader(reader)
+            .with_resource(resource)
+            .build();
+
+        opentelemetry::global::set_meter_provider(provider.clone());
+
+        return Ok(MetricsGuard {
+            provider: Some(provider),
+        });
+    }
+
+    Ok(MetricsGuard { provider: None })
+}
+
 /// Guard that ensures proper cleanup of observability systems
 ///
 /// # Important
@@ -517,7 +576,10 @@ fn init_tracing(
 pub struct ObservabilityGuard {
     #[allow(dead_code)] // Kept for future log flushing functionality
     log_guard: Option<LogGuard>,
+    #[allow(dead_code)] // Used for Drop behavior
     trace_guard: Option<TraceGuard>,
+    #[allow(dead_code)] // Used for Drop behavior
+    metrics_guard: Option<MetricsGuard>,
     closed: bool,
 }
 
@@ -576,6 +638,17 @@ impl Drop for ObservabilityGuard {
 
 struct LogGuard;
 struct TraceGuard;
+struct MetricsGuard {
+    provider: Option<opentelemetry_sdk::metrics::SdkMeterProvider>,
+}
+
+impl Drop for MetricsGuard {
+    fn drop(&mut self) {
+        if let Some(provider) = self.provider.take() {
+            let _ = provider.shutdown();
+        }
+    }
+}
 
 /// Errors that can occur during observability initialization
 #[derive(Debug, thiserror::Error)]

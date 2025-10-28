@@ -73,11 +73,11 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(stepflow_workflow_executions_total[5m]))",
+          "expr": "sum(stepflow_workflow_executions_total)",
           "refId": "A"
         }
       ],
-      "title": "Workflow Execution Rate (per sec)",
+      "title": "Active Workflows",
       "type": "stat"
     },
     {
@@ -162,21 +162,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(stepflow_workflow_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "p95",
+          "expr": "stepflow_workflow_duration_seconds_sum / stepflow_workflow_duration_seconds_count",
+          "legendFormat": "duration",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "histogram_quantile(0.50, sum(rate(stepflow_workflow_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "p50",
-          "refId": "B"
         }
       ],
-      "title": "Workflow Duration (p50, p95)",
+      "title": "Workflow Duration (seconds)",
       "type": "timeseries"
     },
     {

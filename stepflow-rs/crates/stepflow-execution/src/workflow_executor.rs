@@ -317,6 +317,9 @@ impl WorkflowExecutor {
     /// Execute the workflow to completion using parallel execution.
     /// This method runs until all steps are completed and returns the final result.
     pub async fn execute_to_completion(&mut self) -> Result<FlowResult> {
+        // Record start time for metrics
+        let start_time = std::time::Instant::now();
+
         let mut running_tasks = FuturesUnordered::new();
 
         log::debug!("Starting execution of {} steps", self.flow.steps().len());
@@ -387,7 +390,18 @@ impl WorkflowExecutor {
         }
 
         // All tasks completed - try to complete the workflow
-        self.resolve_workflow_output().await
+        let result = self.resolve_workflow_output().await?;
+
+        // Record metrics
+        let duration = start_time.elapsed().as_secs_f64();
+        let outcome = match &result {
+            FlowResult::Success { .. } => "success",
+            FlowResult::Failed { .. } => "failed",
+            FlowResult::Skipped { .. } => "skipped",
+        };
+        stepflow_observability::record_workflow_execution(outcome, duration);
+
+        Ok(result)
     }
 
     /// List all steps in the workflow with their current status.
