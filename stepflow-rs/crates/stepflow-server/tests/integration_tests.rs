@@ -43,6 +43,7 @@ pub fn init_test_logging() {
             log_file: None,
             trace_enabled: false,
             otlp_endpoint: None,
+            metrics_enabled: false,
         };
 
         let binary_config = BinaryObservabilityConfig {

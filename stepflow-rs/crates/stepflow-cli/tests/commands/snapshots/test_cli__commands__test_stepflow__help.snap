@@ -77,8 +77,13 @@ Options:
           
           [env: STEPFLOW_TRACE_ENABLED=]
 
+      --metrics-enabled
+          Enable metrics collection and export
+          
+          [env: STEPFLOW_METRICS_ENABLED=]
+
       --otlp-endpoint <OTLP_ENDPOINT>
-          OTLP endpoint (e.g., "http://localhost:4317") Required when log_destination is otlp or when trace_enabled is true
+          OTLP endpoint (e.g., "http://localhost:4317") Required when log_destination is otlp, trace_enabled is true, or metrics_enabled is true
           
           [env: STEPFLOW_OTLP_ENDPOINT=]
 

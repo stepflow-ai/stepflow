@@ -175,7 +175,7 @@ fn parse_log_level(s: &str) -> std::result::Result<log::LevelFilter, String> {
         "info" => Ok(log::LevelFilter::Info),
         "debug" => Ok(log::LevelFilter::Debug),
         "trace" => Ok(log::LevelFilter::Trace),
-        _ => Err(format!("Invalid log level: {}", s)),
+        _ => Err(format!("Invalid log level: {s}")),
     }
 }
 
@@ -230,6 +230,7 @@ pub enum LogDestination<'a> {
 ///     log_file: None,
 ///     trace_enabled: true,
 ///     otlp_endpoint: Some("http://localhost:4317".to_string()),
+///     metrics_enabled: false,
 /// };
 ///
 /// let binary_config = BinaryObservabilityConfig {
@@ -480,7 +481,7 @@ fn init_tracing(
         .build()
         .map_err(|e| {
             error_stack::report!(ObservabilityError::OtlpInitError)
-                .attach_printable(format!("Failed to create OTLP exporter: {}", e))
+                .attach_printable(format!("Failed to create OTLP exporter: {e}"))
         })?;
 
         // Create OpenTelemetry reporter
@@ -516,7 +517,7 @@ fn init_metrics(
         .build()
         .map_err(|e| {
             error_stack::report!(ObservabilityError::OtlpInitError)
-                .attach_printable(format!("Failed to create metrics exporter: {}", e))
+                .attach_printable(format!("Failed to create metrics exporter: {e}"))
         })?;
 
         let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(exporter)
@@ -560,6 +561,7 @@ fn init_metrics(
 /// #     log_file: None,
 /// #     trace_enabled: false,
 /// #     otlp_endpoint: None,
+/// #     metrics_enabled: false,
 /// # };
 /// # let binary_config = BinaryObservabilityConfig {
 /// #     service_name: "my-service",

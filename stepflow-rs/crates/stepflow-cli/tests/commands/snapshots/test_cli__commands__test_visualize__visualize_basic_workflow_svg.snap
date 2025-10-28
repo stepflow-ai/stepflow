@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_visualize.rs
+source: crates/stepflow-cli/tests/commands/test_visualize.rs
 info:
   program: stepflow
   args:
@@ -7,12 +7,20 @@ info:
     - "--omit-stack-trace"
     - visualize
     - "--flow=tests/mock/basic.yaml"
-    - "--output=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/stepflow_test_basic_output.svg"
+    - "--output=/var/folders/0v/lmpzpmsn4kn8ty1hrz0xr7h00000gn/T/stepflow_test_basic_output.svg"
     - "--format=svg"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
-success: true
-exit_code: 0
+success: false
+exit_code: 1
 ----- stdout -----
 
 ----- stderr -----
-✅ Visualization generated: [TEMP_DIR]/stepflow_test_basic_output.svg
+Internal error: Graphviz 'dot' command not found. Please install Graphviz to use this feature.

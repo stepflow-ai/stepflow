@@ -56,9 +56,7 @@ pub(crate) async fn execute_workflow(
     // Verify the hash matches (should be the same if workflow is deterministic)
     if computed_hash != flow_id {
         log::warn!(
-            "Flow hash mismatch: expected {}, computed {}",
-            flow_id,
-            computed_hash
+            "Flow hash mismatch: expected {flow_id}, computed {computed_hash}"
         );
     }
 
@@ -91,7 +89,7 @@ pub(crate) async fn execute_workflow(
             log::warn!("Workflow execution failed: {}", error.message);
         }
         Err(e) => {
-            log::error!("Workflow execution error: {:?}", e);
+            log::error!("Workflow execution error: {e:?}");
         }
     }
 
@@ -806,9 +804,7 @@ impl WorkflowExecutor {
                 if let Some(skip_if) = &skip_if {
                     let should_skip = self.should_skip_step(&step_id, skip_if).await?;
                     log::debug!(
-                        "Step {} skip condition evaluated to {}",
-                        step_id,
-                        should_skip
+                        "Step {step_id} skip condition evaluated to {should_skip}"
                     );
                     if should_skip {
                         // Skip this step and collect any newly unblocked dependent steps
@@ -835,9 +831,7 @@ impl WorkflowExecutor {
                     }
                     FlowResult::Failed(error) => {
                         log::error!(
-                            "Failed to resolve inputs for step {} - input resolution failed: {:?}",
-                            step_id,
-                            error
+                            "Failed to resolve inputs for step {step_id} - input resolution failed: {error:?}"
                         );
                         return Err(error_stack::report!(ExecutionError::StepFailed {
                             step: step_id
@@ -862,7 +856,7 @@ impl WorkflowExecutor {
 
     /// Skip a step and record the result.
     async fn skip_step(&mut self, step_id: &str, step_index: usize) -> Result<BitSet> {
-        log::debug!("Skipping step {} at index {}", step_id, step_index);
+        log::debug!("Skipping step {step_id} at index {step_index}");
 
         let newly_unblocked_from_skip = self.tracker.complete_step(step_index);
         let skip_result = FlowResult::Skipped { reason: None };
@@ -880,7 +874,7 @@ impl WorkflowExecutor {
                     step_result: StepResult::new(step_index, step_id, skip_result),
                 })
         {
-            log::error!("Failed to queue step result: {:?}", e);
+            log::error!("Failed to queue step result: {e:?}");
         }
 
         log::debug!(
@@ -981,7 +975,7 @@ pub(crate) async fn execute_step_async(
                         step: step.id.to_owned(),
                     })
                     .attach_printable(format!("Component execution failed for step '{}'", step.id))
-                    .attach_printable(format!("Component: {}", resolved_component))
+                    .attach_printable(format!("Component: {resolved_component}"))
             })?;
 
         log::debug!("Step execution completed: step_id={}", step.id);
