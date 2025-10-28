@@ -181,38 +181,24 @@
     },
     {
       "datasource": {
-        "type": "jaeger",
-        "uid": "jaeger"
+        "type": "datasource",
+        "uid": "-- Mixed --"
       },
       "gridPos": {
-        "h": 8,
+        "h": 4,
         "w": 24,
         "x": 0,
         "y": 8
       },
       "id": 3,
       "options": {
-        "query": {
-          "service": "stepflow",
-          "operation": "",
-          "tags": "",
-          "maxDuration": "",
-          "minDuration": "",
-          "limit": 20
-        }
+        "mode": "markdown",
+        "content": "## Workflow Traces\n\nView distributed traces for workflow executions:\n\n- [Browse traces in Jaeger UI](http://localhost:16686/search?service=stepflow-cli)\n- [Explore traces in Grafana](/explore?left=%7B%22datasource%22%3A%22jaeger%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22queryType%22%3A%22search%22%2C%22service%22%3A%22stepflow-cli%22%7D%5D%7D)\n- Click on **TraceID** links in the logs panel below to view individual traces\n\n**Tip**: Logs are automatically linked to traces via `trace_id` - click any trace ID in the logs to view the full trace."
       },
       "pluginVersion": "10.3.3",
-      "targets": [
-        {
-          "datasource": {
-            "type": "jaeger",
-            "uid": "jaeger"
-          },
-          "refId": "A"
-        }
-      ],
-      "title": "Recent Workflow Traces",
-      "type": "jaeger-search"
+      "targets": [],
+      "title": "Trace Navigation",
+      "type": "text"
     },
     {
       "datasource": {
@@ -220,10 +206,10 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 8,
+        "h": 12,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 12
       },
       "id": 4,
       "options": {
@@ -243,7 +229,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"stepflow\"}",
+          "expr": "{job=~\"stepflow/.*\"}",
           "refId": "A"
         }
       ],
