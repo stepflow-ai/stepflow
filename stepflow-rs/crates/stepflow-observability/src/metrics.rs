@@ -13,9 +13,8 @@
 //! Metrics instrumentation for Stepflow using OpenTelemetry
 
 use opentelemetry::{
-    global,
+    KeyValue, global,
     metrics::{Counter, Histogram},
-    KeyValue,
 };
 use std::sync::LazyLock;
 
@@ -41,5 +40,8 @@ static WORKFLOW_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
 /// Record a workflow execution
 pub fn record_workflow_execution(outcome: &str, duration_seconds: f64) {
     WORKFLOW_EXECUTIONS.add(1, &[KeyValue::new("outcome", outcome.to_string())]);
-    WORKFLOW_DURATION.record(duration_seconds, &[KeyValue::new("outcome", outcome.to_string())]);
+    WORKFLOW_DURATION.record(
+        duration_seconds,
+        &[KeyValue::new("outcome", outcome.to_string())],
+    );
 }

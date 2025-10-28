@@ -55,9 +55,7 @@ pub(crate) async fn execute_workflow(
 
     // Verify the hash matches (should be the same if workflow is deterministic)
     if computed_hash != flow_id {
-        log::warn!(
-            "Flow hash mismatch: expected {flow_id}, computed {computed_hash}"
-        );
+        log::warn!("Flow hash mismatch: expected {flow_id}, computed {computed_hash}");
     }
 
     // Create run record in state store before starting workflow
@@ -803,9 +801,7 @@ impl WorkflowExecutor {
                 // Check explicit skip condition (skip_if expression)
                 if let Some(skip_if) = &skip_if {
                     let should_skip = self.should_skip_step(&step_id, skip_if).await?;
-                    log::debug!(
-                        "Step {step_id} skip condition evaluated to {should_skip}"
-                    );
+                    log::debug!("Step {step_id} skip condition evaluated to {should_skip}");
                     if should_skip {
                         // Skip this step and collect any newly unblocked dependent steps
                         additional_unblocked
