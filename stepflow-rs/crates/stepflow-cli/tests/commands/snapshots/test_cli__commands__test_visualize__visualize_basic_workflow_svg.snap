@@ -18,9 +18,9 @@ info:
     STEPFLOW_OTLP_ENDPOINT: ""
     STEPFLOW_TRACE_ENABLED: ""
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
 
 ----- stderr -----
-Internal error: Graphviz 'dot' command not found. Please install Graphviz to use this feature.
+✅ Visualization generated: [TEMP_DIR]/stepflow_test_basic_output.svg
