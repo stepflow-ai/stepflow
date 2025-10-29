@@ -25,6 +25,7 @@ workflow-specific setup and assertions.
 """
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -690,6 +691,157 @@ language processing, and autonomous vehicles.
             "unsupervised",
             "reinforcement",
             "machine learning",
+        ]
+        found_content = any(
+            indicator in response_text for indicator in content_indicators
+        )
+        assert found_content, (
+            f"Response should reference document content. Got: {response_text}"
+        )
+
+    finally:
+        # Clean up temporary file
+        os.unlink(test_file_path)
+
+
+def test_document_qa_file_via_tweaks(test_executor):
+    """Test document QA with file path provided via tweaks instead of workflow input."""
+    # Create a markdown test file with specific content
+    test_content = """# Neural Networks
+
+Neural networks are computing systems inspired by the biological neural networks
+that constitute animal brains. An artificial neural network is based on a
+collection of connected units or nodes called artificial neurons.
+
+## Key Components
+1. Input Layer: Receives the raw data
+2. Hidden Layers: Process information through weighted connections
+3. Output Layer: Produces the final prediction
+
+## Training Process
+Neural networks learn through a process called backpropagation, which adjusts
+the weights of connections to minimize prediction errors.
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(test_content)
+        test_file_path = f.name
+
+    try:
+        # Use test utilities to create tweaks for OpenAI components
+        from tests.helpers.tweaks_builder import TweaksBuilder
+
+        tweaks = (
+            TweaksBuilder()
+            .add_openai_tweaks("LanguageModelComponent-htMuI")
+            .add_tweak("File-b2gOG", "path", [test_file_path])
+            .build_or_skip()
+        )
+
+        # Test with file path provided via tweaks, not in input_data
+        result = test_executor.execute_flow(
+            flow_name="document_qa",
+            input_data={
+                "message": (
+                    "What are the three key components of a neural network "
+                    "mentioned in the document?"
+                ),
+                # Note: file_path NOT provided here - it's in tweaks instead
+            },
+            timeout=120.0,
+            tweaks=tweaks,
+        )
+
+        # Should return a response about the document content
+        message_result = result["result"]
+        assert isinstance(message_result, dict)
+        assert "text" in message_result
+
+        # The response should mention neural network components from the document
+        response_text = message_result["text"].lower()
+        content_indicators = [
+            "input layer",
+            "hidden layer",
+            "output layer",
+            "neural",
+        ]
+        found_content = any(
+            indicator in response_text for indicator in content_indicators
+        )
+        assert found_content, (
+            f"Response should reference document content. Got: {response_text}"
+        )
+
+    finally:
+        # Clean up temporary file
+        os.unlink(test_file_path)
+
+
+def test_document_qa_with_txt_file(test_executor):
+    """Test document QA with a .txt file to verify text file support."""
+    # Create a text file with structured content
+    test_content = """Cloud Computing Overview
+
+Cloud computing is the delivery of computing services over the Internet.
+These services include servers, storage, databases, networking, software,
+analytics, and intelligence.
+
+Deployment Models:
+- Public Cloud: Resources owned and operated by third-party cloud service providers
+- Private Cloud: Resources used exclusively by a single organization
+- Hybrid Cloud: Combination of public and private clouds
+
+Service Models:
+- Infrastructure as a Service (IaaS): Virtualized computing resources
+- Platform as a Service (PaaS): Platform for developing and deploying applications
+- Software as a Service (SaaS): Software applications delivered over the Internet
+
+Benefits:
+Cost reduction, scalability, flexibility, and improved collaboration.
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write(test_content)
+        test_file_path = f.name
+
+    try:
+        # Use test utilities to create tweaks for OpenAI components
+        from tests.helpers.tweaks_builder import TweaksBuilder
+
+        tweaks = (
+            TweaksBuilder()
+            .add_openai_tweaks("LanguageModelComponent-htMuI")
+            .build_or_skip()
+        )
+
+        # Test with .txt file path provided as input data
+        result = test_executor.execute_flow(
+            flow_name="document_qa",
+            input_data={
+                "message": (
+                    "What are the three service models of cloud computing "
+                    "mentioned in the document?"
+                ),
+                "file_path": test_file_path,
+            },
+            timeout=120.0,
+            tweaks=tweaks,
+        )
+
+        # Should return a response about the document content
+        message_result = result["result"]
+        assert isinstance(message_result, dict)
+        assert "text" in message_result
+
+        # The response should mention cloud service models from the document
+        response_text = message_result["text"].lower()
+        content_indicators = [
+            "iaas",
+            "paas",
+            "saas",
+            "infrastructure",
+            "platform",
+            "software",
         ]
         found_content = any(
             indicator in response_text for indicator in content_indicators
