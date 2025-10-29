@@ -27,6 +27,7 @@ async fn main() {
         log_format: LogFormat::Json,
         log_file: None,
         trace_enabled: false,
+        metrics_enabled: false,
         otlp_endpoint: None,
     };
 
