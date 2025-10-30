@@ -55,7 +55,7 @@ def _write_with_retry(data: bytes, max_retries: int = 100, retry_delay: float = 
             # Both BlockingIOError and OSError can occur with EAGAIN/EWOULDBLOCK
             # errno 35 on macOS is EAGAIN
             retryable_errnos = {errno.EAGAIN}
-            if hasattr(errno, 'EWOULDBLOCK'):
+            if hasattr(errno, "EWOULDBLOCK"):
                 retryable_errnos.add(errno.EWOULDBLOCK)
             # Also add errno 35 directly for macOS
             retryable_errnos.add(35)
@@ -63,11 +63,17 @@ def _write_with_retry(data: bytes, max_retries: int = 100, retry_delay: float = 
             if e.errno in retryable_errnos:
                 retries += 1
                 if retries >= max_retries:
-                    logger.error(f"Failed to write after {max_retries} retries, errno={e.errno}")
+                    logger.error(
+                        f"Failed to write after {max_retries} retries, errno={e.errno}"
+                    )
                     raise
                 # Exponential backoff
                 sleep_time = retry_delay * (2 ** (retries - 1))
-                logger.info(f"Retry {retries}/{max_retries} after EAGAIN/EWOULDBLOCK (errno={e.errno}), sleeping {sleep_time}s")
+                logger.info(
+                    f"Retry {retries}/{max_retries} after "
+                    f"EAGAIN/EWOULDBLOCK (errno={e.errno}), "
+                    f"sleeping {sleep_time}s"
+                )
                 time.sleep(sleep_time)
             else:
                 logger.error(f"Non-retryable error in write: errno={e.errno}")

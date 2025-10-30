@@ -214,7 +214,8 @@ def serve(host: str, port: int, protocol_prefix: str, http: bool):
             click.echo("🚀 Starting Langflow component server in STDIO mode...")
             click.echo(f"   Protocol prefix: {protocol_prefix}")
 
-            # Increase pipe buffer size to handle large payloads (e.g., Wikipedia articles)
+            # Increase pipe buffer size to handle large payloads
+            # (e.g., Wikipedia articles)
             try:
                 # Set stdout buffer to 1MB to handle large responses
                 fcntl.fcntl(sys.stdout.fileno(), fcntl.F_SETPIPE_SZ, 1048576)
