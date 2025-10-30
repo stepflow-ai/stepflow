@@ -113,12 +113,16 @@ impl Launcher {
     /// Increase pipe buffer size for child process stdout to handle large payloads
     #[cfg(unix)]
     fn increase_pipe_buffer(child: &mut Child) {
-        use std::os::unix::io::AsRawFd;
+        use std::os::unix::io::AsRawFd as _;
 
         const PIPE_BUF_SIZE: libc::c_int = 1048576; // 1MB
 
         if let Some(stdout) = &child.stdout {
             let fd = stdout.as_raw_fd();
+            // SAFETY: Calling fcntl with F_SETPIPE_SZ on a valid file descriptor is safe.
+            // The fd comes from a valid stdout handle, and fcntl returns an error code
+            // if the operation fails (which we check). The worst case is the OS denies
+            // the buffer size increase, leaving the default buffer size intact.
             unsafe {
                 // Try to increase the pipe buffer size
                 // F_SETPIPE_SZ is available on Linux and macOS
