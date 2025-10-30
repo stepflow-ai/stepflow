@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -9004,6 +9004,13 @@ dependencies = [
     { name = "stepflow-py" },
 ]
 
+[package.optional-dependencies]
+http = [
+    { name = "fastapi" },
+    { name = "sse-starlette" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "black" },
@@ -9025,6 +9032,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
+    { name = "fastapi", marker = "extra == 'http'", specifier = ">=0.104.0" },
     { name = "jsonschema", specifier = ">=4.17.0" },
     { name = "langchain-core", specifier = ">=0.1.0" },
     { name = "langchain-openai", specifier = ">=0.1.0" },
@@ -9037,8 +9045,11 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "sse-starlette", marker = "extra == 'http'", specifier = ">=1.6.5" },
     { name = "stepflow-py", editable = "../../sdks/python" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
+provides-extras = ["http"]
 
 [package.metadata.requires-dev]
 dev = [

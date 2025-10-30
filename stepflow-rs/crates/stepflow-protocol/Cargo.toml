@@ -17,6 +17,7 @@ error-stack.workspace = true
 fastrace.workspace = true
 futures.workspace = true
 indexmap.workspace = true
+libc = "0.2"
 reqwest.workspace = true
 reqwest-eventsource.workspace = true
 schemars.workspace = true

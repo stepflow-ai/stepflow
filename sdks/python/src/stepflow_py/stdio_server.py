@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 import sys
+import time
 from collections.abc import Callable
 
 import msgspec
@@ -33,6 +35,43 @@ from stepflow_py.message_decoder import MessageDecoder
 from stepflow_py.server import ComponentEntry, StepflowServer, _handle_exception
 
 logger = logging.getLogger(__name__)
+
+
+def _write_with_retry(data: bytes, max_retries: int = 100, retry_delay: float = 0.05):
+    """
+    Write data to stdout with retry logic to handle EAGAIN/EWOULDBLOCK.
+
+    When stdout is in non-blocking mode and the pipe buffer is full,
+    write() will raise BlockingIOError. This function retries the write
+    with exponential backoff.
+    """
+    retries = 0
+    while retries < max_retries:
+        try:
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+            return
+        except (BlockingIOError, OSError) as e:
+            # Both BlockingIOError and OSError can occur with EAGAIN/EWOULDBLOCK
+            # errno 35 on macOS is EAGAIN
+            retryable_errnos = {errno.EAGAIN}
+            if hasattr(errno, 'EWOULDBLOCK'):
+                retryable_errnos.add(errno.EWOULDBLOCK)
+            # Also add errno 35 directly for macOS
+            retryable_errnos.add(35)
+
+            if e.errno in retryable_errnos:
+                retries += 1
+                if retries >= max_retries:
+                    logger.error(f"Failed to write after {max_retries} retries, errno={e.errno}")
+                    raise
+                # Exponential backoff
+                sleep_time = retry_delay * (2 ** (retries - 1))
+                logger.info(f"Retry {retries}/{max_retries} after EAGAIN/EWOULDBLOCK (errno={e.errno}), sleeping {sleep_time}s")
+                time.sleep(sleep_time)
+            else:
+                logger.error(f"Non-retryable error in write: errno={e.errno}")
+                raise
 
 
 class StepflowStdioServer:
@@ -138,16 +177,14 @@ class StepflowStdioServer:
                 # Encode and write response
                 logger.debug(f"Sending response: {response} to {message}")
                 response_bytes = msgspec.json.encode(response) + b"\n"
-                sys.stdout.buffer.write(response_bytes)
-                sys.stdout.buffer.flush()
+                _write_with_retry(response_bytes)
             else:
                 assert isinstance(message, Notification)
         except Exception as e:
             logger.error(f"Error in _handle_incoming_message: {e}", exc_info=True)
             if request_id is not None:
                 error_response = _handle_exception(e, id=request_id)
-                sys.stdout.buffer.write(msgspec.json.encode(error_response) + b"\n")
-                sys.stdout.buffer.flush()
+                _write_with_retry(msgspec.json.encode(error_response) + b"\n")
             else:
                 # If we can't identify the request, we can't send a proper error
                 # response so just log the error

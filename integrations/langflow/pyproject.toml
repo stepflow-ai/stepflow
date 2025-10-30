@@ -52,6 +52,13 @@ dependencies = [
     "nest-asyncio>=1.6.0",
 ]
 
+[project.optional-dependencies]
+http = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "sse-starlette>=1.6.5",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=7.4.0",
