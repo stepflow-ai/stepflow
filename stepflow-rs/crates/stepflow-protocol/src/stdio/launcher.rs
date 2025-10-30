@@ -130,9 +130,15 @@ impl Launcher {
                 let result = libc::fcntl(fd, F_SETPIPE_SZ, PIPE_BUF_SIZE);
                 if result < 0 {
                     #[cfg(target_os = "macos")]
-                    log::warn!("Failed to increase stdout pipe buffer size: {} (macOS caps pipe buffers at ~64 KiB)", std::io::Error::last_os_error());
+                    log::warn!(
+                        "Failed to increase stdout pipe buffer size: {} (macOS caps pipe buffers at ~64 KiB)",
+                        std::io::Error::last_os_error()
+                    );
                     #[cfg(not(target_os = "macos"))]
-                    log::warn!("Failed to increase stdout pipe buffer size: {}", std::io::Error::last_os_error());
+                    log::warn!(
+                        "Failed to increase stdout pipe buffer size: {}",
+                        std::io::Error::last_os_error()
+                    );
                 } else {
                     log::info!("Increased stdout pipe buffer to {} bytes", PIPE_BUF_SIZE);
                 }
