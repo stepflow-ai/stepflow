@@ -208,6 +208,7 @@ class FlowBuilder:
         output_schema: dict[str, Any] | Schema | None = None,
         skip_if: StepReference | WorkflowInput | Value | None = None,
         on_error: ErrorAction | None = None,
+        must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> StepHandle:
         """Add a step to the flow with automatic ID uniqueness and input conversion.
@@ -267,6 +268,7 @@ class FlowBuilder:
             outputSchema=output_schema_obj,
             skipIf=skip_if_expr,
             onError=on_error_action,
+            mustExecute=must_execute,
             metadata=metadata or {},
         )
 

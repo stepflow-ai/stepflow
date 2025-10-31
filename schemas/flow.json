@@ -164,6 +164,13 @@
           "description": "Arguments to pass to the component for this step",
           "$ref": "#/$defs/ValueTemplate"
         },
+        "mustExecute": {
+          "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "metadata": {
           "description": "Extensible metadata for the step that can be used by tools and frameworks.",
           "type": "object",

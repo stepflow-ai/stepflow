@@ -20,7 +20,7 @@ use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
     FlowResult,
     values::{ValueRef, ValueResolver, ValueTemplate},
-    workflow::{Expr, Flow},
+    workflow::{Expr, Flow, StepId},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -383,9 +383,33 @@ impl WorkflowExecutor {
             // Start newly unblocked steps
             self.start_unblocked_steps(&newly_unblocked, &mut running_tasks)
                 .await?;
+
+            // Check if we can exit early: no running tasks and all required steps completed
+            // This allows us to finish as soon as possible without waiting for unnecessary steps
+            if running_tasks.is_empty() && self.tracker.all_required_completed() {
+                log::debug!("All required steps completed, finishing execution");
+                break;
+            }
         }
 
-        // All tasks completed - try to complete the workflow
+        // All required tasks completed - check for must_execute step failures before resolving output
+        // If any must_execute step has failed, the workflow should fail
+        for (step_index, step) in self.flow.steps().iter().enumerate() {
+            if step.must_execute() {
+                let step_id = StepId {
+                    index: step_index,
+                    flow: self.flow.clone(),
+                };
+                if let Some(FlowResult::Failed(error)) =
+                    self.write_cache.get_step_result(&step_id).await
+                {
+                    log::info!("Must-execute step '{}' failed, workflow fails", step.id);
+                    return Ok(FlowResult::Failed(error.clone()));
+                }
+            }
+        }
+
+        // All must_execute steps succeeded - resolve the workflow output
         let result = self.resolve_workflow_output().await?;
 
         // Record metrics
@@ -784,7 +808,10 @@ impl WorkflowExecutor {
         unblocked: &BitSet,
         running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
     ) -> Result<()> {
+        // Filter out the virtual output node (last index in dependency graph)
+        let virtual_output_index = self.flow.steps().len();
         let mut steps_to_process = unblocked.clone();
+        steps_to_process.remove(virtual_output_index);
 
         // Fast skip loop: process chains of skippable steps synchronously
         // This avoids spawning async tasks for steps that will immediately skip

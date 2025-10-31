@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_test.rs
+source: crates/stepflow-cli/tests/commands/test_test.rs
 info:
   program: stepflow
   args:
@@ -7,6 +7,14 @@ info:
     - "--omit-stack-trace"
     - test
     - tests/mock
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -52,6 +60,13 @@ Running Test Case test error case that uses default value
 ----------
 Running Test Case test success case
 tests/mock/error_use_default_value.yaml: 2/2 passed
+----------
+Running Test Case must_execute with skipIf true - step skipped, workflow succeeds
+----------
+Running Test Case must_execute with skipIf false - step executes and fails
+----------
+Running Test Case must_execute input dependency required
+tests/mock/must_execute_skip_if.yaml: 3/3 passed
 tests/mock/basic.yaml: 3/3 passed
 tests/mock/conditional_skip.yaml: 3/3 passed
 tests/mock/conditional_skip_use_default.yaml: 3/3 passed
@@ -59,11 +74,12 @@ tests/mock/error_fail.yaml: 2/2 passed
 tests/mock/error_skip.yaml: 2/2 passed
 tests/mock/error_use_default.yaml: 2/2 passed
 tests/mock/error_use_default_value.yaml: 2/2 passed
+tests/mock/must_execute_skip_if.yaml: 3/3 passed
 
 === Test Summary ===
-Files tested: 7
-Total test cases: 17
-Passed: 17
+Files tested: 8
+Total test cases: 20
+Passed: 20
 Failed: 0
 
 ----- stderr -----

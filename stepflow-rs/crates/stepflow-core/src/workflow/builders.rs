@@ -143,6 +143,7 @@ pub struct StepBuilder {
     output_schema: Option<SchemaRef>,
     skip_if: Option<Expr>,
     on_error: Option<ErrorAction>,
+    must_execute: Option<bool>,
     metadata: HashMap<String, serde_json::Value>,
 }
 
@@ -157,6 +158,7 @@ impl StepBuilder {
             output_schema: None,
             skip_if: None,
             on_error: None,
+            must_execute: None,
             metadata: HashMap::new(),
         }
     }
@@ -209,6 +211,12 @@ impl StepBuilder {
         self
     }
 
+    /// Set whether this step must execute even if its output is not used.
+    pub fn must_execute(mut self, must_execute: bool) -> Self {
+        self.must_execute = Some(must_execute);
+        self
+    }
+
     /// Add metadata.
     pub fn metadata<S: Into<String>>(mut self, key: S, value: serde_json::Value) -> Self {
         self.metadata.insert(key.into(), value);
@@ -251,6 +259,7 @@ impl StepBuilder {
             output_schema: self.output_schema,
             skip_if: self.skip_if,
             on_error: self.on_error,
+            must_execute: self.must_execute,
             metadata: self.metadata,
         }
     }

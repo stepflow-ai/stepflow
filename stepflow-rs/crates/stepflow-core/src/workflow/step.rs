@@ -43,6 +43,14 @@ pub struct Step {
     #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
     pub input: ValueTemplate,
 
+    /// If true, this step must execute even if its output is not used by the workflow output.
+    /// Useful for steps with side effects (e.g., writing to databases, sending notifications).
+    ///
+    /// Note: If the step has `skip_if` that evaluates to true, the step will still be skipped
+    /// and its dependencies will not be forced to execute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub must_execute: Option<bool>,
+
     /// Extensible metadata for the step that can be used by tools and frameworks.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
@@ -56,6 +64,11 @@ impl Step {
     /// Get the effective error action, applying the default if none is specified.
     pub fn on_error_or_default(&self) -> ErrorAction {
         self.on_error().cloned().unwrap_or_default()
+    }
+
+    /// Check if this step must execute, treating None as false (the default).
+    pub fn must_execute(&self) -> bool {
+        self.must_execute.unwrap_or(false)
     }
 }
 

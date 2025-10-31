@@ -91,7 +91,38 @@ impl FlowAnalysis {
 
     /// Create a dependency tracker for execution
     pub fn new_dependency_tracker(&self) -> DependencyTracker {
-        DependencyTracker::new(self.dependencies.clone())
+        use bit_set::BitSet;
+
+        let mut tracker = DependencyTracker::new(self.dependencies.clone());
+
+        // Collect step indices that are directly required:
+        // 1. All steps that the output depends on
+        let mut directly_required: BitSet = self
+            .output_depends
+            .dependencies()
+            .filter_map(|dep| {
+                if let crate::dependencies::Dependency::StepOutput { step_id, .. } = dep {
+                    self.get_step_index(step_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // 2. All steps marked as must_execute
+        for (idx, step) in self.flow.steps().iter().enumerate() {
+            if step.must_execute() {
+                directly_required.insert(idx);
+            }
+        }
+
+        // 3. Compute transitive closure: include all dependencies of directly required steps
+        let required_steps = self
+            .dependencies
+            .transitive_dependencies(&directly_required);
+
+        tracker.set_required_steps(required_steps);
+        tracker
     }
 }
 
