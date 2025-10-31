@@ -63,9 +63,11 @@ impl Step {
     Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase", tag = "action")]
+#[derive(Default)]
 pub enum ErrorAction {
     /// # OnErrorFail
     /// If the step fails, the flow will fail.
+    #[default]
     Fail,
     /// # OnErrorSkip
     /// If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.
@@ -85,12 +87,6 @@ pub enum ErrorAction {
 impl ErrorAction {
     pub fn is_default(&self) -> bool {
         matches!(self, Self::Fail)
-    }
-}
-
-impl Default for ErrorAction {
-    fn default() -> Self {
-        Self::Fail
     }
 }
 

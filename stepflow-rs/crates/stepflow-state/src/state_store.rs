@@ -620,17 +620,13 @@ pub struct RunFilters {
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
 )]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum BatchStatus {
     /// Batch is currently running
+    #[default]
     Running,
     /// Batch has been cancelled
     Cancelled,
-}
-
-impl Default for BatchStatus {
-    fn default() -> Self {
-        Self::Running
-    }
 }
 
 /// Immutable batch metadata

@@ -14,6 +14,7 @@
 
 """Main CLI entry point for Langflow integration."""
 
+import fcntl
 import json
 import sys
 from pathlib import Path
@@ -202,11 +203,26 @@ def serve(host: str, port: int, protocol_prefix: str, http: bool):
             click.echo(f"   Port: {port}")
             click.echo(f"   Protocol prefix: {protocol_prefix}")
 
+            # Apply nest_asyncio to handle nested event loops in HTTP mode
+            import nest_asyncio  # type: ignore
+
+            nest_asyncio.apply()
+
             # Run the HTTP server
             asyncio.run(server.serve(host=host, port=port))
         else:
             click.echo("🚀 Starting Langflow component server in STDIO mode...")
             click.echo(f"   Protocol prefix: {protocol_prefix}")
+
+            # Increase pipe buffer size to handle large payloads
+            # (e.g., Wikipedia articles)
+            try:
+                # Set stdout buffer to 1MB to handle large responses
+                fcntl.fcntl(sys.stdout.fileno(), fcntl.F_SETPIPE_SZ, 1048576)
+                click.echo("   Pipe buffer size increased to 1MB")
+            except (OSError, AttributeError) as e:
+                # F_SETPIPE_SZ might not be available on all platforms
+                click.echo(f"   Warning: Could not increase pipe buffer: {e}", err=True)
 
             # Run the STDIO server
             server.run()

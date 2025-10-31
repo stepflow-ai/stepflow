@@ -180,8 +180,10 @@ impl Expr {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", tag = "action")]
+#[derive(Default)]
 pub enum SkipAction {
     /// # OnSkipSkip
+    #[default]
     Skip,
     #[serde(rename_all = "camelCase")]
     /// # OnSkipDefault
@@ -189,12 +191,6 @@ pub enum SkipAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default_value: Option<ValueRef>,
     },
-}
-
-impl Default for SkipAction {
-    fn default() -> Self {
-        Self::Skip
-    }
 }
 
 impl SkipAction {

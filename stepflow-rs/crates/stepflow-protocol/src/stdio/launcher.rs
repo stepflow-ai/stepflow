@@ -87,7 +87,11 @@ impl Launcher {
         log::info!("Spawning child process: {:?}", command);
         // Finally, spawn the child process.
         match command.spawn() {
-            Ok(child) => Ok(child),
+            Ok(mut child) => {
+                // Increase pipe buffer sizes for stdout to handle large payloads
+                Self::increase_pipe_buffer(&mut child);
+                Ok(child)
+            }
             Err(e) => {
                 log::error!(
                     "Failed to spawn child process '{} {:?}': {e}",
@@ -104,6 +108,52 @@ impl Launcher {
                 )
             }
         }
+    }
+
+    /// Increase pipe buffer size for child process stdout to handle large payloads
+    #[cfg(unix)]
+    fn increase_pipe_buffer(child: &mut Child) {
+        use std::os::unix::io::AsRawFd as _;
+
+        const PIPE_BUF_SIZE: libc::c_int = 1048576; // 1MB
+
+        if let Some(stdout) = &child.stdout {
+            let fd = stdout.as_raw_fd();
+            // SAFETY: Calling fcntl with F_SETPIPE_SZ on a valid file descriptor is safe.
+            // The fd comes from a valid stdout handle, and fcntl returns an error code
+            // if the operation fails (which we check). The worst case is the OS denies
+            // the buffer size increase, leaving the default buffer size intact.
+            unsafe {
+                // Try to increase the pipe buffer size
+                // F_SETPIPE_SZ is available on Linux and macOS
+                #[cfg(target_os = "linux")]
+                const F_SETPIPE_SZ: libc::c_int = 1031;
+                #[cfg(target_os = "macos")]
+                const F_SETPIPE_SZ: libc::c_int = 67;
+
+                let result = libc::fcntl(fd, F_SETPIPE_SZ, PIPE_BUF_SIZE);
+                if result < 0 {
+                    #[cfg(target_os = "macos")]
+                    log::warn!(
+                        "Failed to increase stdout pipe buffer size: {} (macOS caps pipe buffers at ~64 KiB)",
+                        std::io::Error::last_os_error()
+                    );
+                    #[cfg(not(target_os = "macos"))]
+                    log::warn!(
+                        "Failed to increase stdout pipe buffer size: {}",
+                        std::io::Error::last_os_error()
+                    );
+                } else {
+                    log::info!("Increased stdout pipe buffer to {} bytes", PIPE_BUF_SIZE);
+                }
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn increase_pipe_buffer(_child: &mut Child) {
+        // Buffer size increase not supported on non-Unix platforms
+        log::debug!("Pipe buffer size increase not available on this platform");
     }
 }
 
