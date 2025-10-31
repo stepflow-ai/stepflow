@@ -20,7 +20,7 @@ use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
     FlowResult,
     values::{ValueRef, ValueResolver, ValueTemplate},
-    workflow::{Expr, Flow},
+    workflow::{Expr, Flow, StepId},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -392,7 +392,24 @@ impl WorkflowExecutor {
             }
         }
 
-        // All required tasks completed - resolve the workflow output
+        // All required tasks completed - check for must_execute step failures before resolving output
+        // If any must_execute step has failed, the workflow should fail
+        for (step_index, step) in self.flow.steps().iter().enumerate() {
+            if step.must_execute() {
+                let step_id = StepId {
+                    index: step_index,
+                    flow: self.flow.clone(),
+                };
+                if let Some(FlowResult::Failed(error)) =
+                    self.write_cache.get_step_result(&step_id).await
+                {
+                    log::info!("Must-execute step '{}' failed, workflow fails", step.id);
+                    return Ok(FlowResult::Failed(error.clone()));
+                }
+            }
+        }
+
+        // All must_execute steps succeeded - resolve the workflow output
         let result = self.resolve_workflow_output().await?;
 
         // Record metrics

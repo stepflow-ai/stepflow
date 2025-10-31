@@ -20,6 +20,9 @@ plugins:
           { input: "hello" }:
             outcome: success
             result: {output: world}
+          { input: "b" }:
+            outcome: success
+            result: {output: b}
       /two_outputs:
         input_schema:
           type: object

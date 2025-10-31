@@ -713,4 +713,197 @@ mod tests {
             "All required steps (step1 for output, step2 for must_execute) have completed"
         );
     }
+
+    #[test]
+    fn test_must_execute_with_skip_if_requires_condition_inputs() {
+        // Test case 1: If a step is must_execute and has skip_if, then the inputs to
+        // the skip_if condition are required
+        //
+        // step1 (provides input for skip_if)
+        // step2 (must_execute with skip_if referencing step1, not used in output)
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::mock_step("step1")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step2")
+                    .input(ValueTemplate::literal(json!({"value": 42})))
+                    .skip_if(Expr::Ref {
+                        from: BaseRef::Step {
+                            step: "step1".to_string(),
+                        },
+                        path: JsonPath::default(),
+                        on_skip: None,
+                    })
+                    .must_execute(true)
+                    .build(),
+                StepBuilder::mock_step("step3")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+            ])
+            .output(ValueTemplate::step_ref("step3", JsonPath::default()))
+            .build();
+
+        let result =
+            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
+                .unwrap();
+
+        let analysis = result.analysis.expect("Analysis should succeed");
+
+        // Verify that step1 is in required steps (needed for step2's skip_if)
+        let mut tracker = analysis.new_dependency_tracker();
+
+        // Initially step1 and step3 should be runnable
+        let unblocked = tracker.unblocked_steps();
+        assert!(
+            unblocked.contains(0),
+            "step1 should be runnable (required for skip_if)"
+        );
+        assert!(
+            !unblocked.contains(1),
+            "step2 should be blocked on step1 (for skip_if)"
+        );
+        assert!(
+            unblocked.contains(2),
+            "step3 should be runnable (output dependency)"
+        );
+
+        // Complete step1 - should unblock step2
+        let newly_unblocked = tracker.complete_step(0);
+        assert!(
+            newly_unblocked.contains(1),
+            "step2 should be unblocked after step1"
+        );
+
+        // Complete step2 (must_execute)
+        tracker.complete_step(1);
+
+        // Complete step3 (output)
+        tracker.complete_step(2);
+
+        // All required steps completed
+        assert!(
+            tracker.all_required_completed(),
+            "All required steps completed"
+        );
+    }
+
+    #[test]
+    fn test_must_execute_skip_if_false_requires_step_inputs() {
+        // Test case 2: If a step is must_execute and skip_if evaluates to false,
+        // then the step's inputs are required
+        //
+        // Note: This test verifies dependency analysis considers inputs of must_execute
+        // steps as required. Runtime evaluation of skip_if is handled by the executor.
+        //
+        // step1 (provides input for step2)
+        // step2 (must_execute with input from step1, skip_if will be false at runtime)
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::mock_step("step1")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step2")
+                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
+                    .skip_if(Expr::Ref {
+                        from: BaseRef::Workflow(WorkflowRef::Input),
+                        path: JsonPath::parse("$.should_skip").unwrap(),
+                        on_skip: None,
+                    })
+                    .must_execute(true)
+                    .build(),
+                StepBuilder::mock_step("step3")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+            ])
+            .output(ValueTemplate::step_ref("step3", JsonPath::default()))
+            .build();
+
+        let result =
+            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
+                .unwrap();
+
+        let analysis = result.analysis.expect("Analysis should succeed");
+
+        // Verify that step1 is in required steps (needed for step2's input)
+        let mut tracker = analysis.new_dependency_tracker();
+
+        // Initially step1 and step3 should be runnable
+        let unblocked = tracker.unblocked_steps();
+        assert!(
+            unblocked.contains(0),
+            "step1 should be runnable (required for step2 input)"
+        );
+        assert!(!unblocked.contains(1), "step2 should be blocked on step1");
+        assert!(
+            unblocked.contains(2),
+            "step3 should be runnable (output dependency)"
+        );
+
+        // Complete step1 - should unblock step2
+        let newly_unblocked = tracker.complete_step(0);
+        assert!(
+            newly_unblocked.contains(1),
+            "step2 should be unblocked after step1"
+        );
+    }
+
+    #[test]
+    fn test_must_execute_skip_if_true_does_not_require_step_inputs() {
+        // Test case 3: If a step is must_execute but skip_if evaluates to true,
+        // the step won't execute, but we still mark it as required during analysis
+        // (since we can't know at analysis time whether skip_if will be true)
+        //
+        // Note: At analysis time, we conservatively include must_execute steps
+        // and their dependencies in required_steps. The executor handles skipping
+        // at runtime based on skip_if evaluation.
+        //
+        // step1 (provides input for step2)
+        // step2 (must_execute with skip_if that references workflow input)
+        // step3 (output)
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::mock_step("step1")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step2")
+                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
+                    .skip_if(Expr::Ref {
+                        from: BaseRef::Workflow(WorkflowRef::Input),
+                        path: JsonPath::parse("$.should_skip").unwrap(),
+                        on_skip: None,
+                    })
+                    .must_execute(true)
+                    .build(),
+                StepBuilder::mock_step("step3")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+            ])
+            .output(ValueTemplate::step_ref("step3", JsonPath::default()))
+            .build();
+
+        let result =
+            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
+                .unwrap();
+
+        let analysis = result.analysis.expect("Analysis should succeed");
+
+        // At analysis time, step1 is required (we don't evaluate skip_if statically)
+        let tracker = analysis.new_dependency_tracker();
+
+        // Initially step1 and step3 should be runnable
+        let unblocked = tracker.unblocked_steps();
+        assert!(
+            unblocked.contains(0),
+            "step1 should be runnable (conservatively required for step2)"
+        );
+        assert!(!unblocked.contains(1), "step2 should be blocked on step1");
+        assert!(
+            unblocked.contains(2),
+            "step3 should be runnable (output dependency)"
+        );
+
+        // This test validates that analysis conservatively includes dependencies.
+        // Actual skip_if evaluation happens at runtime in the executor.
+    }
 }
