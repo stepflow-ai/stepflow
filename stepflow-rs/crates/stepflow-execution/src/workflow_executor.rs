@@ -383,9 +383,16 @@ impl WorkflowExecutor {
             // Start newly unblocked steps
             self.start_unblocked_steps(&newly_unblocked, &mut running_tasks)
                 .await?;
+
+            // Check if we can exit early: no running tasks and all required steps completed
+            // This allows us to finish as soon as possible without waiting for unnecessary steps
+            if running_tasks.is_empty() && self.tracker.all_required_completed() {
+                log::debug!("All required steps completed, finishing execution");
+                break;
+            }
         }
 
-        // All tasks completed - try to complete the workflow
+        // All required tasks completed - resolve the workflow output
         let result = self.resolve_workflow_output().await?;
 
         // Record metrics
@@ -784,7 +791,10 @@ impl WorkflowExecutor {
         unblocked: &BitSet,
         running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
     ) -> Result<()> {
+        // Filter out the virtual output node (last index in dependency graph)
+        let virtual_output_index = self.flow.steps().len();
         let mut steps_to_process = unblocked.clone();
+        steps_to_process.remove(virtual_output_index);
 
         // Fast skip loop: process chains of skippable steps synchronously
         // This avoids spawning async tasks for steps that will immediately skip

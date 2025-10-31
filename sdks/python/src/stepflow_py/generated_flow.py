@@ -356,6 +356,15 @@ class Step(Struct, kw_only=True):
         ]
         | None
     ) = None
+    mustExecute: (
+        Annotated[
+            bool | None,
+            Meta(
+                description='If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.'
+            ),
+        ]
+        | None
+    ) = None
     metadata: (
         Annotated[
             Dict[str, Any],

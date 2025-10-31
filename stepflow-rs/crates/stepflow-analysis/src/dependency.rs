@@ -521,4 +521,196 @@ mod tests {
         assert_eq!(error, 0);
         assert_eq!(warning, 0);
     }
+
+    #[test]
+    fn test_must_execute_steps_are_tracked() {
+        // Create a flow where step3 has must_execute but is not referenced by output
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::mock_step("step1")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step2")
+                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step3")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .must_execute(true) // Mark as must_execute
+                    .build(),
+            ])
+            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .build();
+
+        let result =
+            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
+                .unwrap();
+
+        let analysis = result.analysis.expect("Analysis should succeed");
+
+        // Create a tracker to verify required steps tracking
+        let mut tracker = analysis.new_dependency_tracker();
+
+        // Initially step1 and step3 should be runnable (no dependencies)
+        let unblocked = tracker.unblocked_steps();
+        assert!(unblocked.contains(0), "step1 should be initially runnable");
+        assert!(unblocked.contains(2), "step3 should be initially runnable");
+        assert!(!unblocked.contains(1), "step2 should be blocked on step1");
+
+        // Required steps (step2 for output + step3 for must_execute) are NOT completed yet
+        assert!(
+            !tracker.all_required_completed(),
+            "step2 and step3 (required) have not completed yet"
+        );
+
+        // Complete step1
+        let newly_unblocked = tracker.complete_step(0);
+        assert!(
+            newly_unblocked.contains(1),
+            "step2 should be unblocked after step1"
+        );
+
+        // Still not all required steps completed
+        assert!(
+            !tracker.all_required_completed(),
+            "step2 and step3 (required) have not completed yet"
+        );
+
+        // Complete step2 (output dependency satisfied, but step3 still required)
+        tracker.complete_step(1);
+
+        // Still not all required steps completed (step3 must_execute still needed)
+        assert!(
+            !tracker.all_required_completed(),
+            "step3 (must_execute) has not completed yet"
+        );
+
+        // Complete step3 (must_execute step)
+        tracker.complete_step(2);
+
+        // Now all required steps are completed (output deps + must_execute)
+        assert!(
+            tracker.all_required_completed(),
+            "All required steps (step2 for output, step3 for must_execute) have completed"
+        );
+    }
+
+    #[test]
+    fn test_only_required_steps_execute() {
+        // Create a flow with an unreferenced step that should NOT execute
+        // step1 -> step2 (output depends on step2)
+        // step3 (not referenced, not must_execute, should NOT run)
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::mock_step("step1")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step2")
+                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step3")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+            ])
+            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .build();
+
+        let result =
+            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
+                .unwrap();
+
+        let analysis = result.analysis.expect("Analysis should succeed");
+
+        // Create a tracker to verify only required steps are runnable
+        let mut tracker = analysis.new_dependency_tracker();
+
+        // Initially only step1 should be runnable (step3 is not required)
+        let unblocked = tracker.unblocked_steps();
+        assert!(unblocked.contains(0), "step1 should be runnable");
+        assert!(
+            !unblocked.contains(2),
+            "step3 should NOT be runnable (not required)"
+        );
+
+        // Complete step1
+        let newly_unblocked = tracker.complete_step(0);
+        assert!(
+            newly_unblocked.contains(1),
+            "step2 should be newly runnable"
+        );
+        assert!(
+            !newly_unblocked.contains(2),
+            "step3 should NOT be newly runnable (not required)"
+        );
+
+        // Complete step2
+        tracker.complete_step(1);
+
+        // Now all required steps are completed
+        assert!(
+            tracker.all_required_completed(),
+            "All required steps completed"
+        );
+
+        // Verify step3 never became runnable
+        let unblocked = tracker.unblocked_steps();
+        assert!(
+            !unblocked.contains(2),
+            "step3 should never be runnable (not required)"
+        );
+    }
+
+    #[test]
+    fn test_must_execute_without_dependencies() {
+        // Create a flow where step2 has must_execute but no dependencies and isn't referenced
+        let flow = FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::mock_step("step1")
+                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .build(),
+                StepBuilder::mock_step("step2")
+                    .input(ValueTemplate::literal(json!({"value": 42})))
+                    .must_execute(true)
+                    .build(),
+            ])
+            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .build();
+
+        let result =
+            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
+                .unwrap();
+
+        let analysis = result.analysis.expect("Analysis should succeed");
+
+        // Create a tracker
+        let mut tracker = analysis.new_dependency_tracker();
+
+        // Both step1 and step2 should be initially runnable
+        let unblocked = tracker.unblocked_steps();
+        assert!(unblocked.contains(0), "step1 should be runnable");
+        assert!(unblocked.contains(1), "step2 should be runnable");
+
+        // Required steps (step1 for output + step2 for must_execute) not completed yet
+        assert!(
+            !tracker.all_required_completed(),
+            "step1 and step2 (required) have not completed yet"
+        );
+
+        // Complete step1 (satisfies output dependency, but step2 still required)
+        tracker.complete_step(0);
+
+        // Required step2 (must_execute) still not completed
+        assert!(
+            !tracker.all_required_completed(),
+            "step2 (must_execute) has not completed yet"
+        );
+
+        // Complete step2
+        tracker.complete_step(1);
+
+        // Now all required steps are completed (output deps + must_execute)
+        assert!(
+            tracker.all_required_completed(),
+            "All required steps (step1 for output, step2 for must_execute) have completed"
+        );
+    }
 }

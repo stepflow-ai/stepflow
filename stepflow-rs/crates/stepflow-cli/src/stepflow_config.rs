@@ -63,17 +63,13 @@ impl Default for StepflowConfig {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[derive(Default)]
 pub enum StateStoreConfig {
     /// In-memory state store (default, for testing and demos)
+    #[default]
     InMemory,
     /// SQLite-based persistent state store
     Sqlite(SqliteStateStoreConfig),
-}
-
-impl Default for StateStoreConfig {
-    fn default() -> Self {
-        Self::InMemory
-    }
 }
 
 impl StateStoreConfig {

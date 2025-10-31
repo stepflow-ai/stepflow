@@ -89,7 +89,25 @@ pub struct Dependencies {
     step_dependencies: Vec<BitSet>,
 }
 
-impl Dependencies {}
+impl Dependencies {
+    /// Compute the transitive closure of dependencies for a set of steps.
+    /// Returns all steps that the given steps transitively depend on (including the input steps).
+    pub fn transitive_dependencies(&self, steps: &BitSet) -> BitSet {
+        let mut result = steps.clone();
+        let mut to_process: Vec<usize> = steps.iter().collect();
+
+        while let Some(step) = to_process.pop() {
+            for dependency in self.step_dependencies[step].iter() {
+                if result.insert(dependency) {
+                    // New dependency discovered, need to process its dependencies too
+                    to_process.push(dependency);
+                }
+            }
+        }
+
+        result
+    }
+}
 
 pub struct DependencyTracker {
     dependencies: Arc<Dependencies>,
@@ -97,6 +115,8 @@ pub struct DependencyTracker {
     blocking: Vec<usize>,
     /// For each step, whether it has been completed.
     completed: BitSet,
+    /// Steps that are required to complete: all output dependencies + must_execute steps.
+    required_steps: BitSet,
 }
 
 impl DependencyTracker {
@@ -107,11 +127,24 @@ impl DependencyTracker {
             .map(|d| d.len())
             .collect();
         let completed = BitSet::with_capacity(dependencies.steps);
+        let required_steps = BitSet::with_capacity(dependencies.steps);
         Self {
             dependencies,
             blocking,
             completed,
+            required_steps,
         }
+    }
+
+    /// Set which steps are required to complete.
+    /// This should be the union of output dependencies and must_execute steps.
+    pub fn set_required_steps(&mut self, required: BitSet) {
+        self.required_steps = required;
+    }
+
+    /// Check if all required steps have completed.
+    pub fn all_required_completed(&self) -> bool {
+        self.required_steps.is_subset(&self.completed)
     }
 
     /// Return the name of the given step.
@@ -120,6 +153,7 @@ impl DependencyTracker {
     }
 
     /// Return the set of all steps that are currently runnable.
+    /// Only returns steps that are required (either directly or transitively).
     pub fn unblocked_steps(&self) -> BitSet {
         let mut unblocked: BitSet = self
             .blocking
@@ -129,12 +163,15 @@ impl DependencyTracker {
             .map(|(step, _)| step)
             .collect();
         unblocked.difference_with(&self.completed);
+
+        // Only return steps that are required
+        unblocked.intersect_with(&self.required_steps);
         unblocked
     }
 
     /// Mark the given step as completed.
     ///
-    /// Return a set of newly runnable steps.
+    /// Return a set of newly runnable steps (that are also required).
     pub fn complete_step(&mut self, step: usize) -> BitSet {
         // Record completion. If already completed, return empty set
         if !self.completed.insert(step) {
@@ -151,6 +188,9 @@ impl DependencyTracker {
                 unblocked.insert(dependent);
             }
         }
+
+        // Only return steps that are required
+        unblocked.intersect_with(&self.required_steps);
         unblocked
     }
 }
@@ -170,6 +210,14 @@ mod tests {
         );
     }
 
+    // Helper to create a tracker with all steps marked as required
+    fn create_tracker_with_all_required(deps: Arc<Dependencies>) -> DependencyTracker {
+        let mut tracker = DependencyTracker::new(deps.clone());
+        let all_steps: BitSet = (0..deps.steps).collect();
+        tracker.set_required_steps(all_steps);
+        tracker
+    }
+
     #[test]
     fn test_simple_chain() {
         let mut builder = DependenciesBuilder::new(3);
@@ -178,7 +226,7 @@ mod tests {
         builder.add_step("step3", vec!["step2"]);
 
         let deps = builder.finish();
-        let mut tracker = DependencyTracker::new(deps);
+        let mut tracker = create_tracker_with_all_required(deps);
 
         // Initially only step1 should be runnable
         assert_bitset_eq(&tracker.unblocked_steps(), &[0]);
@@ -208,7 +256,7 @@ mod tests {
         builder.add_step("step4", vec!["step1"]);
 
         let deps = builder.finish();
-        let mut tracker = DependencyTracker::new(deps);
+        let mut tracker = create_tracker_with_all_required(deps);
 
         // Initially step1 and step2 should be runnable, not step3 or step4
         assert_bitset_eq(&tracker.unblocked_steps(), &[0, 1]);
@@ -244,7 +292,7 @@ mod tests {
         builder.add_step("step4", vec!["step2", "step3"]);
 
         let deps = builder.finish();
-        let mut tracker = DependencyTracker::new(deps);
+        let mut tracker = create_tracker_with_all_required(deps);
 
         // Only step1 runnable initially
         assert_bitset_eq(&tracker.unblocked_steps(), &[0]);
@@ -273,7 +321,7 @@ mod tests {
         builder.add_step("step3", Vec::<&str>::new());
 
         let deps = builder.finish();
-        let tracker = DependencyTracker::new(deps);
+        let tracker = create_tracker_with_all_required(deps);
 
         // All steps runnable initially, none missing
         assert_bitset_eq(&tracker.unblocked_steps(), &[0, 1, 2]);
@@ -285,7 +333,7 @@ mod tests {
         builder.add_step("only_step", Vec::<&str>::new());
 
         let deps = builder.finish();
-        let mut tracker = DependencyTracker::new(deps);
+        let mut tracker = create_tracker_with_all_required(deps);
 
         // Only step should be runnable
         assert_bitset_eq(&tracker.unblocked_steps(), &[0]);
@@ -303,7 +351,7 @@ mod tests {
         builder.add_step("step2", vec!["step1"]);
 
         let deps = builder.finish();
-        let mut tracker = DependencyTracker::new(deps);
+        let mut tracker = create_tracker_with_all_required(deps);
 
         // Complete step1 first time
         let newly_unblocked = tracker.complete_step(0);
@@ -333,5 +381,82 @@ mod tests {
 
         // No steps means nothing runnable
         assert_bitset_eq(&tracker.unblocked_steps(), &[]);
+    }
+
+    #[test]
+    fn test_transitive_dependencies() {
+        // Create a chain: step1 -> step2 -> step3 -> step4
+        let mut builder = DependenciesBuilder::new(4);
+        builder.add_step("step1", Vec::<&str>::new());
+        builder.add_step("step2", vec!["step1"]);
+        builder.add_step("step3", vec!["step2"]);
+        builder.add_step("step4", vec!["step3"]);
+
+        let deps = builder.finish();
+
+        // Test transitive closure starting from step4
+        let mut input = BitSet::new();
+        input.insert(3); // step4
+        let transitive = deps.transitive_dependencies(&input);
+
+        // Should include step4 and all its dependencies: step1, step2, step3
+        assert_bitset_eq(&transitive, &[0, 1, 2, 3]);
+
+        // Test transitive closure starting from step2
+        let mut input = BitSet::new();
+        input.insert(1); // step2
+        let transitive = deps.transitive_dependencies(&input);
+
+        // Should include step2 and its dependencies: step1
+        assert_bitset_eq(&transitive, &[0, 1]);
+
+        // Test transitive closure starting from step1 (no dependencies)
+        let mut input = BitSet::new();
+        input.insert(0); // step1
+        let transitive = deps.transitive_dependencies(&input);
+
+        // Should only include step1 itself
+        assert_bitset_eq(&transitive, &[0]);
+    }
+
+    #[test]
+    fn test_transitive_dependencies_diamond() {
+        // Create a diamond: step1 -> step2, step3 -> step4
+        let mut builder = DependenciesBuilder::new(4);
+        builder.add_step("step1", Vec::<&str>::new());
+        builder.add_step("step2", vec!["step1"]);
+        builder.add_step("step3", vec!["step1"]);
+        builder.add_step("step4", vec!["step2", "step3"]);
+
+        let deps = builder.finish();
+
+        // Test transitive closure starting from step4
+        let mut input = BitSet::new();
+        input.insert(3); // step4
+        let transitive = deps.transitive_dependencies(&input);
+
+        // Should include all steps since step4 depends on everything
+        assert_bitset_eq(&transitive, &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn test_transitive_dependencies_multiple_roots() {
+        // Create two chains that merge: step1 -> step2 -> step4, step3 -> step4
+        let mut builder = DependenciesBuilder::new(4);
+        builder.add_step("step1", Vec::<&str>::new());
+        builder.add_step("step2", vec!["step1"]);
+        builder.add_step("step3", Vec::<&str>::new());
+        builder.add_step("step4", vec!["step2", "step3"]);
+
+        let deps = builder.finish();
+
+        // Test transitive closure starting from step2 and step3
+        let mut input = BitSet::new();
+        input.insert(1); // step2
+        input.insert(2); // step3
+        let transitive = deps.transitive_dependencies(&input);
+
+        // Should include step1 (transitive from step2), step2, and step3
+        assert_bitset_eq(&transitive, &[0, 1, 2]);
     }
 }

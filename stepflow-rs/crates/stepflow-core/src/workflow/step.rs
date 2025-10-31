@@ -43,6 +43,14 @@ pub struct Step {
     #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
     pub input: ValueTemplate,
 
+    /// If true, this step must execute even if its output is not used by the workflow output.
+    /// Useful for steps with side effects (e.g., writing to databases, sending notifications).
+    ///
+    /// Note: If the step has `skip_if` that evaluates to true, the step will still be skipped
+    /// and its dependencies will not be forced to execute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub must_execute: Option<bool>,
+
     /// Extensible metadata for the step that can be used by tools and frameworks.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
@@ -57,15 +65,22 @@ impl Step {
     pub fn on_error_or_default(&self) -> ErrorAction {
         self.on_error().cloned().unwrap_or_default()
     }
+
+    /// Check if this step must execute, treating None as false (the default).
+    pub fn must_execute(&self) -> bool {
+        self.must_execute.unwrap_or(false)
+    }
 }
 
 #[derive(
     Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase", tag = "action")]
+#[derive(Default)]
 pub enum ErrorAction {
     /// # OnErrorFail
     /// If the step fails, the flow will fail.
+    #[default]
     Fail,
     /// # OnErrorSkip
     /// If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.
@@ -85,12 +100,6 @@ pub enum ErrorAction {
 impl ErrorAction {
     pub fn is_default(&self) -> bool {
         matches!(self, Self::Fail)
-    }
-}
-
-impl Default for ErrorAction {
-    fn default() -> Self {
-        Self::Fail
     }
 }
 
