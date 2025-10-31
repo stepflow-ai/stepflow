@@ -131,6 +131,7 @@ class NodeProcessor:
                     id=blob_step_id,
                     component="/builtin/put_blob",
                     input_data={"data": blob_data, "blob_type": "data"},
+                    must_execute=True,
                 )
 
                 # Now create the UDF executor step that uses the blob
@@ -157,6 +158,7 @@ class NodeProcessor:
                 id=step_id,
                 component=component_path,
                 input_data=step_input,
+                must_execute=True,
             )
 
             # Return a reference to this step's output
@@ -625,6 +627,7 @@ class NodeProcessor:
                     "inputs": component_inputs,  # Static inputs from workflow
                     "component_type": component_type,
                 },
+                must_execute=True,
             )
 
             # Return a reference to this step's output (the tool wrapper)
