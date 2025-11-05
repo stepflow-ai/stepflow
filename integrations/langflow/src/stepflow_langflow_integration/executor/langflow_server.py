@@ -55,6 +55,59 @@ class StepflowLangflowServer:
             # Use the new UDF executor directly - it handles pre-compilation internally
             return await self.udf_executor.execute(input_data, context)
 
+        @self.server.component(name="mode_check")
+        async def mode_check(input_data: dict[str, Any]) -> dict[str, Any]:
+            """Check vector store execution mode and return skip flags.
+
+            Args:
+                input_data: Dict with "mode" key ("ingest", "retrieve", or "hybrid")
+
+            Returns:
+                Dict with boolean skip flags (True means skip the step):
+                - skip_ingest_step: True if ingestion steps should be skipped
+                - skip_retrieve_step: True if retrieval steps should be skipped
+            """
+            mode = input_data.get("mode", "hybrid")
+
+            # Determine which steps should be skipped based on mode
+            if mode == "ingest":
+                return {"skip_ingest_step": False, "skip_retrieve_step": True}
+            elif mode == "retrieve":
+                return {"skip_ingest_step": True, "skip_retrieve_step": False}
+            else:  # hybrid or unknown - run both (skip neither)
+                return {"skip_ingest_step": False, "skip_retrieve_step": False}
+
+        @self.server.component(name="mode_output")
+        async def mode_output(input_data: dict[str, Any]) -> dict[str, Any]:
+            """Generate appropriate output message based on mode and retrieval result.
+
+            Args:
+                input_data: Dict with:
+                    - mode: Execution mode ("ingest", "retrieve", or "hybrid")
+                    - retrieval_result: Optional result from retrieval path
+                      (may be None if skipped)
+
+            Returns:
+                Dict with message field containing appropriate output
+            """
+            mode = input_data.get("mode", "hybrid")
+            retrieval_result = input_data.get("retrieval_result")
+
+            if mode == "ingest":
+                # Ingest mode: retrieval was skipped
+                return {
+                    "message": "Document ingestion completed successfully. "
+                    "Retrieval was skipped in ingest-only mode."
+                }
+            elif retrieval_result is not None:
+                # Retrieval happened (either retrieve or hybrid mode)
+                return {"message": retrieval_result}
+            else:
+                # Hybrid mode but no retrieval result (shouldn't normally happen)
+                return {
+                    "message": "Workflow completed but no retrieval result available."
+                }
+
         # TODO: Register native component implementations
         # self.server.component(name="openai_chat", func=self._openai_chat)
         # self.server.component(name="chat_input", func=self._chat_input)

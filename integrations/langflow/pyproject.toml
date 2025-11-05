@@ -75,6 +75,8 @@ dev = [
     "requests>=2.31.0", # For Stepflow server health checks in tests
     "black>=25.1.0",
     "psutil>=5.9.0", # For memory monitoring in OOM tests
+    "testcontainers[opensearch]>=4.0.0", # For OpenSearch integration tests
+    "opensearch-py>=2.0.0", # OpenSearch Python client
 ]
 
 [project.urls]
@@ -176,6 +178,7 @@ python-dotenv = ["dotenv"]
 pyyaml = ["yaml"]
 langflow-nightly = ["langflow"]
 lfx-nightly = ["lfx"]
+opensearch-py = ["opensearchpy"]
 
 [tool.mypy]
 python_version = "3.11"

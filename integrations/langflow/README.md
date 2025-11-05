@@ -350,6 +350,64 @@ uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
   }'
 ```
 
+### Vector Store Mode-Aware Execution
+
+Workflows with vector store components automatically support mode-aware execution, allowing you to control whether documents are ingested, retrieved, or both:
+
+#### Available Modes
+
+- **`ingest`**: Populate vector stores with documents (no retrieval)
+- **`retrieve`**: Search existing vector stores (assumes documents already ingested)
+- **`hybrid`** (default): Auto-detects based on inputs:
+  - If only documents provided → ingest
+  - If only query provided → retrieve
+  - If both provided → ingest then retrieve
+
+#### Mode Usage Examples
+
+```bash
+# Ingest mode: Load documents into vector store
+uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
+  '{"mode": "ingest", "file_path": "documents.pdf"}' \
+  --tweaks '{"AstraDB-abc": {"token": "your-token"}}'
+
+# Retrieve mode: Query existing vector store
+uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
+  '{"mode": "retrieve", "message": "What is machine learning?"}' \
+  --tweaks '{"AstraDB-abc": {"token": "your-token"}}'
+
+# Hybrid mode (default): Ingest documents and query in one execution
+uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
+  '{"mode": "hybrid", "message": "Summarize this document", "file_path": "doc.pdf"}' \
+  --tweaks '{"AstraDB-abc": {"token": "your-token"}}'
+
+# Hybrid auto-detection: Omit mode parameter
+uv run stepflow-langflow execute tests/fixtures/langflow/vector_store_rag.json \
+  '{"message": "What topics are covered?", "file_path": "content.pdf"}'
+```
+
+#### When to Use Each Mode
+
+- **Ingest**: Bulk document loading, indexing pipelines, data preparation
+- **Retrieve**: Production queries, API endpoints, chatbot interactions
+- **Hybrid**: Interactive sessions, testing, exploratory workflows
+
+#### OpenSearch Integration
+
+The integration includes comprehensive OpenSearch support via testcontainers for local development and testing:
+
+```bash
+# Run OpenSearch integration tests (requires Docker)
+cd integrations/langflow
+uv run pytest tests/integration/test_opensearch_integration.py -v
+
+# Tests cover all three modes with real OpenSearch container
+# - test_opensearch_ingest_mode: Document ingestion verification
+# - test_opensearch_retrieve_mode: Search functionality
+# - test_opensearch_hybrid_mode_auto_ingest: Hybrid auto-detection (ingest)
+# - test_opensearch_hybrid_mode_auto_retrieve: Hybrid auto-detection (retrieve)
+```
+
 ### Workflow Input Patterns
 
 All workflows expect JSON input with a `message` field:

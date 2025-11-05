@@ -31,6 +31,8 @@ class UDFExecutor:
         """Initialize UDF executor."""
         self.type_converter = TypeConverter()
         self.compiled_components: dict[str, Any] = {}
+        # Cache for vector store connections keyed by configuration hash
+        self.vector_store_cache: dict[str, Any] = {}
 
     async def execute(
         self, input_data: dict[str, Any], context: StepflowContext
@@ -98,6 +100,57 @@ class UDFExecutor:
             blob_ids.add(input_data["blob_id"])
 
         return blob_ids
+
+    def _compute_vector_store_cache_key(
+        self, component_parameters: dict[str, Any]
+    ) -> str:
+        """Compute cache key for vector store based on configuration.
+
+        The cache key is based on connection configuration (URL, index,
+        credentials, etc.), NOT on the documents being ingested.
+
+        Args:
+            component_parameters: Component parameters dict
+
+        Returns:
+            Cache key string
+        """
+        import hashlib
+        import json
+
+        # Extract configuration parameters (not documents)
+        config_keys = [
+            "opensearch_url",
+            "index_name",
+            "username",
+            "password",
+            "jwt_token",
+            "auth_mode",
+            "engine",
+            "space_type",
+            "ef_construction",
+            "m",
+            "embedding_model_name",
+            "vector_field",
+            # Add other relevant config keys
+        ]
+
+        # Build config dict with only configuration parameters
+        config_dict = {}
+        for key in config_keys:
+            if key in component_parameters:
+                value = component_parameters[key]
+                # Hash sensitive values like passwords
+                if key in ["password", "jwt_token"] and value:
+                    hashed = hashlib.sha256(str(value).encode()).hexdigest()[:16]
+                    value = f"<hashed:{hashed}>"
+                config_dict[key] = value
+
+        # Create deterministic hash of configuration
+        config_json = json.dumps(config_dict, sort_keys=True)
+        cache_key = hashlib.sha256(config_json.encode()).hexdigest()
+
+        return cache_key
 
     def _serialize_langflow_objects(self, obj: Any) -> Any:
         """Convert Langflow objects to JSON-serializable format.
@@ -266,6 +319,16 @@ class UDFExecutor:
         execution_method = compiled_component["execution_method"]
         component_type = compiled_component["component_type"]
         display_name = compiled_component.get("display_name", component_type)
+        base_classes = compiled_component.get("base_classes", [])
+
+        # Check if this is a vector store component
+        is_vector_store = "VectorStore" in base_classes
+
+        # Determine actual execution method based on mode (if vector store)
+        if is_vector_store:
+            execution_method = self._determine_vector_store_execution_method(
+                runtime_inputs, compiled_component
+            )
 
         tracer = get_tracer(__name__)
 
@@ -585,6 +648,76 @@ class UDFExecutor:
                 return method
 
         return None
+
+    def _determine_vector_store_execution_method(
+        self, runtime_inputs: dict[str, Any], compiled_component: dict[str, Any]
+    ) -> str:
+        """Determine execution method for vector store based on mode and inputs.
+
+        For vector stores, execution depends on the mode parameter:
+        - ingest: Call build_vector_store (or as_vector_store which calls it)
+        - retrieve: Call search_documents
+        - hybrid: Auto-detect based on presence of documents/query
+
+        Args:
+            runtime_inputs: Runtime inputs including mode parameter
+            compiled_component: Compiled component with outputs metadata
+
+        Returns:
+            Method name to execute
+        """
+        # Get mode from runtime inputs (default: hybrid)
+        mode = runtime_inputs.get("mode", "hybrid")
+
+        # Get available outputs/methods
+        outputs = compiled_component.get("outputs", [])
+        output_methods = {
+            output.get("name"): output.get("method") for output in outputs
+        }
+
+        if mode == "ingest":
+            # For ingest mode, prefer build_vector_store or as_vector_store
+            if "vectorstoreconnection" in output_methods:
+                return str(output_methods["vectorstoreconnection"])
+            # Fallback to any method that builds the store
+            for name in ["build_vector_store", "as_vector_store"]:
+                if name in output_methods:
+                    return str(output_methods[name])
+            # Last resort: use search_documents which implicitly builds
+            return str(output_methods.get("search_results", "search_documents"))
+
+        elif mode == "retrieve":
+            # For retrieve mode, use search_documents
+            if "search_results" in output_methods:
+                return str(output_methods["search_results"])
+            return "search_documents"
+
+        else:  # hybrid mode
+            # Auto-detect based on inputs
+            has_documents = bool(
+                runtime_inputs.get("ingest_data")
+                or runtime_inputs.get("add_documents")
+                or runtime_inputs.get("documents")
+            )
+            has_query = bool(
+                runtime_inputs.get("search_query") or runtime_inputs.get("query")
+            )
+
+            if has_documents and not has_query:
+                # Documents but no query -> ingest mode
+                if "vectorstoreconnection" in output_methods:
+                    return str(output_methods["vectorstoreconnection"])
+                return str(output_methods.get("search_results", "search_documents"))
+            elif has_query:
+                # Query present -> retrieve mode (search builds implicitly)
+                if "search_results" in output_methods:
+                    return str(output_methods["search_results"])
+                return "search_documents"
+            else:
+                # No clear indication -> default to search (which builds implicitly)
+                if "search_results" in output_methods:
+                    return str(output_methods["search_results"])
+                return "search_documents"
 
     async def _execute_sync_method_safely(self, method, component_type: str):
         """Execute sync method safely in async context - real execution only."""

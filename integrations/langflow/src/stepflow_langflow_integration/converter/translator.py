@@ -22,6 +22,7 @@ from typing import Any
 import msgspec
 import yaml
 from stepflow_py import Flow, FlowBuilder, Step, Value
+from stepflow_py.generated_flow import OnSkipDefault
 
 from ..exceptions import ConversionError
 from .dependency_analyzer import DependencyAnalyzer
@@ -125,15 +126,58 @@ class LangflowConverter:
             # Create FlowBuilder
             builder = FlowBuilder(name=self._generate_workflow_name(langflow_data))
 
-            # Note: Skip setting input schema for now as Schema class doesn't
-            # support properties
-            # input_schema = self._generate_input_section(nodes)
-            # if input_schema:
-            #     builder.set_input_schema(input_schema)
+            # Detect vector store components in the workflow
+            has_vector_stores = self._has_vector_store_components(nodes)
+
+            # Add mode parameter input schema and classify nodes if vector
+            # stores present
+            node_mode_classification: dict[str, str] = {}
+            if has_vector_stores:
+                # Schema is defined as an arbitrary JSON object
+                # (additionalProperties: true in JSON schema)
+                # We store it as a dict and it will be serialized properly
+                input_schema = {
+                    "type": "object",
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["ingest", "retrieve", "hybrid"],
+                            "default": "hybrid",
+                            "description": (
+                                "Execution mode for vector store operations. "
+                                "'ingest': populate vector stores with documents. "
+                                "'retrieve': search vector stores with queries. "
+                                "'hybrid': automatically ingest if documents provided, "
+                                "then retrieve if query provided."
+                            ),
+                        },
+                    },
+                }
+                # Set directly on builder bypassing set_input_schema method
+                # Type ignore needed because Schema is a union type
+                builder.input_schema = input_schema  # type: ignore[assignment]
+
+                # Classify nodes for mode-aware skip conditions
+                node_mode_classification = self._classify_nodes_for_mode_skipping(
+                    nodes, dependencies
+                )
+
+                # Add mode_check step at the beginning
+                # Provide default value "hybrid" for mode to make it optional
+                mode_on_skip = OnSkipDefault(action="useDefault", defaultValue="hybrid")
+                mode_check_handle = builder.add_step(
+                    id="mode_check",
+                    component="/langflow/mode_check",
+                    input_data={"mode": Value.input("mode", on_skip=mode_on_skip)},
+                )
 
             # Process nodes and collect output references
             node_output_refs: dict[str, Any] = {}  # node_id -> output reference
             processed_nodes = set()
+
+            # Store mode_check handle for skip condition references
+            if has_vector_stores:
+                node_output_refs["__mode_check__"] = mode_check_handle
 
             # First, process nodes in execution order
             for node_id in execution_order:
@@ -146,6 +190,7 @@ class LangflowConverter:
                         node_output_refs,
                         field_mapping,
                         output_mapping,
+                        node_mode_classification,
                     )
                     if output_ref is not None:
                         node_output_refs[node_id] = output_ref
@@ -163,12 +208,56 @@ class LangflowConverter:
                         node_output_refs,
                         field_mapping,
                         output_mapping,
+                        node_mode_classification,
                     )
                     if output_ref is not None:
                         node_output_refs[node_id] = output_ref
 
+            # For vector store workflows, add a mode_output step
+            if has_vector_stores:
+                # Find the ChatOutput node to get its dependency (the retrieval result)
+                chat_output_nodes = [
+                    n for n in nodes if n.get("data", {}).get("type") == "ChatOutput"
+                ]
+                retrieval_result_input = {}
+                if chat_output_nodes:
+                    chat_output_node = chat_output_nodes[0]
+                    chat_output_id = chat_output_node["id"]
+                    if chat_output_id in dependencies and dependencies[chat_output_id]:
+                        dep_node_id = dependencies[chat_output_id][0]
+                        if dep_node_id in node_output_refs:
+                            # Get the step ID for the retrieval result
+                            # The dep_node_id is the Langflow node ID, we need
+                            # the stepflow step ID
+                            step_id = f"langflow_{dep_node_id}"
+                            # Use OnSkipDefault to provide None when the step is skipped
+                            on_skip = OnSkipDefault(
+                                action="useDefault", defaultValue=None
+                            )
+                            retrieval_result_input["retrieval_result"] = Value.step(
+                                step_id, "result", on_skip=on_skip
+                            )
+
+                # Add mode_output step - must always execute to produce workflow output
+                # Use same default for mode as mode_check
+                mode_output_on_skip = OnSkipDefault(
+                    action="useDefault", defaultValue="hybrid"
+                )
+                mode_output_handle = builder.add_step(
+                    id="mode_output",
+                    component="/langflow/mode_output",
+                    input_data={
+                        "mode": Value.input("mode", on_skip=mode_output_on_skip),
+                        **retrieval_result_input,
+                    },
+                    must_execute=True,  # Always run to provide output
+                )
+                node_output_refs["__mode_output__"] = mode_output_handle
+
             # Set workflow output using incremental output building
-            self._build_flow_output(builder, nodes, dependencies, node_output_refs)
+            self._build_flow_output(
+                builder, nodes, dependencies, node_output_refs, has_vector_stores
+            )
 
             # Build and return the flow
             flow = builder.build()
@@ -271,6 +360,180 @@ class LangflowConverter:
 
         # Fallback to generic name
         return "Converted Langflow Workflow"
+
+    def _has_vector_store_components(self, nodes: list[dict[str, Any]]) -> bool:
+        """Check if the workflow contains vector store components.
+
+        Args:
+            nodes: List of Langflow nodes
+
+        Returns:
+            True if any node is a vector store component
+        """
+        for node in nodes:
+            node_data = node.get("data", {})
+            # Check base_classes for VectorStore (in node.data.node.base_classes)
+            node_info = node_data.get("node", {})
+            base_classes = node_info.get("base_classes", [])
+            if "VectorStore" in base_classes:
+                return True
+
+            # Also check the type field as fallback
+            component_type = node_data.get("type", "")
+            if (
+                "vectorstore" in component_type.lower()
+                or "vector_store" in component_type.lower()
+            ):
+                return True
+
+        return False
+
+    def _classify_nodes_for_mode_skipping(
+        self,
+        nodes: list[dict[str, Any]],
+        dependencies: dict[str, list[str]],
+    ) -> dict[str, str]:
+        """Classify nodes for mode-aware skip conditions in vector store workflows.
+
+        Args:
+            nodes: List of Langflow nodes
+            dependencies: Node dependency graph
+
+        Returns:
+            Dict mapping node_id -> mode classification:
+            - "ingest": Node is part of ingestion path (skip when mode='retrieve')
+            - "retrieve": Node is part of retrieval path (skip when mode='ingest')
+            - None: Node runs in all modes (no skip condition)
+        """
+        classification: dict[str, str] = {}
+
+        # Find vector store nodes
+        vector_store_nodes = set()
+        for node in nodes:
+            node_data = node.get("data", {})
+            node_info = node_data.get("node", {})
+            base_classes = node_info.get("base_classes", [])
+            if "VectorStore" in base_classes:
+                vector_store_nodes.add(node["id"])
+
+        if not vector_store_nodes:
+            return classification  # No vector stores, no classification needed
+
+        # Build reverse dependency graph (dependents)
+        dependents: dict[str, list[str]] = {}
+        for node_id, deps in dependencies.items():
+            for dep_id in deps:
+                if dep_id not in dependents:
+                    dependents[dep_id] = []
+                dependents[dep_id].append(node_id)
+
+        # Helper to find all ancestors (dependencies) of a node
+        def get_ancestors(node_id: str, visited: set | None = None) -> set[str]:
+            if visited is None:
+                visited = set()
+            if node_id in visited:
+                return visited
+            visited.add(node_id)
+            for dep_id in dependencies.get(node_id, []):
+                get_ancestors(dep_id, visited)
+            return visited
+
+        # Helper to find all descendants (dependents) of a node
+        def get_descendants(node_id: str, visited: set | None = None) -> set[str]:
+            if visited is None:
+                visited = set()
+            if node_id in visited:
+                return visited
+            visited.add(node_id)
+            for dep_id in dependents.get(node_id, []):
+                get_descendants(dep_id, visited)
+            return visited
+
+        # Create nodes lookup for ancestor checking
+        nodes_lookup = {n["id"]: n for n in nodes}
+
+        # Classify based on component type and position relative to vector stores
+        for node in nodes:
+            node_id = node["id"]
+            node_data = node.get("data", {})
+            component_type = node_data.get("type", "")
+
+            # ChatInput and Prompt components are typically retrieval-focused
+            if component_type in ["ChatInput", "Prompt", "LanguageModelComponent"]:
+                classification[node_id] = "retrieve"
+                continue
+
+            # File and document processing components are ingestion-focused
+            if component_type in ["File", "SplitText"]:
+                classification[node_id] = "ingest"
+                continue
+
+            # For other nodes (including vector stores), classify based on dependencies
+            ancestors = get_ancestors(node_id)
+
+            # Check if dependencies include known ingestion or retrieval components
+            has_file_ancestor = any(
+                nodes_lookup.get(aid, {}).get("data", {}).get("type") == "File"
+                for aid in ancestors
+            )
+            has_chatinput_ancestor = any(
+                nodes_lookup.get(aid, {}).get("data", {}).get("type") == "ChatInput"
+                for aid in ancestors
+            )
+
+            # Parser is special - it processes retrieval results
+            if component_type == "parser":
+                classification[node_id] = "retrieve"
+                continue
+
+            # Classify based on ancestors
+            if has_file_ancestor and not has_chatinput_ancestor:
+                classification[node_id] = "ingest"
+            elif has_chatinput_ancestor and not has_file_ancestor:
+                classification[node_id] = "retrieve"
+            # If has both or neither, use position-based heuristic
+            elif node_id in vector_store_nodes:
+                # Vector stores with File ancestors are ingestion
+                # Vector stores with ChatInput ancestors are retrieval
+                if has_file_ancestor:
+                    classification[node_id] = "ingest"
+                elif has_chatinput_ancestor:
+                    classification[node_id] = "retrieve"
+
+        # Second pass: propagate classification backwards from classified nodes
+        # to their unclassified dependencies (e.g., embeddings feeding into
+        # vector stores)
+        changed = True
+        iteration = 0
+        while changed:
+            changed = False
+            iteration += 1
+            # Iterate over ALL nodes, not just those in dependencies dict
+            for node in nodes:
+                node_id = node["id"]
+                if node_id in classification:
+                    continue  # Already classified
+
+                # Check if all descendants (nodes that depend on this) have the
+                # same classification
+                node_dependents = dependents.get(node_id, [])
+                if not node_dependents:
+                    continue
+
+                # Get classifications of dependents
+                dependent_classifications = {
+                    classification[dep_id]
+                    for dep_id in node_dependents
+                    if dep_id in classification
+                }
+
+                # If all dependents have the same classification, apply it to this node
+                if len(dependent_classifications) == 1:
+                    new_classification = dependent_classifications.pop()
+                    classification[node_id] = new_classification
+                    changed = True
+
+        return classification
 
     def _build_field_mapping_from_edges(
         self, edges: list[dict[str, Any]]
@@ -501,6 +764,7 @@ class LangflowConverter:
         nodes: list[dict[str, Any]],
         dependencies: dict[str, list[str]],
         node_output_refs: dict[str, Any],
+        has_vector_stores: bool = False,
     ) -> None:
         """Build workflow output using incremental output building API.
 
@@ -509,7 +773,13 @@ class LangflowConverter:
             nodes: Original Langflow nodes
             dependencies: Dependency graph
             node_output_refs: Mapping of node IDs to their output references
+            has_vector_stores: Whether this workflow contains vector stores
         """
+        # For vector store workflows, use the mode_output step
+        if has_vector_stores and "__mode_output__" in node_output_refs:
+            builder.set_output(Value.step("mode_output", "message"))
+            return
+
         # Look for ChatOutput nodes first
         chat_output_nodes = [
             n for n in nodes if n.get("data", {}).get("type") == "ChatOutput"

@@ -38,6 +38,7 @@ class NodeProcessor:
         node_output_refs: dict[str, Any],
         field_mapping: dict[str, dict[str, str]] = None,
         output_mapping: dict[str, str] = None,
+        mode_classification: dict[str, str] = None,
     ) -> Any | None:
         """Process a Langflow node using flow builder architecture.
 
@@ -49,8 +50,10 @@ class NodeProcessor:
             node_output_refs: Mapping of node IDs to their output references
             field_mapping: Mapping of target nodes to their input field names
                 from edges
-            output_mapping: Mapping of source node IDs to their selected output names
-                from edges
+            output_mapping: Mapping of source node IDs to their selected output
+                names from edges
+            mode_classification: Mapping of node IDs to mode classification
+                ("ingest" or "retrieve") for skip conditions
 
         Returns:
             Output reference for this node, or None if node should be skipped
@@ -154,11 +157,25 @@ class NodeProcessor:
 
             # Add step to builder with proper ID and component path
             step_id = self._generate_step_id(node_id, component_type)
+
+            # Add metadata to mark vector store components
+            step_metadata = {}
+            if "VectorStore" in blob_data.get("base_classes", []):
+                step_metadata["is_vector_store"] = True
+                step_metadata["vector_store_outputs"] = blob_data.get("outputs", [])
+
+            # Add skip condition based on mode classification
+            skip_if = self._create_mode_skip_condition(
+                node_id, mode_classification or {}
+            )
+
             step_handle = builder.add_step(
                 id=step_id,
                 component=component_path,
                 input_data=step_input,
                 must_execute=True,
+                skip_if=skip_if,
+                metadata=step_metadata if step_metadata else None,
             )
 
             # Return a reference to this step's output
@@ -669,3 +686,27 @@ class NodeProcessor:
                 inputs[field_name] = node_output_refs[dep_node_id]
 
         return inputs
+
+    def _create_mode_skip_condition(
+        self, node_id: str, mode_classification: dict[str, str]
+    ) -> Value | None:
+        """Create skip condition based on mode classification.
+
+        Args:
+            node_id: Node ID to check classification for
+            mode_classification: Dict mapping node IDs to mode classification
+
+        Returns:
+            Value representing skip condition, or None if no skip needed
+        """
+        classification = mode_classification.get(node_id)
+        if not classification:
+            return None
+
+        # Reference the appropriate skip flag from mode_check step
+        # mode_check returns skip_ingest_step and skip_retrieve_step fields
+        # which are True when the step should be skipped
+        if classification == "ingest":
+            return Value.step("mode_check", "skip_ingest_step")
+        else:  # retrieve
+            return Value.step("mode_check", "skip_retrieve_step")
