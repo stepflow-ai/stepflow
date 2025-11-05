@@ -64,7 +64,21 @@ class StepflowLangflowServer:
             # Use the new UDF executor directly - it handles pre-compilation internally
             return await self.udf_executor.execute(input_data, context)
 
-        # TODO: Register native component implementations
+        # Register generic embeddings component for distributed routing
+        @self.server.component(name="embeddings")
+        async def embeddings(
+            input_data: dict[str, Any], context: StepflowContext
+        ) -> dict[str, Any]:
+            """Generic embeddings component that works for all embedding types.
+
+            This component routes embedding operations to dedicated servers via
+            /langflow/embeddings path, while using the UDF executor internally.
+            Supports OpenAIEmbeddings, HuggingFaceEmbeddings, CohereEmbeddings, etc.
+            """
+            # Delegate to UDF executor - it handles all embedding types
+            return await self.udf_executor.execute(input_data, context)
+
+        # TODO: Register additional native component implementations
         # self.server.component(name="openai_chat", func=self._openai_chat)
         # self.server.component(name="chat_input", func=self._chat_input)
 

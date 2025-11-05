@@ -32,6 +32,32 @@ class UDFExecutor:
         self.type_converter = TypeConverter()
         self.compiled_components: dict[str, Any] = {}
 
+    def _is_embedding_component(self, blob_data: dict[str, Any]) -> bool:
+        """Check if blob data represents an embedding component.
+
+        Args:
+            blob_data: Component blob data containing metadata
+
+        Returns:
+            True if this is an embedding component, False otherwise
+        """
+        # Check component_type
+        component_type = blob_data.get("component_type", "")
+        if "Embedding" in component_type or "embedding" in component_type:
+            return True
+
+        # Check base_classes
+        base_classes = blob_data.get("base_classes", [])
+        if any("Embedding" in cls or "embedding" in cls for cls in base_classes):
+            return True
+
+        # Check display_name as fallback
+        display_name = blob_data.get("display_name", "")
+        if "Embedding" in display_name or "embedding" in display_name:
+            return True
+
+        return False
+
     async def execute(
         self, input_data: dict[str, Any], context: StepflowContext
     ) -> dict[str, Any]:
@@ -46,6 +72,18 @@ class UDFExecutor:
         Returns:
             Component execution result
         """
+
+        # Step 0: Check if this is an embedding component and delegate to distributed servers
+        blob_id = input_data.get("blob_id")
+        if blob_id:
+            try:
+                blob_data = await context.get_blob(blob_id)
+                if self._is_embedding_component(blob_data):
+                    # Delegate to embeddings component for distributed execution
+                    return await context.call_component("/langflow/embeddings", input_data)
+            except Exception:
+                # If blob fetch fails, continue with normal flow (will fail with better error)
+                pass
 
         # Step 1: Pre-compile all components from blobs
         await self._prepare_components(input_data, context)
