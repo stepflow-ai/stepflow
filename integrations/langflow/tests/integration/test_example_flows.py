@@ -404,6 +404,7 @@ retrieval-augmented generation (RAG). Popular solutions include:
             result = test_executor.execute_flow(
                 flow_name="vector_store_rag",
                 input_data={
+                    "mode": "hybrid",  # Explicitly specify hybrid mode
                     "message": "What is the main topic of the document?",
                     "file_path": test_file_path,  # Provide the file path
                 },
@@ -456,6 +457,113 @@ retrieval-augmented generation (RAG). Popular solutions include:
 
     finally:
         # Clean up temporary file
+        os.unlink(test_file_path)
+
+
+def test_vector_store_rag_ingest_mode(test_executor):
+    """Test vector store RAG in ingest-only mode.
+
+    Tests that ingestion steps run and retrieval steps are skipped when mode='ingest'.
+    With mode-aware skip conditions, only document processing and ingestion occur.
+    """
+    import tempfile
+
+    test_content = """# Machine Learning Fundamentals
+
+Machine learning enables computers to learn from data without explicit programming.
+Common algorithms include decision trees, neural networks, and support vector machines.
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(test_content)
+        test_file_path = f.name
+
+    try:
+        from tests.helpers.tweaks_builder import TweaksBuilder
+
+        tweaks = (
+            TweaksBuilder()
+            .add_astradb_tweaks("AstraDB-TCSqR")  # Ingestion vector store
+            .add_env_tweak("OpenAIEmbeddings-U8tZg", "openai_api_key", "OPENAI_API_KEY")
+            .build_or_skip()
+        )
+
+        result = test_executor.execute_flow(
+            flow_name="vector_store_rag",
+            input_data={
+                "mode": "ingest",
+                "file_path": test_file_path,
+            },
+            timeout=120.0,
+            tweaks=tweaks,
+        )
+
+        # Should complete successfully (ingestion completed)
+        # In ingest mode, retrieval steps are skipped, so we don't get a final message
+        # The workflow output comes from the last non-skipped step
+        assert result is not None
+
+    finally:
+        os.unlink(test_file_path)
+
+
+def test_vector_store_rag_hybrid_mode_explicit(test_executor):
+    """Test vector store RAG with explicit hybrid mode.
+
+    Tests the default hybrid mode where both documents and query are provided.
+    This should trigger ingestion followed by retrieval in a single execution.
+    """
+    import tempfile
+
+    test_content = """# Deep Learning Networks
+
+Deep learning uses neural networks with multiple layers to learn hierarchical
+representations. Common architectures include CNNs for images and transformers
+for natural language processing.
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(test_content)
+        test_file_path = f.name
+
+    try:
+        from tests.helpers.tweaks_builder import TweaksBuilder
+
+        tweaks = (
+            TweaksBuilder()
+            .add_openai_tweaks("LanguageModelComponent-Wqbva")
+            .add_astradb_tweaks("AstraDB-TCSqR")
+            .add_astradb_tweaks("AstraDB-BteL9")
+            .add_env_tweak("OpenAIEmbeddings-jsaKm", "openai_api_key", "OPENAI_API_KEY")
+            .add_env_tweak("OpenAIEmbeddings-U8tZg", "openai_api_key", "OPENAI_API_KEY")
+            .build_or_skip()
+        )
+
+        result = test_executor.execute_flow(
+            flow_name="vector_store_rag",
+            input_data={
+                "mode": "hybrid",
+                "message": "What is deep learning?",
+                "file_path": test_file_path,
+            },
+            timeout=120.0,
+            tweaks=tweaks,
+        )
+
+        # Should complete and return search results
+        message_result = result["result"]
+        assert isinstance(message_result, dict)
+        assert "text" in message_result
+
+        # Response should reference deep learning content
+        response_text = message_result["text"].lower()
+        content_found = any(
+            term in response_text
+            for term in ["deep learning", "neural", "network", "layer"]
+        )
+        assert content_found, f"Expected deep learning content, got: {response_text}"
+
+    finally:
         os.unlink(test_file_path)
 
 
