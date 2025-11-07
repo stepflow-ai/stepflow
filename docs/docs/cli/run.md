@@ -63,6 +63,10 @@ stepflow run --flow=workflow.yaml --input=input.json --config=my-config.yml --ou
 
   Possible values: `json`, `yaml`
 
+* `--overrides <FILE>` — Path to a JSON or YAML file containing workflow overrides
+* `--overrides-json <JSON>` — Workflow overrides as inline JSON
+* `--overrides-yaml <YAML>` — Workflow overrides as inline YAML
+* `--overrides-stdin` — Read workflow overrides from stdin (format auto-detected)
 * `--output <FILE>` — Path to write the output to.
 
    If not set, will write to stdout.

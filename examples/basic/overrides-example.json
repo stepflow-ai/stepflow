@@ -1,0 +1,16 @@
+{
+  "stepOverrides": {
+    "m_plus_n": {
+      "input": {
+        "a": 10,
+        "b": 20
+      }
+    },
+    "m_times_n": {
+      "input": {
+        "a": 15,
+        "b": 3
+      }
+    }
+  }
+}

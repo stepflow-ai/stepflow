@@ -190,6 +190,70 @@ routes:
     - plugin: builtin
 ```
 
+### Workflow Overrides
+
+Stepflow supports runtime overrides to modify step inputs without changing the original workflow. This is powerful for debugging, secret injection, and dynamic workflow customization.
+
+**Override Examples:**
+
+```json
+{
+  "stepOverrides": {
+    "add_numbers": {
+      "a": 100,
+      "b": 200
+    },
+    "process_data": {
+      "api_key": "your-secret-key-here",
+      "temperature": 0.9
+    }
+  }
+}
+```
+
+**CLI Usage:**
+
+```bash
+# File-based overrides
+stepflow run --flow=workflow.yaml --input=input.json --overrides=overrides.json
+
+# Inline JSON overrides
+stepflow run --flow=workflow.yaml --input=input.json \
+  --overrides-json='{"stepOverrides":{"step1":{"param":"value"}}}'
+
+# Inline YAML overrides
+stepflow run --flow=workflow.yaml --input=input.json \
+  --overrides-yaml='stepOverrides:\n  step1:\n    param: value'
+
+# Read overrides from stdin
+cat overrides.yaml | stepflow run --flow=workflow.yaml --input=input.json --overrides-stdin
+```
+
+**Try it with the basic example:**
+
+```bash
+cd stepflow-rs
+
+# Run with original values (m=8, n=5)
+cargo run -- run --flow=../examples/basic/workflow.yaml \
+  --input=../examples/basic/input1.json \
+  --config=../examples/basic/stepflow-config.yml
+
+# Override calculation inputs
+cargo run -- run --flow=../examples/basic/workflow.yaml \
+  --input=../examples/basic/input1.json \
+  --config=../examples/basic/stepflow-config.yml \
+  --overrides=../examples/basic/overrides-example.json
+```
+
+**Use Cases:**
+- **Debugging**: Override problematic step inputs during development
+- **Runtime configuration**: Provide API keys and credentials from secure sources
+- **A/B testing**: Test different parameter values without workflow changes  
+- **Langflow integration**: Enable dynamic parameter adjustment in UI tools
+
+> **Note**: Environment variable substitution in override values is not currently supported but may be added in future versions.
+
 _For more examples, please refer to the [Documentation](https://stepflow.org/)_
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

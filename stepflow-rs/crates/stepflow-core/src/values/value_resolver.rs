@@ -21,7 +21,7 @@ use log;
 use super::{ValueRef, ValueTemplate, ValueTemplateRepr};
 use crate::{
     FlowResult,
-    workflow::{BaseRef, Expr, Flow, SkipAction, StepId},
+    workflow::{BaseRef, Expr, Flow, SkipAction, StepId, WorkflowOverrides},
 };
 
 /// Trait for loading values from external sources (like state stores).
@@ -78,11 +78,23 @@ pub struct ValueResolver<L: ValueLoader> {
     loader: L,
     /// Map from step ID to step index for cache lookups.
     step_id_to_index: HashMap<String, usize>,
+    /// Workflow overrides to apply during resolution.
+    overrides: WorkflowOverrides,
     flow: Arc<Flow>,
 }
 
 impl<L: ValueLoader> ValueResolver<L> {
     pub fn new(run_id: Uuid, input: ValueRef, loader: L, flow: Arc<Flow>) -> Self {
+        Self::new_with_overrides(run_id, input, loader, flow, WorkflowOverrides::new())
+    }
+
+    pub fn new_with_overrides(
+        run_id: Uuid,
+        input: ValueRef,
+        loader: L,
+        flow: Arc<Flow>,
+        overrides: WorkflowOverrides,
+    ) -> Self {
         let step_id_to_index = flow
             .latest()
             .steps
@@ -95,6 +107,7 @@ impl<L: ValueLoader> ValueResolver<L> {
             input,
             loader,
             step_id_to_index,
+            overrides,
             flow,
         }
     }
@@ -105,6 +118,88 @@ impl<L: ValueLoader> ValueResolver<L> {
         template: &ValueTemplate,
     ) -> ValueResolverResult<FlowResult> {
         self.resolve_template_rec(template).await
+    }
+
+    /// Expand a ValueTemplate with overrides for a specific step.
+    /// This merges the original template with any overrides defined for the step.
+    pub async fn resolve_template_with_step_overrides(
+        &self,
+        step_id: &str,
+        template: &ValueTemplate,
+    ) -> ValueResolverResult<FlowResult> {
+        let original_result = self.resolve_template_rec(template).await?;
+
+        // If there are no overrides for this step, return the original result
+        let step_overrides = match self.overrides.get_step_overrides(step_id) {
+            Some(overrides) if !overrides.is_empty() => overrides,
+            _ => return Ok(original_result),
+        };
+
+        // Apply overrides by merging them into the resolved template
+        match original_result {
+            FlowResult::Success(original_value) => {
+                // Convert original value to a mutable JSON object if it isn't already
+                let original_json = original_value.as_ref().clone();
+                let merged_json = match original_json {
+                    serde_json::Value::Object(mut obj) => {
+                        // For each override, resolve it and merge into the object
+                        for (field_name, override_template) in &step_overrides.input_overrides {
+                            log::debug!(
+                                "Applying override for step '{}' field '{}': {:?}",
+                                step_id,
+                                field_name,
+                                override_template
+                            );
+                            match self.resolve_template_rec(override_template).await? {
+                                FlowResult::Success(override_value) => {
+                                    obj.insert(field_name.clone(), override_value.as_ref().clone());
+                                }
+                                FlowResult::Skipped { reason } => {
+                                    log::debug!(
+                                        "Override for field '{}' was skipped: {:?}",
+                                        field_name,
+                                        reason
+                                    );
+                                    // Continue with original value for this field
+                                }
+                                FlowResult::Failed(error) => {
+                                    log::warn!(
+                                        "Override for field '{}' failed: {:?}",
+                                        field_name,
+                                        error
+                                    );
+                                    return Ok(FlowResult::Failed(error));
+                                }
+                            }
+                        }
+                        serde_json::Value::Object(obj)
+                    }
+                    _ => {
+                        // If original value is not an object, create a new object with overrides
+                        let mut obj = serde_json::Map::new();
+                        obj.insert("_original".to_string(), original_json);
+
+                        for (field_name, override_template) in &step_overrides.input_overrides {
+                            match self.resolve_template_rec(override_template).await? {
+                                FlowResult::Success(override_value) => {
+                                    obj.insert(field_name.clone(), override_value.as_ref().clone());
+                                }
+                                FlowResult::Skipped { .. } => {
+                                    // Skip this override
+                                }
+                                FlowResult::Failed(error) => {
+                                    return Ok(FlowResult::Failed(error));
+                                }
+                            }
+                        }
+                        serde_json::Value::Object(obj)
+                    }
+                };
+
+                Ok(FlowResult::Success(ValueRef::new(merged_json)))
+            }
+            other => Ok(other), // Propagate skipped/failed results
+        }
     }
 
     /// Retrieve the StepId (index and ID) for a given step_id string.
@@ -346,6 +441,123 @@ mod tests {
         match resolved {
             FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!("Alice"));
+            }
+            _ => panic!("Expected successful result, got: {resolved:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_template_with_overrides() {
+        use crate::workflow::{StepOverrides, WorkflowOverrides};
+
+        let workflow_input = ValueRef::new(json!({"name": "Alice"}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::new_v4();
+        let flow = create_test_flow();
+
+        // Create overrides for step1
+        let step_overrides = StepOverrides::new()
+            .override_input("temperature", ValueTemplate::literal(json!(0.7)))
+            .override_input("model", ValueTemplate::literal(json!("gpt-4")));
+
+        let workflow_overrides = WorkflowOverrides::new().override_step("step1", step_overrides);
+
+        let resolver = ValueResolver::new_with_overrides(
+            run_id,
+            workflow_input,
+            loader,
+            flow,
+            workflow_overrides,
+        );
+
+        // Test resolving a template with overrides
+        let original_template = ValueTemplate::literal(json!({
+            "prompt": "Hello, world!",
+            "temperature": 0.5
+        }));
+
+        let resolved = resolver
+            .resolve_template_with_step_overrides("step1", &original_template)
+            .await
+            .unwrap();
+
+        match resolved {
+            FlowResult::Success(result) => {
+                let json_result = result.as_ref();
+                assert_eq!(json_result["prompt"], json!("Hello, world!"));
+                assert_eq!(json_result["temperature"], json!(0.7)); // Overridden
+                assert_eq!(json_result["model"], json!("gpt-4")); // Added by override
+            }
+            _ => panic!("Expected successful result, got: {resolved:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_template_with_no_overrides() {
+        use crate::workflow::WorkflowOverrides;
+
+        let workflow_input = ValueRef::new(json!({"name": "Bob"}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::new_v4();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new_with_overrides(
+            run_id,
+            workflow_input,
+            loader,
+            flow,
+            WorkflowOverrides::new(), // Empty overrides
+        );
+
+        let template = ValueTemplate::literal(json!({"message": "Hello"}));
+        let resolved = resolver
+            .resolve_template_with_step_overrides("step1", &template)
+            .await
+            .unwrap();
+
+        match resolved {
+            FlowResult::Success(result) => {
+                assert_eq!(result.as_ref(), &json!({"message": "Hello"}));
+            }
+            _ => panic!("Expected successful result, got: {resolved:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_template_non_object_with_overrides() {
+        use crate::workflow::{StepOverrides, WorkflowOverrides};
+
+        let workflow_input = ValueRef::new(json!({"name": "Charlie"}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::new_v4();
+        let flow = create_test_flow();
+
+        // Create overrides
+        let step_overrides = StepOverrides::new()
+            .override_input("extra_param", ValueTemplate::literal(json!("extra_value")));
+
+        let workflow_overrides = WorkflowOverrides::new().override_step("step1", step_overrides);
+
+        let resolver = ValueResolver::new_with_overrides(
+            run_id,
+            workflow_input,
+            loader,
+            flow,
+            workflow_overrides,
+        );
+
+        // Test with a non-object template (string)
+        let template = ValueTemplate::literal(json!("simple_string"));
+        let resolved = resolver
+            .resolve_template_with_step_overrides("step1", &template)
+            .await
+            .unwrap();
+
+        match resolved {
+            FlowResult::Success(result) => {
+                let json_result = result.as_ref();
+                assert_eq!(json_result["_original"], json!("simple_string"));
+                assert_eq!(json_result["extra_param"], json!("extra_value"));
             }
             _ => panic!("Expected successful result, got: {resolved:?}"),
         }

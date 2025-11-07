@@ -20,7 +20,7 @@ use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
     FlowResult,
     values::{ValueRef, ValueResolver, ValueTemplate},
-    workflow::{Expr, Flow, StepId},
+    workflow::{Expr, Flow, StepId, WorkflowOverrides},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -37,6 +37,28 @@ pub(crate) async fn execute_workflow(
     run_id: Uuid,
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
+) -> Result<FlowResult> {
+    execute_workflow_with_overrides(
+        executor,
+        flow,
+        flow_id,
+        run_id,
+        input,
+        state_store,
+        WorkflowOverrides::new(),
+    )
+    .await
+}
+
+/// Execute a workflow with overrides and return the result.
+pub async fn execute_workflow_with_overrides(
+    executor: Arc<StepflowExecutor>,
+    flow: Arc<Flow>,
+    flow_id: BlobId,
+    run_id: Uuid,
+    input: ValueRef,
+    state_store: Arc<dyn StateStore>,
+    overrides: WorkflowOverrides,
 ) -> Result<FlowResult> {
     // Set run_id in diagnostic context for all logs in this workflow execution
     let _run_guard = RunInfoGuard::new(flow_id.to_string(), run_id.to_string());
@@ -71,8 +93,15 @@ pub(crate) async fn execute_workflow(
         .await
         .change_context(ExecutionError::StateError)?;
 
-    let mut workflow_executor =
-        WorkflowExecutor::new(executor, flow, flow_id, run_id, input, state_store)?;
+    let mut workflow_executor = WorkflowExecutor::new_with_overrides(
+        executor,
+        flow,
+        flow_id,
+        run_id,
+        input,
+        state_store,
+        overrides,
+    )?;
 
     let result = workflow_executor.execute_to_completion().await;
 
@@ -125,6 +154,27 @@ impl WorkflowExecutor {
         input: ValueRef,
         state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
+        Self::new_with_overrides(
+            executor,
+            flow,
+            flow_id,
+            run_id,
+            input,
+            state_store,
+            WorkflowOverrides::new(),
+        )
+    }
+
+    /// Create a new workflow executor with overrides for the given workflow and input.
+    pub fn new_with_overrides(
+        executor: Arc<StepflowExecutor>,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        run_id: Uuid,
+        input: ValueRef,
+        state_store: Arc<dyn StateStore>,
+        overrides: WorkflowOverrides,
+    ) -> Result<Self> {
         // Build dependencies for the workflow using the analysis crate
         let analysis_result =
             stepflow_analysis::analyze_flow_dependencies(flow.clone(), flow_id.clone())
@@ -156,7 +206,8 @@ impl WorkflowExecutor {
             write_cache.clone(),
             flow.clone(),
         );
-        let resolver = ValueResolver::new(run_id, input, state_loader, flow.clone());
+        let resolver =
+            ValueResolver::new_with_overrides(run_id, input, state_loader, flow.clone(), overrides);
 
         // Create workflow-aware execution context
         let context = ExecutionContext::for_workflow_with_flow(
@@ -677,10 +728,10 @@ impl WorkflowExecutor {
             ));
         }
 
-        // Resolve step inputs
+        // Resolve step inputs with overrides
         let step_input = match self
             .resolver
-            .resolve_template(&step.input)
+            .resolve_template_with_step_overrides(&step.id, &step.input)
             .await
             .change_context_lazy(|| ExecutionError::ResolveStepInput(step.id.clone()))?
         {
@@ -841,7 +892,7 @@ impl WorkflowExecutor {
                 // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = self
                     .resolver
-                    .resolve_template(&step_input)
+                    .resolve_template_with_step_overrides(&step_id, &step_input)
                     .await
                     .change_context_lazy(|| ExecutionError::ResolveStepInput(step_id.clone()))?;
                 let step_input = match step_input {
@@ -1998,6 +2049,118 @@ output:
                 assert_eq!(result.as_ref(), &json!({"result": "success"}));
             }
             _ => panic!("Expected success result, got: {result:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_workflow_execution_with_overrides() {
+        let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
+steps:
+  - id: step1
+    component: /mock/configurable
+    input:
+      temperature: 0.5
+      model: "gpt-3.5-turbo"
+      prompt:
+        $from:
+          workflow: input
+        path: message
+output:
+  $from:
+    step: step1
+"#;
+
+        let workflow_input = json!({"message": "Hello world"});
+
+        // Create a more comprehensive mock that can handle the overridden inputs
+        let mut mock_plugin = MockPlugin::new();
+
+        // Set up behavior for the expected overridden input
+        let expected_input = json!({
+            "temperature": 0.9,
+            "model": "gpt-3.5-turbo",
+            "prompt": "Hello world",
+            "max_tokens": 1000
+        });
+
+        mock_plugin.mock_component("/mock/configurable").behavior(
+            ValueRef::new(expected_input),
+            MockComponentBehavior::result(FlowResult::Success(ValueRef::new(json!({
+                "overrides_applied": true,
+                "final_temperature": 0.9,
+                "final_max_tokens": 1000
+            })))),
+        );
+
+        // Create executor with our custom mock plugin
+        let flow: Flow =
+            serde_yaml_ng::from_str(workflow_yaml).expect("Failed to parse YAML workflow");
+        let flow = Arc::new(flow);
+
+        let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
+
+        // Create a plugin router with mock plugin routing rules
+        use stepflow_plugin::routing::RouteRule;
+        let rules = vec![RouteRule {
+            conditions: vec![],
+            component_allow: None,
+            component_deny: None,
+            plugin: "mock".into(),
+            component: None,
+        }];
+
+        let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
+            .with_routing_path("/{*component}".to_string(), rules)
+            .register_plugin("mock".to_string(), dyn_plugin)
+            .build()
+            .unwrap();
+
+        let executor = crate::executor::StepflowExecutor::new(
+            Arc::new(InMemoryStateStore::new()),
+            std::path::PathBuf::from("."),
+            plugin_router,
+        );
+
+        // Generate flow hash for testing
+        let flow_id = BlobId::from_flow(flow.as_ref()).unwrap();
+
+        // Create overrides that modify the temperature and add a new parameter
+        let step_overrides = stepflow_core::workflow::StepOverrides::new()
+            .override_input("temperature", ValueTemplate::literal(json!(0.9)))
+            .override_input("max_tokens", ValueTemplate::literal(json!(1000)));
+
+        let workflow_overrides = stepflow_core::workflow::WorkflowOverrides::new()
+            .override_step("step1", step_overrides);
+
+        let run_id = Uuid::new_v4();
+        let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+        let input_ref = ValueRef::new(workflow_input);
+
+        // Execute the workflow with overrides
+        let result = execute_workflow_with_overrides(
+            executor,
+            flow,
+            flow_id,
+            run_id,
+            input_ref,
+            state_store,
+            workflow_overrides,
+        )
+        .await
+        .unwrap();
+
+        match result {
+            FlowResult::Success(result) => {
+                // The mock should have received the overridden configuration
+                let expected = json!({
+                    "overrides_applied": true,
+                    "final_temperature": 0.9,
+                    "final_max_tokens": 1000
+                });
+                assert_eq!(result.as_ref(), &expected);
+            }
+            _ => panic!("Expected successful result, got: {result:?}"),
         }
     }
 

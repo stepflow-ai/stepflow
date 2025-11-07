@@ -14,8 +14,11 @@ use std::sync::Arc;
 
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
-use stepflow_core::{BlobId, FlowResult, workflow::Flow};
-use stepflow_execution::StepflowExecutor;
+use stepflow_core::{
+    BlobId, FlowResult,
+    workflow::{Flow, WorkflowOverrides},
+};
+use stepflow_execution::{StepflowExecutor, execute_workflow_with_overrides};
 use stepflow_plugin::Context as _;
 
 pub async fn run(
@@ -32,5 +35,35 @@ pub async fn run(
         .flow_result(run_id)
         .await
         .change_context(MainError::FlowExecution)?;
+    Ok((run_id, output))
+}
+
+pub async fn run_with_overrides(
+    executor: Arc<StepflowExecutor>,
+    flow: Arc<Flow>,
+    flow_id: BlobId,
+    input: stepflow_core::workflow::ValueRef,
+    overrides: WorkflowOverrides,
+) -> Result<(uuid::Uuid, FlowResult)> {
+    // For now, we'll use the executor's direct execution capability with overrides.
+    // The StepflowExecutor doesn't currently support overrides via submit_flow,
+    // so we'll use the lower-level execution API directly.
+
+    let run_id = uuid::Uuid::new_v4();
+
+    // Execute the workflow directly with overrides using the workflow executor
+
+    let output = execute_workflow_with_overrides(
+        executor.executor(),
+        flow,
+        flow_id,
+        run_id,
+        input,
+        executor.state_store().clone(),
+        overrides,
+    )
+    .await
+    .change_context(MainError::FlowExecution)?;
+
     Ok((run_id, output))
 }

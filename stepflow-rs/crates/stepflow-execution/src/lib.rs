@@ -19,4 +19,7 @@ mod write_cache;
 pub use error::{ExecutionError, Result};
 pub use executor::StepflowExecutor;
 pub use state_value_loader::StateValueLoader;
-pub use workflow_executor::{StepExecutionResult, StepInspection, StepMetadata, WorkflowExecutor};
+pub use workflow_executor::{
+    StepExecutionResult, StepInspection, StepMetadata, WorkflowExecutor,
+    execute_workflow_with_overrides,
+};

@@ -16,11 +16,11 @@ use stepflow_core::{BlobId, workflow::Flow};
 use url::Url;
 
 use crate::{
-    args::{ConfigArgs, InputArgs, OutputArgs, WorkflowLoader, load},
+    args::{ConfigArgs, InputArgs, OutputArgs, OverrideArgs, WorkflowLoader, load},
     error::Result,
     list_components::OutputFormat,
     repl::run_repl,
-    run::run,
+    run::{run, run_with_overrides},
     submit::submit,
     submit_batch::submit_batch,
     test::TestOptions,
@@ -88,6 +88,9 @@ pub enum Command {
 
         #[command(flatten)]
         input_args: InputArgs,
+
+        #[command(flatten)]
+        override_args: OverrideArgs,
 
         #[command(flatten)]
         output_args: OutputArgs,
@@ -204,6 +207,9 @@ pub enum Command {
 
         #[command(flatten)]
         input_args: InputArgs,
+
+        #[command(flatten)]
+        override_args: OverrideArgs,
 
         #[command(flatten)]
         output_args: OutputArgs,
@@ -433,6 +439,7 @@ impl Cli {
                 flow_path,
                 config_args,
                 input_args,
+                override_args,
                 output_args,
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
@@ -453,10 +460,15 @@ impl Cli {
 
                 let executor = WorkflowLoader::create_executor_from_config(config).await?;
                 let input = input_args.parse_input(true)?;
+                let overrides = override_args.parse_overrides()?;
 
                 let flow_id =
                     BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
-                let (run_id, output) = run(executor, flow, flow_id, input).await?;
+                let (run_id, output) = if overrides.is_empty() {
+                    run(executor, flow, flow_id, input).await?
+                } else {
+                    run_with_overrides(executor, flow, flow_id, input, overrides).await?
+                };
                 // Output run_id without hyphens for Jaeger trace ID compatibility
                 eprintln!("run_id: {}", run_id.simple());
                 output_args.write_output(output)?;
@@ -586,10 +598,20 @@ impl Cli {
                 url,
                 flow_path,
                 input_args,
+                override_args,
                 output_args,
             } => {
                 let flow: Flow = load(&flow_path)?;
                 let input = input_args.parse_input(true)?;
+                let overrides = override_args.parse_overrides()?;
+
+                if !overrides.is_empty() {
+                    log::warn!(
+                        "Overrides are not yet supported for submit command. Ignoring overrides."
+                    );
+                    // TODO: Implement override support for submit command
+                    // This requires extending the server API to accept overrides
+                }
 
                 let output = submit(url, flow, input).await?;
                 output_args.write_output(output.clone())?;
