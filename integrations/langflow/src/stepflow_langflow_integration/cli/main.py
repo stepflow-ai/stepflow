@@ -16,14 +16,15 @@
 
 import fcntl
 import json
+import os
 import sys
 from pathlib import Path
 
 import click
 from dotenv import load_dotenv
 
-from ..converter.stepflow_tweaks import (
-    apply_stepflow_tweaks_to_dict,
+from ..converter.runtime_tweaks import (
+    convert_langflow_tweaks_to_overrides_dict,
 )
 from ..converter.translator import LangflowConverter
 from ..exceptions import ConversionError, ValidationError
@@ -108,14 +109,14 @@ def tweak(stepflow_file: Path, output_file: Path | None, tweaks: str):
             click.echo(f"❌ Error loading workflow: {e}", err=True)
             sys.exit(1)
 
-        # Apply tweaks
-        tweaked_dict = apply_stepflow_tweaks_to_dict(workflow_dict, parsed_tweaks)
+        # Convert tweaks to overrides format
+        overrides = convert_langflow_tweaks_to_overrides_dict(workflow_dict, parsed_tweaks)
 
         # Convert back to YAML
         import yaml
 
-        tweaked_yaml = yaml.dump(
-            tweaked_dict,
+        overrides_yaml = yaml.dump(
+            overrides,
             default_flow_style=False,
             sort_keys=False,
             allow_unicode=True,
@@ -125,13 +126,13 @@ def tweak(stepflow_file: Path, output_file: Path | None, tweaks: str):
         if output_file:
             # Write to file
             with open(output_file, "w", encoding="utf-8") as f:
-                f.write(tweaked_yaml)
-            click.echo(f"✅ Tweaked workflow written to {output_file}")
+                f.write(overrides_yaml)
+            click.echo(f"✅ Runtime overrides written to {output_file}")
         else:
             # Write to stdout
-            click.echo(tweaked_yaml)
+            click.echo(overrides_yaml)
 
-        click.echo("✅ Tweaks applied successfully")
+        click.echo("✅ Tweaks converted to runtime overrides successfully")
 
     except Exception as e:
         click.echo(f"❌ Unexpected error: {e}", err=True)
@@ -301,33 +302,34 @@ def execute(
 
         click.echo("✅ Conversion completed")
 
-        # Apply tweaks if provided (before dry-run check)
+        # Parse tweaks if provided (for runtime application)
+        parsed_tweaks = None
+        overrides_file = None
         if tweaks:
             try:
                 parsed_tweaks = json.loads(tweaks)
-                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+                click.echo(f"🔧 Converting tweaks to runtime overrides for {len(parsed_tweaks)} components...")
 
-                # Parse the YAML, apply tweaks
+                # Parse the YAML, convert tweaks to overrides
                 import yaml
+                import tempfile
 
                 workflow_dict = yaml.safe_load(stepflow_yaml)
-                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                overrides = convert_langflow_tweaks_to_overrides_dict(
                     workflow_dict, parsed_tweaks
                 )
-                stepflow_yaml = yaml.dump(
-                    tweaked_dict,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    width=120,
-                )
 
-                click.echo("✅ Tweaks applied")
+                # Write overrides to temporary file for stepflow CLI
+                overrides_fd, overrides_file = tempfile.mkstemp(suffix=".json", text=True)
+                with os.fdopen(overrides_fd, 'w') as f:
+                    json.dump(overrides, f, indent=2)
+
+                click.echo("✅ Tweaks converted to runtime overrides")
             except json.JSONDecodeError as e:
                 click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
                 sys.exit(1)
             except Exception as e:
-                click.echo(f"❌ Error applying tweaks: {e}", err=True)
+                click.echo(f"❌ Error converting tweaks: {e}", err=True)
                 sys.exit(1)
 
         if dry_run:
@@ -427,6 +429,10 @@ stateStore:
             f"--log-file={log_file}",
         ]
 
+        # Add overrides if tweaks were provided
+        if overrides_file:
+            cmd.append(f"--overrides={overrides_file}")
+
         try:
             start_time = time.time()
             result = subprocess.run(
@@ -511,6 +517,13 @@ stateStore:
             sys.exit(1)
 
         # Cleanup temporary files
+        try:
+            # Clean up overrides file if it was created
+            if overrides_file and os.path.exists(overrides_file):
+                os.unlink(overrides_file)
+        except Exception:
+            pass  # Don't fail if cleanup fails
+
         if not keep_files and not output_dir:
             shutil.rmtree(temp_dir)
             click.echo("🧹 Temporary files cleaned up")
@@ -518,6 +531,8 @@ stateStore:
             click.echo(f"📁 Files kept in: {temp_dir}")
             click.echo(f"   • Workflow: {workflow_file}")
             click.echo(f"   • Config: {config_file}")
+            if overrides_file:
+                click.echo(f"   • Overrides: {overrides_file}")
 
         click.echo("🎉 Langflow-to-Stepflow execution complete!")
 
@@ -588,27 +603,26 @@ def submit_batch(
 
         click.echo("✅ Conversion completed")
 
-        # Apply tweaks if provided (once)
+        # Convert tweaks if provided (once) 
+        overrides_file = None
         if tweaks:
             try:
                 parsed_tweaks = json.loads(tweaks)
-                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+                click.echo(f"🔧 Converting tweaks to runtime overrides for {len(parsed_tweaks)} components...")
 
                 import yaml
 
                 workflow_dict = yaml.safe_load(stepflow_yaml)
-                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                overrides = convert_langflow_tweaks_to_overrides_dict(
                     workflow_dict, parsed_tweaks
                 )
-                stepflow_yaml = yaml.dump(
-                    tweaked_dict,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    width=120,
-                )
+                
+                # Write overrides to temporary file for stepflow submit-batch
+                overrides_fd, overrides_file = tempfile.mkstemp(suffix=".json", text=True)
+                with os.fdopen(overrides_fd, 'w') as f:
+                    json.dump(overrides, f, indent=2)
 
-                click.echo("✅ Tweaks applied")
+                click.echo("✅ Tweaks converted to runtime overrides")
             except json.JSONDecodeError as e:
                 click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
                 sys.exit(1)
@@ -667,6 +681,10 @@ def submit_batch(
             if output is not None:
                 cmd.append(f"--output={output}")
 
+            # Note: stepflow submit-batch doesn't support overrides yet
+            if overrides_file:
+                click.echo("⚠️  Warning: submit-batch doesn't support runtime overrides yet. Tweaks will be ignored.", err=True)
+
             # Submit batch (inherit stdout/stderr for progress display)
             result = subprocess.run(
                 cmd,
@@ -680,10 +698,17 @@ def submit_batch(
                 sys.exit(1)
 
         finally:
-            # Cleanup temporary workflow file
+            # Cleanup temporary files
             import os
 
             os.unlink(workflow_path)
+            
+            # Clean up overrides file if it was created
+            if overrides_file and os.path.exists(overrides_file):
+                try:
+                    os.unlink(overrides_file)
+                except Exception:
+                    pass  # Don't fail if cleanup fails
 
     except (ConversionError, ValidationError) as e:
         click.echo(f"❌ Conversion failed: {e}", err=True)
@@ -743,28 +768,27 @@ def convert_and_submit(
 
         click.echo("✅ Conversion completed")
 
-        # Apply tweaks if provided
+        # Convert tweaks if provided
+        overrides_file = None
         if tweaks:
             try:
                 parsed_tweaks = json.loads(tweaks)
-                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+                click.echo(f"🔧 Converting tweaks to runtime overrides for {len(parsed_tweaks)} components...")
 
-                # Parse the YAML, apply tweaks
+                # Parse the YAML, convert tweaks to overrides
                 import yaml
 
                 workflow_dict = yaml.safe_load(stepflow_yaml)
-                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                overrides = convert_langflow_tweaks_to_overrides_dict(
                     workflow_dict, parsed_tweaks
                 )
-                stepflow_yaml = yaml.dump(
-                    tweaked_dict,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    width=120,
-                )
+                
+                # Write overrides to temporary file for stepflow submit
+                overrides_fd, overrides_file = tempfile.mkstemp(suffix=".json", text=True)
+                with os.fdopen(overrides_fd, 'w') as f:
+                    json.dump(overrides, f, indent=2)
 
-                click.echo("✅ Tweaks applied")
+                click.echo("✅ Tweaks converted to runtime overrides")
             except json.JSONDecodeError as e:
                 click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
                 sys.exit(1)
@@ -809,6 +833,10 @@ def convert_and_submit(
                 f"--input-json={input_json}",
             ]
 
+            # Add overrides if tweaks were provided
+            if overrides_file:
+                cmd.append(f"--overrides={overrides_file}")
+
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             if result.returncode == 0:
@@ -835,10 +863,17 @@ def convert_and_submit(
                 sys.exit(1)
 
         finally:
-            # Cleanup temporary file
+            # Cleanup temporary files
             import os
 
             os.unlink(workflow_file)
+            
+            # Clean up overrides file if it was created
+            if overrides_file and os.path.exists(overrides_file):
+                try:
+                    os.unlink(overrides_file)
+                except Exception:
+                    pass  # Don't fail if cleanup fails
 
     except (ConversionError, ValidationError) as e:
         click.echo(f"❌ Conversion failed: {e}", err=True)
@@ -896,39 +931,29 @@ def run_flow(
             click.echo(f"❌ Error loading workflow: {e}", err=True)
             sys.exit(1)
 
-        # Apply tweaks if provided
+        # Convert tweaks if provided
+        overrides_file = None
         if tweaks:
             try:
                 parsed_tweaks = json.loads(tweaks)
-                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
+                click.echo(f"🔧 Converting tweaks to runtime overrides for {len(parsed_tweaks)} components...")
 
-                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                overrides = convert_langflow_tweaks_to_overrides_dict(
                     workflow_dict, parsed_tweaks
                 )
-                tweaked_yaml = yaml.dump(
-                    tweaked_dict,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    width=120,
-                )
+                
+                # Write overrides to temporary file for stepflow submit
+                overrides_fd, overrides_file = tempfile.mkstemp(suffix=".json", text=True)
+                with os.fdopen(overrides_fd, 'w') as f:
+                    json.dump(overrides, f, indent=2)
 
-                # Write tweaked workflow to temp file
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".yaml", delete=False
-                ) as f:
-                    f.write(tweaked_yaml)
-                    temp_workflow_file = f.name
-
-                click.echo("✅ Tweaks applied")
+                click.echo("✅ Tweaks converted to runtime overrides")
             except json.JSONDecodeError as e:
                 click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
                 sys.exit(1)
             except Exception as e:
-                click.echo(f"❌ Error applying tweaks: {e}", err=True)
+                click.echo(f"❌ Error converting tweaks: {e}", err=True)
                 sys.exit(1)
-        else:
-            temp_workflow_file = str(workflow_file)
 
         try:
             # Find stepflow binary
@@ -958,9 +983,13 @@ def run_flow(
                 str(binary_path),
                 "submit",
                 f"--url={url}",
-                f"--flow={temp_workflow_file}",
+                f"--flow={workflow_file}",
                 f"--input-json={input_json}",
             ]
+
+            # Add overrides if tweaks were provided
+            if overrides_file:
+                cmd.append(f"--overrides={overrides_file}")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
@@ -988,11 +1017,13 @@ def run_flow(
                 sys.exit(1)
 
         finally:
-            # Cleanup temporary file if we created one
-            if tweaks and temp_workflow_file != str(workflow_file):
-                import os
-
-                os.unlink(temp_workflow_file)
+            # Cleanup temporary overrides file if we created one
+            if overrides_file and os.path.exists(overrides_file):
+                try:
+                    import os
+                    os.unlink(overrides_file)
+                except Exception:
+                    pass  # Don't fail if cleanup fails
 
     except Exception as e:
         click.echo(f"❌ Unexpected error: {e}", err=True)

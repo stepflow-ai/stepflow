@@ -14,12 +14,11 @@
 
 """Test utilities for building tweaks with environment variable support.
 
-This module provides testing-specific utilities for creating tweaks for
-Langflow component testing. It handles environment variables, pytest
-integration, and common test scenarios.
+This module provides testing-specific utilities for creating tweaks dictionaries
+for Langflow component testing. The generated tweaks can be used with the
+runtime overrides system to modify component inputs at execution time.
 
-This is separate from the production stepflow_tweaks.py to keep the
-production code lean and focused.
+It handles environment variables, pytest integration, and common test scenarios.
 """
 
 import os
@@ -146,7 +145,7 @@ class TweaksBuilder:
         """Build the final tweaks dictionary.
 
         Returns:
-            Dictionary ready to use with apply_stepflow_tweaks
+            Dictionary ready to convert to runtime overrides format
 
         Raises:
             ValueError: If any required environment variables are missing
@@ -167,7 +166,7 @@ class TweaksBuilder:
         calls pytest.skip() if required environment variables are missing.
 
         Returns:
-            Dictionary ready to use with apply_stepflow_tweaks
+            Dictionary ready to convert to runtime overrides format
 
         Raises:
             pytest.skip: If any required environment variables are missing

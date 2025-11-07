@@ -6,7 +6,7 @@ A Python package for seamlessly integrating Langflow workflows with Stepflow, en
 
 - **🔄 One-Command Conversion & Execution**: Convert Langflow JSON to Stepflow YAML and execute in a single command
 - **🚀 Real Langflow Execution**: Execute actual Langflow components with full type preservation
-- **🔧 Tweaks System**: Modify component configurations (API keys, parameters) at execution time
+- **🔧 Runtime Tweaks System**: Modify component configurations (API keys, parameters) at execution time using StepFlow's native override system
 - **🛡️ Security First**: Safe JSON-only parsing without requiring full Langflow installation
 
 ## 🚀 Quick Start
@@ -34,12 +34,15 @@ uv run stepflow-langflow execute tests/fixtures/langflow/basic_prompting.json \
   --tweaks '{"LanguageModelComponent-xyz123": {"api_key": "your-api-key-here"}}'
 ```
 
-### Using Tweaks for Configuration
+### Using Runtime Tweaks for Configuration
 
-The tweaks system allows you to modify component configurations at execution time, perfect for:
+The runtime tweaks system allows you to modify component configurations at execution time using StepFlow's native override mechanism, perfect for:
 - Setting API keys without environment variables
-- Adjusting model parameters 
+- Adjusting model parameters dynamically
 - Debugging component configurations
+- A/B testing different parameter values
+
+Runtime tweaks are converted to StepFlow WorkflowOverrides format and applied during workflow execution, rather than modifying the original workflow definition.
 
 ```bash
 # Basic tweaks example - modify API key and temperature
@@ -219,6 +222,48 @@ cat batch_results.jsonl | jq '.result.result'
 - Inputs are processed concurrently by the Stepflow server
 - Use `--max-concurrent` to control resource usage
 
+### `tweak` Command
+
+Convert Langflow tweaks to StepFlow runtime overrides format. This is useful for understanding how tweaks map to StepFlow overrides or for generating override files.
+
+```bash
+uv run stepflow-langflow tweak [OPTIONS] STEPFLOW_FILE [OUTPUT_FILE]
+```
+
+**Arguments:**
+- `STEPFLOW_FILE`: Path to Stepflow YAML workflow file
+- `OUTPUT_FILE`: Path for output file (optional, prints to stdout if not provided)
+
+**Options:**
+- `--tweaks TEXT`: JSON tweaks to convert (required)
+
+**Examples:**
+
+```bash
+# Convert tweaks to overrides format (output to stdout)
+uv run stepflow-langflow tweak workflow.yaml \
+  --tweaks '{"LanguageModelComponent-kBOja": {"api_key": "new_key", "temperature": 0.8}}'
+
+# Output: StepFlow WorkflowOverrides YAML
+# stepOverrides:
+#   langflow_LanguageModelComponent-kBOja:
+#     input.api_key: new_key
+#     input.temperature: 0.8
+
+# Save overrides to file for use with stepflow CLI
+uv run stepflow-langflow tweak workflow.yaml overrides.yaml \
+  --tweaks '{"Component-123": {"param": "value"}}'
+
+# Use the generated overrides with stepflow directly
+stepflow run --flow workflow.yaml --input input.json --overrides overrides.yaml
+```
+
+**Use Cases:**
+- **Understanding mappings**: See how Langflow tweaks translate to StepFlow overrides
+- **Manual override generation**: Create override files for direct use with StepFlow CLI
+- **Integration debugging**: Inspect the exact override format being generated
+- **Workflow development**: Generate overrides for testing different parameter combinations
+
 ### Other Commands
 
 ```bash
@@ -394,14 +439,21 @@ uv run stepflow-langflow execute your-workflow.json \
   --tweaks '{"YourComponent-id": {"api_key": "sk-..."}}'
 ```
 
-### Tweaks System Reference
+### Runtime Overrides System
 
-Tweaks modify component configurations at execution time:
+Langflow tweaks are now implemented using StepFlow's native runtime override system, providing several key benefits:
 
+**How It Works:**
+1. Langflow tweaks are converted to StepFlow `WorkflowOverrides` format
+2. Overrides are applied during workflow execution, not during conversion
+3. Original workflow remains unchanged
+4. Compatible with StepFlow's override CLI options
+
+**Tweaks Input Format (Langflow style):**
 ```json
 {
   "ComponentType-nodeId": {
-    "field_name": "new_value",
+    "field_name": "new_value", 
     "api_key": "sk-your-key",
     "temperature": 0.8,
     "model": "gpt-4"
@@ -409,7 +461,24 @@ Tweaks modify component configurations at execution time:
 }
 ```
 
-Common tweak patterns:
+**Generated Override Format (StepFlow style):**
+```yaml
+stepOverrides:
+  langflow_ComponentType-nodeId:
+    input.field_name: new_value
+    input.api_key: sk-your-key
+    input.temperature: 0.8
+    input.model: gpt-4
+```
+
+**Benefits of Runtime Overrides:**
+- **Efficiency**: No workflow modification needed - faster execution
+- **Server Support**: Compatible with StepFlow server submission (when server supports overrides)
+- **Clean Separation**: Original workflows remain unchanged for debugging
+- **Native Integration**: Uses StepFlow's built-in override mechanism
+- **Consistency**: Same override system used across all StepFlow integrations
+
+**Common Tweak Patterns:**
 - **API Keys**: `{"api_key": "sk-your-key"}`
 - **Model Parameters**: `{"temperature": 0.7, "max_tokens": 1000}`
 - **Model Selection**: `{"model": "gpt-4", "provider": "openai"}`

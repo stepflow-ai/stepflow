@@ -231,19 +231,21 @@ class TestExecutor:
             AssertionError: If any step fails
             pytest.skip: If dependencies not available
         """
-        from stepflow_langflow_integration.converter.stepflow_tweaks import (
-            apply_stepflow_tweaks,
+        from stepflow_langflow_integration.converter.runtime_tweaks import (
+            convert_langflow_tweaks_to_overrides_dict,
         )
+        import yaml
 
         # Step 1: Load and convert
         langflow_data = load_flow_fixture(flow_name)
         stepflow_workflow = self.converter.convert(langflow_data)
-
-        # Apply tweaks if provided
-        if tweaks:
-            stepflow_workflow = apply_stepflow_tweaks(stepflow_workflow, tweaks)
-
         workflow_yaml = self.converter.to_yaml(stepflow_workflow)
+
+        # Prepare overrides if tweaks provided
+        overrides = None
+        if tweaks:
+            workflow_dict = yaml.safe_load(workflow_yaml)
+            overrides = convert_langflow_tweaks_to_overrides_dict(workflow_dict, tweaks)
 
         # Step 2: Validate
         success, stdout, stderr = self.stepflow_runner.validate_workflow(
@@ -259,6 +261,7 @@ class TestExecutor:
             workflow_yaml,
             input_data,
             timeout=timeout,
+            overrides=overrides,
         )
 
         if not success:

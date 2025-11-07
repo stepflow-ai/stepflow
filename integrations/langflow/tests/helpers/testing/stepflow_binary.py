@@ -281,6 +281,7 @@ class StepflowBinaryRunner:
         workflow_yaml: str,
         input_data: dict[str, Any],
         timeout: float = 60.0,
+        overrides: dict[str, Any] = None,
     ) -> tuple[bool, dict[str, Any] | None, str, str]:
         """Submit workflow to running Stepflow server.
 
@@ -289,6 +290,7 @@ class StepflowBinaryRunner:
             workflow_yaml: YAML content of the workflow
             input_data: Input data for the workflow
             timeout: Command timeout in seconds
+            overrides: Optional workflow overrides in StepFlow format
 
         Returns:
             Tuple of (success, result_data, stdout, stderr)
@@ -309,6 +311,15 @@ class StepflowBinaryRunner:
         ) as output_file:
             output_path = output_file.name
 
+        # Write overrides to temporary file if provided
+        overrides_path = None
+        if overrides:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as overrides_file:
+                json.dump(overrides, overrides_file, indent=2)
+                overrides_path = overrides_file.name
+
         try:
             # Use stepflow submit command
             cmd = [
@@ -322,6 +333,10 @@ class StepflowBinaryRunner:
                 "--output",
                 output_path,
             ]
+
+            # Add overrides if provided
+            if overrides_path:
+                cmd.extend(["--overrides", overrides_path])
 
             # Pass input via stdin
             input_str = json.dumps(input_data)
@@ -373,7 +388,10 @@ class StepflowBinaryRunner:
             ) from e
         finally:
             # Clean up temp files
-            for temp_path in [workflow_path, output_path]:
+            temp_paths = [workflow_path, output_path]
+            if overrides_path:
+                temp_paths.append(overrides_path)
+            for temp_path in temp_paths:
                 Path(temp_path).unlink(missing_ok=True)
 
     def submit_batch(
