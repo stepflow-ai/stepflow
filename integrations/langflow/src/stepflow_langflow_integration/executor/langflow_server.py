@@ -26,8 +26,11 @@ from .udf_executor import UDFExecutor
 
 
 # Configure logging
+import os
+log_level_str = os.environ.get('STEPFLOW_LOG_LEVEL', 'INFO').upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     force=True  # Override any existing configuration
 )
