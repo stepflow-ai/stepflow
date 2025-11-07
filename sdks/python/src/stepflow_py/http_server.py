@@ -76,10 +76,16 @@ class StepflowHttpServer:
         host: str = "localhost",
         port: int = 8080,
         instance_id: str | None = None,
+        workers: int = 3,
+        backlog: int = 128,
+        timeout_keep_alive: int = 5,
     ):
         self.server = server or StepflowServer()
         self.host = host
         self.port = port
+        self.workers = workers
+        self.backlog = backlog
+        self.timeout_keep_alive = timeout_keep_alive
         self.instance_id = instance_id or self._generate_instance_id()
         self.app = FastAPI(title="Stepflow Streamable HTTP Server")
         self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
@@ -382,13 +388,22 @@ class StepflowHttpServer:
         logger.info(
             f"Starting Stepflow Streamable HTTP server on {self.host}:{self.port}"
         )
+        logger.info(f"  Workers: {self.workers}")
+        logger.info(f"  Backlog: {self.backlog}")
+        logger.info(f"  Keep-alive timeout: {self.timeout_keep_alive}s")
 
         # Initialize the base server
         self.server.set_initialized(True)
 
-        # Start the HTTP server
+        # Start the HTTP server with tuned settings
         config = uvicorn.Config(
-            app=self.app, host=self.host, port=self.port, log_level="info"
+            app=self.app,
+            host=self.host,
+            port=self.port,
+            log_level="info",
+            workers=self.workers,
+            backlog=self.backlog,
+            timeout_keep_alive=self.timeout_keep_alive,
         )
         server = uvicorn.Server(config)
         await server.serve()

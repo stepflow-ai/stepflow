@@ -637,14 +637,31 @@ class StepflowServer:
         stdio_server = StepflowStdioServer(server=self)
         stdio_server.run(stdin=stdin, stdout=stdout)
 
-    async def start_http(self, host: str = "localhost", port: int = 8080) -> None:
+    async def start_http(
+        self,
+        host: str = "localhost",
+        port: int = 8080,
+        workers: int = 3,
+        backlog: int = 128,
+        timeout_keep_alive: int = 5,
+    ) -> None:
         """Start the server using HTTP transport.
 
         Args:
             host: Server host (default: localhost)
             port: Server port (default: 8080)
+            workers: Number of worker processes (default: 3)
+            backlog: Maximum number of pending connections (default: 128)
+            timeout_keep_alive: Keep-alive timeout in seconds (default: 5)
         """
         from .http_server import StepflowHttpServer
 
-        http_server = StepflowHttpServer(server=self, host=host, port=port)
+        http_server = StepflowHttpServer(
+            server=self,
+            host=host,
+            port=port,
+            workers=workers,
+            backlog=backlog,
+            timeout_keep_alive=timeout_keep_alive,
+        )
         await http_server.run()

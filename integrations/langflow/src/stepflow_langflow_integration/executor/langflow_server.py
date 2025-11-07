@@ -17,11 +17,23 @@
 Clean architecture without CachedStepflowContext.
 """
 
+import logging
 from typing import Any
 
 from stepflow_py import StepflowContext, StepflowServer
 
 from .udf_executor import UDFExecutor
+
+
+# Configure logging
+import os
+log_level_str = os.environ.get('STEPFLOW_LOG_LEVEL', 'INFO').upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # Override any existing configuration
+)
 
 
 class StepflowLangflowServer:
@@ -55,7 +67,21 @@ class StepflowLangflowServer:
             # Use the new UDF executor directly - it handles pre-compilation internally
             return await self.udf_executor.execute(input_data, context)
 
-        # TODO: Register native component implementations
+        # Register generic embeddings component for distributed routing
+        @self.server.component(name="embeddings")
+        async def embeddings(
+            input_data: dict[str, Any], context: StepflowContext
+        ) -> dict[str, Any]:
+            """Generic embeddings component that works for all embedding types.
+
+            This component routes embedding operations to dedicated servers via
+            /langflow/embeddings path, while using the UDF executor internally.
+            Supports OpenAIEmbeddings, HuggingFaceEmbeddings, CohereEmbeddings, etc.
+            """
+            # Delegate to UDF executor - it handles all embedding types
+            return await self.udf_executor.execute(input_data, context)
+
+        # TODO: Register additional native component implementations
         # self.server.component(name="openai_chat", func=self._openai_chat)
         # self.server.component(name="chat_input", func=self._chat_input)
 
@@ -63,14 +89,36 @@ class StepflowLangflowServer:
         """Run the component server in STDIO mode."""
         self.server.start_stdio()
 
-    async def serve(self, host: str = "localhost", port: int = 8000) -> None:
+    async def serve(
+        self,
+        host: str = "localhost",
+        port: int = 8000,
+        workers: int = 3,
+        backlog: int = 128,
+        timeout_keep_alive: int = 5
+    ) -> None:
         """Run the component server in HTTP mode.
 
         Args:
             host: Server host
             port: Server port
+            workers: Number of worker processes
+            backlog: Maximum number of pending connections
+            timeout_keep_alive: Keep-alive timeout in seconds
         """
-        await self.server.start_http(host=host, port=port)
+        # Apply nest_asyncio to allow nested event loops in HTTP mode
+        # This is needed because Langflow components may call asyncio.run()
+        # from within an already-running event loop
+        import nest_asyncio
+        nest_asyncio.apply()
+
+        await self.server.start_http(
+            host=host,
+            port=port,
+            workers=workers,
+            backlog=backlog,
+            timeout_keep_alive=timeout_keep_alive
+        )
 
 
 if __name__ == "__main__":

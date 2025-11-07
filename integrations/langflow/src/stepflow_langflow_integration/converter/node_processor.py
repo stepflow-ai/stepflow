@@ -120,8 +120,12 @@ class NodeProcessor:
             if custom_code:
                 # Any component with code - use UDF executor for real execution
 
-                # Routing to UDF executor
-                component_path = "/langflow/udf_executor"
+                # Route embedding components to generic embeddings component for distribution
+                if self._is_embedding_component(component_type):
+                    component_path = "/langflow/embeddings"
+                else:
+                    # Routing to UDF executor
+                    component_path = "/langflow/udf_executor"
 
                 # First create a blob step for the UDF code using auto ID generation
                 blob_data = self._prepare_udf_blob(node, component_type, output_mapping)
@@ -186,6 +190,23 @@ class NodeProcessor:
 
         # Always use langflow prefix with the full base_id to guarantee uniqueness
         return f"langflow_{base_id}"
+
+    def _is_embedding_component(self, component_type: str) -> bool:
+        """Check if a component is an embedding type that should be routed to distributed servers.
+
+        Args:
+            component_type: The Langflow component type name
+
+        Returns:
+            True if this is an embedding component, False otherwise
+        """
+        # Check for common embedding component patterns
+        embedding_indicators = [
+            "Embedding",  # Matches OpenAIEmbeddings, HuggingFaceEmbeddings, etc.
+            "embedding",  # Lowercase variants
+        ]
+
+        return any(indicator in component_type for indicator in embedding_indicators)
 
     def _prepare_udf_blob(
         self,
