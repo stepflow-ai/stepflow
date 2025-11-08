@@ -348,6 +348,7 @@ class UDFExecutor:
                 # These aren't serializable, but for mustExecute steps we just need success confirmation
                 try:
                     from opensearchpy import OpenSearch
+
                     if isinstance(result, OpenSearch):
                         return {"status": "success", "type": "OpenSearchVectorStore"}
                 except ImportError:

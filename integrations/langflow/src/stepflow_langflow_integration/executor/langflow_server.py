@@ -28,8 +28,8 @@ from .udf_executor import UDFExecutor
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    force=True  # Override any existing configuration
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    force=True,  # Override any existing configuration
 )
 
 
@@ -78,7 +78,7 @@ class StepflowLangflowServer:
         port: int = 8000,
         workers: int = 3,
         backlog: int = 128,
-        timeout_keep_alive: int = 5
+        timeout_keep_alive: int = 5,
     ) -> None:
         """Run the component server in HTTP mode.
 
@@ -92,7 +92,8 @@ class StepflowLangflowServer:
         # Apply nest_asyncio to allow nested event loops in HTTP mode
         # This is needed because Langflow components may call asyncio.run()
         # from within an already-running event loop
-        import nest_asyncio
+        import nest_asyncio 
+
         nest_asyncio.apply()
 
         await self.server.start_http(
@@ -100,7 +101,7 @@ class StepflowLangflowServer:
             port=port,
             workers=workers,
             backlog=backlog,
-            timeout_keep_alive=timeout_keep_alive
+            timeout_keep_alive=timeout_keep_alive,
         )
 
 

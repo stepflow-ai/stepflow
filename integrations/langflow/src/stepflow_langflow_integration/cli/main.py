@@ -193,7 +193,15 @@ def analyze(input_file: Path):
 @click.option("--workers", default=3, help="Number of worker processes for HTTP mode")
 @click.option("--backlog", default=128, help="Maximum number of pending connections")
 @click.option("--timeout-keep-alive", default=5, help="Keep-alive timeout in seconds")
-def serve(host: str, port: int, protocol_prefix: str, http: bool, workers: int, backlog: int, timeout_keep_alive: int):
+def serve(
+    host: str,
+    port: int,
+    protocol_prefix: str,
+    http: bool,
+    workers: int,
+    backlog: int,
+    timeout_keep_alive: int,
+):
     """Start the Langflow component server."""
     import asyncio
 
@@ -215,13 +223,15 @@ def serve(host: str, port: int, protocol_prefix: str, http: bool, workers: int, 
             nest_asyncio.apply()
 
             # Run the HTTP server
-            asyncio.run(server.serve(
-                host=host,
-                port=port,
-                workers=workers,
-                backlog=backlog,
-                timeout_keep_alive=timeout_keep_alive
-            ))
+            asyncio.run(
+                server.serve(
+                    host=host,
+                    port=port,
+                    workers=workers,
+                    backlog=backlog,
+                    timeout_keep_alive=timeout_keep_alive,
+                )
+            )
         else:
             click.echo("🚀 Starting Langflow component server in STDIO mode...")
             click.echo(f"   Protocol prefix: {protocol_prefix}")
