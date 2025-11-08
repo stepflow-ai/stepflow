@@ -190,7 +190,18 @@ def analyze(input_file: Path):
 @click.option("--port", default=5264, help="Server port")
 @click.option("--protocol-prefix", default="langflow", help="Protocol prefix")
 @click.option("--http", is_flag=True, help="Start in HTTP mode (default is STDIO)")
-def serve(host: str, port: int, protocol_prefix: str, http: bool):
+@click.option("--workers", default=3, help="Number of worker processes for HTTP mode")
+@click.option("--backlog", default=128, help="Maximum number of pending connections")
+@click.option("--timeout-keep-alive", default=5, help="Keep-alive timeout in seconds")
+def serve(
+    host: str,
+    port: int,
+    protocol_prefix: str,
+    http: bool,
+    workers: int,
+    backlog: int,
+    timeout_keep_alive: int,
+):
     """Start the Langflow component server."""
     import asyncio
 
@@ -202,6 +213,9 @@ def serve(host: str, port: int, protocol_prefix: str, http: bool):
             click.echo(f"   Host: {host}")
             click.echo(f"   Port: {port}")
             click.echo(f"   Protocol prefix: {protocol_prefix}")
+            click.echo(f"   Workers: {workers}")
+            click.echo(f"   Backlog: {backlog}")
+            click.echo(f"   Keep-alive timeout: {timeout_keep_alive}s")
 
             # Apply nest_asyncio to handle nested event loops in HTTP mode
             import nest_asyncio  # type: ignore
@@ -209,7 +223,15 @@ def serve(host: str, port: int, protocol_prefix: str, http: bool):
             nest_asyncio.apply()
 
             # Run the HTTP server
-            asyncio.run(server.serve(host=host, port=port))
+            asyncio.run(
+                server.serve(
+                    host=host,
+                    port=port,
+                    workers=workers,
+                    backlog=backlog,
+                    timeout_keep_alive=timeout_keep_alive,
+                )
+            )
         else:
             click.echo("🚀 Starting Langflow component server in STDIO mode...")
             click.echo(f"   Protocol prefix: {protocol_prefix}")

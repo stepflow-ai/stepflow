@@ -317,8 +317,6 @@ class UDFExecutor:
             component_instance._parameters = resolved_parameters
             component_instance.set_attributes(resolved_parameters)
 
-        # Component configuration prepared for execution
-
         # Execute component method with tracing
         if not hasattr(component_instance, execution_method):
             available = [m for m in dir(component_instance) if not m.startswith("_")]
@@ -345,6 +343,16 @@ class UDFExecutor:
                     result = await self._execute_sync_method_safely(
                         method, component_type
                     )
+
+                # Handle OpenSearch client objects (from as_vector_store)
+                # These aren't serializable, but for mustExecute we need confirmation
+                try:
+                    from opensearchpy import OpenSearch
+
+                    if isinstance(result, OpenSearch):
+                        return {"status": "success", "type": "OpenSearchVectorStore"}
+                except ImportError:
+                    pass
 
                 # Serialize Langflow objects to JSON-compatible format before returning
                 return self._serialize_langflow_objects(result)

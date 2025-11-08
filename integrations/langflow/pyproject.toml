@@ -50,7 +50,9 @@ dependencies = [
     "langchain_core>=0.1.0", # For core LangChain functionality
     "langchain_openai>=0.1.0", # For LangChain OpenAI integration
     "nest-asyncio>=1.6.0",
+    "opensearch-py>=2.8.0", # Still needed after weird hack removed?
 ]
+
 
 [project.optional-dependencies]
 http = [
@@ -176,6 +178,7 @@ python-dotenv = ["dotenv"]
 pyyaml = ["yaml"]
 langflow-nightly = ["langflow"]
 lfx-nightly = ["lfx"]
+opensearch-py = ["opensearchpy"]
 
 [tool.mypy]
 python_version = "3.11"
