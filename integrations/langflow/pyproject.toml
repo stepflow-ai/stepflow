@@ -178,6 +178,7 @@ python-dotenv = ["dotenv"]
 pyyaml = ["yaml"]
 langflow-nightly = ["langflow"]
 lfx-nightly = ["lfx"]
+opensearch-py = ["opensearchpy"]
 
 [tool.mypy]
 python_version = "3.11"
