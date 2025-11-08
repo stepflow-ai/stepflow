@@ -345,7 +345,7 @@ class UDFExecutor:
                     )
 
                 # Handle OpenSearch client objects (from as_vector_store)
-                # These aren't serializable, but for mustExecute steps we just need success confirmation
+                # These aren't serializable, but for mustExecute we need confirmation
                 try:
                     from opensearchpy import OpenSearch
 

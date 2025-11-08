@@ -24,7 +24,6 @@ from stepflow_py import StepflowContext, StepflowServer
 
 from .udf_executor import UDFExecutor
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -92,7 +91,7 @@ class StepflowLangflowServer:
         # Apply nest_asyncio to allow nested event loops in HTTP mode
         # This is needed because Langflow components may call asyncio.run()
         # from within an already-running event loop
-        import nest_asyncio 
+        import nest_asyncio  # type: ignore
 
         nest_asyncio.apply()
 
