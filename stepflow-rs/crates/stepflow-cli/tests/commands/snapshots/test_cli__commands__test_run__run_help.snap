@@ -7,6 +7,14 @@ info:
     - "--omit-stack-trace"
     - run
     - "--help"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -76,8 +84,23 @@ Options:
           
           If not set, will write to stdout.
 
+      --overrides <FILE>
+          Path to a file containing workflow overrides (JSON or YAML format).
+          
+          Overrides allow you to modify step properties at runtime without changing the original workflow file. Format is inferred from file extension.
+
       --omit-stack-trace
           Omit stack traces (line numbers of errors)
+
+      --overrides-json <JSON>
+          Workflow overrides as a JSON string.
+          
+          Specify overrides inline as JSON. Example: --overrides-json '{"step1": {"value": {"input": {"temperature": 0.8}}}}'
+
+      --overrides-yaml <YAML>
+          Workflow overrides as a YAML string.
+          
+          Specify overrides inline as YAML. Example: --overrides-yaml 'step1: {value: {input: {temperature: 0.8}}}'
 
   -h, --help
           Print help (see a summary with '-h')

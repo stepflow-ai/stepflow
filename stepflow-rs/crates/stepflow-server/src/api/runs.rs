@@ -20,7 +20,7 @@ use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{
     BlobId, FlowResult,
-    workflow::{Flow, ValueRef},
+    workflow::{Flow, ValueRef, WorkflowOverrides},
 };
 use stepflow_execution::StepflowExecutor;
 use stepflow_state::{RunDetails, RunSummary};
@@ -37,10 +37,14 @@ pub struct CreateRunRequest {
     pub flow_id: BlobId,
     /// Input data for the flow
     pub input: ValueRef,
+    /// Optional workflow overrides to apply before execution
+    #[serde(default, skip_serializing_if = "WorkflowOverrides::is_empty")]
+    pub overrides: WorkflowOverrides,
     /// Whether to run in debug mode (pauses execution for step-by-step control)
     #[serde(default)]
     pub debug: bool,
 }
+
 
 /// Response for create run operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -101,6 +105,7 @@ pub struct RunFlowResponse {
     pub flow_id: BlobId,
 }
 
+
 /// Create and execute a flow by hash
 #[utoipa::path(
     post,
@@ -126,6 +131,23 @@ pub async fn create_run(
         .get_flow(&req.flow_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
+
+    // Apply overrides to the flow if provided
+    let flow = if !req.overrides.is_empty() {
+        log::info!(
+            "Applying {} step overrides to workflow",
+            req.overrides.steps.len()
+        );
+        stepflow_core::workflow::apply_overrides(flow, &req.overrides).map_err(|e| {
+            ErrorResponse {
+                code: axum::http::StatusCode::BAD_REQUEST,
+                message: format!("Failed to apply overrides: {}", e),
+                stack: vec![],
+            }
+        })?
+    } else {
+        flow
+    };
 
     // Create execution record
     state_store

@@ -51,6 +51,15 @@ cargo run -- run --flow=examples/basic/workflow.yaml --input-yaml='m: 2\nn: 7' -
 # Run a workflow reading from stdin (JSON format)
 echo '{"m": 1, "n": 2}' | cargo run -- run --flow=examples/basic/workflow.yaml --format=json --config=examples/basic/stepflow-config.yml
 
+# Run a workflow with overrides from file
+cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml --overrides=overrides.yaml
+
+# Run a workflow with inline JSON overrides
+cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml --overrides-json='{"step1": {"value": {"input": {"temperature": 0.8}}}}'
+
+# Run a workflow with inline YAML overrides
+cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml --overrides-yaml='step1: {value: {input: {temperature: 0.8}}}'
+
 # Run with a custom config file
 cargo run -- run --flow=<flow.yaml> --input=<input.json> --config=<stepflow-config.yml>
 
@@ -59,6 +68,82 @@ cargo run -- serve --port=7837 --config=<stepflow-config.yml>
 
 # Submit a workflow to a running service
 cargo run -- submit --url=http://localhost:7837/api/v1 --flow=<flow.yaml> --input=<input.json>
+
+# Submit a workflow with overrides
+cargo run -- submit --url=http://localhost:7837/api/v1 --flow=<flow.yaml> --input=<input.json> --overrides=overrides.yaml
+
+# Submit a workflow with inline overrides
+cargo run -- submit --url=http://localhost:7837/api/v1 --flow=<flow.yaml> --input=<input.json> --overrides-json='{"step1": {"value": {"input": {"model": "gpt-4"}}}}'
+```
+
+### Workflow Overrides
+
+StepFlow supports dynamic workflow overrides that allow you to modify step properties at runtime without changing the original workflow file. This is useful for:
+
+- **Parameter tuning**: Adjusting temperatures, token limits, prompts
+- **Component switching**: Using different models or implementations
+- **Environment-specific configuration**: Different API keys or endpoints
+- **A/B testing**: Comparing different configurations
+
+**Override Sources:**
+- `--overrides FILE`: Load overrides from a YAML or JSON file
+- `--overrides-json JSON`: Specify overrides as inline JSON
+- `--overrides-yaml YAML`: Specify overrides as inline YAML
+
+**Override Format:**
+```yaml
+# overrides.yaml
+step_id:
+  # Optional type field (defaults to "merge_patch")
+  $type: merge_patch
+  value:
+    input:
+      temperature: 0.8
+      api_key: "override-key"
+    component: "/different/component"
+
+other_step:
+  # Default type (merge_patch) when $type is omitted
+  value:
+    input:
+      model: "gpt-4"
+```
+
+**JSON Format:**
+```json
+{
+  "step_id": {
+    "$type": "merge_patch",
+    "value": {
+      "input": {
+        "temperature": 0.8,
+        "api_key": "override-key"
+      },
+      "component": "/different/component"
+    }
+  }
+}
+```
+
+**Key Features:**
+- **JSON Merge Patch (RFC 7396)**: Uses standard merge semantics
+- **Step-level targeting**: Override specific steps by ID
+- **Type safety**: Full validation with proper error messages
+- **Extensible design**: Future support for JSON Patch operations
+
+**Examples:**
+```bash
+# Simple temperature override
+cargo run -- run --flow=workflow.yaml --input=input.json --overrides-json='{"step1": {"value": {"input": {"temperature": 0.9}}}}'
+
+# Multiple step overrides from file
+cargo run -- run --flow=workflow.yaml --input=input.json --overrides=my-overrides.yaml
+
+# Component switching
+cargo run -- run --flow=workflow.yaml --input=input.json --overrides-yaml='step2: {value: {component: "/python/custom_model"}}'
+
+# Works with submit to remote servers
+cargo run -- submit --url=http://localhost:7837/api/v1 --flow=workflow.yaml --input=input.json --overrides=prod-overrides.yaml
 ```
 
 ### Validating Workflows and Configuration
