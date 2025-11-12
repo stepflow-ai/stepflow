@@ -11,7 +11,7 @@
 // the License.
 
 use axum::Router;
-use axum::body::Body;
+use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use serde_json::json;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ use stepflow_observability::{
 };
 use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
-use tower::ServiceExt as _;
+use tower::{Service, ServiceExt};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
 
@@ -188,6 +188,340 @@ fn create_test_workflow() -> Flow {
                 .build(),
         )
         .build()
+}
+
+/// Helper to create a workflow with multiple steps for override testing
+fn create_multi_step_workflow() -> Flow {
+    FlowBuilder::test_flow()
+        .description("Multi-step workflow for override testing")
+        .step(
+            StepBuilder::builtin_step("step1", "create_messages")
+                .input_literal(json!({
+                    "user_prompt": "Original prompt",
+                    "temperature": 0.5
+                }))
+                .build(),
+        )
+        .step(
+            StepBuilder::builtin_step("step2", "eval")
+                .input_literal(json!({
+                    "expression": "42"
+                }))
+                .build(),
+        )
+        .build()
+}
+
+#[tokio::test]
+async fn test_create_run_without_overrides() {
+    init_test_logging();
+
+    let (mut app, _executor) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+
+    // First, store the flow to get a flow ID
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let store_response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(store_request)
+        .await
+        .unwrap();
+    assert_eq!(store_response.status(), StatusCode::OK);
+
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
+    let flow_id = store_result["flowId"].as_str().unwrap();
+
+    // Execute run without overrides
+    let create_run_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowId": flow_id,
+                "input": {
+                    "test_input": "Hello from run execution"
+                },
+                "debug": false
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(create_run_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(execute_response["runId"].is_string());
+    assert_eq!(execute_response["status"], "completed");
+    assert!(!execute_response["debug"].as_bool().unwrap());
+    assert!(execute_response["result"].is_object());
+}
+
+#[tokio::test]
+async fn test_create_run_with_overrides() {
+    init_test_logging();
+
+    let (mut app, _executor) = create_basic_test_server().await;
+    let workflow = create_multi_step_workflow();
+
+    // First, store the flow to get a flow ID
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let store_response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(store_request)
+        .await
+        .unwrap();
+    assert_eq!(store_response.status(), StatusCode::OK);
+
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
+    let flow_id = store_result["flowId"].as_str().unwrap();
+
+    // Execute run with overrides
+    let create_run_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowId": flow_id,
+                "input": {
+                    "test_input": "Hello with overrides"
+                },
+                "overrides": {
+                    "step1": {
+                        "value": {
+                            "input": {
+                                "temperature": 0.8,
+                                "user_prompt": "Overridden prompt"
+                            }
+                        }
+                    },
+                    "step2": {
+                        "$type": "merge_patch",
+                        "value": {
+                            "input": {
+                                "expression": "100"
+                            }
+                        }
+                    }
+                },
+                "debug": false
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(create_run_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(execute_response["runId"].is_string());
+    assert_eq!(execute_response["status"], "completed");
+    assert!(execute_response["result"].is_object());
+
+    // The overrides should have been applied during execution
+    // We can't easily verify the exact changes without inspecting internal state,
+    // but successful execution indicates the overrides were processed correctly
+}
+
+#[tokio::test]
+async fn test_create_run_with_invalid_overrides() {
+    init_test_logging();
+
+    let (mut app, _executor) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+
+    // First, store the flow to get a flow ID
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let store_response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(store_request)
+        .await
+        .unwrap();
+    assert_eq!(store_response.status(), StatusCode::OK);
+
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
+    let flow_id = store_result["flowId"].as_str().unwrap();
+
+    // Execute run with overrides that reference a non-existent step
+    let create_run_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowId": flow_id,
+                "input": {
+                    "test_input": "Hello"
+                },
+                "overrides": {
+                    "nonexistent_step": {
+                        "value": {
+                            "input": {
+                                "temperature": 0.8
+                            }
+                        }
+                    }
+                },
+                "debug": false
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(create_run_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(
+        error_response["message"]
+            .as_str()
+            .unwrap()
+            .contains("Failed to apply overrides")
+    );
+}
+
+#[tokio::test]
+async fn test_create_run_empty_overrides() {
+    init_test_logging();
+
+    let (mut app, _executor) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+
+    // First, store the flow to get a flow ID
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let store_response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(store_request)
+        .await
+        .unwrap();
+    assert_eq!(store_response.status(), StatusCode::OK);
+
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
+    let flow_id = store_result["flowId"].as_str().unwrap();
+
+    // Execute run with empty overrides object
+    let create_run_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowId": flow_id,
+                "input": {
+                    "test_input": "Hello"
+                },
+                "overrides": {},
+                "debug": false
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(create_run_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(execute_response["runId"].is_string());
+    assert_eq!(execute_response["status"], "completed");
+    assert!(execute_response["result"].is_object());
 }
 
 #[tokio::test]

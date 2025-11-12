@@ -14,7 +14,7 @@ use crate::{Result, error::MainError, validation_display::display_diagnostics};
 use error_stack::ResultExt as _;
 use std::sync::Arc;
 use stepflow_core::FlowResult;
-use stepflow_core::workflow::{Flow, ValueRef};
+use stepflow_core::workflow::{Flow, ValueRef, WorkflowOverrides};
 use stepflow_server::error::ErrorResponse;
 use stepflow_server::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
 use url::Url;
@@ -74,7 +74,12 @@ pub(crate) fn display_server_error(
 }
 
 /// Submit a workflow to a Stepflow service for execution
-pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<FlowResult> {
+pub async fn submit(
+    service_url: Url,
+    flow: Flow,
+    input: ValueRef,
+    overrides: &WorkflowOverrides,
+) -> Result<FlowResult> {
     let client = reqwest::Client::new();
 
     // Step 1: Store the flow to get its hash
@@ -126,6 +131,7 @@ pub async fn submit(service_url: Url, flow: Flow, input: ValueRef) -> Result<Flo
     let execute_request = CreateRunRequest {
         flow_id,
         input,
+        overrides: overrides.clone(),
         debug: false, // TODO: Add debug option to CLI
     };
 

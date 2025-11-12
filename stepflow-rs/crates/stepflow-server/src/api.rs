@@ -111,6 +111,9 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         stepflow_analysis::FlowAnalysis,
         stepflow_analysis::StepAnalysis,
         stepflow_analysis::Dependency,
+        stepflow_core::workflow::WorkflowOverrides,
+        stepflow_core::workflow::StepOverride,
+        stepflow_core::workflow::OverrideType,
     )),
 )]
 struct StepflowApi;

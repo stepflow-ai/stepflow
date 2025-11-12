@@ -16,7 +16,7 @@ use stepflow_core::{BlobId, workflow::Flow};
 use url::Url;
 
 use crate::{
-    args::{ConfigArgs, InputArgs, OutputArgs, WorkflowLoader, load},
+    args::{ConfigArgs, InputArgs, OutputArgs, OverrideArgs, WorkflowLoader, load},
     error::Result,
     list_components::OutputFormat,
     repl::run_repl,
@@ -91,6 +91,9 @@ pub enum Command {
 
         #[command(flatten)]
         output_args: OutputArgs,
+
+        #[command(flatten)]
+        override_args: OverrideArgs,
     },
     /// Run a batch of workflows directly.
     ///
@@ -207,6 +210,9 @@ pub enum Command {
 
         #[command(flatten)]
         output_args: OutputArgs,
+
+        #[command(flatten)]
+        override_args: OverrideArgs,
     },
     /// Run tests defined in workflow files or directories.
     ///
@@ -434,10 +440,25 @@ impl Cli {
                 config_args,
                 input_args,
                 output_args,
+                override_args,
             } => {
-                let flow: Arc<Flow> = load(&flow_path)?;
+                let flow: Flow = load(&flow_path)?;
                 let flow_dir = flow_path.parent();
                 let config = config_args.load_config(flow_dir)?;
+
+                // Apply overrides before validation and execution
+                let overrides = override_args.parse_overrides()?;
+                let flow = Arc::new(flow);
+                let flow = if !overrides.is_empty() {
+                    log::info!(
+                        "Applying {} step overrides to workflow",
+                        overrides.steps.len()
+                    );
+                    stepflow_core::workflow::apply_overrides(flow, &overrides)
+                        .change_context(crate::MainError::Configuration)?
+                } else {
+                    flow
+                };
 
                 // Validate workflow and configuration before execution
                 let diagnostics =
@@ -587,11 +608,15 @@ impl Cli {
                 flow_path,
                 input_args,
                 output_args,
+                override_args,
             } => {
                 let flow: Flow = load(&flow_path)?;
                 let input = input_args.parse_input(true)?;
 
-                let output = submit(url, flow, input).await?;
+                // Parse overrides for submission
+                let overrides = override_args.parse_overrides()?;
+
+                let output = submit(url, flow, input, &overrides).await?;
                 output_args.write_output(output.clone())?;
 
                 // Exit with non-zero status if workflow execution failed

@@ -50,6 +50,30 @@ impl Flow {
         }
     }
 
+    /// Create a clone of this flow.
+    ///
+    /// **Warning**: This method performs a deep clone of the entire workflow structure,
+    /// including all steps, metadata, and configurations. This can be expensive for
+    /// large workflows.
+    ///
+    /// # Performance
+    /// - Cloning large workflows with many steps can be slow
+    /// - Consider using `Arc<Flow>` for shared ownership instead
+    /// - Only use this when you need to modify the workflow structure
+    ///
+    /// # Example
+    /// ```rust
+    /// use stepflow_core::workflow::Flow;
+    ///
+    /// let original_flow = Flow::default();
+    /// let cloned_flow = original_flow.slow_clone();
+    /// ```
+    pub fn slow_clone(&self) -> Self {
+        match self {
+            Flow::V1(flow_v1) => Flow::V1(flow_v1.clone()),
+        }
+    }
+
     pub fn latest(&self) -> &FlowV1 {
         match self {
             Flow::V1(flow_v1) => flow_v1,
@@ -146,7 +170,14 @@ impl Flow {
 
 /// # FlowV1
 #[derive(
-    Debug, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema, utoipa::ToSchema,
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    PartialEq,
+    Default,
+    JsonSchema,
+    utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]
 #[schemars(inline)]
@@ -284,7 +315,9 @@ impl JsonSchema for FlowRef {
     }
 }
 /// Configuration for a test server.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestServerConfig {
     /// Command to start the server.
@@ -322,7 +355,9 @@ pub struct TestServerConfig {
 }
 
 /// Health check configuration for test servers.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestServerHealthCheck {
     /// Path for health check endpoint (e.g., "/health").
@@ -358,7 +393,9 @@ fn default_health_check_delay() -> u64 {
 }
 
 /// Configuration for testing a workflow.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConfig {
     /// Test servers to start before running tests.
@@ -381,7 +418,9 @@ pub struct TestConfig {
 }
 
 /// A single test case for a workflow.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestCase {
     /// Unique identifier for the test case.
