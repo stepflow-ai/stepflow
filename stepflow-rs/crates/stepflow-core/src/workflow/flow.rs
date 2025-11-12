@@ -64,7 +64,7 @@ impl Flow {
     /// # Example
     /// ```rust
     /// use stepflow_core::workflow::Flow;
-    /// 
+    ///
     /// let original_flow = Flow::default();
     /// let cloned_flow = original_flow.slow_clone();
     /// ```
@@ -170,7 +170,14 @@ impl Flow {
 
 /// # FlowV1
 #[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, JsonSchema, utoipa::ToSchema,
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    PartialEq,
+    Default,
+    JsonSchema,
+    utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]
 #[schemars(inline)]
@@ -308,7 +315,9 @@ impl JsonSchema for FlowRef {
     }
 }
 /// Configuration for a test server.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestServerConfig {
     /// Command to start the server.
@@ -346,7 +355,9 @@ pub struct TestServerConfig {
 }
 
 /// Health check configuration for test servers.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestServerHealthCheck {
     /// Path for health check endpoint (e.g., "/health").
@@ -382,7 +393,9 @@ fn default_health_check_delay() -> u64 {
 }
 
 /// Configuration for testing a workflow.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConfig {
     /// Test servers to start before running tests.
@@ -405,7 +418,9 @@ pub struct TestConfig {
 }
 
 /// A single test case for a workflow.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TestCase {
     /// Unique identifier for the test case.

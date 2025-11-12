@@ -13,7 +13,6 @@
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use tower::{ServiceExt, Service};
 use serde_json::json;
 use std::sync::Arc;
 use stepflow_core::values::ValueTemplate;
@@ -29,7 +28,7 @@ use stepflow_observability::{
 };
 use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
-use tower::ServiceExt as _;
+use tower::{Service, ServiceExt};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
 
@@ -241,7 +240,9 @@ async fn test_create_run_without_overrides() {
         .unwrap();
     assert_eq!(store_response.status(), StatusCode::OK);
 
-    let store_body = to_bytes(store_response.into_body(), usize::MAX).await.unwrap();
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
     let flow_id = store_result["flowId"].as_str().unwrap();
 
@@ -309,7 +310,9 @@ async fn test_create_run_with_overrides() {
         .unwrap();
     assert_eq!(store_response.status(), StatusCode::OK);
 
-    let store_body = to_bytes(store_response.into_body(), usize::MAX).await.unwrap();
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
     let flow_id = store_result["flowId"].as_str().unwrap();
 
@@ -398,7 +401,9 @@ async fn test_create_run_with_invalid_overrides() {
         .unwrap();
     assert_eq!(store_response.status(), StatusCode::OK);
 
-    let store_body = to_bytes(store_response.into_body(), usize::MAX).await.unwrap();
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
     let flow_id = store_result["flowId"].as_str().unwrap();
 
@@ -477,7 +482,9 @@ async fn test_create_run_empty_overrides() {
         .unwrap();
     assert_eq!(store_response.status(), StatusCode::OK);
 
-    let store_body = to_bytes(store_response.into_body(), usize::MAX).await.unwrap();
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
     let flow_id = store_result["flowId"].as_str().unwrap();
 

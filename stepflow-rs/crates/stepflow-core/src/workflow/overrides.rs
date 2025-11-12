@@ -139,7 +139,11 @@ pub trait OverrideProcessor {
     /// This validates that all override targets exist in the workflow and
     /// applies the specified transformations. If no overrides are needed,
     /// the original Arc is returned unchanged.
-    fn apply_overrides(&self, flow: Arc<Flow>, overrides: &WorkflowOverrides) -> OverrideResult<Arc<Flow>>;
+    fn apply_overrides(
+        &self,
+        flow: Arc<Flow>,
+        overrides: &WorkflowOverrides,
+    ) -> OverrideResult<Arc<Flow>>;
 }
 
 /// Default implementation of override processing
@@ -268,7 +272,10 @@ impl Default for DefaultOverrideProcessor {
 }
 
 /// Convenience function to apply overrides to a workflow using the default processor
-pub fn apply_overrides(flow: Arc<Flow>, overrides: &WorkflowOverrides) -> OverrideResult<Arc<Flow>> {
+pub fn apply_overrides(
+    flow: Arc<Flow>,
+    overrides: &WorkflowOverrides,
+) -> OverrideResult<Arc<Flow>> {
     DefaultOverrideProcessor::new().apply_overrides(flow, overrides)
 }
 

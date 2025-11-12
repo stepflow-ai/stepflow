@@ -239,16 +239,19 @@ def serve(
             # (e.g., Wikipedia articles)
             if sys.platform == "linux":
                 import fcntl
+
                 try:
                     # Set stdout buffer to 1MB to handle large responses
-                    fcntl.fcntl(sys.stdout.fileno(), fcntl.F_SETPIPE_SZ, 1048576) # 
+                    fcntl.fcntl(sys.stdout.fileno(), fcntl.F_SETPIPE_SZ, 1048576)
                     click.echo("   Pipe buffer size increased to 1MB")
                 except (OSError, AttributeError) as e:
                     # F_SETPIPE_SZ might not be available on all platforms
-                    click.echo(f"   Warning: Could not increase pipe buffer: {e}", err=True)
+                    click.echo(
+                        f"   Warning: Could not increase pipe buffer: {e}", err=True
+                    )
             else:
                 click.echo(
-                    "   Warning: Pipe buffer size increase not supported on this platform",
+                    "   Warning: Cannot increase pipe buffer on this platform",
                     err=True,
                 )
 

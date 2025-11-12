@@ -31,7 +31,7 @@ pub struct OverrideArgs {
     /// Workflow overrides as a JSON string.
     ///
     /// Specify overrides inline as JSON. Example:
-    /// --overrides-json '{"step1": {"value": {"input": {"temperature": 0.8}}}}'
+    /// `--overrides-json '{"step1": {"value": {"input": {"temperature": 0.8}}}}'`
     #[arg(long = "overrides-json", value_name = "JSON",
           conflicts_with_all = ["overrides_file", "overrides_yaml"])]
     pub overrides_json: Option<String>,
@@ -39,7 +39,7 @@ pub struct OverrideArgs {
     /// Workflow overrides as a YAML string.
     ///
     /// Specify overrides inline as YAML. Example:
-    /// --overrides-yaml 'step1: {value: {input: {temperature: 0.8}}}'
+    /// `--overrides-yaml 'step1: {value: {input: {temperature: 0.8}}}'`
     #[arg(long = "overrides-yaml", value_name = "YAML",
           conflicts_with_all = ["overrides_file", "overrides_json"])]
     pub overrides_yaml: Option<String>,

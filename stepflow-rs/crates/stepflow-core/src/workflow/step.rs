@@ -17,7 +17,9 @@ use crate::schema::SchemaRef;
 use schemars::JsonSchema;
 
 /// A step in a workflow that executes a component with specific arguments.
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
     /// Identifier for the step

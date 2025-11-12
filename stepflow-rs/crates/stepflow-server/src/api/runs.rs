@@ -45,7 +45,6 @@ pub struct CreateRunRequest {
     pub debug: bool,
 }
 
-
 /// Response for create run operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -104,7 +103,6 @@ pub struct RunFlowResponse {
     /// The flow hash
     pub flow_id: BlobId,
 }
-
 
 /// Create and execute a flow by hash
 #[utoipa::path(
