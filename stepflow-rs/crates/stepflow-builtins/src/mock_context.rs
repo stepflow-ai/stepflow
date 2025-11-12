@@ -14,10 +14,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use std::{pin::Pin, sync::Arc};
-use stepflow_core::{
-    BlobId, FlowResult,
-    workflow::{Flow, ValueRef},
-};
+use stepflow_core::{BlobId, FlowResult, workflow::ValueRef};
 use stepflow_plugin::ExecutionContext;
 use stepflow_state::InMemoryStateStore;
 use uuid::Uuid;
@@ -73,10 +70,7 @@ struct MockExecutor {
 impl stepflow_plugin::Context for MockExecutor {
     fn submit_flow(
         &self,
-        _flow: Arc<Flow>,
-        _flow_id: BlobId,
-        _input: ValueRef,
-        _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
+        _params: stepflow_core::SubmitFlowParams,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
         Box::pin(async { Ok(Uuid::new_v4()) })
     }
@@ -102,19 +96,18 @@ impl stepflow_plugin::Context for MockExecutor {
 
     fn submit_batch(
         &self,
-        _flow: Arc<Flow>,
-        flow_id: BlobId,
-        inputs: Vec<ValueRef>,
-        _max_concurrency: Option<usize>,
-        _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
+        params: stepflow_core::SubmitBatchParams,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
         let batches = self.batches.clone();
         Box::pin(async move {
             let batch_id = Uuid::new_v4();
-            batches
-                .lock()
-                .unwrap()
-                .insert(batch_id, MockBatch { flow_id, inputs });
+            batches.lock().unwrap().insert(
+                batch_id,
+                MockBatch {
+                    flow_id: params.flow_id,
+                    inputs: params.inputs,
+                },
+            );
             Ok(batch_id)
         })
     }

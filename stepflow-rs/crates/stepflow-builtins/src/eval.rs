@@ -79,7 +79,7 @@ impl BuiltinComponent for EvalComponent {
         // Execute the nested workflow using the shared utility
         let workflow_input = input.input;
         let flow_result = context
-            .execute_flow_by_id(&input.flow_id, workflow_input)
+            .execute_flow_by_id(&input.flow_id, workflow_input, None)
             .await
             .change_context(BuiltinError::Internal)?;
 

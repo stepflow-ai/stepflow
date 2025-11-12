@@ -232,16 +232,12 @@ class TestExecutor:
             pytest.skip: If dependencies not available
         """
         from stepflow_langflow_integration.converter.stepflow_tweaks import (
-            apply_stepflow_tweaks,
+            convert_tweaks_to_overrides,
         )
 
         # Step 1: Load and convert
         langflow_data = load_flow_fixture(flow_name)
         stepflow_workflow = self.converter.convert(langflow_data)
-
-        # Apply tweaks if provided
-        if tweaks:
-            stepflow_workflow = apply_stepflow_tweaks(stepflow_workflow, tweaks)
 
         workflow_yaml = self.converter.to_yaml(stepflow_workflow)
 
@@ -253,36 +249,109 @@ class TestExecutor:
             f"Workflow validation failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
         )
 
-        # Step 3: Submit to server
-        success, result_data, stdout, stderr = self.stepflow_runner.submit_workflow(
-            self.stepflow_server,
-            workflow_yaml,
-            input_data,
-            timeout=timeout,
-        )
+        # Step 3: Submit workflow (once) - separate from execution
+        flow_id = self._submit_workflow(self.stepflow_server, workflow_yaml)
 
-        if not success:
-            # Include server logs in failure message
-            server_stdout = self.stepflow_server.get_stdout()
-            server_stderr = self.stepflow_server.get_stderr()
-            pytest.fail(
-                f"Workflow execution failed:\nResult: {result_data}\n"
-                f"Submit STDOUT: {stdout}\n"
-                f"Submit STDERR: {stderr}\n"
-                f"--- Server STDOUT ---\n{server_stdout}\n"
-                f"--- Server STDERR ---\n{server_stderr}"
-            )
-
-        # Step 4: Basic result validation
-        assert isinstance(result_data, dict), (
-            f"Expected dict result, got {type(result_data)}"
+        # Step 4: Execute workflow with overrides (if provided)
+        overrides = convert_tweaks_to_overrides(tweaks) if tweaks else None
+        result_data = self._execute_workflow(
+            self.stepflow_server, flow_id, input_data, overrides
         )
-        assert result_data.get("outcome") == "success", (
-            f"Execution failed: {result_data}"
-        )
-        assert "result" in result_data, f"No result field in output: {result_data}"
 
         return result_data
+
+    def _submit_workflow(
+        self,
+        server,
+        workflow_yaml: str,
+    ) -> str:
+        """Submit workflow to server and return flow ID.
+
+        Args:
+            server: Running StepflowServer instance
+            workflow_yaml: YAML content of the workflow
+
+        Returns:
+            The flow ID for later execution
+        """
+        import requests
+        import yaml
+
+        # Parse workflow YAML to dict
+        workflow_dict = yaml.safe_load(workflow_yaml)
+
+        # Store the workflow using the /flows endpoint
+        flows_url = f"{server.url}/flows"
+
+        # Store the workflow
+        store_response = requests.post(
+            flows_url, json={"flow": workflow_dict}, timeout=30.0
+        )
+        store_response.raise_for_status()
+        flow_data = store_response.json()
+        flow_id = flow_data.get("flowId")
+
+        if not flow_id:
+            raise AssertionError(f"Failed to store workflow: {flow_data}")
+
+        return flow_id
+
+    def _execute_workflow(
+        self, server, flow_id: str, input_data: dict, overrides: dict | None = None
+    ) -> dict:
+        """Execute workflow with optional overrides using server API.
+
+        Args:
+            server: Running StepflowServer instance
+            flow_id: Previously submitted flow ID
+            input_data: Input data for the workflow
+            overrides: Optional StepFlow override dictionary
+
+        Returns:
+            The workflow execution result
+        """
+        import requests
+
+        # Create request payload for /runs endpoint
+        payload = {
+            "flowId": flow_id,
+            "input": input_data,
+            "debug": False,
+        }
+
+        # Add overrides only if provided
+        if overrides:
+            payload["overrides"] = overrides
+
+        # Execute the run with overrides
+        runs_url = f"{server.url}/runs"
+
+        response = requests.post(runs_url, json=payload, timeout=60.0)
+        response.raise_for_status()
+
+        result = response.json()
+
+        # Check if execution succeeded
+        if result.get("status") != "completed":
+            status = result.get("status")
+            raise AssertionError(
+                f"Workflow execution failed with status {status}. "
+                f"Full response: {result}"
+            )
+
+        # Get the flow result and check its structure
+        flow_result = result.get("result")
+        if not flow_result:
+            raise AssertionError("No result field in response")
+
+        # Handle both direct result and wrapped result formats
+        if isinstance(flow_result, dict) and flow_result.get("outcome") == "success":
+            return flow_result
+        elif isinstance(flow_result, dict) and "outcome" in flow_result:
+            raise AssertionError(f"Workflow execution failed: {flow_result}")
+        else:
+            # For cases where flow_result is the actual result data
+            return {"outcome": "success", "result": flow_result}
 
 
 @pytest.fixture(scope="module")

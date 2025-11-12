@@ -49,13 +49,13 @@ impl LastRun {
 
     /// Execute this workflow normally (non-debug mode)
     pub async fn execute_normal(&self, executor: &StepflowExecutor) -> Result<()> {
+        let params = stepflow_core::SubmitFlowParams::new(
+            self.flow.clone(),
+            self.flow_id.clone(),
+            self.input.clone(),
+        );
         let run_id = executor
-            .submit_flow(
-                self.flow.clone(),
-                self.flow_id.clone(),
-                self.input.clone(),
-                None,
-            )
+            .submit_flow(params)
             .await
             .change_context(MainError::FlowExecution)?;
 

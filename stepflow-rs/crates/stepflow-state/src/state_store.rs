@@ -17,12 +17,45 @@ use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{
     BlobData, BlobId, BlobType, FlowResult,
-    workflow::{Component, Flow, ValueRef},
+    workflow::{Component, Flow, ValueRef, WorkflowOverrides},
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::StateError;
+
+/// Parameters for creating a new workflow run
+#[derive(Debug, Clone)]
+pub struct CreateRunParams {
+    /// Unique identifier for the workflow execution
+    pub run_id: Uuid,
+    /// The flow ID (blob hash) of the workflow to execute
+    pub flow_id: BlobId,
+    /// Optional workflow name for display and organization
+    pub workflow_name: Option<String>,
+    /// Optional workflow label for version identification  
+    pub workflow_label: Option<String>,
+    /// Whether to start in debug/paused mode
+    pub debug_mode: bool,
+    /// Input data for the workflow execution
+    pub input: ValueRef,
+    /// Runtime overrides for step inputs
+    pub overrides: WorkflowOverrides,
+}
+
+impl CreateRunParams {
+    pub fn new(run_id: Uuid, flow_id: BlobId, input: ValueRef) -> Self {
+        Self {
+            run_id,
+            flow_id,
+            input,
+            workflow_name: None,
+            workflow_label: None,
+            debug_mode: false,
+            overrides: WorkflowOverrides::default(),
+        }
+    }
+}
 
 /// Write operations for async queuing
 #[derive(Debug)]
@@ -272,24 +305,26 @@ pub trait StateStore: Send + Sync {
     /// Create a new run record.
     ///
     /// # Arguments
-    /// * `run_id` - The unique identifier for the run
-    /// * `flow_id` - Workflow blob ID
-    /// * `workflow_name` - Optional workflow name (from workflow.name field)
-    /// * `workflow_label` - Optional workflow label used for execution
-    /// * `debug_mode` - Whether run is in debug mode
-    /// * `input` - Input data as JSON
+    /// * `params` - Parameters for creating the run
     ///
     /// # Returns
     /// Success if the run was created
     fn create_run(
         &self,
-        run_id: Uuid,
-        flow_id: BlobId,
-        workflow_name: Option<&str>,
-        workflow_label: Option<&str>,
-        debug_mode: bool,
-        input: ValueRef,
+        params: CreateRunParams,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Get workflow overrides for a run.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    ///
+    /// # Returns
+    /// The workflow overrides for the run (if any)
+    fn get_run_overrides(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>>;
 
     /// Update run status.
     ///
@@ -603,6 +638,9 @@ pub struct RunDetails {
     pub summary: RunSummary,
     pub input: ValueRef,
     pub result: Option<FlowResult>,
+    /// Optional workflow overrides applied to this run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<WorkflowOverrides>,
 }
 
 /// Filters for listing runs.
@@ -758,6 +796,7 @@ mod tests {
             result: Some(FlowResult::Success(stepflow_core::workflow::ValueRef::new(
                 json!({"test": "output"}),
             ))),
+            overrides: None,
         };
 
         // Serialize the RunDetails

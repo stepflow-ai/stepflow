@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use fastrace::prelude::SpanContext;
 use futures::future::FutureExt as _;
 use indexmap::IndexMap;
 use serde_json::json;
@@ -32,10 +31,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
     impl stepflow_plugin::Context for TestContext {
         fn submit_flow(
             &self,
-            _flow: Arc<stepflow_core::workflow::Flow>,
-            _flow_id: stepflow_core::BlobId,
-            _input: ValueRef,
-            _parent_context: Option<SpanContext>,
+            _params: stepflow_core::SubmitFlowParams,
         ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<uuid::Uuid>> {
             async move { Ok(Uuid::new_v4()) }.boxed()
         }
@@ -53,11 +49,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
         }
         fn submit_batch(
             &self,
-            _flow: Arc<stepflow_core::workflow::Flow>,
-            _flow_id: stepflow_core::BlobId,
-            _inputs: Vec<ValueRef>,
-            _max_concurrency: Option<usize>,
-            _parent_context: Option<SpanContext>,
+            _params: stepflow_core::SubmitBatchParams,
         ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<uuid::Uuid>> {
             async move { Ok(Uuid::new_v4()) }.boxed()
         }

@@ -485,10 +485,7 @@ mod tests {
     use futures::future::{BoxFuture, FutureExt as _};
     use std::path::Path;
     use std::sync::Arc;
-    use stepflow_core::{
-        BlobId, FlowResult,
-        workflow::{Flow, ValueRef},
-    };
+    use stepflow_core::{BlobId, FlowResult, workflow::ValueRef};
     use stepflow_plugin::{Context, Result as PluginResult};
     use stepflow_state::{InMemoryStateStore, StateStore};
     use uuid::Uuid;
@@ -509,10 +506,7 @@ mod tests {
     impl Context for MockContext {
         fn submit_flow(
             &self,
-            _flow: Arc<Flow>,
-            _flow_id: BlobId,
-            _input: ValueRef,
-            _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
+            _params: stepflow_core::SubmitFlowParams,
         ) -> BoxFuture<'_, PluginResult<Uuid>> {
             async { Ok(Uuid::new_v4()) }.boxed()
         }
@@ -531,11 +525,7 @@ mod tests {
 
         fn submit_batch(
             &self,
-            _flow: Arc<Flow>,
-            _flow_id: BlobId,
-            _inputs: Vec<ValueRef>,
-            _max_concurrency: Option<usize>,
-            _parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
+            _params: stepflow_core::SubmitBatchParams,
         ) -> BoxFuture<'_, PluginResult<Uuid>> {
             async { Ok(Uuid::new_v4()) }.boxed()
         }

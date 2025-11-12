@@ -16,7 +16,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::{BlobId, workflow::ValueRef};
+use stepflow_core::{
+    BlobId,
+    workflow::{ValueRef, WorkflowOverrides},
+};
 use stepflow_execution::StepflowExecutor;
 use stepflow_state::{BatchDetails, BatchFilters, BatchMetadata, BatchStatus, RunSummary};
 use utoipa::ToSchema;
@@ -35,6 +38,9 @@ pub struct CreateBatchRequest {
     /// Maximum number of concurrent executions (defaults to number of inputs if not specified)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_concurrency: Option<usize>,
+    /// Optional workflow overrides to apply before execution
+    #[serde(default, skip_serializing_if = "WorkflowOverrides::is_empty")]
+    pub overrides: WorkflowOverrides,
 }
 
 /// Response for create batch operations
@@ -165,16 +171,32 @@ pub async fn create_batch(
     // In the future, we could propagate trace context from HTTP headers.
     let parent_context = None;
 
+    // Parse overrides from request
+    let overrides = if req.overrides.is_empty() {
+        None
+    } else {
+        Some(req.overrides)
+    };
+
     // Use executor's submit_batch method which handles tracing
-    let batch_id = executor
-        .submit_batch(
-            flow.clone(),
-            req.flow_id.clone(),
-            req.inputs,
-            req.max_concurrency,
-            parent_context,
-        )
-        .await?;
+    let params =
+        stepflow_core::SubmitBatchParams::new(flow.clone(), req.flow_id.clone(), req.inputs);
+    let params = if let Some(max_concurrency) = req.max_concurrency {
+        params.with_max_concurrency(max_concurrency)
+    } else {
+        params
+    };
+    let params = if let Some(parent_context) = parent_context {
+        params.with_parent_context(parent_context)
+    } else {
+        params
+    };
+    let params = if let Some(overrides) = overrides {
+        params.with_overrides(overrides)
+    } else {
+        params
+    };
+    let batch_id = executor.submit_batch(params).await?;
 
     Ok(Json(CreateBatchResponse {
         batch_id,

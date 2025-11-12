@@ -31,6 +31,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
+    // Apply overrides column migration
+    apply_migration(pool, "003_add_overrides_column", || {
+        add_overrides_column(pool)
+    })
+    .await?;
+
     Ok(())
 }
 
@@ -251,6 +257,18 @@ async fn add_batch_execution_tables(pool: &SqlitePool) -> Result<(), StateError>
             .await
             .change_context(StateError::Initialization)?;
     }
+
+    Ok(())
+}
+
+/// Add overrides column to runs table
+async fn add_overrides_column(pool: &SqlitePool) -> Result<(), StateError> {
+    let sql = "ALTER TABLE runs ADD COLUMN overrides_json TEXT";
+
+    sqlx::query(sql)
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
 
     Ok(())
 }

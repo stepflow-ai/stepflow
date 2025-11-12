@@ -24,7 +24,6 @@ matchit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 stepflow-core.workspace = true
-stepflow-observability.workspace = true
 stepflow-state.workspace = true
 thiserror.workspace = true
 trait-variant.workspace = true

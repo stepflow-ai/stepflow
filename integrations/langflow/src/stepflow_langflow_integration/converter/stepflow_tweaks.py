@@ -257,9 +257,67 @@ def apply_stepflow_tweaks_to_dict(
     return modified_dict
 
 
+def convert_tweaks_to_overrides(
+    tweaks: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]] | None:
+    """Convert Langflow tweaks format to StepFlow overrides format.
+
+    This function transforms tweaks from the early binding format (modifying flow)
+    to the late binding format (runtime overrides). Instead of modifying the flow
+    directly, we create overrides that are applied at execution time.
+
+    Args:
+        tweaks: Dict mapping langflow_node_id -> {field_name: new_value}
+
+    Returns:
+        Dict mapping step_id to merge_patch format with field overrides
+        or None if no tweaks provided
+
+    Examples:
+        >>> tweaks = {
+        ...     "LanguageModelComponent-kBOja": {
+        ...         "api_key": "new_test_key",
+        ...         "temperature": 0.8,
+        ...     }
+        ... }
+        >>> overrides = convert_tweaks_to_overrides(tweaks)
+        >>> print(overrides)
+        {
+            "langflow_LanguageModelComponent-kBOja": {
+                "$type": "merge_patch",
+                "value": {
+                    "input": {
+                        "api_key": "new_test_key",
+                        "temperature": 0.8,
+                    }
+                }
+            }
+        }
+    """
+    if not tweaks:
+        return None
+
+    overrides = {}
+
+    for langflow_node_id, field_tweaks in tweaks.items():
+        # Convert Langflow node ID to StepFlow step ID format
+        step_id = f"langflow_{langflow_node_id}"
+
+        # Create the override value structure that matches step.input structure
+        # We need to wrap the field tweaks in an "input.input" key to match how
+        # the current tweaks modify step.input["input"][field_name]
+        override_value = {"input": {"input": field_tweaks}}
+
+        # Create the override entry with merge patch type
+        overrides[step_id] = {"$type": "merge_patch", "value": override_value}
+
+    return overrides
+
+
 # Export main classes and functions for easy importing
 __all__ = [
     "StepflowTweaks",
     "apply_stepflow_tweaks",
     "apply_stepflow_tweaks_to_dict",
+    "convert_tweaks_to_overrides",
 ]

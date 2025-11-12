@@ -439,19 +439,17 @@ async fn test_create_run_with_invalid_overrides() {
         .call(create_run_request)
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // With late binding, invalid overrides are stored but don't cause immediate API errors
+    // They would be ignored during execution if they reference non-existent steps
+    assert_eq!(response.status(), StatusCode::OK);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let run_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(
-        error_response["message"]
-            .as_str()
-            .unwrap()
-            .contains("Failed to apply overrides")
-    );
+    // Should still get a valid run ID even with invalid overrides
+    assert!(run_response["runId"].as_str().is_some());
 }
 
 #[tokio::test]

@@ -314,6 +314,17 @@
           "description": "The input to provide to the flow.",
           "$ref": "#/$defs/Value"
         },
+        "overrides": {
+          "description": "Optional workflow overrides to apply before execution.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "observability": {
           "description": "Observability context for tracing nested flow execution.",
           "anyOf": [
@@ -329,6 +340,45 @@
       "required": [
         "flow_id",
         "input"
+      ]
+    },
+    "WorkflowOverrides": {
+      "description": "Workflow overrides that can be applied to modify step behavior at runtime.\n\nOverrides are keyed by step ID and contain merge patches or other transformation\nspecifications to modify step properties before execution.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/StepOverride"
+      }
+    },
+    "StepOverride": {
+      "description": "Override specification for a single step.\n\nContains the override type (merge patch, json patch, etc.) and the value\nto apply. The type field uses `$type` to avoid collisions with step properties.",
+      "type": "object",
+      "properties": {
+        "$type": {
+          "description": "The type of override to apply. Defaults to \"merge_patch\" if not specified.",
+          "$ref": "#/$defs/OverrideType",
+          "default": "merge_patch"
+        },
+        "value": {
+          "description": "The override value to apply, interpreted based on the override type."
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "OverrideType": {
+      "description": "The type of override operation to perform.",
+      "oneOf": [
+        {
+          "description": "Apply a JSON Merge Patch (RFC 7396) to the step.\n\nThis is the default override type. The value should be a JSON object\nwhere null values indicate fields to remove and other values are merged\ninto the target step.",
+          "type": "string",
+          "const": "merge_patch"
+        },
+        {
+          "description": "Apply a JSON Patch (RFC 6902) to the step. (Future extension)\n\nThe value should be an array of JSON Patch operations.\nThis is reserved for future use.",
+          "type": "string",
+          "const": "json_patch"
+        }
       ]
     },
     "GetFlowMetadataParams": {
@@ -376,6 +426,17 @@
           "items": {
             "$ref": "#/$defs/Value"
           }
+        },
+        "overrides": {
+          "description": "Optional workflow overrides to apply to all runs before execution.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "max_concurrency": {
           "description": "Maximum number of concurrent executions (defaults to number of inputs if not specified).",

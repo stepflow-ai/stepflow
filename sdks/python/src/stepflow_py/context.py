@@ -215,12 +215,13 @@ class StepflowContext:
         """Get the current attempt number (1-based, for retry logic)."""
         return self._attempt
 
-    async def evaluate_flow(self, flow: Flow, input: Any) -> Any:
+    async def evaluate_flow(self, flow: Flow, input: Any, overrides: Any = None) -> Any:
         """Evaluate a flow with the given input.
 
         Args:
             flow: The flow definition
             input: The input to provide to the flow
+            overrides: Optional workflow overrides to apply before execution
 
         Returns:
             The result value on success
@@ -239,14 +240,17 @@ class StepflowContext:
         flow_id = await self.put_blob(flow_dict, BlobType.flow)
 
         # Delegate to evaluate_flow_by_id for the actual evaluation
-        return await self.evaluate_flow_by_id(flow_id, input)
+        return await self.evaluate_flow_by_id(flow_id, input, overrides=overrides)
 
-    async def evaluate_flow_by_id(self, flow_id: str, input: Any) -> Any:
+    async def evaluate_flow_by_id(
+        self, flow_id: str, input: Any, overrides: Any = None
+    ) -> Any:
         """Evaluate a flow by its blob ID with the given input.
 
         Args:
             flow_id: The blob ID of the flow to evaluate
             input: The input to provide to the flow
+            overrides: Optional workflow overrides to apply before execution
 
         Returns:
             The result value on success
@@ -269,6 +273,7 @@ class StepflowContext:
             params = EvaluateFlowParams(
                 flow_id=flow_id,
                 input=input,
+                overrides=overrides,
                 observability=self.current_observability_context(),
             )
             evaluate_result = await self._send_request(
@@ -340,6 +345,7 @@ class StepflowContext:
         flow: Flow,
         inputs: list[Any],
         max_concurrency: int | None = None,
+        overrides: Any = None,
     ) -> str:
         """Submit a batch of inputs for parallel execution and return the batch ID.
 
@@ -347,6 +353,7 @@ class StepflowContext:
             flow: The flow definition to execute
             inputs: List of inputs to process in parallel
             max_concurrency: Maximum number of concurrent executions (optional)
+            overrides: Optional workflow overrides to apply to all runs before execution
 
         Returns:
             The batch ID for tracking the batch execution
@@ -360,13 +367,16 @@ class StepflowContext:
         flow_id = await self.put_blob(flow_dict, BlobType.flow)
 
         # Delegate to submit_batch_by_id
-        return await self.submit_batch_by_id(flow_id, inputs, max_concurrency)
+        return await self.submit_batch_by_id(
+            flow_id, inputs, max_concurrency, overrides=overrides
+        )
 
     async def submit_batch_by_id(
         self,
         flow_id: str,
         inputs: list[Any],
         max_concurrency: int | None = None,
+        overrides: Any = None,
     ) -> str:
         """Submit a batch of inputs for parallel execution using a flow ID.
 
@@ -374,6 +384,7 @@ class StepflowContext:
             flow_id: The blob ID of the flow to execute
             inputs: List of inputs to process in parallel
             max_concurrency: Maximum number of concurrent executions (optional)
+            overrides: Optional workflow overrides to apply to all runs before execution
 
         Returns:
             The batch ID for tracking the batch execution
@@ -392,6 +403,7 @@ class StepflowContext:
             params = SubmitBatchParams(
                 flow_id=flow_id,
                 inputs=inputs,
+                overrides=overrides,
                 max_concurrency=max_concurrency,
                 observability=self.current_observability_context(),
             )
@@ -444,6 +456,7 @@ class StepflowContext:
         flow: Flow,
         inputs: list[Any],
         max_concurrency: int | None = None,
+        overrides: Any = None,
     ) -> list[Any]:
         """Submit a batch, wait for completion, and return all results.
 
@@ -454,6 +467,7 @@ class StepflowContext:
             flow: The flow definition to execute
             inputs: List of inputs to process in parallel
             max_concurrency: Maximum number of concurrent executions (optional)
+            overrides: Optional workflow overrides to apply to all runs before execution
 
         Returns:
             List of results corresponding to each input, in the same order
@@ -470,13 +484,16 @@ class StepflowContext:
         flow_id = await self.put_blob(flow_dict, BlobType.flow)
 
         # Delegate to evaluate_batch_by_id
-        return await self.evaluate_batch_by_id(flow_id, inputs, max_concurrency)
+        return await self.evaluate_batch_by_id(
+            flow_id, inputs, max_concurrency, overrides=overrides
+        )
 
     async def evaluate_batch_by_id(
         self,
         flow_id: str,
         inputs: list[Any],
         max_concurrency: int | None = None,
+        overrides: Any = None,
     ) -> list[Any]:
         """Submit a batch by flow ID, wait for completion, and return all results.
 
@@ -487,6 +504,7 @@ class StepflowContext:
             flow_id: The blob ID of the flow to execute
             inputs: List of inputs to process in parallel
             max_concurrency: Maximum number of concurrent executions (optional)
+            overrides: Optional workflow overrides to apply to all runs before execution
 
         Returns:
             List of results corresponding to each input, in the same order
@@ -497,7 +515,9 @@ class StepflowContext:
         from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
 
         # Submit the batch
-        batch_id = await self.submit_batch_by_id(flow_id, inputs, max_concurrency)
+        batch_id = await self.submit_batch_by_id(
+            flow_id, inputs, max_concurrency, overrides=overrides
+        )
 
         # Wait for completion and get results
         _details, outputs = await self.get_batch(

@@ -12,7 +12,10 @@
 
 use error_stack::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
-use stepflow_core::{BlobId, workflow::Flow};
+use stepflow_core::{
+    BlobId,
+    workflow::{Flow, WorkflowOverrides},
+};
 use url::Url;
 
 use crate::{
@@ -135,6 +138,9 @@ pub enum Command {
 
         #[command(flatten)]
         config_args: ConfigArgs,
+
+        #[command(flatten)]
+        override_args: OverrideArgs,
     },
     /// Submit a batch workflow to a Stepflow service for execution.
     ///
@@ -446,19 +452,10 @@ impl Cli {
                 let flow_dir = flow_path.parent();
                 let config = config_args.load_config(flow_dir)?;
 
-                // Apply overrides before validation and execution
+                // Parse overrides without applying them (late binding)
                 let overrides = override_args.parse_overrides()?;
+
                 let flow = Arc::new(flow);
-                let flow = if !overrides.is_empty() {
-                    log::info!(
-                        "Applying {} step overrides to workflow",
-                        overrides.steps.len()
-                    );
-                    stepflow_core::workflow::apply_overrides(flow, &overrides)
-                        .change_context(crate::MainError::Configuration)?
-                } else {
-                    flow
-                };
 
                 // Validate workflow and configuration before execution
                 let diagnostics =
@@ -477,7 +474,7 @@ impl Cli {
 
                 let flow_id =
                     BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
-                let (run_id, output) = run(executor, flow, flow_id, input).await?;
+                let (run_id, output) = run(executor, flow, flow_id, input, overrides).await?;
                 // Output run_id without hyphens for Jaeger trace ID compatibility
                 eprintln!("run_id: {}", run_id.simple());
                 output_args.write_output(output)?;
@@ -489,6 +486,7 @@ impl Cli {
                 max_concurrent,
                 output_path,
                 config_args,
+                override_args,
             } => {
                 use stepflow_plugin::Context as _;
 
@@ -507,6 +505,9 @@ impl Cli {
                 if failure_count > 0 {
                     std::process::exit(1);
                 }
+
+                // Parse overrides before execution
+                let overrides = override_args.parse_overrides()?;
 
                 let executor = WorkflowLoader::create_executor_from_config(config).await?;
                 let flow_id =
@@ -535,8 +536,19 @@ impl Cli {
                 eprintln!("📦 Running batch with {} inputs", total_inputs);
 
                 // Submit batch execution
+                let params = stepflow_core::SubmitBatchParams::new(flow.clone(), flow_id, inputs);
+                let params = if let Some(max_concurrent) = max_concurrent {
+                    params.with_max_concurrency(max_concurrent)
+                } else {
+                    params
+                };
+                let params = if let Some(overrides) = overrides {
+                    params.with_overrides(overrides)
+                } else {
+                    params
+                };
                 let batch_id = executor
-                    .submit_batch(flow.clone(), flow_id, inputs, max_concurrent, None)
+                    .submit_batch(params)
                     .await
                     .change_context(crate::MainError::Configuration)?;
 
@@ -616,7 +628,13 @@ impl Cli {
                 // Parse overrides for submission
                 let overrides = override_args.parse_overrides()?;
 
-                let output = submit(url, flow, input, &overrides).await?;
+                let output = submit(
+                    url,
+                    flow,
+                    input,
+                    overrides.as_ref().unwrap_or(&WorkflowOverrides::new()),
+                )
+                .await?;
                 output_args.write_output(output.clone())?;
 
                 // Exit with non-zero status if workflow execution failed

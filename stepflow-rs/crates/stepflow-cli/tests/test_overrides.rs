@@ -22,7 +22,7 @@ async fn test_override_args_parsing() {
     // Test empty overrides
     let args = OverrideArgs::default();
     let overrides = args.parse_overrides().unwrap();
-    assert!(overrides.is_empty());
+    assert!(overrides.is_none());
 
     // Test JSON overrides parsing
     let args = OverrideArgs {
@@ -32,8 +32,8 @@ async fn test_override_args_parsing() {
         ..Default::default()
     };
     let overrides = args.parse_overrides().unwrap();
-    assert!(!overrides.is_empty());
-    assert!(overrides.steps.contains_key("step1"));
+    assert!(overrides.is_some());
+    assert!(overrides.unwrap().steps.contains_key("step1"));
 
     // Test YAML overrides parsing
     let args = OverrideArgs {
@@ -41,8 +41,8 @@ async fn test_override_args_parsing() {
         ..Default::default()
     };
     let overrides = args.parse_overrides().unwrap();
-    assert!(!overrides.is_empty());
-    assert!(overrides.steps.contains_key("step1"));
+    assert!(overrides.is_some());
+    assert!(overrides.unwrap().steps.contains_key("step1"));
 }
 
 #[tokio::test]
@@ -85,8 +85,8 @@ async fn test_override_args_file_loading() {
         ..Default::default()
     };
     let overrides = args.parse_overrides().unwrap();
-    assert!(!overrides.is_empty());
-    assert!(overrides.steps.contains_key("step1"));
+    assert!(overrides.is_some());
+    assert!(overrides.unwrap().steps.contains_key("step1"));
 
     // Test YAML file
     let yaml_file = temp_dir.path().join("overrides.yaml");
@@ -101,8 +101,8 @@ async fn test_override_args_file_loading() {
         ..Default::default()
     };
     let overrides = args.parse_overrides().unwrap();
-    assert!(!overrides.is_empty());
-    assert!(overrides.steps.contains_key("step1"));
+    assert!(overrides.is_some());
+    assert!(overrides.unwrap().steps.contains_key("step1"));
 }
 
 #[test]
@@ -155,7 +155,8 @@ async fn test_complex_override_structures() {
     };
     let overrides = args.parse_overrides().unwrap();
 
-    assert!(!overrides.is_empty());
+    assert!(overrides.is_some());
+    let overrides = overrides.unwrap();
     assert_eq!(overrides.steps.len(), 2);
     assert!(overrides.steps.contains_key("step1"));
     assert!(overrides.steps.contains_key("step2"));
@@ -200,6 +201,7 @@ async fn test_override_serialization_roundtrip() {
     let parsed_overrides = args.parse_overrides().unwrap();
 
     // Verify roundtrip
+    let parsed_overrides = parsed_overrides.unwrap();
     assert_eq!(overrides.steps.len(), parsed_overrides.steps.len());
     assert!(parsed_overrides.steps.contains_key("step1"));
 }
