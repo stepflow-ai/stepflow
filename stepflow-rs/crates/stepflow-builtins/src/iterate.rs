@@ -111,7 +111,7 @@ impl BuiltinComponent for IterateComponent {
 
             // Execute the workflow
             let result = context
-                .execute_flow(flow.clone(), flow_id.clone(), current_input)
+                .execute_flow(flow.clone(), flow_id.clone(), current_input, None)
                 .await
                 .change_context(BuiltinError::Internal)?;
 

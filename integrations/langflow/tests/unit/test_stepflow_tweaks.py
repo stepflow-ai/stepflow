@@ -18,6 +18,7 @@ import pytest
 
 from stepflow_langflow_integration.converter.stepflow_tweaks import (
     apply_stepflow_tweaks,
+    convert_tweaks_to_overrides,
 )
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 from tests.helpers.tweaks_builder import TweaksBuilder
@@ -25,6 +26,57 @@ from tests.helpers.tweaks_builder import TweaksBuilder
 
 class TestStepflowTweaks:
     """Test Stepflow-level tweaks functionality."""
+
+    def test_convert_tweaks_to_overrides_basic(self):
+        """Test basic tweaks to overrides conversion."""
+        tweaks = {
+            "LanguageModelComponent-kBOja": {
+                "api_key": "sk-test-key",
+                "temperature": 0.7,
+            }
+        }
+
+        overrides = convert_tweaks_to_overrides(tweaks)
+
+        assert overrides is not None
+        assert "langflow_LanguageModelComponent-kBOja" in overrides
+
+        step_override = overrides["langflow_LanguageModelComponent-kBOja"]
+        assert step_override["$type"] == "merge_patch"
+        assert "input" in step_override["value"]
+
+        input_overrides = step_override["value"]["input"]["input"]
+        assert input_overrides["api_key"] == "sk-test-key"
+        assert input_overrides["temperature"] == 0.7
+
+    def test_convert_tweaks_to_overrides_empty(self):
+        """Test conversion with no tweaks returns None."""
+        assert convert_tweaks_to_overrides(None) is None
+        assert convert_tweaks_to_overrides({}) is None
+
+    def test_convert_tweaks_to_overrides_multiple_steps(self):
+        """Test conversion with multiple steps."""
+        tweaks = {
+            "Step1": {"field1": "value1"},
+            "Step2": {"field2": "value2", "field3": 123},
+        }
+
+        overrides = convert_tweaks_to_overrides(tweaks)
+
+        assert len(overrides) == 2
+        assert "langflow_Step1" in overrides
+        assert "langflow_Step2" in overrides
+
+        # Check Step1
+        assert overrides["langflow_Step1"]["$type"] == "merge_patch"
+        step1_input = overrides["langflow_Step1"]["value"]["input"]["input"]
+        assert step1_input["field1"] == "value1"
+
+        # Check Step2
+        assert overrides["langflow_Step2"]["$type"] == "merge_patch"
+        step2_input = overrides["langflow_Step2"]["value"]["input"]["input"]
+        assert step2_input["field2"] == "value2"
+        assert step2_input["field3"] == 123
 
 
 class TestStepflowTweaksIntegration:

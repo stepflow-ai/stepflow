@@ -135,24 +135,28 @@ impl SqliteStateStore {
     /// Synchronous version of create_run for background worker
     async fn create_run_sync(
         pool: &SqlitePool,
-        run_id: Uuid,
-        flow_id: BlobId,
-        flow_name: Option<String>,
-        flow_label: Option<String>,
-        debug_mode: bool,
-        input: ValueRef,
+        params: stepflow_state::CreateRunParams,
     ) -> Result<(), StateError> {
-        let input_json =
-            serde_json::to_string(input.as_ref()).change_context(StateError::Serialization)?;
-        let sql = "INSERT INTO runs (id, flow_id, flow_name, flow_label, status, debug_mode, input_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
+        let input_json = serde_json::to_string(params.input.as_ref())
+            .change_context(StateError::Serialization)?;
+        let overrides_json = if params.overrides.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::to_string(&params.overrides)
+                    .change_context(StateError::Serialization)?,
+            )
+        };
+        let sql = "INSERT INTO runs (id, flow_id, flow_name, flow_label, status, debug_mode, input_json, overrides_json) VALUES (?, ?, ?, ?, 'running', ?, ?, ?)";
 
         sqlx::query(sql)
-            .bind(run_id.to_string())
-            .bind(flow_id.to_string())
-            .bind(flow_name)
-            .bind(flow_label)
-            .bind(debug_mode)
+            .bind(params.run_id.to_string())
+            .bind(params.flow_id.to_string())
+            .bind(&params.workflow_name)
+            .bind(&params.workflow_label)
+            .bind(params.debug_mode)
             .bind(&input_json)
+            .bind(&overrides_json)
             .execute(pool)
             .await
             .change_context(StateError::Internal)?;
@@ -716,31 +720,12 @@ impl StateStore for SqliteStateStore {
 
     fn create_run(
         &self,
-        run_id: Uuid,
-        flow_id: BlobId,
-        flow_name: Option<&str>,
-        flow_label: Option<&str>,
-        debug_mode: bool,
-        input: ValueRef,
+        params: stepflow_state::CreateRunParams,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         // Execute synchronously to avoid race condition with step results
         let pool = self.pool.clone();
-        let workflow_name = flow_name.map(|s| s.to_string());
-        let workflow_label = flow_label.map(|s| s.to_string());
 
-        async move {
-            Self::create_run_sync(
-                &pool,
-                run_id,
-                flow_id,
-                workflow_name,
-                workflow_label,
-                debug_mode,
-                input,
-            )
-            .await
-        }
-        .boxed()
+        async move { Self::create_run_sync(&pool, params).await }.boxed()
     }
 
     fn update_run_status(
@@ -853,6 +838,7 @@ impl StateStore for SqliteStateStore {
                         },
                         input,
                         result: result.map(FlowResult::Success),
+                        overrides: None, // TODO: Store and retrieve overrides from database
                     };
 
                     Ok(Some(details))
@@ -860,6 +846,17 @@ impl StateStore for SqliteStateStore {
                 None => Ok(None),
             }
         }.boxed()
+    }
+
+    fn get_run_overrides(
+        &self,
+        _run_id: Uuid,
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Option<stepflow_core::workflow::WorkflowOverrides>, StateError>,
+    > {
+        // TODO: Implement override storage/retrieval in SQL database
+        async move { Ok(None) }.boxed()
     }
 
     fn list_runs(

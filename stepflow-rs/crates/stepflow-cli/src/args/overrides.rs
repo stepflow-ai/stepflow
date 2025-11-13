@@ -48,8 +48,8 @@ pub struct OverrideArgs {
 impl OverrideArgs {
     /// Parse overrides from the various sources into WorkflowOverrides
     ///
-    /// Returns empty overrides if no override sources are specified.
-    pub fn parse_overrides(&self) -> Result<WorkflowOverrides> {
+    /// Returns None if no override sources are specified.
+    pub fn parse_overrides(&self) -> Result<Option<WorkflowOverrides>> {
         match (
             &self.overrides_file,
             &self.overrides_json,
@@ -57,21 +57,36 @@ impl OverrideArgs {
         ) {
             (Some(path), None, None) => {
                 // Load from file
-                load(path)
+                let overrides: WorkflowOverrides = load(path)?;
+                Ok(if overrides.is_empty() {
+                    None
+                } else {
+                    Some(overrides)
+                })
             }
             (None, Some(json), None) => {
                 // Parse JSON string
-                serde_json::from_str(json)
-                    .change_context(MainError::ReplCommand("Invalid JSON overrides".to_string()))
+                let overrides: WorkflowOverrides = serde_json::from_str(json)
+                    .change_context(MainError::ReplCommand("Invalid JSON overrides".to_string()))?;
+                Ok(if overrides.is_empty() {
+                    None
+                } else {
+                    Some(overrides)
+                })
             }
             (None, None, Some(yaml)) => {
                 // Parse YAML string
-                serde_yaml_ng::from_str(yaml)
-                    .change_context(MainError::ReplCommand("Invalid YAML overrides".to_string()))
+                let overrides: WorkflowOverrides = serde_yaml_ng::from_str(yaml)
+                    .change_context(MainError::ReplCommand("Invalid YAML overrides".to_string()))?;
+                Ok(if overrides.is_empty() {
+                    None
+                } else {
+                    Some(overrides)
+                })
             }
             (None, None, None) => {
                 // No overrides specified
-                Ok(WorkflowOverrides::new())
+                Ok(None)
             }
             _ => {
                 // This should be prevented by clap conflicts_with_all, but just in case
@@ -139,7 +154,7 @@ mod tests {
     fn test_parse_overrides_empty() {
         let args = OverrideArgs::default();
         let overrides = args.parse_overrides().unwrap();
-        assert!(overrides.is_empty());
+        assert!(overrides.is_none());
     }
 
     #[test]
@@ -151,8 +166,8 @@ mod tests {
             ..Default::default()
         };
         let overrides = args.parse_overrides().unwrap();
-        assert!(!overrides.is_empty());
-        assert!(overrides.steps.contains_key("step1"));
+        assert!(overrides.is_some());
+        assert!(overrides.unwrap().steps.contains_key("step1"));
     }
 
     #[test]
@@ -164,8 +179,8 @@ mod tests {
             ..Default::default()
         };
         let overrides = args.parse_overrides().unwrap();
-        assert!(!overrides.is_empty());
-        assert!(overrides.steps.contains_key("step1"));
+        assert!(overrides.is_some());
+        assert!(overrides.unwrap().steps.contains_key("step1"));
     }
 
     #[test]

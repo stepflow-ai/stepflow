@@ -90,7 +90,7 @@ impl BuiltinComponent for MapComponent {
 
         // Use batch execution API for efficient parallel processing
         let results = context
-            .execute_batch(flow, flow_id, input.items, input.max_concurrency)
+            .execute_batch(flow, flow_id, input.items, input.max_concurrency, None)
             .await
             .change_context(BuiltinError::Internal)?;
 

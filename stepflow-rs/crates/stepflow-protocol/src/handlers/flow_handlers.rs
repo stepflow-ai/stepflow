@@ -43,9 +43,10 @@ impl MethodHandler for EvaluateFlowHandler {
             request,
             response_tx,
             async move |request: crate::protocol::EvaluateFlowParams| {
-                // Execute the flow using the shared utility
+                // Execute the flow - overrides are handled deeper in the execution engine
+                let overrides = request.overrides;
                 let result = context
-                    .execute_flow_by_id(&request.flow_id, request.input)
+                    .execute_flow_by_id(&request.flow_id, request.input, overrides)
                     .await
                     .map_err(|e| {
                         log::error!("Failed to evaluate flow: {e}");
@@ -124,20 +125,23 @@ impl MethodHandler for SubmitBatchHandler {
                     .ok_or_else(|| Error::internal("Invalid flow blob"))?
                     .clone();
 
-                // Submit the batch
-                let batch_id = context
-                    .submit_batch(
-                        flow,
-                        request.flow_id,
-                        request.inputs,
-                        request.max_concurrency,
-                        None, // No parent context for protocol-level batch submissions
-                    )
-                    .await
-                    .map_err(|e| {
-                        log::error!("Failed to submit batch: {e}");
-                        Error::internal("Failed to submit batch")
-                    })?;
+                // Submit the batch - overrides are handled deeper in the execution engine
+                let params =
+                    stepflow_core::SubmitBatchParams::new(flow, request.flow_id, request.inputs);
+                let params = if let Some(max_concurrency) = request.max_concurrency {
+                    params.with_max_concurrency(max_concurrency)
+                } else {
+                    params
+                };
+                let params = if let Some(overrides) = request.overrides {
+                    params.with_overrides(overrides)
+                } else {
+                    params
+                };
+                let batch_id = context.submit_batch(params).await.map_err(|e| {
+                    log::error!("Failed to submit batch: {e}");
+                    Error::internal("Failed to submit batch")
+                })?;
 
                 let batch_metadata =
                     context

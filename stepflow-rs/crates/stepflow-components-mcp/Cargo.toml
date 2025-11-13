@@ -43,4 +43,3 @@ subst.workspace = true
 stepflow-state.workspace = true
 futures.workspace = true
 uuid.workspace = true
-fastrace.workspace = true

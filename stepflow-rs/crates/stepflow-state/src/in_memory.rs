@@ -19,14 +19,14 @@ use stepflow_core::status::ExecutionStatus;
 use crate::{
     StateStore,
     state_store::{
-        BatchFilters, BatchMetadata, BatchStatistics, BatchStatus, RunDetails, RunFilters,
-        RunSummary, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
+        BatchFilters, BatchMetadata, BatchStatistics, BatchStatus, CreateRunParams, RunDetails,
+        RunFilters, RunSummary, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
     },
 };
 use stepflow_core::{
     FlowResult,
     blob::{BlobData, BlobId, BlobType},
-    workflow::{Flow, ValueRef},
+    workflow::{Flow, ValueRef, WorkflowOverrides},
 };
 use uuid::Uuid;
 
@@ -168,6 +168,7 @@ impl InMemoryStateStore {
                 },
                 input: ValueRef::new(serde_json::Value::Null),
                 result: None,
+                overrides: None,
             })
         });
 
@@ -471,32 +472,47 @@ impl StateStore for InMemoryStateStore {
 
     fn create_run(
         &self,
-        run_id: Uuid,
-        flow_id: BlobId,
-        workflow_name: Option<&str>,
-        workflow_label: Option<&str>,
-        debug_mode: bool,
-        input: ValueRef,
+        params: CreateRunParams,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let now = chrono::Utc::now();
         let execution_details = RunDetails {
             summary: RunSummary {
-                run_id,
-                flow_id,
-                flow_name: workflow_name.map(|s| s.to_string()),
-                flow_label: workflow_label.map(|s| s.to_string()),
+                run_id: params.run_id,
+                flow_id: params.flow_id,
+                flow_name: params.workflow_name,
+                flow_label: params.workflow_label,
                 status: ExecutionStatus::Running,
-                debug_mode,
+                debug_mode: params.debug_mode,
                 created_at: now,
                 completed_at: None,
             },
-            input,
+            input: params.input,
             result: None,
+            overrides: if params.overrides.is_empty() {
+                None
+            } else {
+                Some(params.overrides)
+            },
         };
 
         async move {
-            self.runs.insert(run_id, RunState::new(execution_details));
+            self.runs
+                .insert(params.run_id, RunState::new(execution_details));
             Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_run_overrides(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>> {
+        async move {
+            Ok(self
+                .runs
+                .get(&run_id)
+                .map(|run_state| run_state.details.overrides.clone())
+                .unwrap_or(None))
         }
         .boxed()
     }
@@ -1184,14 +1200,15 @@ mod tests {
         for (idx, run_id) in run_ids.iter().enumerate() {
             // Create run
             store
-                .create_run(
-                    *run_id,
-                    flow_id.clone(),
-                    Some("test-flow"),
-                    None,
-                    false,
-                    ValueRef::new(serde_json::json!({"input": idx})),
-                )
+                .create_run(CreateRunParams {
+                    run_id: *run_id,
+                    flow_id: flow_id.clone(),
+                    workflow_name: Some("test-flow".to_string()),
+                    workflow_label: None,
+                    debug_mode: false,
+                    input: ValueRef::new(serde_json::json!({"input": idx})),
+                    overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+                })
                 .await
                 .unwrap();
 
@@ -1252,14 +1269,15 @@ mod tests {
         for (idx, (run_id, status)) in run_ids.iter().zip(statuses.iter()).enumerate() {
             // Create run
             store
-                .create_run(
-                    *run_id,
-                    flow_id.clone(),
-                    Some("test-flow"),
-                    None,
-                    false,
-                    ValueRef::new(serde_json::json!({"input": idx})),
-                )
+                .create_run(CreateRunParams {
+                    run_id: *run_id,
+                    flow_id: flow_id.clone(),
+                    workflow_name: Some("test-flow".to_string()),
+                    workflow_label: None,
+                    debug_mode: false,
+                    input: ValueRef::new(serde_json::json!({"input": idx})),
+                    overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+                })
                 .await
                 .unwrap();
 
@@ -1412,14 +1430,15 @@ mod tests {
 
         for (idx, run_id) in run_ids.iter().enumerate() {
             store
-                .create_run(
-                    *run_id,
-                    flow_id.clone(),
-                    Some("test-flow"),
-                    None,
-                    false,
-                    ValueRef::new(serde_json::json!({"input": idx})),
-                )
+                .create_run(CreateRunParams {
+                    run_id: *run_id,
+                    flow_id: flow_id.clone(),
+                    workflow_name: Some("test-flow".to_string()),
+                    workflow_label: None,
+                    debug_mode: false,
+                    input: ValueRef::new(serde_json::json!({"input": idx})),
+                    overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+                })
                 .await
                 .unwrap();
 

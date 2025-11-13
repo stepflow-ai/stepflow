@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use stepflow_core::workflow::ValueRef;
+use stepflow_core::workflow::{ValueRef, WorkflowOverrides};
 use stepflow_core::{BlobId, FlowResult};
 
 use crate::protocol::Method;
@@ -28,6 +28,9 @@ pub struct EvaluateFlowParams {
     pub flow_id: BlobId,
     /// The input to provide to the flow.
     pub input: ValueRef,
+    /// Optional workflow overrides to apply before execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<WorkflowOverrides>,
     /// Observability context for tracing nested flow execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityContext>,
@@ -102,6 +105,9 @@ pub struct SubmitBatchParams {
     pub flow_id: BlobId,
     /// The inputs to provide to the flow for each run.
     pub inputs: Vec<ValueRef>,
+    /// Optional workflow overrides to apply to all runs before execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<WorkflowOverrides>,
     /// Maximum number of concurrent executions (defaults to number of inputs if not specified).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_concurrency: Option<usize>,

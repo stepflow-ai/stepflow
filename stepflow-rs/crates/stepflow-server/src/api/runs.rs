@@ -130,34 +130,13 @@ pub async fn create_run(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
 
-    // Apply overrides to the flow if provided
-    let flow = if !req.overrides.is_empty() {
-        log::info!(
-            "Applying {} step overrides to workflow",
-            req.overrides.steps.len()
-        );
-        stepflow_core::workflow::apply_overrides(flow, &req.overrides).map_err(|e| {
-            ErrorResponse {
-                code: axum::http::StatusCode::BAD_REQUEST,
-                message: format!("Failed to apply overrides: {}", e),
-                stack: vec![],
-            }
-        })?
-    } else {
-        flow
-    };
-
     // Create execution record
-    state_store
-        .create_run(
-            run_id,
-            req.flow_id.clone(),
-            flow.name(), // Use flow name if available
-            None,        // No flow label for hash-based execution
-            req.debug,
-            req.input.clone(),
-        )
-        .await?;
+    let mut params =
+        stepflow_state::CreateRunParams::new(run_id, req.flow_id.clone(), req.input.clone());
+    params.workflow_name = flow.name().map(|s| s.to_string());
+    params.debug_mode = req.debug;
+    params.overrides = req.overrides.clone();
+    state_store.create_run(params).await?;
 
     let debug_mode = req.debug;
     let input = req.input;
@@ -182,7 +161,18 @@ pub async fn create_run(
     use stepflow_plugin::Context as _;
 
     // Submit the flow for execution
-    let submitted_run_id = executor.submit_flow(flow, flow_id, input, None).await?;
+    let overrides = if req.overrides.is_empty() {
+        None
+    } else {
+        Some(req.overrides)
+    };
+    let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input);
+    let params = if let Some(overrides) = overrides {
+        params.with_overrides(overrides)
+    } else {
+        params
+    };
+    let submitted_run_id = executor.submit_flow(params).await?;
 
     // Wait for the result (synchronous execution for the HTTP endpoint)
     let flow_result = executor.flow_result(submitted_run_id).await?;

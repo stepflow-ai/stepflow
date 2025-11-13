@@ -23,9 +23,16 @@ pub async fn run(
     flow: Arc<Flow>,
     flow_id: BlobId,
     input: stepflow_core::workflow::ValueRef,
+    overrides: Option<stepflow_core::workflow::WorkflowOverrides>,
 ) -> Result<(uuid::Uuid, FlowResult)> {
+    let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input);
+    let params = if let Some(overrides) = overrides {
+        params.with_overrides(overrides)
+    } else {
+        params
+    };
     let run_id = executor
-        .submit_flow(flow, flow_id, input, None)
+        .submit_flow(params)
         .await
         .change_context(MainError::FlowExecution)?;
     let output = executor

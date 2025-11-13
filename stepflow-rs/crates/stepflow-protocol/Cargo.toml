@@ -24,7 +24,6 @@ schemars.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 stepflow-core.workspace = true
-stepflow-observability.workspace = true
 stepflow-plugin.workspace = true
 subst.workspace = true
 strum.workspace = true

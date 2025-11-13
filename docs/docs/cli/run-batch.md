@@ -45,6 +45,15 @@ stepflow run-batch --flow=workflow.yaml --inputs=inputs.jsonl --output=results.j
 * `--config <FILE>` — The path to the stepflow config file.
 
    If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
+* `--overrides <FILE>` — Path to a file containing workflow overrides (JSON or YAML format).
+
+   Overrides allow you to modify step properties at runtime without changing the original workflow file. Format is inferred from file extension.
+* `--overrides-json <JSON>` — Workflow overrides as a JSON string.
+
+   Specify overrides inline as JSON. Example: `--overrides-json '{"step1": {"value": {"input": {"temperature": 0.8}}}}'`
+* `--overrides-yaml <YAML>` — Workflow overrides as a YAML string.
+
+   Specify overrides inline as YAML. Example: `--overrides-yaml 'step1: {value: {input: {temperature: 0.8}}}'`
 
 
 

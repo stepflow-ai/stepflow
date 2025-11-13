@@ -15,9 +15,8 @@ use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::{
     BlobId, FlowResult,
-    workflow::{Flow, ValueRef},
+    workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_observability::fastrace::prelude::SpanContext;
 use stepflow_state::StateStore;
 use uuid::Uuid;
 
@@ -27,18 +26,9 @@ pub trait Context: Send + Sync {
     ///
     /// Implementation should use Arc::clone on self if it needs to pass ownership
     /// to spawned tasks or other async contexts.
-    ///
-    /// # Arguments
-    /// * `flow` - The workflow to execute
-    /// * `flow_id` - ID of the workflow
-    /// * `input` - The input value for the workflow
-    /// * `parent_context` - Optional parent span context for distributed tracing
     fn submit_flow(
         &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        input: ValueRef,
-        parent_context: Option<SpanContext>,
+        params: stepflow_core::SubmitFlowParams,
     ) -> BoxFuture<'_, crate::Result<Uuid>>;
 
     /// Retrieves the result of a previously submitted workflow.
@@ -50,9 +40,12 @@ pub trait Context: Send + Sync {
         flow: Arc<Flow>,
         flow_id: BlobId,
         input: ValueRef,
+        overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<FlowResult>> {
         async move {
-            let run_id = self.submit_flow(flow, flow_id, input, None).await?;
+            let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input)
+                .with_overrides(overrides.unwrap_or_default());
+            let run_id = self.submit_flow(params).await?;
             self.flow_result(run_id).await
         }
         .boxed()
@@ -63,11 +56,12 @@ pub trait Context: Send + Sync {
     /// This is a convenience method that handles the common pattern of:
     /// 1. Retrieving a flow blob by ID from the state store
     /// 2. Deserializing the flow from blob data
-    /// 3. Executing the flow with given input
+    /// 3. Executing the flow with given input and optional overrides
     ///
     /// # Arguments
     /// * `flow_id` - The blob ID of the flow to execute
     /// * `input` - The input data for the flow
+    /// * `overrides` - Optional workflow overrides to apply during execution
     ///
     /// # Returns
     /// The result of the flow execution
@@ -75,6 +69,7 @@ pub trait Context: Send + Sync {
         &self,
         flow_id: &BlobId,
         input: ValueRef,
+        overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<FlowResult>> {
         let flow_id = flow_id.clone();
         async move {
@@ -93,8 +88,11 @@ pub trait Context: Send + Sync {
                 .ok_or_else(|| error_stack::report!(crate::PluginError::Execution))?
                 .clone();
 
-            // Execute the flow
-            self.execute_flow(flow, flow_id, input).await
+            // Submit the flow with overrides
+            let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input)
+                .with_overrides(overrides.unwrap_or_default());
+            let run_id = self.submit_flow(params).await?;
+            self.flow_result(run_id).await
         }
         .boxed()
     }
@@ -109,23 +107,9 @@ pub trait Context: Send + Sync {
     ///
     /// This method creates a batch execution with multiple inputs and returns
     /// a batch ID that can be used to query status and results.
-    ///
-    /// # Arguments
-    /// * `flow` - The workflow to execute
-    /// * `flow_id` - ID of the workflow
-    /// * `inputs` - Vector of input values, one for each run in the batch
-    /// * `max_concurrency` - Optional maximum number of concurrent executions
-    /// * `parent_context` - Optional parent span context for distributed tracing
-    ///
-    /// # Returns
-    /// A unique batch ID for the submitted batch
     fn submit_batch(
         &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        inputs: Vec<ValueRef>,
-        max_concurrency: Option<usize>,
-        parent_context: Option<SpanContext>,
+        params: stepflow_core::SubmitBatchParams,
     ) -> BoxFuture<'_, crate::Result<uuid::Uuid>>;
 
     /// Get batch status and optionally results, with optional waiting.
@@ -159,11 +143,21 @@ pub trait Context: Send + Sync {
         flow_id: BlobId,
         inputs: Vec<ValueRef>,
         max_concurrency: Option<usize>,
+        overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<Vec<FlowResult>>> {
         async move {
-            let batch_id = self
-                .submit_batch(flow, flow_id, inputs, max_concurrency, None)
-                .await?;
+            let params = stepflow_core::SubmitBatchParams::new(flow, flow_id, inputs);
+            let params = if let Some(max_concurrency) = max_concurrency {
+                params.with_max_concurrency(max_concurrency)
+            } else {
+                params
+            };
+            let params = if let Some(overrides) = overrides {
+                params.with_overrides(overrides)
+            } else {
+                params
+            };
+            let batch_id = self.submit_batch(params).await?;
             let (_details, outputs) = self.get_batch(batch_id, true, true).await?;
             let outputs = outputs.expect("include_results=true should return outputs");
 
@@ -329,13 +323,9 @@ impl Context for ExecutionContext {
     /// Submit a nested workflow for execution.
     fn submit_flow(
         &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        input: ValueRef,
-        parent_context: Option<SpanContext>,
+        params: stepflow_core::SubmitFlowParams,
     ) -> BoxFuture<'_, crate::Result<Uuid>> {
-        self.context
-            .submit_flow(flow, flow_id, input, parent_context)
+        self.context.submit_flow(params)
     }
 
     /// Get the result of a workflow execution.
@@ -349,8 +339,9 @@ impl Context for ExecutionContext {
         flow: Arc<Flow>,
         flow_id: BlobId,
         input: ValueRef,
+        overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<FlowResult>> {
-        self.context.execute_flow(flow, flow_id, input)
+        self.context.execute_flow(flow, flow_id, input, overrides)
     }
 
     fn working_directory(&self) -> &Path {
@@ -359,14 +350,9 @@ impl Context for ExecutionContext {
 
     fn submit_batch(
         &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        inputs: Vec<ValueRef>,
-        max_concurrency: Option<usize>,
-        parent_context: Option<SpanContext>,
+        params: stepflow_core::SubmitBatchParams,
     ) -> BoxFuture<'_, crate::Result<uuid::Uuid>> {
-        self.context
-            .submit_batch(flow, flow_id, inputs, max_concurrency, parent_context)
+        self.context.submit_batch(params)
     }
 
     fn get_batch(

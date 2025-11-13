@@ -20,7 +20,7 @@ use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
     FlowResult,
     values::{ValueRef, ValueResolver, ValueTemplate},
-    workflow::{Expr, Flow, StepId},
+    workflow::{Expr, Flow, StepId, WorkflowOverrides},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -60,14 +60,15 @@ pub(crate) async fn execute_workflow(
 
     // Create run record in state store before starting workflow
     state_store
-        .create_run(
+        .create_run(stepflow_state::CreateRunParams {
             run_id,
-            flow_id.clone(),
-            flow.name(),
-            None,  // No label for direct execution
-            false, // Not debug mode
-            input.clone(),
-        )
+            flow_id: flow_id.clone(),
+            workflow_name: flow.name().map(|s| s.to_string()),
+            workflow_label: None, // No label for direct execution
+            debug_mode: false,    // Not debug mode
+            input: input.clone(),
+            overrides: WorkflowOverrides::default(), // No overrides for direct execution
+        })
         .await
         .change_context(ExecutionError::StateError)?;
 

@@ -71,14 +71,15 @@ mod tests {
 
         // Then create the execution
         store
-            .create_run(
+            .create_run(stepflow_state::CreateRunParams {
                 run_id,
                 flow_id,
-                None,                     // flow_name
-                None,                     // flow_label
-                false,                    // debug_mode
-                ValueRef::new(json!({})), // input
-            )
+                workflow_name: None,
+                workflow_label: None,
+                debug_mode: false,
+                input: ValueRef::new(json!({})),
+                overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+            })
             .await
             .unwrap();
 

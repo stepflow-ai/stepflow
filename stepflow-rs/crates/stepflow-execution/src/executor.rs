@@ -16,10 +16,9 @@ use crate::workflow_executor::{WorkflowExecutor, execute_workflow};
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
-use stepflow_core::BlobId;
 use stepflow_core::{
-    FlowError, FlowResult,
-    workflow::{Component, Flow, ValueRef},
+    FlowError, FlowResult, SubmitBatchParams, SubmitFlowParams,
+    workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{Context, DynPlugin, ExecutionContext, Plugin as _, routing::PluginRouter};
 use stepflow_state::{InMemoryStateStore, StateStore};
@@ -37,8 +36,6 @@ pub struct StepflowExecutor {
     // TODO: Should treat this as a cache and evict old executions.
     // TODO: Should write execution state to the state store for persistence.
     pending: Arc<RwLock<HashMap<Uuid, FutureFlowResult>>>,
-    /// Active debug sessions for step-by-step execution control
-    debug_sessions: Arc<RwLock<HashMap<Uuid, WorkflowExecutor>>>,
     // Keep a weak reference to self for spawning tasks without circular references
     self_weak: std::sync::Weak<Self>,
 }
@@ -55,15 +52,13 @@ impl StepflowExecutor {
             working_directory,
             plugin_router,
             pending: Arc::new(RwLock::new(HashMap::new())),
-            debug_sessions: Arc::new(RwLock::new(HashMap::new())),
             self_weak: weak.clone(),
         })
     }
 
     /// Initialize all plugins in the plugin router
-    pub async fn initialize_plugins(&self) -> Result<()> {
-        let context: Arc<dyn Context> = self.executor();
-
+    pub async fn initialize_plugins(self: &Arc<Self>) -> Result<()> {
+        let context: Arc<dyn Context> = self.clone();
         // Initialize each unique plugin once
         for plugin in self.plugin_router.plugins() {
             plugin
@@ -125,18 +120,9 @@ impl StepflowExecutor {
         &self.plugin_router
     }
 
-    /// Get or create a debug session for step-by-step execution control
+    /// Create a debug session for step-by-step execution control
     pub async fn debug_session(&self, run_id: Uuid) -> Result<WorkflowExecutor> {
-        // Check if session already exists
-        {
-            let sessions = self.debug_sessions.read().await;
-            if let Some(_session) = sessions.get(&run_id) {
-                // Return a clone of the session (WorkflowExecutor should implement Clone if needed)
-                // For now, we'll create a new session each time since WorkflowExecutor is not Clone
-            }
-        }
-
-        // Session doesn't exist, create a new one from state store data
+        // Create a new debug session from state store data
         let execution = self
             .state_store
             .get_run(run_id)
@@ -185,26 +171,22 @@ impl Context for StepflowExecutor {
     ///
     /// This method starts the workflow execution in the background and immediately
     /// returns a unique ID that can be used to retrieve the result later.
-    ///
-    /// # Arguments
-    /// * `flow` - The workflow to execute
-    /// * 'flow_id` - ID of the workflow
-    /// * `input` - The input value for the workflow
-    /// * `parent_context` - Optional parent span context for distributed tracing
-    ///
-    /// # Returns
-    /// A unique execution ID for the submitted workflow
     fn submit_flow(
         &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        input: ValueRef,
-        parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
+        params: SubmitFlowParams,
     ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
         let executor = self.executor();
 
         async move {
             let run_id = Uuid::new_v4();
+
+            // Ensure the flow is stored as a blob (idempotent operation)
+            let flow_value = ValueRef::new(serde_json::to_value(params.flow.as_ref()).unwrap());
+            self.state_store
+                .put_blob(flow_value, stepflow_core::BlobType::Flow)
+                .await
+                .change_context(stepflow_plugin::PluginError::Execution)?;
+
             let (tx, rx) = oneshot::channel();
 
             // Store the receiver for later retrieval
@@ -228,7 +210,7 @@ impl Context for StepflowExecutor {
                 // - Consistent pattern across all executions (root, nested, batch)
                 // - run_id is queryable as a span attribute in trace viewers
                 // - trace_id represents the distributed trace tree, not business ID
-                let span_context = parent_context.unwrap_or_else(|| {
+                let span_context = params.parent_context.unwrap_or_else(|| {
                     // Generate fresh trace_id for new trace
                     SpanContext::new(TraceId(Uuid::new_v4().as_u128()), SpanId::default())
                 });
@@ -236,9 +218,33 @@ impl Context for StepflowExecutor {
                 let span = Span::root("flow_execution", span_context)
                     .with_property(|| ("run_id", run_id.to_string()));
 
-                let result = execute_workflow(executor, flow, flow_id, run_id, input, state_store)
-                    .in_span(span)
-                    .await;
+                // Apply overrides if provided
+                let final_flow = if let Some(overrides) = &params.overrides {
+                    match stepflow_core::workflow::apply_overrides(params.flow.clone(), overrides) {
+                        Ok(modified_flow) => modified_flow,
+                        Err(e) => {
+                            log::error!("Failed to apply overrides: {e}");
+                            let _ = tx.send(FlowResult::Failed(FlowError::new(
+                                400,
+                                "Failed to apply overrides",
+                            )));
+                            return;
+                        }
+                    }
+                } else {
+                    params.flow.clone()
+                };
+
+                let result = execute_workflow(
+                    executor,
+                    final_flow,
+                    params.flow_id,
+                    run_id,
+                    params.input,
+                    state_store,
+                )
+                .in_span(span)
+                .await;
 
                 let flow_result = match result {
                     Ok(flow_result) => flow_result,
@@ -314,11 +320,7 @@ impl Context for StepflowExecutor {
     /// Submit a batch execution and return the batch ID immediately.
     fn submit_batch(
         &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        inputs: Vec<ValueRef>,
-        max_concurrency: Option<usize>,
-        parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
+        params: SubmitBatchParams,
     ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
         let executor = self.executor();
 
@@ -326,30 +328,37 @@ impl Context for StepflowExecutor {
             let batch_id = Uuid::new_v4();
             let state_store = executor.state_store();
 
-            let total_runs = inputs.len();
-            let max_concurrency = max_concurrency.unwrap_or(total_runs);
+            let total_runs = params.inputs.len();
+            let max_concurrency = params.max_concurrency.unwrap_or(total_runs);
 
             // Create batch record
             state_store
-                .create_batch(batch_id, flow_id.clone(), flow.name(), total_runs)
+                .create_batch(
+                    batch_id,
+                    params.flow_id.clone(),
+                    params.flow.name(),
+                    total_runs,
+                )
                 .await
                 .change_context(stepflow_plugin::PluginError::Execution)?;
 
             // Create run records and collect (run_id, input, index) tuples
             let mut run_inputs = Vec::with_capacity(total_runs);
-            for (idx, input) in inputs.into_iter().enumerate() {
+            for (idx, input) in params.inputs.into_iter().enumerate() {
                 let run_id = Uuid::new_v4();
 
                 // Create run record
+                let mut run_params = stepflow_state::CreateRunParams::new(
+                    run_id,
+                    params.flow_id.clone(),
+                    input.clone(),
+                );
+                run_params.workflow_name = params.flow.name().map(|s| s.to_string());
+                if let Some(ref o) = params.overrides {
+                    run_params.overrides = o.clone();
+                }
                 state_store
-                    .create_run(
-                        run_id,
-                        flow_id.clone(),
-                        flow.name(),
-                        None,  // No flow label for batch execution
-                        false, // Batch runs are not in debug mode
-                        input.clone(),
-                    )
+                    .create_run(run_params)
                     .await
                     .change_context(stepflow_plugin::PluginError::Execution)?;
 
@@ -364,8 +373,8 @@ impl Context for StepflowExecutor {
 
             // Spawn background task for batch execution
             let executor_clone = executor.clone();
-            let flow_clone = flow.clone();
-            let flow_id_clone = flow_id.clone();
+            let flow_clone = params.flow.clone();
+            let flow_id_clone = params.flow_id.clone();
 
             tokio::spawn(async move {
                 use stepflow_observability::fastrace::prelude::*;
@@ -375,7 +384,7 @@ impl Context for StepflowExecutor {
                 // Otherwise, create a new root span with a fresh trace_id.
                 //
                 // Design: Always use unique trace_id, store batch_id as span attribute
-                let batch_span_context = parent_context.unwrap_or_else(|| {
+                let batch_span_context = params.parent_context.unwrap_or_else(|| {
                     // Generate fresh trace_id for new trace
                     SpanContext::new(TraceId(Uuid::new_v4().as_u128()), SpanId::default())
                 });
@@ -406,10 +415,10 @@ impl Context for StepflowExecutor {
                         let _permit = permit; // Hold permit during execution
 
                         // Pass batch span context so each flow execution becomes a child span
-                        match executor_ref
-                            .submit_flow(flow_ref, flow_id_ref, input, Some(batch_ctx))
-                            .await
-                        {
+                        let submit_params =
+                            stepflow_core::SubmitFlowParams::new(flow_ref, flow_id_ref, input)
+                                .with_parent_context(batch_ctx);
+                        match executor_ref.submit_flow(submit_params).await {
                             Ok(submitted_run_id) => {
                                 // Wait for the result
                                 match executor_ref.flow_result(submitted_run_id).await {
