@@ -151,6 +151,17 @@ impl ValueTemplate {
         Self::expression(Expr::workflow_input(path))
     }
 
+    /// Create a variable reference template
+    /// - `variable_ref("api_key", JsonPath::default())` creates `{"$from": {"variable": "api_key"}}`
+    /// - `variable_ref("config", JsonPath::from("temperature"))` creates `{"$from": {"variable": "config"}, "path": "temperature"}`
+    pub fn variable_ref(
+        variable: impl Into<String>,
+        default: Option<ValueRef>,
+        path: JsonPath,
+    ) -> Self {
+        Self::expression(Expr::variable_ref(variable, default, path))
+    }
+
     /// Parse a JSON value as a template, interpreting expressions like `{"$from": ...}`
     ///
     /// This method will parse `{"$from": {"step": "step1"}}` as a step reference expression.

@@ -50,6 +50,17 @@
             }
           ]
         },
+        "variables": {
+          "description": "Schema for workflow variables that can be referenced in steps.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "steps": {
           "description": "The steps to execute for the flow.",
           "type": "array",
@@ -272,6 +283,30 @@
           "required": [
             "step"
           ]
+        },
+        {
+          "title": "VariableReference",
+          "description": "Reference a workflow variable.",
+          "type": "object",
+          "properties": {
+            "variable": {
+              "type": "string"
+            },
+            "default": {
+              "description": "Optional default value to use if the variable is not available.\n\nThis will be preferred over any default value defined in the workflow variable schema.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Value"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "variable"
+          ]
         }
       ]
     },
@@ -280,6 +315,9 @@
       "enum": [
         "input"
       ]
+    },
+    "Value": {
+      "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "JsonPath": {
       "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
@@ -331,9 +369,6 @@
           ]
         }
       ]
-    },
-    "Value": {
-      "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "ErrorAction": {
       "oneOf": [

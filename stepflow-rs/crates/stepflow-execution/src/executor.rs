@@ -143,6 +143,7 @@ impl StepflowExecutor {
             })?;
 
         // Create a new WorkflowExecutor for this debug session
+        // TODO: Retrieve variables from execution state store
         let mut workflow_executor = WorkflowExecutor::new(
             self.executor(),
             workflow,
@@ -150,6 +151,7 @@ impl StepflowExecutor {
             run_id,
             execution.input,
             self.state_store.clone(),
+            None, // Variables not supported in debug sessions yet
         )?;
 
         // Recover state from the state store to ensure consistency
@@ -242,6 +244,7 @@ impl Context for StepflowExecutor {
                     run_id,
                     params.input,
                     state_store,
+                    params.variables,
                 )
                 .in_span(span)
                 .await;

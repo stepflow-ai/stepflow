@@ -16,6 +16,7 @@ use axum::{
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{
@@ -40,6 +41,9 @@ pub struct CreateRunRequest {
     /// Optional workflow overrides to apply before execution
     #[serde(default, skip_serializing_if = "WorkflowOverrides::is_empty")]
     pub overrides: WorkflowOverrides,
+    /// Optional variables to provide for variable references in the workflow
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub variables: HashMap<String, ValueRef>,
     /// Whether to run in debug mode (pauses execution for step-by-step control)
     #[serde(default)]
     pub debug: bool,
@@ -136,6 +140,7 @@ pub async fn create_run(
     params.workflow_name = flow.name().map(|s| s.to_string());
     params.debug_mode = req.debug;
     params.overrides = req.overrides.clone();
+    params.variables = req.variables.clone();
     state_store.create_run(params).await?;
 
     let debug_mode = req.debug;
@@ -166,12 +171,18 @@ pub async fn create_run(
     } else {
         Some(req.overrides)
     };
-    let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input);
-    let params = if let Some(overrides) = overrides {
-        params.with_overrides(overrides)
+    let variables = if req.variables.is_empty() {
+        None
     } else {
-        params
+        Some(req.variables)
     };
+    let mut params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input);
+    if let Some(overrides) = overrides {
+        params = params.with_overrides(overrides);
+    }
+    if let Some(variables) = variables {
+        params = params.with_variables(variables);
+    }
     let submitted_run_id = executor.submit_flow(params).await?;
 
     // Wait for the result (synchronous execution for the HTTP endpoint)

@@ -128,6 +128,7 @@ class FlowBuilder:
         self.metadata = metadata or {}
         self.input_schema: Schema | None = None
         self.output_schema: Schema | None = None
+        self.variables_schema: dict[str, Any] | None = None
         self.steps: dict[str, Step] = {}
         self._step_handles: dict[str, StepHandle] = {}
         self._output: ValueTemplate | None = None
@@ -152,6 +153,9 @@ class FlowBuilder:
         )
         builder.input_schema = flow.inputSchema
         builder.output_schema = flow.outputSchema
+        # For now, mark that variables schema was present but we can't reconstruct it
+        # since Schema objects don't hold the actual schema data
+        builder.variables_schema = {} if flow.variables is not None else None
         builder._output = flow.output
 
         # Recreate steps as dict and step handles
@@ -191,6 +195,40 @@ class FlowBuilder:
             self.output_schema = Schema(**schema)
         else:
             self.output_schema = schema
+        return self
+
+    def set_variables_schema(self, schema: dict[str, Any]) -> FlowBuilder:
+        """Set the variables schema for the flow.
+
+        The variables schema defines workflow variables with their types,
+        default values, descriptions, and secret annotations.
+
+        Args:
+            schema: Variables schema as a dictionary containing JSON schema properties.
+
+        Returns:
+            FlowBuilder: Self for method chaining.
+
+        Example:
+            builder.set_variables_schema({
+                "type": "object",
+                "properties": {
+                    "api_key": {
+                        "type": "string",
+                        "is_secret": True,
+                        "description": "OpenAI API key"
+                    },
+                    "temperature": {
+                        "type": "number",
+                        "default": 0.7,
+                        "minimum": 0,
+                        "maximum": 2
+                    }
+                },
+                "required": ["api_key"]
+            })
+        """
+        self.variables_schema = schema
         return self
 
     def set_metadata(self, metadata: dict[str, Any]) -> FlowBuilder:
@@ -371,6 +409,11 @@ class FlowBuilder:
                 "add_output_field() to specify the flow output."
             )
 
+        # Convert variables schema dict to Schema object if needed
+        variables_schema_obj = None
+        if self.variables_schema is not None:
+            variables_schema_obj = Schema()
+
         return Flow(
             schema_="https://stepflow.org/schemas/v1/flow.json",
             name=self.name,
@@ -378,6 +421,7 @@ class FlowBuilder:
             version=self.version,
             inputSchema=self.input_schema,
             outputSchema=self.output_schema,
+            variables=variables_schema_obj,
             steps=list(self.steps.values()),
             output=output_to_use,
             metadata=self.metadata,

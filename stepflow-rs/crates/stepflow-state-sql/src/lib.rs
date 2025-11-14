@@ -78,7 +78,8 @@ mod tests {
                 workflow_label: None,
                 debug_mode: false,
                 input: ValueRef::new(json!({})),
-                overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+                overrides: Default::default(),
+                variables: Default::default(),
             })
             .await
             .unwrap();

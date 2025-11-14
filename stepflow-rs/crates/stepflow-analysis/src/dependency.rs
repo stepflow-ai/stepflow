@@ -182,6 +182,10 @@ fn extract_dep_from_expr(expr: &Expr) -> Result<Option<Dependency>> {
                     optional: on_skip.as_ref().is_some_and(|s| s.is_optional()),
                 })),
                 BaseRef::Workflow(WorkflowRef::Input) => Ok(Some(Dependency::FlowInput { field })),
+                BaseRef::Variable { .. } => {
+                    // Variables don't create step dependencies - they're resolved at runtime
+                    Ok(None)
+                }
             }
         }
         Expr::EscapedLiteral { .. } | Expr::Literal(_) => Ok(None),

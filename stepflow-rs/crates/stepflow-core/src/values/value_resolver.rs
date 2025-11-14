@@ -21,6 +21,7 @@ use log;
 use super::{ValueRef, ValueTemplate, ValueTemplateRepr};
 use crate::{
     FlowResult,
+    values::Secrets,
     workflow::{BaseRef, Expr, Flow, SkipAction, StepId},
 };
 
@@ -51,6 +52,8 @@ pub enum ValueResolverError {
     UndefinedValue(BaseRef),
     #[error("Undefined field '{field}' in value")]
     UndefinedField { field: String, value: ValueRef },
+    #[error("Undefined variable: {0:?}")]
+    UndefinedVariable(String),
     #[error("Internal error")]
     Internal,
     #[error("State error")]
@@ -78,11 +81,23 @@ pub struct ValueResolver<L: ValueLoader> {
     loader: L,
     /// Map from step ID to step index for cache lookups.
     step_id_to_index: HashMap<String, usize>,
+    /// Variable values provided for this workflow execution.
+    variables: HashMap<String, ValueRef>,
     flow: Arc<Flow>,
 }
 
 impl<L: ValueLoader> ValueResolver<L> {
     pub fn new(run_id: Uuid, input: ValueRef, loader: L, flow: Arc<Flow>) -> Self {
+        Self::new_with_variables(run_id, input, loader, flow, HashMap::new())
+    }
+
+    pub fn new_with_variables(
+        run_id: Uuid,
+        input: ValueRef,
+        loader: L,
+        flow: Arc<Flow>,
+        variables: HashMap<String, ValueRef>,
+    ) -> Self {
         let step_id_to_index = flow
             .latest()
             .steps
@@ -95,8 +110,26 @@ impl<L: ValueLoader> ValueResolver<L> {
             input,
             loader,
             step_id_to_index,
+            variables,
             flow,
         }
+    }
+
+    /// Validate that all required variables are provided.
+    pub fn validate_variables(&self) -> ValueResolverResult<()> {
+        if let Some(variables_schema) = self.flow.variables() {
+            // Convert ValueRef hashmap to serde_json::Value for validation
+            let variable_values: HashMap<String, serde_json::Value> = self
+                .variables
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_ref().clone()))
+                .collect();
+
+            variables_schema
+                .validate_variables(&variable_values)
+                .map_err(|_| ValueResolverError::Internal)?;
+        }
+        Ok(())
     }
 
     /// Expand a ValueTemplate, returning a FlowResult.
@@ -132,6 +165,42 @@ impl<L: ValueLoader> ValueResolver<L> {
             .change_context(ValueResolverError::StateError)
     }
 
+    pub fn resolve_variable(
+        &self,
+        variable: &str,
+        default: Option<ValueRef>,
+    ) -> ValueResolverResult<FlowResult> {
+        let secrets = if let Some(variables_schema) = self.flow.variables() {
+            variables_schema.secrets().field(variable)
+        } else {
+            log::debug!(
+                "No variables schema defined; using empty secrets for variable '{}'",
+                variable
+            );
+            Secrets::empty()
+        };
+
+        let value = if let Some(value) = self.variables.get(variable) {
+            // 1. The variable was provided.
+            value.clone()
+        } else if let Some(value) = default {
+            // 2. The reference provided a default value.
+            value.clone()
+        } else if let Some(schema) = self.flow.variables()
+            && let Some(value) = schema.default_value(variable)
+        {
+            // 3. The schema provided a default value.
+            value.clone()
+        } else {
+            return Err(ValueResolverError::UndefinedVariable(variable.to_string()).into());
+        };
+
+        // Log variable resolution with secret-aware sanitization
+        let redacted = value.redacted(secrets);
+        log::debug!("Resolved variable '{}' to: {}", variable, redacted);
+        Ok(FlowResult::Success(value))
+    }
+
     /// Resolve an expression, returning a FlowResult.
     pub async fn resolve_expr(&self, expr: &Expr) -> ValueResolverResult<FlowResult> {
         // Handle literal expressions
@@ -150,15 +219,20 @@ impl<L: ValueLoader> ValueResolver<L> {
                 FlowResult::Success(self.input.clone())
             }
             BaseRef::Step { step: step_id } => self.resolve_step(step_id).await?,
+            BaseRef::Variable { variable, default } => {
+                self.resolve_variable(variable, default.clone())?
+            }
         };
 
         // Apply path if specified
         let path_result = if let Some(path) = expr.path() {
             match base_result {
                 FlowResult::Success(result) => {
-                    log::debug!("Resolving path '{}' on value: {:?}", path, result.as_ref());
+                    // For path resolution, we need to be careful about logging values
+                    // We'll log the path resolution without exposing the full value
+                    log::debug!("Resolving path '{}' on value", path);
                     if let Some(sub_value) = result.resolve_json_path(path) {
-                        log::debug!("Path '{}' resolved to: {:?}", path, sub_value.as_ref());
+                        log::debug!("Path '{}' resolved successfully", path);
                         FlowResult::Success(sub_value)
                     } else {
                         log::debug!("Path '{path}' not found in value");
@@ -269,7 +343,8 @@ impl<L: ValueLoader> ValueResolver<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::JsonPath;
+    use crate::schema::SchemaRef;
+    use crate::workflow::{FlowV1, JsonPath, VariableSchema};
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -346,6 +421,238 @@ mod tests {
         match resolved {
             FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!("Alice"));
+            }
+            _ => panic!("Expected successful result, got: {resolved:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_variable() {
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::new_v4();
+
+        // Create flow with variables schema
+        let variables_schema_json = json!({
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "description": "API key for external service"
+                },
+                "temperature": {
+                    "type": "number",
+                    "default": 0.7
+                }
+            },
+            "required": ["api_key"]
+        });
+
+        let variables_schema =
+            VariableSchema::new(SchemaRef::parse_json(&variables_schema_json.to_string()).unwrap());
+
+        let flow = Arc::new(Flow::V1(FlowV1 {
+            variables: Some(variables_schema),
+            ..Default::default()
+        }));
+
+        // Set up variables
+        let mut variables = HashMap::new();
+        variables.insert("api_key".to_string(), ValueRef::new(json!("test-key-123")));
+
+        let resolver =
+            ValueResolver::new_with_variables(run_id, workflow_input, loader, flow, variables);
+
+        // Test resolving provided variable
+        let api_key_template = ValueTemplate::variable_ref("api_key", None, JsonPath::default());
+        let resolved = resolver.resolve_template(&api_key_template).await.unwrap();
+        match resolved {
+            FlowResult::Success(result) => {
+                assert_eq!(result.as_ref(), &json!("test-key-123"));
+            }
+            _ => panic!("Expected successful result, got: {resolved:?}"),
+        }
+
+        // Test resolving variable with default value in schema
+        let temperature_template =
+            ValueTemplate::variable_ref("temperature", None, JsonPath::default());
+        let resolved = resolver
+            .resolve_template(&temperature_template)
+            .await
+            .unwrap();
+        match resolved {
+            FlowResult::Success(result) => {
+                assert_eq!(result.as_ref(), &json!(0.7));
+            }
+            _ => panic!("Expected successful result, got: {resolved:?}"),
+        }
+
+        // Test resolving variable with default value in reference.
+        let temperature_template = ValueTemplate::variable_ref(
+            "temperature",
+            Some(json!(0.8).into()),
+            JsonPath::default(),
+        );
+        let resolved = resolver
+            .resolve_template(&temperature_template)
+            .await
+            .unwrap();
+        match resolved {
+            FlowResult::Success(result) => {
+                assert_eq!(result.as_ref(), &json!(0.8));
+            }
+            _ => panic!("Expected successful result, got: {resolved:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_undefined_variable() {
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::new_v4();
+        let flow = create_test_flow(); // Flow without variables
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test resolving undefined variable
+        let undefined_template =
+            ValueTemplate::variable_ref("undefined_var", None, JsonPath::default());
+        let resolved = resolver.resolve_template(&undefined_template).await;
+
+        assert!(resolved.is_err());
+        // The error should be about undefined value
+        match resolved.unwrap_err().current_context() {
+            ValueResolverError::UndefinedVariable(variable) => {
+                assert_eq!(variable, "undefined_var");
+            }
+            _ => panic!("Expected UndefinedValue error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_variable_secret_sanitization() {
+        use crate::schema::SchemaRef;
+        use crate::workflow::{FlowBuilder, VariableSchema};
+        use serde_json::json;
+        use std::collections::HashMap;
+
+        // Create a flow with variables schema that marks api_key as secret
+        let schema_json = json!({
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "is_secret": true
+                },
+                "username": {
+                    "type": "string"
+                }
+            },
+            "required": ["api_key"]
+        });
+
+        let variables_schema =
+            VariableSchema::new(SchemaRef::parse_json(&schema_json.to_string()).unwrap());
+
+        // Build flow with variables schema
+        let flow = Arc::new(
+            FlowBuilder::new()
+                .variables(variables_schema)
+                .output(ValueTemplate::literal(json!(null)))
+                .build(),
+        );
+
+        // Create variables with secret data
+        let mut variables = HashMap::new();
+        variables.insert(
+            "api_key".to_string(),
+            ValueRef::new(json!("secret-key-123")),
+        );
+        variables.insert("username".to_string(), ValueRef::new(json!("alice")));
+
+        let run_id = Uuid::new_v4();
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+
+        let resolver = ValueResolver::new_with_variables(
+            run_id,
+            workflow_input,
+            loader,
+            flow.clone(),
+            variables,
+        );
+
+        // Test that variable resolution doesn't expose secrets in logs
+        // We can't easily test the log output directly, but we can test the SanitizedVariable
+        // formatting that would be used in logs
+        let api_key_result = resolver.resolve_variable("api_key", None).unwrap();
+        if let FlowResult::Success(api_key_value) = api_key_result {
+            if let Some(variables_schema) = flow.variables() {
+                let sanitized_string = variables_schema
+                    .secrets()
+                    .field("api_key")
+                    .redacted(&api_key_value.value())
+                    .to_string();
+
+                // The sanitized version should redact the secret
+                assert!(sanitized_string.contains("[REDACTED]"));
+                assert!(!sanitized_string.contains("secret-key-123"));
+            }
+        } else {
+            panic!("Expected successful variable resolution");
+        }
+
+        // Test that non-secret variables are not redacted
+        let username_result = resolver.resolve_variable("username", None).unwrap();
+        if let FlowResult::Success(username_value) = username_result {
+            if let Some(variables_schema) = flow.variables() {
+                let sanitized_string = variables_schema
+                    .secrets()
+                    .field("username")
+                    .redacted(&username_value.value())
+                    .to_string();
+
+                // The sanitized version should show the non-secret value
+                assert!(sanitized_string.contains("alice"));
+                assert!(!sanitized_string.contains("[REDACTED]"));
+            }
+        } else {
+            panic!("Expected successful variable resolution");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_variable_with_path() {
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::new_v4();
+        let flow = create_test_flow();
+
+        // Set up variables with nested object
+        let mut variables = HashMap::new();
+        variables.insert(
+            "config".to_string(),
+            ValueRef::new(json!({
+                "api": {
+                    "key": "nested-key",
+                    "timeout": 30
+                }
+            })),
+        );
+
+        let resolver =
+            ValueResolver::new_with_variables(run_id, workflow_input, loader, flow, variables);
+
+        // Test resolving variable with JSON path
+        let config_key_template =
+            ValueTemplate::variable_ref("config", None, JsonPath::from("$.api.key"));
+        let resolved = resolver
+            .resolve_template(&config_key_template)
+            .await
+            .unwrap();
+        match resolved {
+            FlowResult::Success(result) => {
+                assert_eq!(result.as_ref(), &json!("nested-key"));
             }
             _ => panic!("Expected successful result, got: {resolved:?}"),
         }

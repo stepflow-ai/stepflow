@@ -132,7 +132,8 @@ pub async fn submit(
         flow_id,
         input,
         overrides: overrides.clone(),
-        debug: false, // TODO: Add debug option to CLI
+        variables: std::collections::HashMap::new(), // TODO: Add variables support to CLI submit
+        debug: false,                                // TODO: Add debug option to CLI
     };
 
     let execute_url = service_url

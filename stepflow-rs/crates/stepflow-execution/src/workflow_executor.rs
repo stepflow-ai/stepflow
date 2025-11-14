@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use bit_set::BitSet;
 use error_stack::ResultExt as _;
@@ -37,6 +37,7 @@ pub(crate) async fn execute_workflow(
     run_id: Uuid,
     input: ValueRef,
     state_store: Arc<dyn StateStore>,
+    variables: Option<HashMap<String, ValueRef>>,
 ) -> Result<FlowResult> {
     // Set run_id in diagnostic context for all logs in this workflow execution
     let _run_guard = RunInfoGuard::new(flow_id.to_string(), run_id.to_string());
@@ -68,12 +69,20 @@ pub(crate) async fn execute_workflow(
             debug_mode: false,    // Not debug mode
             input: input.clone(),
             overrides: WorkflowOverrides::default(), // No overrides for direct execution
+            variables: variables.clone().unwrap_or_default(), // Variables for execution
         })
         .await
         .change_context(ExecutionError::StateError)?;
 
-    let mut workflow_executor =
-        WorkflowExecutor::new(executor, flow, flow_id, run_id, input, state_store)?;
+    let mut workflow_executor = WorkflowExecutor::new(
+        executor,
+        flow,
+        flow_id,
+        run_id,
+        input,
+        state_store,
+        variables,
+    )?;
 
     let result = workflow_executor.execute_to_completion().await;
 
@@ -125,6 +134,7 @@ impl WorkflowExecutor {
         run_id: Uuid,
         input: ValueRef,
         state_store: Arc<dyn StateStore>,
+        variables: Option<HashMap<String, ValueRef>>,
     ) -> Result<Self> {
         // Build dependencies for the workflow using the analysis crate
         let analysis_result =
@@ -157,7 +167,12 @@ impl WorkflowExecutor {
             write_cache.clone(),
             flow.clone(),
         );
-        let resolver = ValueResolver::new(run_id, input, state_loader, flow.clone());
+        let resolver = match variables {
+            Some(vars) => {
+                ValueResolver::new_with_variables(run_id, input, state_loader, flow.clone(), vars)
+            }
+            None => ValueResolver::new(run_id, input, state_loader, flow.clone()),
+        };
 
         // Create workflow-aware execution context
         let context = ExecutionContext::for_workflow_with_flow(
@@ -1194,7 +1209,16 @@ mod tests {
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
-        execute_workflow(executor, flow, flow_id, run_id, input_ref, state_store).await
+        execute_workflow(
+            executor,
+            flow,
+            flow_id,
+            run_id,
+            input_ref,
+            state_store,
+            None,
+        )
+        .await
     }
 
     /// Create a WorkflowExecutor from YAML string for step-by-step testing
@@ -1209,7 +1233,15 @@ mod tests {
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
-        WorkflowExecutor::new(executor, flow, flow_id, run_id, input_ref, state_store)
+        WorkflowExecutor::new(
+            executor,
+            flow,
+            flow_id,
+            run_id,
+            input_ref,
+            state_store,
+            None,
+        )
     }
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
@@ -1445,6 +1477,7 @@ output:
             run_id,
             input.clone(),
             executor.state_store(),
+            None,
         )
         .unwrap();
 
@@ -1539,6 +1572,7 @@ output:
             run_id,
             input.clone(),
             executor.state_store(),
+            None,
         )
         .unwrap();
 
@@ -1635,6 +1669,7 @@ output:
             run_id,
             input.clone(),
             executor.state_store(),
+            None,
         )
         .unwrap();
 
@@ -1715,6 +1750,7 @@ output:
             run_id,
             input.clone(),
             executor.state_store(),
+            None,
         )
         .unwrap();
 

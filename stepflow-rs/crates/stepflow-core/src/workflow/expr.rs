@@ -28,6 +28,16 @@ pub enum BaseRef {
     /// Reference the output of a step.
     #[serde(untagged)]
     Step { step: String },
+    /// # VariableReference
+    /// Reference a workflow variable.
+    #[serde(untagged)]
+    Variable {
+        variable: String,
+        /// Optional default value to use if the variable is not available.
+        ///
+        /// This will be preferred over any default value defined in the workflow variable schema.
+        default: Option<ValueRef>,
+    },
 }
 
 impl BaseRef {
@@ -35,6 +45,13 @@ impl BaseRef {
 
     pub fn step_output(step: impl Into<String>) -> Self {
         Self::Step { step: step.into() }
+    }
+
+    pub fn variable(variable: impl Into<String>, default: Option<ValueRef>) -> Self {
+        Self::Variable {
+            variable: variable.into(),
+            default,
+        }
     }
 }
 
@@ -137,6 +154,21 @@ impl Expr {
     pub fn workflow_input(path: JsonPath) -> Self {
         Self::Ref {
             from: BaseRef::WORKFLOW_INPUT,
+            path,
+            on_skip: None, // Use None to omit the field, falling back to default behavior
+        }
+    }
+
+    /// Create a variable reference
+    /// - `variable_ref("api_key", JsonPath::default())` creates `{"$from": {"variable": "api_key"}}`
+    /// - `variable_ref("config", JsonPath::from("temperature"))` creates `{"$from": {"variable": "config"}, "path": "temperature"}`
+    pub fn variable_ref(
+        variable: impl Into<String>,
+        default: Option<ValueRef>,
+        path: JsonPath,
+    ) -> Self {
+        Self::Ref {
+            from: BaseRef::variable(variable, default),
             path,
             on_skip: None, // Use None to omit the field, falling back to default behavior
         }

@@ -291,6 +291,7 @@ mod tests {
             version: None,
             input_schema: None,
             output_schema: None,
+            variables: None,
             steps: vec![super::super::Step {
                 id: "step1".to_string(),
                 component: super::super::Component::from_string("/test/component"),
