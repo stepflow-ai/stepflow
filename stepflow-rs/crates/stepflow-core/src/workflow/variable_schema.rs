@@ -178,8 +178,7 @@ impl VariableSchema {
 
     /// Get the default value for a variable, if specified.
     pub fn default_value(&self, variable_name: &str) -> Option<ValueRef> {
-        self.defaults
-            .get(variable_name).cloned()
+        self.defaults.get(variable_name).cloned()
     }
 
     /// Validate that provided variable values match the schema requirements.
