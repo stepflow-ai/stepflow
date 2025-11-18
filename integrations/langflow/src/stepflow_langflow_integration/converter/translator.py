@@ -21,7 +21,7 @@ from typing import Any
 
 import msgspec
 import yaml
-from stepflow_py import Flow, FlowBuilder, Step, Value
+from stepflow_py import Flow, FlowBuilder, Value
 
 from ..exceptions import ConversionError
 from .dependency_analyzer import DependencyAnalyzer
@@ -94,6 +94,7 @@ class LangflowConverter:
         Raises:
             ConversionError: If conversion fails
         """
+        self.node_processor.reset()
         try:
             # Extract main data structure
             if "data" not in langflow_data:
@@ -141,7 +142,6 @@ class LangflowConverter:
                     output_ref = self.node_processor.process_node(
                         node_lookup[node_id],
                         dependencies,
-                        nodes,
                         builder,
                         node_output_refs,
                         field_mapping,
@@ -158,7 +158,6 @@ class LangflowConverter:
                     output_ref = self.node_processor.process_node(
                         node,
                         dependencies,
-                        nodes,
                         builder,
                         node_output_refs,
                         field_mapping,
@@ -169,6 +168,12 @@ class LangflowConverter:
 
             # Set workflow output using incremental output building
             self._build_flow_output(builder, nodes, dependencies, node_output_refs)
+
+            # Set variable schema
+            if self.node_processor.variables:
+                builder.set_variables_schema(
+                    {"type": "object", "properties": self.node_processor.variables}
+                )
 
             # Build and return the flow
             flow = builder.build()
@@ -361,140 +366,6 @@ class LangflowConverter:
 
         return output_mapping
 
-    def _generate_input_section(
-        self, nodes: list[dict[str, Any]]
-    ) -> dict[str, Any] | None:
-        """Generate input section for workflow based on ChatInput components.
-
-        Args:
-            nodes: List of Langflow nodes
-
-        Returns:
-            Input section dict or None if no ChatInput components found
-        """
-        # Look for ChatInput components
-        chat_input_nodes = []
-        for node in nodes:
-            node_data = node.get("data", {})
-            component_type = node_data.get("type", "")
-            if component_type == "ChatInput":
-                chat_input_nodes.append(node)
-
-        if not chat_input_nodes:
-            return None
-
-        # Generate input schema for ChatInput components
-        # For now, assume all ChatInput components expect a "message" field
-        input_schema = {
-            "message": {
-                "type": "string",
-                "description": "Message input for the chat workflow",
-            }
-        }
-
-        # If multiple ChatInput components, we might need more complex input schema
-        if len(chat_input_nodes) > 1:
-            # For multiple inputs, create named fields based on node IDs
-            input_schema = {}
-            for node in chat_input_nodes:
-                node_id = node.get("id", "")
-                field_name = f"message_{node_id.lower().replace('-', '_')}"
-                input_schema[field_name] = {
-                    "type": "string",
-                    "description": f"Message input for {node_id}",
-                }
-
-        return input_schema
-
-    def _generate_output_section(
-        self,
-        steps: list[Step],
-        dependencies: dict[str, list[str]],
-        nodes: list[dict[str, Any]] = None,
-    ) -> dict[str, Any] | None:
-        """Generate output section for workflow based on step types and dependencies.
-
-        Args:
-            steps: List of workflow steps
-            dependencies: Dependency graph
-            nodes: Original Langflow nodes (for handling no-step workflows)
-
-        Returns:
-            Output section dict or None if no obvious output step
-        """
-        if not steps:
-            # Handle workflows with no steps (ChatInput → ChatOutput)
-            if nodes:
-                chat_input_nodes = [
-                    n for n in nodes if n.get("data", {}).get("type") == "ChatInput"
-                ]
-                chat_output_nodes = [
-                    n for n in nodes if n.get("data", {}).get("type") == "ChatOutput"
-                ]
-
-                if chat_input_nodes and chat_output_nodes:
-                    # Direct passthrough from input to output
-                    return {"$from": {"workflow": "input"}, "path": "message"}
-            return None
-
-        # Find output steps (steps with no dependents or known output types)
-        output_steps = []
-
-        # Find steps that nothing else depends on (leaf nodes)
-        dependent_steps = set()
-        for deps in dependencies.values():
-            dependent_steps.update(deps)
-
-        leaf_steps = [step for step in steps if step.id not in dependent_steps]
-
-        # First, look for ChatOutput components specifically (highest priority)
-        for step in steps:
-            component_lower = step.component.lower()
-            step_id_lower = step.id.lower()
-            # Check if this is a ChatOutput component (either direct or UDF)
-            if "chatoutput" in step_id_lower or "chat_output" in step_id_lower:
-                output_steps.append(step)
-
-        # If no ChatOutput found, look for other output component types
-        if not output_steps:
-            for step in leaf_steps:
-                component_lower = step.component.lower()
-                if any(output_type in component_lower for output_type in ["output"]):
-                    output_steps.append(step)
-                # Also prioritize steps that were originally output components
-                # (now using identity)
-                elif step.component == "/builtin/identity":
-                    output_steps.append(step)
-
-        # If no specific output components, use all leaf steps
-        if not output_steps:
-            output_steps = leaf_steps
-
-        # If still no output steps, use the last step
-        if not output_steps and steps:
-            output_steps = [steps[-1]]
-
-        # Generate output section
-        if len(output_steps) == 1:
-            # Single output step - return its result directly
-            step = output_steps[0]
-            return {"$from": {"step": step.id}, "path": "result"}
-        elif len(output_steps) > 1:
-            # Multiple output steps - create a structured result
-            result = {}
-            for step in output_steps:
-                # Use a cleaned version of step ID as the key
-                key = step.id.replace("-", "_").lower()
-                if "output" in key:
-                    key = "result"  # Simplify output step names
-                elif "chat" in key:
-                    key = "message"
-
-                result[key] = {"$from": {"step": step.id}, "path": "result"}
-            return result
-
-        return None
-
     def _build_flow_output(
         self,
         builder: FlowBuilder,
@@ -575,75 +446,3 @@ class LangflowConverter:
         else:
             # No leaf nodes found - fallback to direct input passthrough
             builder.set_output(Value.input.add_path("message"))
-
-    def _generate_flow_output(
-        self,
-        nodes: list[dict[str, Any]],
-        dependencies: dict[str, list[str]],
-        node_output_refs: dict[str, Any],
-    ) -> Any:
-        """Generate flow output using the new architecture.
-
-        Args:
-            nodes: Original Langflow nodes
-            dependencies: Dependency graph
-            node_output_refs: Mapping of node IDs to their output references
-
-        Returns:
-            Value for the flow output
-        """
-        # Look for ChatOutput nodes first
-        chat_output_nodes = [
-            n for n in nodes if n.get("data", {}).get("type") == "ChatOutput"
-        ]
-
-        if chat_output_nodes:
-            # Use the first ChatOutput node
-            chat_output_node = chat_output_nodes[0]
-            node_id = chat_output_node["id"]
-
-            # Check if ChatOutput has dependencies
-            if node_id in dependencies and dependencies[node_id]:
-                # ChatOutput depends on another node - use that node's output
-                dep_node_id = dependencies[node_id][0]
-                if dep_node_id in node_output_refs:
-                    return node_output_refs[dep_node_id]
-
-            # ChatOutput has no dependencies or dependencies not found - check if
-            # it's a simple passthrough
-            if chat_output_nodes and len(nodes) <= 2:
-                # Simple ChatInput -> ChatOutput workflow
-                chat_input_nodes = [
-                    n for n in nodes if n.get("data", {}).get("type") == "ChatInput"
-                ]
-                if chat_input_nodes:
-                    return Value.input("$.message")
-
-        # Find leaf nodes (nodes with no dependents)
-        dependent_nodes = set()
-        for deps in dependencies.values():
-            dependent_nodes.update(deps)
-
-        leaf_nodes = []
-        for node in nodes:
-            node_id = node["id"]
-            component_type = node.get("data", {}).get("type", "")
-
-            # Skip ChatInput/ChatOutput as they're handled specially
-            if component_type in ["ChatInput", "ChatOutput"]:
-                continue
-
-            if node_id not in dependent_nodes and node_id in node_output_refs:
-                leaf_nodes.append(node_id)
-
-        # If we have leaf nodes, use the first one
-        if leaf_nodes:
-            return node_output_refs[leaf_nodes[0]]
-
-        # Fallback - use the last node with an output reference
-        if node_output_refs:
-            last_node_id = list(node_output_refs.keys())[-1]
-            return node_output_refs[last_node_id]
-
-        # Final fallback - direct input passthrough
-        return Value.input("$.message")

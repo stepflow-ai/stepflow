@@ -403,11 +403,6 @@ class FlowBuilder:
                 "add_output_field() to specify the flow output."
             )
 
-        # Convert variables schema dict to Schema object if needed
-        variables_schema_obj = None
-        if self.variables_schema is not None:
-            variables_schema_obj = Schema()
-
         return Flow(
             schema_="https://stepflow.org/schemas/v1/flow.json",
             name=self.name,
@@ -415,7 +410,7 @@ class FlowBuilder:
             version=self.version,
             inputSchema=self.input_schema,
             outputSchema=self.output_schema,
-            variables=variables_schema_obj,
+            variables=self.variables_schema,  # type: ignore
             steps=list(self.steps.values()),
             output=output_to_use,
             metadata=self.metadata,

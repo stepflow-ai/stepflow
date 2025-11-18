@@ -28,16 +28,20 @@ class NodeProcessor:
     def __init__(self):
         """Initialize node processor."""
         self.schema_mapper = SchemaMapper()
+        self.variables: dict[str, dict[str, Any]] = {}
+
+    def reset(self):
+        """Reset internal state for processing a new workflow."""
+        self.variables.clear()
 
     def process_node(
         self,
         node: dict[str, Any],
         dependencies: dict[str, list[str]],
-        all_nodes: list[dict[str, Any]],
         builder: FlowBuilder,
         node_output_refs: dict[str, Any],
-        field_mapping: dict[str, dict[str, str]] = None,
-        output_mapping: dict[str, str] = None,
+        field_mapping: dict[str, dict[str, str]],
+        output_mapping: dict[str, str],
     ) -> Any | None:
         """Process a Langflow node using flow builder architecture.
 
@@ -105,8 +109,7 @@ class NodeProcessor:
                     builder,
                     dependencies,
                     node_output_refs,
-                    field_mapping or {},
-                    output_mapping or {},
+                    field_mapping,
                 )
 
             # For regular components, create a UDF step
@@ -193,7 +196,7 @@ class NodeProcessor:
         self,
         node: dict[str, Any],
         component_type: str,
-        output_mapping: dict[str, str] = None,
+        output_mapping: dict[str, str],
     ) -> dict[str, Any]:
         """Prepare enhanced UDF blob data for component execution.
 
@@ -272,122 +275,28 @@ class NodeProcessor:
 
         return blob_data
 
-    def _extract_runtime_inputs(
-        self, node: dict[str, Any], dependency_node_ids: list[str]
-    ) -> dict[str, Any]:
-        """Extract runtime inputs that will come from other workflow steps.
+    def _add_variable(self, name: str, type: str) -> Value:
+        """Add variable to internal state."""
+        input_type = self.schema_mapper.langflow_to_json_schema[type]
 
-        Args:
-            node: Langflow node object
-            dependency_node_ids: IDs of nodes this node depends on
-
-        Returns:
-            Dict of runtime inputs
-        """
-        runtime_inputs: dict[str, Any] = {}
-
-        # For now, create placeholder inputs based on dependencies
-        # TODO: Map actual edge connections to specific input fields
-        for i, dep_id in enumerate(dependency_node_ids):
-            dep_step_id = self._generate_step_id(dep_id, "")
-            runtime_inputs[f"input_{i}"] = {
-                "$from": {"step": dep_step_id},
-                "path": "result",
+        if (existing := self.variables.get(name)) is not None:
+            assert input_type == existing["type"][0], (
+                f"Variable {name} has conflicting types: "
+                f"{existing['type'][0]} vs {input_type}"
+            )
+        else:
+            self.variables[name] = {
+                "type": [input_type, "null"],
+                "default": None,
             }
-
-        return runtime_inputs
-
-    def _extract_component_inputs_for_builder(
-        self,
-        node: dict[str, Any],
-        dependency_node_ids: list[str],
-        all_nodes: list[dict[str, Any]],
-        node_output_refs: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Extract inputs for built-in Langflow components using flow builder
-        architecture.
-
-        Args:
-            node: Langflow node object
-            dependency_node_ids: IDs of nodes this node depends on
-            all_nodes: All nodes in the workflow
-            node_output_refs: Mapping of node IDs to their output references
-
-        Returns:
-            Dict of component inputs mapped to template fields
-        """
-        node_data = node.get("data", {})
-        node_info = node_data.get("node", {})
-        template = node_info.get("template", {})
-
-        component_inputs: dict[str, Any] = {}
-
-        # Map static template values to component inputs
-        for field_name, field_config in template.items():
-            if isinstance(field_config, dict):
-                field_value = field_config.get("value")
-                if field_value is not None and field_value != "":
-                    component_inputs[field_name] = field_value
-                elif field_name == "session_id" and (
-                    field_value == "" or field_value is None
-                ):
-                    # Map empty session_id fields to workflow input
-                    component_inputs[field_name] = {
-                        "$from": {"workflow": "input"},
-                        "path": "session_id",
-                    }
-
-        # Handle standalone components with workflow inputs
-        component_type = node_data.get("type", "")
-        if not dependency_node_ids and component_type == "File":
-            # For standalone File components, map workflow file_path to path parameter
-            # File component expects the path parameter to have file_path as a list
-            component_inputs["path"] = {
-                "$from": {"workflow": "input"},
-                "path": "file_path",
-            }
-
-        # Map dependencies to component inputs based on edges
-        if dependency_node_ids:
-            dep_node_id = dependency_node_ids[0]
-
-            # Check if we have an output reference for this dependency
-            if dep_node_id in node_output_refs:
-                input_reference = node_output_refs[dep_node_id]
-            else:
-                # Find the dependency node to check its type
-                dep_node = None
-                for n in all_nodes:
-                    if n.get("id") == dep_node_id:
-                        dep_node = n
-                        break
-
-                # Check if dependency is a ChatInput component
-                if dep_node and dep_node.get("data", {}).get("type") == "ChatInput":
-                    # Reference workflow input instead of missing ChatInput step
-                    input_reference = Value.input("$.message")
-                else:
-                    # This shouldn't happen with the new architecture, but fallback
-                    input_reference = Value.input("$.message")
-
-            # Common input field names for different component types
-            component_type = node_data.get("type", "")
-            if component_type in ["ChatOutput", "TextOutput"]:
-                component_inputs["input_value"] = input_reference
-            elif component_type in ["LanguageModelComponent", "OpenAIModelComponent"]:
-                component_inputs["input_value"] = input_reference
-            else:
-                # Generic mapping
-                component_inputs["input"] = input_reference
-
-        return component_inputs
+        return Value.variable(name)
 
     def _extract_runtime_inputs_for_builder(
         self,
         node: dict[str, Any],
         dependency_node_ids: list[str],
         node_output_refs: dict[str, Any],
-        field_mapping: dict[str, dict[str, str]] = None,
+        field_mapping: dict[str, dict[str, str]],
     ) -> dict[str, Any]:
         """Extract runtime inputs for UDF components using flow builder architecture.
 
@@ -403,12 +312,10 @@ class NodeProcessor:
         """
         runtime_inputs: dict[str, Any] = {}
         node_id = node.get("id")
+        assert node_id is not None, "Node ID should not be None"
 
         # Use field mapping if available, otherwise fall back to generic input names
-        if field_mapping and node_id in field_mapping:
-            # Map dependencies to their proper field names
-            node_field_map = field_mapping[node_id]
-
+        if (node_field_map := field_mapping.get(node_id, None)) is not None:
             # Group inputs by field name to handle list fields like 'tools'
             field_inputs: dict[str, Any] = {}
 
@@ -470,119 +377,17 @@ class NodeProcessor:
             # file_path should be a simple list of paths, not wrapped
             runtime_inputs["path"] = Value.input("$.file_path")
 
-        return runtime_inputs
-
-    def _extract_component_inputs(
-        self,
-        node: dict[str, Any],
-        dependency_node_ids: list[str],
-        all_nodes: list[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        """Extract inputs for built-in Langflow components.
-
-        Args:
-            node: Langflow node object
-            dependency_node_ids: IDs of nodes this node depends on
-
-        Returns:
-            Dict of component inputs mapped to template fields
-        """
-        node_data = node.get("data", {})
-        node_info = node_data.get("node", {})
-        template = node_info.get("template", {})
-
-        component_inputs: dict[str, Any] = {}
-
-        # Map static template values to component inputs
+        # Handle load_from_database inputs by examining the node.
         for field_name, field_config in template.items():
-            if isinstance(field_config, dict):
-                field_value = field_config.get("value")
-                if field_value is not None:
-                    component_inputs[field_name] = field_value
+            if not isinstance(field_config, dict):
+                continue
+            if field_config.get("load_from_db", False):
+                # This field should be loaded from the database.
+                runtime_inputs[field_name] = self._add_variable(
+                    field_config["value"], field_config["type"]
+                )
 
-        # Map dependencies to component inputs based on edges
-        if dependency_node_ids and all_nodes:
-            # Find the dependency node to check its type
-            dep_node_id = dependency_node_ids[0]
-            dep_node = None
-            for n in all_nodes:
-                if n.get("id") == dep_node_id:
-                    dep_node = n
-                    break
-
-            # Check if dependency is a ChatInput component
-            if dep_node and dep_node.get("data", {}).get("type") == "ChatInput":
-                # Reference workflow input instead of missing ChatInput step
-                input_reference = {"$from": {"workflow": "input"}, "path": "message"}
-            else:
-                # Reference the dependency step normally
-                dep_step_id = self._generate_step_id(dep_node_id, "")
-                input_reference = {"$from": {"step": dep_step_id}, "path": "result"}
-
-            # Common input field names for different component types
-            component_type = node_data.get("type", "")
-            if component_type in ["ChatOutput", "TextOutput"]:
-                component_inputs["input_value"] = input_reference
-            elif component_type in ["LanguageModelComponent", "OpenAIModelComponent"]:
-                component_inputs["input_value"] = input_reference
-            else:
-                # Generic mapping
-                component_inputs["input"] = input_reference
-
-        return component_inputs
-
-    def _extract_chat_input_mapping(self, node: dict[str, Any]) -> dict[str, Any]:
-        """Extract inputs for ChatInput component to map to workflow input.
-
-        Args:
-            node: Langflow ChatInput node object
-
-        Returns:
-            Dict mapping ChatInput to workflow input
-        """
-        node_data = node.get("data", {})
-        node_info = node_data.get("node", {})
-        template = node_info.get("template", {})
-
-        # Get the sender from template, defaulting to "User"
-        sender = "User"
-        if "sender" in template:
-            sender_config = template["sender"]
-            if isinstance(sender_config, dict):
-                sender = sender_config.get("value", "User")
-
-        # Create a message from workflow input
-        return {
-            "message": {
-                "$from": {"workflow": "input"},
-                "path": "message",  # Expect workflow input to have a 'message' field
-            },
-            "sender": sender,
-            "session_id": {
-                "$from": {"workflow": "input"},
-                "path": "session_id",  # Pass session_id from workflow input
-            },
-        }
-
-    def _extract_chat_output_mapping(
-        self, node: dict[str, Any], dependency_node_ids: list[str]
-    ) -> dict[str, Any]:
-        """Extract inputs for ChatOutput component to pass through data.
-
-        Args:
-            node: Langflow ChatOutput node object
-            dependency_node_ids: IDs of nodes this node depends on
-
-        Returns:
-            Dict mapping ChatOutput inputs for identity pass-through
-        """
-        if dependency_node_ids:
-            # Pass through the input from the previous step
-            dep_step_id = self._generate_step_id(dependency_node_ids[0], "")
-            return {"input_message": {"$from": {"step": dep_step_id}, "path": "result"}}
-        else:
-            # No dependencies, return empty value
-            return {"input_message": None}
+        return runtime_inputs
 
     def _create_tool_component_step(
         self,
@@ -592,7 +397,6 @@ class NodeProcessor:
         dependencies: dict[str, list[str]],
         node_output_refs: dict[str, Any],
         field_mapping: dict[str, dict[str, str]],
-        output_mapping: dict[str, str],
     ) -> Any:
         """Create a component_tool step for tool-mode components.
 

@@ -200,9 +200,23 @@ impl<'de> Deserialize<'de> for JsonPath {
             {
                 JsonPath::parse(value).map_err(de::Error::custom)
             }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(JsonPath::new())
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                deserializer.deserialize_str(self)
+            }
         }
 
-        deserializer.deserialize_str(JsonPathVisitor)
+        deserializer.deserialize_option(JsonPathVisitor)
     }
 }
 
@@ -342,5 +356,14 @@ mod tests {
         let serialized = serde_json::to_string(&original).unwrap();
         let deserialized: JsonPath = serde_json::from_str(&serialized).unwrap();
         assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_json_path_deserialization() {
+        let deserialized: JsonPath = serde_json::from_str(&"\"$\"").unwrap();
+        assert_eq!(deserialized, JsonPath::parse("$").unwrap());
+
+        let deserialized: JsonPath = serde_json::from_str(&"null").unwrap();
+        assert_eq!(deserialized, JsonPath::new());
     }
 }

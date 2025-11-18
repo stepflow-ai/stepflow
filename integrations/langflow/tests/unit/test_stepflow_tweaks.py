@@ -238,54 +238,14 @@ class TestTweaksBuilder:
 
         assert tweaks == expected
 
-    def test_add_openai_tweaks(self, monkeypatch):
-        """Test the convenience method for OpenAI tweaks."""
-        monkeypatch.setenv("OPENAI_API_KEY", "openai_test_key")
-
-        tweaks = (
-            TweaksBuilder()
-            .add_openai_tweaks(
-                "LanguageModelComponent-abc123", temperature=0.7, model_name="gpt-4"
-            )
-            .build()
-        )
-
-        expected = {
-            "LanguageModelComponent-abc123": {
-                "api_key": "openai_test_key",
-                "temperature": 0.7,
-                "model_name": "gpt-4",
-            }
-        }
-
-        assert tweaks == expected
-
-    def test_add_openai_tweaks_custom_env_var(self, monkeypatch):
-        """Test OpenAI tweaks with custom environment variable name."""
-        monkeypatch.setenv("CUSTOM_OPENAI_KEY", "custom_key")
-
-        tweaks = (
-            TweaksBuilder()
-            .add_openai_tweaks(
-                "LanguageModelComponent-abc123", api_key_env="CUSTOM_OPENAI_KEY"
-            )
-            .build()
-        )
-
-        expected = {"LanguageModelComponent-abc123": {"api_key": "custom_key"}}
-
-        assert tweaks == expected
-
     def test_add_astradb_tweaks(self, monkeypatch):
         """Test the convenience method for AstraDB tweaks."""
-        monkeypatch.setenv("ASTRA_DB_APPLICATION_TOKEN", "astra_token")
         monkeypatch.setenv("ASTRA_DB_API_ENDPOINT", "https://astra-endpoint.com")
 
         tweaks = TweaksBuilder().add_astradb_tweaks("AstraDB-store-123").build()
 
         expected = {
             "AstraDB-store-123": {
-                "token": "astra_token",
                 "api_endpoint": "https://astra-endpoint.com",
                 "database_name": "langflow-test",  # Default value
                 "collection_name": "test_collection",  # Default value
@@ -296,7 +256,6 @@ class TestTweaksBuilder:
 
     def test_add_astradb_tweaks_with_overrides(self, monkeypatch):
         """Test AstraDB tweaks with overridden default values."""
-        monkeypatch.setenv("ASTRA_DB_APPLICATION_TOKEN", "astra_token")
         monkeypatch.setenv("ASTRA_DB_API_ENDPOINT", "https://astra-endpoint.com")
 
         tweaks = (
@@ -312,7 +271,6 @@ class TestTweaksBuilder:
 
         expected = {
             "AstraDB-store-123": {
-                "token": "astra_token",
                 "api_endpoint": "https://astra-endpoint.com",
                 "database_name": "custom_db",
                 "collection_name": "custom_collection",
