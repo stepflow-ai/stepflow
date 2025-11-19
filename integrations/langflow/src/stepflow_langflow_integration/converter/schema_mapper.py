@@ -107,26 +107,34 @@ class SchemaMapper:
             json_type = self.langflow_to_json_schema.get(field_type, "string")
             field_info = field_config.get("info", "")
 
-            properties[field_name] = {
+            property = {
                 "type": json_type,
                 "description": field_info,
             }
 
             # Add enum for dropdown fields
             if field_type == "dropdown" and "options" in field_config:
-                properties[field_name]["enum"] = field_config["options"]
+                property["enum"] = field_config["options"]
 
             # Add number constraints for sliders
             if field_type == "slider":
                 if "range_spec" in field_config:
                     range_spec = field_config["range_spec"]
                     if "min" in range_spec:
-                        properties[field_name]["minimum"] = range_spec["min"]
+                        property["minimum"] = range_spec["min"]
                     if "max" in range_spec:
-                        properties[field_name]["maximum"] = range_spec["max"]
+                        property["maximum"] = range_spec["max"]
+
+            if (
+                field_config.get("password", False)
+                or field_config.get("_input_type", "") == "SecretStrInput"
+            ):
+                property["is_secret"] = True
 
             if field_config.get("required", False):
                 required.append(field_name)
+
+            properties[field_name] = property
 
         return {
             "type": "object",

@@ -265,20 +265,9 @@ class FlowBuilder:
         # Convert input data to ValueTemplate
         input_template = self._convert_to_value_template(converted_input)
 
-        # Convert schemas
-        input_schema_obj = None
-        if input_schema is not None:
-            if isinstance(input_schema, dict):
-                input_schema_obj = Schema(**input_schema)
-            else:
-                input_schema_obj = input_schema
-
-        output_schema_obj = None
-        if output_schema is not None:
-            if isinstance(output_schema, dict):
-                output_schema_obj = Schema(**output_schema)
-            else:
-                output_schema_obj = output_schema
+        # Do not convert schemas.
+        input_schema_obj = input_schema
+        output_schema_obj = output_schema
 
         # Convert skip_if to Expr
         skip_if_expr = None
@@ -297,13 +286,18 @@ class FlowBuilder:
         # on_error is already an ErrorAction or None
         on_error_action = on_error
 
-        # Create the step
+        # Create the step.
+        #
+        # We currently ignore the type checking for inputSchema and outputSchema
+        # because the datamodel code generated doesn't populate with the JSON
+        # schema fields (creating an empty struct), so there is no way to populate
+        # it correctly. The result is still correct (the JSON-encoded dictionary).
         step = Step(
             id=unique_id,
             component=component,
             input=input_template,
-            inputSchema=input_schema_obj,
-            outputSchema=output_schema_obj,
+            inputSchema=input_schema_obj,  # type: ignore
+            outputSchema=output_schema_obj,  # type: ignore
             skipIf=skip_if_expr,
             onError=on_error_action,
             mustExecute=must_execute,

@@ -95,10 +95,6 @@ class NodeProcessor:
                     # ChatOutput with no dependencies - return input passthrough
                     return Value.input.add_path("message")
 
-            # Check if this component should be treated as a tool
-            node_info = node_data.get("node", {})
-            template = node_info.get("template", {})
-
             # Component is a tool if it has tool_mode=True at the component level
             is_tool_component = node_info.get("tool_mode", False)
 
@@ -152,6 +148,10 @@ class NodeProcessor:
                     f"All executable components should have custom code."
                 )
 
+            # Determine input/output schema of the node.
+            input_schema = self.schema_mapper.extract_input_schema(node)
+            output_schema = self.schema_mapper.extract_output_schema(node)
+
             # Add step to builder with proper ID and component path
             step_id = self._generate_step_id(node_id, component_type)
             step_handle = builder.add_step(
@@ -159,6 +159,8 @@ class NodeProcessor:
                 component=component_path,
                 input_data=step_input,
                 must_execute=True,
+                input_schema=input_schema,
+                output_schema=output_schema,
             )
 
             # Return a reference to this step's output
