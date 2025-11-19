@@ -10,6 +10,9 @@ inputs:
     description: 'uv version to install'
     required: false
     default: '0.7.5'
+  openai-api-key:
+    description: 'OpenAI API Key for Langflow tests'
+    required: true
 
 runs:
   using: 'composite'
@@ -47,4 +50,4 @@ runs:
       shell: bash
       run: ./scripts/check-langflow.sh
       env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
