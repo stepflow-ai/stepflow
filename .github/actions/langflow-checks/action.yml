@@ -36,8 +36,7 @@ runs:
     - name: Configure Rust cache
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: |
-          stepflow-rs
+        workspaces: stepflow-rs
 
     - name: Build Stepflow binary (needed for integration tests)
       shell: bash
