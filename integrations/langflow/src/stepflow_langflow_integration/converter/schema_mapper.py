@@ -16,8 +16,6 @@
 
 from typing import Any
 
-from stepflow_py.generated_flow import Schema
-
 
 class SchemaMapper:
     """Maps schemas between Langflow and Stepflow formats."""
@@ -86,7 +84,7 @@ class SchemaMapper:
         # Fallback: generic object schema
         return {"type": "object", "properties": {"result": {"type": "object"}}}
 
-    def extract_input_schema(self, node: dict[str, Any]) -> Schema:
+    def extract_input_schema(self, node: dict[str, Any]) -> dict[str, Any]:
         """Extract input schema from a Langflow node template.
 
         Args:
@@ -127,7 +125,10 @@ class SchemaMapper:
                     if "max" in range_spec:
                         property["maximum"] = range_spec["max"]
 
-            if field_config.get("password", False) or field_config.get("_input_type", "") == "SecretStrInput":
+            if (
+                field_config.get("password", False)
+                or field_config.get("_input_type", "") == "SecretStrInput"
+            ):
                 property["is_secret"] = True
 
             if field_config.get("required", False):

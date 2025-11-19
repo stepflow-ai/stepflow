@@ -286,13 +286,18 @@ class FlowBuilder:
         # on_error is already an ErrorAction or None
         on_error_action = on_error
 
-        # Create the step
+        # Create the step.
+        #
+        # We currently ignore the type checking for inputSchema and outputSchema
+        # because the datamodel code generated doesn't populate with the JSON
+        # schema fields (creating an empty struct), so there is no way to populate
+        # it correctly. The result is still correct (the JSON-encoded dictionary).
         step = Step(
             id=unique_id,
             component=component,
             input=input_template,
-            inputSchema=input_schema_obj,
-            outputSchema=output_schema_obj,
+            inputSchema=input_schema_obj,  # type: ignore
+            outputSchema=output_schema_obj,  # type: ignore
             skipIf=skip_if_expr,
             onError=on_error_action,
             mustExecute=must_execute,

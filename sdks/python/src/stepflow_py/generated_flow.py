@@ -28,14 +28,6 @@ class Schema(Struct, kw_only=True):
     pass
 
 
-VariableSchema = Annotated[
-    Schema,
-    Meta(
-        description='Variable schema for workflow variables using JSON Schema format.\n\nThis allows flows to declare required variables with their types,\ndefault values, descriptions, and secret annotations.\n\nExample:\n```yaml\nvariables:\n  type: object\n  properties:\n    api_key:\n      type: string\n      is_secret: true\n      description: "OpenAI API key"\n    temperature:\n      type: number\n      default: 0.7\n      minimum: 0\n      maximum: 2\n  required: ["api_key"]\n```'
-    ),
-]
-
-
 Component = Annotated[
     str,
     Meta(
@@ -49,12 +41,16 @@ class StepReference(Struct, kw_only=True):
     step: str
 
 
-class VariableReference(Struct, kw_only=True):
-    variable: str
-
-
 class WorkflowRef(Enum):
     input = 'input'
+
+
+Value = Annotated[
+    Any,
+    Meta(
+        description='Any JSON value (object, array, string, number, boolean, or null)'
+    ),
+]
 
 
 JsonPath = Annotated[
@@ -70,12 +66,12 @@ class OnSkipSkip(Struct, kw_only=True):
     action: Literal['skip']
 
 
-Value = Annotated[
-    Any,
-    Meta(
-        description='Any JSON value (object, array, string, number, boolean, or null)'
-    ),
-]
+class OnSkipDefault(Struct, kw_only=True):
+    action: Literal['useDefault']
+    defaultValue: Value | None = None
+
+
+SkipAction = OnSkipSkip | OnSkipDefault
 
 
 class OnErrorFail(Struct, kw_only=True):
@@ -171,20 +167,25 @@ class WorkflowReference(Struct, kw_only=True):
     workflow: WorkflowRef
 
 
+class VariableReference(Struct, kw_only=True):
+    variable: str
+    default: (
+        Annotated[
+            Value | None,
+            Meta(
+                description='Optional default value to use if the variable is not available.\n\nThis will be preferred over any default value defined in the workflow variable schema.'
+            ),
+        ]
+        | None
+    ) = None
+
+
 BaseRef = Annotated[
     WorkflowReference | StepReference | VariableReference,
     Meta(
         description='An expression that can be either a literal value or a template expression.'
     ),
 ]
-
-
-class OnSkipDefault(Struct, kw_only=True):
-    action: Literal['useDefault']
-    defaultValue: Value | None = None
-
-
-SkipAction = OnSkipSkip | OnSkipDefault
 
 
 class TestServerConfig(Struct, kw_only=True):
@@ -407,7 +408,7 @@ class FlowV1(Struct, kw_only=True):
     ) = None
     variables: (
         Annotated[
-            VariableSchema | None,
+            Schema | None,
             Meta(
                 description='Schema for workflow variables that can be referenced in steps.'
             ),
