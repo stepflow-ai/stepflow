@@ -19,7 +19,7 @@ use stepflow_core::{
 use url::Url;
 
 use crate::{
-    args::{ConfigArgs, InputArgs, OutputArgs, OverrideArgs, WorkflowLoader, load},
+    args::{ConfigArgs, ExecutionArgs, InputArgs, OutputArgs, WorkflowLoader, load},
     error::Result,
     list_components::OutputFormat,
     repl::run_repl,
@@ -93,10 +93,10 @@ pub enum Command {
         input_args: InputArgs,
 
         #[command(flatten)]
-        output_args: OutputArgs,
+        execution_args: ExecutionArgs,
 
         #[command(flatten)]
-        override_args: OverrideArgs,
+        output_args: OutputArgs,
     },
     /// Run a batch of workflows directly.
     ///
@@ -140,7 +140,7 @@ pub enum Command {
         config_args: ConfigArgs,
 
         #[command(flatten)]
-        override_args: OverrideArgs,
+        execution_args: ExecutionArgs,
     },
     /// Submit a batch workflow to a Stepflow service for execution.
     ///
@@ -180,6 +180,9 @@ pub enum Command {
         /// Path to write batch results (JSONL format - one result per line).
         #[arg(long="output", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
         output_path: Option<PathBuf>,
+
+        #[command(flatten)]
+        execution_args: ExecutionArgs,
     },
     /// Submit a workflow to a Stepflow server.
     ///
@@ -215,10 +218,10 @@ pub enum Command {
         input_args: InputArgs,
 
         #[command(flatten)]
-        output_args: OutputArgs,
+        execution_args: ExecutionArgs,
 
         #[command(flatten)]
-        override_args: OverrideArgs,
+        output_args: OutputArgs,
     },
     /// Run tests defined in workflow files or directories.
     ///
@@ -445,15 +448,15 @@ impl Cli {
                 flow_path,
                 config_args,
                 input_args,
+                execution_args,
                 output_args,
-                override_args,
             } => {
                 let flow: Flow = load(&flow_path)?;
                 let flow_dir = flow_path.parent();
                 let config = config_args.load_config(flow_dir)?;
 
                 // Parse overrides without applying them (late binding)
-                let overrides = override_args.parse_overrides()?;
+                let overrides = execution_args.override_args.parse_overrides()?;
 
                 let flow = Arc::new(flow);
 
@@ -486,7 +489,7 @@ impl Cli {
                 max_concurrent,
                 output_path,
                 config_args,
-                override_args,
+                execution_args,
             } => {
                 use stepflow_plugin::Context as _;
 
@@ -507,7 +510,7 @@ impl Cli {
                 }
 
                 // Parse overrides before execution
-                let overrides = override_args.parse_overrides()?;
+                let overrides = execution_args.override_args.parse_overrides()?;
 
                 let executor = WorkflowLoader::create_executor_from_config(config).await?;
                 let flow_id =
@@ -604,6 +607,7 @@ impl Cli {
                 inputs_path,
                 max_concurrent,
                 output_path,
+                execution_args: _,
             } => {
                 let flow: Arc<Flow> = load(&flow_path)?;
                 submit_batch(
@@ -619,14 +623,14 @@ impl Cli {
                 url,
                 flow_path,
                 input_args,
+                execution_args,
                 output_args,
-                override_args,
             } => {
                 let flow: Flow = load(&flow_path)?;
                 let input = input_args.parse_input(true)?;
 
                 // Parse overrides for submission
-                let overrides = override_args.parse_overrides()?;
+                let overrides = execution_args.override_args.parse_overrides()?;
 
                 let output = submit(
                     url,

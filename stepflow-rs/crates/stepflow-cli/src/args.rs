@@ -11,15 +11,19 @@
 // the License.
 
 pub mod config;
+pub mod execution;
 pub mod file_loader;
 pub mod input;
 pub mod output;
 pub mod overrides;
+pub mod variables;
 pub mod workflow;
 
 pub use config::ConfigArgs;
+pub use execution::ExecutionArgs;
 pub use file_loader::{Format, load};
 pub use input::{InputArgs, InputFormat};
 pub use output::OutputArgs;
 pub use overrides::OverrideArgs;
+pub use variables::VariableArgs;
 pub use workflow::WorkflowLoader;

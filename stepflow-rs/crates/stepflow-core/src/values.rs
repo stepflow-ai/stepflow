@@ -16,12 +16,15 @@
 //! - `ValueRef`: References to concrete JSON values
 //! - `ValueTemplate`: Pre-parsed templates that may contain expressions
 //! - `ValueResolver`: Resolution engine for templates and expressions
+//! - `SanitizedValue`: Safe display wrapper that redacts secrets
 //! - `ValueLoader`: Trait for loading values from external sources
 
+pub mod redacted_value;
 pub mod value_ref;
 pub mod value_resolver;
 pub mod value_template;
 
+pub use redacted_value::*;
 pub use value_ref::*;
 pub use value_resolver::*;
 pub use value_template::*;

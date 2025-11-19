@@ -100,6 +100,14 @@ impl ValueRef<serde_json::Value> {
         Self(ArcRef::new(Arc::new(value)))
     }
 
+    /// Return a redacted version of this value ref for printing.
+    pub fn redacted<'a>(
+        &'a self,
+        secrets: &'a crate::values::Secrets,
+    ) -> crate::values::RedactedValue<'a> {
+        secrets.redacted(self.value())
+    }
+
     pub fn is_truthy(&self) -> bool {
         match self.0.as_ref() {
             serde_json::Value::Bool(b) => *b,

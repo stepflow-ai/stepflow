@@ -19,6 +19,7 @@ use std::sync::Arc;
 /// Type alias for a shared schema reference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[repr(transparent)]
+#[derive(Default)]
 pub struct SchemaRef(Arc<Schema>);
 
 impl JsonSchema for SchemaRef {
@@ -91,5 +92,10 @@ impl SchemaRef {
     pub fn parse_json(s: &str) -> Result<Self, serde_json::Error> {
         let schema = serde_json::from_str::<Schema>(s)?;
         Ok(schema.into())
+    }
+
+    /// Get the schema as a JSON value reference.
+    pub fn as_value(&self) -> &serde_json::Value {
+        self.0.as_value()
     }
 }

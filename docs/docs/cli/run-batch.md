@@ -45,6 +45,14 @@ stepflow run-batch --flow=workflow.yaml --inputs=inputs.jsonl --output=results.j
 * `--config <FILE>` — The path to the stepflow config file.
 
    If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
+* `--variables <FILE>` — The path to the variables file.
+
+   Should be JSON or YAML. Format is inferred from file extension.
+* `--variables-json <JSON>` — The variables as a JSON string
+* `--variables-yaml <YAML>` — The variables as a YAML string
+* `--env-variables` — Enable environment variable fallback for missing variables.
+
+   When enabled, missing variables will be looked up from environment variables using the pattern `STEPFLOW_VAR_<VARIABLE_NAME>`.
 * `--overrides <FILE>` — Path to a file containing workflow overrides (JSON or YAML format).
 
    Overrides allow you to modify step properties at runtime without changing the original workflow file. Format is inferred from file extension.

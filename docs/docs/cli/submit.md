@@ -55,9 +55,14 @@ stepflow submit --flow=workflow.yaml --input-yaml='param: value'
 
   Possible values: `json`, `yaml`
 
-* `--output <FILE>` — Path to write the output to.
+* `--variables <FILE>` — The path to the variables file.
 
-   If not set, will write to stdout.
+   Should be JSON or YAML. Format is inferred from file extension.
+* `--variables-json <JSON>` — The variables as a JSON string
+* `--variables-yaml <YAML>` — The variables as a YAML string
+* `--env-variables` — Enable environment variable fallback for missing variables.
+
+   When enabled, missing variables will be looked up from environment variables using the pattern `STEPFLOW_VAR_<VARIABLE_NAME>`.
 * `--overrides <FILE>` — Path to a file containing workflow overrides (JSON or YAML format).
 
    Overrides allow you to modify step properties at runtime without changing the original workflow file. Format is inferred from file extension.
@@ -67,6 +72,9 @@ stepflow submit --flow=workflow.yaml --input-yaml='param: value'
 * `--overrides-yaml <YAML>` — Workflow overrides as a YAML string.
 
    Specify overrides inline as YAML. Example: `--overrides-yaml 'step1: {value: {input: {temperature: 0.8}}}'`
+* `--output <FILE>` — Path to write the output to.
+
+   If not set, will write to stdout.
 
 
 

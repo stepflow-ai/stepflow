@@ -12,7 +12,7 @@
 
 use crate::BlobId;
 use crate::workflow::{Flow, ValueRef, WorkflowOverrides};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 /// Parameters for submitting a workflow for execution
 #[derive(Debug, Clone)]
@@ -22,6 +22,7 @@ pub struct SubmitFlowParams {
     pub input: ValueRef,
     pub parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
     pub overrides: Option<WorkflowOverrides>,
+    pub variables: Option<HashMap<String, ValueRef>>,
 }
 
 impl SubmitFlowParams {
@@ -32,6 +33,7 @@ impl SubmitFlowParams {
             input,
             parent_context: None,
             overrides: None,
+            variables: None,
         }
     }
 
@@ -47,6 +49,11 @@ impl SubmitFlowParams {
         self.overrides = Some(overrides);
         self
     }
+
+    pub fn with_variables(mut self, variables: HashMap<String, ValueRef>) -> Self {
+        self.variables = Some(variables);
+        self
+    }
 }
 
 /// Parameters for submitting a batch workflow execution
@@ -58,6 +65,7 @@ pub struct SubmitBatchParams {
     pub max_concurrency: Option<usize>,
     pub parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
     pub overrides: Option<WorkflowOverrides>,
+    pub variables: Option<HashMap<String, ValueRef>>,
 }
 
 impl SubmitBatchParams {
@@ -69,6 +77,7 @@ impl SubmitBatchParams {
             max_concurrency: None,
             parent_context: None,
             overrides: None,
+            variables: None,
         }
     }
 
@@ -87,6 +96,11 @@ impl SubmitBatchParams {
 
     pub fn with_overrides(mut self, overrides: WorkflowOverrides) -> Self {
         self.overrides = Some(overrides);
+        self
+    }
+
+    pub fn with_variables(mut self, variables: HashMap<String, ValueRef>) -> Self {
+        self.variables = Some(variables);
         self
     }
 }

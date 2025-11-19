@@ -86,6 +86,7 @@ impl LastRun {
             run_id,
             self.input.clone(),
             state_store.clone(),
+            None, // TODO: Add variables support to REPL
         )
         .change_context(MainError::FlowExecution)?;
 

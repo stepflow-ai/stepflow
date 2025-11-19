@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use bit_set::BitSet;
 use futures::future::{BoxFuture, FutureExt as _};
@@ -41,6 +41,8 @@ pub struct CreateRunParams {
     pub input: ValueRef,
     /// Runtime overrides for step inputs
     pub overrides: WorkflowOverrides,
+    /// Variables to provide for variable references in the workflow
+    pub variables: HashMap<String, ValueRef>,
 }
 
 impl CreateRunParams {
@@ -53,6 +55,7 @@ impl CreateRunParams {
             workflow_label: None,
             debug_mode: false,
             overrides: WorkflowOverrides::default(),
+            variables: HashMap::new(),
         }
     }
 }

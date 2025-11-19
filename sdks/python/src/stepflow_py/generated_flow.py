@@ -28,6 +28,14 @@ class Schema(Struct, kw_only=True):
     pass
 
 
+VariableSchema = Annotated[
+    Schema,
+    Meta(
+        description='Variable schema for workflow variables using JSON Schema format.\n\nThis allows flows to declare required variables with their types,\ndefault values, descriptions, and secret annotations.\n\nExample:\n```yaml\nvariables:\n  type: object\n  properties:\n    api_key:\n      type: string\n      is_secret: true\n      description: "OpenAI API key"\n    temperature:\n      type: number\n      default: 0.7\n      minimum: 0\n      maximum: 2\n  required: ["api_key"]\n```'
+    ),
+]
+
+
 Component = Annotated[
     str,
     Meta(
@@ -39,6 +47,10 @@ Component = Annotated[
 
 class StepReference(Struct, kw_only=True):
     step: str
+
+
+class VariableReference(Struct, kw_only=True):
+    variable: str
 
 
 class WorkflowRef(Enum):
@@ -160,7 +172,7 @@ class WorkflowReference(Struct, kw_only=True):
 
 
 BaseRef = Annotated[
-    WorkflowReference | StepReference,
+    WorkflowReference | StepReference | VariableReference,
     Meta(
         description='An expression that can be either a literal value or a template expression.'
     ),
@@ -391,6 +403,15 @@ class FlowV1(Struct, kw_only=True):
     ) = None
     outputSchema: (
         Annotated[Schema | None, Meta(description='The output schema of the flow.')]
+        | None
+    ) = None
+    variables: (
+        Annotated[
+            VariableSchema | None,
+            Meta(
+                description='Schema for workflow variables that can be referenced in steps.'
+            ),
+        ]
         | None
     ) = None
     steps: (

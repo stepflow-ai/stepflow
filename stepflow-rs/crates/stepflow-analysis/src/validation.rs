@@ -200,6 +200,21 @@ fn validate_expression_references(
                     );
                 }
             }
+            BaseRef::Variable { variable, .. } => {
+                // Variable references should be validated against the variables schema
+                // For now, we'll assume they're valid as variable validation happens at runtime
+                // TODO(#419): Add variable schema validation here if available
+                if !field_path.is_empty() {
+                    diagnostics.add(
+                        DiagnosticMessage::UnvalidatedFieldAccess {
+                            step_id: format!("variable_{}", variable),
+                            field: field_path.to_string(),
+                            reason: "variable schema validation not implemented".to_string(),
+                        },
+                        path.to_vec(),
+                    );
+                }
+            }
         },
         Expr::EscapedLiteral { .. } | Expr::Literal(_) => {
             // Literals are always valid

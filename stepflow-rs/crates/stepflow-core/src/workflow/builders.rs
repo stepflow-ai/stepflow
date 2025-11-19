@@ -14,6 +14,7 @@ use std::collections::HashMap;
 
 use super::{
     Component, ErrorAction, ExampleInput, Expr, Flow, FlowV1, Step, TestConfig, ValueTemplate,
+    VariableSchema,
 };
 use crate::schema::SchemaRef;
 use serde_json::json;
@@ -28,6 +29,7 @@ pub struct FlowBuilder {
     output_schema: Option<SchemaRef>,
     steps: Vec<Step>,
     output: Option<ValueTemplate>,
+    variables: Option<VariableSchema>,
     test: Option<TestConfig>,
     examples: Option<Vec<ExampleInput>>,
     metadata: HashMap<String, serde_json::Value>,
@@ -87,6 +89,12 @@ impl FlowBuilder {
         self
     }
 
+    /// Set the variables schema for the flow.
+    pub fn variables(mut self, variables: VariableSchema) -> Self {
+        self.variables = Some(variables);
+        self
+    }
+
     /// Set the test configuration.
     pub fn test_config(mut self, test: TestConfig) -> Self {
         self.test = Some(test);
@@ -125,6 +133,7 @@ impl FlowBuilder {
             version: self.version,
             input_schema: self.input_schema,
             output_schema: self.output_schema,
+            variables: self.variables,
             steps: self.steps,
             output: self.output.unwrap_or_default(),
             test: self.test,

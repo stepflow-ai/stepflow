@@ -13,7 +13,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use super::{Step, ValueRef, ValueTemplate};
+use super::{Step, ValueRef, ValueTemplate, VariableSchema};
 use crate::{FlowResult, schema::SchemaRef};
 use schemars::JsonSchema;
 
@@ -115,6 +115,12 @@ impl Flow {
         }
     }
 
+    pub fn variables(&self) -> Option<&VariableSchema> {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.variables.as_ref(),
+        }
+    }
+
     /// Returns a reference to the step at the given index.
     ///
     /// # Panics
@@ -201,6 +207,10 @@ pub struct FlowV1 {
     /// The output schema of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<SchemaRef>,
+
+    /// Schema for workflow variables that can be referenced in steps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variables: Option<VariableSchema>,
 
     /// The steps to execute for the flow.
     #[schemars(extend("default" = []))]

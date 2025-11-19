@@ -1207,7 +1207,8 @@ mod tests {
                     workflow_label: None,
                     debug_mode: false,
                     input: ValueRef::new(serde_json::json!({"input": idx})),
-                    overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+                    overrides: Default::default(),
+                    variables: Default::default(),
                 })
                 .await
                 .unwrap();
@@ -1276,7 +1277,8 @@ mod tests {
                     workflow_label: None,
                     debug_mode: false,
                     input: ValueRef::new(serde_json::json!({"input": idx})),
-                    overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+                    overrides: Default::default(),
+                    variables: Default::default(),
                 })
                 .await
                 .unwrap();
@@ -1437,7 +1439,8 @@ mod tests {
                     workflow_label: None,
                     debug_mode: false,
                     input: ValueRef::new(serde_json::json!({"input": idx})),
-                    overrides: stepflow_core::workflow::WorkflowOverrides::default(),
+                    overrides: Default::default(),
+                    variables: Default::default(),
                 })
                 .await
                 .unwrap();
