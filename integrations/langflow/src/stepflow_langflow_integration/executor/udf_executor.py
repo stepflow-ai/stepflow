@@ -15,6 +15,7 @@
 """New UDF executor with pre-compilation approach (no CachedStepflowContext needed)."""
 
 import inspect
+import os
 from typing import Any
 
 from stepflow_py import StepflowContext
@@ -539,6 +540,23 @@ class UDFExecutor:
                     component_parameters[key] = actual_value
             else:
                 component_parameters[key] = value
+
+                # If the runtime value is falsy and we were supposed to load it from
+                # the DB, then it means we didn't receive a runtime variable, so we
+                # should attempt to load it from the environment. The `"value"` is the
+                # name of the variable / environment variable to load from.
+                if (
+                    not value
+                    and (template_field := template.get(key, {}))
+                    and template_field.get("load_from_db", False)
+                ):
+                    field_name = template_field.get("value", key)
+                    env_value = os.environ.get(field_name)
+                    if env_value is None:
+                        raise ExecutionError(
+                            f"Environment variable '{field_name}' for '{key}' not set."
+                        )
+                    component_parameters[key] = env_value
 
         # Defaults will be applied from component inputs definition during execution
         # This respects the actual component specification rather than hardcoding

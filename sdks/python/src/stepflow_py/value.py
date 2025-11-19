@@ -24,6 +24,7 @@ from .generated_flow import (
     Reference,
     SkipAction,
     ValueTemplate,
+    VariableReference,
     WorkflowRef,
     WorkflowReference,
 )
@@ -188,6 +189,13 @@ class InputPathBuilder:
         return Value(WorkflowInput(path, self.on_skip))
 
 
+class NoDefault:
+    pass
+
+
+NO_DEFAULT = NoDefault()
+
+
 class Value:
     """A value that can be used in workflow definitions.
 
@@ -218,6 +226,22 @@ class Value:
         if isinstance(value, Value):
             return value._value
         return value
+
+    @staticmethod
+    def variable(name: str, default: Any | NoDefault = NO_DEFAULT) -> Value:
+        """Create a workflow variable reference.
+
+        Args:
+            name: The name of the variable
+            default: Optional default value if the variable is not set
+
+        Returns:
+            Value representing the variable reference
+        """
+        variable = VariableReference(variable=name)
+        if default is not NO_DEFAULT:
+            variable.default = default
+        return Value(variable)
 
     @staticmethod
     def literal(value: Any) -> Value:
@@ -253,7 +277,7 @@ class Value:
         if isinstance(data, Value):
             return Value._convert_to_value_template(data._value)
 
-        if isinstance(data, StepReference | WorkflowInput):
+        if isinstance(data, StepReference | WorkflowInput | VariableReference):
             return Value._convert_reference_to_expr(data)
 
         if isinstance(data, EscapedLiteral):
@@ -273,7 +297,7 @@ class Value:
 
     @staticmethod
     def _convert_reference_to_expr(
-        ref: StepReference | WorkflowInput,
+        ref: StepReference | WorkflowInput | VariableReference,
     ) -> Reference:
         """Convert a reference to a Reference."""
         base_ref: WorkflowReference | GeneratedStepReference
@@ -285,6 +309,8 @@ class Value:
             base_ref = WorkflowReference(workflow=WorkflowRef.input)
             path_str = str(ref.path) if str(ref.path) != "$" else None
             return Reference(field_from=base_ref, path=path_str, onSkip=ref.on_skip)
+        elif isinstance(ref, VariableReference):
+            return Reference(field_from=ref, path="$")
         else:
             raise ValueError(f"Unknown reference type: {type(ref)}")
 
@@ -340,6 +366,7 @@ class WorkflowInputValue(Value):
 Valuable = (
     Value
     | StepReference
+    | VariableReference
     | WorkflowInput
     | EscapedLiteral
     | str

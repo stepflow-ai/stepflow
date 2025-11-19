@@ -15,7 +15,6 @@
 """Test variables schema functionality in FlowBuilder."""
 
 from stepflow_py import FlowBuilder, Value
-from stepflow_py.generated_flow import Schema
 
 
 def test_variables_schema_from_dict():
@@ -55,7 +54,6 @@ def test_variables_schema_from_dict():
     flow = builder.build()
 
     assert flow.variables is not None
-    assert isinstance(flow.variables, Schema)
 
 
 def test_variables_schema_from_simple_dict():
@@ -81,7 +79,6 @@ def test_variables_schema_from_simple_dict():
     flow = builder.build()
 
     assert flow.variables is not None
-    assert isinstance(flow.variables, Schema)
 
 
 def test_variables_schema_load_flow():

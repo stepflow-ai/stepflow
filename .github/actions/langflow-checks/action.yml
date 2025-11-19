@@ -10,6 +10,9 @@ inputs:
     description: 'uv version to install'
     required: false
     default: '0.7.5'
+  openai-api-key:
+    description: 'OpenAI API Key for Langflow tests'
+    required: true
 
 runs:
   using: 'composite'
@@ -33,8 +36,7 @@ runs:
     - name: Configure Rust cache
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: |
-          stepflow-rs
+        workspaces: stepflow-rs
 
     - name: Build Stepflow binary (needed for integration tests)
       shell: bash
@@ -46,3 +48,5 @@ runs:
     - name: Run Langflow integration checks
       shell: bash
       run: ./scripts/check-langflow.sh
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}

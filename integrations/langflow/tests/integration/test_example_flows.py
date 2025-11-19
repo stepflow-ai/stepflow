@@ -61,7 +61,7 @@ def shared_config():
     This configuration includes:
     - Langflow component server
     - Shared database for memory/session handling
-    - No environment variable setup (API keys now passed via tweaks)
+    - No environment variable setup (API keys now passed via variables)
 
     Returns a tuple of (config_dict, config_path) where config_path is a stable
     temporary file that persists for the module scope.
@@ -177,7 +177,7 @@ def shared_config():
 
 
 @pytest.fixture(scope="module")
-def stepflow_server(stepflow_runner, shared_config):
+def stepflow_server(request, stepflow_runner, shared_config):
     """Start a Stepflow server for all tests in the module.
 
     The server is shared across all tests for performance and runs with the
@@ -188,7 +188,17 @@ def stepflow_server(stepflow_runner, shared_config):
     # Start server
     server = stepflow_runner.start_server(config_path=config_path, timeout=60.0)
 
+    initial_failed_count = request.session.testsfailed
     yield server
+    if request.session.testsfailed > initial_failed_count:
+        print("Tests failed. Dumping stepflow server output")
+        print("------ STEPFLOW STDOUT ------")
+        print(server.get_stdout())
+        print("------ END STEPFLOW STDOUT ------")
+
+        print("------ STEPFLOW STDERR ------")
+        print(server.get_stderr())
+        print("------ END STEPFLOW STDERR ------")
 
     # Stop server after all tests complete
     server.stop()
@@ -213,15 +223,16 @@ class TestExecutor:
         self,
         flow_name: str,
         input_data: dict[str, Any],
+        variables: dict[str, Any] | None = None,
+        tweaks: dict[str, dict[str, Any]] | None = None,
         timeout: float = 60.0,
-        tweaks: dict[str, dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Execute complete flow lifecycle: convert → validate → submit to server.
 
         Args:
             flow_name: Name of flow fixture (without .json extension)
             input_data: Input data for workflow execution
-            timeout: Execution timeout in seconds
+            variables: Variables to pass to the execution
             tweaks: Optional Stepflow-level tweaks to apply
 
         Returns:
@@ -255,7 +266,7 @@ class TestExecutor:
         # Step 4: Execute workflow with overrides (if provided)
         overrides = convert_tweaks_to_overrides(tweaks) if tweaks else None
         result_data = self._execute_workflow(
-            self.stepflow_server, flow_id, input_data, overrides
+            self.stepflow_server, flow_id, input_data, variables, overrides
         )
 
         return result_data
@@ -297,7 +308,12 @@ class TestExecutor:
         return flow_id
 
     def _execute_workflow(
-        self, server, flow_id: str, input_data: dict, overrides: dict | None = None
+        self,
+        server,
+        flow_id: str,
+        input_data: dict,
+        variables: dict | None = None,
+        overrides: dict | None = None,
     ) -> dict:
         """Execute workflow with optional overrides using server API.
 
@@ -305,6 +321,7 @@ class TestExecutor:
             server: Running StepflowServer instance
             flow_id: Previously submitted flow ID
             input_data: Input data for the workflow
+            variables: Optional Stepflow execution variables
             overrides: Optional StepFlow override dictionary
 
         Returns:
@@ -318,6 +335,10 @@ class TestExecutor:
             "input": input_data,
             "debug": False,
         }
+
+        # Add variables only if provided
+        if variables:
+            payload["variables"] = variables
 
         # Add overrides only if provided
         if overrides:
@@ -381,20 +402,40 @@ def load_flow_fixture(flow_name: str) -> dict[str, Any]:
 def test_basic_prompting(test_executor):
     """Test basic prompting: custom Prompt + LanguageModelComponent with OpenAI API."""
 
-    # Configure tweaks for LanguageModelComponent with OpenAI API key
-    from tests.helpers.tweaks_builder import TweaksBuilder
-
-    tweaks = (
-        TweaksBuilder()
-        .add_openai_tweaks("LanguageModelComponent-kBOja")
-        .build_or_skip()
+    result = test_executor.execute_flow(
+        flow_name="basic_prompting",
+        input_data={"message": "Write a haiku about testing"},
+        timeout=60.0,
+        variables={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},
     )
+
+    # Should return a Langflow Message with text content
+    message_result = result["result"]
+    assert isinstance(message_result, dict)
+    # Check for both old and new Message serialization formats
+    # Old: __langflow_type__, New (lfx): __class_name__ + __module_name__
+    is_message = (
+        "__langflow_type__" in message_result or "__class_name__" in message_result
+    )
+    assert is_message, f"Expected Message object, got: {message_result.keys()}"
+    assert "text" in message_result
+    # Haiku should have some structure (multiple lines)
+    assert len(message_result["text"].split("\n")) >= 3
+
+
+def test_basic_prompting_api_key_from_env(test_executor):
+    """Test basic prompting: custom Prompt + LanguageModelComponent with OpenAI API."""
 
     result = test_executor.execute_flow(
         flow_name="basic_prompting",
         input_data={"message": "Write a haiku about testing"},
         timeout=60.0,
-        tweaks=tweaks,
+        variables={
+            # By not providing the OPENAI_API_KEY as a variable we
+            # are verifying that the UDF executor correctly loads it from the
+            # environment.
+            # "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")
+        },
     )
 
     # Should return a Langflow Message with text content
@@ -454,12 +495,11 @@ retrieval-augmented generation (RAG). Popular solutions include:
         test_file_path = f.name
 
     try:
-        # Configure tweaks for OpenAI components and AstraDB
+        # Configure tweaks for OpenAI and AstraDB
         from tests.helpers.tweaks_builder import TweaksBuilder
 
         tweaks = (
             TweaksBuilder()
-            .add_openai_tweaks("LanguageModelComponent-Wqbva")  # LLM component
             .add_astradb_tweaks("AstraDB-TCSqR")  # First AstraDB vector store
             .add_astradb_tweaks("AstraDB-BteL9")  # Second AstraDB vector store
             # Ingestion embeddings
@@ -478,6 +518,12 @@ retrieval-augmented generation (RAG). Popular solutions include:
                 },
                 timeout=120.0,
                 tweaks=tweaks,
+                variables={
+                    "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
+                    "ASTRA_DB_APPLICATION_TOKEN": os.environ.get(
+                        "ASTRA_DB_APPLICATION_TOKEN", ""
+                    ),
+                },
             )
 
             # Should return a response about the document content
@@ -545,18 +591,6 @@ def test_memory_chatbot(test_executor):
     This validates the Retrieve-mode Memory component works with proper session
     handling.
     """
-
-    # Use test utilities to create tweaks for OpenAI components
-    from tests.helpers.tweaks_builder import TweaksBuilder
-
-    tweaks = (
-        TweaksBuilder()
-        .add_openai_tweaks(
-            "LanguageModelComponent-n8KRg"
-        )  # Correct ID for memory_chatbot
-        .build_or_skip()
-    )
-
     # Setup test data with different session IDs upfront
     our_session_id = "test-memory-session-123"
     other_session_id = "other-session-456"
@@ -642,12 +676,11 @@ def test_memory_chatbot(test_executor):
             os.environ.pop("LANGFLOW_DATABASE_URL", None)
 
     # Phase 2: Test end-to-end memory functionality
-    # Apply tweaks and execute the complete lifecycle
     result = test_executor.execute_flow(
         flow_name="memory_chatbot",
         input_data={"message": "What is my name?", "session_id": our_session_id},
         timeout=120.0,  # Increased timeout for memory operations
-        tweaks=tweaks,
+        variables={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},
     )
 
     # Check for the known Langflow bug
@@ -658,7 +691,7 @@ def test_memory_chatbot(test_executor):
         flow_name="memory_chatbot",
         input_data={"message": "What is my name?", "session_id": other_session_id},
         timeout=120.0,  # Increased timeout for memory operations
-        tweaks=tweaks,
+        variables={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},
     )
 
     other_response = result_other["result"]["text"]
@@ -722,17 +755,6 @@ language processing, and autonomous vehicles.
         test_file_path = f.name
 
     try:
-        # Use test utilities to create tweaks for OpenAI components
-        from tests.helpers.tweaks_builder import TweaksBuilder
-
-        tweaks = (
-            TweaksBuilder()
-            .add_openai_tweaks(
-                "LanguageModelComponent-htMuI"
-            )  # Correct ID for document_qa
-            .build_or_skip()
-        )
-
         # Test with file path provided as input data
         result = test_executor.execute_flow(
             flow_name="document_qa",
@@ -744,7 +766,7 @@ language processing, and autonomous vehicles.
                 "file_path": test_file_path,  # Provide the file path
             },
             timeout=120.0,
-            tweaks=tweaks,
+            variables={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},
         )
 
         # Should return a response about the document content
@@ -802,7 +824,6 @@ the weights of connections to minimize prediction errors.
 
         tweaks = (
             TweaksBuilder()
-            .add_openai_tweaks("LanguageModelComponent-htMuI")
             .add_tweak("File-b2gOG", "path", [test_file_path])
             .build_or_skip()
         )
@@ -819,6 +840,7 @@ the weights of connections to minimize prediction errors.
             },
             timeout=120.0,
             tweaks=tweaks,
+            variables={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},
         )
 
         # Should return a response about the document content
@@ -877,11 +899,7 @@ Cost reduction, scalability, flexibility, and improved collaboration.
         # Use test utilities to create tweaks for OpenAI components
         from tests.helpers.tweaks_builder import TweaksBuilder
 
-        tweaks = (
-            TweaksBuilder()
-            .add_openai_tweaks("LanguageModelComponent-htMuI")
-            .build_or_skip()
-        )
+        tweaks = TweaksBuilder().build_or_skip()
 
         # Test with .txt file path provided as input data
         result = test_executor.execute_flow(
@@ -895,6 +913,7 @@ Cost reduction, scalability, flexibility, and improved collaboration.
             },
             timeout=120.0,
             tweaks=tweaks,
+            variables={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},
         )
 
         # Should return a response about the document content
@@ -927,16 +946,6 @@ Cost reduction, scalability, flexibility, and improved collaboration.
 def test_simple_agent(test_executor):
     """Test simple agent: tool coordination with Calculator and URL components."""
 
-    # Use test utilities to create tweaks for OpenAI components
-    from tests.helpers.tweaks_builder import TweaksBuilder
-
-    # Agent component needs OpenAI API key tweaks
-    tweaks = (
-        TweaksBuilder()
-        .add_openai_tweaks("Agent-D0Kx2")  # Agent component ID from the flow
-        .build_or_skip()
-    )
-
     # Use a more complex calculation that requires actual computation
     complex_expression = "137 * 89 + 456 / 12 - 73"
     # Expected result: 137 * 89 + 456 / 12 - 73 = 12158.0
@@ -957,7 +966,7 @@ def test_simple_agent(test_executor):
             "session_id": unique_session_id,
         },
         timeout=120.0,  # Longer timeout for complex calculation
-        tweaks=tweaks,
+        variables={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},
     )
 
     # Should return a Langflow Message with text content containing result

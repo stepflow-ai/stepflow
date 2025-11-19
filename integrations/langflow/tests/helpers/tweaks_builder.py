@@ -89,31 +89,9 @@ class TweaksBuilder:
 
         return self
 
-    def add_openai_tweaks(
-        self, component_id: str, api_key_env: str = "OPENAI_API_KEY", **kwargs: Any
-    ) -> "TweaksBuilder":
-        """Add common OpenAI component tweaks.
-
-        Args:
-            component_id: Langflow component ID
-            api_key_env: Environment variable for API key (default: "OPENAI_API_KEY")
-            **kwargs: Additional direct tweaks (e.g., temperature=0.8,
-                model_name="gpt-4")
-
-        Returns:
-            Self for method chaining
-        """
-        self.add_env_tweak(component_id, "api_key", api_key_env)
-
-        for field_name, value in kwargs.items():
-            self.add_tweak(component_id, field_name, value)
-
-        return self
-
     def add_astradb_tweaks(
         self,
         component_id: str,
-        token_env: str = "ASTRA_DB_APPLICATION_TOKEN",
         endpoint_env: str = "ASTRA_DB_API_ENDPOINT",
         **kwargs: Any,
     ) -> "TweaksBuilder":
@@ -128,7 +106,6 @@ class TweaksBuilder:
         Returns:
             Self for method chaining
         """
-        self.add_env_tweak(component_id, "token", token_env)
         self.add_env_tweak(component_id, "api_endpoint", endpoint_env)
 
         # Add default test values if not overridden

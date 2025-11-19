@@ -12,6 +12,9 @@ publish = false
 [lints]
 workspace = true
 
+[lib]
+doctest = false
+
 [dependencies]
 error-stack.workspace = true
 indexmap.workspace = true

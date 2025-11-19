@@ -113,7 +113,6 @@ impl VariableSchema {
             for (var_name, var_schema) in properties {
                 variables.push(var_name.clone());
                 let var_type = var_schema.get("type");
-
                 let var_default = if let Some(default_value) = var_schema.get("default") {
                     Some(default_value.clone())
                 } else if !required.contains(var_name) {

@@ -129,6 +129,7 @@ jobs:
       - uses: ./.github/actions/langflow-checks
         with:
           python-version: ${{ matrix.python-version }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 
   # License header validation (runs on all changes)
   licensure:

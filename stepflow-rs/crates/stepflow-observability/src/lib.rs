@@ -367,7 +367,7 @@ fn add_dispatch(
 
 /// Create an appender based on configuration
 fn create_appender(
-    destination: LogDestination,
+    destination: LogDestination<'_>,
     format: LogFormat,
     otlp_endpoint: Option<&str>,
     service_name: &'static str,
