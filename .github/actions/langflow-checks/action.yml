@@ -46,3 +46,5 @@ runs:
     - name: Run Langflow integration checks
       shell: bash
       run: ./scripts/check-langflow.sh
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
