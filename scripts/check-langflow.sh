@@ -57,6 +57,22 @@ FAILED_CHECKS=()
 # LANGFLOW INTEGRATION CHECKS (langflow-checks action)
 # =============================================================================
 
+# Create a `.env` file in the integrations/langflow directory
+# if it doesn't exist. It should contain the `OPENAI_API_KEY`
+# variable from the current environment.
+if [ ! -f ".env" ]; then
+    # Fail if OPENAI_API_KEY is not set
+    if [ -z "$OPENAI_API_KEY" ]; then
+        echo "❌ OPENAI_API_KEY environment variable is not set. Cannot create .env file."
+        exit 1
+    fi
+    
+    output "🔐 Creating .env file for Langflow..."
+    echo "OPENAI_API_KEY=${OPENAI_API_KEY}" > .env
+else
+    output "🔐 .env file already exists, skipping creation"
+fi
+
 output "🔧 Setting up Python environment..."
 if ! command -v uv &> /dev/null; then
     echo "❌ uv not found. Please install uv first:"
