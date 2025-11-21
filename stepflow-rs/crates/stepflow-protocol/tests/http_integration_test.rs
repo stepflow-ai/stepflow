@@ -226,7 +226,7 @@ async fn test_http_protocol_integration() {
 
                                 let execution_context = ExecutionContext::for_step(
                                     context.clone(),
-                                    Uuid::new_v4(),
+                                    Uuid::now_v7(),
                                     "test_step".to_string(),
                                 );
 

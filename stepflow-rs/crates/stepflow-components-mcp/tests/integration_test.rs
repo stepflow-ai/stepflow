@@ -33,7 +33,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
             &self,
             _params: stepflow_core::SubmitFlowParams,
         ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<uuid::Uuid>> {
-            async move { Ok(Uuid::new_v4()) }.boxed()
+            async move { Ok(Uuid::now_v7()) }.boxed()
         }
         fn flow_result(
             &self,
@@ -51,7 +51,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
             &self,
             _params: stepflow_core::SubmitBatchParams,
         ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<uuid::Uuid>> {
-            async move { Ok(Uuid::new_v4()) }.boxed()
+            async move { Ok(Uuid::now_v7()) }.boxed()
         }
         fn get_batch(
             &self,
@@ -78,7 +78,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
     });
     let exec_context = ExecutionContext::new(
         test_context.clone(),
-        Uuid::new_v4(),
+        Uuid::now_v7(),
         Some("test_step".to_string()),
     );
 

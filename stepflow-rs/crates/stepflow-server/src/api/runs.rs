@@ -125,7 +125,7 @@ pub async fn create_run(
     State(executor): State<Arc<StepflowExecutor>>,
     Json(req): Json<CreateRunRequest>,
 ) -> Result<Json<CreateRunResponse>, ErrorResponse> {
-    let run_id = Uuid::new_v4();
+    let run_id = Uuid::now_v7();
     let state_store = executor.state_store();
 
     // Get the flow from the state store

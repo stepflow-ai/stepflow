@@ -83,7 +83,7 @@ impl std::fmt::Display for RequestId {
 impl RequestId {
     /// Generate a new RequestId using a UUID string.
     pub fn new_uuid() -> Self {
-        RequestId::from(uuid::Uuid::new_v4())
+        RequestId::from(uuid::Uuid::now_v7())
     }
 }
 

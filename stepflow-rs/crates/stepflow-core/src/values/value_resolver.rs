@@ -410,7 +410,7 @@ mod tests {
     async fn test_resolve_template() {
         let workflow_input = ValueRef::new(json!({"name": "Alice"}));
         let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let flow = create_test_flow();
 
         let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
@@ -430,7 +430,7 @@ mod tests {
     async fn test_resolve_variable() {
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
 
         // Create flow with variables schema
         let variables_schema_json = json!({
@@ -509,7 +509,7 @@ mod tests {
     async fn test_resolve_undefined_variable() {
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let flow = create_test_flow(); // Flow without variables
 
         let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
@@ -570,7 +570,7 @@ mod tests {
         );
         variables.insert("username".to_string(), ValueRef::new(json!("alice")));
 
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
 
@@ -625,7 +625,7 @@ mod tests {
     async fn test_resolve_variable_with_path() {
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let flow = create_test_flow();
 
         // Set up variables with nested object

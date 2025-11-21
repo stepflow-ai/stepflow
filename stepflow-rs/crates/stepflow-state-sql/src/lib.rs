@@ -53,7 +53,7 @@ mod tests {
     #[tokio::test]
     async fn test_step_result_storage() {
         let store = SqliteStateStore::in_memory().await.unwrap();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
 
         // First store a workflow
         let flow = FlowBuilder::new()

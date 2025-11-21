@@ -508,7 +508,7 @@ mod tests {
             &self,
             _params: stepflow_core::SubmitFlowParams,
         ) -> BoxFuture<'_, PluginResult<Uuid>> {
-            async { Ok(Uuid::new_v4()) }.boxed()
+            async { Ok(Uuid::now_v7()) }.boxed()
         }
 
         fn flow_result(&self, _run_id: Uuid) -> BoxFuture<'_, PluginResult<FlowResult>> {
@@ -527,7 +527,7 @@ mod tests {
             &self,
             _params: stepflow_core::SubmitBatchParams,
         ) -> BoxFuture<'_, PluginResult<Uuid>> {
-            async { Ok(Uuid::new_v4()) }.boxed()
+            async { Ok(Uuid::now_v7()) }.boxed()
         }
 
         fn get_batch(
@@ -550,7 +550,7 @@ mod tests {
                 .unwrap();
                 let batch_details = stepflow_state::BatchDetails {
                     metadata: stepflow_state::BatchMetadata {
-                        batch_id: Uuid::new_v4(),
+                        batch_id: Uuid::now_v7(),
                         flow_id: dummy_flow_id,
                         flow_name: None,
                         total_inputs: 0,

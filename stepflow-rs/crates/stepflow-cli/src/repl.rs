@@ -78,7 +78,7 @@ impl LastRun {
         executor: &Arc<StepflowExecutor>,
     ) -> Result<&mut WorkflowExecutor> {
         let state_store = executor.state_store();
-        let run_id = uuid::Uuid::new_v4();
+        let run_id = uuid::Uuid::now_v7();
         let workflow_executor = WorkflowExecutor::new(
             executor.clone(),
             self.flow.clone(),

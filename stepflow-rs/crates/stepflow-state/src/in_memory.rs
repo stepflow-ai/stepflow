@@ -1047,7 +1047,7 @@ mod tests {
         use stepflow_core::workflow::ValueRef;
 
         let store = InMemoryStateStore::new();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
 
         // Test data
         let step1_result =
@@ -1075,7 +1075,7 @@ mod tests {
         assert!(result_by_idx.is_err());
 
         // Different execution ID should return empty list
-        let other_run_id = Uuid::new_v4();
+        let other_run_id = Uuid::now_v7();
         let other_results = store.list_step_results(other_run_id).await.unwrap();
         assert!(other_results.is_empty());
     }
@@ -1085,7 +1085,7 @@ mod tests {
         use stepflow_core::workflow::ValueRef;
 
         let store = InMemoryStateStore::new();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
 
         // Record initial result
         let initial_result = FlowResult::Success(ValueRef::new(serde_json::json!({"attempt":1})));
@@ -1109,7 +1109,7 @@ mod tests {
     #[tokio::test]
     async fn test_step_result_ordering() {
         let store = InMemoryStateStore::new();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
 
         // Insert steps out of order to test ordering
         let step2_result = FlowResult::Success(ValueRef::new(serde_json::json!({"step":2})));
@@ -1132,7 +1132,7 @@ mod tests {
     #[tokio::test]
     async fn test_execution_eviction() {
         let store = InMemoryStateStore::new();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
 
         // Store some step results
         let step_result = FlowResult::Success(ValueRef::new(serde_json::json!({"output":"test"})));
@@ -1159,7 +1159,7 @@ mod tests {
         use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
-        let batch_id = Uuid::new_v4();
+        let batch_id = Uuid::now_v7();
         let flow_id = BlobId::new("a".repeat(64)).unwrap();
 
         // Create batch
@@ -1185,7 +1185,7 @@ mod tests {
         use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
-        let batch_id = Uuid::new_v4();
+        let batch_id = Uuid::now_v7();
         let flow_id = BlobId::new("a".repeat(64)).unwrap();
 
         // Create batch
@@ -1195,7 +1195,7 @@ mod tests {
             .unwrap();
 
         // Create some runs and add them to the batch
-        let run_ids: Vec<Uuid> = (0..3).map(|_| Uuid::new_v4()).collect();
+        let run_ids: Vec<Uuid> = (0..3).map(|_| Uuid::now_v7()).collect();
 
         for (idx, run_id) in run_ids.iter().enumerate() {
             // Create run
@@ -1248,7 +1248,7 @@ mod tests {
         use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
-        let batch_id = Uuid::new_v4();
+        let batch_id = Uuid::now_v7();
         let flow_id = BlobId::new("a".repeat(64)).unwrap();
 
         // Create batch
@@ -1258,7 +1258,7 @@ mod tests {
             .unwrap();
 
         // Create runs with different statuses
-        let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
+        let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::now_v7()).collect();
         let statuses = [
             ExecutionStatus::Completed,
             ExecutionStatus::Running,
@@ -1310,7 +1310,7 @@ mod tests {
         use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
-        let batch_id = Uuid::new_v4();
+        let batch_id = Uuid::now_v7();
         let flow_id = BlobId::new("a".repeat(64)).unwrap();
 
         // Create batch
@@ -1342,7 +1342,7 @@ mod tests {
         let flow_id = BlobId::new("a".repeat(64)).unwrap();
 
         // Create multiple batches
-        let batch_ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
+        let batch_ids: Vec<Uuid> = (0..5).map(|_| Uuid::now_v7()).collect();
 
         // Create batches with different statuses and names
         for (idx, batch_id) in batch_ids.iter().enumerate() {
@@ -1418,7 +1418,7 @@ mod tests {
         use crate::StateStore as _;
 
         let store = InMemoryStateStore::new();
-        let batch_id = Uuid::new_v4();
+        let batch_id = Uuid::now_v7();
         let flow_id = BlobId::new("a".repeat(64)).unwrap();
 
         // Create batch
@@ -1428,7 +1428,7 @@ mod tests {
             .unwrap();
 
         // Create runs with different statuses
-        let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
+        let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::now_v7()).collect();
 
         for (idx, run_id) in run_ids.iter().enumerate() {
             store

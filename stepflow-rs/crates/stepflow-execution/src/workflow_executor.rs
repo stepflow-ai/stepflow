@@ -1205,7 +1205,7 @@ mod tests {
     ) -> Result<FlowResult> {
         let (executor, flow, flow_id) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
@@ -1229,7 +1229,7 @@ mod tests {
     ) -> Result<WorkflowExecutor> {
         let (executor, flow, flow_id) =
             create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
@@ -1466,7 +1466,7 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepflowExecutor::new_in_memory();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let input = ValueRef::new(json!({}));
 
         // Create a workflow executor
@@ -1562,7 +1562,7 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepflowExecutor::new_in_memory();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let input = ValueRef::new(json!({}));
 
         let workflow_executor = WorkflowExecutor::new(
@@ -1659,7 +1659,7 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepflowExecutor::new_in_memory();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let input = ValueRef::new(json!({}));
 
         let mut workflow_executor = WorkflowExecutor::new(
@@ -1740,7 +1740,7 @@ output:
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
         let flow_id = BlobId::from_flow(&workflow).unwrap();
         let executor = StepflowExecutor::new_in_memory();
-        let run_id = Uuid::new_v4();
+        let run_id = Uuid::now_v7();
         let input = ValueRef::new(json!({}));
 
         let mut workflow_executor = WorkflowExecutor::new(

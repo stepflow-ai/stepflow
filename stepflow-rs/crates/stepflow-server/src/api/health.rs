@@ -58,7 +58,7 @@ pub async fn health_check(
                 use error_stack::report;
                 let backtrace = std::backtrace::Backtrace::capture();
                 Err(
-                    report!(ServerError::ExecutionNotFound(uuid::Uuid::new_v4()))
+                    report!(ServerError::ExecutionNotFound(uuid::Uuid::now_v7()))
                         .attach(backtrace)
                         .change_context(std::io::Error::new(
                             std::io::ErrorKind::InvalidInput,
@@ -72,7 +72,7 @@ pub async fn health_check(
             }
             "not_found" => {
                 use error_stack::report;
-                let test_id = uuid::Uuid::new_v4();
+                let test_id = uuid::Uuid::now_v7();
                 Err(report!(ServerError::ExecutionNotFound(test_id))
                     .attach_printable("Test execution not found")
                     .attach_printable(format!("Looking for execution: {}", test_id))
@@ -91,7 +91,7 @@ pub async fn health_check(
                     std::io::ErrorKind::ConnectionRefused,
                     "State store unavailable",
                 ))
-                .change_context(ServerError::ExecutionNotFound(uuid::Uuid::new_v4()))
+                .change_context(ServerError::ExecutionNotFound(uuid::Uuid::now_v7()))
                 .attach_printable("Complex error stack for testing")
                 .attach_printable("Bottom layer: Database permission denied")
                 .attach_printable("Middle layer: Connection refused")
