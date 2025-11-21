@@ -180,7 +180,7 @@ impl Context for StepflowExecutor {
         let executor = self.executor();
 
         async move {
-            let run_id = Uuid::new_v4();
+            let run_id = Uuid::now_v7();
 
             // Ensure the flow is stored as a blob (idempotent operation)
             let flow_value = ValueRef::new(serde_json::to_value(params.flow.as_ref()).unwrap());
@@ -214,7 +214,7 @@ impl Context for StepflowExecutor {
                 // - trace_id represents the distributed trace tree, not business ID
                 let span_context = params.parent_context.unwrap_or_else(|| {
                     // Generate fresh trace_id for new trace
-                    SpanContext::new(TraceId(Uuid::new_v4().as_u128()), SpanId::default())
+                    SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default())
                 });
 
                 let span = Span::root("flow_execution", span_context)
@@ -328,7 +328,7 @@ impl Context for StepflowExecutor {
         let executor = self.executor();
 
         async move {
-            let batch_id = Uuid::new_v4();
+            let batch_id = Uuid::now_v7();
             let state_store = executor.state_store();
 
             let total_runs = params.inputs.len();
@@ -348,7 +348,7 @@ impl Context for StepflowExecutor {
             // Create run records and collect (run_id, input, index) tuples
             let mut run_inputs = Vec::with_capacity(total_runs);
             for (idx, input) in params.inputs.into_iter().enumerate() {
-                let run_id = Uuid::new_v4();
+                let run_id = Uuid::now_v7();
 
                 // Create run record
                 let mut run_params = stepflow_state::CreateRunParams::new(
@@ -389,7 +389,7 @@ impl Context for StepflowExecutor {
                 // Design: Always use unique trace_id, store batch_id as span attribute
                 let batch_span_context = params.parent_context.unwrap_or_else(|| {
                     // Generate fresh trace_id for new trace
-                    SpanContext::new(TraceId(Uuid::new_v4().as_u128()), SpanId::default())
+                    SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default())
                 });
 
                 let _batch_span = Span::root("batch_execution", batch_span_context)

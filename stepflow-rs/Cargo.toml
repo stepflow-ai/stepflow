@@ -89,7 +89,7 @@ url = { version = "2.5.4", features = ["serde"]}
 utoipa = { version = "5.3", features = ["axum_extras", "chrono", "indexmap", "rc_schema", "url", "uuid"] }
 utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
-uuid = { version = "1.16.0", features = ["v4", "serde"]}
+uuid = { version = "1.16.0", features = ["v7", "serde"]}
 walkdir = "2.5.0"
 which = { version = "7.0.3", features = ["tracing"] }
 strum = { version = "0.26", features = ["derive"] }

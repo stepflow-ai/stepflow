@@ -42,7 +42,7 @@ impl MockContext {
     pub fn execution_context(&self) -> ExecutionContext {
         ExecutionContext::new(
             self.executor.clone(),
-            Uuid::new_v4(),
+            Uuid::now_v7(),
             Some("test_step".to_string()),
         )
     }
@@ -72,7 +72,7 @@ impl stepflow_plugin::Context for MockExecutor {
         &self,
         _params: stepflow_core::SubmitFlowParams,
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
-        Box::pin(async { Ok(Uuid::new_v4()) })
+        Box::pin(async { Ok(Uuid::now_v7()) })
     }
 
     fn flow_result(
@@ -100,7 +100,7 @@ impl stepflow_plugin::Context for MockExecutor {
     ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
         let batches = self.batches.clone();
         Box::pin(async move {
-            let batch_id = Uuid::new_v4();
+            let batch_id = Uuid::now_v7();
             batches.lock().unwrap().insert(
                 batch_id,
                 MockBatch {
