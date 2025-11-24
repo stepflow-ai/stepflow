@@ -102,11 +102,32 @@ impl ProxyHttp for StepflowLoadBalancer {
 
     async fn upstream_request_filter(
         &self,
-        _session: &mut Session,
+        session: &mut Session,
         upstream_request: &mut RequestHeader,
         _ctx: &mut Self::CTX,
     ) -> PingoraResult<()> {
-        // Add headers for debugging
+        // Propagate W3C trace context headers for distributed tracing
+        let incoming_headers = &session.req_header().headers;
+
+        // Forward traceparent header (W3C Trace Context)
+        if let Some(traceparent) = incoming_headers.get("traceparent") {
+            upstream_request.insert_header("traceparent", traceparent)?;
+            debug!("Propagating traceparent header: {:?}", traceparent);
+        }
+
+        // Forward tracestate header (W3C Trace Context)
+        if let Some(tracestate) = incoming_headers.get("tracestate") {
+            upstream_request.insert_header("tracestate", tracestate)?;
+            debug!("Propagating tracestate header: {:?}", tracestate);
+        }
+
+        // Forward baggage header (OpenTelemetry)
+        if let Some(baggage) = incoming_headers.get("baggage") {
+            upstream_request.insert_header("baggage", baggage)?;
+            debug!("Propagating baggage header: {:?}", baggage);
+        }
+
+        // Add header for debugging
         upstream_request.insert_header("X-Forwarded-By", "stepflow-load-balancer")?;
 
         Ok(())
