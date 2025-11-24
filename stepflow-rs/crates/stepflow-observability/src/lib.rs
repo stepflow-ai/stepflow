@@ -248,6 +248,35 @@ pub fn init_observability(
     // Validate configuration first
     config.validate()?;
 
+    // Check if we're in a Tokio runtime context
+    let has_runtime = tokio::runtime::Handle::try_current().is_ok();
+
+    // If OTLP is needed but no runtime exists, create a temporary one for initialization
+    let needs_otlp = config.trace_enabled
+        || config.metrics_enabled
+        || config.log_destination() == LogDestination::OpenTelemetry;
+
+    if needs_otlp && !has_runtime {
+        // Create a temporary runtime for OTLP exporter initialization
+        // This is needed for Pingora-based applications that manage their own runtime
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| {
+                error_stack::report!(ObservabilityError::OtlpInitError)
+                    .attach_printable(format!("Failed to create Tokio runtime for OTLP init: {e}"))
+            })?;
+
+        return rt.block_on(async {
+            init_observability_inner(config, binary_config)
+        });
+    }
+
+    init_observability_inner(config, binary_config)
+}
+
+fn init_observability_inner(
+    config: &ObservabilityConfig,
+    binary_config: BinaryObservabilityConfig,
+) -> Result<ObservabilityGuard> {
     // Initialize tracing first (so logger can access trace context)
     let trace_guard = if config.trace_enabled {
         Some(init_tracing(config, &binary_config)?)
