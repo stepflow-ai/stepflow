@@ -21,6 +21,7 @@ use stepflow_core::{
     workflow::{ValueRef, WorkflowOverrides},
 };
 use stepflow_execution::StepflowExecutor;
+use stepflow_observability::fastrace;
 use stepflow_state::{BatchDetails, BatchFilters, BatchMetadata, BatchStatus, RunSummary};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -166,10 +167,13 @@ pub async fn create_batch(
 
     let total_inputs = req.inputs.len();
 
-    // Capture current span context for trace propagation
-    // Note: For now, batch API calls create independent traces.
-    // In the future, we could propagate trace context from HTTP headers.
-    let parent_context = None;
+    // Capture current span context for trace propagation to child flow executions
+    let parent_context = fastrace::local::SpanContext::current_local_parent();
+    let parent_context = if parent_context.is_valid() {
+        Some(parent_context)
+    } else {
+        None
+    };
 
     // Parse overrides from request
     let overrides = if req.overrides.is_empty() {
