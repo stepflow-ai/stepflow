@@ -21,7 +21,6 @@ use stepflow_core::{
     workflow::{ValueRef, WorkflowOverrides},
 };
 use stepflow_execution::StepflowExecutor;
-use stepflow_observability::fastrace;
 use stepflow_state::{BatchDetails, BatchFilters, BatchMetadata, BatchStatus, RunSummary};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -155,6 +154,7 @@ pub async fn create_batch(
     State(executor): State<Arc<StepflowExecutor>>,
     Json(req): Json<CreateBatchRequest>,
 ) -> Result<Json<CreateBatchResponse>, ErrorResponse> {
+    use stepflow_observability::fastrace::prelude::*;
     use stepflow_plugin::Context as _;
 
     let state_store = executor.state_store();
@@ -168,12 +168,7 @@ pub async fn create_batch(
     let total_inputs = req.inputs.len();
 
     // Capture current span context for trace propagation to child flow executions
-    let parent_context = fastrace::local::SpanContext::current_local_parent();
-    let parent_context = if parent_context.is_valid() {
-        Some(parent_context)
-    } else {
-        None
-    };
+    let parent_context = SpanContext::current_local_parent();
 
     // Parse overrides from request
     let overrides = if req.overrides.is_empty() {
