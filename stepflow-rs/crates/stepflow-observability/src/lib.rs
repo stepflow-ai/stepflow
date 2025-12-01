@@ -88,6 +88,16 @@ pub struct ObservabilityConfig {
     /// Required when log_destination is otlp, trace_enabled is true, or metrics_enabled is true
     #[arg(long, env = "STEPFLOW_OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
+
+    /// Service instance ID for distinguishing replicas (e.g., pod name, allocation ID)
+    ///
+    /// This is used to set the `service.instance.id` OpenTelemetry resource attribute,
+    /// enabling correlation of traces/logs/metrics to specific instances.
+    ///
+    /// For Kubernetes, set via: `valueFrom: { fieldRef: { fieldPath: metadata.name } }`
+    /// For Nomad, set via: `NOMAD_ALLOC_ID` or `NOMAD_ALLOC_NAME`
+    #[arg(long, env = "STEPFLOW_SERVICE_INSTANCE_ID")]
+    pub service_instance_id: Option<String>,
 }
 
 impl ObservabilityConfig {
@@ -388,7 +398,7 @@ fn add_dispatch(
         d.append(create_appender(
             destination,
             format,
-            config.otlp_endpoint.as_deref(),
+            config,
             binary_config.service_name,
         ))
     })
@@ -398,7 +408,7 @@ fn add_dispatch(
 fn create_appender(
     destination: LogDestination<'_>,
     format: LogFormat,
-    otlp_endpoint: Option<&str>,
+    config: &ObservabilityConfig,
     service_name: &'static str,
 ) -> Box<dyn logforth::Append> {
     use logforth::append;
@@ -434,7 +444,7 @@ fn create_appender(
             // Create OTLP log exporter with standard configuration
             let log_exporter = configure_otlp_exporter(
                 LogExporter::builder().with_tonic(),
-                otlp_endpoint.expect("Endpoint required for OTLP logging"),
+                config.otlp_endpoint.as_ref().expect("Endpoint required for OTLP logging"),
             )
             .build()
             .expect("Failed to create OTLP log exporter");
@@ -443,7 +453,7 @@ fn create_appender(
             // Respects OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES
             // Uses the same resource configuration as tracing for consistency
             let mut builder = OpentelemetryLogBuilder::new(service_name, log_exporter);
-            for (key, value) in build_resource(service_name).iter() {
+            for (key, value) in build_resource(service_name, config).iter() {
                 builder = builder.label(key.to_string(), value.to_string());
             }
 
@@ -456,19 +466,37 @@ fn create_appender(
 ///
 /// This creates a Resource that respects the standard OpenTelemetry environment variables:
 /// - OTEL_SERVICE_NAME: Override service name (highest priority)
-/// - OTEL_RESOURCE_ATTRIBUTES: Add custom resource attributes (e.g., "deployment.environment=prod,region=us-west")
+/// - OTEL_RESOURCE_ATTRIBUTES: Add custom resource attributes (e.g., "deployment.environment=prod,region=us-west,k8s.pod.name=my-pod")
 ///
 /// The precedence order is:
 /// 1. OTEL_SERVICE_NAME (if set)
 /// 2. OTEL_RESOURCE_ATTRIBUTES service.name (if set)
 /// 3. Programmatic service_name parameter (default)
-fn build_resource(service_name: &'static str) -> opentelemetry_sdk::Resource {
-    opentelemetry_sdk::Resource::builder()
+///
+/// Additionally includes `service.instance.id` from config if set, enabling
+/// correlation of telemetry to specific service instances (pods, allocations, etc.).
+fn build_resource(
+    service_name: &'static str,
+    config: &ObservabilityConfig,
+) -> opentelemetry_sdk::Resource {
+    use opentelemetry::KeyValue;
+
+    // service.instance.id is a stable OpenTelemetry semantic convention
+    // See: https://opentelemetry.io/docs/specs/semconv/resource/#service
+    const SERVICE_INSTANCE_ID: &str = "service.instance.id";
+
+    let mut builder = opentelemetry_sdk::Resource::builder()
         .with_service_name(service_name)
         .with_detector(Box::new(
             opentelemetry_sdk::resource::EnvResourceDetector::new(),
-        ))
-        .build()
+        ));
+
+    // Add service.instance.id if configured (for instance-level correlation)
+    if let Some(instance_id) = &config.service_instance_id {
+        builder = builder.with_attributes([KeyValue::new(SERVICE_INSTANCE_ID, instance_id.clone())]);
+    }
+
+    builder.build()
 }
 
 /// Configure common OTLP exporter settings (endpoint, timeout, compression)
@@ -494,7 +522,7 @@ fn init_tracing(
     if let Some(endpoint) = &config.otlp_endpoint {
         // Build resource with environment variable support
         // Respects OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES
-        let resource = std::borrow::Cow::Owned(build_resource(binary_config.service_name));
+        let resource = std::borrow::Cow::Owned(build_resource(binary_config.service_name, config));
 
         // Create instrumentation library metadata
         let instrumentation_lib = opentelemetry::InstrumentationScope::builder("stepflow")
@@ -537,7 +565,7 @@ fn init_metrics(
     binary_config: &BinaryObservabilityConfig,
 ) -> Result<MetricsGuard> {
     if let Some(endpoint) = &config.otlp_endpoint {
-        let resource = build_resource(binary_config.service_name);
+        let resource = build_resource(binary_config.service_name, config);
 
         let exporter = configure_otlp_exporter(
             opentelemetry_otlp::MetricExporter::builder().with_tonic(),
