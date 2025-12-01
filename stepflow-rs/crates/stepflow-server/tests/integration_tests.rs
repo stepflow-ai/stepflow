@@ -44,6 +44,7 @@ pub fn init_test_logging() {
             trace_enabled: false,
             otlp_endpoint: None,
             metrics_enabled: false,
+            service_instance_id: None,
         };
 
         let binary_config = BinaryObservabilityConfig {

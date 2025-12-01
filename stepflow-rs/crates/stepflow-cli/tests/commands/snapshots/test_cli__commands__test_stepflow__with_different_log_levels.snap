@@ -89,6 +89,15 @@ Options:
           
           [env: STEPFLOW_OTLP_ENDPOINT=]
 
+      --service-instance-id <SERVICE_INSTANCE_ID>
+          Service instance ID for distinguishing replicas (e.g., pod name, allocation ID)
+          
+          This is used to set the `service.instance.id` OpenTelemetry resource attribute, enabling correlation of traces/logs/metrics to specific instances.
+          
+          For Kubernetes, set via: `valueFrom: { fieldRef: { fieldPath: metadata.name } }` For Nomad, set via: `NOMAD_ALLOC_ID` or `NOMAD_ALLOC_NAME`
+          
+          [env: STEPFLOW_SERVICE_INSTANCE_ID=]
+
       --omit-stack-trace
           Omit stack traces (line numbers of errors)
 

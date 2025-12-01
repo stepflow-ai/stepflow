@@ -28,6 +28,7 @@ async fn main() {
         trace_enabled: false,
         metrics_enabled: false,
         otlp_endpoint: None,
+        service_instance_id: None,
     };
 
     let binary_config = BinaryObservabilityConfig {

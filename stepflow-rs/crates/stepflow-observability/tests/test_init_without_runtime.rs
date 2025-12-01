@@ -33,9 +33,10 @@ fn test_init_observability_without_runtime_with_otlp() {
         log_destination: LogDestinationType::Stdout,
         log_format: LogFormat::Json,
         log_file: None,
-        trace_enabled: true,  // Requires OTLP
-        metrics_enabled: true,  // Requires OTLP
+        trace_enabled: true,   // Requires OTLP
+        metrics_enabled: true, // Requires OTLP
         otlp_endpoint: Some("http://localhost:4317".to_string()),
+        service_instance_id: None,
     };
 
     let binary_config = BinaryObservabilityConfig {

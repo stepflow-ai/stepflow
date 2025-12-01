@@ -428,13 +428,13 @@ impl Context for StepflowExecutor {
                                 submit_params = submit_params.with_parent_context(ctx);
                             }
                             match executor_ref.submit_flow(submit_params).await {
-                            Ok(submitted_run_id) => {
-                                // Wait for the result
-                                match executor_ref.flow_result(submitted_run_id).await {
-                                    Ok(flow_result) => {
-                                        // Update run status based on result
-                                        let state_store = executor_ref.state_store();
-                                        let status = match &flow_result {
+                                Ok(submitted_run_id) => {
+                                    // Wait for the result
+                                    match executor_ref.flow_result(submitted_run_id).await {
+                                        Ok(flow_result) => {
+                                            // Update run status based on result
+                                            let state_store = executor_ref.state_store();
+                                            let status = match &flow_result {
                                             stepflow_core::FlowResult::Success(_) => {
                                                 stepflow_core::status::ExecutionStatus::Completed
                                             }
@@ -443,31 +443,31 @@ impl Context for StepflowExecutor {
                                                 stepflow_core::status::ExecutionStatus::Failed
                                             }
                                         };
-                                        let result_ref = match &flow_result {
-                                            stepflow_core::FlowResult::Success(r) => {
-                                                Some(r.clone())
-                                            }
-                                            _ => None,
-                                        };
-                                        let _ = state_store
-                                            .update_run_status(run_id, status, result_ref)
-                                            .await;
-                                    }
-                                    Err(e) => {
-                                        log::error!(
-                                            "Batch run {run_id} failed to get result: {e:?}"
-                                        );
+                                            let result_ref = match &flow_result {
+                                                stepflow_core::FlowResult::Success(r) => {
+                                                    Some(r.clone())
+                                                }
+                                                _ => None,
+                                            };
+                                            let _ = state_store
+                                                .update_run_status(run_id, status, result_ref)
+                                                .await;
+                                        }
+                                        Err(e) => {
+                                            log::error!(
+                                                "Batch run {run_id} failed to get result: {e:?}"
+                                            );
+                                        }
                                     }
                                 }
+                                Err(e) => {
+                                    log::error!("Batch run {run_id} failed to submit: {e:?}");
+                                }
                             }
-                            Err(e) => {
-                                log::error!("Batch run {run_id} failed to submit: {e:?}");
-                            }
-                        }
-                    });
+                        });
 
-                    tasks.push(task);
-                }
+                        tasks.push(task);
+                    }
 
                     // Wait for all tasks to complete
                     for task in tasks {

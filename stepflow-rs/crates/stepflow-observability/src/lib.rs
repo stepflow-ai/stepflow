@@ -269,15 +269,12 @@ pub fn init_observability(
     if needs_otlp && !has_runtime {
         // Create a temporary runtime for OTLP exporter initialization
         // This is needed for Pingora-based applications that manage their own runtime
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| {
-                error_stack::report!(ObservabilityError::OtlpInitError)
-                    .attach_printable(format!("Failed to create Tokio runtime for OTLP init: {e}"))
-            })?;
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            error_stack::report!(ObservabilityError::OtlpInitError)
+                .attach_printable(format!("Failed to create Tokio runtime for OTLP init: {e}"))
+        })?;
 
-        return rt.block_on(async {
-            init_observability_inner(config, binary_config)
-        });
+        return rt.block_on(async { init_observability_inner(config, binary_config) });
     }
 
     init_observability_inner(config, binary_config)
@@ -444,7 +441,10 @@ fn create_appender(
             // Create OTLP log exporter with standard configuration
             let log_exporter = configure_otlp_exporter(
                 LogExporter::builder().with_tonic(),
-                config.otlp_endpoint.as_ref().expect("Endpoint required for OTLP logging"),
+                config
+                    .otlp_endpoint
+                    .as_ref()
+                    .expect("Endpoint required for OTLP logging"),
             )
             .build()
             .expect("Failed to create OTLP log exporter");
@@ -493,7 +493,8 @@ fn build_resource(
 
     // Add service.instance.id if configured (for instance-level correlation)
     if let Some(instance_id) = &config.service_instance_id {
-        builder = builder.with_attributes([KeyValue::new(SERVICE_INSTANCE_ID, instance_id.clone())]);
+        builder =
+            builder.with_attributes([KeyValue::new(SERVICE_INSTANCE_ID, instance_id.clone())]);
     }
 
     builder.build()
