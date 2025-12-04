@@ -79,6 +79,9 @@ Options:
       --variables-json <JSON>
           The variables as a JSON string
 
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
       --variables-yaml <YAML>
           The variables as a YAML string
 
@@ -86,9 +89,6 @@ Options:
           Enable environment variable fallback for missing variables.
           
           When enabled, missing variables will be looked up from environment variables using the pattern `STEPFLOW_VAR_<VARIABLE_NAME>`.
-
-      --omit-stack-trace
-          Omit stack traces (line numbers of errors)
 
       --overrides <FILE>
           Path to a file containing workflow overrides (JSON or YAML format).

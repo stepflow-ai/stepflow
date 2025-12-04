@@ -88,16 +88,6 @@ pub struct ObservabilityConfig {
     /// Required when log_destination is otlp, trace_enabled is true, or metrics_enabled is true
     #[arg(long, env = "STEPFLOW_OTLP_ENDPOINT")]
     pub otlp_endpoint: Option<String>,
-
-    /// Service instance ID for distinguishing replicas (e.g., pod name, allocation ID)
-    ///
-    /// This is used to set the `service.instance.id` OpenTelemetry resource attribute,
-    /// enabling correlation of traces/logs/metrics to specific instances.
-    ///
-    /// For Kubernetes, set via: `valueFrom: { fieldRef: { fieldPath: metadata.name } }`
-    /// For Nomad, set via: `NOMAD_ALLOC_ID` or `NOMAD_ALLOC_NAME`
-    #[arg(long, env = "STEPFLOW_SERVICE_INSTANCE_ID")]
-    pub service_instance_id: Option<String>,
 }
 
 impl ObservabilityConfig {
@@ -262,22 +252,26 @@ pub fn init_observability(
     let has_runtime = tokio::runtime::Handle::try_current().is_ok();
 
     // If OTLP is needed but no runtime exists, create a temporary one for initialization
+    // OTLP exporters (tonic-based) require a Tokio runtime for async operations
     let needs_otlp = config.trace_enabled
         || config.metrics_enabled
         || config.log_destination() == LogDestination::OpenTelemetry;
 
     if needs_otlp && !has_runtime {
         // Create a temporary runtime for OTLP exporter initialization
-        // This is needed for Pingora-based applications that manage their own runtime
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            error_stack::report!(ObservabilityError::OtlpInitError)
-                .attach_printable(format!("Failed to create Tokio runtime for OTLP init: {e}"))
-        })?;
+        // This is needed for applications like Pingora that manage their own runtime
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| {
+                error_stack::report!(ObservabilityError::OtlpInitError)
+                    .attach_printable(format!("Failed to create temporary runtime: {e}"))
+            })?;
 
-        return rt.block_on(async { init_observability_inner(config, binary_config) });
+        rt.block_on(async { init_observability_inner(config, binary_config) })
+    } else {
+        init_observability_inner(config, binary_config)
     }
-
-    init_observability_inner(config, binary_config)
 }
 
 fn init_observability_inner(
@@ -395,7 +389,7 @@ fn add_dispatch(
         d.append(create_appender(
             destination,
             format,
-            config,
+            config.otlp_endpoint.as_deref(),
             binary_config.service_name,
         ))
     })
@@ -405,7 +399,7 @@ fn add_dispatch(
 fn create_appender(
     destination: LogDestination<'_>,
     format: LogFormat,
-    config: &ObservabilityConfig,
+    otlp_endpoint: Option<&str>,
     service_name: &'static str,
 ) -> Box<dyn logforth::Append> {
     use logforth::append;
@@ -441,10 +435,7 @@ fn create_appender(
             // Create OTLP log exporter with standard configuration
             let log_exporter = configure_otlp_exporter(
                 LogExporter::builder().with_tonic(),
-                config
-                    .otlp_endpoint
-                    .as_ref()
-                    .expect("Endpoint required for OTLP logging"),
+                otlp_endpoint.expect("Endpoint required for OTLP logging"),
             )
             .build()
             .expect("Failed to create OTLP log exporter");
@@ -453,7 +444,7 @@ fn create_appender(
             // Respects OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES
             // Uses the same resource configuration as tracing for consistency
             let mut builder = OpentelemetryLogBuilder::new(service_name, log_exporter);
-            for (key, value) in build_resource(service_name, config).iter() {
+            for (key, value) in build_resource(service_name).iter() {
                 builder = builder.label(key.to_string(), value.to_string());
             }
 
@@ -472,32 +463,13 @@ fn create_appender(
 /// 1. OTEL_SERVICE_NAME (if set)
 /// 2. OTEL_RESOURCE_ATTRIBUTES service.name (if set)
 /// 3. Programmatic service_name parameter (default)
-///
-/// Additionally includes `service.instance.id` from config if set, enabling
-/// correlation of telemetry to specific service instances (pods, allocations, etc.).
-fn build_resource(
-    service_name: &'static str,
-    config: &ObservabilityConfig,
-) -> opentelemetry_sdk::Resource {
-    use opentelemetry::KeyValue;
-
-    // service.instance.id is a stable OpenTelemetry semantic convention
-    // See: https://opentelemetry.io/docs/specs/semconv/resource/#service
-    const SERVICE_INSTANCE_ID: &str = "service.instance.id";
-
-    let mut builder = opentelemetry_sdk::Resource::builder()
+fn build_resource(service_name: &'static str) -> opentelemetry_sdk::Resource {
+    opentelemetry_sdk::Resource::builder()
         .with_service_name(service_name)
         .with_detector(Box::new(
             opentelemetry_sdk::resource::EnvResourceDetector::new(),
-        ));
-
-    // Add service.instance.id if configured (for instance-level correlation)
-    if let Some(instance_id) = &config.service_instance_id {
-        builder =
-            builder.with_attributes([KeyValue::new(SERVICE_INSTANCE_ID, instance_id.clone())]);
-    }
-
-    builder.build()
+        ))
+        .build()
 }
 
 /// Configure common OTLP exporter settings (endpoint, timeout, compression)
@@ -523,7 +495,7 @@ fn init_tracing(
     if let Some(endpoint) = &config.otlp_endpoint {
         // Build resource with environment variable support
         // Respects OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES
-        let resource = std::borrow::Cow::Owned(build_resource(binary_config.service_name, config));
+        let resource = std::borrow::Cow::Owned(build_resource(binary_config.service_name));
 
         // Create instrumentation library metadata
         let instrumentation_lib = opentelemetry::InstrumentationScope::builder("stepflow")
@@ -566,7 +538,7 @@ fn init_metrics(
     binary_config: &BinaryObservabilityConfig,
 ) -> Result<MetricsGuard> {
     if let Some(endpoint) = &config.otlp_endpoint {
-        let resource = build_resource(binary_config.service_name, config);
+        let resource = build_resource(binary_config.service_name);
 
         let exporter = configure_otlp_exporter(
             opentelemetry_otlp::MetricExporter::builder().with_tonic(),
