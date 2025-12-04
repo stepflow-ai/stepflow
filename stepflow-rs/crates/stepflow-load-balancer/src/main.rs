@@ -255,16 +255,19 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     use clap::Parser as _;
 
-    let args = Args::parse();
+    let Args { observability, upstream_service, bind_address } = Args::parse();
 
     // Initialize observability
     // Load balancer doesn't execute workflows, so disable run diagnostic
-    let binary_config = stepflow_observability::BinaryObservabilityConfig {
-        service_name: "stepflow-load-balancer",
-        include_run_diagnostic: false,
-    };
-    let _guard = init_observability(&args.observability, binary_config)
-        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    let observability_rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = observability_rt.block_on(async {
+        let binary_config = stepflow_observability::BinaryObservabilityConfig {
+            service_name: "stepflow-load-balancer",
+            include_run_diagnostic: false,
+        };
+
+        init_observability(observability, binary_config)
+    }).map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     info!("Starting Stepflow Load Balancer");
     info!(

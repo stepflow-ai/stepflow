@@ -250,28 +250,11 @@ pub fn init_observability(
 
     // Check if we're in a Tokio runtime context
     let has_runtime = tokio::runtime::Handle::try_current().is_ok();
-
-    // If OTLP is needed but no runtime exists, create a temporary one for initialization
-    // OTLP exporters (tonic-based) require a Tokio runtime for async operations
-    let needs_otlp = config.trace_enabled
-        || config.metrics_enabled
-        || config.log_destination() == LogDestination::OpenTelemetry;
-
-    if needs_otlp && !has_runtime {
-        // Create a temporary runtime for OTLP exporter initialization
-        // This is needed for applications like Pingora that manage their own runtime
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| {
-                error_stack::report!(ObservabilityError::OtlpInitError)
-                    .attach_printable(format!("Failed to create temporary runtime: {e}"))
-            })?;
-
-        rt.block_on(async { init_observability_inner(config, binary_config) })
-    } else {
-        init_observability_inner(config, binary_config)
+    if !has_runtime {
+        panic!("Observability must be initialized from within a tokio runtime");
     }
+
+    init_observability_inner(config, binary_config)
 }
 
 fn init_observability_inner(
