@@ -255,28 +255,33 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     use clap::Parser as _;
 
-    let Args { observability, upstream_service, bind_address } = Args::parse();
+    let Args {
+        observability,
+        upstream_service,
+        bind_address,
+    } = Args::parse();
 
     // Initialize observability
     // Load balancer doesn't execute workflows, so disable run diagnostic
     let observability_rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = observability_rt.block_on(async {
-        let binary_config = stepflow_observability::BinaryObservabilityConfig {
-            service_name: "stepflow-load-balancer",
-            include_run_diagnostic: false,
-        };
+    let _guard = observability_rt
+        .block_on(async {
+            let binary_config = stepflow_observability::BinaryObservabilityConfig {
+                service_name: "stepflow-load-balancer",
+                include_run_diagnostic: false,
+            };
 
-        init_observability(observability, binary_config)
-    }).map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            init_observability(&observability, binary_config)
+        })
+        .map_err(|e| anyhow::anyhow!("{:?}", e))?;
 
     info!("Starting Stepflow Load Balancer");
     info!(
         "Upstream service configuration: upstream_service={}",
-        args.upstream_service
+        upstream_service
     );
 
     // Start backend discovery service in a separate thread with its own runtime
-    let upstream_service = args.upstream_service.clone();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
@@ -293,12 +298,12 @@ fn main() -> anyhow::Result<()> {
 
     // Create load balancer service
     let mut lb = http_proxy_service(&server.configuration, StepflowLoadBalancer);
-    lb.add_tcp(&args.bind_address);
+    lb.add_tcp(&bind_address);
 
     // Add service to server
     server.add_service(lb);
 
-    info!("Load balancer listening on {}", args.bind_address);
+    info!("Load balancer listening on {}", bind_address);
 
     // Run server
     server.run_forever();
