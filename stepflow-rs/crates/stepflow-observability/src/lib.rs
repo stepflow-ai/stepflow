@@ -248,6 +248,19 @@ pub fn init_observability(
     // Validate configuration first
     config.validate()?;
 
+    // Check if we're in a Tokio runtime context
+    let has_runtime = tokio::runtime::Handle::try_current().is_ok();
+    if !has_runtime {
+        panic!("Observability must be initialized from within a tokio runtime");
+    }
+
+    init_observability_inner(config, binary_config)
+}
+
+fn init_observability_inner(
+    config: &ObservabilityConfig,
+    binary_config: BinaryObservabilityConfig,
+) -> Result<ObservabilityGuard> {
     // Initialize tracing first (so logger can access trace context)
     let trace_guard = if config.trace_enabled {
         Some(init_tracing(config, &binary_config)?)
@@ -427,7 +440,7 @@ fn create_appender(
 ///
 /// This creates a Resource that respects the standard OpenTelemetry environment variables:
 /// - OTEL_SERVICE_NAME: Override service name (highest priority)
-/// - OTEL_RESOURCE_ATTRIBUTES: Add custom resource attributes (e.g., "deployment.environment=prod,region=us-west")
+/// - OTEL_RESOURCE_ATTRIBUTES: Add custom resource attributes (e.g., "deployment.environment=prod,region=us-west,k8s.pod.name=my-pod")
 ///
 /// The precedence order is:
 /// 1. OTEL_SERVICE_NAME (if set)

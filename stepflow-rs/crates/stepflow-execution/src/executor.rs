@@ -392,43 +392,49 @@ impl Context for StepflowExecutor {
                     SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default())
                 });
 
-                let _batch_span = Span::root("batch_execution", batch_span_context)
+                // Create the batch span and wrap the execution logic in in_span()
+                // This ensures child tasks can capture the batch span's context
+                let batch_span = Span::root("batch_execution", batch_span_context)
                     .with_property(|| ("batch_id", batch_id.to_string()))
                     .with_property(|| ("batch.total_items", total_runs.to_string()))
                     .with_property(|| ("batch.max_concurrency", max_concurrency.to_string()));
 
-                let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
-                let mut tasks = vec![];
+                async move {
+                    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
+                    let mut tasks = vec![];
 
-                for (run_id, input, _idx) in run_inputs {
-                    let permit = match semaphore.clone().acquire_owned().await {
-                        Ok(permit) => permit,
-                        Err(_) => {
-                            log::error!("Semaphore closed, aborting batch execution");
-                            break;
-                        }
-                    };
-                    let executor_ref = executor_clone.clone();
-                    let flow_ref = flow_clone.clone();
-                    let flow_id_ref = flow_id_clone.clone();
-                    // Pass the batch span context so child flows inherit the same trace
-                    let batch_ctx = batch_span_context;
+                    for (run_id, input, _idx) in run_inputs {
+                        let permit = match semaphore.clone().acquire_owned().await {
+                            Ok(permit) => permit,
+                            Err(_) => {
+                                log::error!("Semaphore closed, aborting batch execution");
+                                break;
+                            }
+                        };
+                        let executor_ref = executor_clone.clone();
+                        let flow_ref = flow_clone.clone();
+                        let flow_id_ref = flow_id_clone.clone();
 
-                    let task = tokio::spawn(async move {
-                        let _permit = permit; // Hold permit during execution
+                        // Capture the current span context - this will be the batch span's context
+                        let batch_ctx = SpanContext::current_local_parent();
 
-                        // Pass batch span context so each flow execution becomes a child span
-                        let submit_params =
-                            stepflow_core::SubmitFlowParams::new(flow_ref, flow_id_ref, input)
-                                .with_parent_context(batch_ctx);
-                        match executor_ref.submit_flow(submit_params).await {
-                            Ok(submitted_run_id) => {
-                                // Wait for the result
-                                match executor_ref.flow_result(submitted_run_id).await {
-                                    Ok(flow_result) => {
-                                        // Update run status based on result
-                                        let state_store = executor_ref.state_store();
-                                        let status = match &flow_result {
+                        let task = tokio::spawn(async move {
+                            let _permit = permit; // Hold permit during execution
+
+                            // Pass batch span context so each flow execution becomes a child span
+                            let mut submit_params =
+                                stepflow_core::SubmitFlowParams::new(flow_ref, flow_id_ref, input);
+                            if let Some(ctx) = batch_ctx {
+                                submit_params = submit_params.with_parent_context(ctx);
+                            }
+                            match executor_ref.submit_flow(submit_params).await {
+                                Ok(submitted_run_id) => {
+                                    // Wait for the result
+                                    match executor_ref.flow_result(submitted_run_id).await {
+                                        Ok(flow_result) => {
+                                            // Update run status based on result
+                                            let state_store = executor_ref.state_store();
+                                            let status = match &flow_result {
                                             stepflow_core::FlowResult::Success(_) => {
                                                 stepflow_core::status::ExecutionStatus::Completed
                                             }
@@ -437,38 +443,41 @@ impl Context for StepflowExecutor {
                                                 stepflow_core::status::ExecutionStatus::Failed
                                             }
                                         };
-                                        let result_ref = match &flow_result {
-                                            stepflow_core::FlowResult::Success(r) => {
-                                                Some(r.clone())
-                                            }
-                                            _ => None,
-                                        };
-                                        let _ = state_store
-                                            .update_run_status(run_id, status, result_ref)
-                                            .await;
-                                    }
-                                    Err(e) => {
-                                        log::error!(
-                                            "Batch run {run_id} failed to get result: {e:?}"
-                                        );
+                                            let result_ref = match &flow_result {
+                                                stepflow_core::FlowResult::Success(r) => {
+                                                    Some(r.clone())
+                                                }
+                                                _ => None,
+                                            };
+                                            let _ = state_store
+                                                .update_run_status(run_id, status, result_ref)
+                                                .await;
+                                        }
+                                        Err(e) => {
+                                            log::error!(
+                                                "Batch run {run_id} failed to get result: {e:?}"
+                                            );
+                                        }
                                     }
                                 }
+                                Err(e) => {
+                                    log::error!("Batch run {run_id} failed to submit: {e:?}");
+                                }
                             }
-                            Err(e) => {
-                                log::error!("Batch run {run_id} failed to submit: {e:?}");
-                            }
-                        }
-                    });
+                        });
 
-                    tasks.push(task);
+                        tasks.push(task);
+                    }
+
+                    // Wait for all tasks to complete
+                    for task in tasks {
+                        let _ = task.await;
+                    }
+
+                    log::info!("Batch {batch_id} execution completed");
                 }
-
-                // Wait for all tasks to complete
-                for task in tasks {
-                    let _ = task.await;
-                }
-
-                log::info!("Batch {batch_id} execution completed");
+                .in_span(batch_span)
+                .await
             });
 
             Ok(batch_id)

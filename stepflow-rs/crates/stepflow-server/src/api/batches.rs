@@ -154,6 +154,7 @@ pub async fn create_batch(
     State(executor): State<Arc<StepflowExecutor>>,
     Json(req): Json<CreateBatchRequest>,
 ) -> Result<Json<CreateBatchResponse>, ErrorResponse> {
+    use stepflow_observability::fastrace::prelude::*;
     use stepflow_plugin::Context as _;
 
     let state_store = executor.state_store();
@@ -166,10 +167,8 @@ pub async fn create_batch(
 
     let total_inputs = req.inputs.len();
 
-    // Capture current span context for trace propagation
-    // Note: For now, batch API calls create independent traces.
-    // In the future, we could propagate trace context from HTTP headers.
-    let parent_context = None;
+    // Capture current span context for trace propagation to child flow executions
+    let parent_context = SpanContext::current_local_parent();
 
     // Parse overrides from request
     let overrides = if req.overrides.is_empty() {
