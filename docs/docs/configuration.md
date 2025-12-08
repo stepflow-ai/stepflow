@@ -6,6 +6,8 @@ sidebar_position: 6
 
 Stepflow configuration controls which plugins and components are available to workflows, state storage backends, and other runtime settings. Configuration enables you to use the same workflow definitions across different environments (development, staging, production) by changing only the underlying infrastructure and component implementations.
 
+Stepflow's flexible configuration supports distributed architectures, allowing component servers to run across multiple machines or containers for scalable batch execution and high-throughput workflows. See [Batch Execution](./flows/batch-execution.md) for details.
+
 Key concepts:
 - **Plugins** provide components (built-in, external processes, HTTP services)
 - **Routes** map component paths to specific plugins
@@ -52,7 +54,7 @@ Environment variables are resolved when the plugin is launched using the current
 If a variable is not found and no default is provided, plugin initialization will fail.
 
 :::tip Secret Management
-Store sensitive data in environment variables rather than directly in configuration files:
+Store sensitive data in environment variables rather than directly in configuration files. For flow-level configuration that varies by environment, use [Variables](./flows/variables.md) instead.
 :::
 
 ### Configuration File Location

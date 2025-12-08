@@ -4,10 +4,10 @@ sidebar_position: 1
 
 # Components Overview
 
-Components are the building blocks of flows.
+Components are the building blocks of Stepflow workflows, providing the actual business logic that the workflow orchestrator coordinates.
 Each step in a flow executes a specific component that implements a specific operation.
 
-Stepflow provides a set of built-in components for common tasks, and the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP).
+Stepflow provides a set of built-in components for common tasks, and the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP). The Stepflow orchestrator manages the execution flow and data passing between components, while component servers handle the actual processing logic.
 
 ## Types of Components
 
@@ -50,12 +50,17 @@ Use tools from Model Context Protocol (MCP) servers as components:
 
 ## Component Architecture
 
-Most components run in separate processes, ensuring security and stability.
-During development, these processes can be managed by the Stepflow runtime.
-In production, these component servers can be separately managed and scaled.
-For instance, the component server applying specific models can run on a dedicated machine keeping the model in memory for better resource usage.
+Stepflow's architecture separates the **workflow orchestrator** from **component servers**, enabling flexible deployment and scaling:
 
-The diagram below shows how the Stepflow runtime interacts with multiple component servers.
+- **Orchestrator**: Manages workflow execution, data flow, and state persistence
+- **Component Servers**: Provide business logic and can run locally or remotely
+
+Most components run in separate processes, ensuring security and stability.
+During development, the Stepflow orchestrator manages component server processes locally.
+In production, component servers can be separately deployed and scaled across multiple machines or containers.
+For instance, a component server running ML models can be deployed on GPU-enabled hardware while the orchestrator runs on standard compute nodes.
+
+The diagram below shows how the Stepflow orchestrator interacts with multiple component servers.
 
 ```mermaid
 flowchart TB

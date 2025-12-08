@@ -52,7 +52,13 @@ reference_examples:
   - { $from: { step: step1 } }                          # entire output of step1
   - { $from: { step: step1 }, path: "result" }          # result field of step1 output
   - { $from: { step: step1 }, path: "$.data.items[0]" } # first item in data.items array
+  
+  # Referencing variables
+  - { $from: { variable: api_endpoint } }               # entire variable value
+  - { $from: { variable: api_key } }                    # variable (often used for secrets)
 ```
+
+See [Variables](./variables.md) for comprehensive documentation on using variables in workflows.
 
 :::tip[Escaping Literals with `$from`]
 If you want to use an object that contains a `$from` field without evaluating the reference, see [Escaped Literals](#escaped-literals).

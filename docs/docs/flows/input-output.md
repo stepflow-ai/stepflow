@@ -22,6 +22,10 @@ inputSchema:
     user_id:
       type: string
       description: "Unique identifier for the user"
+    api_key:
+      type: string
+      is_secret: true
+      description: "API key for external service"
     preferences:
       type: object
       properties:
@@ -36,8 +40,40 @@ inputSchema:
       items:
         type: string
       description: "List of file paths to process"
-  required: ["user_id"]
+  required: ["user_id", "api_key"]
 ```
+
+### Secret Fields {#secret-fields}
+
+Mark sensitive fields as secrets using `is_secret: true` to ensure they are redacted in logs and error messages:
+
+```yaml
+inputSchema:
+  type: object
+  properties:
+    database_url:
+      type: string
+      is_secret: true
+      description: "Database connection string"
+    config:
+      type: object
+      properties:
+        timeout:
+          type: integer
+        auth_token:
+          type: string
+          is_secret: true
+          description: "Authentication token"
+      required: ["auth_token"]
+```
+
+**Secret Redaction Benefits:**
+- Prevents accidental exposure in logs
+- Protects sensitive data in error messages
+- Maintains security in debug output
+- Works automatically across all Stepflow components
+
+For more details on secret configuration and best practices, see [Secrets](./secrets.md).
 
 ## Flow Output {#output}
 
