@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Flows Overview
 
-Flows are the core abstraction in Stepflow.
+Flows are the core abstraction in Stepflow, defining the workflow executed by the orchestrator.
 Some of the most important parts of a flow are:
 
 - **Input** - The schema for the input to the flow
@@ -14,7 +14,7 @@ Some of the most important parts of a flow are:
 The steps and output are able to reference the input and the results of previous steps.
 This creates data dependencies between steps, determining which steps must run in sequence and which can run in parallel.
 
-Flows are typically defined in YAML files and can be executed by the Stepflow runtime either locally or as a service.
+Flows are typically defined in YAML files and executed by the Stepflow orchestrator, which coordinates component execution, manages data flow, and handles state persistence.
 
 :::note
 Flows conform to a [JSON schema](../reference/flow-schema.mdx) that defines the structure and requirements for flow definitions.
@@ -48,12 +48,23 @@ Learn more about [Components](../components/index.md).
 
 ## Expressions {#expressions}
 Stepflow's expression system enables dynamic data references and transformations:
-- Reference flow inputs and step outputs
+- Reference flow inputs, step outputs, and variables
 - Extract specific fields from complex data
 - Handle missing data with defaults
 - Support conditional logic
 
 Learn more about [Expressions](./expressions.md)
+
+
+## Variables
+
+Variables provide runtime parameters that can be supplied when executing workflows, enabling the same workflow definition to work across different environments (development, staging, production) without modification. Variables are ideal for:
+
+- Environment-specific configuration (API endpoints, credentials)
+- Feature flags and settings
+- Resource limits and timeouts
+
+Learn more about [Variables](./variables.md).
 
 ## Control Flow
 
@@ -62,6 +73,19 @@ By default, if a step is skipped or fails to execute, subsequent steps that depe
 However, you can define custom error handling and fallback logic to control how failures are managed.
 
 Learn more about [Control Flow](./control-flow.md).
+
+## Batch Execution
+
+Stepflow supports high-performance batch execution, allowing you to process multiple inputs in parallel with a single workflow definition. This is ideal for:
+
+- **Data processing pipelines**: Process large datasets efficiently
+- **Bulk operations**: Apply the same workflow to many items
+- **Parallel testing**: Run the same workflow with different test inputs
+- **High-throughput scenarios**: Maximize resource utilization
+
+Batch execution can be performed locally or on remote Stepflow servers with configurable concurrency limits.
+
+Learn more about [Batch Execution](./batch-execution.md).
 
 ## Metadata
 

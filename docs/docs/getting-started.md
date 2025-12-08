@@ -6,6 +6,8 @@ sidebar_position: 2
 
 This guide will help you install Stepflow and run your first workflow in just a few minutes.
 
+Stepflow is a **workflow orchestrator** that coordinates the execution of components across different servers. In this tutorial, you'll see how the Stepflow runtime orchestrates both built-in components and a custom Python component server to create a complete workflow.
+
 ## Setup
 
 ### 1. Download Stepflow
@@ -150,12 +152,14 @@ You should see output like:
 
 ## What Just Happened?
 
-This workflow demonstrates Stepflow's key concepts:
+This workflow demonstrates Stepflow's key concepts as a **workflow orchestrator**:
 
+- **Orchestration**: Stepflow coordinated the execution of three different components, managing data flow and dependencies between them
+- **Component Servers**: The workflow used both built-in components (managed by Stepflow) and a custom Python component server (launched as a subprocess)
 - **Input/Output Schemas**: Define the structure of your data using JSON Schema
 - **Steps**: Each step uses a component to process data and pass results to the next step
-- **Components**: Built-in components (`/builtin/openai`, `/builtin/create_messages`) and custom Python components (`/python/hello_formatter`)
-- **Data Flow**: Use `$from` expressions to pass data between steps
+- **Data Flow**: Use `$from` expressions to pass data between steps, with Stepflow handling the routing and transformation
+- **Configuration**: The `stepflow-config.yml` file told Stepflow how to route component requests to the appropriate servers
 
 ## Next Steps
 

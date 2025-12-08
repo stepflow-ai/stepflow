@@ -7,10 +7,11 @@ import TabItem from '@theme/TabItem';
 
 # Stepflow Introduction
 
-Stepflow allows you to create and execute AI workflows combining components from different tools and services, both locally and in the cloud.
-With Stepflow, components may execute locally or remotely, allowing simple development while providing isolation and resource management for production scale.
+Stepflow is a **workflow orchestrator** that enables you to create and execute AI workflows by combining components from different tools and services, both locally and in the cloud.
 
-Stepflow defines a protocol for component servers, allowing a combination of custom and off-the-shelf components to be combined within a single workflow.
+As an orchestrator, Stepflow manages workflow execution, data flow, and state persistence, while **component servers provide the actual business logic**. This separation allows for flexible, scalable architectures where components can execute locally during development or be distributed across multiple machines in production.
+
+Stepflow defines a protocol for component servers, allowing a combination of custom and off-the-shelf components to be orchestrated within a single workflow.
 By routing specific component servers to different Stepflow runtimes, you can create workflows that run across multiple machines, containers, or cloud services.
 Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production.
 
@@ -18,7 +19,19 @@ Stepflow further solves for production problems like durability and fault-tolera
 
 ## Architecture
 
-Stepflow consists of a runtime that manages the execution of workflows and servers that provide components and tools using the Stepflow protocol or Model Context Protocol.
+Stepflow consists of a **workflow orchestrator runtime** that manages the execution of workflows and **component servers** that provide the actual business logic using the Stepflow protocol or Model Context Protocol.
+
+The orchestrator handles:
+- Workflow execution and step coordination
+- Data flow between components
+- State persistence and fault tolerance
+- Resource management and scaling
+
+Component servers provide:
+- Business logic implementation
+- Domain-specific functionality
+- Integration with external services
+- Custom processing capabilities
 
 <Tabs>
   <TabItem value="local" label="Local" default>
@@ -79,3 +92,4 @@ Stepflow consists of a runtime that manages the execution of workflows and serve
 * [Get Started](./getting-started.md) by installing Stepflow and running your first flow.
 * Read more about writing your own [Workflows](./flows/index.md).
 * Learn about available components and creating your own in [Components](./components/index.md).
+* Learn about [production deployment](./deployment/index.md).
