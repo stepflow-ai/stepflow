@@ -7,7 +7,7 @@ sidebar_position: 1
 Components are the building blocks of Stepflow workflows, providing the actual business logic that the workflow orchestrator coordinates.
 Each step in a flow executes a specific component that implements a specific operation.
 
-Stepflow provides a set of built-in components for common tasks, and the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP). The Stepflow orchestrator manages the execution flow and data passing between components, while component servers handle the actual processing logic.
+Stepflow provides a set of built-in components for common tasks as well as the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP). The Stepflow orchestrator manages the execution flow and data passing between components, while component servers handle the actual processing logic.
 
 ## Types of Components
 
@@ -50,7 +50,7 @@ Use tools from Model Context Protocol (MCP) servers as components:
 
 ## Component Architecture
 
-Stepflow's architecture separates the **workflow orchestrator** from **component servers**, enabling flexible deployment and scaling:
+Stepflow's architecture separates the **workflow orchestration** from **component serving**, enabling flexible deployment and scaling:
 
 - **Orchestrator**: Manages workflow execution, data flow, and state persistence
 - **Component Servers**: Provide business logic and can run locally or remotely

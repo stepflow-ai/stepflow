@@ -6,7 +6,7 @@ sidebar_position: 6
 
 Stepflow configuration controls which plugins and components are available to workflows, state storage backends, and other runtime settings. Configuration enables you to use the same workflow definitions across different environments (development, staging, production) by changing only the underlying infrastructure and component implementations.
 
-Stepflow's flexible configuration supports distributed architectures, allowing component servers to run across multiple machines or containers for scalable batch execution and high-throughput workflows. See [Batch Execution](./flows/batch-execution.md) for details.
+Stepflow's flexible configuration supports a truly distributed architecture, allowing component servers to run across multiple machines or containers for scalable batch execution and high-throughput workflows. See [Batch Execution](./flows/batch-execution.md) for details.
 
 Key concepts:
 - **Plugins** provide components (built-in, external processes, HTTP services)

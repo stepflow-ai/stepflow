@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Flows Overview
 
-Flows are the core abstraction in Stepflow, defining the workflow that the orchestrator executes.
+Flows are the core abstraction in Stepflow, defining the workflow executed by the orchestrator.
 Some of the most important parts of a flow are:
 
 - **Input** - The schema for the input to the flow
