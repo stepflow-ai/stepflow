@@ -138,7 +138,7 @@ impl WorkflowExecutor {
     ) -> Result<Self> {
         // Build dependencies for the workflow using the analysis crate
         let analysis_result =
-            stepflow_analysis::analyze_flow_dependencies(flow.clone(), flow_id.clone())
+            stepflow_analysis::validate_and_analyze(flow.clone(), flow_id.clone())
                 .change_context(ExecutionError::AnalysisError)?;
 
         let analysis = match analysis_result.analysis {
@@ -1266,7 +1266,7 @@ mod tests {
         ));
 
         // Build dependencies using analysis crate
-        let analysis_result = stepflow_analysis::analyze_flow_dependencies(
+        let analysis_result = stepflow_analysis::validate_and_analyze(
             flow.clone(),
             BlobId::new("a".repeat(64)).unwrap(),
         )

@@ -22,15 +22,15 @@ use crate::{
     Result,
     tracker::DependenciesBuilder,
     types::{AnalysisResult, FlowAnalysis, StepAnalysis},
-    validation::validate_workflow,
+    validation::validate,
 };
 
 /// Analyze a workflow for step dependencies
 /// Returns Ok(AnalysisResult) with analysis (if no fatal diagnostics) and all diagnostics
 /// Returns Err(AnalysisError) for internal/unexpected errors
-pub fn analyze_flow_dependencies(flow: Arc<Flow>, flow_id: BlobId) -> Result<AnalysisResult> {
+pub fn validate_and_analyze(flow: Arc<Flow>, flow_id: BlobId) -> Result<AnalysisResult> {
     // 1. Run validation first
-    let diagnostics = validate_workflow(&flow)?;
+    let diagnostics = validate(&flow)?;
 
     // 2. If fatal diagnostics exist, return diagnostics without analysis
     if diagnostics.has_fatal() {
@@ -42,17 +42,6 @@ pub fn analyze_flow_dependencies(flow: Arc<Flow>, flow_id: BlobId) -> Result<Ana
 
     // 4. Return analysis with diagnostics
     Ok(AnalysisResult::with_analysis(analysis, diagnostics))
-}
-
-/// Validate a workflow without performing full analysis
-/// Returns Ok(AnalysisResult) with diagnostics but no analysis
-/// Returns Err(AnalysisError) for internal/unexpected errors
-pub fn validate_workflow_only(flow: &Flow) -> Result<AnalysisResult> {
-    // Run validation
-    let diagnostics = validate_workflow(flow)?;
-
-    // Return diagnostics without analysis
-    Ok(AnalysisResult::with_diagnostics_only(diagnostics))
 }
 
 /// Internal dependency analysis - assumes validation has already passed
@@ -222,7 +211,7 @@ mod tests {
     #[test]
     fn test_analyze_simple_chain() {
         let flow = create_test_flow();
-        let result = analyze_flow_dependencies(
+        let result = validate_and_analyze(
             Arc::new(flow),
             stepflow_core::BlobId::new(
                 "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
@@ -272,7 +261,7 @@ mod tests {
             }),
         });
 
-        let result = analyze_flow_dependencies(
+        let result = validate_and_analyze(
             Arc::new(flow),
             stepflow_core::BlobId::new(
                 "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
@@ -327,7 +316,7 @@ mod tests {
         }))
         .unwrap();
 
-        let result = analyze_flow_dependencies(
+        let result = validate_and_analyze(
             Arc::new(flow),
             stepflow_core::BlobId::new(
                 "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
@@ -370,7 +359,7 @@ mod tests {
     #[test]
     fn test_new_validation_api_valid_workflow() {
         let flow = create_test_flow();
-        let result = analyze_flow_dependencies(
+        let result = validate_and_analyze(
             Arc::new(flow),
             stepflow_core::BlobId::new(
                 "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
@@ -410,7 +399,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
-        let result = analyze_flow_dependencies(
+        let result = validate_and_analyze(
             Arc::new(flow),
             stepflow_core::BlobId::new(
                 "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
@@ -546,8 +535,7 @@ mod tests {
             .build();
 
         let result =
-            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
-                .unwrap();
+            validate_and_analyze(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap()).unwrap();
 
         let analysis = result.analysis.expect("Analysis should succeed");
 
@@ -619,8 +607,7 @@ mod tests {
             .build();
 
         let result =
-            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
-                .unwrap();
+            validate_and_analyze(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap()).unwrap();
 
         let analysis = result.analysis.expect("Analysis should succeed");
 
@@ -680,8 +667,7 @@ mod tests {
             .build();
 
         let result =
-            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
-                .unwrap();
+            validate_and_analyze(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap()).unwrap();
 
         let analysis = result.analysis.expect("Analysis should succeed");
 
@@ -749,8 +735,7 @@ mod tests {
             .build();
 
         let result =
-            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
-                .unwrap();
+            validate_and_analyze(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap()).unwrap();
 
         let analysis = result.analysis.expect("Analysis should succeed");
 
@@ -824,8 +809,7 @@ mod tests {
             .build();
 
         let result =
-            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
-                .unwrap();
+            validate_and_analyze(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap()).unwrap();
 
         let analysis = result.analysis.expect("Analysis should succeed");
 
@@ -887,8 +871,7 @@ mod tests {
             .build();
 
         let result =
-            analyze_flow_dependencies(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap())
-                .unwrap();
+            validate_and_analyze(Arc::new(flow), BlobId::new("a".repeat(64)).unwrap()).unwrap();
 
         let analysis = result.analysis.expect("Analysis should succeed");
 
