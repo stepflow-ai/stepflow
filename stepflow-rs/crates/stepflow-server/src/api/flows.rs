@@ -16,7 +16,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_analysis::{AnalysisResult, FlowAnalysis, analyze_flow_dependencies};
+use stepflow_analysis::{AnalysisResult, FlowAnalysis, validate_and_analyze};
 use stepflow_core::{
     BlobId, BlobType,
     workflow::{Flow, ValueRef},
@@ -80,7 +80,7 @@ pub async fn store_flow(
 
     // First validate the workflow - we need a temporary ID for analysis
     let temp_flow_id = BlobId::from_flow(flow.as_ref()).unwrap();
-    let analysis_result = analyze_flow_dependencies(flow.clone(), temp_flow_id.clone())?;
+    let analysis_result = validate_and_analyze(flow.clone(), temp_flow_id.clone())?;
 
     // Determine if we can store the flow (no fatal diagnostics)
     let stored_flow_id = if analysis_result.has_fatal_diagnostics() {
@@ -156,7 +156,7 @@ pub async fn get_flow(
 
     // Generate analysis for the flow.
     // TODO: Cache this to avoid re-analysis.
-    let analysis_result = analyze_flow_dependencies(flow.clone(), flow_id.clone())?;
+    let analysis_result = validate_and_analyze(flow.clone(), flow_id.clone())?;
 
     let analysis = match &analysis_result.analysis {
         Some(analysis) => analysis.clone(),

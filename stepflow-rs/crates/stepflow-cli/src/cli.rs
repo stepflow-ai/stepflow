@@ -461,11 +461,14 @@ impl Cli {
                 let flow = Arc::new(flow);
 
                 // Validate workflow and configuration before execution
-                let diagnostics =
-                    stepflow_analysis::validate(&flow, &config.plugins, &config.routing)
-                        .change_context(crate::MainError::ValidationError(
-                            "Validation failed".to_string(),
-                        ))?;
+                let diagnostics = stepflow_analysis::validate_with_config(
+                    &flow,
+                    &config.plugins,
+                    &config.routing,
+                )
+                .change_context(crate::MainError::ValidationError(
+                    "Validation failed".to_string(),
+                ))?;
 
                 let failure_count = display_diagnostics(&diagnostics);
                 if failure_count > 0 {
@@ -498,11 +501,14 @@ impl Cli {
                 let config = config_args.load_config(flow_dir)?;
 
                 // Validate workflow and configuration before execution
-                let diagnostics =
-                    stepflow_analysis::validate(&flow, &config.plugins, &config.routing)
-                        .change_context(crate::MainError::ValidationError(
-                            "Validation failed".to_string(),
-                        ))?;
+                let diagnostics = stepflow_analysis::validate_with_config(
+                    &flow,
+                    &config.plugins,
+                    &config.routing,
+                )
+                .change_context(crate::MainError::ValidationError(
+                    "Validation failed".to_string(),
+                ))?;
 
                 let failure_count = display_diagnostics(&diagnostics);
                 if failure_count > 0 {

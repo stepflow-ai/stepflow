@@ -15,7 +15,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use error_stack::{ResultExt as _, report};
-use stepflow_analysis::{Dependency, FlowAnalysis, analyze_flow_dependencies};
+use stepflow_analysis::{Dependency, FlowAnalysis, validate_and_analyze};
 use stepflow_core::workflow::Flow;
 use stepflow_plugin::routing::PluginRouter;
 
@@ -111,7 +111,7 @@ impl FlowVisualizer {
         )
         .unwrap();
 
-        let analysis_result = analyze_flow_dependencies(self.flow.clone(), blob_id)
+        let analysis_result = validate_and_analyze(self.flow.clone(), blob_id)
             .change_context(MainError::internal("Failed to analyze flow dependencies"))?;
 
         // Create color mapping for component servers

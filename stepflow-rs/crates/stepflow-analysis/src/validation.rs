@@ -20,7 +20,7 @@ use crate::Result;
 use crate::diagnostics::{DiagnosticMessage, Diagnostics};
 
 /// Validates a workflow and collects all diagnostics
-pub fn validate_workflow(flow: &Flow) -> Result<Diagnostics> {
+pub fn validate(flow: &Flow) -> Result<Diagnostics> {
     let mut diagnostics = Diagnostics::new();
 
     // Validate workflow structure
@@ -367,12 +367,12 @@ fn collect_step_dependencies(
 }
 
 /// Validate both workflow and configuration together
-pub fn validate(
+pub fn validate_with_config(
     flow: &Flow,
     plugins: &IndexMap<String, impl std::fmt::Debug>,
     routing: &RoutingConfig,
 ) -> Result<Diagnostics> {
-    let mut diagnostics = validate_workflow(flow)?;
+    let mut diagnostics = validate(flow)?;
     validate_config(plugins, routing, &mut diagnostics);
     Ok(diagnostics)
 }
@@ -460,7 +460,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step2", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
     }
@@ -475,7 +475,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step2", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
         assert!(fatal > 0, "Expected fatal diagnostics");
         assert!(
@@ -496,7 +496,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
         assert!(fatal > 0, "Expected fatal diagnostics");
         assert!(
@@ -517,7 +517,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (fatal, _error, _warning) = diagnostics.counts();
         assert!(fatal > 0, "Expected fatal diagnostics");
         assert!(
@@ -538,7 +538,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (_fatal, _error, warning) = diagnostics.counts();
         assert!(warning > 0, "Expected warnings");
         assert!(
@@ -559,7 +559,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (fatal, _error, warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics"); // These are warnings, not fatal
         assert!(warning >= 2, "Expected at least 2 warnings"); // name + description + possibly others
@@ -589,7 +589,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         assert!(error > 0, "Expected error diagnostics");
@@ -612,7 +612,7 @@ mod tests {
             .output(ValueTemplate::step_ref("step1", JsonPath::default()))
             .build();
 
-        let diagnostics = validate_workflow(&flow).unwrap();
+        let diagnostics = validate(&flow).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         assert_eq!(error, 0, "Expected no error diagnostics for valid builtin");
@@ -766,7 +766,7 @@ mod tests {
 
         let routing = RoutingConfig { routes };
 
-        let diagnostics = validate(&flow, &plugins, &routing).unwrap();
+        let diagnostics = validate_with_config(&flow, &plugins, &routing).unwrap();
         let (fatal, error, _warning) = diagnostics.counts();
         assert_eq!(fatal, 0, "Expected no fatal diagnostics");
         assert_eq!(error, 0, "Expected no error diagnostics");

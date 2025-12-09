@@ -14,7 +14,7 @@ use crate::args::{ConfigArgs, load};
 use crate::{MainError, Result, validation_display::display_diagnostics};
 use error_stack::ResultExt as _;
 use std::path::Path;
-use stepflow_analysis::validate as validate_unified;
+use stepflow_analysis::validate_with_config;
 
 /// Validate workflow files and configuration
 ///
@@ -35,7 +35,7 @@ pub async fn validate(flow_path: &Path, config_path: Option<&Path>) -> Result<us
     };
 
     // Use unified validation
-    let diagnostics = validate_unified(&flow, &config.plugins, &config.routing)
+    let diagnostics = validate_with_config(&flow, &config.plugins, &config.routing)
         .change_context(MainError::ValidationError("Validation failed".to_string()))?;
 
     // Display results using the same function as other commands
