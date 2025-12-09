@@ -10,8 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use crate::Diagnostics;
-
 /// Error types for workflow analysis (internal/unexpected errors only)
 #[derive(Debug, thiserror::Error)]
 pub enum AnalysisError {
