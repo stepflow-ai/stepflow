@@ -103,8 +103,6 @@ impl Path {
 
 #[cfg(test)]
 mod tests {
-    use super::make_path;
-
     #[test]
     fn test_make_path() {
         // Basic path creations
