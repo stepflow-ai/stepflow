@@ -14,6 +14,9 @@ pingora-core = "0.6"
 pingora-http = "0.6"
 pingora-proxy = "0.6"
 
+# Metrics
+prometheus = "0.13"
+
 # Async runtime
 async-trait.workspace = true
 tokio.workspace = true

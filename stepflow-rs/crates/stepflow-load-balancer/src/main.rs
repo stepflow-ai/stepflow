@@ -17,14 +17,17 @@ use pingora::prelude::*;
 use pingora::proxy::Session;
 use pingora::upstreams::peer::HttpPeer;
 use pingora_core::Result as PingoraResult;
+use pingora_core::services::listening::Service as ListeningService;
 use pingora_http::RequestHeader;
 use pingora_proxy::{ProxyHttp, http_proxy_service};
 use std::sync::LazyLock;
+use std::time::Instant;
 use stepflow_observability::{ObservabilityConfig, init_observability};
 use tokio::sync::RwLock;
 
 mod backend;
 mod discovery;
+mod metrics;
 
 use backend::{Backend, BackendPool};
 use discovery::DiscoveryService;
@@ -39,6 +42,8 @@ pub struct StepflowLoadBalancer;
 /// Context to track which backend was selected for this request
 pub struct RequestContext {
     backend_address: Option<String>,
+    request_start: Instant,
+    method: String,
 }
 
 #[async_trait]
@@ -48,6 +53,8 @@ impl ProxyHttp for StepflowLoadBalancer {
     fn new_ctx(&self) -> Self::CTX {
         RequestContext {
             backend_address: None,
+            request_start: Instant::now(),
+            method: String::new(),
         }
     }
 
@@ -57,6 +64,9 @@ impl ProxyHttp for StepflowLoadBalancer {
         ctx: &mut Self::CTX,
     ) -> PingoraResult<Box<HttpPeer>> {
         let request_header = session.req_header();
+
+        // Store method for metrics
+        ctx.method = request_header.method.to_string();
 
         // Select backend based on instance ID or load balancing
         let backend = select_backend(request_header).await?;
@@ -95,6 +105,12 @@ impl ProxyHttp for StepflowLoadBalancer {
             let pool_guard = BACKEND_POOL.load();
             let pool = pool_guard.read().await;
             pool.increment_connections(address);
+
+            // Update Prometheus metrics
+            metrics::ACTIVE_CONNECTIONS
+                .with_label_values(&[address])
+                .inc();
+
             debug!("Incremented connection count: address={}", address);
         }
         Ok(())
@@ -176,16 +192,35 @@ impl ProxyHttp for StepflowLoadBalancer {
     ) {
         let request_header = session.req_header();
         let response = session.response_written();
+        let status = response.map(|r| r.status.as_u16()).unwrap_or(0);
+        let duration_ms = ctx.request_start.elapsed().as_secs_f64() * 1000.0;
 
         info!(
-            "Request completed: method={}, path={}, status={}",
+            "Request completed: method={}, path={}, status={}, duration_ms={:.2}",
             request_header.method,
             request_header.uri.path(),
-            response.map(|r| r.status.as_u16()).unwrap_or(0)
+            status,
+            duration_ms
         );
 
-        // Decrement connection count when request completes
+        // Record metrics
         if let Some(ref address) = ctx.backend_address {
+            // Request counter
+            metrics::REQUESTS_TOTAL
+                .with_label_values(&[address, &status.to_string(), &ctx.method])
+                .inc();
+
+            // Request duration histogram (milliseconds)
+            metrics::REQUEST_DURATION_MS
+                .with_label_values(&[address, &ctx.method])
+                .observe(duration_ms);
+
+            // Decrement active connections
+            metrics::ACTIVE_CONNECTIONS
+                .with_label_values(&[address])
+                .dec();
+
+            // Decrement connection count in backend pool
             let pool_guard = BACKEND_POOL.load();
             let pool = pool_guard.read().await;
             pool.decrement_connections(address);
@@ -250,6 +285,10 @@ struct Args {
     /// Address to bind the load balancer
     #[arg(long, default_value = "0.0.0.0:8080", env = "BIND_ADDRESS")]
     bind_address: String,
+
+    /// Address to bind the Prometheus metrics endpoint
+    #[arg(long, default_value = "0.0.0.0:9090", env = "METRICS_ADDRESS")]
+    metrics_address: String,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -259,6 +298,7 @@ fn main() -> anyhow::Result<()> {
         observability,
         upstream_service,
         bind_address,
+        metrics_address,
     } = Args::parse();
 
     // Initialize observability
@@ -274,6 +314,9 @@ fn main() -> anyhow::Result<()> {
             init_observability(&observability, binary_config)
         })
         .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+    // Initialize Prometheus metrics
+    metrics::init_metrics();
 
     info!("Starting Stepflow Load Balancer");
     info!(
@@ -300,10 +343,16 @@ fn main() -> anyhow::Result<()> {
     let mut lb = http_proxy_service(&server.configuration, StepflowLoadBalancer);
     lb.add_tcp(&bind_address);
 
-    // Add service to server
+    // Add Prometheus metrics service
+    let mut prometheus_service = ListeningService::prometheus_http_service();
+    prometheus_service.add_tcp(&metrics_address);
+
+    // Add services to server
     server.add_service(lb);
+    server.add_service(prometheus_service);
 
     info!("Load balancer listening on {}", bind_address);
+    info!("Prometheus metrics available on {}", metrics_address);
 
     // Run server
     server.run_forever();

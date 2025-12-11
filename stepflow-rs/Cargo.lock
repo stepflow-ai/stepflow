@@ -4706,6 +4706,7 @@ dependencies = [
  "pingora-core",
  "pingora-http",
  "pingora-proxy",
+ "prometheus",
  "reqwest",
  "serde",
  "serde_json",
