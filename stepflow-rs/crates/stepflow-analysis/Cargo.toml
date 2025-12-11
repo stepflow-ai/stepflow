@@ -19,7 +19,6 @@ doctest = false
 bit-set.workspace = true
 error-stack.workspace = true
 indexmap.workspace = true
-itertools.workspace = true
 schemars.workspace = true
 serde_json.workspace = true
 serde.workspace = true

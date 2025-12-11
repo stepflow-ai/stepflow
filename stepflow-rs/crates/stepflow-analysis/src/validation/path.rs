@@ -40,7 +40,7 @@ impl std::fmt::Display for Path {
             write!(f, "$")?;
             for part in self.0.iter() {
                 match part {
-                    PathPart::String(v) if needs_quotation(&v) => write!(f, "[{v:?}]")?,
+                    PathPart::String(v) if needs_quotation(v) => write!(f, "[{v:?}]")?,
                     PathPart::String(v) => write!(f, ".{v}")?,
                     PathPart::Index(v) => write!(f, "[{v}]")?,
                 }
