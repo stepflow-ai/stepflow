@@ -24,12 +24,12 @@ exit_code: 0
 📊 Validation results: 0 fatal, 0 errors, 6 warnings
 
 ⚠️  Warnings:
-  WARN Workflow has no name defined (name)
-  WARN Workflow has no description defined (description)
-  WARN Field access '$.data' on step 'workflow_input' cannot be validated: no input schema available (steps.0.input.data)
-  WARN Field access '$.blob_id' on step 'put_blob' cannot be validated: no output schema available (steps.1.input.blob_id)
-  WARN Field access '$.blob_id' on step 'put_blob' cannot be validated: no output schema available (output.blob_id)
-  WARN Field access '$.data' on step 'get_blob' cannot be validated: no output schema available (output.retrieved_data)
+  WARN Workflow has no name defined ($.name)
+  WARN Workflow has no description defined ($.description)
+  WARN Field access '$.data' on step 'workflow_input' cannot be validated: no input schema available ($.steps[0].input.data)
+  WARN Field access '$.blob_id' on step 'put_blob' cannot be validated: no output schema available ($.steps[1].input.blob_id)
+  WARN Field access '$.blob_id' on step 'put_blob' cannot be validated: no output schema available ($.output.blob_id)
+  WARN Field access '$.data' on step 'get_blob' cannot be validated: no output schema available ($.output.retrieved_data)
 {"outcome":"success","result":{"blob_id":"5aa762ae383fbb727af3c7a36d4940a5b8c40a989452d2304fc958ff3f354e7a","retrieved_data":"hello"}}
 ----- stderr -----
 run_id: [ID]

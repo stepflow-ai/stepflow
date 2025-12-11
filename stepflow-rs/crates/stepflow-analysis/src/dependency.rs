@@ -187,6 +187,7 @@ mod tests {
 
     use super::*;
     use crate::dependencies::ValueDependencies;
+    use crate::validation::make_path;
     use serde_json::json;
     use stepflow_core::workflow::{Flow, FlowBuilder, JsonPath, Step, StepBuilder};
 
@@ -357,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_validation_api_valid_workflow() {
+    fn test_validation_api_valid_workflow() {
         let flow = create_test_flow();
         let result = validate_and_analyze(
             Arc::new(flow),
@@ -371,15 +372,22 @@ mod tests {
         // Valid workflow should have analysis
         assert!(result.has_analysis(), "Expected analysis to be present");
         assert!(
-            !result.has_fatal_diagnostics(),
+            !result.diagnostics.has_fatal(),
             "Expected no fatal diagnostics"
         );
 
-        let (fatal, error, warning) = result.diagnostic_counts();
-        assert_eq!(fatal, 0, "Expected no fatal diagnostics");
-        assert_eq!(error, 0, "Expected no error diagnostics");
+        assert_eq!(
+            result.diagnostics().num_fatal,
+            0,
+            "Expected no fatal diagnostics"
+        );
+        assert_eq!(
+            result.diagnostics().num_error,
+            0,
+            "Expected no error diagnostics"
+        );
         assert!(
-            warning > 0,
+            result.diagnostics().num_warning > 0,
             "Expected some warnings (mock components, field access)"
         );
 
@@ -389,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_validation_api_invalid_workflow() {
+    fn test_validation_api_invalid_workflow() {
         let flow = FlowBuilder::new()
             .name("invalid_workflow")
             .steps(vec![
@@ -413,10 +421,11 @@ mod tests {
             !result.has_analysis(),
             "Expected no analysis due to fatal diagnostics"
         );
-        assert!(result.has_fatal_diagnostics(), "Expected fatal diagnostics");
 
-        let (fatal, _error, _warning) = result.diagnostic_counts();
-        assert!(fatal > 0, "Expected fatal diagnostics");
+        assert!(
+            result.diagnostics().num_fatal > 0,
+            "Expected fatal diagnostics"
+        );
 
         // Analysis should be None
         assert!(result.analysis.is_none(), "Expected no analysis");
@@ -424,13 +433,13 @@ mod tests {
         // Should have specific diagnostic messages
         let has_duplicate_id = result.diagnostics.diagnostics.iter().any(|d| {
             matches!(
-                d.message,
+                d.message(),
                 crate::diagnostics::DiagnosticMessage::DuplicateStepId { .. }
             )
         });
         let has_undefined_reference = result.diagnostics.diagnostics.iter().any(|d| {
             matches!(
-                d.message,
+                d.message(),
                 crate::diagnostics::DiagnosticMessage::UndefinedStepReference { .. }
             )
         });
@@ -438,39 +447,9 @@ mod tests {
         assert!(has_duplicate_id, "Expected duplicate step ID diagnostic");
         assert!(
             has_undefined_reference,
-            "Expected undefined step reference diagnostic"
+            "Expected undefined step reference diagnostic but was: {:?}",
+            result.diagnostics,
         );
-    }
-
-    #[test]
-    fn test_diagnostic_levels_behavior() {
-        use crate::diagnostics::{Diagnostic, DiagnosticLevel, DiagnosticMessage};
-
-        // Test that fatal diagnostics block analysis
-        let fatal = Diagnostic::new(DiagnosticMessage::DuplicateStepId {
-            step_id: "test".to_string(),
-        });
-        assert_eq!(fatal.level, DiagnosticLevel::Fatal);
-        assert!(fatal.blocks_analysis());
-        assert!(fatal.indicates_execution_failure());
-
-        // Test that errors don't block analysis but indicate execution failure
-        let error = Diagnostic::new(DiagnosticMessage::InvalidFieldAccess {
-            step_id: "test".to_string(),
-            field: "field".to_string(),
-            reason: "missing".to_string(),
-        });
-        assert_eq!(error.level, DiagnosticLevel::Error);
-        assert!(!error.blocks_analysis());
-        assert!(error.indicates_execution_failure());
-
-        // Test that warnings don't block analysis or indicate execution failure
-        let warning = Diagnostic::new(DiagnosticMessage::MockComponent {
-            step_id: "test".to_string(),
-        });
-        assert_eq!(warning.level, DiagnosticLevel::Warning);
-        assert!(!warning.blocks_analysis());
-        assert!(!warning.indicates_execution_failure());
     }
 
     #[test]
@@ -486,16 +465,14 @@ mod tests {
             DiagnosticMessage::MockComponent {
                 step_id: "test".to_string(),
             },
-            vec![],
+            make_path!(),
         );
 
         let result = crate::types::AnalysisResult::with_analysis(analysis_result, diagnostics);
         assert!(result.has_analysis());
-        assert!(!result.has_fatal_diagnostics());
-        let (fatal, error, warning) = result.diagnostic_counts();
-        assert_eq!(fatal, 0);
-        assert_eq!(error, 0);
-        assert_eq!(warning, 1);
+        assert_eq!(result.diagnostics().num_fatal, 0);
+        assert_eq!(result.diagnostics().num_error, 0);
+        assert_eq!(result.diagnostics().num_warning, 1);
 
         // Test without analysis
         let mut diagnostics = Diagnostics::new();
@@ -503,16 +480,14 @@ mod tests {
             DiagnosticMessage::DuplicateStepId {
                 step_id: "test".to_string(),
             },
-            vec![],
+            make_path!(),
         );
 
         let result = crate::types::AnalysisResult::with_diagnostics_only(diagnostics);
         assert!(!result.has_analysis());
-        assert!(result.has_fatal_diagnostics());
-        let (fatal, error, warning) = result.diagnostic_counts();
-        assert_eq!(fatal, 1);
-        assert_eq!(error, 0);
-        assert_eq!(warning, 0);
+        assert_eq!(result.diagnostics().num_fatal, 1);
+        assert_eq!(result.diagnostics().num_error, 0);
+        assert_eq!(result.diagnostics().num_warning, 0);
     }
 
     #[test]

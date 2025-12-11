@@ -83,7 +83,7 @@ pub async fn store_flow(
     let analysis_result = validate_and_analyze(flow.clone(), temp_flow_id.clone())?;
 
     // Determine if we can store the flow (no fatal diagnostics)
-    let stored_flow_id = if analysis_result.has_fatal_diagnostics() {
+    let stored_flow_id = if analysis_result.diagnostics.has_fatal() {
         // Validation failed: don't store the flow
         None
     } else {
@@ -162,7 +162,8 @@ pub async fn get_flow(
         Some(analysis) => analysis.clone(),
         None => {
             // If validation fails, return a 400 error with diagnostic details
-            let (fatal, error, _warning) = analysis_result.diagnostic_counts();
+            let fatal = analysis_result.diagnostics().num_fatal;
+            let error = analysis_result.diagnostics().num_error;
             return Err(ErrorResponse {
                 code: axum::http::StatusCode::BAD_REQUEST,
                 message: format!(

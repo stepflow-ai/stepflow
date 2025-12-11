@@ -19,7 +19,7 @@ use stepflow_analysis::validate_with_config;
 /// Validate workflow files and configuration
 ///
 /// Returns the number of validation failures (errors + fatal diagnostics).
-pub async fn validate(flow_path: &Path, config_path: Option<&Path>) -> Result<usize> {
+pub async fn validate(flow_path: &Path, config_path: Option<&Path>) -> Result<u32> {
     // Load workflow and configuration
     let flow = load(flow_path)?;
 

@@ -4529,6 +4529,7 @@ dependencies = [
  "bit-set",
  "error-stack",
  "indexmap 2.12.0",
+ "itertools",
  "schemars 1.0.4",
  "serde",
  "serde_json",

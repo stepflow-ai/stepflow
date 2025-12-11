@@ -24,11 +24,11 @@ exit_code: 0
 📊 Validation results: 0 fatal, 0 errors, 5 warnings
 
 ⚠️  Warnings:
-  WARN Field access '$.message' on step 'workflow_input' cannot be validated: no input schema available (output.message)
-  WARN Field access '$.numbers.a' on step 'workflow_input' cannot be validated: no input schema available (output.a_value)
-  WARN Field access '$.numbers.b' on step 'workflow_input' cannot be validated: no input schema available (output.b_value)
-  WARN Field access '$.items[0]' on step 'workflow_input' cannot be validated: no input schema available (output.first_item)
-  WARN Field access '$.numbers' on step 'workflow_input' cannot be validated: no input schema available (output.nested_data)
+  WARN Field access '$.message' on step 'workflow_input' cannot be validated: no input schema available ($.output.message)
+  WARN Field access '$.numbers.a' on step 'workflow_input' cannot be validated: no input schema available ($.output.a_value)
+  WARN Field access '$.numbers.b' on step 'workflow_input' cannot be validated: no input schema available ($.output.b_value)
+  WARN Field access '$.items[0]' on step 'workflow_input' cannot be validated: no input schema available ($.output.first_item)
+  WARN Field access '$.numbers' on step 'workflow_input' cannot be validated: no input schema available ($.output.nested_data)
 {"outcome":"success","result":{"message":"hello world","a_value":10,"b_value":20,"first_item":"first","nested_data":{"a":10,"b":20}}}
 ----- stderr -----
 run_id: [ID]

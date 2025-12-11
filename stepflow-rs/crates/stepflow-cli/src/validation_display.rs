@@ -15,8 +15,11 @@
 use stepflow_analysis::{DiagnosticLevel, Diagnostics};
 
 /// Display validation diagnostics and return the number of failures (fatal + error)
-pub fn display_diagnostics(diagnostics: &Diagnostics) -> usize {
-    let (fatal_count, error_count, warning_count) = diagnostics.counts();
+pub fn display_diagnostics(diagnostics: &Diagnostics) -> u32 {
+    let fatal_count = diagnostics.num_fatal;
+    let error_count = diagnostics.num_error;
+    let warning_count = diagnostics.num_warning;
+
     let failure_count = fatal_count + error_count;
 
     // Display diagnostics
@@ -27,31 +30,26 @@ pub fn display_diagnostics(diagnostics: &Diagnostics) -> usize {
             "📊 Validation results: {fatal_count} fatal, {error_count} errors, {warning_count} warnings"
         );
 
-        // Group diagnostics by level
-        let fatal_diagnostics = diagnostics.at_level(DiagnosticLevel::Fatal);
-        let error_diagnostics = diagnostics.at_level(DiagnosticLevel::Error);
-        let warning_diagnostics = diagnostics.at_level(DiagnosticLevel::Warning);
-
         // Print fatal diagnostics
-        if !fatal_diagnostics.is_empty() {
+        if fatal_count > 0 {
             println!("\n🚨 Fatal Issues:");
-            for diagnostic in fatal_diagnostics {
+            for diagnostic in diagnostics.at_level(DiagnosticLevel::Fatal) {
                 print_diagnostic("FATAL", diagnostic);
             }
         }
 
         // Print error diagnostics
-        if !error_diagnostics.is_empty() {
+        if error_count > 0 {
             println!("\n❌ Errors:");
-            for diagnostic in error_diagnostics {
+            for diagnostic in diagnostics.at_level(DiagnosticLevel::Error) {
                 print_diagnostic("ERROR", diagnostic);
             }
         }
 
         // Print warning diagnostics
-        if !warning_diagnostics.is_empty() {
+        if warning_count > 0 {
             println!("\n⚠️  Warnings:");
-            for diagnostic in warning_diagnostics {
+            for diagnostic in diagnostics.at_level(DiagnosticLevel::Warning) {
                 print_diagnostic("WARN", diagnostic);
             }
         }
@@ -62,11 +60,5 @@ pub fn display_diagnostics(diagnostics: &Diagnostics) -> usize {
 
 /// Print a formatted diagnostic message
 fn print_diagnostic(level: &str, diagnostic: &stepflow_analysis::Diagnostic) {
-    let path_str = if diagnostic.path.is_empty() {
-        String::new()
-    } else {
-        format!(" ({})", diagnostic.path.join("."))
-    };
-
-    println!("  {} {}{}", level, diagnostic.text, path_str);
+    println!("  {} {} ({})", level, diagnostic.text, diagnostic.path);
 }
