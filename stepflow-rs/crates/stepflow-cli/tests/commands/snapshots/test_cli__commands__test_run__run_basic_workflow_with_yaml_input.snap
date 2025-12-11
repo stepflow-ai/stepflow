@@ -23,13 +23,13 @@ exit_code: 0
 📊 Validation results: 0 fatal, 0 errors, 7 warnings
 
 ⚠️  Warnings:
-  WARN Workflow has no name defined (name)
-  WARN Workflow has no description defined (description)
-  WARN Field access '$.name' on step 'workflow_input' cannot be validated: no input schema available (steps.0.input.input)
-  WARN Field access '$.output' on step 'step1' cannot be validated: no output schema available (steps.1.input.input)
-  WARN Field access '$.output' on step 'step1' cannot be validated: no output schema available (output.name)
-  WARN Field access '$.x' on step 'step2' cannot be validated: no output schema available (output.x)
-  WARN Field access '$.y' on step 'step2' cannot be validated: no output schema available (output.y)
+  WARN Workflow has no name defined ($.name)
+  WARN Workflow has no description defined ($.description)
+  WARN Field access '$.name' on step 'workflow_input' cannot be validated: no input schema available ($.steps[0].input.input)
+  WARN Field access '$.output' on step 'step1' cannot be validated: no output schema available ($.steps[1].input.input)
+  WARN Field access '$.output' on step 'step1' cannot be validated: no output schema available ($.output.name)
+  WARN Field access '$.x' on step 'step2' cannot be validated: no output schema available ($.output.x)
+  WARN Field access '$.y' on step 'step2' cannot be validated: no output schema available ($.output.y)
 {"outcome":"success","result":{"name":"world","x":2,"y":8}}
 ----- stderr -----
 run_id: [ID]

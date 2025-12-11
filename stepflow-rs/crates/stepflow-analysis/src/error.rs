@@ -31,4 +31,4 @@ impl AnalysisError {
     }
 }
 
-pub type Result<T> = error_stack::Result<T, AnalysisError>;
+pub type Result<T, E = AnalysisError> = error_stack::Result<T, E>;

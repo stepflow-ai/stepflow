@@ -185,6 +185,15 @@ impl ValueTemplate {
     pub fn expressions(&self) -> ExpressionIterator<'_> {
         ExpressionIterator::new(self)
     }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self.as_ref() {
+            ValueTemplateRepr::String(s) => Some(s.as_str()),
+            ValueTemplateRepr::Expression(Expr::Literal(v)) => v.as_str(),
+            ValueTemplateRepr::Expression(Expr::EscapedLiteral { literal }) => literal.as_str(),
+            _ => None,
+        }
+    }
 }
 
 /// Iterator over all expressions contained within a ValueTemplate.

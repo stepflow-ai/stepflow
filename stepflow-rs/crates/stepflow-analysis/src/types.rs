@@ -55,14 +55,8 @@ impl AnalysisResult {
         self.analysis.is_some()
     }
 
-    /// Check if there are fatal diagnostics
-    pub fn has_fatal_diagnostics(&self) -> bool {
-        self.diagnostics.has_fatal()
-    }
-
-    /// Get diagnostic counts
-    pub fn diagnostic_counts(&self) -> (usize, usize, usize) {
-        self.diagnostics.counts()
+    pub fn diagnostics(&self) -> &Diagnostics {
+        &self.diagnostics
     }
 }
 

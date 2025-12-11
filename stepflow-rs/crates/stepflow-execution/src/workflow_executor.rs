@@ -145,7 +145,8 @@ impl WorkflowExecutor {
             Some(analysis) => analysis,
             None => {
                 // Convert validation failure to execution error
-                let (fatal, error, _warning) = analysis_result.diagnostic_counts();
+                let fatal = analysis_result.diagnostics().num_fatal;
+                let error = analysis_result.diagnostics().num_error;
                 return Err(
                     error_stack::report!(ExecutionError::AnalysisError).attach_printable(format!(
                         "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
