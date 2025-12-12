@@ -1,0 +1,339 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing permissions and limitations under
+// the License.
+
+use super::JsonPath;
+use schemars::JsonSchema;
+use serde_json::Value;
+
+/// A value expression that can contain literal data or references to other values.
+///
+/// This is the unified type for all workflow inputs, outputs, and data flow.
+/// Expressions can be:
+/// - References to other values (`$step`, `$input`, `$variable`)
+/// - Composable structures (arrays and objects containing expressions)
+/// - Literal values (null, bool, number, string - any primitive JSON value)
+/// - Escaped literals (`$literal`) to prevent expansion
+//
+// Serialization and deserialization are implemented in expr_serde.rs
+#[derive(Debug, Clone, Eq, PartialEq, Hash, JsonSchema)]
+pub enum ValueExpr {
+    /// Step reference: `{ $step: "step_id", path: "optional.path" }`
+    Step {
+        #[serde(rename = "$step")]
+        step: String,
+        #[serde(default, skip_serializing_if = "JsonPath::is_empty")]
+        path: JsonPath,
+    },
+
+    /// Workflow input: `{ $input: "path" }` where path can be "$" for root
+    Input {
+        #[serde(rename = "$input")]
+        input: JsonPath, // The path is the value (supports shorthand)
+    },
+
+    /// Variable: `{ $variable: "$.var.path", default: ... }`
+    Variable {
+        #[serde(rename = "$variable")]
+        variable: JsonPath, // JSONPath including variable name and path
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default: Option<Box<ValueExpr>>,
+    },
+
+    /// Escape hatch: `{ $literal: {...} }` - prevents recursive parsing
+    EscapedLiteral {
+        #[serde(rename = "$literal")]
+        literal: serde_json::Value,
+    },
+
+    /// JSON array where each element can be an expression
+    Array(Vec<ValueExpr>),
+
+    /// JSON object where each value can be an expression
+    /// Uses Vec instead of IndexMap for efficiency and to enable future hashability
+    Object(Vec<(String, ValueExpr)>),
+
+    /// Literal JSON value (null, bool, number, string)
+    /// Note: Literal objects and arrays are parsed as Object/Array variants
+    Literal(serde_json::Value),
+}
+
+impl ValueExpr {
+    /// Create a step reference expression
+    pub fn step(step_id: impl Into<String>, path: JsonPath) -> Self {
+        ValueExpr::Step {
+            step: step_id.into(),
+            path,
+        }
+    }
+
+    /// Create a step reference without a path (for compatibility with old code)
+    pub fn step_output(step_id: impl Into<String>) -> Self {
+        ValueExpr::Step {
+            step: step_id.into(),
+            path: JsonPath::default(),
+        }
+    }
+
+    /// Create a workflow input reference expression
+    pub fn workflow_input(path: JsonPath) -> Self {
+        ValueExpr::Input { input: path }
+    }
+
+    /// Create a variable reference expression
+    pub fn variable(name: impl Into<String>, default: Option<Box<ValueExpr>>) -> Self {
+        ValueExpr::Variable {
+            variable: JsonPath::from(name.into()),
+            default,
+        }
+    }
+
+    /// Create a literal value expression from a serde_json::Value
+    ///
+    /// Arrays and objects are recursively converted to composable ValueExpr structures.
+    /// Primitives (null, bool, number, string) become Literal variants.
+    pub fn literal(value: serde_json::Value) -> Self {
+        match value {
+            Value::Array(arr) => {
+                let exprs = arr.into_iter().map(ValueExpr::literal).collect();
+                ValueExpr::Array(exprs)
+            }
+            Value::Object(obj) => {
+                let exprs = obj
+                    .into_iter()
+                    .map(|(k, v)| (k, ValueExpr::literal(v)))
+                    .collect();
+                ValueExpr::Object(exprs)
+            }
+            // All primitives (null, bool, number, string) become Literal
+            primitive => ValueExpr::Literal(primitive),
+        }
+    }
+
+    /// Create an array value expression
+    pub fn array(values: Vec<ValueExpr>) -> Self {
+        ValueExpr::Array(values)
+    }
+
+    /// Create an object value expression from key-value pairs
+    pub fn object(values: Vec<(String, ValueExpr)>) -> Self {
+        ValueExpr::Object(values)
+    }
+
+    /// Create an escaped literal expression
+    pub fn escaped_literal(value: serde_json::Value) -> Self {
+        ValueExpr::EscapedLiteral { literal: value }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_step_constructor() {
+        let expr = ValueExpr::step("my_step", JsonPath::default());
+        assert_eq!(
+            expr,
+            ValueExpr::Step {
+                step: "my_step".to_string(),
+                path: JsonPath::default()
+            }
+        );
+    }
+
+    #[test]
+    fn test_input_constructor() {
+        let expr = ValueExpr::workflow_input(JsonPath::from("field"));
+        assert_eq!(
+            expr,
+            ValueExpr::Input {
+                input: JsonPath::from("field")
+            }
+        );
+    }
+
+    #[test]
+    fn test_variable_constructor() {
+        let expr = ValueExpr::variable("my_var", None);
+        assert_eq!(
+            expr,
+            ValueExpr::Variable {
+                variable: JsonPath::from("my_var"),
+                default: None
+            }
+        );
+    }
+
+    #[test]
+    fn test_variable_with_default() {
+        let default_expr = Box::new(ValueExpr::literal(json!("default_value")));
+        let expr = ValueExpr::variable("my_var", Some(default_expr.clone()));
+        assert_eq!(
+            expr,
+            ValueExpr::Variable {
+                variable: JsonPath::from("my_var"),
+                default: Some(default_expr)
+            }
+        );
+    }
+
+    #[test]
+    fn test_literal_primitives() {
+        // Null
+        assert_eq!(
+            ValueExpr::literal(json!(null)),
+            ValueExpr::Literal(json!(null))
+        );
+
+        // Bool
+        assert_eq!(
+            ValueExpr::literal(json!(true)),
+            ValueExpr::Literal(json!(true))
+        );
+        assert_eq!(
+            ValueExpr::literal(json!(false)),
+            ValueExpr::Literal(json!(false))
+        );
+
+        // Number
+        assert_eq!(ValueExpr::literal(json!(42)), ValueExpr::Literal(json!(42)));
+        assert_eq!(
+            ValueExpr::literal(json!(3.25)),
+            ValueExpr::Literal(json!(3.25))
+        );
+
+        // String
+        assert_eq!(
+            ValueExpr::literal(json!("hello")),
+            ValueExpr::Literal(json!("hello"))
+        );
+    }
+
+    #[test]
+    fn test_literal_composable_structures() {
+        // Array - should be converted to Array variant
+        let arr_expr = ValueExpr::literal(json!([1, 2, 3]));
+        match arr_expr {
+            ValueExpr::Array(arr) => {
+                assert_eq!(arr.len(), 3);
+                assert_eq!(arr[0], ValueExpr::Literal(json!(1)));
+                assert_eq!(arr[1], ValueExpr::Literal(json!(2)));
+                assert_eq!(arr[2], ValueExpr::Literal(json!(3)));
+            }
+            _ => panic!("Expected Array variant"),
+        }
+
+        // Object - should be converted to Object variant
+        let obj_expr = ValueExpr::literal(json!({"a": 1, "b": "hello"}));
+        match obj_expr {
+            ValueExpr::Object(obj) => {
+                assert_eq!(obj.len(), 2);
+                // Vec is unordered in terms of what we guarantee, but serde_json preserves order
+                assert!(
+                    obj.iter()
+                        .any(|(k, v)| k == "a" && *v == ValueExpr::Literal(json!(1)))
+                );
+                assert!(
+                    obj.iter()
+                        .any(|(k, v)| k == "b" && *v == ValueExpr::Literal(json!("hello")))
+                );
+            }
+            _ => panic!("Expected Object variant"),
+        }
+    }
+
+    #[test]
+    fn test_array_constructor() {
+        let arr = ValueExpr::array(vec![
+            ValueExpr::literal(json!(1)),
+            ValueExpr::literal(json!("two")),
+        ]);
+        assert_eq!(
+            arr,
+            ValueExpr::Array(vec![
+                ValueExpr::Literal(json!(1)),
+                ValueExpr::Literal(json!("two"))
+            ])
+        );
+    }
+
+    #[test]
+    fn test_object_constructor() {
+        let obj = ValueExpr::object(vec![
+            ("a".to_string(), ValueExpr::literal(json!(1))),
+            ("b".to_string(), ValueExpr::literal(json!("hello"))),
+        ]);
+        assert_eq!(
+            obj,
+            ValueExpr::Object(vec![
+                ("a".to_string(), ValueExpr::Literal(json!(1))),
+                ("b".to_string(), ValueExpr::Literal(json!("hello")))
+            ])
+        );
+    }
+
+    #[test]
+    fn test_escaped_literal() {
+        let expr = ValueExpr::escaped_literal(json!({"step": "foo"}));
+        assert_eq!(
+            expr,
+            ValueExpr::EscapedLiteral {
+                literal: json!({"step": "foo"})
+            }
+        );
+    }
+
+    #[test]
+    fn test_composable_with_references() {
+        // Array of mixed expressions and literals
+        let arr = ValueExpr::Array(vec![
+            ValueExpr::step("step1", JsonPath::default()),
+            ValueExpr::literal(json!("literal_string")),
+            ValueExpr::workflow_input(JsonPath::from("field")),
+        ]);
+
+        match &arr {
+            ValueExpr::Array(v) => {
+                assert_eq!(v.len(), 3);
+                assert!(matches!(&v[0], ValueExpr::Step { .. }));
+                assert!(matches!(&v[1], ValueExpr::Literal(_)));
+                assert!(matches!(&v[2], ValueExpr::Input { .. }));
+            }
+            _ => panic!("Expected Array"),
+        }
+
+        // Object with mixed expressions
+        let obj = ValueExpr::Object(vec![
+            (
+                "ref".to_string(),
+                ValueExpr::step("step1", JsonPath::default()),
+            ),
+            ("lit".to_string(), ValueExpr::literal(json!("value"))),
+            (
+                "input".to_string(),
+                ValueExpr::workflow_input(JsonPath::from("x")),
+            ),
+        ]);
+
+        match &obj {
+            ValueExpr::Object(fields) => {
+                assert_eq!(fields.len(), 3);
+                assert!(matches!(&fields[0].1, ValueExpr::Step { .. }));
+                assert!(matches!(&fields[1].1, ValueExpr::Literal(_)));
+                assert!(matches!(&fields[2].1, ValueExpr::Input { .. }));
+            }
+            _ => panic!("Expected Object"),
+        }
+    }
+
+}
