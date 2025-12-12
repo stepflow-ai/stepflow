@@ -12,6 +12,7 @@
 
 use crate::BACKEND_POOL;
 use crate::backend::Backend;
+use crate::metrics;
 use log::{debug, error, info, warn};
 use serde::Deserialize;
 use std::net::{SocketAddr, ToSocketAddrs as _};
@@ -52,9 +53,25 @@ impl DiscoveryService {
         );
 
         loop {
+            // Increment discovery operations counter
+            metrics::DISCOVERY_OPERATIONS_TOTAL.inc();
+
             match self.discover_backends().await {
                 Ok(backends) => {
                     info!("Discovered healthy backends: count={}", backends.len());
+
+                    // Update backend pool size metric
+                    metrics::BACKEND_POOL_SIZE.set(backends.len() as f64);
+
+                    // Update backend health metrics
+                    for backend in &backends {
+                        metrics::BACKEND_HEALTH
+                            .with_label_values(&[
+                                &backend.address.to_string(),
+                                &backend.instance_id,
+                            ])
+                            .set(1.0);
+                    }
 
                     // Update global backend pool
                     let pool_guard = BACKEND_POOL.load();
@@ -65,6 +82,8 @@ impl DiscoveryService {
                 }
                 Err(e) => {
                     error!("Backend discovery failed: {}", e);
+                    // Set pool size to 0 on discovery failure
+                    metrics::BACKEND_POOL_SIZE.set(0.0);
                 }
             }
 
