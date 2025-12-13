@@ -19,8 +19,6 @@
 //! - `SanitizedValue`: Safe display wrapper that redacts secrets
 //! - `ValueLoader`: Trait for loading values from external sources
 
-mod new_expr;
-mod new_value_template;
 pub mod redacted_value;
 pub mod value_ref;
 pub mod value_resolver;
