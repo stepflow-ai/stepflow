@@ -1,8 +1,8 @@
 # Individual Contributor License Agreement (ICLA)
 
-## StepFlow Project
+## Stepflow Project
 
-Thank you for your interest in contributing to the StepFlow project ("Project"). This Individual Contributor License Agreement ("Agreement") documents the rights granted by contributors to the Project.
+Thank you for your interest in contributing to the Stepflow project ("Project"). This Individual Contributor License Agreement ("Agreement") documents the rights granted by contributors to the Project.
 
 This is a legally binding document, so please read it carefully before agreeing to it. The Agreement may cover more than one software project managed by the Project maintainers.
 
@@ -56,4 +56,4 @@ This Agreement is governed by the laws of the jurisdiction in which the Project 
 
 ---
 
-*This ICLA is based on the Apache Software Foundation's Individual Contributor License Agreement, adapted for the StepFlow project under the Apache License 2.0.*
+*This ICLA is based on the Apache Software Foundation's Individual Contributor License Agreement, adapted for the Stepflow project under the Apache License 2.0.*

@@ -322,7 +322,7 @@ class TestExecutor:
             flow_id: Previously submitted flow ID
             input_data: Input data for the workflow
             variables: Optional Stepflow execution variables
-            overrides: Optional StepFlow override dictionary
+            overrides: Optional Stepflow override dictionary
 
         Returns:
             The workflow execution result

@@ -257,7 +257,7 @@ def display_icla():
 def main():
     """Main entry point for the ICLA signing process."""
     print(
-        f"{Colors.GREEN}{Colors.BOLD}StepFlow Individual Contributor "
+        f"{Colors.GREEN}{Colors.BOLD}Stepflow Individual Contributor "
         f"License Agreement (ICLA) Signing{Colors.RESET}"
     )
     print(f"{Colors.GREEN}{'=' * 65}{Colors.RESET}\n")
@@ -398,7 +398,7 @@ def main():
         print("1. Your ICLA signature has been saved to " ".github/cla-signatures.json")
         print("2. Include this file when you submit your first pull " "request")
         print("3. The pre-commit hook will now allow your commits")
-        print("4. Thank you for contributing to StepFlow!")
+        print("4. Thank you for contributing to Stepflow!")
         print()
         print(
             f"{Colors.YELLOW}Note: You only need to sign the ICLA "
