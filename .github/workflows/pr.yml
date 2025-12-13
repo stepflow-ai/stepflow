@@ -130,12 +130,12 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.issue.number
             });
-            
+
             const authorLogin = pullRequest.user.login;
             const authorType = pullRequest.user.type;
-            
+
             console.log(`PR Author: ${authorLogin} (${authorType})`);
-            
+
             return {
               login: authorLogin,
               type: authorType
@@ -146,7 +146,7 @@ jobs:
         run: |
           AUTHOR_TYPE="${{ fromJson(steps.pr-info.outputs.result).type }}"
           AUTHOR_LOGIN="${{ fromJson(steps.pr-info.outputs.result).login }}"
-          
+
           # Skip CLA check for bots and certain automated accounts
           if [[ "$AUTHOR_TYPE" == "Bot" ]] || [[ "$AUTHOR_LOGIN" =~ ^(dependabot|renovate|github-actions)\[bot\]$ ]]; then
             echo "Skipping CLA check for bot account: $AUTHOR_LOGIN"
@@ -169,68 +169,68 @@ jobs:
         with:
           script: |
             const authorLogin = "${{ fromJson(steps.pr-info.outputs.result).login }}";
-            
+
             const body = `## ❌ Individual Contributor License Agreement (ICLA) Required
-            
-            Hello @${authorLogin}! Thank you for your contribution to StepFlow.
-            
+
+            Hello @${authorLogin}! Thank you for your contribution to Stepflow.
+
             Before we can merge your pull request, you need to sign our Individual Contributor License Agreement (ICLA). This is a one-time process that ensures clear licensing and intellectual property rights for the project.
-            
+
             ### How to sign the ICLA:
-            
+
             1. **Clone the repository locally:**
                \`\`\`bash
                git clone https://github.com/${context.repo.owner}/${context.repo.repo}.git
                cd ${context.repo.repo}
                \`\`\`
-            
+
             2. **Sign the ICLA:**
                \`\`\`bash
                python scripts/sign_icla.py
                \`\`\`
-            
+
             3. **Commit the updated signatures file:**
                \`\`\`bash
                git add .github/cla-signatures.json
                git commit -m "Add ICLA signature for ${authorLogin}"
                git push
                \`\`\`
-            
+
             4. **Update your pull request** by pushing to your branch.
-            
+
             ### What is the ICLA?
-            
+
             The ICLA grants the project a license to use your contributions and confirms that:
             - You own the copyright to your contributions
             - You grant the project rights to use your code
             - Your contributions are your original work
-            
+
             You can read the full agreement in [ICLA.md](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/ICLA.md).
-            
+
             ### Need help?
-            
+
             If you have questions about the ICLA or need assistance, please:
             - Comment on this PR
             - Open an issue
             - Contact the maintainers
-            
-            Thank you for contributing to StepFlow! 🚀
-            
+
+            Thank you for contributing to Stepflow! 🚀
+
             ---
             *This check will automatically pass once you sign the ICLA and update your pull request.*`;
-            
+
             // Check if we already commented
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-            
-            const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('Individual Contributor License Agreement (ICLA) Required')
             );
-            
+
             if (botComment) {
               // Update existing comment
               await github.rest.issues.updateComment({

@@ -50,7 +50,7 @@ All notable changes to this project will be documented in this file.
 
 - Add schema field to flow ([#194](https://github.com/stepflow-ai/stepflow/pull/194))
 - Use blobs for flows ([#195](https://github.com/stepflow-ai/stepflow/pull/195))
-- Add comprehensive LangChain integration for StepFlow Python SDK ([#174](https://github.com/stepflow-ai/stepflow/pull/174))
+- Add comprehensive LangChain integration for Stepflow Python SDK ([#174](https://github.com/stepflow-ai/stepflow/pull/174))
 - Simplify UDFs using named functions ([#199](https://github.com/stepflow-ai/stepflow/pull/199))
 - Add extensible metadata to flows and steps ([#210](https://github.com/stepflow-ai/stepflow/pull/210))
 - Initial Stepflow-Langflow integration ([#216](https://github.com/stepflow-ai/stepflow/pull/216))

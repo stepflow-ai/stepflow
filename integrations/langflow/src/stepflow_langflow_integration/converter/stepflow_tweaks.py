@@ -260,7 +260,7 @@ def apply_stepflow_tweaks_to_dict(
 def convert_tweaks_to_overrides(
     tweaks: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, Any]] | None:
-    """Convert Langflow tweaks format to StepFlow overrides format.
+    """Convert Langflow tweaks format to Stepflow overrides format.
 
     This function transforms tweaks from the early binding format (modifying flow)
     to the late binding format (runtime overrides). Instead of modifying the flow
@@ -300,7 +300,7 @@ def convert_tweaks_to_overrides(
     overrides = {}
 
     for langflow_node_id, field_tweaks in tweaks.items():
-        # Convert Langflow node ID to StepFlow step ID format
+        # Convert Langflow node ID to Stepflow step ID format
         step_id = f"langflow_{langflow_node_id}"
 
         # Create the override value structure that matches step.input structure

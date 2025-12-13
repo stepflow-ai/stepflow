@@ -112,9 +112,9 @@ To get a local copy up and running quickly follow these simple steps.
    cargo run -- run --flow=examples/basic/workflow.yaml --input=examples/basic/input1.json --config=examples/basic/stepflow-config.yml
    ```
 
-### Contributing to StepFlow
+### Contributing to Stepflow
 
-Before contributing to StepFlow, you must sign our Individual Contributor License Agreement (ICLA):
+Before contributing to Stepflow, you must sign our Individual Contributor License Agreement (ICLA):
 
 ```sh
 python scripts/sign_icla.py
