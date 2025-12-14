@@ -12,8 +12,8 @@
 
 use std::collections::HashMap;
 
-use super::{Component, Expr, ValueTemplate};
-use crate::schema::SchemaRef;
+use super::{Component, Expr};
+use crate::{ValueExpr, schema::SchemaRef};
 use schemars::JsonSchema;
 
 /// A step in a workflow that executes a component with specific arguments.
@@ -42,8 +42,8 @@ pub struct Step {
     pub on_error: Option<ErrorAction>,
 
     /// Arguments to pass to the component for this step
-    #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
-    pub input: ValueTemplate,
+    #[serde(default, skip_serializing_if = "ValueExpr::is_null")]
+    pub input: ValueExpr,
 
     /// If true, this step must execute even if its output is not used by the workflow output.
     /// Useful for steps with side effects (e.g., writing to databases, sending notifications).
@@ -92,7 +92,7 @@ pub enum ErrorAction {
     #[serde(rename_all = "camelCase")]
     UseDefault {
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        default_value: Option<ValueTemplate>,
+        default_value: Option<ValueExpr>,
     },
     /// # OnErrorRetry
     /// If the step fails, retry it.
@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(serde_yaml_ng::to_string(&retry).unwrap(), "action: retry\n");
 
         let use_default = ErrorAction::UseDefault {
-            default_value: Some(ValueRef::from("test_default").into()),
+            default_value: Some(ValueExpr::literal(serde_json::json!("test_default"))),
         };
         assert_eq!(
             serde_yaml_ng::to_string(&use_default).unwrap(),
@@ -146,7 +146,7 @@ mod tests {
         assert_eq!(
             use_default,
             ErrorAction::UseDefault {
-                default_value: Some(ValueRef::from("test_default").into())
+                default_value: Some(ValueExpr::literal(serde_json::json!("test_default")))
             }
         );
     }
@@ -159,7 +159,7 @@ mod tests {
         assert!(!ErrorAction::Retry.is_default());
         assert!(
             !ErrorAction::UseDefault {
-                default_value: Some(ValueRef::from("test").into())
+                default_value: Some(ValueExpr::literal(serde_json::json!("test")))
             }
             .is_default()
         );
@@ -170,9 +170,9 @@ mod tests {
         let step = StepBuilder::new("test_step")
             .component("/mock/test_component")
             .on_error(ErrorAction::UseDefault {
-                default_value: Some(ValueRef::from("fallback").into()),
+                default_value: Some(ValueExpr::literal(serde_json::json!("fallback"))),
             })
-            .input(ValueTemplate::null())
+            .input(ValueExpr::null())
             .build();
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();
@@ -185,7 +185,7 @@ mod tests {
     fn test_step_default_error_action_not_serialized() {
         let step = StepBuilder::new("test_step")
             .component("/mock/test_component")
-            .input(ValueTemplate::null())
+            .input(ValueExpr::null())
             .build();
 
         let yaml = serde_yaml_ng::to_string(&step).unwrap();

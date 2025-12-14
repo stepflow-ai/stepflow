@@ -19,7 +19,7 @@ use stepflow_core::BlobId;
 use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
     FlowResult,
-    values::{ValueRef, ValueResolver, ValueTemplate},
+    values::{ValueRef, ValueResolver},
     workflow::{Expr, Flow, StepId, WorkflowOverrides},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
@@ -697,7 +697,7 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self
             .resolver
-            .resolve_template(&step.input)
+            .resolve_value_expr(&step.input)
             .await
             .change_context_lazy(|| ExecutionError::ResolveStepInput(step.id.clone()))?
         {
@@ -781,7 +781,7 @@ impl WorkflowExecutor {
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
         self.resolver
-            .resolve_template(self.flow.output())
+            .resolve_value_expr(self.flow.output())
             .await
             .change_context(ExecutionError::ResolveWorkflowOutput)
     }
@@ -858,7 +858,7 @@ impl WorkflowExecutor {
                 // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = self
                     .resolver
-                    .resolve_template(&step_input)
+                    .resolve_value_expr(&step_input)
                     .await
                     .change_context_lazy(|| ExecutionError::ResolveStepInput(step_id.clone()))?;
                 let step_input = match step_input {
@@ -1044,11 +1044,11 @@ pub(crate) async fn execute_step_async(
                     );
                     let template = match default_value {
                         Some(default) => default.clone(),
-                        None => ValueTemplate::null(),
+                        None => stepflow_core::ValueExpr::null(),
                     };
                     // Resolve the ValueTemplate to get the actual value
                     let default_value = resolver
-                        .resolve_template(&template)
+                        .resolve_value_expr(&template)
                         .await
                         .change_context_lazy(|| {
                             ExecutionError::ResolveDefaultValue(step.id.clone())
@@ -1116,7 +1116,7 @@ impl StepExecutionResult {
 pub struct StepInspection {
     #[serde(flatten)]
     pub metadata: StepMetadata,
-    pub input: ValueTemplate,
+    pub input: stepflow_core::ValueExpr,
     pub skip_if: Option<Expr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
     pub state: StepStatus,

@@ -20,9 +20,10 @@ use log;
 
 use super::{ValueRef, ValueTemplate, ValueTemplateRepr};
 use crate::{
-    FlowResult,
+    new_values::{JsonPath as NewJsonPath, PathPart, ValueExpr},
     values::Secrets,
-    workflow::{BaseRef, Expr, Flow, SkipAction, StepId},
+    workflow::{BaseRef, Expr, Flow, JsonPath as OldJsonPath, SkipAction, StepId},
+    FlowResult,
 };
 
 /// Trait for loading values from external sources (like state stores).
@@ -168,6 +169,7 @@ impl<L: ValueLoader> ValueResolver<L> {
     pub fn resolve_variable(
         &self,
         variable: &str,
+        path: &[PathPart],
         default: Option<ValueRef>,
     ) -> ValueResolverResult<FlowResult> {
         let secrets = if let Some(variables_schema) = self.flow.variables() {
@@ -198,7 +200,165 @@ impl<L: ValueLoader> ValueResolver<L> {
         // Log variable resolution with secret-aware sanitization
         let redacted = value.redacted(secrets);
         log::debug!("Resolved variable '{}' to: {}", variable, redacted);
-        Ok(FlowResult::Success(value))
+
+        // Apply path if specified
+        if !path.is_empty() {
+            let path_json = NewJsonPath::from_parts(path.to_vec());
+            log::debug!("Resolving path '{}' on variable '{}'", path_json, variable);
+            let old_path = OldJsonPath::from(path_json.to_string());
+            if let Some(sub_value) = value.resolve_json_path(&old_path) {
+                log::debug!("Path '{}' resolved successfully", path_json);
+                Ok(FlowResult::Success(sub_value))
+            } else {
+                log::debug!("Path '{}' not found in variable '{}'", path_json, variable);
+                Err(ValueResolverError::UndefinedField {
+                    field: path_json.to_string(),
+                    value,
+                }
+                .into())
+            }
+        } else {
+            Ok(FlowResult::Success(value))
+        }
+    }
+
+    /// Resolve a ValueExpr, returning a FlowResult.
+    ///
+    /// This is the new resolution method for the simplified ValueExpr type.
+    pub async fn resolve_value_expr(&self, expr: &ValueExpr) -> ValueResolverResult<FlowResult> {
+        match expr {
+            ValueExpr::Step { step, path } => {
+                // Get the step result
+                let base_result = self.resolve_step(step).await?;
+
+                // Apply path if specified and not empty
+                if !path.is_empty() {
+                    match base_result {
+                        FlowResult::Success(value) => {
+                            log::debug!("Resolving path '{}' on step '{}'", path, step);
+                            let old_path = OldJsonPath::from(path.to_string());
+                            if let Some(sub_value) = value.resolve_json_path(&old_path) {
+                                log::debug!("Path '{}' resolved successfully", path);
+                                Ok(FlowResult::Success(sub_value))
+                            } else {
+                                log::debug!("Path '{}' not found in value", path);
+                                Err(ValueResolverError::UndefinedField {
+                                    field: path.to_string(),
+                                    value,
+                                }
+                                .into())
+                            }
+                        }
+                        // Skip and Failed propagate through
+                        other => Ok(other),
+                    }
+                } else {
+                    // No path, return base result directly
+                    Ok(base_result)
+                }
+            }
+            ValueExpr::Input { input } => {
+                // Apply the input path to the workflow input
+                if !input.is_empty() {
+                    log::debug!("Resolving input path '{}'", input);
+                    let old_path = OldJsonPath::from(input.to_string());
+                    if let Some(sub_value) = self.input.resolve_json_path(&old_path) {
+                        log::debug!("Input path '{}' resolved successfully", input);
+                        Ok(FlowResult::Success(sub_value))
+                    } else {
+                        log::debug!("Input path '{}' not found", input);
+                        Err(ValueResolverError::UndefinedField {
+                            field: input.to_string(),
+                            value: self.input.clone(),
+                        }
+                        .into())
+                    }
+                } else {
+                    // Empty path means root
+                    Ok(FlowResult::Success(self.input.clone()))
+                }
+            }
+            ValueExpr::Variable { variable, default } => {
+                // Extract variable name from first path part
+                let parts = variable.parts();
+
+                if parts.is_empty() {
+                    return Err(ValueResolverError::Internal.into());
+                }
+
+                // First part should be the variable name
+                let var_name = match &parts[0] {
+                    PathPart::Field(name) | PathPart::IndexStr(name) => name.as_str(),
+                    PathPart::Index(_) => {
+                        return Err(ValueResolverError::Internal.into());
+                    }
+                };
+
+                // Remaining parts form the sub-path (as a slice, no allocation)
+                let sub_path = if parts.len() > 1 {
+                    &parts[1..]
+                } else {
+                    &[]
+                };
+
+                // Try to resolve the variable with path
+                let var_result = self.resolve_variable(var_name, sub_path, None);
+
+                match var_result {
+                    Ok(flow_result) => Ok(flow_result),
+                    Err(_) => {
+                        // Variable not found or path failed, try default if available
+                        if let Some(default_expr) = default {
+                            log::debug!("Variable '{}' resolution failed, using default", var_name);
+                            Box::pin(self.resolve_value_expr(default_expr)).await
+                        } else {
+                            // No default, propagate the error
+                            var_result
+                        }
+                    }
+                }
+            }
+            ValueExpr::EscapedLiteral { literal } => {
+                Ok(FlowResult::Success(ValueRef::new(literal.clone())))
+            }
+            ValueExpr::Literal(value) => {
+                Ok(FlowResult::Success(ValueRef::new(value.clone())))
+            }
+            ValueExpr::Array(items) => {
+                let mut result_array = Vec::new();
+                for item in items {
+                    match Box::pin(self.resolve_value_expr(item)).await? {
+                        FlowResult::Success(value) => {
+                            result_array.push(value.as_ref().clone());
+                        }
+                        // Propagate skip/fail from array elements
+                        flow_result @ (FlowResult::Skipped { .. } | FlowResult::Failed(_)) => {
+                            return Ok(flow_result);
+                        }
+                    }
+                }
+                Ok(FlowResult::Success(ValueRef::new(
+                    serde_json::Value::Array(result_array),
+                )))
+            }
+            ValueExpr::Object(fields) => {
+                let mut result_map = serde_json::Map::new();
+                for (k, v) in fields {
+                    match Box::pin(self.resolve_value_expr(v)).await? {
+                        FlowResult::Success(value) => {
+                            result_map.insert(k.clone(), value.as_ref().clone());
+                        }
+                        // Propagate skip/fail from object fields
+                        flow_result @ (FlowResult::Skipped { .. } | FlowResult::Failed(_)) => {
+                            return Ok(flow_result);
+                        }
+                    }
+                }
+                Ok(FlowResult::Success(ValueRef::new(
+                    serde_json::Value::Object(result_map),
+                )))
+            }
+        }
     }
 
     /// Resolve an expression, returning a FlowResult.
@@ -220,7 +380,7 @@ impl<L: ValueLoader> ValueResolver<L> {
             }
             BaseRef::Step { step: step_id } => self.resolve_step(step_id).await?,
             BaseRef::Variable { variable, default } => {
-                self.resolve_variable(variable, default.clone())?
+                self.resolve_variable(variable, &[], default.clone())?
             }
         };
 
@@ -401,7 +561,7 @@ mod tests {
                         .input_literal(json!({}))
                         .build(),
                 )
-                .output(ValueTemplate::literal(json!(null)))
+                .output(ValueExpr::literal(json!(null)))
                 .build(),
         )
     }
@@ -417,13 +577,8 @@ mod tests {
 
         // Test resolving ValueTemplate - create a template with an expression by deserializing from JSON
         let template = ValueTemplate::workflow_input(JsonPath::from("name"));
-        let resolved = resolver.resolve_template(&template).await.unwrap();
-        match resolved {
-            FlowResult::Success(result) => {
-                assert_eq!(result.as_ref(), &json!("Alice"));
-            }
-            _ => panic!("Expected successful result, got: {resolved:?}"),
-        }
+        let result = resolver.resolve_template(&template).await.unwrap().unwrap_success();
+        assert_eq!(result.as_ref(), &json!("Alice"));
     }
 
     #[tokio::test]
@@ -465,27 +620,18 @@ mod tests {
 
         // Test resolving provided variable
         let api_key_template = ValueTemplate::variable_ref("api_key", None, JsonPath::default());
-        let resolved = resolver.resolve_template(&api_key_template).await.unwrap();
-        match resolved {
-            FlowResult::Success(result) => {
-                assert_eq!(result.as_ref(), &json!("test-key-123"));
-            }
-            _ => panic!("Expected successful result, got: {resolved:?}"),
-        }
+        let result = resolver.resolve_template(&api_key_template).await.unwrap().unwrap_success();
+        assert_eq!(result.as_ref(), &json!("test-key-123"));
 
         // Test resolving variable with default value in schema
         let temperature_template =
             ValueTemplate::variable_ref("temperature", None, JsonPath::default());
-        let resolved = resolver
+        let result = resolver
             .resolve_template(&temperature_template)
             .await
-            .unwrap();
-        match resolved {
-            FlowResult::Success(result) => {
-                assert_eq!(result.as_ref(), &json!(0.7));
-            }
-            _ => panic!("Expected successful result, got: {resolved:?}"),
-        }
+            .unwrap()
+            .unwrap_success();
+        assert_eq!(result.as_ref(), &json!(0.7));
 
         // Test resolving variable with default value in reference.
         let temperature_template = ValueTemplate::variable_ref(
@@ -493,16 +639,12 @@ mod tests {
             Some(json!(0.8).into()),
             JsonPath::default(),
         );
-        let resolved = resolver
+        let result = resolver
             .resolve_template(&temperature_template)
             .await
-            .unwrap();
-        match resolved {
-            FlowResult::Success(result) => {
-                assert_eq!(result.as_ref(), &json!(0.8));
-            }
-            _ => panic!("Expected successful result, got: {resolved:?}"),
-        }
+            .unwrap()
+            .unwrap_success();
+        assert_eq!(result.as_ref(), &json!(0.8));
     }
 
     #[tokio::test]
@@ -558,7 +700,7 @@ mod tests {
         let flow = Arc::new(
             FlowBuilder::new()
                 .variables(variables_schema)
-                .output(ValueTemplate::literal(json!(null)))
+                .output(ValueExpr::literal(json!(null)))
                 .build(),
         );
 
@@ -585,7 +727,7 @@ mod tests {
         // Test that variable resolution doesn't expose secrets in logs
         // We can't easily test the log output directly, but we can test the SanitizedVariable
         // formatting that would be used in logs
-        let api_key_result = resolver.resolve_variable("api_key", None).unwrap();
+        let api_key_result = resolver.resolve_variable("api_key", &[], None).unwrap();
         if let FlowResult::Success(api_key_value) = api_key_result {
             if let Some(variables_schema) = flow.variables() {
                 let sanitized_string = variables_schema
@@ -603,7 +745,7 @@ mod tests {
         }
 
         // Test that non-secret variables are not redacted
-        let username_result = resolver.resolve_variable("username", None).unwrap();
+        let username_result = resolver.resolve_variable("username", &[], None).unwrap();
         if let FlowResult::Success(username_value) = username_result {
             if let Some(variables_schema) = flow.variables() {
                 let sanitized_string = variables_schema
@@ -646,15 +788,136 @@ mod tests {
         // Test resolving variable with JSON path
         let config_key_template =
             ValueTemplate::variable_ref("config", None, JsonPath::from("$.api.key"));
-        let resolved = resolver
+        let result = resolver
             .resolve_template(&config_key_template)
             .await
-            .unwrap();
-        match resolved {
-            FlowResult::Success(result) => {
-                assert_eq!(result.as_ref(), &json!("nested-key"));
-            }
-            _ => panic!("Expected successful result, got: {resolved:?}"),
-        }
+            .unwrap()
+            .unwrap_success();
+        assert_eq!(result.as_ref(), &json!("nested-key"));
+    }
+
+    // Tests for new ValueExpr resolution
+    #[tokio::test]
+    async fn test_resolve_value_expr_literal() {
+        use crate::new_values::ValueExpr;
+
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test literal values
+        let expr = ValueExpr::Literal(json!("hello"));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("hello"));
+
+        // Test escaped literal
+        let expr = ValueExpr::escaped_literal(json!({"$step": "not_a_ref"}));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!({"$step": "not_a_ref"}));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_input() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+
+        let workflow_input = ValueRef::new(json!({"name": "Alice", "age": 30}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test input with path
+        let expr = ValueExpr::workflow_input(NewJsonPath::from("name"));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("Alice"));
+
+        // Test input root (empty path)
+        let expr = ValueExpr::workflow_input(NewJsonPath::new());
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!({"name": "Alice", "age": 30}));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_variable() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let mut variables = HashMap::new();
+        variables.insert("api_key".to_string(), ValueRef::new(json!("secret123")));
+        variables.insert(
+            "config".to_string(),
+            ValueRef::new(json!({"timeout": 30, "retries": 3})),
+        );
+
+        let resolver =
+            ValueResolver::new_with_variables(run_id, workflow_input, loader, flow, variables);
+
+        // Test simple variable
+        let expr = ValueExpr::variable("api_key", None);
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("secret123"));
+
+        // Test variable with path
+        let expr = ValueExpr::Variable {
+            variable: NewJsonPath::from("$.config.timeout"),
+            default: None,
+        };
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!(30));
+
+        // Test variable with default
+        let default_expr = Box::new(ValueExpr::Literal(json!("default_value")));
+        let expr = ValueExpr::variable("missing_var", Some(default_expr));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("default_value"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_composable() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+
+        let workflow_input = ValueRef::new(json!({"x": 10, "y": 20}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let mut variables = HashMap::new();
+        variables.insert("multiplier".to_string(), ValueRef::new(json!(2)));
+
+        let resolver =
+            ValueResolver::new_with_variables(run_id, workflow_input, loader, flow, variables);
+
+        // Test array composition
+        let expr = ValueExpr::Array(vec![
+            ValueExpr::workflow_input(NewJsonPath::from("x")),
+            ValueExpr::workflow_input(NewJsonPath::from("y")),
+            ValueExpr::variable("multiplier", None),
+        ]);
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!([10, 20, 2]));
+
+        // Test object composition
+        let expr = ValueExpr::Object(vec![
+            (
+                "input_x".to_string(),
+                ValueExpr::workflow_input(NewJsonPath::from("x")),
+            ),
+            (
+                "multiplier".to_string(),
+                ValueExpr::variable("multiplier", None),
+            ),
+            ("constant".to_string(), ValueExpr::Literal(json!(100))),
+        ]);
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(
+            value.as_ref(),
+            &json!({"input_x": 10, "multiplier": 2, "constant": 100})
+        );
     }
 }

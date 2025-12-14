@@ -24,7 +24,7 @@ use serde_json::Value;
 /// - Escaped literals (`$literal`) to prevent expansion
 //
 // Serialization and deserialization are implemented in expr_serde.rs
-#[derive(Debug, Clone, Eq, PartialEq, Hash, JsonSchema)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, JsonSchema, utoipa::ToSchema)]
 pub enum ValueExpr {
     /// Step reference: `{ $step: "step_id", path: "optional.path" }`
     Step {
@@ -131,6 +131,22 @@ impl ValueExpr {
     /// Create an escaped literal expression
     pub fn escaped_literal(value: serde_json::Value) -> Self {
         ValueExpr::EscapedLiteral { literal: value }
+    }
+
+    /// Create a null literal expression
+    pub fn null() -> Self {
+        ValueExpr::Literal(serde_json::Value::Null)
+    }
+
+    /// Check if this expression is a null literal
+    pub fn is_null(&self) -> bool {
+        matches!(self, ValueExpr::Literal(serde_json::Value::Null))
+    }
+}
+
+impl Default for ValueExpr {
+    fn default() -> Self {
+        ValueExpr::null()
     }
 }
 

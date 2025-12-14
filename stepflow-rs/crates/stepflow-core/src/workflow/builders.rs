@@ -13,10 +13,10 @@
 use std::collections::HashMap;
 
 use super::{
-    Component, ErrorAction, ExampleInput, Expr, Flow, FlowV1, Step, TestConfig, ValueTemplate,
+    Component, ErrorAction, ExampleInput, Expr, Flow, FlowV1, Step, TestConfig,
     VariableSchema,
 };
-use crate::schema::SchemaRef;
+use crate::{ValueExpr, schema::SchemaRef};
 use serde_json::json;
 
 /// Builder for creating Flow instances with reduced boilerplate.
@@ -28,7 +28,7 @@ pub struct FlowBuilder {
     input_schema: Option<SchemaRef>,
     output_schema: Option<SchemaRef>,
     steps: Vec<Step>,
-    output: Option<ValueTemplate>,
+    output: Option<ValueExpr>,
     variables: Option<VariableSchema>,
     test: Option<TestConfig>,
     examples: Option<Vec<ExampleInput>>,
@@ -84,7 +84,7 @@ impl FlowBuilder {
     }
 
     /// Set the flow output.
-    pub fn output(mut self, output: ValueTemplate) -> Self {
+    pub fn output(mut self, output: ValueExpr) -> Self {
         self.output = Some(output);
         self
     }
@@ -147,7 +147,7 @@ impl FlowBuilder {
 pub struct StepBuilder {
     id: Option<String>,
     component: Option<Component>,
-    input: Option<ValueTemplate>,
+    input: Option<ValueExpr>,
     input_schema: Option<SchemaRef>,
     output_schema: Option<SchemaRef>,
     skip_if: Option<Expr>,
@@ -179,20 +179,20 @@ impl StepBuilder {
     }
 
     /// Set the input template for this step.
-    pub fn input(mut self, input: ValueTemplate) -> Self {
+    pub fn input(mut self, input: ValueExpr) -> Self {
         self.input = Some(input);
         self
     }
 
-    /// Set the input from a JSON value, parsing it as a ValueTemplate.
+    /// Set the input from a JSON value, parsing it as a ValueExpr.
     pub fn input_json(mut self, input: serde_json::Value) -> Self {
-        self.input = Some(ValueTemplate::parse_value(input).unwrap());
+        self.input = Some(serde_json::from_value(input).unwrap());
         self
     }
 
     /// Set the input as a literal JSON value.
     pub fn input_literal(mut self, input: serde_json::Value) -> Self {
-        self.input = Some(ValueTemplate::literal(input));
+        self.input = Some(ValueExpr::literal(input));
         self
     }
 
@@ -263,7 +263,7 @@ impl StepBuilder {
             component: self
                 .component
                 .unwrap_or_else(|| Component::from_string("/mock/test")),
-            input: self.input.unwrap_or_else(ValueTemplate::null),
+            input: self.input.unwrap_or_else(ValueExpr::null),
             input_schema: self.input_schema,
             output_schema: self.output_schema,
             skip_if: self.skip_if,
@@ -341,7 +341,7 @@ mod tests {
             .description("Test with steps")
             .step(step1)
             .step(step2)
-            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .output(ValueExpr::step_output("step2"))
             .build();
 
         match flow {

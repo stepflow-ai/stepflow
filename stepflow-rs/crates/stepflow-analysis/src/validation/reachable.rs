@@ -12,7 +12,7 @@
 
 use std::collections::HashSet;
 
-use stepflow_core::values::ValueTemplate;
+use stepflow_core::ValueExpr;
 use stepflow_core::workflow::BaseRef;
 use stepflow_core::workflow::Expr;
 use stepflow_core::workflow::Flow;
@@ -64,13 +64,13 @@ fn collect_expression_dependencies(expr: &Expr, dependencies: &mut HashSet<Strin
     }
 }
 
-/// Collect step dependencies from ValueTemplate
+/// Collect step dependencies from ValueExpr
 fn collect_value_template_dependencies(
-    template: &ValueTemplate,
+    expr: &ValueExpr,
     dependencies: &mut HashSet<String>,
 ) -> Result<()> {
-    // Extract dependencies using ValueTemplate's method
-    let deps = crate::dependency::analyze_template_dependencies(template)?;
+    // Extract dependencies using analyze_template_dependencies
+    let deps = crate::dependency::analyze_template_dependencies(expr)?;
 
     for dep in deps.dependencies() {
         if let Some(step_id) = dep.step_id() {
