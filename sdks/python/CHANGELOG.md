@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.8.0"></a> [Stepflow Python SDK 0.8.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.8.0) - 2025-12-15
+### Features
+
+- Http support for langflow integration ([#408](https://github.com/stepflow-ai/stepflow/pull/408))
+- Add must_execute field for steps with side effects ([#412](https://github.com/stepflow-ai/stepflow/pull/412))
+- Added options to sf-lf http server ([#416](https://github.com/stepflow-ai/stepflow/pull/416))
+- Implement dynamic workflow overrides system ([#417](https://github.com/stepflow-ai/stepflow/pull/417))
+- Refactor override system to use late binding and unified API ([#418](https://github.com/stepflow-ai/stepflow/pull/418))
+- Implement variables and secrets system ([#421](https://github.com/stepflow-ai/stepflow/pull/421))
+- Set is_secret in langflow schemas ([#423](https://github.com/stepflow-ai/stepflow/pull/423))
+- Use variables for load_from_db inputs ([#424](https://github.com/stepflow-ai/stepflow/pull/424))
+
+### Miscellaneous Tasks
+
+- Split CLAUDE.md ([#439](https://github.com/stepflow-ai/stepflow/pull/439))
+
 ## <a id="0.7.0"></a> [Stepflow Python SDK 0.7.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.7.0) - 2025-10-27
 ### Features
 
