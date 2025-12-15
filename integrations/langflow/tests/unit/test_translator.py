@@ -170,9 +170,8 @@ class TrivialComponent(Component):
         for i, step in enumerate(workflow.steps):
             if hasattr(step, "input") and step.input:
                 for _key, value in step.input.items():
-                    if isinstance(value, dict) and "$from" in str(value):
-                        from_info = value.get("$from", {})
-                        from_step = from_info.get("step", "")
+                    if isinstance(value, dict) and "$step" in str(value):
+                        from_step = value.get("$step", "")
                         if from_step:
                             # Find position of referenced step
                             try:
