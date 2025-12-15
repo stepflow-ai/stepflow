@@ -25,7 +25,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
-    use stepflow_core::{BlobType, FlowResult, workflow::ValueRef, ValueExpr};
+    use stepflow_core::{BlobType, FlowResult, ValueExpr, workflow::ValueRef};
     use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
 

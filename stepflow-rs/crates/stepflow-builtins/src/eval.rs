@@ -96,8 +96,8 @@ impl BuiltinComponent for EvalComponent {
 
 #[cfg(test)]
 mod tests {
-    use stepflow_core::workflow::{Flow, FlowV1};
     use stepflow_core::ValueExpr;
+    use stepflow_core::workflow::{Flow, FlowV1};
 
     use super::*;
     use crate::mock_context::MockContext;

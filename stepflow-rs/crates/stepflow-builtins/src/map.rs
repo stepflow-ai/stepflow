@@ -124,8 +124,8 @@ impl BuiltinComponent for MapComponent {
 mod tests {
     use super::*;
     use crate::mock_context::MockContext;
-    use stepflow_core::workflow::FlowBuilder;
     use stepflow_core::ValueExpr;
+    use stepflow_core::workflow::FlowBuilder;
 
     #[tokio::test]
     async fn test_map_component_success() {

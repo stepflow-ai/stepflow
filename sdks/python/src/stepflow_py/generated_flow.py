@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Annotated, Any, ClassVar, Dict, List, Literal
 
 from msgspec import Meta, Struct, field
@@ -37,55 +36,6 @@ Component = Annotated[
 ]
 
 
-class StepReference(Struct, kw_only=True):
-    step: str
-
-
-class WorkflowRef(Enum):
-    input = 'input'
-
-
-Value = Annotated[
-    Any,
-    Meta(
-        description='Any JSON value (object, array, string, number, boolean, or null)'
-    ),
-]
-
-
-JsonPath = Annotated[
-    str,
-    Meta(
-        description='JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.',
-        examples=['field', '$.field', '$["field"]', '$[0]', '$.field[0].nested'],
-    ),
-]
-
-
-class OnSkipSkip(Struct, kw_only=True):
-    action: Literal['skip']
-
-
-class OnSkipDefault(Struct, kw_only=True):
-    action: Literal['useDefault']
-    defaultValue: Value | None = None
-
-
-SkipAction = OnSkipSkip | OnSkipDefault
-
-
-class OnErrorFail(Struct, kw_only=True):
-    action: Literal['fail']
-
-
-class OnErrorSkip(Struct, kw_only=True):
-    action: Literal['skip']
-
-
-class OnErrorRetry(Struct, kw_only=True):
-    action: Literal['retry']
-
-
 class ValueExpr1(Struct, kw_only=True):
     field_step: str = field(name='$step')
     path: Annotated[str, Meta(description='JSONPath expression')] | None = None
@@ -99,6 +49,18 @@ class ValueExpr2(Struct, kw_only=True):
 
 class ValueExpr4(Struct, kw_only=True):
     field_literal: Any = field(name='$literal')
+
+
+class OnErrorFail(Struct, kw_only=True):
+    action: Literal['fail']
+
+
+class OnErrorSkip(Struct, kw_only=True):
+    action: Literal['skip']
+
+
+class OnErrorRetry(Struct, kw_only=True):
+    action: Literal['retry']
 
 
 class TestServerHealthCheck(Struct, kw_only=True):
@@ -127,6 +89,14 @@ class TestServerHealthCheck(Struct, kw_only=True):
         ]
         | None
     ) = 1000
+
+
+Value = Annotated[
+    Any,
+    Meta(
+        description='Any JSON value (object, array, string, number, boolean, or null)'
+    ),
+]
 
 
 class FlowError(Struct, kw_only=True):
@@ -167,40 +137,6 @@ class ExampleInput(Struct, kw_only=True):
         ]
         | None
     ) = None
-
-
-class EscapedLiteral(Struct, kw_only=True):
-    field_literal: Annotated[
-        Value,
-        Meta(
-            description='A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion.'
-        ),
-    ] = field(name='$literal')
-
-
-class WorkflowReference(Struct, kw_only=True):
-    workflow: WorkflowRef
-
-
-class VariableReference(Struct, kw_only=True):
-    variable: str
-    default: (
-        Annotated[
-            Value | None,
-            Meta(
-                description='Optional default value to use if the variable is not available.\n\nThis will be preferred over any default value defined in the workflow variable schema.'
-            ),
-        ]
-        | None
-    ) = None
-
-
-BaseRef = Annotated[
-    WorkflowReference | StepReference | VariableReference,
-    Meta(
-        description='An expression that can be either a literal value or a template expression.'
-    ),
-]
 
 
 class TestServerConfig(Struct, kw_only=True):
@@ -265,30 +201,6 @@ class TestServerConfig(Struct, kw_only=True):
 FlowResult = Annotated[
     FlowResultSuccess | FlowResultSkipped | FlowResultFailed,
     Meta(description='The results of a step execution.', title='FlowResult'),
-]
-
-
-class Reference(Struct, kw_only=True):
-    field_from: Annotated[BaseRef, Meta(description='The source of the reference.')] = (
-        field(name='$from')
-    )
-    path: (
-        Annotated[
-            JsonPath,
-            Meta(
-                description='JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.'
-            ),
-        ]
-        | None
-    ) = None
-    onSkip: SkipAction | None = None
-
-
-Expr = Annotated[
-    Reference | EscapedLiteral | Value,
-    Meta(
-        description='An expression that can be either a literal value or a template expression.'
-    ),
 ]
 
 
@@ -427,7 +339,7 @@ class Step(Struct, kw_only=True):
     ) = None
     skipIf: (
         Annotated[
-            Expr | None,
+            ValueExpr | None,
             Meta(
                 description='If set and the referenced value is truthy, this step will be skipped.'
             ),
@@ -460,14 +372,6 @@ class Step(Struct, kw_only=True):
         ]
         | None
     ) = None
-
-
-class OnErrorDefault(Struct, kw_only=True):
-    action: Literal['useDefault']
-    defaultValue: ValueExpr | None = None
-
-
-ErrorAction = OnErrorFail | OnErrorSkip | OnErrorDefault | OnErrorRetry
 
 
 class ValueExpr3(Struct, kw_only=True):
@@ -504,3 +408,11 @@ ValueExpr = Annotated[
         description='A value expression that can contain literal data or references to other values'
     ),
 ]
+
+
+class OnErrorDefault(Struct, kw_only=True):
+    action: Literal['useDefault']
+    defaultValue: ValueExpr | None = None
+
+
+ErrorAction = OnErrorFail | OnErrorSkip | OnErrorDefault | OnErrorRetry

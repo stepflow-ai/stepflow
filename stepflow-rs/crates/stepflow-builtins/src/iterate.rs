@@ -166,8 +166,8 @@ impl BuiltinComponent for IterateComponent {
 mod tests {
     use super::*;
     use crate::mock_context::MockContext;
-    use stepflow_core::workflow::FlowV1;
     use stepflow_core::ValueExpr;
+    use stepflow_core::workflow::FlowV1;
 
     #[tokio::test]
     async fn test_iterate_component_with_result() {

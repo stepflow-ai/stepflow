@@ -13,11 +13,9 @@
 use std::collections::HashMap;
 
 use super::{
-    Component, ErrorAction, ExampleInput, Flow, FlowV1, JsonPath, Step, TestConfig,
-    VariableSchema,
+    Component, ErrorAction, ExampleInput, Flow, FlowV1, JsonPath, Step, TestConfig, VariableSchema,
 };
 use crate::{ValueExpr, schema::SchemaRef};
-use serde_json::json;
 
 /// Builder for creating Flow instances with reduced boilerplate.
 #[derive(Default)]
@@ -311,6 +309,7 @@ pub fn builtin_step<S: Into<String>>(id: S, component: S) -> StepBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_flow_builder_basic() {

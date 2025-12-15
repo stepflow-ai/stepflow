@@ -13,9 +13,9 @@
 use super::*;
 use crate::diagnostics::DiagnosticMessage;
 use serde_json::json;
+use stepflow_core::ValueExpr;
 use stepflow_core::values::JsonPath;
 use stepflow_core::workflow::{FlowBuilder, Step, StepBuilder};
-use stepflow_core::ValueExpr;
 
 fn create_test_step(id: &str, input: serde_json::Value) -> Step {
     StepBuilder::mock_step(id).input_json(input).build()
@@ -87,10 +87,7 @@ fn test_duplicate_step_ids() {
 #[test]
 fn test_self_reference() {
     let flow = FlowBuilder::test_flow()
-        .steps(vec![create_test_step(
-            "step1",
-            json!({"$step":"step1"}),
-        )])
+        .steps(vec![create_test_step("step1", json!({"$step":"step1"}))])
         .output(ValueExpr::Step {
             step: "step1".to_string(),
             path: Default::default(),
@@ -133,10 +130,7 @@ fn test_unreachable_step() {
 #[test]
 fn test_workflow_with_no_name_and_description() {
     let flow = FlowBuilder::new() // No name/description
-        .steps(vec![create_test_step(
-            "step1",
-            json!({"$input": "$"}),
-        )])
+        .steps(vec![create_test_step("step1", json!({"$input": "$"}))])
         .output(ValueExpr::Step {
             step: "step1".to_string(),
             path: Default::default(),
@@ -220,10 +214,7 @@ fn test_combined_validation() {
 
     let flow = FlowBuilder::test_flow()
         .description("A test workflow")
-        .step(create_test_step(
-            "step1",
-            json!({"$input": "$"}),
-        ))
+        .step(create_test_step("step1", json!({"$input": "$"})))
         .output(ValueExpr::Step {
             step: "step1".to_string(),
             path: Default::default(),

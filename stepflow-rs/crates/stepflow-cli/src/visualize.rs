@@ -424,7 +424,6 @@ impl FlowVisualizer {
             // Add edges for skip conditions (using ValueExpr)
             // Get the step analysis from the flow analysis
             if let Some(step_analysis) = analysis.steps.get(&step.id) {
-
                 // Add edges for skip condition dependencies
                 if let Some(skip_dep) = &step_analysis.skip_if_depend {
                     match skip_dep {

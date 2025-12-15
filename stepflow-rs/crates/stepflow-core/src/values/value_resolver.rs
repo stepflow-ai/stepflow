@@ -20,8 +20,8 @@ use log;
 
 use super::{JsonPath as NewJsonPath, PathPart, Secrets, ValueExpr, ValueRef};
 use crate::{
-    workflow::{Flow, StepId},
     FlowResult,
+    workflow::{Flow, StepId},
 };
 
 /// Trait for loading values from external sources (like state stores).
@@ -279,11 +279,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                 };
 
                 // Remaining parts form the sub-path (as a slice, no allocation)
-                let sub_path = if parts.len() > 1 {
-                    &parts[1..]
-                } else {
-                    &[]
-                };
+                let sub_path = if parts.len() > 1 { &parts[1..] } else { &[] };
 
                 // Try to resolve the variable with path
                 let var_result = self.resolve_variable(var_name, sub_path, None);
@@ -305,9 +301,7 @@ impl<L: ValueLoader> ValueResolver<L> {
             ValueExpr::EscapedLiteral { literal } => {
                 Ok(FlowResult::Success(ValueRef::new(literal.clone())))
             }
-            ValueExpr::Literal(value) => {
-                Ok(FlowResult::Success(ValueRef::new(value.clone())))
-            }
+            ValueExpr::Literal(value) => Ok(FlowResult::Success(ValueRef::new(value.clone()))),
             ValueExpr::Array(items) => {
                 let mut result_array = Vec::new();
                 for item in items {
@@ -415,7 +409,6 @@ impl<L: ValueLoader> ValueResolver<L> {
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -807,7 +800,9 @@ mod tests {
         let resolver = ValueResolver::new(run_id, workflow_input.clone(), loader, flow);
 
         // Test variable with expression default (references input)
-        let default_expr = Box::new(ValueExpr::workflow_input(NewJsonPath::from("fallback_value")));
+        let default_expr = Box::new(ValueExpr::workflow_input(NewJsonPath::from(
+            "fallback_value",
+        )));
         let expr = ValueExpr::variable("missing_var", Some(default_expr));
 
         let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
@@ -840,8 +835,12 @@ mod tests {
 
         // Create loader with step results
         let mut loader = MockValueLoader::new(workflow_input.clone());
-        loader.step_results.insert(0, FlowResult::Success(ValueRef::new(json!({"x": 10}))));
-        loader.step_results.insert(1, FlowResult::Success(ValueRef::new(json!({"y": 20}))));
+        loader
+            .step_results
+            .insert(0, FlowResult::Success(ValueRef::new(json!({"x": 10}))));
+        loader
+            .step_results
+            .insert(1, FlowResult::Success(ValueRef::new(json!({"y": 20}))));
 
         let run_id = Uuid::now_v7();
         let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
@@ -908,8 +907,12 @@ mod tests {
 
         // Create loader with step results
         let mut loader = MockValueLoader::new(workflow_input.clone());
-        loader.step_results.insert(0, FlowResult::Success(ValueRef::new(json!(1))));
-        loader.step_results.insert(1, FlowResult::Success(ValueRef::new(json!(2))));
+        loader
+            .step_results
+            .insert(0, FlowResult::Success(ValueRef::new(json!(1))));
+        loader
+            .step_results
+            .insert(1, FlowResult::Success(ValueRef::new(json!(2))));
 
         let run_id = Uuid::now_v7();
         let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
@@ -1159,13 +1162,8 @@ mod tests {
         variables.insert("api_version".to_string(), ValueRef::new(json!("v2")));
 
         let run_id = Uuid::now_v7();
-        let resolver = ValueResolver::new_with_variables(
-            run_id,
-            workflow_input,
-            loader,
-            flow,
-            variables,
-        );
+        let resolver =
+            ValueResolver::new_with_variables(run_id, workflow_input, loader, flow, variables);
 
         // Test complex nested structure with all expression types
         let expr = ValueExpr::Object(vec![

@@ -29,10 +29,7 @@ use serde_json::Value;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum ValueExpr {
     /// Step reference: `{ $step: "step_id", path: "optional.path" }`
-    Step {
-        step: String,
-        path: JsonPath,
-    },
+    Step { step: String, path: JsonPath },
 
     /// Workflow input: `{ $input: "path" }` where path can be "$" for root
     Input {
@@ -46,9 +43,7 @@ pub enum ValueExpr {
     },
 
     /// Escape hatch: `{ $literal: {...} }` - prevents recursive parsing
-    EscapedLiteral {
-        literal: serde_json::Value,
-    },
+    EscapedLiteral { literal: serde_json::Value },
 
     /// Conditional expression: `{ $if: <condition>, then: <expr>, else?: <expr> }`
     /// Returns `then` value if condition is truthy, otherwise `else` value (defaults to null)
@@ -60,9 +55,7 @@ pub enum ValueExpr {
 
     /// Coalesce: `{ $coalesce: [<expr1>, <expr2>, ...] }`
     /// Returns first non-skipped, non-null value from the list
-    Coalesce {
-        values: Vec<ValueExpr>,
-    },
+    Coalesce { values: Vec<ValueExpr> },
 
     /// JSON array where each element can be an expression
     Array(Vec<ValueExpr>),
@@ -302,8 +295,10 @@ impl utoipa::ToSchema for ValueExpr {
                     .property("$step", Object::new())
                     .property("path", Object::new())
                     .required("$step")
-                    .description(Some("Step reference: { $step: \"step_id\", path?: \"...\" }"))
-                    .build()
+                    .description(Some(
+                        "Step reference: { $step: \"step_id\", path?: \"...\" }",
+                    ))
+                    .build(),
             ),
             // Input reference: { $input: "path" }
             Schema::Object(
@@ -311,16 +306,21 @@ impl utoipa::ToSchema for ValueExpr {
                     .property("$input", Object::new())
                     .required("$input")
                     .description(Some("Workflow input reference: { $input: \"path\" }"))
-                    .build()
+                    .build(),
             ),
             // Variable reference: { $variable: "path", default?: ValueExpr }
             Schema::Object(
                 ObjectBuilder::new()
                     .property("$variable", Object::new())
-                    .property("default", RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
+                    .property(
+                        "default",
+                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
+                    )
                     .required("$variable")
-                    .description(Some("Variable reference: { $variable: \"path\", default?: ValueExpr }"))
-                    .build()
+                    .description(Some(
+                        "Variable reference: { $variable: \"path\", default?: ValueExpr }",
+                    ))
+                    .build(),
             ),
             // Escaped literal: { $literal: any }
             Schema::Object(
@@ -328,18 +328,29 @@ impl utoipa::ToSchema for ValueExpr {
                     .property("$literal", Object::new())
                     .required("$literal")
                     .description(Some("Escaped literal: { $literal: any }"))
-                    .build()
+                    .build(),
             ),
             // Conditional: { $if: condition, then: expr, else?: expr }
             Schema::Object(
                 ObjectBuilder::new()
-                    .property("$if", RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
-                    .property("then", RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
-                    .property("else", RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
+                    .property(
+                        "$if",
+                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
+                    )
+                    .property(
+                        "then",
+                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
+                    )
+                    .property(
+                        "else",
+                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
+                    )
                     .required("$if")
                     .required("then")
-                    .description(Some("Conditional: { $if: condition, then: expr, else?: expr }"))
-                    .build()
+                    .description(Some(
+                        "Conditional: { $if: condition, then: expr, else?: expr }",
+                    ))
+                    .build(),
             ),
             // Coalesce: { $coalesce: [expr1, expr2, ...] }
             Schema::Object(
@@ -347,31 +358,35 @@ impl utoipa::ToSchema for ValueExpr {
                     .property(
                         "$coalesce",
                         ArrayBuilder::new()
-                            .items(RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
+                            .items(RefOr::Ref(Ref::new("#/components/schemas/ValueExpr"))),
                     )
                     .required("$coalesce")
                     .description(Some("Coalesce: { $coalesce: [expr1, expr2, ...] }"))
-                    .build()
+                    .build(),
             ),
             // Array of expressions
             Schema::Array(
                 ArrayBuilder::new()
                     .items(RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
                     .description(Some("Array of expressions"))
-                    .build()
+                    .build(),
             ),
             // Object with expression values
             Schema::Object(
                 ObjectBuilder::new()
-                    .additional_properties(Some(RefOr::Ref(Ref::new("#/components/schemas/ValueExpr"))))
+                    .additional_properties(Some(RefOr::Ref(Ref::new(
+                        "#/components/schemas/ValueExpr",
+                    ))))
                     .description(Some("Object with expression values"))
-                    .build()
+                    .build(),
             ),
             // Literal primitive value - just describe as allowing any value
             Schema::Object(
                 ObjectBuilder::new()
-                    .description(Some("Literal primitive value (null, boolean, number, or string)"))
-                    .build()
+                    .description(Some(
+                        "Literal primitive value (null, boolean, number, or string)",
+                    ))
+                    .build(),
             ),
         ];
 
@@ -604,5 +619,4 @@ mod tests {
         let _name = ValueExpr::name();
         // If we get here without stack overflow, the implementation is safe
     }
-
 }

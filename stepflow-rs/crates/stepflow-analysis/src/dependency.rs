@@ -163,7 +163,11 @@ fn collect_expr_dependencies(expr: &ValueExpr) -> Result<std::collections::HashS
         ValueExpr::Variable { .. } => {
             // Variables are not step dependencies
         }
-        ValueExpr::If { condition, then, else_expr } => {
+        ValueExpr::If {
+            condition,
+            then,
+            else_expr,
+        } => {
             // Collect dependencies from condition
             deps.extend(collect_expr_dependencies(condition)?);
             // Collect dependencies from then branch
@@ -440,7 +444,7 @@ mod tests {
             .name("invalid_workflow")
             .steps(vec![
                 create_test_step("step1", json!({"$step": "step2"})), // Forward reference
-                create_test_step("step1", json!({"$input": "$"})), // Duplicate ID
+                create_test_step("step1", json!({"$input": "$"})),    // Duplicate ID
             ])
             .output(ValueExpr::Step {
                 step: "step1".to_string(),

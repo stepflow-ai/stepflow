@@ -55,14 +55,7 @@ fn validate_step_references(
     // Validate skip condition references
     if let Some(skip_if) = &step.skip_if {
         path.push("skip_if".to_string());
-        validate_value_expr(
-            skip_if,
-            &path,
-            available_steps,
-            &step.id,
-            flow,
-            diagnostics,
-        );
+        validate_value_expr(skip_if, &path, available_steps, &step.id, flow, diagnostics);
         path.pop();
     }
 
@@ -90,7 +83,10 @@ fn validate_value_expr(
     diagnostics: &mut Diagnostics,
 ) {
     match expr {
-        ValueExpr::Step { step, path: field_path } => {
+        ValueExpr::Step {
+            step,
+            path: field_path,
+        } => {
             // Check for self-reference
             if current_step_id == step {
                 diagnostics.add(
@@ -187,7 +183,8 @@ fn validate_value_expr(
                         DiagnosticMessage::UnvalidatedFieldAccess {
                             step_id: format!("variable_{}", var_name),
                             field: variable.to_string(),
-                            reason: "variable field type validation not yet implemented".to_string(),
+                            reason: "variable field type validation not yet implemented"
+                                .to_string(),
                         },
                         path.clone(),
                     );
@@ -244,7 +241,11 @@ fn validate_value_expr(
                 field_path.pop();
             }
         }
-        ValueExpr::If { condition, then, else_expr } => {
+        ValueExpr::If {
+            condition,
+            then,
+            else_expr,
+        } => {
             // Validate condition
             let mut condition_path = path.clone();
             condition_path.push("condition");

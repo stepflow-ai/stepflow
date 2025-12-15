@@ -45,7 +45,11 @@ impl Serialize for ValueExpr {
                 map.serialize_entry("$literal", literal)?;
                 map.end()
             }
-            ValueExpr::If { condition, then, else_expr } => {
+            ValueExpr::If {
+                condition,
+                then,
+                else_expr,
+            } => {
                 let mut map = serializer.serialize_map(Some(3))?;
                 map.serialize_entry("$if", condition)?;
                 map.serialize_entry("then", then)?;
@@ -110,9 +114,7 @@ fn parse_value_expr(value: Value) -> Result<ValueExpr, String> {
 
             let condition_expr = parse_value_expr(condition.clone())?;
             let then_expr = parse_value_expr(then.clone())?;
-            let else_opt = else_expr
-                .map(|e| parse_value_expr(e.clone()))
-                .transpose()?;
+            let else_opt = else_expr.map(|e| parse_value_expr(e.clone())).transpose()?;
 
             Ok(ValueExpr::If {
                 condition: Box::new(condition_expr),
@@ -484,7 +486,10 @@ mod tests {
         match &parsed {
             ValueExpr::EscapedLiteral { literal } => {
                 // The literal should contain the raw object
-                assert_eq!(*literal, json!({"$step": "not_a_ref", "$input": "also_not_a_ref"}));
+                assert_eq!(
+                    *literal,
+                    json!({"$step": "not_a_ref", "$input": "also_not_a_ref"})
+                );
             }
             _ => panic!("Expected EscapedLiteral, got {:?}", parsed),
         }
@@ -521,9 +526,21 @@ mod tests {
             ValueExpr::Object(fields) => {
                 assert_eq!(fields.len(), 3);
                 // These should be treated as regular fields since they're not $step, $input, $variable, or $literal
-                assert!(fields.iter().any(|(k, v)| k == "$custom" && *v == ValueExpr::Literal(json!("value"))));
-                assert!(fields.iter().any(|(k, v)| k == "$other" && *v == ValueExpr::Literal(json!(123))));
-                assert!(fields.iter().any(|(k, v)| k == "normal" && *v == ValueExpr::Literal(json!(true))));
+                assert!(
+                    fields
+                        .iter()
+                        .any(|(k, v)| k == "$custom" && *v == ValueExpr::Literal(json!("value")))
+                );
+                assert!(
+                    fields
+                        .iter()
+                        .any(|(k, v)| k == "$other" && *v == ValueExpr::Literal(json!(123)))
+                );
+                assert!(
+                    fields
+                        .iter()
+                        .any(|(k, v)| k == "normal" && *v == ValueExpr::Literal(json!(true)))
+                );
             }
             _ => panic!("Expected Object, got {:?}", parsed),
         }

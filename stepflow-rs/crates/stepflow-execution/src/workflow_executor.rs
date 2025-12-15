@@ -1047,10 +1047,8 @@ pub(crate) async fn execute_step_async(
                         None => stepflow_core::ValueExpr::null(),
                     };
                     // Resolve the ValueTemplate to get the actual value
-                    let default_value = resolver
-                        .resolve(&template)
-                        .await
-                        .change_context_lazy(|| {
+                    let default_value =
+                        resolver.resolve(&template).await.change_context_lazy(|| {
                             ExecutionError::ResolveDefaultValue(step.id.clone())
                         })?;
                     match default_value {
@@ -1129,8 +1127,8 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::FlowError;
-    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder, StepId};
     use stepflow_core::ValueExpr;
+    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder, StepId};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 

@@ -52,12 +52,8 @@ pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) ->
 
 /// Collect step dependencies from a value expression
 fn collect_expression_dependencies(expr: &ValueExpr, dependencies: &mut HashSet<String>) {
-    match expr {
-        ValueExpr::Step { step, .. } => {
-            dependencies.insert(step.clone());
-        }
-        // Other expression types don't reference steps for skip conditions
-        _ => {}
+    if let ValueExpr::Step { step, .. } = expr {
+        dependencies.insert(step.clone());
     }
 }
 

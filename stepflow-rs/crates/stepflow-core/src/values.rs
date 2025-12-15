@@ -20,14 +20,14 @@
 //! - `Secrets`: Secret field redaction for safe logging
 
 pub mod json_path;
+pub mod redacted_value;
 pub mod value_expr;
 mod value_expr_serde; // Keep private
-pub mod redacted_value;
 pub mod value_ref;
 pub mod value_resolver;
 
 pub use json_path::*;
-pub use value_expr::*;
 pub use redacted_value::*;
+pub use value_expr::*;
 pub use value_ref::*;
 pub use value_resolver::*;
