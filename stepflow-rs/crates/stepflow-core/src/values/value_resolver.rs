@@ -920,4 +920,335 @@ mod tests {
             &json!({"input_x": 10, "multiplier": 2, "constant": 100})
         );
     }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_step_reference() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::workflow::{FlowBuilder, StepBuilder};
+
+        let workflow_input = ValueRef::new(json!({}));
+
+        // Create a flow with a step
+        let flow = Arc::new(
+            FlowBuilder::new()
+                .step(
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::literal(json!({})))
+                        .build(),
+                )
+                .output(ValueExpr::literal(json!(null)))
+                .build(),
+        );
+
+        // Create loader with step result
+        let mut loader = MockValueLoader::new(workflow_input.clone());
+        loader.step_results.insert(
+            0,
+            FlowResult::Success(ValueRef::new(json!({"result": "success", "count": 42}))),
+        );
+
+        let run_id = Uuid::now_v7();
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test step reference without path (gets entire result)
+        let expr = ValueExpr::step("step1", NewJsonPath::default());
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!({"result": "success", "count": 42}));
+
+        // Test step reference with simple path
+        let expr = ValueExpr::step("step1", NewJsonPath::from("result"));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("success"));
+
+        // Test step reference with JSONPath
+        let expr = ValueExpr::step("step1", NewJsonPath::from("$.count"));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!(42));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_step_with_nested_path() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::workflow::{FlowBuilder, StepBuilder};
+
+        let workflow_input = ValueRef::new(json!({}));
+
+        // Create a flow with a step that returns nested data
+        let flow = Arc::new(
+            FlowBuilder::new()
+                .step(
+                    StepBuilder::mock_step("data_step")
+                        .input(ValueExpr::literal(json!({})))
+                        .build(),
+                )
+                .output(ValueExpr::literal(json!(null)))
+                .build(),
+        );
+
+        // Create loader with nested step result
+        let mut loader = MockValueLoader::new(workflow_input.clone());
+        loader.step_results.insert(
+            0,
+            FlowResult::Success(ValueRef::new(json!({
+                "user": {
+                    "profile": {
+                        "name": "Alice",
+                        "age": 30
+                    },
+                    "settings": {
+                        "theme": "dark"
+                    }
+                }
+            }))),
+        );
+
+        let run_id = Uuid::now_v7();
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test deeply nested path
+        let expr = ValueExpr::step("data_step", NewJsonPath::from("$.user.profile.name"));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("Alice"));
+
+        // Test another nested path
+        let expr = ValueExpr::step("data_step", NewJsonPath::from("$.user.settings.theme"));
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("dark"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_variable_with_expression_default() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+
+        let workflow_input = ValueRef::new(json!({"fallback_value": 100}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        // No variables provided - will use defaults
+        let resolver = ValueResolver::new(run_id, workflow_input.clone(), loader, flow);
+
+        // Test variable with expression default (references input)
+        let default_expr = Box::new(ValueExpr::workflow_input(NewJsonPath::from("fallback_value")));
+        let expr = ValueExpr::variable("missing_var", Some(default_expr));
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!(100));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_nested_with_step_refs() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::workflow::{FlowBuilder, StepBuilder};
+
+        let workflow_input = ValueRef::new(json!({"multiplier": 2}));
+
+        // Create a flow with multiple steps
+        let flow = Arc::new(
+            FlowBuilder::new()
+                .step(
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::literal(json!({})))
+                        .build(),
+                )
+                .step(
+                    StepBuilder::mock_step("step2")
+                        .input(ValueExpr::literal(json!({})))
+                        .build(),
+                )
+                .output(ValueExpr::literal(json!(null)))
+                .build(),
+        );
+
+        // Create loader with step results
+        let mut loader = MockValueLoader::new(workflow_input.clone());
+        loader.step_results.insert(0, FlowResult::Success(ValueRef::new(json!({"x": 10}))));
+        loader.step_results.insert(1, FlowResult::Success(ValueRef::new(json!({"y": 20}))));
+
+        let run_id = Uuid::now_v7();
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test nested object with mixed references
+        let expr = ValueExpr::Object(vec![
+            (
+                "from_step1".to_string(),
+                ValueExpr::step("step1", NewJsonPath::from("x")),
+            ),
+            (
+                "from_step2".to_string(),
+                ValueExpr::step("step2", NewJsonPath::from("y")),
+            ),
+            (
+                "nested".to_string(),
+                ValueExpr::Object(vec![
+                    (
+                        "step1_full".to_string(),
+                        ValueExpr::step("step1", NewJsonPath::default()),
+                    ),
+                    ("literal".to_string(), ValueExpr::Literal(json!("value"))),
+                ]),
+            ),
+        ]);
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(
+            value.as_ref(),
+            &json!({
+                "from_step1": 10,
+                "from_step2": 20,
+                "nested": {
+                    "step1_full": {"x": 10},
+                    "literal": "value"
+                }
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_array_with_step_refs() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::workflow::{FlowBuilder, StepBuilder};
+
+        let workflow_input = ValueRef::new(json!({}));
+
+        // Create a flow with steps
+        let flow = Arc::new(
+            FlowBuilder::new()
+                .step(
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::literal(json!({})))
+                        .build(),
+                )
+                .step(
+                    StepBuilder::mock_step("step2")
+                        .input(ValueExpr::literal(json!({})))
+                        .build(),
+                )
+                .output(ValueExpr::literal(json!(null)))
+                .build(),
+        );
+
+        // Create loader with step results
+        let mut loader = MockValueLoader::new(workflow_input.clone());
+        loader.step_results.insert(0, FlowResult::Success(ValueRef::new(json!(1))));
+        loader.step_results.insert(1, FlowResult::Success(ValueRef::new(json!(2))));
+
+        let run_id = Uuid::now_v7();
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test array with step references
+        let expr = ValueExpr::Array(vec![
+            ValueExpr::step("step1", NewJsonPath::default()),
+            ValueExpr::step("step2", NewJsonPath::default()),
+            ValueExpr::Literal(json!(3)),
+        ]);
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!([1, 2, 3]));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_error_invalid_step() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test step reference to non-existent step
+        let expr = ValueExpr::step("nonexistent_step", NewJsonPath::default());
+        let result = resolver.resolve_value_expr(&expr).await;
+
+        // Should be an error (step not found in flow)
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_complex_mixed_composition() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::workflow::{FlowBuilder, StepBuilder};
+
+        let workflow_input = ValueRef::new(json!({
+            "config": {
+                "enabled": true,
+                "timeout": 30
+            }
+        }));
+
+        // Create a flow with a step
+        let flow = Arc::new(
+            FlowBuilder::new()
+                .step(
+                    StepBuilder::mock_step("data_step")
+                        .input(ValueExpr::literal(json!({})))
+                        .build(),
+                )
+                .output(ValueExpr::literal(json!(null)))
+                .build(),
+        );
+
+        // Create loader with step result
+        let mut loader = MockValueLoader::new(workflow_input.clone());
+        loader.step_results.insert(
+            0,
+            FlowResult::Success(ValueRef::new(json!({"items": [1, 2, 3]}))),
+        );
+
+        let mut variables = HashMap::new();
+        variables.insert("api_version".to_string(), ValueRef::new(json!("v2")));
+
+        let run_id = Uuid::now_v7();
+        let resolver = ValueResolver::new_with_variables(
+            run_id,
+            workflow_input,
+            loader,
+            flow,
+            variables,
+        );
+
+        // Test complex nested structure with all expression types
+        let expr = ValueExpr::Object(vec![
+            (
+                "metadata".to_string(),
+                ValueExpr::Object(vec![
+                    (
+                        "version".to_string(),
+                        ValueExpr::variable("api_version", None),
+                    ),
+                    (
+                        "config_enabled".to_string(),
+                        ValueExpr::workflow_input(NewJsonPath::from("$.config.enabled")),
+                    ),
+                ]),
+            ),
+            (
+                "data".to_string(),
+                ValueExpr::step("data_step", NewJsonPath::from("items")),
+            ),
+            (
+                "mixed_array".to_string(),
+                ValueExpr::Array(vec![
+                    ValueExpr::workflow_input(NewJsonPath::from("$.config.timeout")),
+                    ValueExpr::Literal(json!("constant")),
+                    ValueExpr::step("data_step", NewJsonPath::from("$.items[0]")),
+                ]),
+            ),
+        ]);
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(
+            value.as_ref(),
+            &json!({
+                "metadata": {
+                    "version": "v2",
+                    "config_enabled": true
+                },
+                "data": [1, 2, 3],
+                "mixed_array": [30, "constant", 1]
+            })
+        );
+    }
 }
