@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.8.0"></a> [Stepflow 0.8.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.8.0) - 2025-12-15
+### Features
+
+- 404 dashboard updates and add initial set of metrics, support for such in crates and config ([#405](https://github.com/stepflow-ai/stepflow/pull/405))
+- Http support for langflow integration ([#408](https://github.com/stepflow-ai/stepflow/pull/408))
+- Add must_execute field for steps with side effects ([#412](https://github.com/stepflow-ai/stepflow/pull/412))
+- Implement dynamic workflow overrides system ([#417](https://github.com/stepflow-ai/stepflow/pull/417))
+- Refactor override system to use late binding and unified API ([#418](https://github.com/stepflow-ai/stepflow/pull/418))
+- Implement variables and secrets system ([#421](https://github.com/stepflow-ai/stepflow/pull/421))
+- Use variables for load_from_db inputs ([#424](https://github.com/stepflow-ai/stepflow/pull/424))
+- Switch to uuid v7 ([#425](https://github.com/stepflow-ai/stepflow/pull/425))
+- Lb tracing improvement ([#426](https://github.com/stepflow-ai/stepflow/pull/426))
+- Standardize validation ([#432](https://github.com/stepflow-ai/stepflow/pull/432))
+- Validate variable references and subflows ([#435](https://github.com/stepflow-ai/stepflow/pull/435))
+- Defines initial set of six basic request metrics for export from pingora LB into grafana. Closes #427 ([#437](https://github.com/stepflow-ai/stepflow/pull/437))
+
+### Miscellaneous Tasks
+
+- Split CLAUDE.md ([#439](https://github.com/stepflow-ai/stepflow/pull/439))
+
 ## <a id="0.7.0"></a> [Stepflow 0.7.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.7.0) - 2025-10-27
 ### Features
 
