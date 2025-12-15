@@ -14,6 +14,7 @@
 
 from .context import StepflowContext
 from .exceptions import SkipStep
+from .expressions import ValueExpr
 from .flow_builder import FlowBuilder, StepHandle
 from .generated_flow import (
     Component,
@@ -28,7 +29,7 @@ from .generated_flow import (
     Schema,
     SkipAction,
     Step,
-    ValueExpr,
+    ValueExpr as GenValueExpr,
 )
 from .server import StepflowServer
 
@@ -57,7 +58,10 @@ __all__ = [
     "Step",
     "Component",
     "Schema",
+    # ValueExpr builder (new syntax with $step, $input, $variable)
     "ValueExpr",
+    # Generated ValueExpr types (for advanced users)
+    "GenValueExpr",
     # Error and Skip Action types
     "ErrorAction",
     "OnErrorFail",
