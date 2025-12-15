@@ -28,7 +28,7 @@ from .generated_flow import (
     Schema,
     SkipAction,
     Step,
-    ValueTemplate,
+    ValueExpr,
 )
 from .server import StepflowServer
 
@@ -57,7 +57,7 @@ __all__ = [
     "Step",
     "Component",
     "Schema",
-    "ValueTemplate",
+    "ValueExpr",
     # Error and Skip Action types
     "ErrorAction",
     "OnErrorFail",

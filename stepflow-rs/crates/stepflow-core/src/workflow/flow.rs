@@ -506,8 +506,8 @@ mod tests {
             input:
               a: "hello world 2"
         output:
-            s1a: { $from: { step: s1 }, path: "a" }
-            s2b: { $from: { step: s2 }, path: a }
+            s1a: { $step: s1, path: "a" }
+            s2b: { $step: s2, path: a }
         outputSchema:
             type: object
             properties:
@@ -545,8 +545,8 @@ mod tests {
         assert_eq!(latest.output, deserialized.latest().output);
 
         // Verify that the output contains proper expression structures
-        // The output should be parsed as a Step expression
-        assert!(matches!(latest.output, ValueExpr::Step { .. }));
+        // The output should be parsed as an Object expression containing step references
+        assert!(matches!(latest.output, ValueExpr::Object(_)));
 
         // Test full structural equality
         let expected_flow_built = FlowBuilder::new()

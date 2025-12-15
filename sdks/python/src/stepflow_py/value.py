@@ -20,16 +20,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .generated_flow import (
-    EscapedLiteral,
-    Reference,
     SkipAction,
-    ValueTemplate,
-    VariableReference,
-    WorkflowRef,
-    WorkflowReference,
-)
-from .generated_flow import (
-    StepReference as GeneratedStepReference,
+    ValueExpr,
+    ValueExpr1,
+    ValueExpr2,
+    ValueExpr3,
+    ValueExpr4,
 )
 
 
@@ -238,10 +234,13 @@ class Value:
         Returns:
             Value representing the variable reference
         """
-        variable = VariableReference(variable=name)
-        if default is not NO_DEFAULT:
-            variable.default = default
-        return Value(variable)
+        # Create ValueExpr3 (variable reference) with $variable field
+        if default is NO_DEFAULT:
+            return Value(ValueExpr3(field_variable=name))
+        else:
+            # Convert default to ValueExpr if needed
+            default_expr = Value._convert_to_value_expr(default) if not isinstance(default, (ValueExpr1, ValueExpr2, ValueExpr3, ValueExpr4, list, dict, str, int, float, bool, type(None))) else default
+            return Value(ValueExpr3(field_variable=name, default=default_expr))
 
     @staticmethod
     def literal(value: Any) -> Value:
@@ -249,7 +248,7 @@ class Value:
 
         This is equivalent to using $literal in the workflow definition.
         """
-        return Value(EscapedLiteral(field_literal=value))
+        return Value(ValueExpr4(field_literal=value))
 
     @staticmethod
     def step(
@@ -264,55 +263,54 @@ class Value:
             json_path.fragments = [path]
         return Value(StepReference(step_id, json_path, on_skip))
 
-    def to_value_template(self) -> ValueTemplate:
-        """Convert this Value to a ValueTemplate for use in flow definitions."""
-        return Value._convert_to_value_template(self._value)
+    def to_value_expr(self) -> ValueExpr:
+        """Convert this Value to a ValueExpr for use in flow definitions."""
+        return Value._convert_to_value_expr(self._value)
 
     @staticmethod
-    def _convert_to_value_template(data: Any) -> ValueTemplate | None:
-        """Convert arbitrary data to ValueTemplate."""
+    def _convert_to_value_expr(data: Any) -> ValueExpr:
+        """Convert arbitrary data to ValueExpr."""
         if data is None:
             return None
 
         if isinstance(data, Value):
-            return Value._convert_to_value_template(data._value)
+            return Value._convert_to_value_expr(data._value)
 
-        if isinstance(data, StepReference | WorkflowInput | VariableReference):
-            return Value._convert_reference_to_expr(data)
+        if isinstance(data, StepReference):
+            return Value._convert_step_reference(data)
 
-        if isinstance(data, EscapedLiteral):
+        if isinstance(data, WorkflowInput):
+            return Value._convert_workflow_input(data)
+
+        # ValueExpr types pass through as-is
+        if isinstance(data, (ValueExpr1, ValueExpr2, ValueExpr3, ValueExpr4)):
             return data
 
         if isinstance(data, dict):
             converted = {}
             for key, value in data.items():
-                converted[key] = Value._convert_to_value_template(value)
+                converted[key] = Value._convert_to_value_expr(value)
             return converted
 
         if isinstance(data, list):
-            return [Value._convert_to_value_template(item) for item in data]
+            return [Value._convert_to_value_expr(item) for item in data]
 
         # For primitive types (str, int, float, bool), return as-is
         return data
 
     @staticmethod
-    def _convert_reference_to_expr(
-        ref: StepReference | WorkflowInput | VariableReference,
-    ) -> Reference:
-        """Convert a reference to a Reference."""
-        base_ref: WorkflowReference | GeneratedStepReference
-        if isinstance(ref, StepReference):
-            base_ref = GeneratedStepReference(step=ref.step_id)
-            path_str = str(ref.path) if str(ref.path) != "$" else None
-            return Reference(field_from=base_ref, path=path_str, onSkip=ref.on_skip)
-        elif isinstance(ref, WorkflowInput):
-            base_ref = WorkflowReference(workflow=WorkflowRef.input)
-            path_str = str(ref.path) if str(ref.path) != "$" else None
-            return Reference(field_from=base_ref, path=path_str, onSkip=ref.on_skip)
-        elif isinstance(ref, VariableReference):
-            return Reference(field_from=ref, path="$")
-        else:
-            raise ValueError(f"Unknown reference type: {type(ref)}")
+    def _convert_step_reference(ref: StepReference) -> ValueExpr1:
+        """Convert a StepReference to ValueExpr1 (step reference)."""
+        path_str = str(ref.path) if str(ref.path) != "$" else None
+        # Note: on_skip is not supported in new ValueExpr format
+        return ValueExpr1(field_step=ref.step_id, path=path_str)
+
+    @staticmethod
+    def _convert_workflow_input(ref: WorkflowInput) -> ValueExpr2:
+        """Convert a WorkflowInput to ValueExpr2 (input reference)."""
+        path_str = str(ref.path) if str(ref.path) != "$" else "$"
+        # Note: on_skip is not supported in new ValueExpr format
+        return ValueExpr2(field_input=path_str)
 
     def __getitem__(self, key: str | int) -> Value:
         """
@@ -366,9 +364,11 @@ class WorkflowInputValue(Value):
 Valuable = (
     Value
     | StepReference
-    | VariableReference
     | WorkflowInput
-    | EscapedLiteral
+    | ValueExpr1
+    | ValueExpr2
+    | ValueExpr3
+    | ValueExpr4
     | str
     | int
     | float

@@ -19,7 +19,7 @@ from stepflow_py import (
     OnSkipSkip,
 )
 from stepflow_py.flow_builder import FlowBuilder
-from stepflow_py.generated_flow import EscapedLiteral
+from stepflow_py.generated_flow import ValueExpr4
 from stepflow_py.value import JsonPath, StepReference, Value, WorkflowInput
 
 
@@ -28,7 +28,7 @@ def test_value_api_methods():
     # Test literal creation
     literal_value = Value.literal({"$from": "test"})
     assert isinstance(literal_value, Value)
-    assert isinstance(literal_value._value, EscapedLiteral)
+    assert isinstance(literal_value._value, ValueExpr4)
     assert literal_value._value.field_literal == {"$from": "test"}
 
     # Test step reference creation
@@ -175,7 +175,7 @@ def test_value_class_basic():
     # Test creating literal values
     literal_val = Value.literal({"key": "value"})
     assert isinstance(literal_val, Value)
-    assert isinstance(literal_val._value, EscapedLiteral)
+    assert isinstance(literal_val._value, ValueExpr4)
     assert literal_val._value.field_literal == {"key": "value"}
 
     # Test creating step references
@@ -214,8 +214,8 @@ def test_value_class_constructor():
     val5 = Value(input_ref)
     assert val5._value == input_ref
 
-    # Test with EscapedLiteral
-    escaped = EscapedLiteral(field_literal="test")
+    # Test with ValueExpr4 (escaped literal)
+    escaped = ValueExpr4(field_literal="test")
     val6 = Value(escaped)
     assert val6._value == escaped
 

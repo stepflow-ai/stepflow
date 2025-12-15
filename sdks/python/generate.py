@@ -134,10 +134,10 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
 
         # Fix forward references for recursive types
         new_content = new_content.replace(
-            "List[ValueTemplate]", "List['ValueTemplate']"
+            "List[ValueExpr]", "List['ValueExpr']"
         )
         new_content = new_content.replace(
-            "Dict[str, ValueTemplate]", "Dict[str, 'ValueTemplate']"
+            "Dict[str, ValueExpr]", "Dict[str, 'ValueExpr']"
         )
 
         if verbose:

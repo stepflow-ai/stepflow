@@ -71,7 +71,7 @@
         },
         "output": {
           "description": "The outputs of the flow, mapping output names to their values.",
-          "$ref": "#/$defs/ValueTemplate"
+          "$ref": "#/$defs/ValueExpr"
         },
         "test": {
           "description": "Test configuration for the flow.",
@@ -173,7 +173,7 @@
         },
         "input": {
           "description": "Arguments to pass to the component for this step",
-          "$ref": "#/$defs/ValueTemplate"
+          "$ref": "#/$defs/ValueExpr"
         },
         "mustExecute": {
           "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.",
@@ -408,7 +408,7 @@
             "defaultValue": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/ValueTemplate"
+                  "$ref": "#/$defs/ValueExpr"
                 },
                 {
                   "type": "null"
@@ -440,42 +440,98 @@
         }
       ]
     },
-    "ValueTemplate": {
-      "description": "A value that can be either a literal JSON value or an expression that references other values using the $from syntax",
-      "anyOf": [
+    "ValueExpr": {
+      "description": "A value expression that can contain literal data or references to other values",
+      "oneOf": [
         {
-          "description": "An expression with `$from` syntax for referencing other values",
-          "$ref": "#/$defs/Expr"
+          "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
+          "type": "object",
+          "properties": {
+            "$step": {
+              "type": "string"
+            },
+            "path": {
+              "description": "JSONPath expression",
+              "type": "string"
+            }
+          },
+          "required": [
+            "$step"
+          ],
+          "additionalProperties": false
         },
         {
-          "description": "JSON null value",
-          "type": "null"
+          "description": "Workflow input reference: { $input: \"path\" }",
+          "type": "object",
+          "properties": {
+            "$input": {
+              "description": "JSONPath expression",
+              "type": "string"
+            }
+          },
+          "required": [
+            "$input"
+          ],
+          "additionalProperties": false
         },
         {
-          "description": "JSON boolean value",
-          "type": "boolean"
+          "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
+          "type": "object",
+          "properties": {
+            "$variable": {
+              "description": "JSONPath expression including variable name",
+              "type": "string"
+            },
+            "default": {
+              "$ref": "#/$defs/ValueExpr"
+            }
+          },
+          "required": [
+            "$variable"
+          ],
+          "additionalProperties": false
         },
         {
-          "description": "JSON numeric value",
-          "type": "number"
+          "description": "Escaped literal: { $literal: any }",
+          "type": "object",
+          "properties": {
+            "$literal": {}
+          },
+          "required": [
+            "$literal"
+          ],
+          "additionalProperties": false
         },
         {
-          "description": "JSON string value",
-          "type": "string"
-        },
-        {
-          "description": "JSON array where each element can be a template",
+          "description": "Array of expressions",
           "type": "array",
           "items": {
-            "$ref": "#/$defs/ValueTemplate"
+            "$ref": "#/$defs/ValueExpr"
           }
         },
         {
-          "description": "JSON object where each value can be a template",
+          "description": "Object with expression values",
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/$defs/ValueTemplate"
+            "$ref": "#/$defs/ValueExpr"
           }
+        },
+        {
+          "description": "Literal primitive value",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ]
         }
       ]
     },

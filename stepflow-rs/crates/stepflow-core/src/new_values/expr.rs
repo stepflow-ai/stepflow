@@ -24,33 +24,28 @@ use serde_json::Value;
 /// - Escaped literals (`$literal`) to prevent expansion
 //
 // Serialization and deserialization are implemented in expr_serde.rs
-#[derive(Debug, Clone, Eq, PartialEq, Hash, JsonSchema, utoipa::ToSchema)]
+// JsonSchema is manually implemented to match the actual wire format
+#[derive(Debug, Clone, Eq, PartialEq, Hash, utoipa::ToSchema)]
 pub enum ValueExpr {
     /// Step reference: `{ $step: "step_id", path: "optional.path" }`
     Step {
-        #[serde(rename = "$step")]
         step: String,
-        #[serde(default, skip_serializing_if = "JsonPath::is_empty")]
         path: JsonPath,
     },
 
     /// Workflow input: `{ $input: "path" }` where path can be "$" for root
     Input {
-        #[serde(rename = "$input")]
         input: JsonPath, // The path is the value (supports shorthand)
     },
 
     /// Variable: `{ $variable: "$.var.path", default: ... }`
     Variable {
-        #[serde(rename = "$variable")]
         variable: JsonPath, // JSONPath including variable name and path
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         default: Option<Box<ValueExpr>>,
     },
 
     /// Escape hatch: `{ $literal: {...} }` - prevents recursive parsing
     EscapedLiteral {
-        #[serde(rename = "$literal")]
         literal: serde_json::Value,
     },
 
@@ -147,6 +142,78 @@ impl ValueExpr {
 impl Default for ValueExpr {
     fn default() -> Self {
         ValueExpr::null()
+    }
+}
+
+// Manual JsonSchema implementation to match the actual wire format
+impl JsonSchema for ValueExpr {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ValueExpr".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "A value expression that can contain literal data or references to other values",
+            "oneOf": [
+                {
+                    "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
+                    "type": "object",
+                    "properties": {
+                        "$step": { "type": "string" },
+                        "path": { "type": "string", "description": "JSONPath expression" }
+                    },
+                    "required": ["$step"],
+                    "additionalProperties": false
+                },
+                {
+                    "description": "Workflow input reference: { $input: \"path\" }",
+                    "type": "object",
+                    "properties": {
+                        "$input": { "type": "string", "description": "JSONPath expression" }
+                    },
+                    "required": ["$input"],
+                    "additionalProperties": false
+                },
+                {
+                    "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
+                    "type": "object",
+                    "properties": {
+                        "$variable": { "type": "string", "description": "JSONPath expression including variable name" },
+                        "default": { "$ref": "#/$defs/ValueExpr" }
+                    },
+                    "required": ["$variable"],
+                    "additionalProperties": false
+                },
+                {
+                    "description": "Escaped literal: { $literal: any }",
+                    "type": "object",
+                    "properties": {
+                        "$literal": {}
+                    },
+                    "required": ["$literal"],
+                    "additionalProperties": false
+                },
+                {
+                    "description": "Array of expressions",
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/ValueExpr" }
+                },
+                {
+                    "description": "Object with expression values",
+                    "type": "object",
+                    "additionalProperties": { "$ref": "#/$defs/ValueExpr" }
+                },
+                {
+                    "description": "Literal primitive value",
+                    "oneOf": [
+                        { "type": "null" },
+                        { "type": "boolean" },
+                        { "type": "number" },
+                        { "type": "string" }
+                    ]
+                }
+            ]
+        })
     }
 }
 
