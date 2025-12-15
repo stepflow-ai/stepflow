@@ -13,8 +13,6 @@
 mod expr;
 mod expr_serde;
 mod json_path;
-mod value_template;
 
 pub use expr::*;
 pub use json_path::*;
-pub use value_template::*;

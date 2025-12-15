@@ -22,9 +22,7 @@
 pub mod redacted_value;
 pub mod value_ref;
 pub mod value_resolver;
-pub mod value_template;
 
 pub use redacted_value::*;
 pub use value_ref::*;
 pub use value_resolver::*;
-pub use value_template::*;

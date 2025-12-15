@@ -31,4 +31,4 @@ pub use step_id::*;
 pub use variable_schema::*;
 
 // Re-export values from the values module
-pub use crate::values::{ValueRef, ValueTemplate, ValueTemplateRepr};
+pub use crate::values::ValueRef;

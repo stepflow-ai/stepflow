@@ -14,7 +14,6 @@ use std::collections::HashSet;
 
 use stepflow_core::{
     new_values::{PathPart, ValueExpr},
-    values::ValueTemplate,
     workflow::{BaseRef, Expr, Flow, Step, WorkflowRef},
 };
 
@@ -421,77 +420,5 @@ fn validate_value_expr(
         }
         // Literals and escaped literals are always valid
         ValueExpr::Literal(_) | ValueExpr::EscapedLiteral { .. } => {}
-    }
-}
-
-/// Validate all references within a ValueTemplate
-fn validate_value_template(
-    template: &ValueTemplate,
-    path: &Path,
-    available_steps: &HashSet<String>,
-    current_step_id: &str,
-    flow: &Flow,
-    diagnostics: &mut Diagnostics,
-) {
-    use stepflow_core::values::ValueTemplateRepr;
-    use stepflow_core::workflow::Expr;
-
-    match template.as_ref() {
-        ValueTemplateRepr::Expression(expr) => {
-            // Check if this is an EscapedLiteral - if so, don't validate its contents
-            match expr {
-                Expr::EscapedLiteral { .. } => {
-                    // EscapedLiteral expressions are opaque - don't validate their internal structure
-                    // against the outer flow's context
-                }
-                _ => {
-                    validate_expression_references(
-                        expr,
-                        path,
-                        available_steps,
-                        current_step_id,
-                        flow,
-                        diagnostics,
-                    );
-                }
-            }
-        }
-        ValueTemplateRepr::Object(obj) => {
-            // Recursively validate object fields
-            let mut field_path = path.clone();
-            for (key, template) in obj {
-                field_path.push(key.to_string());
-                validate_value_template(
-                    template,
-                    &field_path,
-                    available_steps,
-                    current_step_id,
-                    flow,
-                    diagnostics,
-                );
-                field_path.pop();
-            }
-        }
-        ValueTemplateRepr::Array(arr) => {
-            // Validate each array element
-            let mut element_path = path.clone();
-            for (index, template) in arr.iter().enumerate() {
-                element_path.push(index);
-                validate_value_template(
-                    template,
-                    &element_path,
-                    available_steps,
-                    current_step_id,
-                    flow,
-                    diagnostics,
-                );
-                element_path.pop();
-            }
-        }
-        // Primitive values (Null, Bool, Number, String) don't contain references
-        ValueTemplateRepr::Null
-        | ValueTemplateRepr::Bool(_)
-        | ValueTemplateRepr::Number(_)
-        | ValueTemplateRepr::String(_) => {}
     }
 }

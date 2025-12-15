@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use log;
 
-use super::{ValueRef, ValueTemplate, ValueTemplateRepr};
+use super::ValueRef;
 use crate::{
     new_values::{JsonPath as NewJsonPath, PathPart, ValueExpr},
     values::Secrets,
@@ -131,14 +131,6 @@ impl<L: ValueLoader> ValueResolver<L> {
                 .map_err(|_| ValueResolverError::Internal)?;
         }
         Ok(())
-    }
-
-    /// Expand a ValueTemplate, returning a FlowResult.
-    pub async fn resolve_template(
-        &self,
-        template: &ValueTemplate,
-    ) -> ValueResolverResult<FlowResult> {
-        self.resolve_template_rec(template).await
     }
 
     /// Retrieve the StepId (index and ID) for a given step_id string.
@@ -504,78 +496,13 @@ impl<L: ValueLoader> ValueResolver<L> {
         }
     }
 
-    /// Recursive resolution of ValueTemplate structures, returning FlowResult.
-    /// This is the new clean implementation that works with pre-parsed templates.
-    async fn resolve_template_rec(
-        &self,
-        template: &ValueTemplate,
-    ) -> ValueResolverResult<FlowResult> {
-        match template.as_ref() {
-            ValueTemplateRepr::Expression(expr) => {
-                // Resolve the expression directly
-                self.resolve_expr(expr).await
-            }
-            ValueTemplateRepr::Null => {
-                Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
-            }
-            ValueTemplateRepr::Bool(b) => Ok(FlowResult::Success(ValueRef::new(
-                serde_json::Value::Bool(*b),
-            ))),
-            ValueTemplateRepr::Number(n) => Ok(FlowResult::Success(ValueRef::new(
-                serde_json::Value::Number(n.clone()),
-            ))),
-            ValueTemplateRepr::String(s) => Ok(FlowResult::Success(ValueRef::new(
-                serde_json::Value::String(s.clone()),
-            ))),
-            ValueTemplateRepr::Array(arr) => {
-                // Process array recursively
-                let mut result_array = Vec::new();
-                for template in arr {
-                    match Box::pin(self.resolve_template_rec(template)).await? {
-                        FlowResult::Success(result) => {
-                            result_array.push(result.as_ref().clone());
-                        }
-                        FlowResult::Skipped { reason } => {
-                            return Ok(FlowResult::Skipped { reason });
-                        }
-                        FlowResult::Failed(error) => {
-                            return Ok(FlowResult::Failed(error));
-                        }
-                    }
-                }
-                Ok(FlowResult::Success(ValueRef::new(
-                    serde_json::Value::Array(result_array),
-                )))
-            }
-            ValueTemplateRepr::Object(obj) => {
-                // Process object recursively
-                let mut result_map = serde_json::Map::new();
-                for (k, template) in obj {
-                    match Box::pin(self.resolve_template_rec(template)).await? {
-                        FlowResult::Success(result) => {
-                            result_map.insert(k.clone(), result.as_ref().clone());
-                        }
-                        FlowResult::Skipped { reason } => {
-                            return Ok(FlowResult::Skipped { reason });
-                        }
-                        FlowResult::Failed(error) => {
-                            return Ok(FlowResult::Failed(error));
-                        }
-                    }
-                }
-                Ok(FlowResult::Success(ValueRef::new(
-                    serde_json::Value::Object(result_map),
-                )))
-            }
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::schema::SchemaRef;
-    use crate::workflow::{FlowV1, JsonPath, VariableSchema};
+    use crate::workflow::VariableSchema;
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -635,111 +562,6 @@ mod tests {
                 .output(ValueExpr::literal(json!(null)))
                 .build(),
         )
-    }
-
-    #[tokio::test]
-    async fn test_resolve_template() {
-        let workflow_input = ValueRef::new(json!({"name": "Alice"}));
-        let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::now_v7();
-        let flow = create_test_flow();
-
-        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
-
-        // Test resolving ValueTemplate - create a template with an expression by deserializing from JSON
-        let template = ValueTemplate::workflow_input(JsonPath::from("name"));
-        let result = resolver.resolve_template(&template).await.unwrap().unwrap_success();
-        assert_eq!(result.as_ref(), &json!("Alice"));
-    }
-
-    #[tokio::test]
-    async fn test_resolve_variable() {
-        let workflow_input = ValueRef::new(json!({}));
-        let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::now_v7();
-
-        // Create flow with variables schema
-        let variables_schema_json = json!({
-            "type": "object",
-            "properties": {
-                "api_key": {
-                    "type": "string",
-                    "description": "API key for external service"
-                },
-                "temperature": {
-                    "type": "number",
-                    "default": 0.7
-                }
-            },
-            "required": ["api_key"]
-        });
-
-        let variables_schema =
-            VariableSchema::new(SchemaRef::parse_json(&variables_schema_json.to_string()).unwrap());
-
-        let flow = Arc::new(Flow::V1(FlowV1 {
-            variables: Some(variables_schema),
-            ..Default::default()
-        }));
-
-        // Set up variables
-        let mut variables = HashMap::new();
-        variables.insert("api_key".to_string(), ValueRef::new(json!("test-key-123")));
-
-        let resolver =
-            ValueResolver::new_with_variables(run_id, workflow_input, loader, flow, variables);
-
-        // Test resolving provided variable
-        let api_key_template = ValueTemplate::variable_ref("api_key", None, JsonPath::default());
-        let result = resolver.resolve_template(&api_key_template).await.unwrap().unwrap_success();
-        assert_eq!(result.as_ref(), &json!("test-key-123"));
-
-        // Test resolving variable with default value in schema
-        let temperature_template =
-            ValueTemplate::variable_ref("temperature", None, JsonPath::default());
-        let result = resolver
-            .resolve_template(&temperature_template)
-            .await
-            .unwrap()
-            .unwrap_success();
-        assert_eq!(result.as_ref(), &json!(0.7));
-
-        // Test resolving variable with default value in reference.
-        let temperature_template = ValueTemplate::variable_ref(
-            "temperature",
-            Some(json!(0.8).into()),
-            JsonPath::default(),
-        );
-        let result = resolver
-            .resolve_template(&temperature_template)
-            .await
-            .unwrap()
-            .unwrap_success();
-        assert_eq!(result.as_ref(), &json!(0.8));
-    }
-
-    #[tokio::test]
-    async fn test_resolve_undefined_variable() {
-        let workflow_input = ValueRef::new(json!({}));
-        let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::now_v7();
-        let flow = create_test_flow(); // Flow without variables
-
-        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
-
-        // Test resolving undefined variable
-        let undefined_template =
-            ValueTemplate::variable_ref("undefined_var", None, JsonPath::default());
-        let resolved = resolver.resolve_template(&undefined_template).await;
-
-        assert!(resolved.is_err());
-        // The error should be about undefined value
-        match resolved.unwrap_err().current_context() {
-            ValueResolverError::UndefinedVariable(variable) => {
-                assert_eq!(variable, "undefined_var");
-            }
-            _ => panic!("Expected UndefinedValue error"),
-        }
     }
 
     #[tokio::test]
@@ -832,39 +654,6 @@ mod tests {
         } else {
             panic!("Expected successful variable resolution");
         }
-    }
-
-    #[tokio::test]
-    async fn test_resolve_variable_with_path() {
-        let workflow_input = ValueRef::new(json!({}));
-        let loader = MockValueLoader::new(workflow_input.clone());
-        let run_id = Uuid::now_v7();
-        let flow = create_test_flow();
-
-        // Set up variables with nested object
-        let mut variables = HashMap::new();
-        variables.insert(
-            "config".to_string(),
-            ValueRef::new(json!({
-                "api": {
-                    "key": "nested-key",
-                    "timeout": 30
-                }
-            })),
-        );
-
-        let resolver =
-            ValueResolver::new_with_variables(run_id, workflow_input, loader, flow, variables);
-
-        // Test resolving variable with JSON path
-        let config_key_template =
-            ValueTemplate::variable_ref("config", None, JsonPath::from("$.api.key"));
-        let result = resolver
-            .resolve_template(&config_key_template)
-            .await
-            .unwrap()
-            .unwrap_success();
-        assert_eq!(result.as_ref(), &json!("nested-key"));
     }
 
     // Tests for new ValueExpr resolution
