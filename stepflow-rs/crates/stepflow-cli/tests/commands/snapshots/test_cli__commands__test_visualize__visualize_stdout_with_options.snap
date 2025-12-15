@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_visualize.rs
+source: crates/stepflow-cli/tests/commands/test_visualize.rs
 info:
   program: stepflow
   args:
@@ -10,6 +10,14 @@ info:
     - "--format=dot"
     - "--no-servers"
     - "--no-details"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -40,23 +48,11 @@ digraph workflow {
   ];
 
   "workflow_input" -> "step1" [
-    color="blue",
+    color="black",
     style="solid",
   ];
   "step1" -> "step2" [
     color="black",
-    style="solid",
-  ];
-  "step1" -> "workflow_output" [
-    color="green",
-    style="solid",
-  ];
-  "step2" -> "workflow_output" [
-    color="green",
-    style="solid",
-  ];
-  "step2" -> "workflow_output" [
-    color="green",
     style="solid",
   ];
 }

@@ -503,6 +503,42 @@
           "additionalProperties": false
         },
         {
+          "description": "Conditional: { $if: condition, then: expr, else?: expr }",
+          "type": "object",
+          "properties": {
+            "$if": {
+              "$ref": "#/$defs/ValueExpr"
+            },
+            "then": {
+              "$ref": "#/$defs/ValueExpr"
+            },
+            "else": {
+              "$ref": "#/$defs/ValueExpr"
+            }
+          },
+          "required": [
+            "$if",
+            "then"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Coalesce: { $coalesce: [expr1, expr2, ...] }",
+          "type": "object",
+          "properties": {
+            "$coalesce": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ValueExpr"
+              }
+            }
+          },
+          "required": [
+            "$coalesce"
+          ],
+          "additionalProperties": false
+        },
+        {
           "description": "Array of expressions",
           "type": "array",
           "items": {
