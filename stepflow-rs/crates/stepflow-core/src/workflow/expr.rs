@@ -13,7 +13,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::workflow::{ValueRef, json_path::JsonPath};
+use crate::workflow::{JsonPath, ValueRef};
 
 /// An expression that can be either a literal value or a template expression.
 #[derive(
