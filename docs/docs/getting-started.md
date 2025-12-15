@@ -22,7 +22,8 @@ Most workflows use custom Python components for data processing and integrations
 # Install Python 3.11+ and uv (Python package manager)
 pip install uv
 
-# The Python SDK will be automatically available when needed
+# Install the Python SDK
+uv pip install stepflow_py
 ```
 
 :::note
@@ -30,7 +31,12 @@ The Python SDK is technically optional if you plan to use only built-in componen
 See [Components](./components/index.md) for alternatives.
 :::
 
-### 3. Set up OpenAI API
+
+## Your First Workflow
+
+Let's create a simple workflow that combines built-in components with a custom Python function.
+
+### 1. Set up OpenAI API
 
 This example uses OpenAI's GPT models via the built-in OpenAI component.
 You'll need to configure an OpenAI API key for this, as shown below.
@@ -39,13 +45,10 @@ You'll need to configure an OpenAI API key for this, as shown below.
 export OPENAI_API_KEY="your-api-key-here"
 ```
 
-## Your First Workflow
-
-Let's create a simple workflow that combines built-in components with a custom Python function.
-
-### 1. Create `hello-workflow.yaml`
+### 2. Create `hello-workflow.yaml`
 
 ```yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Hello Stepflow"
 description: "A simple workflow combining built-in and Python components"
 
@@ -84,7 +87,7 @@ output:
   ai_response: { $from: { step: ai_response }, path: "response" }
 ```
 
-### 2. Create `hello_formatter.py` (Python Component)
+### 3. Create `hello_formatter.py` (Python Component)
 
 ```python
 from stepflow_py import StepflowStdioServer
@@ -108,7 +111,7 @@ if __name__ == "__main__":
 ```
 
 
-### 3. Create `stepflow-config.yml` (Configuration)
+### 4. Create `stepflow-config.yml` (Configuration)
 
 ```yaml
 plugins:
@@ -127,7 +130,7 @@ routes:
     - plugin: builtin
 ```
 
-### 4. Create `input.json`
+### 5. Create `input.json`
 
 ```json
 {
@@ -135,7 +138,7 @@ routes:
 }
 ```
 
-### 5. Run the Workflow
+### 6. Run the Workflow
 
 ```bash
 stepflow run --flow=hello-workflow.yaml --input=input.json
