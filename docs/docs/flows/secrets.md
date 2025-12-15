@@ -19,6 +19,7 @@ Secret redaction works by:
 Mark sensitive workflow inputs as secrets in the input schema:
 
 ```yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Secure API Workflow"
 description: "Workflow that handles sensitive API credentials"
 
@@ -141,6 +142,7 @@ required: ["openai_api_key", "database_url"]
 
 ```yaml
 # workflow.yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Workflow with Secret Variables"
 variables_schema: "./variables-schema.yaml"
 

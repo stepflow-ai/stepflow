@@ -40,6 +40,7 @@ Define a variables schema to specify what variables your workflow expects:
 
 ```yaml
 # workflow.yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Production API Workflow"
 description: "Workflow that uses environment-specific variables"
 
@@ -85,6 +86,7 @@ For complex schemas, use an external file:
 
 ```yaml
 # workflow.yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Data Processing Pipeline"
 variables_schema: "./variables-schema.yaml"
 

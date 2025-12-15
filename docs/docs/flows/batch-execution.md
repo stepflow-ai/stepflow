@@ -104,6 +104,7 @@ Process large datasets in parallel:
 
 ```yaml
 # data-pipeline.yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "Data Processing Pipeline"
 description: "Process data items in parallel"
 
@@ -157,6 +158,7 @@ Analyze multiple documents or items with AI:
 
 ```yaml
 # ai-analysis.yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "AI Document Analysis"
 
 input_schema:
@@ -207,6 +209,7 @@ Run the same workflow with different test inputs:
 
 ```yaml
 # test-workflow.yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 name: "API Integration Test"
 
 input_schema:
@@ -341,6 +344,7 @@ Use in a workflow:
 
 ```yaml
 # main-workflow.yaml
+schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: load_items
     component: /data/load_items
