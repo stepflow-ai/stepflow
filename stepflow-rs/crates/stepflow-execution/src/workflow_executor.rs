@@ -18,9 +18,9 @@ use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
 use stepflow_core::BlobId;
 use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
-    FlowResult,
+    FlowResult, ValueExpr,
     values::{ValueRef, ValueResolver},
-    workflow::{Expr, Flow, StepId, WorkflowOverrides},
+    workflow::{Flow, StepId, WorkflowOverrides},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -797,10 +797,10 @@ impl WorkflowExecutor {
     /// - If the expression resolves to a truthy value, the step is skipped
     /// - If the expression references skipped steps or fails, the step is NOT skipped
     ///   (allowing the step to potentially handle the skip/error via on_skip logic)
-    async fn should_skip_step(&self, step_id: &str, skip_if: &Expr) -> Result<bool> {
+    async fn should_skip_step(&self, step_id: &str, skip_if: &ValueExpr) -> Result<bool> {
         let resolved_value = self
             .resolver
-            .resolve_expr(skip_if)
+            .resolve(skip_if)
             .await
             .change_context_lazy(|| ExecutionError::ResolveSkipIf(step_id.to_owned()))?;
 
@@ -1117,7 +1117,7 @@ pub struct StepInspection {
     #[serde(flatten)]
     pub metadata: StepMetadata,
     pub input: stepflow_core::ValueExpr,
-    pub skip_if: Option<Expr>,
+    pub skip_if: Option<stepflow_core::ValueExpr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
     pub state: StepStatus,
 }

@@ -154,7 +154,7 @@
           "description": "If set and the referenced value is truthy, this step will be skipped.",
           "anyOf": [
             {
-              "$ref": "#/$defs/Expr"
+              "$ref": "#/$defs/ValueExpr"
             },
             {
               "type": "null"
@@ -200,244 +200,6 @@
         "/builtin/eval",
         "/mcpfs/list_files",
         "/python/udf"
-      ]
-    },
-    "Expr": {
-      "description": "An expression that can be either a literal value or a template expression.",
-      "anyOf": [
-        {
-          "title": "Reference",
-          "description": "Reference a value from a step, workflow, or other source.",
-          "type": "object",
-          "properties": {
-            "$from": {
-              "description": "The source of the reference.",
-              "$ref": "#/$defs/BaseRef"
-            },
-            "path": {
-              "description": "JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.",
-              "$ref": "#/$defs/JsonPath"
-            },
-            "onSkip": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SkipAction"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "$from"
-          ]
-        },
-        {
-          "title": "EscapedLiteral",
-          "description": "A literal value that was escaped.\n\nNo template expansion is performed within the value, allowing\nfor raw JSON values that include `$from` or other special characters.",
-          "type": "object",
-          "properties": {
-            "$literal": {
-              "description": "A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion.",
-              "$ref": "#/$defs/Value"
-            }
-          },
-          "required": [
-            "$literal"
-          ]
-        },
-        {
-          "title": "Literal",
-          "description": "A direct literal value that serializes naturally without special syntax",
-          "$ref": "#/$defs/Value"
-        }
-      ]
-    },
-    "BaseRef": {
-      "description": "An expression that can be either a literal value or a template expression.",
-      "anyOf": [
-        {
-          "title": "WorkflowReference",
-          "description": "Reference properties of the workflow.",
-          "type": "object",
-          "properties": {
-            "workflow": {
-              "$ref": "#/$defs/WorkflowRef"
-            }
-          },
-          "required": [
-            "workflow"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "title": "StepReference",
-          "description": "Reference the output of a step.",
-          "type": "object",
-          "properties": {
-            "step": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "step"
-          ]
-        },
-        {
-          "title": "VariableReference",
-          "description": "Reference a workflow variable.",
-          "type": "object",
-          "properties": {
-            "variable": {
-              "type": "string"
-            },
-            "default": {
-              "description": "Optional default value to use if the variable is not available.\n\nThis will be preferred over any default value defined in the workflow variable schema.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Value"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "variable"
-          ]
-        }
-      ]
-    },
-    "WorkflowRef": {
-      "type": "string",
-      "enum": [
-        "input"
-      ]
-    },
-    "Value": {
-      "description": "Any JSON value (object, array, string, number, boolean, or null)"
-    },
-    "JsonPath": {
-      "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
-      "type": "string",
-      "examples": [
-        "field",
-        "$.field",
-        "$[\"field\"]",
-        "$[0]",
-        "$.field[0].nested"
-      ]
-    },
-    "SkipAction": {
-      "oneOf": [
-        {
-          "title": "OnSkipSkip",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "skip"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnSkipDefault",
-          "type": "object",
-          "properties": {
-            "defaultValue": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Value"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "action": {
-              "type": "string",
-              "const": "useDefault"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        }
-      ]
-    },
-    "ErrorAction": {
-      "oneOf": [
-        {
-          "title": "OnErrorFail",
-          "description": "If the step fails, the flow will fail.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "fail"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorSkip",
-          "description": "If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "skip"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorDefault",
-          "description": "If the step fails, use the `defaultValue` instead.",
-          "type": "object",
-          "properties": {
-            "defaultValue": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ValueExpr"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "action": {
-              "type": "string",
-              "const": "useDefault"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorRetry",
-          "description": "If the step fails, retry it.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "retry"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        }
       ]
     },
     "ValueExpr": {
@@ -567,6 +329,76 @@
             {
               "type": "string"
             }
+          ]
+        }
+      ]
+    },
+    "ErrorAction": {
+      "oneOf": [
+        {
+          "title": "OnErrorFail",
+          "description": "If the step fails, the flow will fail.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "fail"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "title": "OnErrorSkip",
+          "description": "If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "skip"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "title": "OnErrorDefault",
+          "description": "If the step fails, use the `defaultValue` instead.",
+          "type": "object",
+          "properties": {
+            "defaultValue": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ValueExpr"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "action": {
+              "type": "string",
+              "const": "useDefault"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "title": "OnErrorRetry",
+          "description": "If the step fails, retry it.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "retry"
+            }
+          },
+          "required": [
+            "action"
           ]
         }
       ]
@@ -745,6 +577,9 @@
         "name",
         "input"
       ]
+    },
+    "Value": {
+      "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "FlowResult": {
       "title": "FlowResult",

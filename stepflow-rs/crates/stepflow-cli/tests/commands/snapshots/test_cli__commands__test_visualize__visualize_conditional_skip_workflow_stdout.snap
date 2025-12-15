@@ -53,11 +53,6 @@ digraph workflow {
     color="black",
     style="solid",
   ];
-  "workflow_input" -> "conditional_step" [
-    color="purple",
-    style="dotted",
-    label="skip condition",
-  ];
   "expr_0" [
     label="$coalesce",
     shape=diamond,

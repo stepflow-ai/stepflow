@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use super::{
-    Component, ErrorAction, ExampleInput, Expr, Flow, FlowV1, Step, TestConfig,
+    Component, ErrorAction, ExampleInput, Flow, FlowV1, JsonPath, Step, TestConfig,
     VariableSchema,
 };
 use crate::{ValueExpr, schema::SchemaRef};
@@ -150,7 +150,7 @@ pub struct StepBuilder {
     input: Option<ValueExpr>,
     input_schema: Option<SchemaRef>,
     output_schema: Option<SchemaRef>,
-    skip_if: Option<Expr>,
+    skip_if: Option<ValueExpr>,
     on_error: Option<ErrorAction>,
     must_execute: Option<bool>,
     metadata: HashMap<String, serde_json::Value>,
@@ -209,7 +209,7 @@ impl StepBuilder {
     }
 
     /// Set the skip condition.
-    pub fn skip_if(mut self, condition: Expr) -> Self {
+    pub fn skip_if(mut self, condition: ValueExpr) -> Self {
         self.skip_if = Some(condition);
         self
     }
@@ -246,14 +246,14 @@ impl StepBuilder {
     pub fn step_ref<S: Into<String>>(id: S, ref_step: S) -> Self {
         Self::new(id)
             .component("/mock/test")
-            .input_json(json!({"$from": {"step": ref_step.into()}}))
+            .input(ValueExpr::step_output(ref_step))
     }
 
     /// Create a step that references workflow input.
     pub fn workflow_input<S: Into<String>>(id: S) -> Self {
         Self::new(id)
             .component("/mock/test")
-            .input_json(json!({"$from": {"workflow": "input"}}))
+            .input(ValueExpr::workflow_input(JsonPath::default()))
     }
 
     /// Build the final Step instance.

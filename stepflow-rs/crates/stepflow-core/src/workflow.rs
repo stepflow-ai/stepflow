@@ -12,7 +12,6 @@
 
 mod builders;
 mod component;
-mod expr;
 mod flow;
 mod overrides;
 mod step;
@@ -21,7 +20,6 @@ mod variable_schema;
 
 pub use builders::*;
 pub use component::*;
-pub use expr::*;
 pub use flow::*;
 pub use overrides::*;
 pub use step::*;

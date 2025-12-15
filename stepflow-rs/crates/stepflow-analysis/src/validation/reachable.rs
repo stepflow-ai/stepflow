@@ -13,8 +13,6 @@
 use std::collections::HashSet;
 
 use stepflow_core::ValueExpr;
-use stepflow_core::workflow::BaseRef;
-use stepflow_core::workflow::Expr;
 use stepflow_core::workflow::Flow;
 
 use crate::DiagnosticMessage;
@@ -52,15 +50,14 @@ pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) ->
     Ok(())
 }
 
-/// Collect step dependencies from an expression
-fn collect_expression_dependencies(expr: &Expr, dependencies: &mut HashSet<String>) {
+/// Collect step dependencies from a value expression
+fn collect_expression_dependencies(expr: &ValueExpr, dependencies: &mut HashSet<String>) {
     match expr {
-        Expr::Ref { from, .. } => {
-            if let BaseRef::Step { step } = from {
-                dependencies.insert(step.clone());
-            }
+        ValueExpr::Step { step, .. } => {
+            dependencies.insert(step.clone());
         }
-        Expr::EscapedLiteral { .. } | Expr::Literal(_) => {}
+        // Other expression types don't reference steps for skip conditions
+        _ => {}
     }
 }
 

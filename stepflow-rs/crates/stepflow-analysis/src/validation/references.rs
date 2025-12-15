@@ -14,7 +14,7 @@ use std::collections::HashSet;
 
 use stepflow_core::{
     values::{PathPart, ValueExpr},
-    workflow::{BaseRef, Expr, Flow, Step, WorkflowRef},
+    workflow::{Flow, Step},
 };
 
 use crate::{DiagnosticMessage, Diagnostics, Path, validation::path::make_path};
@@ -55,7 +55,7 @@ fn validate_step_references(
     // Validate skip condition references
     if let Some(skip_if) = &step.skip_if {
         path.push("skip_if".to_string());
-        validate_expression_references(
+        validate_value_expr(
             skip_if,
             &path,
             available_steps,
@@ -78,125 +78,6 @@ fn validate_step_references(
 
     // TODO: Warn about mock components. We'll need to look at the plugin
     // definitions to find out which ones are actually registered as mocsk.
-}
-
-/// Validate references within an expression
-fn validate_expression_references(
-    expr: &Expr,
-    path: &Path,
-    available_steps: &HashSet<String>,
-    current_step_id: &str,
-    flow: &Flow,
-    diagnostics: &mut Diagnostics,
-) {
-    match expr {
-        Expr::Ref {
-            from,
-            path: field_path,
-            ..
-        } => match from {
-            BaseRef::Step { step } => {
-                // Check for self-reference
-                if current_step_id == step {
-                    diagnostics.add(
-                        DiagnosticMessage::SelfReference {
-                            step_id: step.clone(),
-                        },
-                        path.clone(),
-                    );
-                    return;
-                }
-
-                // Check if step exists and is available (defined earlier)
-                if !available_steps.contains(step) {
-                    diagnostics.add(
-                        DiagnosticMessage::UndefinedStepReference {
-                            from_step: Some(current_step_id.to_string()),
-                            referenced_step: step.clone(),
-                        },
-                        path.clone(),
-                    );
-                    return;
-                }
-
-                // Generate ignored diagnostic about potential field access issues (when we don't have schema info)
-                if !field_path.is_empty() {
-                    diagnostics.add(
-                        DiagnosticMessage::UnvalidatedFieldAccess {
-                            step_id: step.clone(),
-                            field: field_path.to_string(),
-                            reason: "no output schema available".to_string(),
-                        },
-                        path.clone(),
-                    );
-                }
-            }
-            BaseRef::Workflow(WorkflowRef::Input) => {
-                // Workflow input reference is always valid
-                // Generate ignored diagnostic about unvalidated field access on workflow input
-                if !field_path.is_empty() {
-                    diagnostics.add(
-                        DiagnosticMessage::UnvalidatedFieldAccess {
-                            step_id: "workflow_input".to_string(),
-                            field: field_path.to_string(),
-                            reason: "no input schema available".to_string(),
-                        },
-                        path.clone(),
-                    );
-                }
-            }
-            BaseRef::Variable { variable, default } => {
-                // Validate variable references against the variables schema
-                if let Some(var_schema) = flow.variables() {
-                    if !var_schema.variables().contains(variable) {
-                        // Check if it's required or has a default
-                        let has_inline_default = default.is_some();
-                        let has_schema_default = var_schema.default_value(variable).is_some();
-
-                        if !has_inline_default && !has_schema_default {
-                            diagnostics.add(
-                                DiagnosticMessage::UndefinedRequiredVariable {
-                                    variable: variable.clone(),
-                                    context: format!("step '{}'", current_step_id),
-                                },
-                                path.clone(),
-                            );
-                        } else {
-                            diagnostics.add(
-                                DiagnosticMessage::UndefinedVariable {
-                                    variable: variable.clone(),
-                                    context: format!("step '{}'", current_step_id),
-                                },
-                                path.clone(),
-                            );
-                        }
-                    }
-
-                    // Still generate warning for field access if no schema info available
-                    if !field_path.is_empty() {
-                        diagnostics.add(
-                            DiagnosticMessage::UnvalidatedFieldAccess {
-                                step_id: format!("variable_{}", variable),
-                                field: field_path.to_string(),
-                                reason: "variable field type validation not yet implemented"
-                                    .to_string(),
-                            },
-                            path.clone(),
-                        );
-                    }
-                } else {
-                    // No variable schema defined - add warning
-                    diagnostics.add(
-                        DiagnosticMessage::MissingVariableSchema,
-                        make_path!("variables"),
-                    );
-                }
-            }
-        },
-        Expr::EscapedLiteral { .. } | Expr::Literal(_) => {
-            // Literals are always valid
-        }
-    }
 }
 
 /// Validate all references within a ValueExpr

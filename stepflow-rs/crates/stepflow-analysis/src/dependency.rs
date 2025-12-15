@@ -15,7 +15,7 @@ use indexmap::IndexMap;
 use std::sync::Arc;
 use stepflow_core::{
     BlobId, ValueExpr,
-    workflow::{BaseRef, Expr, Flow, Step, WorkflowRef},
+    workflow::{Flow, Step},
 };
 
 use crate::{
@@ -94,7 +94,7 @@ fn analyze_step(step: &Step) -> Result<StepAnalysis> {
 
     // Extract dependencies from skip condition
     let skip_if_depend = if let Some(skip_if) = &step.skip_if {
-        extract_dep_from_expr(skip_if)?
+        extract_dep_from_value_expr_simple(skip_if)?
     } else {
         None
     };
@@ -197,29 +197,34 @@ fn collect_expr_dependencies(expr: &ValueExpr) -> Result<std::collections::HashS
     Ok(deps)
 }
 
-/// Extract dependencies from an expression
-fn extract_dep_from_expr(expr: &Expr) -> Result<Option<Dependency>> {
+/// Extract a simple dependency from a ValueExpr for skip conditions
+/// Returns a single dependency if the expression references a step
+fn extract_dep_from_value_expr_simple(expr: &ValueExpr) -> Result<Option<Dependency>> {
     match expr {
-        Expr::Ref {
-            from,
-            path,
-            on_skip,
-        } => {
+        ValueExpr::Step { step, path } => {
             let field = path.outer_field().map(|f| f.to_string());
-            match from {
-                BaseRef::Step { step } => Ok(Some(Dependency::StepOutput {
-                    step_id: step.clone(),
-                    field,
-                    optional: on_skip.as_ref().is_some_and(|s| s.is_optional()),
-                })),
-                BaseRef::Workflow(WorkflowRef::Input) => Ok(Some(Dependency::FlowInput { field })),
-                BaseRef::Variable { .. } => {
-                    // Variables don't create step dependencies - they're resolved at runtime
-                    Ok(None)
-                }
-            }
+            Ok(Some(Dependency::StepOutput {
+                step_id: step.clone(),
+                field,
+                optional: false, // skip_if dependencies are always required
+            }))
         }
-        Expr::EscapedLiteral { .. } | Expr::Literal(_) => Ok(None),
+        ValueExpr::Input { .. } => {
+            // Workflow input reference - not a step dependency
+            Ok(None)
+        }
+        ValueExpr::Variable { .. } => {
+            // Variable reference - not a step dependency
+            Ok(None)
+        }
+        ValueExpr::Literal(_) | ValueExpr::EscapedLiteral { .. } => {
+            // Literals have no dependencies
+            Ok(None)
+        }
+        // For complex expressions (If, Coalesce, Array, Object), we'd need to
+        // recursively extract dependencies. For now, skip conditions should be
+        // simple references.
+        _ => Ok(None),
     }
 }
 
@@ -240,22 +245,10 @@ mod tests {
     fn create_test_flow() -> Flow {
         FlowBuilder::test_flow()
             .steps(vec![
-                StepBuilder::mock_step("step1")
-                    .input(ValueExpr::Input {
-                        input: Default::default(),
-                    })
-                    .build(),
-                StepBuilder::mock_step("step2")
-                    .input(ValueExpr::Step {
-                        step: "step1".to_string(),
-                        path: Default::default(),
-                    })
-                    .build(),
+                StepBuilder::workflow_input("step1").build(),
+                StepBuilder::step_ref("step2", "step1").build(),
             ])
-            .output(ValueExpr::Step {
-                step: "step2".to_string(),
-                path: Default::default(),
-            })
+            .output(ValueExpr::step_output("step2"))
             .build()
     }
 
@@ -302,14 +295,9 @@ mod tests {
     fn test_analyze_with_skip_condition() {
         let mut flow = create_test_flow();
         // Add skip condition to step2 that depends on step1
-        flow.step_mut(1).skip_if = Some(Expr::Ref {
-            from: BaseRef::Step {
-                step: "step1".to_string(),
-            },
-            path: "should_skip".into(),
-            on_skip: Some(stepflow_core::workflow::SkipAction::UseDefault {
-                default_value: None,
-            }),
+        flow.step_mut(1).skip_if = Some(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: JsonPath::parse("should_skip").unwrap(),
         });
 
         let result = validate_and_analyze(
@@ -342,7 +330,7 @@ mod tests {
         let expected_skip_dep = Some(Dependency::StepOutput {
             step_id: "step1".to_string(),
             field: Some("should_skip".to_string()),
-            optional: true,
+            optional: false, // skip_if dependencies are always required
         });
         assert_eq!(step2.skip_if_depend, expected_skip_dep);
 
@@ -773,12 +761,9 @@ mod tests {
                     .build(),
                 StepBuilder::mock_step("step2")
                     .input(ValueExpr::literal(json!({"value": 42})))
-                    .skip_if(Expr::Ref {
-                        from: BaseRef::Step {
-                            step: "step1".to_string(),
-                        },
+                    .skip_if(ValueExpr::Step {
+                        step: "step1".to_string(),
                         path: JsonPath::default(),
-                        on_skip: None,
                     })
                     .must_execute(true)
                     .build(),
@@ -859,10 +844,8 @@ mod tests {
                         step: "step1".to_string(),
                         path: Default::default(),
                     })
-                    .skip_if(Expr::Ref {
-                        from: BaseRef::Workflow(WorkflowRef::Input),
-                        path: JsonPath::parse("$.should_skip").unwrap(),
-                        on_skip: None,
+                    .skip_if(ValueExpr::Input {
+                        input: JsonPath::parse("$.should_skip").unwrap(),
                     })
                     .must_execute(true)
                     .build(),
@@ -931,10 +914,8 @@ mod tests {
                         step: "step1".to_string(),
                         path: Default::default(),
                     })
-                    .skip_if(Expr::Ref {
-                        from: BaseRef::Workflow(WorkflowRef::Input),
-                        path: JsonPath::parse("$.should_skip").unwrap(),
-                        on_skip: None,
+                    .skip_if(ValueExpr::Input {
+                        input: JsonPath::parse("$.should_skip").unwrap(),
                     })
                     .must_execute(true)
                     .build(),

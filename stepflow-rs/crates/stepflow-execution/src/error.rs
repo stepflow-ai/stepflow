@@ -11,14 +11,14 @@
 // the License.
 
 use stepflow_core::BlobId;
-use stepflow_core::workflow::{BaseRef, ValueRef};
+use stepflow_core::workflow::ValueRef;
 use thiserror::Error;
 use uuid::Uuid;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ExecutionError {
-    #[error("undefined value {0:?}")]
-    UndefinedValue(BaseRef),
+    #[error("undefined step reference: {0}")]
+    UndefinedValue(String),
     #[error("undefined field {field:?} in {value:?}")]
     UndefinedField { field: String, value: ValueRef },
     #[error("error executing plugin")]

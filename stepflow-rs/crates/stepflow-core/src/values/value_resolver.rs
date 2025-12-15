@@ -20,7 +20,7 @@ use log;
 
 use super::{JsonPath as NewJsonPath, PathPart, Secrets, ValueExpr, ValueRef};
 use crate::{
-    workflow::{BaseRef, Expr, Flow, JsonPath as OldJsonPath, SkipAction, StepId},
+    workflow::{Flow, StepId},
     FlowResult,
 };
 
@@ -47,8 +47,8 @@ pub trait ValueLoader: Send + Sync {
 /// Errors that can occur during value resolution
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ValueResolverError {
-    #[error("Undefined value reference: {0:?}")]
-    UndefinedValue(BaseRef),
+    #[error("Undefined step reference: {0}")]
+    UndefinedValue(String),
     #[error("Undefined field '{field}' in value")]
     UndefinedField { field: String, value: ValueRef },
     #[error("Undefined variable: {0:?}")]
@@ -141,10 +141,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                 flow: self.flow.clone(),
             })
         } else {
-            Err(ValueResolverError::UndefinedValue(BaseRef::Step {
-                step: step_id.to_string(),
-            })
-            .into())
+            Err(ValueResolverError::UndefinedValue(step_id.to_string()).into())
         }
     }
 
@@ -195,8 +192,7 @@ impl<L: ValueLoader> ValueResolver<L> {
         if !path.is_empty() {
             let path_json = NewJsonPath::from_parts(path.to_vec());
             log::debug!("Resolving path '{}' on variable '{}'", path_json, variable);
-            let old_path = OldJsonPath::from(path_json.to_string());
-            if let Some(sub_value) = value.resolve_json_path(&old_path) {
+            if let Some(sub_value) = value.resolve_json_path(&path_json) {
                 log::debug!("Path '{}' resolved successfully", path_json);
                 Ok(FlowResult::Success(sub_value))
             } else {
@@ -226,8 +222,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                     match base_result {
                         FlowResult::Success(value) => {
                             log::debug!("Resolving path '{}' on step '{}'", path, step);
-                            let old_path = OldJsonPath::from(path.to_string());
-                            if let Some(sub_value) = value.resolve_json_path(&old_path) {
+                            if let Some(sub_value) = value.resolve_json_path(path) {
                                 log::debug!("Path '{}' resolved successfully", path);
                                 Ok(FlowResult::Success(sub_value))
                             } else {
@@ -251,8 +246,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                 // Apply the input path to the workflow input
                 if !input.is_empty() {
                     log::debug!("Resolving input path '{}'", input);
-                    let old_path = OldJsonPath::from(input.to_string());
-                    if let Some(sub_value) = self.input.resolve_json_path(&old_path) {
+                    if let Some(sub_value) = self.input.resolve_json_path(input) {
                         log::debug!("Input path '{}' resolved successfully", input);
                         Ok(FlowResult::Success(sub_value))
                     } else {
@@ -419,81 +413,6 @@ impl<L: ValueLoader> ValueResolver<L> {
                 log::debug!("Coalesce: all values were null or skipped, returning null");
                 Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
             }
-        }
-    }
-
-    /// Resolve an expression, returning a FlowResult.
-    #[deprecated(
-        note = "Use resolve() with ValueExpr instead. This method is for legacy skip_if conditions only."
-    )]
-    pub async fn resolve_expr(&self, expr: &Expr) -> ValueResolverResult<FlowResult> {
-        // Handle literal expressions
-        if let Expr::EscapedLiteral { literal } = expr {
-            return Ok(FlowResult::Success(literal.clone()));
-        } else if let Expr::Literal(literal) = expr {
-            return Ok(FlowResult::Success(literal.clone()));
-        }
-
-        // Get the base reference
-        let base_ref = expr.base_ref().ok_or(ValueResolverError::Internal)?;
-
-        let base_result = match base_ref {
-            BaseRef::Workflow(_) => {
-                // Return the workflow input
-                FlowResult::Success(self.input.clone())
-            }
-            BaseRef::Step { step: step_id } => self.resolve_step(step_id).await?,
-            BaseRef::Variable { variable, default } => {
-                self.resolve_variable(variable, &[], default.clone())?
-            }
-        };
-
-        // Apply path if specified
-        let path_result = if let Some(path) = expr.path() {
-            match base_result {
-                FlowResult::Success(result) => {
-                    // For path resolution, we need to be careful about logging values
-                    // We'll log the path resolution without exposing the full value
-                    log::debug!("Resolving path '{}' on value", path);
-                    if let Some(sub_value) = result.resolve_json_path(path) {
-                        log::debug!("Path '{}' resolved successfully", path);
-                        FlowResult::Success(sub_value)
-                    } else {
-                        log::debug!("Path '{path}' not found in value");
-                        return Err(ValueResolverError::UndefinedField {
-                            field: path.to_string(),
-                            value: result,
-                        }
-                        .into());
-                    }
-                }
-                FlowResult::Skipped { reason: _ } => FlowResult::Skipped { reason: None },
-                other => other,
-            }
-        } else {
-            base_result
-        };
-
-        // Handle skip actions.
-        // NOTE: Skip actions are applied after path resolution.
-        match path_result {
-            FlowResult::Success(result) => Ok(FlowResult::Success(result)),
-            FlowResult::Skipped { reason } => {
-                match expr.on_skip() {
-                    Some(SkipAction::UseDefault { default_value }) => {
-                        let default = default_value
-                            .as_ref()
-                            .map(|v| v.as_ref())
-                            .unwrap_or(&serde_json::Value::Null);
-                        Ok(FlowResult::Success(ValueRef::new(default.clone())))
-                    }
-                    _ => {
-                        // No on_skip action specified - propagate the skip
-                        Ok(FlowResult::Skipped { reason })
-                    }
-                }
-            }
-            FlowResult::Failed(error) => Ok(FlowResult::Failed(error)),
         }
     }
 

@@ -421,7 +421,7 @@ impl FlowVisualizer {
                 writeln!(dot, "  ];").unwrap();
             }
 
-            // Add edges for skip conditions (these still use old Expr type)
+            // Add edges for skip conditions (using ValueExpr)
             // Get the step analysis from the flow analysis
             if let Some(step_analysis) = analysis.steps.get(&step.id) {
 

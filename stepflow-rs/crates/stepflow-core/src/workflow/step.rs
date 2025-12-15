@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use super::{Component, Expr};
+use super::Component;
 use crate::{ValueExpr, schema::SchemaRef};
 use schemars::JsonSchema;
 
@@ -36,7 +36,7 @@ pub struct Step {
 
     /// If set and the referenced value is truthy, this step will be skipped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_if: Option<Expr>,
+    pub skip_if: Option<ValueExpr>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_error: Option<ErrorAction>,
