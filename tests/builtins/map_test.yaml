@@ -1,7 +1,6 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Map Component Batch Execution Test
 description: Test the map component using batch execution with parallel processing
-
 input_schema:
   type: object
   properties:
@@ -9,7 +8,6 @@ input_schema:
       type: array
       items:
         type: string
-
 output_schema:
   type: object
   properties:
@@ -21,7 +19,6 @@ output_schema:
       type: integer
     skipped:
       type: integer
-
 steps:
 - id: map_prompts
   component: /builtin/map
@@ -39,40 +36,33 @@ steps:
           component: /builtin/create_messages
           input:
             user_prompt:
-              $from:
-                workflow: input
+              $input: $
         output:
-          $from:
-            step: create_msg
+          $step: create_msg
     items:
-      $from:
-        workflow: input
-      path: prompts
+      $input: prompts
     max_concurrency: 2
-
 output:
   results:
-    $from:
-      step: map_prompts
+    $step: map_prompts
     path: results
   successful:
-    $from:
-      step: map_prompts
+    $step: map_prompts
     path: successful
   failed:
-    $from:
-      step: map_prompts
+    $step: map_prompts
     path: failed
   skipped:
-    $from:
-      step: map_prompts
+    $step: map_prompts
     path: skipped
-
 test:
   cases:
   - name: test map with three prompts
     input:
-      prompts: ["Hello", "World", "Test"]
+      prompts:
+      - Hello
+      - World
+      - Test
     output:
       outcome: success
       result:
@@ -84,18 +74,17 @@ test:
           result:
             messages:
             - role: user
-              content: "Hello"
+              content: Hello
         - outcome: success
           result:
             messages:
             - role: user
-              content: "World"
+              content: World
         - outcome: success
           result:
             messages:
             - role: user
-              content: "Test"
-
+              content: Test
   - name: test map with empty list
     input:
       prompts: []

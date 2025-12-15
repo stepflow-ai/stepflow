@@ -37,26 +37,32 @@ steps:
                   type: number
         required:
         - data
-      code: "def analyze_scores(input):\n    scores = [item['score'] for item in input['data']]\n    \n    if not scores:\n        return {\n            'count': 0,\n            'average': 0,\n            'min': 0,\n            'max': 0,\n            'top_performer': None\n        }\n    \n    average = sum(scores) / len(scores)\n    min_score = min(scores)\n    max_score = max(scores)\n    \n    # Find top performer\n    top_performer = None\n    for item in input['data']:\n        if item['score'] == max_score:\n            top_performer = item['name']\n            break\n    \n    return {\n        'count': len(scores),\n        'average': round(average, 2),\n        'min': min_score,\n        'max': max_score,\n        'top_performer': top_performer\n    }\nanalyze_scores"
-    blob_type: "data"
+      code: "def analyze_scores(input):\n    scores = [item['score'] for item in input['data']]\n\
+        \    \n    if not scores:\n        return {\n            'count': 0,\n   \
+        \         'average': 0,\n            'min': 0,\n            'max': 0,\n  \
+        \          'top_performer': None\n        }\n    \n    average = sum(scores)\
+        \ / len(scores)\n    min_score = min(scores)\n    max_score = max(scores)\n\
+        \    \n    # Find top performer\n    top_performer = None\n    for item in\
+        \ input['data']:\n        if item['score'] == max_score:\n            top_performer\
+        \ = item['name']\n            break\n    \n    return {\n        'count':\
+        \ len(scores),\n        'average': round(average, 2),\n        'min': min_score,\n\
+        \        'max': max_score,\n        'top_performer': top_performer\n    }\n\
+        analyze_scores"
+    blob_type: data
 - id: analyze_scores
   component: /python/udf
   input_schema: null
   output_schema: null
   input:
     blob_id:
-      $from:
-        step: create_analyze_scores_blob
+      $step: create_analyze_scores_blob
       path: blob_id
     input:
       data:
-        $from:
-          workflow: input
-        path: data
+        $input: data
 output:
   analytics:
-    $from:
-      step: analyze_scores
+    $step: analyze_scores
 test:
   cases:
   - name: analyze scores for Alice, Bob, Charlie, Diana

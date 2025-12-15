@@ -15,10 +15,10 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use serde_json::json;
 use std::sync::Arc;
-use stepflow_core::values::ValueTemplate;
 use stepflow_core::{
     FlowResult,
     workflow::{Flow, FlowBuilder, StepBuilder},
+    ValueExpr,
 };
 use stepflow_execution::StepflowExecutor;
 use stepflow_mock::MockPlugin;
@@ -900,13 +900,26 @@ async fn test_status_updates_during_regular_execution() {
                 }))
                 .build(),
         ])
-        .output(
-            ValueTemplate::parse_value(json!({
-                "step1_result": {"$from": {"step": "step1"}, "path": "output"},
-                "step2_result": {"$from": {"step": "step2"}, "path": "x"}
-            }))
-            .unwrap(),
-        )
+        .output(ValueExpr::Object(
+            vec![
+                (
+                    "step1_result".to_string(),
+                    ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: "output".into(),
+                    },
+                ),
+                (
+                    "step2_result".to_string(),
+                    ValueExpr::Step {
+                        step: "step2".to_string(),
+                        path: "x".into(),
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ))
         .build();
 
     // Store the workflow
@@ -1009,12 +1022,17 @@ async fn test_status_updates_during_debug_execution() {
                 }))
                 .build(),
         ])
-        .output(
-            ValueTemplate::parse_value(json!({
-                "result": {"$from": {"step": "step2"}, "path": "x"}
-            }))
-            .unwrap(),
-        )
+        .output(ValueExpr::Object(
+            vec![(
+                "result".to_string(),
+                ValueExpr::Step {
+                    step: "step2".to_string(),
+                    path: "x".into(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        ))
         .build();
 
     // Store the workflow
@@ -1124,12 +1142,17 @@ async fn test_status_transitions_with_error_handling() {
                 .input_literal(json!({"input": "trigger_error"}))
                 .build(),
         )
-        .output(
-            ValueTemplate::parse_value(json!({
-                "result": {"$from": {"step": "failing_step"}, "path": "output"}
-            }))
-            .unwrap(),
-        )
+        .output(ValueExpr::Object(
+            vec![(
+                "result".to_string(),
+                ValueExpr::Step {
+                    step: "failing_step".to_string(),
+                    path: "output".into(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        ))
         .build();
 
     // Store the workflow

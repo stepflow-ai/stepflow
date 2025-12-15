@@ -23,16 +23,11 @@ steps:
   input:
     data:
       message:
-        $from:
-          workflow: input
-        path: message
+        $input: message
       number:
-        $from:
-          workflow: input
-        path: number
-      timestamp: 2024-01-01T00:00:00Z
-    blob_type: "data"
-# Create blob for Python function definition
+        $input: number
+      timestamp: 2024-01-01 00:00:00+00:00
+    blob_type: data
 - id: create_store_data_blob
   component: /builtin/put_blob
   input_schema: null
@@ -49,58 +44,42 @@ steps:
         required:
         - message
         - number
-      code: |
-        async def store_data(input, context):
-          # Create enhanced data
-          enhanced_data = {
-            'original_message': input['message'],
-            'number_squared': input['number'] ** 2,
-            'processed_by': 'python_udf'
-          }
-          # Store as blob using context
-          blob_id = await context.put_blob(enhanced_data)
-          return {'blob_id': blob_id, 'status': 'success'}
-        store_data
-    blob_type: "data"
+      code: "async def store_data(input, context):\n  # Create enhanced data\n  enhanced_data\
+        \ = {\n    'original_message': input['message'],\n    'number_squared': input['number']\
+        \ ** 2,\n    'processed_by': 'python_udf'\n  }\n  # Store as blob using context\n\
+        \  blob_id = await context.put_blob(enhanced_data)\n  return {'blob_id': blob_id,\
+        \ 'status': 'success'}\nstore_data\n"
+    blob_type: data
 - id: store_with_python
   component: /python/udf
   input_schema: null
   output_schema: null
   input:
     blob_id:
-      $from:
-        step: create_store_data_blob
+      $step: create_store_data_blob
       path: blob_id
     input:
       message:
-        $from:
-          workflow: input
-        path: message
+        $input: message
       number:
-        $from:
-          workflow: input
-        path: number
+        $input: number
 - id: retrieve_with_builtin
   component: /builtin/get_blob
   input_schema: null
   output_schema: null
   input:
     blob_id:
-      $from:
-        step: store_with_builtin
+      $step: store_with_builtin
       path: blob_id
 output:
   blob_id:
-    $from:
-      step: store_with_builtin
+    $step: store_with_builtin
     path: blob_id
   retrieved_data:
-    $from:
-      step: retrieve_with_builtin
+    $step: retrieve_with_builtin
     path: data
   python_blob_id:
-    $from:
-      step: store_with_python
+    $step: store_with_python
     path: blob_id
 test:
   cases:
@@ -111,12 +90,12 @@ test:
     output:
       outcome: success
       result:
-        blob_id: 2b566ff16f11d28c29521759abde29e5762fb10b7a1c4dec05c09d9057b41d7c
+        blob_id: 7d1835be19f018f42ad769cab21e7b7c6906045c4a3f5366ee95a2618de608f4
         python_blob_id: 5e7b9e2bb1fb695b22192e82e25b4b6b142f46548509b4c62cd051f0f21b082e
         retrieved_data:
           message: Hello, blobs!
           number: 42
-          timestamp: 2024-01-01T00:00:00Z
+          timestamp: 2024-01-01 00:00:00+00:00
   - name: blobs_100
     input:
       message: Testing integration
@@ -124,9 +103,9 @@ test:
     output:
       outcome: success
       result:
-        blob_id: c3d8fcefa4911e27c19d7e1b0b821a65102f50f7114a4f160cba23ac151d0e3c
+        blob_id: 2d8b694059de5ee6fc6dee331cd9e03656150acf76baf5c49c9a3821010df174
         python_blob_id: c428d74033a44874f7b51b3404c793102712ac54b1cbbbcd25235491bcf49f93
         retrieved_data:
           message: Testing integration
           number: 100
-          timestamp: 2024-01-01T00:00:00Z
+          timestamp: 2024-01-01 00:00:00+00:00

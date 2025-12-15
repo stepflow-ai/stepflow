@@ -1,92 +1,67 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Restart Functionality Test"
-description: "Test automatic process restart when Python component crashes"
-
+name: Restart Functionality Test
+description: Test automatic process restart when Python component crashes
 input_schema:
   type: object
   properties:
     message:
       type: string
-      description: "Test message to process"
-
+      description: Test message to process
 output_schema:
   type: object
   properties:
     attempt_count:
       type: integer
-      description: "Number of attempts before success"
+      description: Number of attempts before success
     message:
       type: string
-      description: "Processed message"
-
+      description: Processed message
 steps:
-  # Create a blob with UDF code that crashes on first attempt
-  - id: create_crash_test_blob
-    component: /builtin/put_blob
+- id: create_crash_test_blob
+  component: /builtin/put_blob
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          message:
+            type: string
+        required:
+        - message
+      code: "def crash_test(input, context):\n    import sys\n\n    # Get the attempt\
+        \ number from context\n    attempt = context.attempt\n\n    # ALWAYS print\
+        \ attempt count for debugging\n    print(f\"*** UDF CALLED: attempt={attempt},\
+        \ message='{input['message']}' ***\", file=sys.stderr)\n\n    # Crash on first\
+        \ attempt by exiting with non-zero code\n    if attempt == 1:\n        print(f\"\
+        *** CRASHING on attempt {attempt} ***\", file=sys.stderr)\n        sys.exit(1)\
+        \  # Simulate process crash\n\n    # Return success on subsequent attempts\n\
+        \    print(f\"*** SUCCESS on attempt {attempt} ***\", file=sys.stderr)\n \
+        \   return {\n        \"message\": f\"Processed '{input['message']}' successfully\
+        \ on attempt {attempt}\",\n        \"attempt_count\": attempt\n    }\n\ncrash_test\n"
+    blob_type: data
+- id: crash_test_execution
+  component: /python/udf
+  input:
+    blob_id:
+      $step: create_crash_test_blob
+      path: blob_id
     input:
-      data:
-        input_schema:
-          type: object
-          properties:
-            message:
-              type: string
-          required: [message]
-        code: |
-          def crash_test(input, context):
-              import sys
-
-              # Get the attempt number from context
-              attempt = context.attempt
-
-              # ALWAYS print attempt count for debugging
-              print(f"*** UDF CALLED: attempt={attempt}, message='{input['message']}' ***", file=sys.stderr)
-
-              # Crash on first attempt by exiting with non-zero code
-              if attempt == 1:
-                  print(f"*** CRASHING on attempt {attempt} ***", file=sys.stderr)
-                  sys.exit(1)  # Simulate process crash
-
-              # Return success on subsequent attempts
-              print(f"*** SUCCESS on attempt {attempt} ***", file=sys.stderr)
-              return {
-                  "message": f"Processed '{input['message']}' successfully on attempt {attempt}",
-                  "attempt_count": attempt
-              }
-
-          crash_test
-      blob_type: "data"
-
-  # Execute the crash test UDF
-  - id: crash_test_execution
-    component: /python/udf
-    input:
-      blob_id:
-        $from:
-          step: create_crash_test_blob
-        path: blob_id
-      input:
-        message:
-          $from:
-            workflow: input
-          path: message
-
+      message:
+        $input: message
 output:
   attempt_count:
-    $from:
-      step: crash_test_execution
+    $step: crash_test_execution
     path: attempt_count
   message:
-    $from:
-      step: crash_test_execution
+    $step: crash_test_execution
     path: message
-
 test:
   cases:
-    - name: "Test restart functionality with process crash"
-      input:
-        message: "test restart"
-      output:
-        outcome: success
-        result:
-          attempt_count: 2
-          message: "Processed 'test restart' successfully on attempt 2"
+  - name: Test restart functionality with process crash
+    input:
+      message: test restart
+    output:
+      outcome: success
+      result:
+        attempt_count: 2
+        message: Processed 'test restart' successfully on attempt 2

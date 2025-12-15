@@ -1,0 +1,68 @@
+---
+source: crates/stepflow-cli/tests/commands/test_test.rs
+assertion_line: 33
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - test
+    - "--config=tests/builtins/stepflow-config.yml"
+    - tests/builtins
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
+---
+success: false
+exit_code: 1
+----- stdout -----
+----------
+Running Test Case test complex data structure
+----------
+Running Test Case test nested object structure
+tests/builtins/blob_test.yaml: 2/2 passed
+----------
+Running Test Case test map with three prompts
+Test Case test map with three prompts failed. New Output:
+outcome: success
+result:
+  failed: 0
+  results:
+  - outcome: success
+    result:
+      $from:
+        step: create_msg
+  - outcome: success
+    result:
+      $from:
+        step: create_msg
+  - outcome: success
+    result:
+      $from:
+        step: create_msg
+  skipped: 0
+  successful: 3
+
+
+----------
+Running Test Case test map with empty list
+tests/builtins/map_test.yaml: 1/2 passed
+----------
+Running Test Case test nested flow execution
+tests/builtins/nested_eval.yaml: 1/1 passed
+tests/builtins/blob_test.yaml: 2/2 passed
+tests/builtins/map_test.yaml: 1/2 passed
+tests/builtins/nested_eval.yaml: 1/1 passed
+
+=== Test Summary ===
+Files tested: 3
+Total test cases: 5
+Passed: 4
+Failed: 1
+
+----- stderr -----

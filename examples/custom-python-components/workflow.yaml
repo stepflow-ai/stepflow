@@ -1,54 +1,74 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Customer Business Intelligence Pipeline"
-description: "Demonstrates custom Python components for business logic"
-
+name: Customer Business Intelligence Pipeline
+description: Demonstrates custom Python components for business logic
 input_schema:
   type: object
   properties:
     customers:
       type: array
-      description: "Array of customer records"
+      description: Array of customer records
       items:
         type: object
         properties:
-          id: { type: string }
-          name: { type: string }
-          email: { type: string }
-          tier: { type: string, enum: ["bronze", "silver", "gold"] }
-        required: [id, name, email, tier]
+          id:
+            type: string
+          name:
+            type: string
+          email:
+            type: string
+          tier:
+            type: string
+            enum:
+            - bronze
+            - silver
+            - gold
+        required:
+        - id
+        - name
+        - email
+        - tier
     orders:
       type: array
-      description: "Array of order records"
+      description: Array of order records
       items:
         type: object
         properties:
-          customer_id: { type: string }
-          amount: { type: number }
-          product: { type: string }
-        required: [customer_id, amount, product]
-
+          customer_id:
+            type: string
+          amount:
+            type: number
+          product:
+            type: string
+        required:
+        - customer_id
+        - amount
+        - product
 steps:
-  - id: analyze_customer_data
-    component: "/custom/analyze_customers"
-    input:
-      customers: { $from: { workflow: input }, path: "customers" }
-      orders: { $from: { workflow: input }, path: "orders" }
-
-  - id: generate_business_report
-    component: "/custom/generate_report"
-    input:
-      analysis: { $from: { step: analyze_customer_data } }
-      report_title: "Q4 Customer Analysis Report"
-
-  - id: retrieve_report
-    component: "/get_blob"
-    input:
-      blob_id: { $from: { step: generate_business_report }, path: "report_blob_id" }
-
+- id: analyze_customer_data
+  component: /custom/analyze_customers
+  input:
+    customers:
+      $input: customers
+    orders:
+      $input: orders
+- id: generate_business_report
+  component: /custom/generate_report
+  input:
+    analysis:
+      $step: analyze_customer_data
+    report_title: Q4 Customer Analysis Report
+- id: retrieve_report
+  component: /get_blob
+  input:
+    blob_id:
+      $step: generate_business_report
+      path: report_blob_id
 output:
-  analysis: { $from: { step: analyze_customer_data } }
-  report_summary: { $from: { step: generate_business_report }, path: "summary" }
-  detailed_report: { $from: { step: retrieve_report }, path: "data" }
-
-# Note: This example demonstrates the Python SDK as a library for custom components.
-# Manual testing shows it works correctly - embedded tests omitted for simplicity.
+  analysis:
+    $step: analyze_customer_data
+  report_summary:
+    $step: generate_business_report
+    path: summary
+  detailed_report:
+    $step: retrieve_report
+    path: data

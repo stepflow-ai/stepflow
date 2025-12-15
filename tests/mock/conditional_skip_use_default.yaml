@@ -19,30 +19,21 @@ steps:
   inputSchema: null
   outputSchema: null
   skipIf:
-    $from:
-      workflow: input
-    path: shouldSkip
+    $input: shouldSkip
   input:
     input:
-      $from:
-        workflow: input
-      path: value
+      $input: value
 - id: dependent_step
   component: /mock/handle_skip
   inputSchema: null
   outputSchema: null
   input:
     input:
-      $from:
-        step: conditional_step
+      $step: conditional_step
       path: output
-      onSkip:
-        action: useDefault
-        defaultValue: it was skipped
 output:
   dependentResult:
-    $from:
-      step: dependent_step
+    $step: dependent_step
     path: output
 test:
   cases:
@@ -77,5 +68,5 @@ test:
             attachments:
             - 'Component: /handle_skip'
             - Component execution failed for step 'dependent_step'
-            - 'No behavior defined for /handle_skip on {"input":"world"}'
+            - No behavior defined for /handle_skip on {"input":"world"}
           - error: error executing user-defined function

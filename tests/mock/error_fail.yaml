@@ -13,13 +13,10 @@ steps:
   output_schema: null
   input:
     mode:
-      $from:
-        workflow: input
-      path: mode
+      $input: mode
 output:
   error_result:
-    $from:
-      step: error
+    $step: error
     path: output
 test:
   cases:

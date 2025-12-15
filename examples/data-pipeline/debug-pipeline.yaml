@@ -1,119 +1,133 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Sales Analysis Pipeline (Metrics)"
-description: "Processes sales data and calculates business metrics"
-
+name: Sales Analysis Pipeline (Metrics)
+description: Processes sales data and calculates business metrics
 input_schema:
   type: object
   properties:
     sales_data:
       type: array
-      description: "Array of sales records"
+      description: Array of sales records
     target_revenue:
       type: number
-      description: "Target revenue for analysis"
-
+      description: Target revenue for analysis
 steps:
-  # Parallel data processing steps
-  - id: sum_revenue_udf
-    component: "/builtin/put_blob"
+- id: sum_revenue_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        code: sum(item['revenue'] for item in input['sales_data'])
+    blob_type: data
+- id: calculate_total_revenue
+  component: /python/udf
+  input:
+    blob_id:
+      $step: sum_revenue_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          code: "sum(item['revenue'] for item in input['sales_data'])"
-      blob_type: "data"
-
-  - id: calculate_total_revenue
-    component: "/python/udf"
+      sales_data:
+        $input: sales_data
+- id: count_sales_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        code: len(input['sales_data'])
+    blob_type: data
+- id: count_sales
+  component: /python/udf
+  input:
+    blob_id:
+      $step: count_sales_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: sum_revenue_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  - id: count_sales_udf
-    component: /builtin/put_blob
+      sales_data:
+        $input: sales_data
+- id: average_sale_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        code: sum(item['revenue'] for item in input['sales_data']) / len(input['sales_data'])
+          if input['sales_data'] else 0
+- id: calculate_average_sale
+  component: /python/udf
+  input:
+    blob_id:
+      $step: average_sale_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          code: "len(input['sales_data'])"
-      blob_type: "data"
-
-  - id: count_sales
-    component: "/python/udf"
+      sales_data:
+        $input: sales_data
+- id: divide_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        code: input['a'] / input['b'] if input['b'] != 0 else 0
+- id: calculate_performance_ratio
+  component: /python/udf
+  input:
+    blob_id:
+      $step: divide_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: count_sales_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  - id: average_sale_udf
-    component: /builtin/put_blob
+      a:
+        $step: calculate_total_revenue
+        path: result
+      b:
+        $input: target_revenue
+- id: format_metrics_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        code: "performance_status = \"\u2705 EXCEEDED TARGET\" if input['performance_ratio']\
+          \ > 1.0 else \"\u26A0\uFE0F BELOW TARGET\"\nf\"\"\"Sales Performance Analysis:\n\
+          \n\U0001F4CA Key Metrics:\n\u2022 Total Revenue: ${input['total_revenue']:,.2f}\n\
+          \u2022 Sales Count: {input['sales_count']} transactions\n\u2022 Average\
+          \ Sale Value: ${input['average_sale']:,.2f}\n\u2022 Target Revenue: ${input['target_revenue']:,.2f}\n\
+          \u2022 Performance vs Target: {input['performance_ratio']:.1%}\n\n\U0001F3AF\
+          \ Performance Status: {performance_status}\n\nPlease analyze this sales\
+          \ data and provide:\n1. Key insights about our sales performance\n2. What\
+          \ the metrics reveal about our business\n3. Specific recommendations for\
+          \ improving sales\n4. Any concerning trends or positive highlights\n\nFocus\
+          \ on actionable business insights that would help a sales manager make strategic\
+          \ decisions.\"\"\"\n"
+- id: format_metrics_summary
+  component: /python/udf
+  input:
+    blob_id:
+      $step: format_metrics_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          code: "sum(item['revenue'] for item in input['sales_data']) / len(input['sales_data']) if input['sales_data'] else 0"
-
-  - id: calculate_average_sale
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: average_sale_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  - id: divide_udf
-    component: /builtin/put_blob
-    input:
-      data:
-        $literal:
-          code: "input['a'] / input['b'] if input['b'] != 0 else 0"
-
-  - id: calculate_performance_ratio
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: divide_udf }, path: "blob_id" }
-      input:
-        a: { $from: { step: "calculate_total_revenue" }, path: "result" }
-        b: { $from: { workflow: input }, path: "target_revenue" }
-
-  # Format metrics summary for display
-  - id: format_metrics_udf
-    component: /builtin/put_blob
-    input:
-      data:
-        $literal:
-          code: |
-            performance_status = "✅ EXCEEDED TARGET" if input['performance_ratio'] > 1.0 else "⚠️ BELOW TARGET"
-            f"""Sales Performance Analysis:
-
-            📊 Key Metrics:
-            • Total Revenue: ${input['total_revenue']:,.2f}
-            • Sales Count: {input['sales_count']} transactions
-            • Average Sale Value: ${input['average_sale']:,.2f}
-            • Target Revenue: ${input['target_revenue']:,.2f}
-            • Performance vs Target: {input['performance_ratio']:.1%}
-
-            🎯 Performance Status: {performance_status}
-
-            Please analyze this sales data and provide:
-            1. Key insights about our sales performance
-            2. What the metrics reveal about our business
-            3. Specific recommendations for improving sales
-            4. Any concerning trends or positive highlights
-
-            Focus on actionable business insights that would help a sales manager make strategic decisions."""
-
-  - id: format_metrics_summary
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: format_metrics_udf }, path: "blob_id" }
-      input:
-        total_revenue: { $from: { step: "calculate_total_revenue" }, path: "result" }
-        sales_count: { $from: { step: "count_sales" }, path: "result" }
-        average_sale: { $from: { step: "calculate_average_sale" }, path: "result" }
-        performance_ratio: { $from: { step: "calculate_performance_ratio" }, path: "result" }
-        target_revenue: { $from: { workflow: input }, path: "target_revenue" }
-
+      total_revenue:
+        $step: calculate_total_revenue
+        path: result
+      sales_count:
+        $step: count_sales
+        path: result
+      average_sale:
+        $step: calculate_average_sale
+        path: result
+      performance_ratio:
+        $step: calculate_performance_ratio
+        path: result
+      target_revenue:
+        $input: target_revenue
 output:
-  total_revenue: { $from: { step: "calculate_total_revenue" }, path: "result" }
-  sales_count: { $from: { step: "count_sales" }, path: "result" }
-  average_sale: { $from: { step: "calculate_average_sale" }, path: "result" }
-  performance_ratio: { $from: { step: "calculate_performance_ratio" }, path: "result" }
-  formatted_summary: { $from: { step: "format_metrics_summary" }, path: "result" }
+  total_revenue:
+    $step: calculate_total_revenue
+    path: result
+  sales_count:
+    $step: count_sales
+    path: result
+  average_sale:
+    $step: calculate_average_sale
+    path: result
+  performance_ratio:
+    $step: calculate_performance_ratio
+    path: result
+  formatted_summary:
+    $step: format_metrics_summary
+    path: result

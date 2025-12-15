@@ -225,13 +225,21 @@ mod tests {
         FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueExpr::step_output("step1"))
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueExpr::step_output("step2"))
+            .output(ValueExpr::Step {
+                step: "step2".to_string(),
+                path: Default::default(),
+            })
             .build()
     }
 
@@ -427,10 +435,13 @@ mod tests {
         let flow = FlowBuilder::new()
             .name("invalid_workflow")
             .steps(vec![
-                create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
-                create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
+                create_test_step("step1", json!({"$step": "step2"})), // Forward reference
+                create_test_step("step1", json!({"$input": "$"})), // Duplicate ID
             ])
-            .output(ValueExpr::step_output("step1"))
+            .output(ValueExpr::Step {
+                step: "step1".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result = validate_and_analyze(
@@ -522,17 +533,27 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueExpr::step_output("step1"))
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .must_execute(true) // Mark as must_execute
                     .build(),
             ])
-            .output(ValueExpr::step_output("step2"))
+            .output(ValueExpr::Step {
+                step: "step2".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -595,16 +616,26 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueExpr::step_output("step1"))
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueExpr::step_output("step2"))
+            .output(ValueExpr::Step {
+                step: "step2".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -657,14 +688,19 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
                     .input(ValueExpr::literal(json!({"value": 42})))
                     .must_execute(true)
                     .build(),
             ])
-            .output(ValueExpr::step_output("step1"))
+            .output(ValueExpr::Step {
+                step: "step1".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -715,7 +751,9 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
                     .input(ValueExpr::literal(json!({"value": 42})))
@@ -729,10 +767,15 @@ mod tests {
                     .must_execute(true)
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueExpr::step_output("step3"))
+            .output(ValueExpr::Step {
+                step: "step3".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -791,10 +834,15 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueExpr::step_output("step1"))
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
                     .skip_if(Expr::Ref {
                         from: BaseRef::Workflow(WorkflowRef::Input),
                         path: JsonPath::parse("$.should_skip").unwrap(),
@@ -803,10 +851,15 @@ mod tests {
                     .must_execute(true)
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueExpr::step_output("step3"))
+            .output(ValueExpr::Step {
+                step: "step3".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -853,10 +906,15 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueExpr::step_output("step1"))
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
                     .skip_if(Expr::Ref {
                         from: BaseRef::Workflow(WorkflowRef::Input),
                         path: JsonPath::parse("$.should_skip").unwrap(),
@@ -865,10 +923,15 @@ mod tests {
                     .must_execute(true)
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueExpr::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueExpr::step_output("step3"))
+            .output(ValueExpr::Step {
+                step: "step3".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =

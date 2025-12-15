@@ -1,18 +1,18 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Iterate Example"
-description: "Example of using the Python iterate component with counter workflow"
-
+name: Iterate Example
+description: Example of using the Python iterate component with counter workflow
 input_schema:
   type: object
   properties:
     current:
       type: integer
-      description: "Starting count value"
+      description: Starting count value
     target:
       type: integer
-      description: "Target count value"
-  required: ["current", "target"]
-
+      description: Target count value
+  required:
+  - current
+  - target
 output_schema:
   type: object
   properties:
@@ -21,83 +21,84 @@ output_schema:
       properties:
         result:
           type: string
-          description: "Final result message"
+          description: Final result message
         iterations:
           type: integer
-          description: "Number of iterations performed"
+          description: Number of iterations performed
         terminated:
           type: boolean
-          description: "Whether iteration was terminated by max_iterations"
-
+          description: Whether iteration was terminated by max_iterations
 steps:
-  - id: create_counter_flow
-    component: "/builtin/put_blob"
-    input:
-      data:
-        $literal:
-          schema: "https://stepflow.org/schemas/v1/flow.json"
-          steps:
-            - id: counter
-              component: "/python/counter_step"
-              input:
-                current: { $from: { workflow: input }, path: "current" }
-                target: { $from: { workflow: input }, path: "target" }
-          output: { $from: { step: "counter" } }
-      blob_type: "flow"
-  
-  - id: count_to_target
-    component: "/python/iterate"
-    input:
-      flow_id: { $from: { step: "create_counter_flow" }, path: "blob_id" }
-      initial_input:
-        current: { $from: { workflow: input }, path: "current" }
-        target: { $from: { workflow: input }, path: "target" }
-      max_iterations: 20
-
-output: { $from: { step: "count_to_target" } }
-
+- id: create_counter_flow
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
+        steps:
+        - id: counter
+          component: /python/counter_step
+          input:
+            current:
+              $input: current
+            target:
+              $input: target
+        output:
+          $step: counter
+    blob_type: flow
+- id: count_to_target
+  component: /python/iterate
+  input:
+    flow_id:
+      $step: create_counter_flow
+      path: blob_id
+    initial_input:
+      current:
+        $input: current
+      target:
+        $input: target
+    max_iterations: 20
+output:
+  $step: count_to_target
 test:
   cases:
-    - name: count from 0 to 5
-      input:
-        current: 0
-        target: 5
-      output:
-        outcome: success
-        result:
-          result: "Reached target 5"
-          iterations: 6
-          terminated: false
-
-    - name: count from 3 to 7
-      input:
-        current: 3
-        target: 7
-      output:
-        outcome: success
-        result:
-          result: "Reached target 7"
-          iterations: 5
-          terminated: false
-
-    - name: already at target
-      input:
-        current: 10
-        target: 10
-      output:
-        outcome: success
-        result:
-          result: "Reached target 10"
-          iterations: 1
-          terminated: false
-
-    - name: count from 0 to 1
-      input:
-        current: 0
-        target: 1
-      output:
-        outcome: success
-        result:
-          result: "Reached target 1"
-          iterations: 2
-          terminated: false
+  - name: count from 0 to 5
+    input:
+      current: 0
+      target: 5
+    output:
+      outcome: success
+      result:
+        result: Reached target 5
+        iterations: 6
+        terminated: false
+  - name: count from 3 to 7
+    input:
+      current: 3
+      target: 7
+    output:
+      outcome: success
+      result:
+        result: Reached target 7
+        iterations: 5
+        terminated: false
+  - name: already at target
+    input:
+      current: 10
+      target: 10
+    output:
+      outcome: success
+      result:
+        result: Reached target 10
+        iterations: 1
+        terminated: false
+  - name: count from 0 to 1
+    input:
+      current: 0
+      target: 1
+    output:
+      outcome: success
+      result:
+        result: Reached target 1
+        iterations: 2
+        terminated: false

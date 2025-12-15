@@ -1,12 +1,11 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Workflow Without Tests
 description: This workflow has no test section and should be skipped
-
 steps:
-  - id: simple_step
-    component: /builtin/eval
-    input:
-      expression: '"This workflow has no tests"'
-
+- id: simple_step
+  component: /builtin/eval
+  input:
+    expression: '"This workflow has no tests"'
 output:
-  result: { $from: { step: simple_step } }
+  result:
+    $step: simple_step

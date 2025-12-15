@@ -1,17 +1,12 @@
-# Simple test workflow for Kubernetes batch demo
-# Tests basic component execution via k8s
-
 schema: https://stepflow.org/schemas/v1/flow.json
 name: simple-test-workflow
 description: Simple workflow to test k8s component execution
-
 input_schema:
   type: object
   properties:
     value:
       type: number
       description: Input value to process
-
 output_schema:
   type: object
   properties:
@@ -23,51 +18,35 @@ output_schema:
       type: number
     sum:
       type: number
-
 steps:
-    # Double the input value
-  - id: double_it
-    component: /python/double
-    input:
-      value:
-        $from:
-          workflow: input
-        path: value
-  # Square the doubled value
-  - id: square_it
-    component: /python/square
-    input:
-      value:
-        $from:
-          step: double_it
-        path: result
-  # Add original and squared values
-  - id: add_them
-    component: /python/add
-    input:
-      a:
-        $from:
-          workflow: input
-        path: value
-      b:
-        $from:
-          step: square_it
-        path: result
-
+- id: double_it
+  component: /python/double
+  input:
+    value:
+      $input: value
+- id: square_it
+  component: /python/square
+  input:
+    value:
+      $step: double_it
+      path: result
+- id: add_them
+  component: /python/add
+  input:
+    a:
+      $input: value
+    b:
+      $step: square_it
+      path: result
 output:
   original:
-    $from:
-      workflow: input
-    path: value
+    $input: value
   doubled:
-    $from:
-      step: double_it
+    $step: double_it
     path: result
   squared:
-    $from:
-      step: square_it
+    $step: square_it
     path: result
   sum:
-    $from:
-      step: add_them
+    $step: add_them
     path: result

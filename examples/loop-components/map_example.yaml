@@ -1,7 +1,6 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Map Example"
-description: "Example of using the Python map component with doubling workflow"
-
+name: Map Example
+description: Example of using the Python map component with doubling workflow
 input_schema:
   type: object
   properties:
@@ -9,64 +8,81 @@ input_schema:
       type: array
       items:
         type: number
-      description: "Array of numbers to process"
-  required: ["items"]
-
+      description: Array of numbers to process
+  required:
+  - items
 output_schema:
   type: array
   items:
     type: number
-  description: "Array of doubled numbers"
-
+  description: Array of doubled numbers
 steps:
-  - id: create_doubler_flow
-    component: "/builtin/put_blob"
-    input:
-      data:
-        $literal:
-          schema: "https://stepflow.org/schemas/v1/flow.json"
-          steps:
-            - id: doubler
-              component: "/python/double_value"
-              input:
-                value: { $from: { workflow: input } }
-          output: { $from: { step: "doubler" }, path: "result" }
-      blob_type: "flow"
-  
-  - id: double_all
-    component: "/python/map"
-    input:
-      flow_id: { $from: { step: "create_doubler_flow" }, path: "blob_id" }
-      items: { $from: { workflow: input }, path: "items" }
-
-output: { $from: { step: "double_all" }, path: "results" }
-
+- id: create_doubler_flow
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
+        steps:
+        - id: doubler
+          component: /python/double_value
+          input:
+            value:
+              $input: $
+        output:
+          $step: doubler
+          path: result
+    blob_type: flow
+- id: double_all
+  component: /python/map
+  input:
+    flow_id:
+      $step: create_doubler_flow
+      path: blob_id
+    items:
+      $input: items
+output:
+  $step: double_all
+  path: results
 test:
   cases:
-    - name: double small numbers
-      input:
-        items: [1, 2, 3]
-      output:
-        outcome: success
-        result: [2.0, 4.0, 6.0]
-
-    - name: double mixed numbers
-      input:
-        items: [0, 5, -2, 10]
-      output:
-        outcome: success
-        result: [0.0, 10.0, -4.0, 20.0]
-
-    - name: empty array
-      input:
-        items: []
-      output:
-        outcome: success
-        result: []
-
-    - name: single item
-      input:
-        items: [7]
-      output:
-        outcome: success
-        result: [14.0]
+  - name: double small numbers
+    input:
+      items:
+      - 1
+      - 2
+      - 3
+    output:
+      outcome: success
+      result:
+      - 2.0
+      - 4.0
+      - 6.0
+  - name: double mixed numbers
+    input:
+      items:
+      - 0
+      - 5
+      - -2
+      - 10
+    output:
+      outcome: success
+      result:
+      - 0.0
+      - 10.0
+      - -4.0
+      - 20.0
+  - name: empty array
+    input:
+      items: []
+    output:
+      outcome: success
+      result: []
+  - name: single item
+    input:
+      items:
+      - 7
+    output:
+      outcome: success
+      result:
+      - 14.0

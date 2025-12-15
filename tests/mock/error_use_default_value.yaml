@@ -17,13 +17,10 @@ steps:
       output: using default value
   input:
     mode:
-      $from:
-        workflow: input
-      path: mode
+      $input: mode
 output:
   errorResult:
-    $from:
-      step: error
+    $step: error
     path: output
 test:
   cases:

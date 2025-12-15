@@ -14,57 +14,41 @@ outputSchema:
     result:
       type: string
 steps:
-# Step providing input for conditional step
 - id: input_step
   component: /mock/one_output
   input:
     input:
-      $from:
-        workflow: input
-      path: value
-
-# must_execute step with skip_if condition
-# When shouldSkip=true, this step is skipped (no error)
-# When shouldSkip=false, this step executes and fails
+      $input: value
 - id: must_exec_conditional
   component: /mock/error
   mustExecute: true
   skipIf:
-    $from:
-      workflow: input
-    path: shouldSkip
+    $input: shouldSkip
   input:
-    mode: error  # This will cause failure if step executes
-
-# Output step (always executes)
+    mode: error
 - id: output_step
   component: /mock/one_output
   input:
     input:
-      $from:
-        step: input_step
+      $step: input_step
       path: output
-
 output:
-  $from:
-    step: output_step
+  $step: output_step
   path: output
-
 test:
   cases:
-  # Test case 1: skip_if=true, must_execute step is skipped, workflow succeeds
   - name: must_execute with skipIf true - step skipped, workflow succeeds
-    description: When skipIf is true, must_execute step should be skipped and not cause failure
+    description: When skipIf is true, must_execute step should be skipped and not
+      cause failure
     input:
       shouldSkip: true
       value: a
     output:
       outcome: success
       result: b
-
-  # Test case 2: skip_if=false, must_execute step executes and fails
   - name: must_execute with skipIf false - step executes and fails
-    description: When skipIf is false, must_execute step executes and causes workflow failure
+    description: When skipIf is false, must_execute step executes and causes workflow
+      failure
     input:
       shouldSkip: false
       value: a
@@ -73,8 +57,6 @@ test:
       error:
         code: 8
         message: error
-
-  # Test case 3: Verify dependencies are required for skip_if evaluation
   - name: must_execute input dependency required
     description: Input step must execute to provide data for must_execute step
     input:

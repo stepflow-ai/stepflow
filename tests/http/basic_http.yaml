@@ -1,72 +1,97 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "HTTP Transport Basic Test"
-description: "Test basic HTTP transport functionality with non-bidirectional components"
-
+name: HTTP Transport Basic Test
+description: Test basic HTTP transport functionality with non-bidirectional components
 input_schema:
   type: object
   properties:
     message:
       type: string
-      description: "Message to echo"
+      description: Message to echo
     numbers:
       type: object
       properties:
-        a: { type: number }
-        b: { type: number }
-      required: [a, b]
+        a:
+          type: number
+        b:
+          type: number
+      required:
+      - a
+      - b
     items:
       type: array
-      items: { type: string }
-  required: [message, numbers, items]
-
+      items:
+        type: string
+  required:
+  - message
+  - numbers
+  - items
 steps:
-  - id: echo_test
-    component: "/test/echo"
-    input:
-      message: { $from: { workflow: input }, path: "message" }
-
-  - id: math_add
-    component: "/test/math"
-    input:
-      a: { $from: { workflow: input }, path: "$.numbers.a" }
-      b: { $from: { workflow: input }, path: "$.numbers.b" }
-      operation: "add"
-
-  - id: math_multiply
-    component: "/test/math"
-    input:
-      a: { $from: { step: math_add }, path: "result" }
-      b: 2.0
-      operation: "multiply"
-
-  - id: process_items
-    component: "/test/process_list"
-    input:
-      items: { $from: { workflow: input }, path: "items" }
-      prefix: "http_test"
-
+- id: echo_test
+  component: /test/echo
+  input:
+    message:
+      $input: message
+- id: math_add
+  component: /test/math
+  input:
+    a:
+      $input: $.numbers.a
+    b:
+      $input: $.numbers.b
+    operation: add
+- id: math_multiply
+  component: /test/math
+  input:
+    a:
+      $step: math_add
+      path: result
+    b: 2.0
+    operation: multiply
+- id: process_items
+  component: /test/process_list
+  input:
+    items:
+      $input: items
+    prefix: http_test
 output:
-  echo_result: { $from: { step: echo_test }, path: "echo" }
-  addition_result: { $from: { step: math_add }, path: "result" }
-  multiplication_result: { $from: { step: math_multiply }, path: "result" }
-  processed_items: { $from: { step: process_items } }
-
+  echo_result:
+    $step: echo_test
+    path: echo
+  addition_result:
+    $step: math_add
+    path: result
+  multiplication_result:
+    $step: math_multiply
+    path: result
+  processed_items:
+    $step: process_items
 test:
   servers:
     test_http:
-      command: "uv"
-      args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py", "--http", "--port", "{port}"]
+      command: uv
+      args:
+      - run
+      - --project
+      - ../../sdks/python
+      - --extra
+      - http
+      - python
+      - test_python_server.py
+      - --http
+      - --port
+      - '{port}'
       env: {}
-      working_directory: ""
-      port_range: [18000, 19000]
+      working_directory: ''
+      port_range:
+      - 18000
+      - 19000
       health_check:
-        path: "/health"
+        path: /health
         timeout_ms: 5000
         retry_attempts: 10
         retry_delay_ms: 500
       startup_timeout_ms: 10000
       shutdown_timeout_ms: 5000
-
   config:
     plugins:
       builtin:
@@ -74,47 +99,48 @@ test:
       test_http:
         type: stepflow
         transport: http
-        url: "{test_http.url}"
-
+        url: '{test_http.url}'
     routes:
-      "/builtin/{component}":
-        - plugin: builtin
-      "/test/{component}":
-        - plugin: test_http
-
+      /builtin/{component}:
+      - plugin: builtin
+      /test/{component}:
+      - plugin: test_http
   cases:
-    - name: "Basic HTTP operations"
-      input:
-        message: "Hello HTTP Transport!"
-        numbers:
-          a: 10
-          b: 5
-        items: ["item1", "item2", "item3"]
-
-      output:
-        outcome: success
-        result:
-          echo_result: "Echo: Hello HTTP Transport!"
-          addition_result: 15.0
-          multiplication_result: 30.0
+  - name: Basic HTTP operations
+    input:
+      message: Hello HTTP Transport!
+      numbers:
+        a: 10
+        b: 5
+      items:
+      - item1
+      - item2
+      - item3
+    output:
+      outcome: success
+      result:
+        echo_result: 'Echo: Hello HTTP Transport!'
+        addition_result: 15.0
+        multiplication_result: 30.0
+        processed_items:
           processed_items:
-            processed_items: ["http_test_item1", "http_test_item2", "http_test_item3"]
-            count: 3
-
-    - name: "Edge case with empty items"
-      input:
-        message: "Edge case test"
-        numbers:
-          a: 0
-          b: 0
-        items: []
-
-      output:
-        outcome: success
-        result:
-          echo_result: "Echo: Edge case test"
-          addition_result: 0.0
-          multiplication_result: 0.0
-          processed_items:
-            count: 0
-            processed_items: []
+          - http_test_item1
+          - http_test_item2
+          - http_test_item3
+          count: 3
+  - name: Edge case with empty items
+    input:
+      message: Edge case test
+      numbers:
+        a: 0
+        b: 0
+      items: []
+    output:
+      outcome: success
+      result:
+        echo_result: 'Echo: Edge case test'
+        addition_result: 0.0
+        multiplication_result: 0.0
+        processed_items:
+          count: 0
+          processed_items: []

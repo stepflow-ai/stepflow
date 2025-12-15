@@ -1,14 +1,12 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: parallel-bidirectional-test
 description: Test parallel component execution with bidirectional communication
-
 input_schema:
   type: object
   properties:
     workflow_id:
       type: number
       description: Unique ID for this workflow run
-
 output_schema:
   type: object
   properties:
@@ -18,40 +16,29 @@ output_schema:
       type: string
     blob_id_3:
       type: string
-
 steps:
-  # Execute 3 bidirectional components in parallel
-  - id: blob_test_1
-    component: /python/store_and_retrieve_blob
-    input:
-      data:
-        $from:
-          workflow: input
-
-  - id: blob_test_2
-    component: /python/store_and_retrieve_blob
-    input:
-      data:
-        $from:
-          workflow: input
-
-  - id: blob_test_3
-    component: /python/store_and_retrieve_blob
-    input:
-      data:
-        $from:
-          workflow: input
-
+- id: blob_test_1
+  component: /python/store_and_retrieve_blob
+  input:
+    data:
+      $input: $
+- id: blob_test_2
+  component: /python/store_and_retrieve_blob
+  input:
+    data:
+      $input: $
+- id: blob_test_3
+  component: /python/store_and_retrieve_blob
+  input:
+    data:
+      $input: $
 output:
   blob_id_1:
-    $from:
-      step: blob_test_1
+    $step: blob_test_1
     path: $.blob_id
   blob_id_2:
-    $from:
-      step: blob_test_2
+    $step: blob_test_2
     path: $.blob_id
   blob_id_3:
-    $from:
-      step: blob_test_3
+    $step: blob_test_3
     path: $.blob_id

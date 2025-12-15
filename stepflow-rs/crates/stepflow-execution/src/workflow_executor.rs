@@ -1129,7 +1129,8 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::FlowError;
-    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder, StepId, ValueTemplate};
+    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder, StepId};
+    use stepflow_core::ValueExpr;
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
@@ -1249,7 +1250,7 @@ mod tests {
         StepBuilder::mock_step(id).input_json(input).build()
     }
 
-    fn create_test_flow(steps: Vec<Step>, output: ValueTemplate) -> Flow {
+    fn create_test_flow(steps: Vec<Step>, output: ValueExpr) -> Flow {
         FlowBuilder::new().steps(steps).output(output).build()
     }
 
@@ -1263,7 +1264,10 @@ mod tests {
 
         let flow = Arc::new(create_test_flow(
             steps,
-            ValueTemplate::parse_value(json!({"$from": {"step": "step2"}})).unwrap(),
+            ValueExpr::Step {
+                step: "step2".to_string(),
+                path: Default::default(),
+            },
         ));
 
         // Build dependencies using analysis crate

@@ -20,30 +20,24 @@ steps:
   output_schema: null
   input:
     input:
-      $from:
-        workflow: input
-      path: name
+      $input: name
 - id: step2
   component: /mock/two_outputs
   input_schema: null
   output_schema: null
   input:
     input:
-      $from:
-        step: step1
+      $step: step1
       path: output
 output:
   name:
-    $from:
-      step: step1
+    $step: step1
     path: output
   x:
-    $from:
-      step: step2
+    $step: step2
     path: x
   y:
-    $from:
-      step: step2
+    $step: step2
     path: y
 test:
   cases:
@@ -79,5 +73,5 @@ test:
             attachments:
             - 'Component: /one_output'
             - Component execution failed for step 'step1'
-            - 'No behavior defined for /one_output on {"input":"world"}'
+            - No behavior defined for /one_output on {"input":"world"}
           - error: error executing user-defined function

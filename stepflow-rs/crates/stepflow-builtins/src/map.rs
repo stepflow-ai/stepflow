@@ -124,8 +124,8 @@ impl BuiltinComponent for MapComponent {
 mod tests {
     use super::*;
     use crate::mock_context::MockContext;
-    use stepflow_core::values::ValueTemplate;
     use stepflow_core::workflow::FlowBuilder;
+    use stepflow_core::ValueExpr;
 
     #[tokio::test]
     async fn test_map_component_success() {
@@ -134,7 +134,7 @@ mod tests {
         // Create a workflow that doubles the input value
         let test_flow = FlowBuilder::new()
             .name("test-double")
-            .output(ValueTemplate::literal(serde_json::json!({
+            .output(ValueExpr::Literal(serde_json::json!({
                 "doubled": 42
             })))
             .build();
@@ -175,7 +175,7 @@ mod tests {
 
         let test_flow = FlowBuilder::new()
             .name("test-empty")
-            .output(ValueTemplate::literal(
+            .output(ValueExpr::Literal(
                 serde_json::json!({"result": "processed"}),
             ))
             .build();

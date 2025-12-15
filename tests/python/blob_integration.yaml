@@ -16,71 +16,66 @@ output_schema:
     final_result:
       type: object
 steps:
-  # Step 1: Store initial data as blob using builtin component
-  - id: store_original_data
-    component: /builtin/put_blob
+- id: store_original_data
+  component: /builtin/put_blob
+  input:
+    data:
+      $input: user_data
+    blob_type: data
+- id: create_process_data_blob
+  component: /builtin/put_blob
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          blob_id:
+            type: string
+          config:
+            type: object
+        required:
+        - blob_id
+        - config
+      code: "async def process_data(input, context):\n    # Retrieve the original\
+        \ data from blob\n    original_data = await context.get_blob(input['blob_id'])\n\
+        \n    # Process the data (example: add multiply numbers)\n    processed_data\
+        \ = {\n        'original': original_data,\n        'config': input['config']\n\
+        \    }\n\n    # If original data has numeric values, transform them\n    if\
+        \ isinstance(original_data, dict):\n        for key, value in original_data.items():\n\
+        \            if isinstance(value, (int, float)):\n                processed_data[f'{key}_doubled']\
+        \ = value * 2\n\n    # Store processed data as new blob\n    new_blob_id =\
+        \ await context.put_blob(processed_data)\n\n    return {\n        'original_blob_id':\
+        \ input['blob_id'],\n        'processed_blob_id': new_blob_id,\n        'summary':\
+        \ f'Processed {len(original_data)} fields'\n    }\nprocess_data\n"
+    blob_type: data
+- id: process_blob_data
+  component: /python/udf
+  input:
+    blob_id:
+      $step: create_process_data_blob
+      path: blob_id
     input:
-      data: { $from: { workflow: input }, path: user_data }
-      blob_type: "data"
-
-  # Step 2: Create blob for Python function definition
-  - id: create_process_data_blob
-    component: /builtin/put_blob
-    input:
-      data:
-        input_schema:
-          type: object
-          properties:
-            blob_id: { type: string }
-            config: { type: object }
-          required: [blob_id, config]
-        code: |
-          async def process_data(input, context):
-              # Retrieve the original data from blob
-              original_data = await context.get_blob(input['blob_id'])
-
-              # Process the data (example: add multiply numbers)
-              processed_data = {
-                  'original': original_data,
-                  'config': input['config']
-              }
-
-              # If original data has numeric values, transform them
-              if isinstance(original_data, dict):
-                  for key, value in original_data.items():
-                      if isinstance(value, (int, float)):
-                          processed_data[f'{key}_doubled'] = value * 2
-
-              # Store processed data as new blob
-              new_blob_id = await context.put_blob(processed_data)
-
-              return {
-                  'original_blob_id': input['blob_id'],
-                  'processed_blob_id': new_blob_id,
-                  'summary': f'Processed {len(original_data)} fields'
-              }
-          process_data
-      blob_type: "data"
-
-  # Step 3: Python UDF retrieves blob and processes it
-  - id: process_blob_data
-    component: /python/udf
-    input:
-      blob_id: { $from: { step: create_process_data_blob }, path: blob_id }
-      input:
-        blob_id: { $from: { step: store_original_data }, path: blob_id }
-        config: { $from: { workflow: input }, path: processing_config }
-
-  # Step 4: Retrieve final processed data using builtin component
-  - id: get_final_result
-    component: /builtin/get_blob
-    input:
-      blob_id: { $from: { step: process_blob_data }, path: processed_blob_id }
-
+      blob_id:
+        $step: store_original_data
+        path: blob_id
+      config:
+        $input: processing_config
+- id: get_final_result
+  component: /builtin/get_blob
+  input:
+    blob_id:
+      $step: process_blob_data
+      path: processed_blob_id
 output:
-  original_blob_id: { $from: { step: process_blob_data }, path: original_blob_id }
-  processed_blob_id: { $from: { step: process_blob_data }, path: processed_blob_id }
-  final_result: { $from: { step: get_final_result }, path: data }
+  original_blob_id:
+    $step: process_blob_data
+    path: original_blob_id
+  processed_blob_id:
+    $step: process_blob_data
+    path: processed_blob_id
+  final_result:
+    $step: get_final_result
+    path: data
 test:
   cases:
   - name: alice

@@ -1,324 +1,387 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "AI-Powered Sales Analysis with Regional Breakdown"
-description: "Processes sales data, calculates metrics, analyzes regions using nested workflows, and generates AI insights"
-
+name: AI-Powered Sales Analysis with Regional Breakdown
+description: Processes sales data, calculates metrics, analyzes regions using nested
+  workflows, and generates AI insights
 input_schema:
   type: object
   properties:
     sales_data:
       type: array
-      description: "Array of sales records"
+      description: Array of sales records
     target_revenue:
       type: number
-      description: "Target revenue for analysis"
-
+      description: Target revenue for analysis
 steps:
-  # Parallel data processing steps
-  - id: sum_revenue_udf
-    component: /put_blob
+- id: sum_revenue_udf
+  component: /put_blob
+  input:
+    data:
+      $literal:
+        code: "sales_data = input.get('sales_data')\nif not sales_data:\n    raise\
+          \ SkipStep(\"No sales data provided for revenue calculation\")\nreturn sum(item['revenue']\
+          \ for item in sales_data)\n"
+    blob_type: data
+- id: calculate_total_revenue
+  component: /python/udf
+  input:
+    blob_id:
+      $step: sum_revenue_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          code: |
-            sales_data = input.get('sales_data')
-            if not sales_data:
-                raise SkipStep("No sales data provided for revenue calculation")
-            return sum(item['revenue'] for item in sales_data)
-      blob_type: "data"
-
-  - id: calculate_total_revenue
-    component: "/python/udf"
+      sales_data:
+        $input: sales_data
+- id: count_sales_udf
+  component: /put_blob
+  input:
+    data:
+      $literal:
+        code: len(input['sales_data'])
+    blob_type: data
+- id: count_sales
+  component: /python/udf
+  input:
+    blob_id:
+      $step: count_sales_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: sum_revenue_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  - id: count_sales_udf
-    component: /put_blob
+      sales_data:
+        $input: sales_data
+- id: average_sale_udf
+  component: /put_blob
+  input:
+    data:
+      $literal:
+        code: "sales_data = input.get('sales_data')\nif not sales_data:\n    raise\
+          \ SkipStep(\"No sales data provided for average calculation\")\nreturn sum(item['revenue']\
+          \ for item in sales_data) / len(sales_data)\n"
+    blob_type: data
+- id: calculate_average_sale
+  component: /python/udf
+  input:
+    blob_id:
+      $step: average_sale_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          code: "len(input['sales_data'])"
-      blob_type: "data"
-
-  - id: count_sales
-    component: "/python/udf"
+      sales_data:
+        $input: sales_data
+- id: divide_udf
+  component: /put_blob
+  input:
+    data:
+      $literal:
+        code: "a = input['a']\nb = input['b']\nif b == 0:\n    raise SkipStep(\"Cannot\
+          \ divide by zero - target revenue is zero\")\nreturn a / b\n"
+    blob_type: data
+- id: calculate_performance_ratio
+  component: /python/udf
+  input:
+    blob_id:
+      $step: divide_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: count_sales_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  - id: average_sale_udf
-    component: /put_blob
+      a:
+        $step: calculate_total_revenue
+        path: result
+      b:
+        $input: target_revenue
+- id: analyze_west_region
+  component: /eval
+  input:
+    workflow:
+      $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
+        name: West Region Analysis
+        steps:
+        - id: filter_west_udf
+          component: /put_blob
+          input:
+            data:
+              $literal:
+                code: "sales_data = input.get('sales_data')\nif not sales_data:\n\
+                  \    raise SkipStep(\"No sales data provided for West region filtering\"\
+                  )\nreturn [item for item in sales_data if item.get('region') ==\
+                  \ 'West']\n"
+        - id: filter_region
+          component: /python/udf
+          input:
+            blob_id:
+              $step:
+                step: filter_west_udf
+              path: blob_id
+            input:
+              sales_data:
+                $step:
+                  $input: $
+                path: sales_data
+        - id: west_revenue_udf
+          component: /put_blob
+          input:
+            data:
+              $literal:
+                code: "filtered_data = input.get('filtered_data')\nif not filtered_data:\n\
+                  \    raise SkipStep(\"No filtered West region data for revenue calculation\"\
+                  )\nreturn sum(item['revenue'] for item in filtered_data)\n"
+        - id: region_revenue
+          component: /python/udf
+          input:
+            blob_id:
+              $step:
+                step: west_revenue_udf
+              path: blob_id
+            input:
+              filtered_data:
+                $step:
+                  step: filter_region
+                path: result
+        - id: west_count_udf
+          component: /put_blob
+          input:
+            data:
+              $literal:
+                code: "filtered_data = input.get('filtered_data')\nif not filtered_data:\n\
+                  \    raise SkipStep(\"No filtered West region data for count calculation\"\
+                  )\nreturn len(filtered_data)\n"
+        - id: region_count
+          component: /python/udf
+          input:
+            blob_id:
+              $step:
+                step: west_count_udf
+              path: blob_id
+            input:
+              filtered_data:
+                $step:
+                  step: filter_region
+                path: result
+        output:
+          revenue:
+            $step:
+              step: region_revenue
+            path: result
+          count:
+            $step:
+              step: region_count
+            path: result
     input:
-      data:
-        $literal:
-          code: |
-            sales_data = input.get('sales_data')
-            if not sales_data:
-                raise SkipStep("No sales data provided for average calculation")
-            return sum(item['revenue'] for item in sales_data) / len(sales_data)
-      blob_type: "data"
-
-  - id: calculate_average_sale
-    component: "/python/udf"
+      sales_data:
+        $input: sales_data
+- id: analyze_east_region
+  component: /eval
+  input:
+    workflow:
+      $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
+        name: East Region Analysis
+        steps:
+        - id: filter_east_udf
+          component: /put_blob
+          input:
+            data:
+              $literal:
+                code: "sales_data = input.get('sales_data')\nif not sales_data:\n\
+                  \    raise SkipStep(\"No sales data provided for East region filtering\"\
+                  )\nreturn [item for item in sales_data if item.get('region') ==\
+                  \ 'East']\n"
+        - id: filter_region
+          component: /python/udf
+          input:
+            blob_id:
+              $step:
+                step: filter_east_udf
+              path: blob_id
+            input:
+              sales_data:
+                $step:
+                  $input: $
+                path: sales_data
+        - id: east_revenue_udf
+          component: /put_blob
+          input:
+            data:
+              $literal:
+                code: "filtered_data = input.get('filtered_data')\nif not filtered_data:\n\
+                  \    raise SkipStep(\"No filtered East region data for revenue calculation\"\
+                  )\nreturn sum(item['revenue'] for item in filtered_data)\n"
+        - id: region_revenue
+          component: /python/udf
+          input:
+            blob_id:
+              $step:
+                step: east_revenue_udf
+              path: blob_id
+            input:
+              filtered_data:
+                $step:
+                  step: filter_region
+                path: result
+        - id: east_count_udf
+          component: /put_blob
+          input:
+            data:
+              $literal:
+                code: "filtered_data = input.get('filtered_data')\nif not filtered_data:\n\
+                  \    raise SkipStep(\"No filtered East region data for count calculation\"\
+                  )\nreturn len(filtered_data)\n"
+        - id: region_count
+          component: /python/udf
+          input:
+            blob_id:
+              $step:
+                step: east_count_udf
+              path: blob_id
+            input:
+              filtered_data:
+                $step:
+                  step: filter_region
+                path: result
+        output:
+          revenue:
+            $step:
+              step: region_revenue
+            path: result
+          count:
+            $step:
+              step: region_count
+            path: result
     input:
-      blob_id: { $from: { step: average_sale_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  # This step waits for total_revenue to complete
-  - id: divide_udf
-    component: /put_blob
+      sales_data:
+        $input: sales_data
+- id: compare_regions_udf
+  component: /put_blob
+  input:
+    data:
+      $literal:
+        code: "west_rev = input['west_metrics']['revenue']\neast_rev = input['east_metrics']['revenue']\n\
+          west_count = input['west_metrics']['count']\neast_count = input['east_metrics']['count']\n\
+          {\n  'west_revenue': west_rev,\n  'east_revenue': east_rev,\n  'west_count':\
+          \ west_count,\n  'east_count': east_count,\n  'revenue_leader': 'West' if\
+          \ west_rev > east_rev else 'East',\n  'count_leader': 'West' if west_count\
+          \ > east_count else 'East',\n  'revenue_difference': abs(west_rev - east_rev),\n\
+          \  'count_difference': abs(west_count - east_count)\n}\n"
+- id: compare_regions
+  component: /python/udf
+  input:
+    blob_id:
+      $step: compare_regions_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          code: |
-            a = input['a']
-            b = input['b']
-            if b == 0:
-                raise SkipStep("Cannot divide by zero - target revenue is zero")
-            return a / b
-      blob_type: "data"
+      west_metrics:
+        $step: analyze_west_region
+        path: result
+      east_metrics:
+        $step: analyze_east_region
+        path: result
+- id: format_metrics_udf
+  component: /put_blob
+  input:
+    data:
+      $literal:
+        code: 'total_revenue = input[''total_revenue'']
 
-  - id: calculate_performance_ratio
-    component: "/python/udf"
+          sales_count = input[''sales_count'']
+
+          average_sale = input[''average_sale'']
+
+          performance_ratio = input[''performance_ratio'']
+
+          target_revenue = input[''target_revenue'']
+
+          regional_comparison = input[''regional_comparison'']
+
+
+          return f"""Sales Analysis Summary:
+
+
+          Overall Metrics:
+
+          - Total Revenue: ${total_revenue:,.2f}
+
+          - Number of Sales: {sales_count}
+
+          - Average Sale Value: ${average_sale:,.2f}
+
+          - Performance vs Target: {performance_ratio:.1%} (Target: ${target_revenue:,.2f})
+
+
+          Regional Performance:
+
+          - West Region: ${regional_comparison[''west_revenue'']:,.2f} ({regional_comparison[''west_count'']}
+          sales)
+
+          - East Region: ${regional_comparison[''east_revenue'']:,.2f} ({regional_comparison[''east_count'']}
+          sales)
+
+          - Revenue Leader: {regional_comparison[''revenue_leader'']} (${regional_comparison[''revenue_difference'']:,.2f}
+          difference)
+
+          - Volume Leader: {regional_comparison[''count_leader'']} ({regional_comparison[''count_difference'']}
+          sales difference)
+
+
+          Please provide strategic insights and recommendations based on this data."""
+
+          '
+- id: format_metrics_summary
+  component: /python/udf
+  input:
+    blob_id:
+      $step: format_metrics_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: divide_udf }, path: "blob_id" }
-      input:
-        a: { $from: { step: calculate_total_revenue }, path: "result" }
-        b: { $from: { workflow: input }, path: "target_revenue" }
-
-  # Regional analysis using eval components (run in parallel)
-  - id: analyze_west_region
-    component: /eval
-    input:
-      workflow:
-        $literal:
-          schema: https://stepflow.org/schemas/v1/flow.json
-          name: "West Region Analysis"
-          steps:
-            - id: filter_west_udf
-              component: /put_blob
-              input:
-                data:
-                  $literal:
-                    code: |
-                      sales_data = input.get('sales_data')
-                      if not sales_data:
-                          raise SkipStep("No sales data provided for West region filtering")
-                      return [item for item in sales_data if item.get('region') == 'West']
-
-            - id: filter_region
-              component: "/python/udf"
-              input:
-                blob_id: { $from: { step: filter_west_udf }, path: "blob_id" }
-                input:
-                  sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-            - id: west_revenue_udf
-              component: /put_blob
-              input:
-                data:
-                  $literal:
-                    code: |
-                      filtered_data = input.get('filtered_data')
-                      if not filtered_data:
-                          raise SkipStep("No filtered West region data for revenue calculation")
-                      return sum(item['revenue'] for item in filtered_data)
-
-            - id: region_revenue
-              component: "/python/udf"
-              input:
-                blob_id: { $from: { step: west_revenue_udf }, path: "blob_id" }
-                input:
-                  filtered_data: { $from: { step: filter_region }, path: "result" }
-
-            - id: west_count_udf
-              component: /put_blob
-              input:
-                data:
-                  $literal:
-                    code: |
-                      filtered_data = input.get('filtered_data')
-                      if not filtered_data:
-                          raise SkipStep("No filtered West region data for count calculation")
-                      return len(filtered_data)
-
-            - id: region_count
-              component: "/python/udf"
-              input:
-                blob_id: { $from: { step: west_count_udf }, path: "blob_id" }
-                input:
-                  filtered_data: { $from: { step: filter_region }, path: "result" }
-
-          output:
-            revenue: { $from: { step: region_revenue }, path: "result" }
-            count: { $from: { step: region_count }, path: "result" }
-
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  - id: analyze_east_region
-    component: /eval
-    input:
-      workflow:
-        $literal:
-          schema: https://stepflow.org/schemas/v1/flow.json
-          name: "East Region Analysis"
-          steps:
-            - id: filter_east_udf
-              component: /put_blob
-              input:
-                data:
-                  $literal:
-                    code: |
-                      sales_data = input.get('sales_data')
-                      if not sales_data:
-                          raise SkipStep("No sales data provided for East region filtering")
-                      return [item for item in sales_data if item.get('region') == 'East']
-
-            - id: filter_region
-              component: "/python/udf"
-              input:
-                blob_id: { $from: { step: filter_east_udf }, path: "blob_id" }
-                input:
-                  sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-            - id: east_revenue_udf
-              component: /put_blob
-              input:
-                data:
-                  $literal:
-                    code: |
-                      filtered_data = input.get('filtered_data')
-                      if not filtered_data:
-                          raise SkipStep("No filtered East region data for revenue calculation")
-                      return sum(item['revenue'] for item in filtered_data)
-
-            - id: region_revenue
-              component: "/python/udf"
-              input:
-                blob_id: { $from: { step: east_revenue_udf }, path: "blob_id" }
-                input:
-                  filtered_data: { $from: { step: filter_region }, path: "result" }
-
-            - id: east_count_udf
-              component: /put_blob
-              input:
-                data:
-                  $literal:
-                    code: |
-                      filtered_data = input.get('filtered_data')
-                      if not filtered_data:
-                          raise SkipStep("No filtered East region data for count calculation")
-                      return len(filtered_data)
-
-            - id: region_count
-              component: "/python/udf"
-              input:
-                blob_id: { $from: { step: east_count_udf }, path: "blob_id" }
-                input:
-                  filtered_data: { $from: { step: filter_region }, path: "result" }
-
-          output:
-            revenue: { $from: { step: region_revenue }, path: "result" }
-            count: { $from: { step: region_count }, path: "result" }
-
-      input:
-        sales_data: { $from: { workflow: input }, path: "sales_data" }
-
-  # Compare regional performance
-  - id: compare_regions_udf
-    component: /put_blob
-    input:
-      data:
-        $literal:
-          code: |
-            west_rev = input['west_metrics']['revenue']
-            east_rev = input['east_metrics']['revenue']
-            west_count = input['west_metrics']['count']
-            east_count = input['east_metrics']['count']
-            {
-              'west_revenue': west_rev,
-              'east_revenue': east_rev,
-              'west_count': west_count,
-              'east_count': east_count,
-              'revenue_leader': 'West' if west_rev > east_rev else 'East',
-              'count_leader': 'West' if west_count > east_count else 'East',
-              'revenue_difference': abs(west_rev - east_rev),
-              'count_difference': abs(west_count - east_count)
-            }
-
-  - id: compare_regions
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: compare_regions_udf }, path: "blob_id" }
-      input:
-        west_metrics: { $from: { step: analyze_west_region }, path: "result" }
-        east_metrics: { $from: { step: analyze_east_region }, path: "result" }
-
-  # Format metrics for AI analysis (waits for all calculations)
-  - id: format_metrics_udf
-    component: /put_blob
-    input:
-      data:
-        $literal:
-          code: |
-            total_revenue = input['total_revenue']
-            sales_count = input['sales_count']
-            average_sale = input['average_sale']
-            performance_ratio = input['performance_ratio']
-            target_revenue = input['target_revenue']
-            regional_comparison = input['regional_comparison']
-            
-            return f"""Sales Analysis Summary:
-
-            Overall Metrics:
-            - Total Revenue: ${total_revenue:,.2f}
-            - Number of Sales: {sales_count}
-            - Average Sale Value: ${average_sale:,.2f}
-            - Performance vs Target: {performance_ratio:.1%} (Target: ${target_revenue:,.2f})
-
-            Regional Performance:
-            - West Region: ${regional_comparison['west_revenue']:,.2f} ({regional_comparison['west_count']} sales)
-            - East Region: ${regional_comparison['east_revenue']:,.2f} ({regional_comparison['east_count']} sales)
-            - Revenue Leader: {regional_comparison['revenue_leader']} (${regional_comparison['revenue_difference']:,.2f} difference)
-            - Volume Leader: {regional_comparison['count_leader']} ({regional_comparison['count_difference']} sales difference)
-
-            Please provide strategic insights and recommendations based on this data."""
-
-  - id: format_metrics_summary
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: format_metrics_udf }, path: "blob_id" }
-      input:
-        total_revenue: { $from: { step: calculate_total_revenue }, path: "result" }
-        sales_count: { $from: { step: count_sales }, path: "result" }
-        average_sale: { $from: { step: calculate_average_sale }, path: "result" }
-        performance_ratio: { $from: { step: calculate_performance_ratio }, path: "result" }
-        target_revenue: { $from: { workflow: input }, path: "target_revenue" }
-        regional_comparison: { $from: { step: compare_regions }, path: "result" }
-
-  # Format messages for OpenAI (depends on metrics summary)
-  - id: create_openai_messages
-    component: /create_messages
-    input:
-      system_instructions: "You are a senior sales analyst providing insights based on business metrics and regional performance. Be specific and actionable in your recommendations."
-      user_prompt: { $from: { step: format_metrics_summary }, path: "summary" }
-
-  # Generate AI insights from the comprehensive metrics
-  - id: generate_ai_insights
-    component: /openai
-    input:
-      messages: { $from: { step: create_openai_messages }, path: "messages" }
-
+      total_revenue:
+        $step: calculate_total_revenue
+        path: result
+      sales_count:
+        $step: count_sales
+        path: result
+      average_sale:
+        $step: calculate_average_sale
+        path: result
+      performance_ratio:
+        $step: calculate_performance_ratio
+        path: result
+      target_revenue:
+        $input: target_revenue
+      regional_comparison:
+        $step: compare_regions
+        path: result
+- id: create_openai_messages
+  component: /create_messages
+  input:
+    system_instructions: You are a senior sales analyst providing insights based on
+      business metrics and regional performance. Be specific and actionable in your
+      recommendations.
+    user_prompt:
+      $step: format_metrics_summary
+      path: summary
+- id: generate_ai_insights
+  component: /openai
+  input:
+    messages:
+      $step: create_openai_messages
+      path: messages
 output:
-  total_revenue: { $from: { step: calculate_total_revenue }, path: "result" }
-  sales_count: { $from: { step: count_sales }, path: "result" }
-  average_sale: { $from: { step: calculate_average_sale }, path: "result" }
-  performance_ratio: { $from: { step: calculate_performance_ratio }, path: "result" }
-  west_analysis: { $from: { step: analyze_west_region }, path: "result" }
-  east_analysis: { $from: { step: analyze_east_region }, path: "result" }
-  regional_comparison: { $from: { step: compare_regions }, path: "comparison" }
-  ai_insights: { $from: { step: generate_ai_insights }, path: "response" }
+  total_revenue:
+    $step: calculate_total_revenue
+    path: result
+  sales_count:
+    $step: count_sales
+    path: result
+  average_sale:
+    $step: calculate_average_sale
+    path: result
+  performance_ratio:
+    $step: calculate_performance_ratio
+    path: result
+  west_analysis:
+    $step: analyze_west_region
+    path: result
+  east_analysis:
+    $step: analyze_east_region
+    path: result
+  regional_comparison:
+    $step: compare_regions
+    path: comparison
+  ai_insights:
+    $step: generate_ai_insights
+    path: response

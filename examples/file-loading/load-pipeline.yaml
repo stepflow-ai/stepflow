@@ -1,137 +1,152 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "File Loading Sales Pipeline"
-description: "Load sales data from file and process it"
-
+name: File Loading Sales Pipeline
+description: Load sales data from file and process it
 input_schema:
   type: object
   properties:
     data_file_path:
       type: string
-      description: "Path to the sales data file"
+      description: Path to the sales data file
     target_revenue:
       type: number
-      description: "Target revenue for analysis"
-
+      description: Target revenue for analysis
 steps:
-  # Load the sales data from file
-  - id: load_sales_data
-    component: /builtin/load_file
+- id: load_sales_data
+  component: /builtin/load_file
+  input:
+    path:
+      $input: data_file_path
+- id: extract_sales_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        input_schema:
+          type: object
+          properties:
+            file_data:
+              type: object
+          required:
+          - file_data
+        code: input['file_data']['sales_data']
+    blob_type: data
+- id: extract_sales_array
+  component: /python/udf
+  input:
+    blob_id:
+      $step: extract_sales_udf
+      path: blob_id
     input:
-      path: { $from: { workflow: input }, path: "data_file_path" }
-
-  # Extract the sales_data array using UDF
-  - id: extract_sales_udf
-    component: /builtin/put_blob
+      file_data:
+        $step: load_sales_data
+        path: data
+- id: sum_revenue_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        input_schema:
+          type: object
+          properties:
+            sales_data:
+              type: array
+          required:
+          - sales_data
+        code: sum(item['revenue'] for item in input['sales_data'])
+    blob_type: data
+- id: calculate_total_revenue
+  component: /python/udf
+  input:
+    blob_id:
+      $step: sum_revenue_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          input_schema:
-            type: object
-            properties:
-              file_data:
-                type: object
-            required: [file_data]
-          code: "input['file_data']['sales_data']"
-      blob_type: "data"
-
-  - id: extract_sales_array
-    component: "/python/udf"
+      sales_data:
+        $step: extract_sales_array
+- id: count_sales_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        input_schema:
+          type: object
+          properties:
+            sales_data:
+              type: array
+          required:
+          - sales_data
+        code: len(input['sales_data'])
+    blob_type: data
+- id: count_sales
+  component: /python/udf
+  input:
+    blob_id:
+      $step: count_sales_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: extract_sales_udf }, path: "blob_id" }
-      input:
-        file_data: { $from: { step: "load_sales_data" }, path: "data" }
-
-  # Now process the sales data array
-  - id: sum_revenue_udf
-    component: /builtin/put_blob
+      sales_data:
+        $step: extract_sales_array
+- id: average_sale_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        input_schema:
+          type: object
+          properties:
+            sales_data:
+              type: array
+          required:
+          - sales_data
+        code: sum(item['revenue'] for item in input['sales_data']) / len(input['sales_data'])
+          if input['sales_data'] else 0
+    blob_type: data
+- id: calculate_average_sale
+  component: /python/udf
+  input:
+    blob_id:
+      $step: average_sale_udf
+      path: blob_id
     input:
-      data:
-        $literal:
-          input_schema:
-            type: object
-            properties:
-              sales_data:
-                type: array
-            required: [sales_data]
-          code: "sum(item['revenue'] for item in input['sales_data'])"
-      blob_type: "data"
-
-  - id: calculate_total_revenue
-    component: "/python/udf"
+      sales_data:
+        $step: extract_sales_array
+- id: divide_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        input_schema:
+          type: object
+          properties:
+            a:
+              type: number
+            b:
+              type: number
+          required:
+          - a
+          - b
+        code: input['a'] / input['b'] if input['b'] != 0 else 0
+    blob_type: data
+- id: calculate_performance_ratio
+  component: /python/udf
+  input:
+    blob_id:
+      $step: divide_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: sum_revenue_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { step: "extract_sales_array" } }
-
-  - id: count_sales_udf
-    component: /builtin/put_blob
-    input:
-      data:
-        $literal:
-          input_schema:
-            type: object
-            properties:
-              sales_data:
-                type: array
-            required: [sales_data]
-          code: "len(input['sales_data'])"
-      blob_type: "data"
-
-  - id: count_sales
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: count_sales_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { step: "extract_sales_array" } }
-
-  - id: average_sale_udf
-    component: /builtin/put_blob
-    input:
-      data:
-        $literal:
-          input_schema:
-            type: object
-            properties:
-              sales_data:
-                type: array
-            required: [sales_data]
-          code: "sum(item['revenue'] for item in input['sales_data']) / len(input['sales_data']) if input['sales_data'] else 0"
-      blob_type: "data"
-
-  - id: calculate_average_sale
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: average_sale_udf }, path: "blob_id" }
-      input:
-        sales_data: { $from: { step: "extract_sales_array" } }
-
-  - id: divide_udf
-    component: /builtin/put_blob
-    input:
-      data:
-        $literal:
-          input_schema:
-            type: object
-            properties:
-              a:
-                type: number
-              b:
-                type: number
-            required: [a, b]
-          code: "input['a'] / input['b'] if input['b'] != 0 else 0"
-      blob_type: "data"
-
-  - id: calculate_performance_ratio
-    component: "/python/udf"
-    input:
-      blob_id: { $from: { step: divide_udf }, path: "blob_id" }
-      input:
-        a: { $from: { step: "calculate_total_revenue" } }
-        b: { $from: { workflow: input }, path: "target_revenue" }
-
+      a:
+        $step: calculate_total_revenue
+      b:
+        $input: target_revenue
 output:
-  file_metadata: { $from: { step: "load_sales_data" }, path: "metadata" }
-  total_revenue: { $from: { step: "calculate_total_revenue" } }
-  sales_count: { $from: { step: "count_sales" } }
-  average_sale: { $from: { step: "calculate_average_sale" } }
-  performance_ratio: { $from: { step: "calculate_performance_ratio" } }
+  file_metadata:
+    $step: load_sales_data
+    path: metadata
+  total_revenue:
+    $step: calculate_total_revenue
+  sales_count:
+    $step: count_sales
+  average_sale:
+    $step: calculate_average_sale
+  performance_ratio:
+    $step: calculate_performance_ratio
