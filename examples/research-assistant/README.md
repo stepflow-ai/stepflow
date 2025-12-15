@@ -102,8 +102,8 @@ Generates research questions based on a topic and context:
 ```yaml
 input:
   input:
-    topic: { $from: { workflow: input }, path: "topic" }
-    context: { $from: { workflow: input }, path: "context" }
+    topic: { $input: "topic" }
+    context: { $input: "context" }
   execution_mode: invoke
 ```
 
@@ -117,8 +117,8 @@ Analyzes text for research insights:
 ```yaml
 input:
   input:
-    text: { $from: { workflow: input }, path: "context" }
-    topic: { $from: { workflow: input }, path: "topic" }
+    text: { $input: "context" }
+    topic: { $input: "topic" }
     analysis_type: "research_summary"
   execution_mode: invoke
 ```
@@ -212,8 +212,8 @@ Steps are defined declaratively with clear dependencies. Note that LangChain com
   component: /research/note_generator
   input:
     input:
-      topic: { $from: { workflow: input }, path: "topic" }
-      questions: { $from: { step: generate_questions }, path: "questions" }
+      topic: { $input: "topic" }
+      questions: { $step: "generate_questions", path: "questions" }
     execution_mode: invoke
 ```
 
@@ -241,7 +241,7 @@ def create_literature_reviewer():
   component: /research/literature_reviewer
   input:
     input:
-      topic: { $from: { workflow: input }, path: "topic" }
+      topic: { $input: "topic" }
     execution_mode: invoke
 ```
 
@@ -263,7 +263,7 @@ plugins:
 - id: search_web
   component: /web_search/brave_web_search
   input:
-    query: { $from: { step: generate_questions }, path: "questions[0]" }
+    query: { $step: "generate_questions", path: "questions[0]" }
 ```
 
 ## Testing

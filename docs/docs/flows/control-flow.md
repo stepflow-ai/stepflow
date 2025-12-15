@@ -27,8 +27,8 @@ steps:
   - id: validate_data
     component: /data/validate
     input:
-      data: { $from: { step: load_data } }
-      schema: { $from: { step: load_config }, path: "validation_schema" }
+      data: { $step: load_data }
+      schema: { $step: load_config, path: "validation_schema" }
 ```
 
 **Execution flow**: `load_config` and `load_data` start simultaneously, then `validate_data` waits for both to complete.
@@ -58,9 +58,9 @@ Steps can be conditionally skipped using the `skip` field:
 steps:
   - id: expensive_analysis
     component: /ai/analyze
-    skip: { $from: { workflow: input }, path: "skip_analysis" }
+    skip: { $input: "skip_analysis" }
     input:
-      data: { $from: { step: load_data } }
+      data: { $step: load_data }
 ```
 
 - **Reference**: Must reference workflow input or earlier step output
@@ -75,13 +75,13 @@ When a step is skipped, dependent steps are also skipped by default:
 steps:
   - id: optional_step
     component: /data/process
-    skip: { $from: { workflow: input }, path: "skip_optional" }
+    skip: { $input: "skip_optional" }
 
   # This step skips if optional_step is skipped
   - id: dependent_step
     component: /data/analyze
     input:
-      data: { $from: { step: optional_step } }
+      data: { $step: optional_step }
 ```
 
 ### Handling Skipped Dependencies
@@ -93,9 +93,9 @@ steps:
   - id: consumer_step
     component: /data/process
     input:
-      required_data: { $from: { step: required_step } }
+      required_data: { $step: required_step }
       optional_data:
-        $from: { step: optional_step }
+        { $step: optional_step }
         onSkip:
           action: useDefault
           defaultValue: it was skipped
@@ -146,20 +146,20 @@ steps:
   - id: check_user_level
     component: /user/check_level
     input:
-      user_id: { $from: { workflow: input }, path: "user_id" }
+      user_id: { $input: "user_id" }
 
   # Different processing based on user level
   - id: premium_analysis
     component: /analytics/premium
-    skip: { $from: { step: check_user_level }, path: "is_basic_user" }
+    skip: { $step: check_user_level, path: "is_basic_user" }
     input:
-      user_data: { $from: { step: check_user_level } }
+      user_data: { $step: check_user_level }
 
   - id: basic_analysis
     component: /analytics/basic
-    skip: { $from: { step: check_user_level }, path: "is_premium_user" }
+    skip: { $step: check_user_level, path: "is_premium_user" }
     input:
-      user_data: { $from: { step: check_user_level } }
+      user_data: { $step: check_user_level }
 ```
 
 ### Graceful Degradation
@@ -179,9 +179,9 @@ steps:
   - id: process_data
     component: /data/process
     input:
-      critical: { $from: { step: critical_data } }
+      critical: { $step: critical_data }
       enhanced:
-        $from: { step: enhancement_data }
+        { $step: enhancement_data }
         onSkip:
           action: useDefault
           defaultValue: { enhanced: false }

@@ -146,12 +146,12 @@ input_schema:
 steps:
   - id: add_numbers
     component: /python/add
-    args:
-      a: { $from: $input, path: m }
-      b: { $from: $input, path: n }
+    input:
+      a: { $input: "m" }
+      b: { $input: "n" }
 
-outputs:
-  result: { $from: add_numbers, path: result }
+output:
+  result: { $step: "add_numbers", path: "result" }
 ```
 
 **input.json:**

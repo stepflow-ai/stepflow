@@ -103,13 +103,13 @@ steps:
   component: /my/greet
   input:
     name:
-      $from: { workflow: input }
+      { $input }
       path: user_name
     language: "es"
 
 output:
   greeting:
-    $from: { step: greeting_step }
+    { $step: greeting_step }
     path: message
 ```
 

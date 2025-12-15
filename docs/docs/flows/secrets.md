@@ -50,10 +50,10 @@ steps:
   - id: call_api
     component: /http/request
     input:
-      url: { $from: { workflow: input }, path: "api_credentials.endpoint" }
+      url: { $input: "api_credentials.endpoint" }
       headers:
         Authorization: 
-          $from: { workflow: input }
+          { $input }
           path: "api_credentials.api_key"
           transform: "Bearer " + x
 ```
@@ -150,7 +150,7 @@ steps:
   - id: setup_ai
     component: /builtin/openai
     input:
-      api_key: { $from: { variable: openai_api_key } }
+      api_key: { $variable: openai_api_key }
       model: "gpt-4"
       messages: [{"role": "user", "content": "Hello"}]
 ```

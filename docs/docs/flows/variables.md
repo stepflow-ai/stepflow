@@ -72,12 +72,12 @@ steps:
   - id: call_api
     component: /http/request
     input:
-      url: { $from: { variable: api_endpoint } }
+      url: { $variable: api_endpoint }
       headers:
         Authorization: 
-          $from: { variable: api_key }
+          $variable: api_key
           transform: "Bearer " + x
-      timeout: { $from: { variable: timeout_seconds } }
+      timeout: { $variable: timeout_seconds }
 ```
 
 ### External Variables Schema
@@ -94,7 +94,7 @@ steps:
   - id: connect_db
     component: /python/database_connector
     input:
-      connection_string: { $from: { variable: database_url } }
+      connection_string: { $variable: database_url }
 ```
 
 ```yaml
@@ -123,7 +123,7 @@ required: ["database_url"]
 
 ## Referencing Variables
 
-Use the `$from` expression syntax to reference variables in your workflow:
+Use value references to access variables in your workflow:
 
 ```yaml
 steps:
@@ -131,20 +131,20 @@ steps:
     component: /python/service_config
     input:
       # Simple variable reference
-      endpoint: { $from: { variable: api_endpoint } }
+      endpoint: { $variable: api_endpoint }
       
       # Variable with transformation
       auth_header:
-        $from: { variable: api_key }
+        $variable: api_key
         transform: "Bearer " + x
       
       # Variable with default fallback
-      timeout: { $from: { variable: timeout_seconds } }
+      timeout: { $variable: timeout_seconds }
       
       # Nested in objects
       config:
-        url: { $from: { variable: api_endpoint } }
-        retries: { $from: { variable: retry_attempts } }
+        url: { $variable: api_endpoint }
+        retries: { $variable: retry_attempts }
 ```
 
 ## Providing Variables at Runtime

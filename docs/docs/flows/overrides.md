@@ -156,7 +156,7 @@ process_data:
   value:
     input:
       # Override with known good data from previous run
-      data: { $from: { step: load_data } }  # Original reference
+      data: { $step: load_data }  # Original reference
       
 # Replace the reference with a literal value
 process_data:

@@ -18,37 +18,37 @@ steps:
   - id: load_user
     component: /user/load
     input:
-      user_id: { $from: { workflow: input }, path: "user_id" }
+      user_id: { { $input }, path: "user_id" }
 
   # These can run in parallel
   - id: load_permissions
     component: /auth/permissions
     input:
-      user_id: { $from: { step: load_user }, path: "id" }
+      user_id: { { $step: load_user }, path: "id" }
 
   - id: load_preferences
     component: /user/preferences
     input:
-      user_id: { $from: { step: load_user }, path: "id" }
+      user_id: { { $step: load_user }, path: "id" }
 
 # ❌ Avoid - unnecessary dependencies
 steps:
   - id: load_user
     component: /user/load
     input:
-      user_id: { $from: { workflow: input }, path: "user_id" }
+      user_id: { { $input }, path: "user_id" }
 
   - id: load_permissions
     component: /auth/permissions
     input:
-      user_id: { $from: { step: load_user }, path: "id" }
+      user_id: { { $step: load_user }, path: "id" }
 
   - id: load_preferences
     component: /user/preferences
     input:
-      user_id: { $from: { step: load_user }, path: "id" }
+      user_id: { { $step: load_user }, path: "id" }
       # Unnecessary dependency creates false sequence
-      permissions: { $from: { step: load_permissions } }
+      permissions: { { $step: load_permissions } }
 ```
 
 ### Use Appropriate Granularity
@@ -61,17 +61,17 @@ steps:
   - id: validate_and_parse_input
     component: /data/validate_parse
     input:
-      raw_data: { $from: { workflow: input } }
+      raw_data: { { $input } }
 
   - id: enrich_data
     component: /data/enrich
     input:
-      parsed_data: { $from: { step: validate_and_parse_input } }
+      parsed_data: { { $step: validate_and_parse_input } }
 
   - id: process_and_format
     component: /data/process_format
     input:
-      enriched_data: { $from: { step: enrich_data } }
+      enriched_data: { { $step: enrich_data } }
 
 # ❌ Avoid - too granular
 steps:
@@ -96,7 +96,7 @@ steps:
   - id: authenticate_user
     component: /auth/verify
     input:
-      token: { $from: { workflow: input }, path: "auth_token" }
+      token: { { $input }, path: "auth_token" }
 
   # Optional enhancement - can fail gracefully
   - id: load_user_preferences
@@ -107,15 +107,15 @@ steps:
         theme: "default"
         notifications: true
     input:
-      user_id: { $from: { step: authenticate_user }, path: "user_id" }
+      user_id: { { $step: authenticate_user }, path: "user_id" }
 
   # Main processing - uses preferences if available
   - id: generate_response
     component: /response/create
     input:
-      user_data: { $from: { step: authenticate_user } }
+      user_data: { { $step: authenticate_user } }
       preferences:
-        $from: { step: load_user_preferences }
+        { $step: load_user_preferences }
         $on_skip: "use_default"
         $default: { theme: "default", notifications: true }
 ```
@@ -131,20 +131,20 @@ Select components based on your specific needs:
 - id: store_data
   component: /builtin/put_blob
   input:
-    data: { $from: { step: process_data } }
+    data: { { $step: process_data } }
 
 # For AI operations, use OpenAI components
 - id: generate_summary
   component: /builtin/openai
   input:
-    messages: { $from: { step: create_messages } }
+    messages: { { $step: create_messages } }
 
 # For complex business logic, use custom components
 - id: complex_analysis
   component: /custom/business_analyzer
   input:
-    data: { $from: { step: load_data } }
-    rules: { $from: { step: load_rules } }
+    data: { { $step: load_data } }
+    rules: { { $step: load_rules } }
 ```
 
 ### Optimize Component Configuration
@@ -157,7 +157,7 @@ steps:
   - id: quick_classification
     component: /builtin/openai
     input:
-      messages: { $from: { step: create_simple_prompt } }
+      messages: { { $step: create_simple_prompt } }
       model: "gpt-3.5-turbo"      # Faster model
       temperature: 0.1            # Low temperature for consistency
       max_tokens: 50              # Short responses
@@ -166,7 +166,7 @@ steps:
   - id: creative_writing
     component: /builtin/openai
     input:
-      messages: { $from: { step: create_creative_prompt } }
+      messages: { { $step: create_creative_prompt } }
       model: "gpt-4"             # Better model for creativity
       temperature: 0.8           # Higher temperature for variety
       max_tokens: 500            # Longer responses
@@ -182,14 +182,14 @@ steps:
   - id: validate_request
     component: /validation/request
     input:
-      request: { $from: { workflow: input } }
+      request: { { $input } }
 
   # Expensive operations only run on valid input
   - id: process_with_ai
     component: /builtin/openai
     input:
-      messages: { $from: { step: create_messages_from_valid_request } }
-      validated_request: { $from: { step: validate_request } }
+      messages: { { $step: create_messages_from_valid_request } }
+      validated_request: { { $step: validate_request } }
 ```
 
 ## Data Management Best Practices
@@ -204,18 +204,18 @@ steps:
   - id: store_dataset
     component: /builtin/put_blob
     input:
-      data: { $from: { step: load_large_dataset } }
+      data: { { $step: load_large_dataset } }
 
   # Multiple analyses reference the same blob
   - id: statistical_analysis
     component: /analytics/statistics
     input:
-      data_blob: { $from: { step: store_dataset }, path: "blob_id" }
+      data_blob: { { $step: store_dataset }, path: "blob_id" }
 
   - id: ml_analysis
     component: /analytics/machine_learning
     input:
-      data_blob: { $from: { step: store_dataset }, path: "blob_id" }
+      data_blob: { { $step: store_dataset }, path: "blob_id" }
 ```
 
 ### Reference Specific Fields
@@ -227,15 +227,15 @@ Avoid copying entire large objects:
 - id: create_user_summary
   component: /user/summarize
   input:
-    user_id: { $from: { step: load_user }, path: "id" }
-    user_name: { $from: { step: load_user }, path: "profile.name" }
-    user_email: { $from: { step: load_user }, path: "contact.email" }
+    user_id: { { $step: load_user }, path: "id" }
+    user_name: { { $step: load_user }, path: "profile.name" }
+    user_email: { { $step: load_user }, path: "contact.email" }
 
 # ❌ Avoid - copying entire object
 - id: create_user_summary
   component: /user/summarize
   input:
-    user_data: { $from: { step: load_user } }  # Copies entire user object
+    user_data: { { $step: load_user } }  # Copies entire user object
 ```
 
 ### Batch Operations When Possible
@@ -247,14 +247,14 @@ Process multiple items efficiently:
 - id: process_all_users
   component: /user/batch_process
   input:
-    users: { $from: { step: load_users } }
+    users: { { $step: load_users } }
     batch_size: 50
 
 # ❌ Avoid - individual processing (unless parallelism is needed)
 - id: process_user_1
   component: /user/process
   input:
-    user: { $from: { step: load_users }, path: "users[0]" }
+    user: { { $step: load_users }, path: "users[0]" }
 # ... repeated for each user
 ```
 
@@ -325,7 +325,7 @@ steps:
           required: ["id", "email"]
       required: ["user_data"]
     input:
-      user_data: { $from: { step: load_user } }
+      user_data: { { $step: load_user } }
 ```
 
 ## Testing Best Practices
@@ -417,13 +417,13 @@ steps:
     description: "Validate order format, customer info, and product availability"
     component: /order/validate
     input:
-      order: { $from: { workflow: input }, path: "order" }
+      order: { { $input }, path: "order" }
 
   - id: check_inventory_availability
     description: "Verify all ordered items are in stock"
     component: /inventory/check
     input:
-      items: { $from: { step: validate_order_details }, path: "validated_items" }
+      items: { { $step: validate_order_details }, path: "validated_items" }
 ```
 
 ### Include Examples
@@ -494,13 +494,13 @@ steps:
   - id: validate_external_data
     component: /validation/external
     input:
-      data: { $from: { step: fetch_external_data } }
-      schema: { $from: { step: load_validation_schema } }
+      data: { { $step: fetch_external_data } }
+      schema: { { $step: load_validation_schema } }
 
   - id: sanitize_data
     component: /security/sanitize
     input:
-      validated_data: { $from: { step: validate_external_data } }
+      validated_data: { { $step: validate_external_data } }
 ```
 
 ## Performance Best Practices
@@ -514,7 +514,7 @@ steps:
   - id: performance_critical_step
     component: /analytics/heavy_computation
     input:
-      data: { $from: { step: load_data } }
+      data: { { $step: load_data } }
     # Consider adding performance monitoring
     metadata:
       performance_critical: true
@@ -530,8 +530,8 @@ steps:
   - id: expensive_computation
     component: /analytics/complex
     input:
-      data: { $from: { step: prepare_data } }
-      cache_key: { $from: { step: generate_cache_key } }
+      data: { { $step: prepare_data } }
+      cache_key: { { $step: generate_cache_key } }
       use_cache: true
 ```
 
@@ -599,7 +599,7 @@ steps:
   - id: critical_operation
     component: /external/api
     input:
-      data: { $from: { workflow: input } }
+      data: { { $input } }
     # What happens if the API is down?
 ```
 
@@ -615,7 +615,7 @@ steps:
         action: use_default
         default_value: { status: "unavailable" }
     input:
-      data: { $from: { workflow: input } }
+      data: { { $input } }
 ```
 
 ### Don't Overcomplicate Simple Operations
@@ -637,7 +637,7 @@ steps:
   - id: extract_field
     component: /extract
     input:
-      data: { $from: { step: load_data } }
+      data: { { $step: load_data } }
       path: "user.email"
 ```
 
@@ -674,8 +674,8 @@ Following these best practices will help you create robust, maintainable, and ef
 # Good organization
 input:
   # Data inputs
-  user_data: { $from: { step: load_user } }
-  settings: { $from: { step: load_settings } }
+  user_data: { { $step: load_user } }
+  settings: { { $step: load_settings } }
 
   # Configuration
   timeout: { $literal: 30 }
@@ -683,7 +683,7 @@ input:
 
   # Optional parameters with defaults
   debug_mode:
-    $from: { workflow: input }
+    { $input }
     path: "debug"
     $on_skip: "use_default"
     $default: false

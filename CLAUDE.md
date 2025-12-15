@@ -47,7 +47,7 @@ Stepflow is an orchestration engine for AI workflows with a flexible plugin arch
 - **Component**: Executable implementation provided by a plugin (e.g., `/python/my_func`, `/builtin/openai`)
 - **Plugin**: Service providing one or more components (builtin, Python SDK, MCP server)
 - **Routing**: Configuration rules mapping component paths to plugin backends
-- **Value References**: Data flow between steps using `$from` expressions with JSONPath
+- **Value References**: Data flow between steps using `$step`, `$input`, and `$variable` expressions with JSONPath
 - **Blob Storage**: Persistent JSON data with content-based IDs (SHA-256 hashes)
 - **Run**: An execution of a flow for specific inputs.
 
@@ -154,13 +154,13 @@ steps:
     component: /builtin/openai
     input:
       # Reference workflow input
-      message: { $from: { workflow: input }, path: "message" }
+      message: { $input: "message" }
 
       # Reference step output (use JSONPath $. for nested fields)
-      context: { $from: { step: previous_step }, path: "$.data.context" }
+      context: { $step: "previous_step", path: "$.data.context" }
 
       # Simple field access (no dots)
-      value: { $from: { step: math_step }, path: "result" }
+      value: { $step: "math_step", path: "result" }
 ```
 
 **Path Resolution Rules**:

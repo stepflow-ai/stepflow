@@ -65,26 +65,26 @@ steps:
   - id: format_greeting
     component: /python/hello_formatter
     input:
-      name: { $from: { workflow: input }, path: "name" }
+      name: { $input: "name" }
 
   # Step 2: Use built-in component to create AI messages
   - id: create_messages
     component: /builtin/create_messages
     input:
       system_instructions: "You are a friendly assistant. Respond enthusiastically to greetings."
-      user_prompt: { $from: { step: format_greeting }, path: "greeting" }
+      user_prompt: { $step: format_greeting, path: "greeting" }
 
   # Step 3: Generate AI response
   - id: ai_response
     component: /builtin/openai
     input:
-      messages: { $from: { step: create_messages }, path: "messages" }
+      messages: { $step: create_messages, path: "messages" }
       temperature: 0.7
       max_tokens: 100
 
 output:
-  greeting: { $from: { step: format_greeting }, path: "greeting" }
-  ai_response: { $from: { step: ai_response }, path: "response" }
+  greeting: { $step: format_greeting, path: "greeting" }
+  ai_response: { $step: ai_response, path: "response" }
 ```
 
 ### 3. Create `hello_formatter.py` (Python Component)
@@ -161,7 +161,7 @@ This workflow demonstrates Stepflow's key concepts as a **workflow orchestrator*
 - **Component Servers**: The workflow used both built-in components (managed by Stepflow) and a custom Python component server (launched as a subprocess)
 - **Input/Output Schemas**: Define the structure of your data using JSON Schema
 - **Steps**: Each step uses a component to process data and pass results to the next step
-- **Data Flow**: Use `$from` expressions to pass data between steps, with Stepflow handling the routing and transformation
+- **Data Flow**: Use value references to pass data between steps, with Stepflow handling the routing and transformation
 - **Configuration**: The `stepflow-config.yml` file told Stepflow how to route component requests to the appropriate servers
 
 ## Next Steps

@@ -121,21 +121,21 @@ steps:
   - id: validate
     component: /data/validate
     input:
-      data: { $from: { workflow: input }, path: "data" }
+      data: { $input: "data" }
 
   - id: transform
     component: /data/transform
     input:
-      data: { $from: { step: validate }, path: "validated_data" }
+      data: { $step: validate, path: "validated_data" }
 
   - id: enrich
     component: /data/enrich
     input:
-      data: { $from: { step: transform }, path: "transformed_data" }
+      data: { $step: transform, path: "transformed_data" }
 
 output:
-  item_id: { $from: { workflow: input }, path: "item_id" }
-  processed_data: { $from: { step: enrich }, path: "enriched_data" }
+  item_id: { $input: "item_id" }
+  processed_data: { $step: enrich, path: "enriched_data" }
 ```
 
 ```jsonl
@@ -182,16 +182,16 @@ steps:
           content: "You are a document analysis assistant."
         - role: user
           content:
-            $from: { workflow: input }
+            { $input }
             path: "content"
             transform: "Perform " + $.analysis_type + " analysis on: " + x
       model: "gpt-4"
       temperature: 0.1
 
 output:
-  document_id: { $from: { workflow: input }, path: "document_id" }
-  analysis_type: { $from: { workflow: input }, path: "analysis_type" }
-  result: { $from: { step: analyze }, path: "response" }
+  document_id: { $input: "document_id" }
+  analysis_type: { $input: "analysis_type" }
+  result: { $step: analyze, path: "response" }
 ```
 
 ```bash
@@ -227,19 +227,19 @@ steps:
   - id: call_api
     component: /http/request
     input:
-      url: { $from: { workflow: input }, path: "endpoint" }
+      url: { $input: "endpoint" }
       method: "GET"
 
   - id: validate_response
     component: /test/validate
     input:
-      actual_status: { $from: { step: call_api }, path: "status_code" }
-      expected_status: { $from: { workflow: input }, path: "expected_status" }
+      actual_status: { $step: call_api, path: "status_code" }
+      expected_status: { $input: "expected_status" }
 
 output:
-  test_case: { $from: { workflow: input }, path: "test_case" }
-  passed: { $from: { step: validate_response }, path: "passed" }
-  details: { $from: { step: validate_response }, path: "details" }
+  test_case: { $input: "test_case" }
+  passed: { $step: validate_response, path: "passed" }
+  details: { $step: validate_response, path: "details" }
 ```
 
 ```jsonl
@@ -354,14 +354,14 @@ steps:
   - id: process_batch
     component: /python/batch_processor
     input:
-      items: { $from: { step: load_items }, path: "items" }
+      items: { $step: load_items, path: "items" }
       workflow_path: "item-processor.yaml"
       max_concurrency: 20
 
   - id: aggregate_results
     component: /data/aggregate
     input:
-      results: { $from: { step: process_batch }, path: "results" }
+      results: { $step: process_batch, path: "results" }
 ```
 
 ## Related Documentation

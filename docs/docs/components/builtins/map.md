@@ -57,9 +57,9 @@ steps:
             component: /python/math_operations
             input:
               operation: "square"
-              value: { $from: { workflow: input }, path: "value" }
+              value: { $input: "value" }
         output:
-          squared: { $from: { step: calculate }, path: "result" }
+          squared: { $step: calculate, path: "result" }
       items:
         - { value: 1 }
         - { value: 2 }
@@ -84,14 +84,14 @@ steps:
           - id: get_profile
             component: /api/fetch_user_profile
             input:
-              user_id: { $from: { workflow: input }, path: "id" }
+              user_id: { $input: "id" }
           - id: analyze_activity
             component: /python/analyze_user_activity
             input:
-              profile: { $from: { step: get_profile } }
+              profile: { $step: get_profile }
         output:
-          user_analysis: { $from: { step: analyze_activity } }
-      items: { $from: { step: load_user_list }, path: "data.users" }
+          user_analysis: { $step: analyze_activity }
+      items: { $step: load_user_list, path: "data.users" }
 ```
 
 #### Use Cases

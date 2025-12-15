@@ -38,5 +38,5 @@ steps:
     component: /builtin/create_messages
     input:
       system_instructions: "You are an expert data analyst"
-      user_prompt: { $from: { workflow: input }, path: "question" }
+      user_prompt: { $input: "question" }
 ```

@@ -18,28 +18,28 @@ steps:
   - id: load_user
     component: /user/load
     input:
-      user_id: { $from: { workflow: input }, path: "user_id" }
+      user_id: { { $input }, path: "user_id" }
 
   # All these can run in parallel after load_user completes
   - id: load_user_posts
     component: /content/posts
     input:
-      user_id: { $from: { step: load_user }, path: "id" }
+      user_id: { { $step: load_user }, path: "id" }
 
   - id: load_user_followers
     component: /social/followers
     input:
-      user_id: { $from: { step: load_user }, path: "id" }
+      user_id: { { $step: load_user }, path: "id" }
 
   - id: load_user_activity
     component: /analytics/activity
     input:
-      user_id: { $from: { step: load_user }, path: "id" }
+      user_id: { { $step: load_user }, path: "id" }
 
   - id: calculate_metrics
     component: /analytics/metrics
     input:
-      user_data: { $from: { step: load_user } }
+      user_data: { { $step: load_user } }
 ```
 
 ### Avoid False Dependencies
@@ -52,27 +52,27 @@ steps:
   - id: step1
     component: /data/process
     input:
-      data: { $from: { workflow: input } }
+      data: { { $input } }
 
   - id: step2
     component: /data/validate
     input:
       # This creates unnecessary dependency on step1
-      original_data: { $from: { workflow: input } }
-      processed_data: { $from: { step: step1 } }
+      original_data: { { $input } }
+      processed_data: { { $step: step1 } }
 
 # ✅ Good - remove false dependency
 steps:
   - id: step1
     component: /data/process
     input:
-      data: { $from: { workflow: input } }
+      data: { { $input } }
 
   - id: step2
     component: /data/validate
     input:
       # Can run in parallel with step1
-      data: { $from: { workflow: input } }
+      data: { { $input } }
 ```
 
 ### Parallel Data Fetching
@@ -101,9 +101,9 @@ steps:
   - id: combine_data
     component: /data/merge
     input:
-      source1: { $from: { step: fetch_data_source_1 } }
-      source2: { $from: { step: fetch_data_source_2 } }
-      source3: { $from: { step: fetch_data_source_3 } }
+      source1: { { $step: fetch_data_source_1 } }
+      source2: { { $step: fetch_data_source_2 } }
+      source3: { { $step: fetch_data_source_3 } }
 ```
 
 ## Resource Management
@@ -120,19 +120,19 @@ steps:
   - id: store_large_dataset
     component: /builtin/put_blob
     input:
-      data: { $from: { step: load_massive_dataset } }
+      data: { { $step: load_massive_dataset } }
 
   # Multiple steps can reference the same blob efficiently
   - id: analyze_subset_1
     component: /analytics/process
     input:
-      data_blob: { $from: { step: store_large_dataset }, path: "blob_id" }
+      data_blob: { { $step: store_large_dataset }, path: "blob_id" }
       filter: "category=A"
 
   - id: analyze_subset_2
     component: /analytics/process
     input:
-      data_blob: { $from: { step: store_large_dataset }, path: "blob_id" }
+      data_blob: { { $step: store_large_dataset }, path: "blob_id" }
       filter: "category=B"
 ```
 
@@ -146,14 +146,14 @@ steps:
     component: /user/process
     input:
       # ✅ Good - reference specific fields
-      user_id: { $from: { step: load_user }, path: "id" }
-      user_name: { $from: { step: load_user }, path: "profile.name" }
+      user_id: { { $step: load_user }, path: "id" }
+      user_name: { { $step: load_user }, path: "profile.name" }
 
   - id: inefficient_processing
     component: /user/process
     input:
       # ❌ Avoid - copying entire large object
-      user_data: { $from: { step: load_user } }
+      user_data: { { $step: load_user } }
 ```
 
 ### Component Performance
@@ -167,7 +167,7 @@ Select components based on the complexity of your task:
 - id: extract_field
   component: /extract
   input:
-    data: { $from: { step: load_data } }
+    data: { { $step: load_data } }
     path: "metadata.id"
 
 # For complex processing, use specialized components
@@ -187,14 +187,14 @@ Process data in batches when possible to reduce overhead:
 - id: process_all_items
   component: /data/batch_process
   input:
-    items: { $from: { step: load_items } }
+    items: { { $step: load_items } }
     batch_size: 100
 
 # ❌ Avoid - individual processing (unless parallelism is needed)
 - id: process_item_1
   component: /data/process_single
   input:
-    item: { $from: { step: load_items }, path: "items[0]" }
+    item: { { $step: load_items }, path: "items[0]" }
 ```
 
 #### Component Configuration
@@ -206,7 +206,7 @@ steps:
   - id: ai_generation
     component: /builtin/openai
     input:
-      messages: { $from: { step: create_messages } }
+      messages: { { $step: create_messages } }
       # Optimize parameters for performance vs quality
       model: "gpt-3.5-turbo"  # Faster than gpt-4
       max_tokens: 150         # Limit output length
@@ -225,20 +225,20 @@ steps:
   - id: store_shared_context
     component: /builtin/put_blob
     input:
-      data: { $from: { step: load_context } }
+      data: { { $step: load_context } }
 
   # Multiple processing steps reference the same blob
   - id: analysis_1
     component: /analytics/type_a
     input:
-      context_blob: { $from: { step: store_shared_context }, path: "blob_id" }
-      specific_data: { $from: { step: load_specific_1 } }
+      context_blob: { { $step: store_shared_context }, path: "blob_id" }
+      specific_data: { { $step: load_specific_1 } }
 
   - id: analysis_2
     component: /analytics/type_b
     input:
-      context_blob: { $from: { step: store_shared_context }, path: "blob_id" }
-      specific_data: { $from: { step: load_specific_2 } }
+      context_blob: { { $step: store_shared_context }, path: "blob_id" }
+      specific_data: { { $step: load_specific_2 } }
 ```
 
 ### Early Validation
@@ -251,13 +251,13 @@ steps:
   - id: validate_input
     component: /validation/fast_check
     input:
-      data: { $from: { workflow: input } }
+      data: { { $input } }
 
   # Expensive processing only runs on valid data
   - id: expensive_processing
     component: /ai/complex_analysis
     input:
-      validated_data: { $from: { step: validate_input } }
+      validated_data: { { $step: validate_input } }
 ```
 
 ## AI Workflow Optimization
@@ -277,7 +277,7 @@ steps:
           content: "Answer briefly and directly."
         - role: user
           # Clear, specific user prompt
-          content: { $from: { step: format_prompt }, path: "optimized_prompt" }
+          content: { { $step: format_prompt }, path: "optimized_prompt" }
       # Performance settings
       max_tokens: 100        # Limit response length
       temperature: 0.1       # Lower temperature for consistency
@@ -294,22 +294,22 @@ steps:
   - id: check_ai_cache
     component: /cache/check
     input:
-      key: { $from: { step: create_cache_key }, path: "cache_key" }
+      key: { { $step: create_cache_key }, path: "cache_key" }
 
   # Only call AI if not cached
   - id: generate_ai_response
     component: /builtin/openai
-    skipIf: { $from: { step: check_ai_cache }, path: "cache_hit" }
+    skipIf: { { $step: check_ai_cache }, path: "cache_hit" }
     input:
-      messages: { $from: { step: create_messages } }
+      messages: { { $step: create_messages } }
 
   # Store response in cache
   - id: cache_ai_response
     component: /cache/store
-    skipIf: { $from: { step: check_ai_cache }, path: "cache_hit" }
+    skipIf: { { $step: check_ai_cache }, path: "cache_hit" }
     input:
-      key: { $from: { step: create_cache_key }, path: "cache_key" }
-      value: { $from: { step: generate_ai_response } }
+      key: { { $step: create_cache_key }, path: "cache_key" }
+      value: { { $step: generate_ai_response } }
 ```
 
 ## Workflow Architecture Patterns
@@ -324,26 +324,26 @@ steps:
   - id: process_item_1
     component: /item/process
     input:
-      item: { $from: { workflow: input }, path: "items[0]" }
+      item: { { $input }, path: "items[0]" }
 
   - id: process_item_2
     component: /item/process
     input:
-      item: { $from: { workflow: input }, path: "items[1]" }
+      item: { { $input }, path: "items[1]" }
 
   - id: process_item_3
     component: /item/process
     input:
-      item: { $from: { workflow: input }, path: "items[2]" }
+      item: { { $input }, path: "items[2]" }
 
   # Fan-in: Combine all results
   - id: combine_results
     component: /data/combine
     input:
       results:
-        - { $from: { step: process_item_1 } }
-        - { $from: { step: process_item_2 } }
-        - { $from: { step: process_item_3 } }
+        - { { $step: process_item_1 } }
+        - { { $step: process_item_2 } }
+        - { { $step: process_item_3 } }
 ```
 
 ### Pipeline Pattern
@@ -355,17 +355,17 @@ steps:
   - id: stage_1
     component: /pipeline/extract
     input:
-      source: { $from: { workflow: input } }
+      source: { { $input } }
 
   - id: stage_2
     component: /pipeline/transform
     input:
-      data: { $from: { step: stage_1 } }
+      data: { { $step: stage_1 } }
 
   - id: stage_3
     component: /pipeline/load
     input:
-      transformed_data: { $from: { step: stage_2 } }
+      transformed_data: { { $step: stage_2 } }
 ```
 
 ## Performance Monitoring
@@ -415,26 +415,26 @@ steps:
   - id: process_1
     component: /data/process
     input:
-      data: { $from: { workflow: input }, path: "data1" }
+      data: { { $input }, path: "data1" }
 
   - id: process_2
     component: /data/process
     input:
-      data: { $from: { workflow: input }, path: "data2" }
+      data: { { $input }, path: "data2" }
       # Unnecessary dependency creates false sequence
-      previous: { $from: { step: process_1 } }
+      previous: { { $step: process_1 } }
 
 # ✅ Good - parallel processing
 steps:
   - id: process_1
     component: /data/process
     input:
-      data: { $from: { workflow: input }, path: "data1" }
+      data: { { $input }, path: "data1" }
 
   - id: process_2
     component: /data/process
     input:
-      data: { $from: { workflow: input }, path: "data2" }
+      data: { { $input }, path: "data2" }
       # No dependency - runs in parallel
 ```
 
@@ -446,13 +446,13 @@ steps:
   - id: get_field_1
     component: /extract
     input:
-      data: { $from: { step: load_data } }
+      data: { { $step: load_data } }
       path: "field1"
 
   - id: get_field_2
     component: /extract
     input:
-      data: { $from: { step: load_data } }
+      data: { { $step: load_data } }
       path: "field2"
 
 # ✅ Good - combined extraction
@@ -460,7 +460,7 @@ steps:
   - id: extract_fields
     component: /data/extract_multiple
     input:
-      data: { $from: { step: load_data } }
+      data: { { $step: load_data } }
       fields: ["field1", "field2"]
 ```
 
@@ -472,29 +472,29 @@ steps:
   - id: step1
     component: /process/a
     input:
-      large_dataset: { $from: { step: load_large_data } }
+      large_dataset: { { $step: load_large_data } }
 
   - id: step2
     component: /process/b
     input:
-      large_dataset: { $from: { step: load_large_data } }
+      large_dataset: { { $step: load_large_data } }
 
 # ✅ Good - use blob storage
 steps:
   - id: store_large_data
     component: /builtin/put_blob
     input:
-      data: { $from: { step: load_large_data } }
+      data: { { $step: load_large_data } }
 
   - id: step1
     component: /process/a
     input:
-      data_blob: { $from: { step: store_large_data }, path: "blob_id" }
+      data_blob: { { $step: store_large_data }, path: "blob_id" }
 
   - id: step2
     component: /process/b
     input:
-      data_blob: { $from: { step: store_large_data }, path: "blob_id" }
+      data_blob: { { $step: store_large_data }, path: "blob_id" }
 ```
 
 ## Optimization Checklist
