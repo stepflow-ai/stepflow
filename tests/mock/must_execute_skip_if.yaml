@@ -22,9 +22,7 @@ steps:
 - id: must_exec_conditional
   component: /mock/error
   mustExecute: true
-  skipIf:
-    $from: { workflow: input }
-    path: shouldSkip
+  skipIf: { $input: shouldSkip }
   input:
     mode: error
 - id: output_step

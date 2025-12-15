@@ -18,9 +18,7 @@ steps:
   component: /mock/one_output
   inputSchema: null
   outputSchema: null
-  skipIf:
-    $from: { workflow: input }
-    path: shouldSkip
+  skipIf: { $input: shouldSkip }
   input:
     input:
       $input: value

@@ -894,7 +894,7 @@ async fn test_status_updates_during_regular_execution() {
                 .component("/mock/two_outputs")
                 .input_json(json!({
                     "input": {
-                        "$from": {"step": "step1"},
+                        "$step": "step1",
                         "path": "output"
                     }
                 }))
@@ -1016,7 +1016,7 @@ async fn test_status_updates_during_debug_execution() {
                 .component("/mock/two_outputs")
                 .input_json(json!({
                     "input": {
-                        "$from": {"step": "step1"},
+                        "$step": "step1",
                         "path": "output"
                     }
                 }))
