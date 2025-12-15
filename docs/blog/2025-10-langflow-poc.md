@@ -10,6 +10,8 @@ tags: [announcements]
 draft: false
 ---
 
+> **Note**: This post uses the legacy `$from` syntax. As of December 2025, Stepflow uses the new syntax with `$step`, `$input`, and `$variable`. See the [latest documentation](https://stepflow.org) for current examples.
+
 # Langflow on Stepflow POC
 
 Stepflow was designed to provide a common runtime for GenAI workflow frameworks.

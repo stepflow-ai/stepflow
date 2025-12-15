@@ -8,6 +8,7 @@ authors:
 tags: [examples]
 ---
 
+> **Note**: This post uses the legacy `$from` syntax. As of December 2025, Stepflow uses the new syntax with `$step`, `$input`, and `$variable`. See the [latest documentation](https://stepflow.org) for current examples.
 
 # Building an AI-Powered Research Assistant with Stepflow: Orchestrating LangChain and MCP
 
