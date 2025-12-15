@@ -697,7 +697,7 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self
             .resolver
-            .resolve_value_expr(&step.input)
+            .resolve(&step.input)
             .await
             .change_context_lazy(|| ExecutionError::ResolveStepInput(step.id.clone()))?
         {
@@ -781,7 +781,7 @@ impl WorkflowExecutor {
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
         self.resolver
-            .resolve_value_expr(self.flow.output())
+            .resolve(self.flow.output())
             .await
             .change_context(ExecutionError::ResolveWorkflowOutput)
     }
@@ -858,7 +858,7 @@ impl WorkflowExecutor {
                 // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = self
                     .resolver
-                    .resolve_value_expr(&step_input)
+                    .resolve(&step_input)
                     .await
                     .change_context_lazy(|| ExecutionError::ResolveStepInput(step_id.clone()))?;
                 let step_input = match step_input {
@@ -1048,7 +1048,7 @@ pub(crate) async fn execute_step_async(
                     };
                     // Resolve the ValueTemplate to get the actual value
                     let default_value = resolver
-                        .resolve_value_expr(&template)
+                        .resolve(&template)
                         .await
                         .change_context_lazy(|| {
                             ExecutionError::ResolveDefaultValue(step.id.clone())

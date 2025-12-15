@@ -215,7 +215,7 @@ impl<L: ValueLoader> ValueResolver<L> {
     /// Resolve a ValueExpr, returning a FlowResult.
     ///
     /// This is the new resolution method for the simplified ValueExpr type.
-    pub async fn resolve_value_expr(&self, expr: &ValueExpr) -> ValueResolverResult<FlowResult> {
+    pub async fn resolve(&self, expr: &ValueExpr) -> ValueResolverResult<FlowResult> {
         match expr {
             ValueExpr::Step { step, path } => {
                 // Get the step result
@@ -300,7 +300,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                         // Variable not found or path failed, try default if available
                         if let Some(default_expr) = default {
                             log::debug!("Variable '{}' resolution failed, using default", var_name);
-                            Box::pin(self.resolve_value_expr(default_expr)).await
+                            Box::pin(self.resolve(default_expr)).await
                         } else {
                             // No default, propagate the error
                             var_result
@@ -317,7 +317,7 @@ impl<L: ValueLoader> ValueResolver<L> {
             ValueExpr::Array(items) => {
                 let mut result_array = Vec::new();
                 for item in items {
-                    match Box::pin(self.resolve_value_expr(item)).await? {
+                    match Box::pin(self.resolve(item)).await? {
                         FlowResult::Success(value) => {
                             result_array.push(value.as_ref().clone());
                         }
@@ -334,7 +334,7 @@ impl<L: ValueLoader> ValueResolver<L> {
             ValueExpr::Object(fields) => {
                 let mut result_map = serde_json::Map::new();
                 for (k, v) in fields {
-                    match Box::pin(self.resolve_value_expr(v)).await? {
+                    match Box::pin(self.resolve(v)).await? {
                         FlowResult::Success(value) => {
                             result_map.insert(k.clone(), value.as_ref().clone());
                         }
@@ -354,7 +354,7 @@ impl<L: ValueLoader> ValueResolver<L> {
                 else_expr,
             } => {
                 // Resolve the condition
-                let condition_result = Box::pin(self.resolve_value_expr(condition)).await?;
+                let condition_result = Box::pin(self.resolve(condition)).await?;
 
                 // Check if condition is truthy
                 let is_truthy = match condition_result {
@@ -375,9 +375,9 @@ impl<L: ValueLoader> ValueResolver<L> {
 
                 // Resolve appropriate branch
                 if is_truthy {
-                    Box::pin(self.resolve_value_expr(then)).await
+                    Box::pin(self.resolve(then)).await
                 } else if let Some(else_val) = else_expr {
-                    Box::pin(self.resolve_value_expr(else_val)).await
+                    Box::pin(self.resolve(else_val)).await
                 } else {
                     // No else branch, default to null
                     Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
@@ -386,7 +386,7 @@ impl<L: ValueLoader> ValueResolver<L> {
             ValueExpr::Coalesce { values } => {
                 // Try each value in order, return first non-skipped, non-null result
                 for (i, value_expr) in values.iter().enumerate() {
-                    let result = Box::pin(self.resolve_value_expr(value_expr)).await?;
+                    let result = Box::pin(self.resolve(value_expr)).await?;
 
                     match result {
                         FlowResult::Success(ref value) if !value.as_ref().is_null() => {
@@ -423,6 +423,9 @@ impl<L: ValueLoader> ValueResolver<L> {
     }
 
     /// Resolve an expression, returning a FlowResult.
+    #[deprecated(
+        note = "Use resolve() with ValueExpr instead. This method is for legacy skip_if conditions only."
+    )]
     pub async fn resolve_expr(&self, expr: &Expr) -> ValueResolverResult<FlowResult> {
         // Handle literal expressions
         if let Expr::EscapedLiteral { literal } = expr {
@@ -654,7 +657,7 @@ mod tests {
 
     // Tests for new ValueExpr resolution
     #[tokio::test]
-    async fn test_resolve_value_expr_literal() {
+    async fn test_resolve_literal() {
         use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
@@ -665,17 +668,17 @@ mod tests {
 
         // Test literal values
         let expr = ValueExpr::Literal(json!("hello"));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("hello"));
 
         // Test escaped literal
         let expr = ValueExpr::escaped_literal(json!({"$step": "not_a_ref"}));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!({"$step": "not_a_ref"}));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_input() {
+    async fn test_resolve_input() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"name": "Alice", "age": 30}));
@@ -686,17 +689,17 @@ mod tests {
 
         // Test input with path
         let expr = ValueExpr::workflow_input(NewJsonPath::from("name"));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("Alice"));
 
         // Test input root (empty path)
         let expr = ValueExpr::workflow_input(NewJsonPath::new());
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!({"name": "Alice", "age": 30}));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_variable() {
+    async fn test_resolve_variable() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({}));
@@ -716,7 +719,7 @@ mod tests {
 
         // Test simple variable
         let expr = ValueExpr::variable("api_key", None);
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("secret123"));
 
         // Test variable with path
@@ -724,18 +727,18 @@ mod tests {
             variable: NewJsonPath::from("$.config.timeout"),
             default: None,
         };
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!(30));
 
         // Test variable with default
         let default_expr = Box::new(ValueExpr::Literal(json!("default_value")));
         let expr = ValueExpr::variable("missing_var", Some(default_expr));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("default_value"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_composable() {
+    async fn test_resolve_composable() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"x": 10, "y": 20}));
@@ -755,7 +758,7 @@ mod tests {
             ValueExpr::workflow_input(NewJsonPath::from("y")),
             ValueExpr::variable("multiplier", None),
         ]);
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!([10, 20, 2]));
 
         // Test object composition
@@ -770,7 +773,7 @@ mod tests {
             ),
             ("constant".to_string(), ValueExpr::Literal(json!(100))),
         ]);
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(
             value.as_ref(),
             &json!({"input_x": 10, "multiplier": 2, "constant": 100})
@@ -778,7 +781,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_step_reference() {
+    async fn test_resolve_step_reference() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
@@ -808,22 +811,22 @@ mod tests {
 
         // Test step reference without path (gets entire result)
         let expr = ValueExpr::step("step1", NewJsonPath::default());
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!({"result": "success", "count": 42}));
 
         // Test step reference with simple path
         let expr = ValueExpr::step("step1", NewJsonPath::from("result"));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("success"));
 
         // Test step reference with JSONPath
         let expr = ValueExpr::step("step1", NewJsonPath::from("$.count"));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!(42));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_step_with_nested_path() {
+    async fn test_resolve_step_with_nested_path() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
@@ -863,17 +866,17 @@ mod tests {
 
         // Test deeply nested path
         let expr = ValueExpr::step("data_step", NewJsonPath::from("$.user.profile.name"));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("Alice"));
 
         // Test another nested path
         let expr = ValueExpr::step("data_step", NewJsonPath::from("$.user.settings.theme"));
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("dark"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_variable_with_expression_default() {
+    async fn test_resolve_variable_with_expression_default() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"fallback_value": 100}));
@@ -888,12 +891,12 @@ mod tests {
         let default_expr = Box::new(ValueExpr::workflow_input(NewJsonPath::from("fallback_value")));
         let expr = ValueExpr::variable("missing_var", Some(default_expr));
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!(100));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_nested_with_step_refs() {
+    async fn test_resolve_nested_with_step_refs() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
@@ -946,7 +949,7 @@ mod tests {
             ),
         ]);
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(
             value.as_ref(),
             &json!({
@@ -961,7 +964,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_array_with_step_refs() {
+    async fn test_resolve_array_with_step_refs() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
@@ -999,12 +1002,12 @@ mod tests {
             ValueExpr::Literal(json!(3)),
         ]);
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!([1, 2, 3]));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_error_invalid_step() {
+    async fn test_resolve_error_invalid_step() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({}));
@@ -1016,14 +1019,14 @@ mod tests {
 
         // Test step reference to non-existent step
         let expr = ValueExpr::step("nonexistent_step", NewJsonPath::default());
-        let result = resolver.resolve_value_expr(&expr).await;
+        let result = resolver.resolve(&expr).await;
 
         // Should be an error (step not found in flow)
         assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_if_expression_truthy() {
+    async fn test_resolve_if_expression_truthy() {
         use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({"enabled": true}));
@@ -1040,12 +1043,12 @@ mod tests {
             Some(ValueExpr::literal(json!("else_value"))),
         );
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("then_value"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_if_expression_falsy() {
+    async fn test_resolve_if_expression_falsy() {
         use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({"enabled": false}));
@@ -1062,12 +1065,12 @@ mod tests {
             Some(ValueExpr::literal(json!("else_value"))),
         );
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("else_value"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_if_expression_default_null() {
+    async fn test_resolve_if_expression_default_null() {
         use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
@@ -1084,12 +1087,12 @@ mod tests {
             None,
         );
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!(null));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_if_with_input_condition() {
+    async fn test_resolve_if_with_input_condition() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"shouldSkip": true}));
@@ -1106,12 +1109,12 @@ mod tests {
             Some(ValueExpr::literal(json!("not_skipped"))),
         );
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("skipped"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_coalesce_first_value() {
+    async fn test_resolve_coalesce_first_value() {
         use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
@@ -1127,12 +1130,12 @@ mod tests {
             ValueExpr::literal(json!("second")),
         ]);
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("first"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_coalesce_skip_nulls() {
+    async fn test_resolve_coalesce_skip_nulls() {
         use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
@@ -1149,12 +1152,12 @@ mod tests {
             ValueExpr::literal(json!("third")),
         ]);
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("second"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_coalesce_all_null() {
+    async fn test_resolve_coalesce_all_null() {
         use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
@@ -1170,12 +1173,12 @@ mod tests {
             ValueExpr::literal(json!(null)),
         ]);
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!(null));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_coalesce_with_variable_fallback() {
+    async fn test_resolve_coalesce_with_variable_fallback() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"fallback": "fallback_value"}));
@@ -1198,12 +1201,12 @@ mod tests {
             ValueExpr::workflow_input(NewJsonPath::from("fallback")),
         ]);
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(value.as_ref(), &json!("fallback_value"));
     }
 
     #[tokio::test]
-    async fn test_resolve_value_expr_complex_mixed_composition() {
+    async fn test_resolve_complex_mixed_composition() {
         use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
@@ -1274,7 +1277,7 @@ mod tests {
             ),
         ]);
 
-        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        let value = resolver.resolve(&expr).await.unwrap().unwrap_success();
         assert_eq!(
             value.as_ref(),
             &json!({
