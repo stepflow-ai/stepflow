@@ -1401,7 +1401,7 @@ mod tests {
         let resolver = ValueResolver::new(run_id, workflow_input.clone(), loader, flow);
 
         // Test $coalesce with missing variable, fallback to input
-        let expr = ValueExpr::coalesce(vec![
+        let _expr = ValueExpr::coalesce(vec![
             ValueExpr::variable("missing_var", None),
             ValueExpr::workflow_input(NewJsonPath::from("fallback")),
         ]);

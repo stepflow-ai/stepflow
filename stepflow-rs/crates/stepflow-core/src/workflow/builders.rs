@@ -311,7 +311,6 @@ pub fn builtin_step<S: Into<String>>(id: S, component: S) -> StepBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::JsonPath;
 
     #[test]
     fn test_flow_builder_basic() {

@@ -1259,7 +1259,7 @@ mod tests {
         // Test that we can create dependencies and tracker correctly
         let steps = vec![
             create_test_step("step1", json!({"value": 42})),
-            create_test_step("step2", json!({"$from": {"step": "step1"}})),
+            create_test_step("step2", json!({"$step": "step1"})),
         ];
 
         let flow = Arc::new(create_test_flow(
@@ -1297,11 +1297,9 @@ steps:
   - id: step1
     component: /mock/simple
     input:
-      $from:
-        workflow: input
+      $input: "$"
 output:
-  $from:
-    step: step1
+  $step: step1
 "#;
 
         let input_value = json!({"message": "hello"});
@@ -1330,16 +1328,13 @@ steps:
   - id: step1
     component: /mock/first
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: step2
     component: /mock/second
     input:
-      $from:
-        step: step1
+      $step: step1
 output:
-  $from:
-    step: step2
+  $step: step2
 "#;
 
         let workflow_input = json!({"value": 10});
@@ -1377,16 +1372,13 @@ steps:
   - id: step1
     component: /mock/first
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: step2
     component: /mock/second
     input:
-      $from:
-        step: step1
+      $step: step1
 output:
-  $from:
-    step: step2
+  $step: step2
 "#;
 
         let workflow_input = json!({"value": 10});
@@ -1463,9 +1455,9 @@ steps:
   - id: step2
     component: /mock/identity
     input:
-      value: { $from: { step: step1 } }
+      value: { $step: step1 }
 output:
-  final: { $from: { step: step2 } }
+  final: { $step: step2 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1555,13 +1547,13 @@ steps:
   - id: step2
     component: /mock/identity
     input:
-      value: { $from: { step: step1 } }
+      value: { $step: step1 }
   - id: step3
     component: /mock/identity
     input:
-      value: { $from: { step: step2 } }
+      value: { $step: step2 }
 output:
-  final: { $from: { step: step3 } }
+  final: { $step: step3 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1648,17 +1640,17 @@ steps:
   - id: step3
     component: /mock/identity
     input:
-      value: { $from: { step: step1 } }
+      value: { $step: step1 }
   - id: step4
     component: /mock/identity
     input:
-      value: { $from: { step: step2 } }
+      value: { $step: step2 }
   - id: step5
     component: /mock/identity
     input:
-      deps: [{ $from: { step: step3 } }, { $from: { step: step4 } }]
+      deps: [{ $step: step3 }, { $step: step4 }]
 output:
-  final: { $from: { step: step5 } }
+  final: { $step: step5 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1739,7 +1731,7 @@ steps:
     input:
       value: "step1_result"
 output:
-  final: { $from: { step: step1 } }
+  final: { $step: step1 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1780,25 +1772,20 @@ steps:
   - id: step1
     component: /mock/parallel1
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: step2
     component: /mock/parallel2
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: final
     component: /mock/combiner
     input:
       step1:
-        $from:
-          step: step1
+        $step: step1
       step2:
-        $from:
-          step: step2
+        $step: step2
 output:
-  $from:
-    step: final
+  $step: final
 "#;
 
         let workflow_input = json!({"value": 42});
@@ -1888,8 +1875,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -1923,8 +1909,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -1956,8 +1941,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -1989,8 +1973,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -2022,8 +2005,7 @@ steps:
       action: skip
     input: {}
 output:
-  $from:
-    step: success_step
+  $step: success_step
 "#;
 
         let mock_behaviors = vec![(
@@ -2058,11 +2040,9 @@ steps:
   - id: downstream_step
     component: /mock/success
     input:
-      $from:
-        step: failing_step
+      $step: failing_step
 output:
-  $from:
-    step: downstream_step
+  $step: downstream_step
 "#;
 
         let mock_behaviors = vec![
