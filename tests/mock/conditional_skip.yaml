@@ -19,7 +19,8 @@ steps:
   inputSchema: null
   outputSchema: null
   skipIf:
-    $input: shouldSkip
+    $from: { workflow: input }
+    path: shouldSkip
   input:
     input:
       $input: value
@@ -29,8 +30,9 @@ steps:
   outputSchema: null
   input:
     input:
-      $step: conditional_step
-      path: output
+      $coalesce:
+        - { $step: conditional_step, path: output }
+        - null
 output:
   dependentResult:
     $step: dependent_step

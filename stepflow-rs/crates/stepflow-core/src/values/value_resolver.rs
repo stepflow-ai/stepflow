@@ -358,6 +358,77 @@ impl<L: ValueLoader> ValueResolver<L> {
                     serde_json::Value::Object(result_map),
                 )))
             }
+            ValueExpr::If {
+                condition,
+                then,
+                else_expr,
+            } => {
+                // Resolve the condition
+                let condition_result = Box::pin(self.resolve_value_expr(condition)).await?;
+
+                // Check if condition is truthy
+                let is_truthy = match condition_result {
+                    FlowResult::Success(ref value) => {
+                        // Check truthiness: not null, not false, not empty
+                        match value.as_ref() {
+                            serde_json::Value::Null => false,
+                            serde_json::Value::Bool(b) => *b,
+                            _ => true, // Non-null, non-false values are truthy
+                        }
+                    }
+                    FlowResult::Skipped { .. } => false, // Skipped is falsy
+                    FlowResult::Failed(_) => {
+                        // Propagate errors from condition evaluation
+                        return Ok(condition_result);
+                    }
+                };
+
+                // Resolve appropriate branch
+                if is_truthy {
+                    Box::pin(self.resolve_value_expr(then)).await
+                } else if let Some(else_val) = else_expr {
+                    Box::pin(self.resolve_value_expr(else_val)).await
+                } else {
+                    // No else branch, default to null
+                    Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
+                }
+            }
+            ValueExpr::Coalesce { values } => {
+                // Try each value in order, return first non-skipped, non-null result
+                for (i, value_expr) in values.iter().enumerate() {
+                    let result = Box::pin(self.resolve_value_expr(value_expr)).await?;
+
+                    match result {
+                        FlowResult::Success(ref value) if !value.as_ref().is_null() => {
+                            // Non-null success - return it
+                            log::debug!(
+                                "Coalesce: value at index {} succeeded with non-null result",
+                                i
+                            );
+                            return Ok(result);
+                        }
+                        FlowResult::Success(_) => {
+                            // Null success - continue to next value
+                            log::debug!("Coalesce: value at index {} was null, trying next", i);
+                            continue;
+                        }
+                        FlowResult::Skipped { .. } => {
+                            // Skipped - continue to next value
+                            log::debug!("Coalesce: value at index {} was skipped, trying next", i);
+                            continue;
+                        }
+                        FlowResult::Failed(err) => {
+                            // Error - propagate immediately, don't continue
+                            log::debug!("Coalesce: value at index {} failed with error", i);
+                            return Ok(FlowResult::Failed(err));
+                        }
+                    }
+                }
+
+                // All values were null or skipped - return null
+                log::debug!("Coalesce: all values were null or skipped, returning null");
+                Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
+            }
         }
     }
 
@@ -1164,6 +1235,186 @@ mod tests {
 
         // Should be an error (step not found in flow)
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_if_expression_truthy() {
+        use crate::new_values::ValueExpr;
+
+        let workflow_input = ValueRef::new(json!({"enabled": true}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test $if with truthy condition
+        let expr = ValueExpr::if_expr(
+            ValueExpr::literal(json!(true)),
+            ValueExpr::literal(json!("then_value")),
+            Some(ValueExpr::literal(json!("else_value"))),
+        );
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("then_value"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_if_expression_falsy() {
+        use crate::new_values::ValueExpr;
+
+        let workflow_input = ValueRef::new(json!({"enabled": false}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test $if with falsy condition
+        let expr = ValueExpr::if_expr(
+            ValueExpr::literal(json!(false)),
+            ValueExpr::literal(json!("then_value")),
+            Some(ValueExpr::literal(json!("else_value"))),
+        );
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("else_value"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_if_expression_default_null() {
+        use crate::new_values::ValueExpr;
+
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test $if with no else clause (defaults to null)
+        let expr = ValueExpr::if_expr(
+            ValueExpr::literal(json!(false)),
+            ValueExpr::literal(json!("then_value")),
+            None,
+        );
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!(null));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_if_with_input_condition() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+
+        let workflow_input = ValueRef::new(json!({"shouldSkip": true}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test $if with condition from input
+        let expr = ValueExpr::if_expr(
+            ValueExpr::workflow_input(NewJsonPath::from("shouldSkip")),
+            ValueExpr::literal(json!("skipped")),
+            Some(ValueExpr::literal(json!("not_skipped"))),
+        );
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("skipped"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_coalesce_first_value() {
+        use crate::new_values::ValueExpr;
+
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test $coalesce - first value is non-null
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::literal(json!("first")),
+            ValueExpr::literal(json!("second")),
+        ]);
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("first"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_coalesce_skip_nulls() {
+        use crate::new_values::ValueExpr;
+
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test $coalesce - skip null values
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::literal(json!(null)),
+            ValueExpr::literal(json!("second")),
+            ValueExpr::literal(json!("third")),
+        ]);
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("second"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_coalesce_all_null() {
+        use crate::new_values::ValueExpr;
+
+        let workflow_input = ValueRef::new(json!({}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input, loader, flow);
+
+        // Test $coalesce - all values null, return null
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::literal(json!(null)),
+            ValueExpr::literal(json!(null)),
+        ]);
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!(null));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_value_expr_coalesce_with_variable_fallback() {
+        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+
+        let workflow_input = ValueRef::new(json!({"fallback": "fallback_value"}));
+        let loader = MockValueLoader::new(workflow_input.clone());
+        let run_id = Uuid::now_v7();
+        let flow = create_test_flow();
+
+        let resolver = ValueResolver::new(run_id, workflow_input.clone(), loader, flow);
+
+        // Test $coalesce with missing variable, fallback to input
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::variable("missing_var", None),
+            ValueExpr::workflow_input(NewJsonPath::from("fallback")),
+        ]);
+
+        // This should fall through to the input since variable will error
+        // Actually, errors propagate, so this needs a default on the variable
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::variable("missing_var", Some(Box::new(ValueExpr::null()))),
+            ValueExpr::workflow_input(NewJsonPath::from("fallback")),
+        ]);
+
+        let value = resolver.resolve_value_expr(&expr).await.unwrap().unwrap_success();
+        assert_eq!(value.as_ref(), &json!("fallback_value"));
     }
 
     #[tokio::test]

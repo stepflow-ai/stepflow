@@ -49,6 +49,20 @@ pub enum ValueExpr {
         literal: serde_json::Value,
     },
 
+    /// Conditional expression: `{ $if: <condition>, then: <expr>, else?: <expr> }`
+    /// Returns `then` value if condition is truthy, otherwise `else` value (defaults to null)
+    If {
+        condition: Box<ValueExpr>,
+        then: Box<ValueExpr>,
+        else_expr: Option<Box<ValueExpr>>,
+    },
+
+    /// Coalesce: `{ $coalesce: [<expr1>, <expr2>, ...] }`
+    /// Returns first non-skipped, non-null value from the list
+    Coalesce {
+        values: Vec<ValueExpr>,
+    },
+
     /// JSON array where each element can be an expression
     Array(Vec<ValueExpr>),
 
@@ -128,6 +142,20 @@ impl ValueExpr {
         ValueExpr::EscapedLiteral { literal: value }
     }
 
+    /// Create a conditional expression
+    pub fn if_expr(condition: ValueExpr, then: ValueExpr, else_expr: Option<ValueExpr>) -> Self {
+        ValueExpr::If {
+            condition: Box::new(condition),
+            then: Box::new(then),
+            else_expr: else_expr.map(Box::new),
+        }
+    }
+
+    /// Create a coalesce expression
+    pub fn coalesce(values: Vec<ValueExpr>) -> Self {
+        ValueExpr::Coalesce { values }
+    }
+
     /// Create a null literal expression
     pub fn null() -> Self {
         ValueExpr::Literal(serde_json::Value::Null)
@@ -191,6 +219,29 @@ impl JsonSchema for ValueExpr {
                         "$literal": {}
                     },
                     "required": ["$literal"],
+                    "additionalProperties": false
+                },
+                {
+                    "description": "Conditional: { $if: condition, then: expr, else?: expr }",
+                    "type": "object",
+                    "properties": {
+                        "$if": { "$ref": "#/$defs/ValueExpr" },
+                        "then": { "$ref": "#/$defs/ValueExpr" },
+                        "else": { "$ref": "#/$defs/ValueExpr" }
+                    },
+                    "required": ["$if", "then"],
+                    "additionalProperties": false
+                },
+                {
+                    "description": "Coalesce: { $coalesce: [expr1, expr2, ...] }",
+                    "type": "object",
+                    "properties": {
+                        "$coalesce": {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/ValueExpr" }
+                        }
+                    },
+                    "required": ["$coalesce"],
                     "additionalProperties": false
                 },
                 {

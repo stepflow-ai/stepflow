@@ -163,6 +163,22 @@ fn collect_expr_dependencies(expr: &ValueExpr) -> Result<std::collections::HashS
         ValueExpr::Variable { .. } => {
             // Variables are not step dependencies
         }
+        ValueExpr::If { condition, then, else_expr } => {
+            // Collect dependencies from condition
+            deps.extend(collect_expr_dependencies(condition)?);
+            // Collect dependencies from then branch
+            deps.extend(collect_expr_dependencies(then)?);
+            // Collect dependencies from else branch if present
+            if let Some(else_val) = else_expr {
+                deps.extend(collect_expr_dependencies(else_val)?);
+            }
+        }
+        ValueExpr::Coalesce { values } => {
+            // Collect dependencies from all coalesce values
+            for value in values {
+                deps.extend(collect_expr_dependencies(value)?);
+            }
+        }
         ValueExpr::Array(items) => {
             for item in items {
                 deps.extend(collect_expr_dependencies(item)?);

@@ -364,6 +364,61 @@ fn validate_value_expr(
                 field_path.pop();
             }
         }
+        ValueExpr::If { condition, then, else_expr } => {
+            // Validate condition
+            let mut condition_path = path.clone();
+            condition_path.push("condition");
+            validate_value_expr(
+                condition,
+                &condition_path,
+                available_steps,
+                current_step_id,
+                flow,
+                diagnostics,
+            );
+
+            // Validate then branch
+            let mut then_path = path.clone();
+            then_path.push("then");
+            validate_value_expr(
+                then,
+                &then_path,
+                available_steps,
+                current_step_id,
+                flow,
+                diagnostics,
+            );
+
+            // Validate else branch if present
+            if let Some(else_val) = else_expr {
+                let mut else_path = path.clone();
+                else_path.push("else");
+                validate_value_expr(
+                    else_val,
+                    &else_path,
+                    available_steps,
+                    current_step_id,
+                    flow,
+                    diagnostics,
+                );
+            }
+        }
+        ValueExpr::Coalesce { values } => {
+            // Validate each coalesce value
+            let mut value_path = path.clone();
+            for (index, value) in values.iter().enumerate() {
+                value_path.push(index);
+                validate_value_expr(
+                    value,
+                    &value_path,
+                    available_steps,
+                    current_step_id,
+                    flow,
+                    diagnostics,
+                );
+                value_path.pop();
+            }
+        }
         // Literals and escaped literals are always valid
         ValueExpr::Literal(_) | ValueExpr::EscapedLiteral { .. } => {}
     }

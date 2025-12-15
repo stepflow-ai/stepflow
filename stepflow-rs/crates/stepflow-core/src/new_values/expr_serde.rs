@@ -45,6 +45,20 @@ impl Serialize for ValueExpr {
                 map.serialize_entry("$literal", literal)?;
                 map.end()
             }
+            ValueExpr::If { condition, then, else_expr } => {
+                let mut map = serializer.serialize_map(Some(3))?;
+                map.serialize_entry("$if", condition)?;
+                map.serialize_entry("then", then)?;
+                if let Some(else_val) = else_expr {
+                    map.serialize_entry("else", else_val)?;
+                }
+                map.end()
+            }
+            ValueExpr::Coalesce { values } => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("$coalesce", values)?;
+                map.end()
+            }
             ValueExpr::Array(items) => items.serialize(serializer),
             ValueExpr::Object(fields) => {
                 let mut map = serializer.serialize_map(Some(fields.len()))?;
@@ -83,6 +97,45 @@ fn parse_value_expr(value: Value) -> Result<ValueExpr, String> {
                 .ok_or_else(|| "$literal key not found".to_string())?
                 .clone();
             Ok(ValueExpr::EscapedLiteral { literal })
+        }
+        Value::Object(ref obj) if obj.contains_key("$if") => {
+            // Conditional expression
+            let condition = obj
+                .get("$if")
+                .ok_or_else(|| "$if key not found".to_string())?;
+            let then = obj
+                .get("then")
+                .ok_or_else(|| "then key required for $if".to_string())?;
+            let else_expr = obj.get("else");
+
+            let condition_expr = parse_value_expr(condition.clone())?;
+            let then_expr = parse_value_expr(then.clone())?;
+            let else_opt = else_expr
+                .map(|e| parse_value_expr(e.clone()))
+                .transpose()?;
+
+            Ok(ValueExpr::If {
+                condition: Box::new(condition_expr),
+                then: Box::new(then_expr),
+                else_expr: else_opt.map(Box::new),
+            })
+        }
+        Value::Object(ref obj) if obj.contains_key("$coalesce") => {
+            // Coalesce expression
+            let values_val = obj
+                .get("$coalesce")
+                .ok_or_else(|| "$coalesce key not found".to_string())?;
+
+            let values_array = values_val
+                .as_array()
+                .ok_or_else(|| "$coalesce must be an array".to_string())?;
+
+            let mut values = Vec::new();
+            for v in values_array {
+                values.push(parse_value_expr(v.clone())?);
+            }
+
+            Ok(ValueExpr::Coalesce { values })
         }
         Value::Object(ref obj) if obj.contains_key("$step") => {
             // Step reference - extract step and optional path
