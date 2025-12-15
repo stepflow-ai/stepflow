@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 
 use stepflow_core::{
-    new_values::{PathPart, ValueExpr},
+    values::{PathPart, ValueExpr},
     workflow::{BaseRef, Expr, Flow, Step, WorkflowRef},
 };
 

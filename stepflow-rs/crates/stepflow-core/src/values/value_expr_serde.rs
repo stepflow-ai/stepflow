@@ -7,7 +7,7 @@
 // We could further speed this up by writing our own deserializer directly to ValueExpr
 // but that would require more special handling.
 
-use super::expr::ValueExpr;
+use super::value_expr::ValueExpr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
 
@@ -212,7 +212,7 @@ fn parse_value_expr(value: Value) -> Result<ValueExpr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::new_values::JsonPath;
+    use crate::values::JsonPath;
     use serde_json::json;
 
     #[test]

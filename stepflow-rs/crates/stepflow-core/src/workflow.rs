@@ -29,7 +29,4 @@ pub use step_id::*;
 pub use variable_schema::*;
 
 // Re-export values from the values module
-pub use crate::values::ValueRef;
-
-// Re-export JsonPath from new_values module
-pub use crate::new_values::{JsonPath, PathPart};
+pub use crate::values::{JsonPath, PathPart, ValueRef};

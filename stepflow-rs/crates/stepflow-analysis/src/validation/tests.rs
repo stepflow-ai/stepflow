@@ -13,7 +13,7 @@
 use super::*;
 use crate::diagnostics::DiagnosticMessage;
 use serde_json::json;
-use stepflow_core::new_values::JsonPath;
+use stepflow_core::values::JsonPath;
 use stepflow_core::workflow::{FlowBuilder, Step, StepBuilder};
 use stepflow_core::ValueExpr;
 

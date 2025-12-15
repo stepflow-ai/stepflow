@@ -18,10 +18,8 @@ use uuid::Uuid;
 
 use log;
 
-use super::ValueRef;
+use super::{JsonPath as NewJsonPath, PathPart, Secrets, ValueExpr, ValueRef};
 use crate::{
-    new_values::{JsonPath as NewJsonPath, PathPart, ValueExpr},
-    values::Secrets,
     workflow::{BaseRef, Expr, Flow, JsonPath as OldJsonPath, SkipAction, StepId},
     FlowResult,
 };
@@ -501,8 +499,6 @@ impl<L: ValueLoader> ValueResolver<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::SchemaRef;
-    use crate::workflow::VariableSchema;
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -659,7 +655,7 @@ mod tests {
     // Tests for new ValueExpr resolution
     #[tokio::test]
     async fn test_resolve_value_expr_literal() {
-        use crate::new_values::ValueExpr;
+        use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -680,7 +676,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_input() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"name": "Alice", "age": 30}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -701,7 +697,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_variable() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -740,7 +736,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_composable() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"x": 10, "y": 20}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -783,7 +779,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_step_reference() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
         let workflow_input = ValueRef::new(json!({}));
@@ -828,7 +824,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_step_with_nested_path() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
         let workflow_input = ValueRef::new(json!({}));
@@ -878,7 +874,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_variable_with_expression_default() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"fallback_value": 100}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -898,7 +894,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_nested_with_step_refs() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
         let workflow_input = ValueRef::new(json!({"multiplier": 2}));
@@ -966,7 +962,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_array_with_step_refs() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
         let workflow_input = ValueRef::new(json!({}));
@@ -1009,7 +1005,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_error_invalid_step() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1028,7 +1024,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_if_expression_truthy() {
-        use crate::new_values::ValueExpr;
+        use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({"enabled": true}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1050,7 +1046,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_if_expression_falsy() {
-        use crate::new_values::ValueExpr;
+        use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({"enabled": false}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1072,7 +1068,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_if_expression_default_null() {
-        use crate::new_values::ValueExpr;
+        use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1094,7 +1090,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_if_with_input_condition() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"shouldSkip": true}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1116,7 +1112,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_coalesce_first_value() {
-        use crate::new_values::ValueExpr;
+        use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1137,7 +1133,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_coalesce_skip_nulls() {
-        use crate::new_values::ValueExpr;
+        use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1159,7 +1155,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_coalesce_all_null() {
-        use crate::new_values::ValueExpr;
+        use crate::values::ValueExpr;
 
         let workflow_input = ValueRef::new(json!({}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1180,7 +1176,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_coalesce_with_variable_fallback() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
 
         let workflow_input = ValueRef::new(json!({"fallback": "fallback_value"}));
         let loader = MockValueLoader::new(workflow_input.clone());
@@ -1208,7 +1204,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_value_expr_complex_mixed_composition() {
-        use crate::new_values::{JsonPath as NewJsonPath, ValueExpr};
+        use crate::values::{JsonPath as NewJsonPath, ValueExpr};
         use crate::workflow::{FlowBuilder, StepBuilder};
 
         let workflow_input = ValueRef::new(json!({
