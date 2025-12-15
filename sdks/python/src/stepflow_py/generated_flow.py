@@ -477,11 +477,23 @@ class ValueExpr3(Struct, kw_only=True):
     default: ValueExpr | None = None
 
 
+class ValueExpr5(Struct, kw_only=True):
+    field_if: ValueExpr = field(name='$if')
+    then: ValueExpr
+    else_: ValueExpr | None = field(name='else', default=None)
+
+
+class ValueExpr6(Struct, kw_only=True):
+    field_coalesce: List['ValueExpr'] = field(name='$coalesce')
+
+
 ValueExpr = Annotated[
     ValueExpr1
     | ValueExpr2
     | ValueExpr3
     | ValueExpr4
+    | ValueExpr5
+    | ValueExpr6
     | List['ValueExpr']
     | Dict[str, 'ValueExpr']
     | bool
