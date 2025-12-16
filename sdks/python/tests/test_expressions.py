@@ -18,12 +18,12 @@ import msgspec
 
 from stepflow_py import ValueExpr
 from stepflow_py.generated_flow import (
-    ValueExpr1,
-    ValueExpr2,
-    ValueExpr3,
-    ValueExpr4,
-    ValueExpr5,
-    ValueExpr6,
+    Coalesce,
+    If,
+    InputRef,
+    LiteralModel,
+    StepRef,
+    VariableRef,
 )
 
 
@@ -31,13 +31,13 @@ def test_step_reference():
     """Test creating step output references."""
     # Simple step reference
     expr = ValueExpr.step("my_step")
-    assert isinstance(expr, ValueExpr1)
+    assert isinstance(expr, StepRef)
     assert expr.field_step == "my_step"
     assert expr.path is None
 
     # Step reference with path
     expr_with_path = ValueExpr.step("my_step", "result.data")
-    assert isinstance(expr_with_path, ValueExpr1)
+    assert isinstance(expr_with_path, StepRef)
     assert expr_with_path.field_step == "my_step"
     assert expr_with_path.path == "result.data"
 
@@ -46,12 +46,12 @@ def test_input_reference():
     """Test creating workflow input references."""
     # Empty path (root)
     expr = ValueExpr.input("")
-    assert isinstance(expr, ValueExpr2)
+    assert isinstance(expr, InputRef)
     assert expr.field_input == ""
 
     # Nested field reference
     expr_nested = ValueExpr.input("user.name")
-    assert isinstance(expr_nested, ValueExpr2)
+    assert isinstance(expr_nested, InputRef)
     assert expr_nested.field_input == "user.name"
 
 
@@ -59,20 +59,20 @@ def test_variable_reference():
     """Test creating variable references."""
     # Simple variable
     expr = ValueExpr.variable("api_key")
-    assert isinstance(expr, ValueExpr3)
+    assert isinstance(expr, VariableRef)
     assert expr.field_variable == "api_key"
     assert expr.default is None
 
     # Variable with default
     default_val = ValueExpr.literal("default-key")
     expr_with_default = ValueExpr.variable("api_key", default=default_val)
-    assert isinstance(expr_with_default, ValueExpr3)
+    assert isinstance(expr_with_default, VariableRef)
     assert expr_with_default.field_variable == "api_key"
     assert expr_with_default.default == default_val
 
     # Variable with nested path
     expr_nested = ValueExpr.variable("config", path="api.timeout")
-    assert isinstance(expr_nested, ValueExpr3)
+    assert isinstance(expr_nested, VariableRef)
     assert expr_nested.field_variable == "config.api.timeout"
 
 
@@ -80,17 +80,17 @@ def test_literal():
     """Test creating literal values."""
     # String literal
     expr_str = ValueExpr.literal("hello")
-    assert isinstance(expr_str, ValueExpr4)
+    assert isinstance(expr_str, LiteralModel)
     assert expr_str.field_literal == "hello"
 
     # Number literal
     expr_num = ValueExpr.literal(42)
-    assert isinstance(expr_num, ValueExpr4)
+    assert isinstance(expr_num, LiteralModel)
     assert expr_num.field_literal == 42
 
     # Object literal
     expr_obj = ValueExpr.literal({"key": "value"})
-    assert isinstance(expr_obj, ValueExpr4)
+    assert isinstance(expr_obj, LiteralModel)
     assert expr_obj.field_literal == {"key": "value"}
 
 
@@ -102,14 +102,14 @@ def test_conditional():
 
     # With else clause
     expr = ValueExpr.if_(condition, then_val, else_val)
-    assert isinstance(expr, ValueExpr5)
+    assert isinstance(expr, If)
     assert expr.field_if == condition
     assert expr.then == then_val
     assert expr.else_ == else_val
 
     # Without else clause
     expr_no_else = ValueExpr.if_(condition, then_val)
-    assert isinstance(expr_no_else, ValueExpr5)
+    assert isinstance(expr_no_else, If)
     assert expr_no_else.field_if == condition
     assert expr_no_else.then == then_val
     assert expr_no_else.else_ is None
@@ -122,7 +122,7 @@ def test_coalesce():
     val3 = ValueExpr.literal({"timeout": 30})
 
     expr = ValueExpr.coalesce(val1, val2, val3)
-    assert isinstance(expr, ValueExpr6)
+    assert isinstance(expr, Coalesce)
     assert len(expr.field_coalesce) == 3
     assert expr.field_coalesce[0] == val1
     assert expr.field_coalesce[1] == val2
@@ -162,15 +162,15 @@ def test_complex_expression():
         then=ValueExpr.step("debug_step", "result"),
         else_=ValueExpr.coalesce(
             ValueExpr.step("fallback_step", "output"),
-            ValueExpr.literal({"status": "default"})
-        )
+            ValueExpr.literal({"status": "default"}),
+        ),
     )
 
     # Verify structure
-    assert isinstance(complex_expr, ValueExpr5)
-    assert isinstance(complex_expr.field_if, ValueExpr3)
-    assert isinstance(complex_expr.then, ValueExpr1)
-    assert isinstance(complex_expr.else_, ValueExpr6)
+    assert isinstance(complex_expr, If)
+    assert isinstance(complex_expr.field_if, VariableRef)
+    assert isinstance(complex_expr.then, StepRef)
+    assert isinstance(complex_expr.else_, Coalesce)
 
     # Verify serialization works
     serialized = msgspec.json.encode(complex_expr)

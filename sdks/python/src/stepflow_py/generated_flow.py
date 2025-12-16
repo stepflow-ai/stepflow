@@ -36,18 +36,18 @@ Component = Annotated[
 ]
 
 
-class ValueExpr1(Struct, kw_only=True):
+class StepRef(Struct, kw_only=True):
     field_step: str = field(name='$step')
     path: Annotated[str, Meta(description='JSONPath expression')] | None = None
 
 
-class ValueExpr2(Struct, kw_only=True):
+class InputRef(Struct, kw_only=True):
     field_input: Annotated[str, Meta(description='JSONPath expression')] = field(
         name='$input'
     )
 
 
-class ValueExpr4(Struct, kw_only=True):
+class LiteralModel(Struct, kw_only=True):
     field_literal: Any = field(name='$literal')
 
 
@@ -374,30 +374,30 @@ class Step(Struct, kw_only=True):
     ) = None
 
 
-class ValueExpr3(Struct, kw_only=True):
+class VariableRef(Struct, kw_only=True):
     field_variable: Annotated[
         str, Meta(description='JSONPath expression including variable name')
     ] = field(name='$variable')
     default: ValueExpr | None = None
 
 
-class ValueExpr5(Struct, kw_only=True):
+class If(Struct, kw_only=True):
     field_if: ValueExpr = field(name='$if')
     then: ValueExpr
     else_: ValueExpr | None = field(name='else', default=None)
 
 
-class ValueExpr6(Struct, kw_only=True):
+class Coalesce(Struct, kw_only=True):
     field_coalesce: List['ValueExpr'] = field(name='$coalesce')
 
 
 ValueExpr = Annotated[
-    ValueExpr1
-    | ValueExpr2
-    | ValueExpr3
-    | ValueExpr4
-    | ValueExpr5
-    | ValueExpr6
+    StepRef
+    | InputRef
+    | VariableRef
+    | LiteralModel
+    | If
+    | Coalesce
     | List['ValueExpr']
     | Dict[str, 'ValueExpr']
     | bool

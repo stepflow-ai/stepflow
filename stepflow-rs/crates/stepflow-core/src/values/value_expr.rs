@@ -178,6 +178,7 @@ impl JsonSchema for ValueExpr {
             "description": "A value expression that can contain literal data or references to other values",
             "oneOf": [
                 {
+                    "title": "StepRef",
                     "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
                     "type": "object",
                     "properties": {
@@ -188,6 +189,7 @@ impl JsonSchema for ValueExpr {
                     "additionalProperties": false
                 },
                 {
+                    "title": "InputRef",
                     "description": "Workflow input reference: { $input: \"path\" }",
                     "type": "object",
                     "properties": {
@@ -197,6 +199,7 @@ impl JsonSchema for ValueExpr {
                     "additionalProperties": false
                 },
                 {
+                    "title": "VariableRef",
                     "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
                     "type": "object",
                     "properties": {
@@ -207,6 +210,7 @@ impl JsonSchema for ValueExpr {
                     "additionalProperties": false
                 },
                 {
+                    "title": "Literal",
                     "description": "Escaped literal: { $literal: any }",
                     "type": "object",
                     "properties": {
@@ -216,6 +220,7 @@ impl JsonSchema for ValueExpr {
                     "additionalProperties": false
                 },
                 {
+                    "title": "If",
                     "description": "Conditional: { $if: condition, then: expr, else?: expr }",
                     "type": "object",
                     "properties": {
@@ -227,6 +232,7 @@ impl JsonSchema for ValueExpr {
                     "additionalProperties": false
                 },
                 {
+                    "title": "Coalesce",
                     "description": "Coalesce: { $coalesce: [expr1, expr2, ...] }",
                     "type": "object",
                     "properties": {
@@ -239,16 +245,19 @@ impl JsonSchema for ValueExpr {
                     "additionalProperties": false
                 },
                 {
+                    "title": "ArrayExpr",
                     "description": "Array of expressions",
                     "type": "array",
                     "items": { "$ref": "#/$defs/ValueExpr" }
                 },
                 {
+                    "title": "ObjectExpr",
                     "description": "Object with expression values",
                     "type": "object",
                     "additionalProperties": { "$ref": "#/$defs/ValueExpr" }
                 },
                 {
+                    "title": "PrimitiveValue",
                     "description": "Literal primitive value",
                     "oneOf": [
                         { "type": "null" },

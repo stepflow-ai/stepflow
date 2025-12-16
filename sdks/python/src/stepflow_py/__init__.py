@@ -24,11 +24,10 @@ from .generated_flow import (
     OnErrorFail,
     OnErrorRetry,
     OnErrorSkip,
-    OnSkipDefault,
-    OnSkipSkip,
     Schema,
-    SkipAction,
     Step,
+)
+from .generated_flow import (
     ValueExpr as GenValueExpr,
 )
 from .server import StepflowServer
@@ -62,15 +61,12 @@ __all__ = [
     "ValueExpr",
     # Generated ValueExpr types (for advanced users)
     "GenValueExpr",
-    # Error and Skip Action types
+    # Error Action types
     "ErrorAction",
     "OnErrorFail",
     "OnErrorSkip",
     "OnErrorRetry",
     "OnErrorDefault",
-    "SkipAction",
-    "OnSkipSkip",
-    "OnSkipDefault",
 ]
 
 # Add LangChain exports if available

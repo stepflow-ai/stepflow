@@ -25,29 +25,31 @@ Example:
     >>> step = Step(
     ...     id="process",
     ...     component="/python/processor",
-    ...     input=ValueExpr.step("previous_step", "result.data")
+    ...     input=ValueExpr.step("previous_step", "result.data"),
     ... )
     >>>
     >>> # Create a conditional expression
     >>> conditional = ValueExpr.if_(
     ...     condition=ValueExpr.variable("debug_mode"),
     ...     then=ValueExpr.literal({"verbose": True}),
-    ...     else_=ValueExpr.literal({"verbose": False})
+    ...     else_=ValueExpr.literal({"verbose": False}),
     ... )
 """
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 from .generated_flow import (
     ValueExpr as GenValueExpr,
-    ValueExpr1,
-    ValueExpr2,
-    ValueExpr3,
-    ValueExpr4,
-    ValueExpr5,
-    ValueExpr6,
+)
+from .generated_flow import (
+    Coalesce,
+    If,
+    InputRef,
+    LiteralModel,
+    StepRef,
+    VariableRef,
 )
 
 
@@ -76,7 +78,7 @@ class ValueExpr:
             >>> # Reference nested field
             >>> ValueExpr.step("my_step", "result.data")
         """
-        return ValueExpr1(field_step=step_id, path=path if path else None)
+        return StepRef(field_step=step_id, path=path if path else None)
 
     @staticmethod
     def input(path: str) -> GenValueExpr:
@@ -95,10 +97,12 @@ class ValueExpr:
             >>> # Reference specific field
             >>> ValueExpr.input("user.name")
         """
-        return ValueExpr2(field_input=path)
+        return InputRef(field_input=path)
 
     @staticmethod
-    def variable(name: str, path: str = "", default: GenValueExpr | None = None) -> GenValueExpr:
+    def variable(
+        name: str, path: str = "", default: GenValueExpr | None = None
+    ) -> GenValueExpr:
         """Create a variable reference expression.
 
         Args:
@@ -121,7 +125,7 @@ class ValueExpr:
         """
         # Combine name and path for the variable field
         variable_path = f"{name}.{path}" if path else name
-        return ValueExpr3(field_variable=variable_path, default=default)
+        return VariableRef(field_variable=variable_path, default=default)
 
     @staticmethod
     def literal(value: Any) -> GenValueExpr:
@@ -138,13 +142,11 @@ class ValueExpr:
             >>> ValueExpr.literal([1, 2, 3])
             >>> ValueExpr.literal("hello")
         """
-        return ValueExpr4(field_literal=value)
+        return LiteralModel(field_literal=value)
 
     @staticmethod
     def if_(
-        condition: GenValueExpr,
-        then: GenValueExpr,
-        else_: GenValueExpr | None = None
+        condition: GenValueExpr, then: GenValueExpr, else_: GenValueExpr | None = None
     ) -> GenValueExpr:
         """Create a conditional expression.
 
@@ -160,10 +162,10 @@ class ValueExpr:
             >>> ValueExpr.if_(
             ...     condition=ValueExpr.variable("debug_mode"),
             ...     then=ValueExpr.literal({"log_level": "debug"}),
-            ...     else_=ValueExpr.literal({"log_level": "info"})
+            ...     else_=ValueExpr.literal({"log_level": "info"}),
             ... )
         """
-        return ValueExpr5(field_if=condition, then=then, else_=else_)
+        return If(field_if=condition, then=then, else_=else_)
 
     @staticmethod
     def coalesce(*values: GenValueExpr) -> GenValueExpr:
@@ -179,7 +181,7 @@ class ValueExpr:
             >>> ValueExpr.coalesce(
             ...     ValueExpr.variable("user_config"),
             ...     ValueExpr.variable("default_config"),
-            ...     ValueExpr.literal({"timeout": 30})
+            ...     ValueExpr.literal({"timeout": 30}),
             ... )
         """
-        return ValueExpr6(field_coalesce=list(values))
+        return Coalesce(field_coalesce=list(values))

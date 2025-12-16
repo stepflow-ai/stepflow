@@ -14,12 +14,8 @@
 
 import pytest
 
-from stepflow_py import (
-    OnSkipDefault,
-    OnSkipSkip,
-)
 from stepflow_py.flow_builder import FlowBuilder
-from stepflow_py.generated_flow import ValueExpr4
+from stepflow_py.generated_flow import LiteralModel
 from stepflow_py.value import JsonPath, StepReference, Value, WorkflowInput
 
 
@@ -28,7 +24,7 @@ def test_value_api_methods():
     # Test literal creation
     literal_value = Value.literal({"$from": "test"})
     assert isinstance(literal_value, Value)
-    assert isinstance(literal_value._value, ValueExpr4)
+    assert isinstance(literal_value._value, LiteralModel)
     assert literal_value._value.field_literal == {"$from": "test"}
 
     # Test step reference creation
@@ -83,99 +79,12 @@ def test_value_api_methods():
     assert str(references_instance[0].path) == str(references_loaded[0].path)
 
 
-def test_skip_actions():
-    """Test OnSkip functionality in references."""
-    builder = FlowBuilder()
-
-    # Create references with onSkip actions
-    input_with_skip = Value.input("field", on_skip=OnSkipSkip(action="skip"))
-    input_with_default = Value.input(
-        "field",
-        on_skip=OnSkipDefault(action="useDefault", defaultValue="default_value"),
-    )
-
-    # Add step using references with onSkip
-    builder.add_step(
-        id="skip_test",
-        component="test/component",
-        input_data={
-            "skip_input": input_with_skip,
-            "default_input": input_with_default,
-        },
-    )
-
-    # Set output to make the test complete
-    builder.set_output({"result": "done"})
-
-    flow = builder.build()
-    assert len(flow.steps or []) == 1
-
-    # Build and check references were created correctly
-    loaded_builder = FlowBuilder.load(flow)
-    references = loaded_builder.step("skip_test").get_references()
-
-    # Should find two workflow input references
-    assert len(references) == 2
-    assert all(isinstance(ref, WorkflowInput) for ref in references)
-
-    # Check that onSkip was set on the references
-    skip_ref = next(
-        ref for ref in references if ref.on_skip and isinstance(ref.on_skip, OnSkipSkip)
-    )
-    default_ref = next(
-        ref
-        for ref in references
-        if ref.on_skip and isinstance(ref.on_skip, OnSkipDefault)
-    )
-
-    assert skip_ref.on_skip is not None
-    assert isinstance(skip_ref.on_skip, OnSkipSkip)
-    assert skip_ref.on_skip.action == "skip"
-
-    assert default_ref.on_skip is not None
-    assert isinstance(default_ref.on_skip, OnSkipDefault)
-    assert default_ref.on_skip.action == "useDefault"
-    assert default_ref.on_skip.defaultValue == "default_value"
-
-
-def test_value_with_on_skip():
-    """Test Value.with_on_skip() method."""
-    # Test with step reference
-    step_ref = Value.step("step1", "output")
-    step_ref_with_skip = step_ref.with_on_skip(OnSkipSkip(action="skip"))
-
-    # Verify it's a new instance with onSkip set
-    assert step_ref_with_skip is not step_ref
-    assert isinstance(step_ref_with_skip._value, StepReference)
-    assert step_ref_with_skip._value.on_skip is not None
-    assert isinstance(step_ref_with_skip._value.on_skip, OnSkipSkip)
-    assert step_ref_with_skip._value.on_skip.action == "skip"
-
-    # Test with workflow input
-    input_ref = Value.input("field")
-    input_ref_with_default = input_ref.with_on_skip(
-        OnSkipDefault(action="useDefault", defaultValue="fallback")
-    )
-
-    assert input_ref_with_default is not input_ref
-    assert isinstance(input_ref_with_default._value, WorkflowInput)
-    assert input_ref_with_default._value.on_skip is not None
-    assert isinstance(input_ref_with_default._value.on_skip, OnSkipDefault)
-    assert input_ref_with_default._value.on_skip.action == "useDefault"
-    assert input_ref_with_default._value.on_skip.defaultValue == "fallback"
-
-    # Test error on non-reference
-    literal_val = Value.literal("test")
-    with pytest.raises(TypeError):
-        literal_val.with_on_skip(OnSkipSkip(action="skip"))
-
-
 def test_value_class_basic():
     """Test basic Value class functionality."""
     # Test creating literal values
     literal_val = Value.literal({"key": "value"})
     assert isinstance(literal_val, Value)
-    assert isinstance(literal_val._value, ValueExpr4)
+    assert isinstance(literal_val._value, LiteralModel)
     assert literal_val._value.field_literal == {"key": "value"}
 
     # Test creating step references
@@ -214,8 +123,8 @@ def test_value_class_constructor():
     val5 = Value(input_ref)
     assert val5._value == input_ref
 
-    # Test with ValueExpr4 (escaped literal)
-    escaped = ValueExpr4(field_literal="test")
+    # Test with LiteralModel (escaped literal)
+    escaped = LiteralModel(field_literal="test")
     val6 = Value(escaped)
     assert val6._value == escaped
 

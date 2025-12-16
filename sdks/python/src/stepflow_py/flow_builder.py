@@ -25,13 +25,13 @@ from .generated_flow import (
     Component,
     ErrorAction,
     Flow,
+    InputRef,
+    LiteralModel,
     Schema,
     Step,
+    StepRef,
     ValueExpr,
-    ValueExpr1,
-    ValueExpr2,
-    ValueExpr3,
-    ValueExpr4,
+    VariableRef,
 )
 from .value import (
     JsonPath,
@@ -349,10 +349,10 @@ class FlowBuilder:
             Value
             | StepReference
             | WorkflowInput
-            | ValueExpr1
-            | ValueExpr2
-            | ValueExpr3
-            | ValueExpr4
+            | StepRef
+            | InputRef
+            | VariableRef
+            | LiteralModel
             | str
             | int
             | float
@@ -448,9 +448,7 @@ class FlowBuilder:
             and hasattr(step.onError, "defaultValue")
             and step.onError.defaultValue
         ):
-            references.extend(
-                self.get_value_expr_references(step.onError.defaultValue)
-            )
+            references.extend(self.get_value_expr_references(step.onError.defaultValue))
 
         return references
 
@@ -460,25 +458,27 @@ class FlowBuilder:
         """Extract all references from a ValueExpr."""
         references: list[StepReference | WorkflowInput] = []
 
-        if isinstance(value_expr, ValueExpr1):
+        if isinstance(value_expr, StepRef):
             # Step reference
             json_path = JsonPath()
             if value_expr.path is not None and value_expr.path != "$":
                 json_path.fragments = [value_expr.path]
-            references.append(StepReference(value_expr.field_step, json_path, None))
-        elif isinstance(value_expr, ValueExpr2):
+            references.append(StepReference(value_expr.field_step, json_path))
+        elif isinstance(value_expr, InputRef):
             # Input reference
             json_path = JsonPath()
             if value_expr.field_input is not None and value_expr.field_input != "$":
                 json_path.fragments = [value_expr.field_input]
-            references.append(WorkflowInput(json_path, None))
-        elif isinstance(value_expr, ValueExpr3):
+            references.append(WorkflowInput(json_path))
+        elif isinstance(value_expr, VariableRef):
             # Variable reference - variables don't appear in step/input references
             pass
-        elif isinstance(value_expr, ValueExpr4):
+        elif isinstance(value_expr, LiteralModel):
             # Escaped literal - check if it contains nested references
             if isinstance(value_expr.field_literal, dict | list):
-                references.extend(self.get_value_expr_references(value_expr.field_literal))
+                references.extend(
+                    self.get_value_expr_references(value_expr.field_literal)
+                )
         elif isinstance(value_expr, dict):
             # Recursively process dictionary values
             for v in value_expr.values():
