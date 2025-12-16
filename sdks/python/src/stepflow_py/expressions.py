@@ -41,15 +41,15 @@ from __future__ import annotations
 from typing import Any
 
 from .generated_flow import (
-    ValueExpr as GenValueExpr,
-)
-from .generated_flow import (
     Coalesce,
     If,
     InputRef,
     LiteralModel,
     StepRef,
     VariableRef,
+)
+from .generated_flow import (
+    ValueExpr as GenValueExpr,
 )
 
 

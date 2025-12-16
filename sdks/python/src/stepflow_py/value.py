@@ -137,9 +137,7 @@ class InputPathBuilder:
     def __init__(self):
         self.path = JsonPath()
 
-    def __call__(
-        self, path: str | None = None
-    ) -> Value:
+    def __call__(self, path: str | None = None) -> Value:
         """Make InputPathBuilder callable to maintain API compatibility.
 
         This allows Value.input() to work returning a WorkflowInput reference.
@@ -230,17 +228,17 @@ class Value:
                 Value._convert_to_value_expr(default)
                 if not isinstance(
                     default,
-                        StepRef |
-                        InputRef |
-                        VariableRef |
-                        LiteralModel |
-                        list |
-                        dict |
-                        str |
-                        int |
-                        float |
-                        bool |
-                        type(None)
+                    StepRef
+                    | InputRef
+                    | VariableRef
+                    | LiteralModel
+                    | list
+                    | dict
+                    | str
+                    | int
+                    | float
+                    | bool
+                    | type(None),
                 )
                 else default
             )
@@ -255,9 +253,7 @@ class Value:
         return Value(LiteralModel(field_literal=value))
 
     @staticmethod
-    def step(
-        step_id: str, path: str | None = None
-    ) -> Value:
+    def step(step_id: str, path: str | None = None) -> Value:
         """Create a reference to a step's output.
 
         This is equivalent to using $from with a step reference.
@@ -274,8 +270,9 @@ class Value:
     @staticmethod
     def _convert_to_value_expr(data: Any) -> ValueExpr:
         """Convert arbitrary data to ValueExpr."""
-        if data is None:
-            return None
+        # For primitive types (none, str, int, float, bool), return as-is
+        if isinstance(data, None | bool | float | str | int):
+            return data
 
         if isinstance(data, Value):
             return Value._convert_to_value_expr(data._value)
@@ -299,8 +296,7 @@ class Value:
         if isinstance(data, list):
             return [Value._convert_to_value_expr(item) for item in data]
 
-        # For primitive types (str, int, float, bool), return as-is
-        return data
+        raise ValueError(f"Unsupported value: {data}")
 
     @staticmethod
     def _convert_step_reference(ref: StepReference) -> StepRef:
