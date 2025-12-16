@@ -1,0 +1,73 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "Python Component Error Handling Test (STDIO)"
+description: "Test that Python component errors are properly surfaced via JSON-RPC using stdio transport"
+
+input_schema:
+  type: object
+  properties:
+    mode:
+      type: string
+      description: "Error mode: error, runtime_error, or success"
+    message:
+      type: string
+      description: "Error message to include"
+      default: ""
+  required: [mode]
+
+steps:
+  - id: error_step
+    component: "/test_stdio/error_test"
+    input:
+      mode: { $from: { workflow: input }, path: "mode" }
+      message: { $from: { workflow: input }, path: "message" }
+
+output:
+  result: { $from: { step: error_step }, path: "result" }
+
+test:
+  # Use inline config to avoid initializing the HTTP plugin from shared config
+  config:
+    plugins:
+      builtin:
+        type: builtin
+      test_stdio:
+        type: stepflow
+        transport: stdio
+        command: uv
+        args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py"]
+
+    routes:
+      "/builtin/{component}":
+        - plugin: builtin
+      "/test_stdio/{component}":
+        - plugin: test_stdio
+
+  cases:
+    - name: "StepflowExecutionError is surfaced correctly"
+      input:
+        mode: "error"
+        message: "test error message"
+      output:
+        outcome: failed
+        error:
+          code: 500
+          message: 'step "error_step" failed'
+
+    - name: "RuntimeError is wrapped and surfaced"
+      input:
+        mode: "runtime_error"
+        message: "unexpected failure"
+      output:
+        outcome: failed
+        error:
+          code: 500
+          message: 'step "error_step" failed'
+
+    - name: "Success case works normally"
+      input:
+        mode: "success"
+        message: ""
+      output:
+        outcome: success
+        result:
+          result: "success"

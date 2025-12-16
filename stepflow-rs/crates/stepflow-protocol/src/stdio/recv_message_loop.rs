@@ -10,7 +10,11 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+    time::Duration,
+};
 
 use error_stack::ResultExt as _;
 use stepflow_plugin::Context;
@@ -31,6 +35,31 @@ use crate::{Message, MessageHandlerRegistry, RequestId};
 
 use super::{client::RestartCounter, launcher::Launcher};
 
+/// Maximum number of stderr lines to buffer after initialization.
+const MAX_STDERR_LINES: usize = 100;
+
+/// Controls how component stderr is handled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StderrMode {
+    /// Discard stderr, only show on process crash (default).
+    Quiet,
+    /// Log all stderr immediately (current behavior, for debugging).
+    Verbose,
+}
+
+impl StderrMode {
+    /// Parse stderr mode from environment variable STEPFLOW_COMPONENT_STDERR.
+    fn from_env() -> Self {
+        match std::env::var("STEPFLOW_COMPONENT_STDERR")
+            .map(|s| s.to_lowercase())
+            .as_deref()
+        {
+            Ok("verbose") => StderrMode::Verbose,
+            _ => StderrMode::Quiet, // Default
+        }
+    }
+}
+
 struct ReceiveMessageLoop {
     child: Child,
     to_child: ChildStdin,
@@ -39,6 +68,14 @@ struct ReceiveMessageLoop {
     pending_requests: HashMap<RequestId, oneshot::Sender<OwnedJson>>,
     outgoing_tx: mpsc::Sender<String>,
     launcher: Arc<Launcher>,
+    /// Controls how stderr is handled (quiet = buffer, verbose = log immediately).
+    stderr_mode: StderrMode,
+    /// Whether the component server has been initialized (received "initialize" response).
+    initialized: bool,
+    /// Buffer for stderr lines when in quiet mode.
+    stderr_buffer: VecDeque<String>,
+    /// Request ID of pending "initialize" request, if any.
+    pending_initialize_id: Option<RequestId>,
 }
 
 impl ReceiveMessageLoop {
@@ -61,6 +98,10 @@ impl ReceiveMessageLoop {
             pending_requests: HashMap::new(),
             outgoing_tx,
             launcher,
+            stderr_mode: StderrMode::from_env(),
+            initialized: false,
+            stderr_buffer: VecDeque::new(),
+            pending_initialize_id: None,
         })
     }
 
@@ -217,6 +258,9 @@ impl ReceiveMessageLoop {
             self.launcher.args
         );
 
+        // Flush buffered stderr before restart (provides context for the crash)
+        self.flush_stderr_buffer("before restart");
+
         // Drain any remaining output from the crashed process before restarting
         // This captures stderr/stdout that may contain crash diagnostics (tracebacks, errors)
         self.drain_remaining_output().await;
@@ -246,6 +290,9 @@ impl ReceiveMessageLoop {
         self.to_child = new_stdin;
         self.from_child_stdout = new_stdout;
         self.from_child_stderr = new_stderr;
+
+        // Reset stderr state for the new process
+        self.reset_stderr_state();
 
         log::info!("Process restart completed successfully");
         Ok(())
@@ -277,6 +324,91 @@ impl ReceiveMessageLoop {
         Ok(())
     }
 
+    /// Buffer a stderr line using two-phase strategy:
+    /// - Before initialization: keep all lines (unbounded)
+    /// - After initialization: keep only the last MAX_STDERR_LINES
+    fn buffer_stderr_line(&mut self, line: String) {
+        // After initialization, limit buffer size
+        if self.initialized && self.stderr_buffer.len() >= MAX_STDERR_LINES {
+            self.stderr_buffer.pop_front();
+        }
+        // During initialization, keep all lines (unbounded)
+        self.stderr_buffer.push_back(line);
+    }
+
+    /// Mark the component server as initialized.
+    /// Trims the buffer to MAX_STDERR_LINES if it grew large during init.
+    fn mark_initialized(&mut self) {
+        if self.initialized {
+            return; // Already initialized
+        }
+        self.initialized = true;
+        log::debug!(
+            "Component initialized, stderr buffer has {} lines",
+            self.stderr_buffer.len()
+        );
+        // Trim buffer to MAX_STDERR_LINES if it grew large during init
+        while self.stderr_buffer.len() > MAX_STDERR_LINES {
+            self.stderr_buffer.pop_front();
+        }
+    }
+
+    /// Flush buffered stderr lines with context about when the failure occurred.
+    fn flush_stderr_buffer(&mut self, context: &str) {
+        if self.stderr_buffer.is_empty() {
+            return;
+        }
+        let phase = if self.initialized {
+            "post-init"
+        } else {
+            "during init"
+        };
+        log::warn!(
+            "Component stderr ({context}, {phase}, {} lines):",
+            self.stderr_buffer.len()
+        );
+        for line in self.stderr_buffer.drain(..) {
+            log::warn!("  {line}");
+        }
+    }
+
+    /// Reset stderr state when restarting the process.
+    fn reset_stderr_state(&mut self) {
+        self.initialized = false;
+        self.stderr_buffer.clear();
+        self.pending_initialize_id = None;
+    }
+
+    /// Check if an outgoing message is an "initialize" request and track its ID.
+    fn track_initialize_request(&mut self, json: &str) {
+        // Only track if we haven't initialized yet
+        if self.initialized {
+            return;
+        }
+
+        // Try to parse as a JSON object to check for "initialize" method
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json)
+            && let Some(method) = value.get("method").and_then(|m| m.as_str())
+            && method == "initialize"
+            && let Some(id) = value.get("id")
+            && let Ok(request_id) = serde_json::from_value::<RequestId>(id.clone())
+        {
+            log::debug!("Tracking initialize request with id: {request_id}");
+            self.pending_initialize_id = Some(request_id);
+        }
+    }
+
+    /// Check if a response ID matches the pending initialize request.
+    fn check_initialize_response(&mut self, response_id: &RequestId) {
+        if let Some(ref pending_id) = self.pending_initialize_id
+            && pending_id == response_id
+        {
+            log::debug!("Received initialize response, marking as initialized");
+            self.mark_initialized();
+            self.pending_initialize_id = None;
+        }
+    }
+
     async fn iteration(
         &mut self,
         outgoing_rx: &mut mpsc::Receiver<String>,
@@ -288,23 +420,34 @@ impl ReceiveMessageLoop {
                 match child {
                     Ok(status) if status.success() => {
                         log::info!("Child process exited with status {status}");
+                        // Flush buffer on clean exit if there was any output
+                        if !self.stderr_buffer.is_empty() {
+                            self.flush_stderr_buffer("on exit");
+                        }
                     }
                     Ok(status) => {
                         log::error!("Child process exited with status {status}");
+                        self.flush_stderr_buffer("on crash");
                     }
                     Err(e) => {
                         log::error!("Child process exited with error: {e}");
+                        self.flush_stderr_buffer("on error");
                     }
                 }
                 Ok(false)
             }
             Some(outgoing) = outgoing_rx.recv() => {
+                // Track initialize request before sending
+                self.track_initialize_request(&outgoing);
                 self.send(outgoing).await?;
                 Ok(true)
             }
             Some(stderr_line) = self.from_child_stderr.next() => {
                 let stderr_line = stderr_line.change_context(TransportError::Recv)?;
-                log::info!("Component stderr: {stderr_line}");
+                match self.stderr_mode {
+                    StderrMode::Verbose => log::info!("Component stderr: {stderr_line}"),
+                    StderrMode::Quiet => self.buffer_stderr_line(stderr_line),
+                }
                 Ok(true)
             }
             Some(line) = self.from_child_stdout.next() => {
@@ -349,6 +492,8 @@ impl ReceiveMessageLoop {
                     }
                     Message::Response(response) => {
                         log::info!("Received response with id '{}'", response.id());
+                        // Check if this is the initialize response
+                        self.check_initialize_response(response.id());
                         if let Some(pending) = self.get_pending(pending_rx, response.id()) {
                             // Send the response to the pending request.
                             log::info!("Sending response to pending request with id '{}'", response.id());

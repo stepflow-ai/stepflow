@@ -33,6 +33,7 @@ try:
     from stepflow_py.stdio_server import StepflowStdioServer
     from stepflow_py.http_server import StepflowHttpServer
     from stepflow_py import StepflowContext
+    from stepflow_py.exceptions import StepflowExecutionError
     import msgspec
 except ImportError:
     print("Error: This test requires the Python SDK", file=sys.stderr)
@@ -71,6 +72,18 @@ class ProcessListInput(msgspec.Struct):
 class ProcessListOutput(msgspec.Struct):
     processed_items: List[str]
     count: int
+
+
+# Input/Output Types for Error Testing Components
+
+
+class ErrorTestInput(msgspec.Struct):
+    mode: str  # "error", "success", "runtime_error"
+    message: str = ""
+
+
+class ErrorTestOutput(msgspec.Struct):
+    result: str
 
 
 # Input/Output Types for Bidirectional Components
@@ -144,6 +157,21 @@ def process_list_component(input: ProcessListInput) -> ProcessListOutput:
     return ProcessListOutput(
         processed_items=processed_items, count=len(processed_items)
     )
+
+
+def error_test_component(input: ErrorTestInput) -> ErrorTestOutput:
+    """Test component that can raise different types of errors based on mode.
+
+    Modes:
+    - "error": Raises a StepflowExecutionError (expected error)
+    - "runtime_error": Raises a RuntimeError (unexpected error, gets wrapped)
+    - "success": Returns successfully
+    """
+    if input.mode == "error":
+        raise StepflowExecutionError(f"Intentional error: {input.message}")
+    elif input.mode == "runtime_error":
+        raise RuntimeError(f"Unexpected runtime error: {input.message}")
+    return ErrorTestOutput(result="success")
 
 
 # Bidirectional Components (using StepflowContext for blob operations)
@@ -438,6 +466,12 @@ async def main():
         description="Process a list of items by adding a prefix",
     )
 
+    core_server.component(
+        error_test_component,
+        name="error_test",
+        description="Test component for error handling scenarios",
+    )
+
     # Register bidirectional components
     core_server.component(
         data_analysis_component,
@@ -463,11 +497,13 @@ async def main():
         print(f"Starting HTTP test server on {args.host}:{args.port}", file=sys.stderr)
         await http_server.run()
     else:
-        # Create STDIO server wrapper
-        stdio_server = StepflowStdioServer(core_server)
-        print("Starting stdio test server", file=sys.stderr)
-        stdio_server.run()
+        # Create STDIO server wrapper and return it for sync execution
+        return StepflowStdioServer(core_server)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    result = asyncio.run(main())
+    # If we got a stdio server back, run it synchronously (outside asyncio context)
+    if result is not None:
+        print("Starting stdio test server", file=sys.stderr)
+        result.run()

@@ -1,0 +1,86 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: "Python Component Error Handling Test"
+description: "Test that Python component errors are properly surfaced via JSON-RPC using UDF"
+
+input_schema:
+  type: object
+  properties:
+    mode:
+      type: string
+      description: "Error mode: error, runtime_error, or success"
+    message:
+      type: string
+      description: "Error message to include"
+  required: [mode, message]
+
+steps:
+  # Create the error test function as a blob
+  - id: create_error_test_blob
+    component: /builtin/put_blob
+    input:
+      data:
+        input_schema:
+          type: object
+          properties:
+            mode:
+              type: string
+            message:
+              type: string
+          required: [mode, message]
+        code: |
+          def error_test(input):
+              mode = input['mode']
+              message = input['message']
+
+              if mode == 'error':
+                  raise ValueError(f"Intentional error: {message}")
+              elif mode == 'runtime_error':
+                  raise RuntimeError(f"Unexpected runtime error: {message}")
+              return {'result': 'success'}
+
+          error_test
+      blob_type: "data"
+
+  # Execute the error test function
+  - id: error_step
+    component: /python/udf
+    input:
+      blob_id: { $from: { step: create_error_test_blob }, path: blob_id }
+      input:
+        mode: { $from: { workflow: input }, path: "mode" }
+        message: { $from: { workflow: input }, path: "message" }
+
+output:
+  result: { $from: { step: error_step } }
+
+test:
+  cases:
+    - name: "ValueError is surfaced correctly"
+      input:
+        mode: "error"
+        message: "test error message"
+      output:
+        outcome: failed
+        error:
+          code: 500
+          message: 'step "error_step" failed'
+
+    - name: "RuntimeError is wrapped and surfaced"
+      input:
+        mode: "runtime_error"
+        message: "unexpected failure"
+      output:
+        outcome: failed
+        error:
+          code: 500
+          message: 'step "error_step" failed'
+
+    - name: "Success case works normally"
+      input:
+        mode: "success"
+        message: ""
+      output:
+        outcome: success
+        result:
+          result:
+            result: "success"
