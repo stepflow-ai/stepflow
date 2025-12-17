@@ -13,10 +13,40 @@
 use super::stepflow;
 use insta_cmd::assert_cmd_snapshot;
 
+/// Get the project root path (3 parents up from CARGO_MANIFEST_DIR)
+fn project_root() -> std::path::PathBuf {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .expect("Failed to find project root")
+        .to_path_buf()
+}
+
+/// Macro to apply project root filter for error message tests
+macro_rules! apply_project_root_filter {
+    () => {
+        let mut settings = insta::Settings::clone_current();
+        let project_path = project_root().to_string_lossy().to_string();
+        let escaped_path = regex::escape(&project_path);
+        settings.add_filter(&escaped_path, "[PROJECT]");
+        // Convert windows paths to Unix paths
+        if std::path::MAIN_SEPARATOR == '\\' {
+            settings.add_filter(r"\\", "/");
+        }
+        let _bound = settings.bind_to_scope();
+    };
+}
+
 /// Macro to apply common filters for visualize command tests
 macro_rules! apply_visualize_filters {
     ($temp_dir:expr) => {
         let mut settings = insta::Settings::clone_current();
+        // Replace the project root path with placeholder
+        let project_path = project_root().to_string_lossy().to_string();
+        let escaped_project = regex::escape(&project_path);
+        settings.add_filter(&escaped_project, "[PROJECT]");
         // Replace the specific temp directory path with placeholder
         let mut temp_path = $temp_dir.to_string_lossy().to_string();
         if temp_path.ends_with(std::path::MAIN_SEPARATOR) {
@@ -178,6 +208,7 @@ fn test_visualize_with_custom_config() {
 #[test]
 fn test_visualize_nonexistent_workflow() {
     // Test error handling for nonexistent workflow files
+    apply_project_root_filter!();
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
