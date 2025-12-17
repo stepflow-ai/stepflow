@@ -182,8 +182,7 @@ steps:
           content: "You are a document analysis assistant."
         - role: user
           content:
-            { $input }
-            path: "content"
+            { $input: "content" }
             transform: "Perform " + $.analysis_type + " analysis on: " + x
       model: "gpt-4"
       temperature: 0.1
@@ -267,20 +266,20 @@ async def process_batch():
     async with StepflowContext.from_config("stepflow-config.yml") as ctx:
         # Load workflow
         flow = Flow.from_file("workflow.yaml")
-        
+
         # Prepare batch inputs
         inputs = [
             {"item_id": f"item{i}", "value": i * 10}
             for i in range(100)
         ]
-        
+
         # Execute batch with concurrency control
         results = await ctx.evaluate_batch(
             flow=flow,
             inputs=inputs,
             max_concurrency=20
         )
-        
+
         # Process results
         for i, result in enumerate(results):
             print(f"Item {i}: {result}")
@@ -314,21 +313,21 @@ server = StepflowStdioServer()
 async def batch_processor(input: Input, ctx: StepflowContext) -> Output:
     """Process a batch of items using a sub-workflow"""
     from stepflow_py import Flow
-    
+
     # Load the sub-workflow
     flow = Flow.from_file(input.workflow_path)
-    
+
     # Execute batch
     results = await ctx.evaluate_batch(
         flow=flow,
         inputs=input.items,
         max_concurrency=input.max_concurrency
     )
-    
+
     # Aggregate results
     success_count = sum(1 for r in results if r.get("success", False))
     error_count = len(results) - success_count
-    
+
     return Output(
         results=results,
         total_processed=len(results),

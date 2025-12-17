@@ -27,9 +27,6 @@ from .generated_flow import (
     Schema,
     Step,
 )
-from .generated_flow import (
-    ValueExpr as GenValueExpr,
-)
 from .server import StepflowServer
 
 # Legacy import for backward compatibility
@@ -57,10 +54,8 @@ __all__ = [
     "Step",
     "Component",
     "Schema",
-    # ValueExpr builder (new syntax with $step, $input, $variable)
+    # ValueExpr builder for $step, $input, $variable expressions
     "ValueExpr",
-    # Generated ValueExpr types (for advanced users)
-    "GenValueExpr",
     # Error Action types
     "ErrorAction",
     "OnErrorFail",

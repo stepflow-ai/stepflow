@@ -65,12 +65,10 @@ steps:
   component: /python/udf
   input:
     blob_id:
-      { $step: create_average_udf }
-      path: blob_id
+      { $step: create_average_udf, path: blob_id }
     input:
       numbers:
-        { $input }
-        path: numbers
+        { $input: "numbers" }
 
 output:
   average:

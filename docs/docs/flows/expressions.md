@@ -35,9 +35,9 @@ value:
 
 ## References {#references}
 
-Value references allow you to dynamically reference data from earlier in the flow using special `$` prefixed keys.
+Value reference allow you to dynamically reference data from earlier in the flow using special `$` prefixed keys.
 
-The object may also have an optional `path` field that is applied to the referenced value.
+Some expressions may also have an optional `path` field that is applied to the referenced value.
 This may be the name of a field (assuming the value is an object) or a JSON path expression starting with `$`.
 
 ```yaml
@@ -59,7 +59,7 @@ reference_examples:
 See [Variables](./variables.md) for comprehensive documentation on using variables in workflows.
 
 :::tip[Escaping Literals]
-If you want to use an object that contains special `$` prefixed keys without evaluating the reference, see [Escaped Literals](#escaped-literals).
+If you want to use an object that contains special `$` prefixed keys without being a reference, see [Escaped Literals](#escaped-literals).
 :::
 
 :::note[Skip Handling]

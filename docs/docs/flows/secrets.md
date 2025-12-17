@@ -52,8 +52,8 @@ steps:
     input:
       url: { $input: "api_credentials.endpoint" }
       headers:
-        Authorization: 
-          { $input }
+        Authorization:
+          { $input: "$" }
           path: "api_credentials.api_key"
           transform: "Bearer " + x
 ```

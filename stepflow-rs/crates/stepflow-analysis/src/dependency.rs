@@ -57,7 +57,7 @@ fn analyze_dependencies_internal(flow: Arc<Flow>, flow_id: BlobId) -> Result<Flo
         .collect::<Result<IndexMap<_, _>>>()?;
 
     // Analyze workflow output dependencies
-    let output_depends = analyze_template_dependencies(flow.output())?;
+    let output_depends = analyze_expr_dependencies(flow.output())?;
 
     // Build dependency graph for execution
     let mut builder = DependenciesBuilder::new(steps.len());
@@ -78,30 +78,29 @@ fn analyze_dependencies_internal(flow: Arc<Flow>, flow_id: BlobId) -> Result<Flo
 
 /// Extract the list of step IDs that the given step depends on
 fn extract_step_dependencies(step_analysis: &StepAnalysis) -> impl Iterator<Item = &str> + '_ {
-    let dependencies = step_analysis.input_depends.step_dependencies();
+    let input_deps = step_analysis.input_depends.step_dependencies();
 
-    let skip_if = step_analysis
-        .skip_if_depend
-        .as_ref()
-        .and_then(|s| s.step_id())
-        .into_iter();
+    let skip_if_deps = step_analysis
+        .skip_if_depends
+        .iter()
+        .filter_map(|d| d.step_id());
 
-    dependencies.chain(skip_if)
+    input_deps.chain(skip_if_deps)
 }
 
 fn analyze_step(step: &Step) -> Result<StepAnalysis> {
-    let input_depends = analyze_template_dependencies(&step.input)?;
+    let input_depends = analyze_expr_dependencies(&step.input)?;
 
     // Extract dependencies from skip condition
-    let skip_if_depend = if let Some(skip_if) = &step.skip_if {
-        extract_dep_from_value_expr_simple(skip_if)?
+    let skip_if_depends = if let Some(skip_if) = &step.skip_if {
+        collect_expr_dependencies(skip_if)?
     } else {
-        None
+        std::collections::HashSet::new()
     };
 
     Ok(StepAnalysis {
         input_depends,
-        skip_if_depend,
+        skip_if_depends,
     })
 }
 
@@ -118,7 +117,7 @@ pub enum DependencyError {
 ///
 /// This handles both structured (object) and unstructured dependency analysis
 /// by examining the expression structure recursively.
-pub(crate) fn analyze_template_dependencies(
+pub(crate) fn analyze_expr_dependencies(
     expr: &ValueExpr,
 ) -> Result<crate::dependencies::ValueDependencies> {
     use crate::dependencies::ValueDependencies;
@@ -199,37 +198,6 @@ fn collect_expr_dependencies(expr: &ValueExpr) -> Result<std::collections::HashS
     }
 
     Ok(deps)
-}
-
-/// Extract a simple dependency from a ValueExpr for skip conditions
-/// Returns a single dependency if the expression references a step
-fn extract_dep_from_value_expr_simple(expr: &ValueExpr) -> Result<Option<Dependency>> {
-    match expr {
-        ValueExpr::Step { step, path } => {
-            let field = path.outer_field().map(|f| f.to_string());
-            Ok(Some(Dependency::StepOutput {
-                step_id: step.clone(),
-                field,
-                optional: false, // skip_if dependencies are always required
-            }))
-        }
-        ValueExpr::Input { .. } => {
-            // Workflow input reference - not a step dependency
-            Ok(None)
-        }
-        ValueExpr::Variable { .. } => {
-            // Variable reference - not a step dependency
-            Ok(None)
-        }
-        ValueExpr::Literal(_) | ValueExpr::EscapedLiteral { .. } => {
-            // Literals have no dependencies
-            Ok(None)
-        }
-        // For complex expressions (If, Coalesce, Array, Object), we'd need to
-        // recursively extract dependencies. For now, skip conditions should be
-        // simple references.
-        _ => Ok(None),
-    }
 }
 
 #[cfg(test)]
@@ -331,12 +299,16 @@ mod tests {
         assert_eq!(step2.input_depends, expected_step2_deps);
 
         // Check that step2 has a skip condition dependency
-        let expected_skip_dep = Some(Dependency::StepOutput {
-            step_id: "step1".to_string(),
-            field: Some("should_skip".to_string()),
-            optional: false, // skip_if dependencies are always required
-        });
-        assert_eq!(step2.skip_if_depend, expected_skip_dep);
+        let expected_skip_deps = {
+            let mut deps = HashSet::new();
+            deps.insert(Dependency::StepOutput {
+                step_id: "step1".to_string(),
+                field: None, // collect_expr_dependencies doesn't extract field from path
+                optional: false,
+            });
+            deps
+        };
+        assert_eq!(step2.skip_if_depends, expected_skip_deps);
 
         // Check step1 depends on workflow input
         let step1 = analysis.steps.get("step1").expect("Should find step1");

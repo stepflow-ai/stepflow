@@ -33,6 +33,17 @@ pub enum OutputFormat {
     Png,
 }
 
+impl OutputFormat {
+    /// Get the file extension for this format (without the leading dot)
+    pub fn extension(&self) -> &'static str {
+        match self {
+            OutputFormat::Dot => "dot",
+            OutputFormat::Svg => "svg",
+            OutputFormat::Png => "png",
+        }
+    }
+}
+
 /// Configuration for visualization rendering
 pub struct VisualizationConfig {
     /// Output format
@@ -59,7 +70,7 @@ pub struct FlowVisualizer {
     flow: std::sync::Arc<Flow>,
     router: Option<PluginRouter>,
     config: VisualizationConfig,
-    expr_node_counter: std::cell::Cell<usize>,
+    expr_node_counter: usize,
 }
 
 impl FlowVisualizer {
@@ -68,7 +79,7 @@ impl FlowVisualizer {
             flow,
             router,
             config: VisualizationConfig::default(),
-            expr_node_counter: std::cell::Cell::new(0),
+            expr_node_counter: 0,
         }
     }
 
@@ -78,7 +89,7 @@ impl FlowVisualizer {
     }
 
     /// Generate visualization and write to the specified output path
-    pub async fn generate(&self, output_path: &Path) -> Result<()> {
+    pub async fn generate(&mut self, output_path: &Path) -> Result<()> {
         let dot_content = self.generate_dot()?;
 
         match self.config.format {
@@ -97,7 +108,7 @@ impl FlowVisualizer {
     }
 
     /// Generate DOT format representation of the workflow
-    pub fn generate_dot(&self) -> Result<String> {
+    pub fn generate_dot(&mut self) -> Result<String> {
         let mut dot = String::new();
 
         // Start the digraph
@@ -260,20 +271,21 @@ impl FlowVisualizer {
     }
 
     /// Generate a unique ID for an expression node
-    fn next_expr_id(&self) -> String {
-        let id = self.expr_node_counter.get();
-        self.expr_node_counter.set(id + 1);
+    fn next_expr_id(&mut self) -> String {
+        let id = self.expr_node_counter;
+        self.expr_node_counter += 1;
         format!("expr_{}", id)
     }
 
-    /// Add expression nodes for $if and $coalesce, and return the node ID representing the expression
-    /// Returns the "root" node that should be referenced by the parent
-    fn add_expr_nodes(
-        &self,
+    /// Add expression nodes and edges for a ValueExpr tree.
+    /// Collects edges to be added to the graph with path labels.
+    /// Returns a list of (source_node, label) pairs representing dependencies.
+    fn collect_expr_edges(
+        &mut self,
         dot: &mut String,
         expr: &ValueExpr,
-        parent_step: &str,
-    ) -> Result<String> {
+        path: &str,
+    ) -> Result<Vec<(String, String)>> {
         match expr {
             ValueExpr::If {
                 condition,
@@ -289,29 +301,57 @@ impl FlowVisualizer {
                 writeln!(dot, "  ];").unwrap();
                 writeln!(dot).unwrap();
 
-                // Add edges from sub-expressions to the $if node
-                let cond_source = self.add_expr_nodes(dot, condition, parent_step)?;
-                writeln!(dot, "  \"{}\" -> \"{}\" [", cond_source, if_id).unwrap();
-                writeln!(dot, "    label=\"cond\",").unwrap();
-                writeln!(dot, "    color=\"purple\",").unwrap();
-                writeln!(dot, "  ];").unwrap();
-
-                let then_source = self.add_expr_nodes(dot, then, parent_step)?;
-                writeln!(dot, "  \"{}\" -> \"{}\" [", then_source, if_id).unwrap();
-                writeln!(dot, "    label=\"then\",").unwrap();
-                writeln!(dot, "    color=\"green\",").unwrap();
-                writeln!(dot, "  ];").unwrap();
-
-                if let Some(else_val) = else_expr {
-                    let else_source = self.add_expr_nodes(dot, else_val, parent_step)?;
-                    writeln!(dot, "  \"{}\" -> \"{}\" [", else_source, if_id).unwrap();
-                    writeln!(dot, "    label=\"else\",").unwrap();
-                    writeln!(dot, "    color=\"orange\",").unwrap();
+                // Add edges from sub-expressions to the $if node with semantic labels
+                for (source, label) in self.collect_expr_edges(dot, condition, "")? {
+                    writeln!(dot, "  \"{}\" -> \"{}\" [", source, if_id).unwrap();
+                    writeln!(
+                        dot,
+                        "    label=\"cond{}\",",
+                        if label.is_empty() {
+                            "".to_string()
+                        } else {
+                            format!(":{}", label)
+                        }
+                    )
+                    .unwrap();
                     writeln!(dot, "  ];").unwrap();
                 }
 
+                for (source, label) in self.collect_expr_edges(dot, then, "")? {
+                    writeln!(dot, "  \"{}\" -> \"{}\" [", source, if_id).unwrap();
+                    writeln!(
+                        dot,
+                        "    label=\"then{}\",",
+                        if label.is_empty() {
+                            "".to_string()
+                        } else {
+                            format!(":{}", label)
+                        }
+                    )
+                    .unwrap();
+                    writeln!(dot, "  ];").unwrap();
+                }
+
+                if let Some(else_val) = else_expr {
+                    for (source, label) in self.collect_expr_edges(dot, else_val, "")? {
+                        writeln!(dot, "  \"{}\" -> \"{}\" [", source, if_id).unwrap();
+                        writeln!(
+                            dot,
+                            "    label=\"else{}\",",
+                            if label.is_empty() {
+                                "".to_string()
+                            } else {
+                                format!(":{}", label)
+                            }
+                        )
+                        .unwrap();
+                        writeln!(dot, "  ];").unwrap();
+                    }
+                }
+
                 writeln!(dot).unwrap();
-                Ok(if_id)
+                // The $if node itself becomes the source for the parent
+                Ok(vec![(if_id, path.to_string())])
             }
             ValueExpr::Coalesce { values } => {
                 // Create diamond node for the $coalesce expression
@@ -325,123 +365,111 @@ impl FlowVisualizer {
 
                 // Add edges from each value to the $coalesce node
                 for (idx, value_expr) in values.iter().enumerate() {
-                    let value_source = self.add_expr_nodes(dot, value_expr, parent_step)?;
-                    writeln!(dot, "  \"{}\" -> \"{}\" [", value_source, coalesce_id).unwrap();
-                    writeln!(dot, "    label=\"{}\",", idx).unwrap();
-                    writeln!(dot, "    color=\"blue\",").unwrap();
-                    writeln!(dot, "  ];").unwrap();
+                    for (source, label) in self.collect_expr_edges(dot, value_expr, "")? {
+                        let idx_label = if label.is_empty() {
+                            format!("{}", idx)
+                        } else {
+                            format!("{}:{}", idx, label)
+                        };
+                        writeln!(dot, "  \"{}\" -> \"{}\" [", source, coalesce_id).unwrap();
+                        writeln!(dot, "    label=\"{}\",", idx_label).unwrap();
+                        writeln!(dot, "  ];").unwrap();
+                    }
                 }
 
                 writeln!(dot).unwrap();
-                Ok(coalesce_id)
+                // The $coalesce node itself becomes the source for the parent
+                Ok(vec![(coalesce_id, path.to_string())])
             }
             ValueExpr::Step { step, .. } => {
-                // Return the step ID directly - the step node already exists
-                Ok(step.clone())
+                // Return the step ID as a dependency
+                Ok(vec![(step.clone(), path.to_string())])
             }
             ValueExpr::Input { .. } => {
-                // Return workflow_input node
-                Ok("workflow_input".to_string())
+                // Return workflow_input as a dependency
+                Ok(vec![("workflow_input".to_string(), path.to_string())])
             }
             ValueExpr::Array(items) => {
-                // For arrays with multiple items, create edges for each item with index labels
-                // For single-item arrays, just pass through
-                if items.len() == 1 {
-                    if let Some(first_item) = items.first() {
-                        self.add_expr_nodes(dot, first_item, parent_step)
+                // Collect edges from all array items with index paths
+                let mut edges = Vec::new();
+                for (idx, item) in items.iter().enumerate() {
+                    let item_path = if path.is_empty() {
+                        format!("[{}]", idx)
                     } else {
-                        Ok(parent_step.to_string())
-                    }
-                } else {
-                    // Multiple items - process recursively and let caller connect with labels
-                    // We don't create edges here since the caller will do it with proper labels
-                    for item in items.iter() {
-                        self.add_expr_nodes(dot, item, parent_step)?;
-                    }
-                    Ok(parent_step.to_string())
+                        format!("{}[{}]", path, idx)
+                    };
+                    edges.extend(self.collect_expr_edges(dot, item, &item_path)?);
                 }
+                Ok(edges)
             }
             ValueExpr::Object(fields) => {
-                // For objects with multiple fields, process recursively
-                // We don't create edges here since the caller will do it with proper labels
-                if fields.len() == 1 {
-                    if let Some((_key, value)) = fields.first() {
-                        self.add_expr_nodes(dot, value, parent_step)
+                // Collect edges from all object fields with field paths
+                let mut edges = Vec::new();
+                for (key, value) in fields.iter() {
+                    let field_path = if path.is_empty() {
+                        key.clone()
                     } else {
-                        Ok(parent_step.to_string())
-                    }
-                } else {
-                    // Multiple fields - process recursively and let caller connect with labels
-                    for (_key, value) in fields.iter() {
-                        self.add_expr_nodes(dot, value, parent_step)?;
-                    }
-                    Ok(parent_step.to_string())
+                        format!("{}.{}", path, key)
+                    };
+                    edges.extend(self.collect_expr_edges(dot, value, &field_path)?);
                 }
+                Ok(edges)
             }
-            ValueExpr::Literal(value) => {
-                // For literals referenced by control flow, create a small node
-                let lit_id = self.next_expr_id();
-                let label = match value {
-                    serde_json::Value::Null => "null".to_string(),
-                    serde_json::Value::Bool(b) => b.to_string(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::String(s) => {
-                        if s.len() > 20 {
-                            format!("\"{}...\"", &s[..17])
-                        } else {
-                            format!("\"{}\"", s)
-                        }
-                    }
-                    _ => "...".to_string(),
-                };
-                writeln!(dot, "  \"{}\" [", lit_id).unwrap();
-                writeln!(dot, "    label=\"{}\",", escape_for_dot(&label)).unwrap();
-                writeln!(dot, "    shape=plaintext,").unwrap();
-                writeln!(dot, "    fontsize=10,").unwrap();
-                writeln!(dot, "  ];").unwrap();
-                Ok(lit_id)
-            }
-            _ => {
-                // For other expressions (Variable, EscapedLiteral), no node needed for now
-                Ok(parent_step.to_string())
+            ValueExpr::Literal(_)
+            | ValueExpr::EscapedLiteral { .. }
+            | ValueExpr::Variable { .. } => {
+                // Literals and variables have no step/input dependencies to visualize
+                Ok(vec![])
             }
         }
     }
 
-    fn add_edges(&self, dot: &mut String, analysis: &FlowAnalysis) -> Result<()> {
-        for step in self.flow.steps().iter() {
-            // First, process the step input expression to create any $if/$coalesce nodes
-            let expr_root = self.add_expr_nodes(dot, &step.input, &step.id)?;
+    fn add_edges(&mut self, dot: &mut String, analysis: &FlowAnalysis) -> Result<()> {
+        let num_steps = self.flow.steps().len();
+        for step_idx in 0..num_steps {
+            let step = &self.flow.steps()[step_idx];
+            let step_id = step.id.clone();
+            let step_input = step.input.clone();
+            let step_skip_if = step.skip_if.clone();
 
-            // Add edge from the expression root to the step
-            if expr_root != step.id {
-                writeln!(dot, "  \"{}\" -> \"{}\" [", expr_root, step.id).unwrap();
-                writeln!(dot, "    color=\"black\",").unwrap();
-                writeln!(dot, "    style=\"solid\",").unwrap();
-                writeln!(dot, "  ];").unwrap();
+            // Collect edges from the step input expression
+            let edges = self.collect_expr_edges(dot, &step_input, "")?;
+
+            // Add edges from dependencies to the step with path labels (at tail/source)
+            for (source, label) in edges {
+                if source != step_id {
+                    writeln!(dot, "  \"{}\" -> \"{}\" [", source, step_id).unwrap();
+                    if !label.is_empty() {
+                        writeln!(dot, "    label=\"{}\",", label).unwrap();
+                    }
+                    writeln!(dot, "  ];").unwrap();
+                }
             }
 
-            // Add edges for skip conditions (using ValueExpr)
-            // Get the step analysis from the flow analysis
-            if let Some(step_analysis) = analysis.steps.get(&step.id) {
-                // Add edges for skip condition dependencies
-                if let Some(skip_dep) = &step_analysis.skip_if_depend {
-                    match skip_dep {
-                        Dependency::FlowInput { .. } => {
-                            writeln!(dot, "  \"workflow_input\" -> \"{}\" [", step.id).unwrap();
-                            writeln!(dot, "    color=\"purple\",").unwrap();
-                            writeln!(dot, "    style=\"dotted\",").unwrap();
-                            writeln!(dot, "    label=\"skip condition\",").unwrap();
-                            writeln!(dot, "  ];").unwrap();
-                        }
-                        Dependency::StepOutput { step_id, .. } => {
-                            writeln!(dot, "  \"{}\" -> \"{}\" [", step_id, step.id).unwrap();
-                            writeln!(dot, "    color=\"purple\",").unwrap();
-                            writeln!(dot, "    style=\"dotted\",").unwrap();
-                            writeln!(dot, "    label=\"skip condition\",").unwrap();
-                            writeln!(dot, "  ];").unwrap();
-                        }
-                    }
+            // Add edges for skip conditions
+            if let Some(skip_if) = &step_skip_if {
+                let skip_edges = self.collect_expr_edges(dot, skip_if, "")?;
+                for (source, _label) in skip_edges {
+                    writeln!(dot, "  \"{}\" -> \"{}\" [", source, step_id).unwrap();
+                    writeln!(dot, "    style=\"dotted\",").unwrap();
+                    writeln!(dot, "    label=\"skipIf\",").unwrap();
+                    writeln!(dot, "  ];").unwrap();
+                }
+            }
+
+            // Also check analysis for skip_if_depends (from analysis)
+            if step_skip_if.is_none()
+                && let Some(step_analysis) = analysis.steps.get(&step_id)
+            {
+                for skip_dep in &step_analysis.skip_if_depends {
+                    let source = match skip_dep {
+                        Dependency::FlowInput { .. } => "workflow_input".to_string(),
+                        Dependency::StepOutput { step_id, .. } => step_id.clone(),
+                    };
+                    writeln!(dot, "  \"{}\" -> \"{}\" [", source, step_id).unwrap();
+                    writeln!(dot, "    style=\"dotted\",").unwrap();
+                    writeln!(dot, "    label=\"skipIf\",").unwrap();
+                    writeln!(dot, "  ];").unwrap();
                 }
             }
         }
@@ -449,15 +477,17 @@ impl FlowVisualizer {
         Ok(())
     }
 
-    fn add_output_edges(&self, dot: &mut String, _analysis: &FlowAnalysis) -> Result<()> {
-        // Process the workflow output expression to create any $if/$coalesce nodes
-        let expr_root = self.add_expr_nodes(dot, self.flow.output(), "workflow_output")?;
+    fn add_output_edges(&mut self, dot: &mut String, _analysis: &FlowAnalysis) -> Result<()> {
+        // Collect edges from the workflow output expression
+        let output = self.flow.output().clone();
+        let edges = self.collect_expr_edges(dot, &output, "")?;
 
-        // Add edge from the expression root to workflow_output
-        if expr_root != "workflow_output" {
-            writeln!(dot, "  \"{}\" -> \"workflow_output\" [", expr_root).unwrap();
-            writeln!(dot, "    color=\"green\",").unwrap();
-            writeln!(dot, "    style=\"solid\",").unwrap();
+        // Add edges from dependencies to workflow_output with path labels (at tail/source)
+        for (source, label) in edges {
+            writeln!(dot, "  \"{}\" -> \"workflow_output\" [", source).unwrap();
+            if !label.is_empty() {
+                writeln!(dot, "    label=\"{}\",", label).unwrap();
+            }
             writeln!(dot, "  ];").unwrap();
         }
 
@@ -512,10 +542,18 @@ impl FlowVisualizer {
         format: OutputFormat,
     ) -> Result<()> {
         use std::process::Stdio;
+        use tokio::io::AsyncWriteExt as _;
 
         let dot = which::which("dot").change_context(MainError::internal(
             "Graphviz 'dot' command not found. Please install Graphviz to use this feature.",
         ))?;
+
+        log::debug!(
+            "Running graphviz: {:?} -T{} -o {:?}",
+            dot,
+            format,
+            output_path
+        );
 
         let mut cmd = tokio::process::Command::new(dot);
         cmd.arg(format!("-T{}", format))
@@ -529,16 +567,18 @@ impl FlowVisualizer {
             "Failed to spawn graphviz 'dot' command",
         ))?;
 
-        if let Some(stdin) = child.stdin.take() {
-            tokio::io::AsyncWriteExt::write_all(
-                &mut tokio::io::BufWriter::new(stdin),
-                dot_content.as_bytes(),
-            )
-            .await
-            .change_context(MainError::internal(format!(
-                "Failed to write DOT content to graphviz child: {}",
-                dot_content
-            )))?;
+        // Write DOT content to stdin and ensure it's flushed and closed
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(dot_content.as_bytes())
+                .await
+                .change_context(MainError::internal(
+                    "Failed to write DOT content to graphviz",
+                ))?;
+            stdin.flush().await.change_context(MainError::internal(
+                "Failed to flush DOT content to graphviz",
+            ))?;
+            // stdin is dropped here, closing the pipe
         }
 
         let output = child
@@ -553,6 +593,16 @@ impl FlowVisualizer {
                 stderr
             ))));
         }
+
+        // Verify the output file was created
+        if !output_path.exists() {
+            return Err(report!(MainError::internal(format!(
+                "Graphviz completed but output file was not created: {}",
+                output_path.display()
+            ))));
+        }
+
+        log::debug!("Graphviz output written to: {:?}", output_path);
 
         Ok(())
     }
@@ -574,7 +624,7 @@ pub async fn visualize_flow(
     output_path: &Path,
     config: VisualizationConfig,
 ) -> Result<()> {
-    let visualizer = FlowVisualizer::new(flow, router).with_config(config);
+    let mut visualizer = FlowVisualizer::new(flow, router).with_config(config);
     visualizer.generate(output_path).await
 }
 
@@ -585,7 +635,7 @@ pub async fn visualize_flow_to_stdout(
     router: Option<PluginRouter>,
     config: VisualizationConfig,
 ) -> Result<()> {
-    let visualizer = FlowVisualizer::new(flow, router).with_config(config);
+    let mut visualizer = FlowVisualizer::new(flow, router).with_config(config);
     let dot_content = visualizer.generate_dot()?;
 
     // Output to stdout

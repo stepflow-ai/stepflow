@@ -6,7 +6,7 @@ info:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
     - visualize
-    - "--flow=tests/mock/basic.yaml"
+    - tests/mock/basic.yaml
     - "--format=dot"
   env:
     STEPFLOW_LOG_DESTINATION: ""
@@ -50,12 +50,19 @@ digraph workflow {
   ];
 
   "workflow_input" -> "step1" [
-    color="black",
-    style="solid",
+    label="input",
   ];
   "step1" -> "step2" [
-    color="black",
-    style="solid",
+    label="input",
+  ];
+  "step1" -> "workflow_output" [
+    label="name",
+  ];
+  "step2" -> "workflow_output" [
+    label="x",
+  ];
+  "step2" -> "workflow_output" [
+    label="y",
   ];
 }
 

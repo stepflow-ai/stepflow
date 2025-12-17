@@ -103,14 +103,12 @@ steps:
   component: /my/greet
   input:
     name:
-      { $input }
-      path: user_name
+      { $input: "user_name" }
     language: "es"
 
 output:
   greeting:
-    { $step: greeting_step }
-    path: message
+    { $step: greeting_step, path: message }
 ```
 
 See [Steps](../../flows/steps.md) for more details on using components in steps within a flow.

@@ -1044,7 +1044,7 @@ pub(crate) async fn execute_step_async(
                     );
                     let template = match default_value {
                         Some(default) => default.clone(),
-                        None => stepflow_core::ValueExpr::null(),
+                        None => ValueExpr::null(),
                     };
                     // Resolve the ValueTemplate to get the actual value
                     let default_value =

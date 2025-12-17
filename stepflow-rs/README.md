@@ -207,13 +207,13 @@ cargo run -- run --flow=workflow.yaml --env-variables
 - **Required Variables**: Mark variables as required in the schema
 - **Secret Handling**: Mark variables as `is_secret: true` for secure handling
 - **Environment Fallback**: Use `STEPFLOW_VAR_<NAME>` pattern for missing variables
-- **JSON Path Support**: Access nested variable properties with `{ $variable: "config", path: "$.api.timeout" }`
+- **JSON Path Support**: Access nested variable properties with `{ $variable: "config.api.timeout" }`
 
 ### Security Considerations
 
 Variables marked with `is_secret: true` are handled securely:
 - Redacted in logs and traces as `[REDACTED]`
-- Not displayed in error messages or debug output  
+- Not displayed in error messages or debug output
 - Proper handling throughout the execution pipeline
 
 **Example with secrets:**

@@ -50,18 +50,15 @@ steps:
   component: /filesystem/write_file
   input:
     path:
-      { $input }
-      path: filename
+      { $input: "filename" }
     content:
-      { $input }
-      path: content
+      { $input: "content" }
 
 - id: read_file
   component: /filesystem/read_file
   input:
     path:
-      { $input }
-      path: filename
+      { $input: "filename" }
 
 output:
   file_content:

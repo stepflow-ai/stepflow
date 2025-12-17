@@ -61,7 +61,7 @@ pub enum ValueExpr {
     Array(Vec<ValueExpr>),
 
     /// JSON object where each value can be an expression
-    /// Uses Vec instead of IndexMap for efficiency and to enable future hashability
+    /// Uses Vec instead of Map for efficiency and to enable hashability
     Object(Vec<(String, ValueExpr)>),
 
     /// Literal JSON value (null, bool, number, string)

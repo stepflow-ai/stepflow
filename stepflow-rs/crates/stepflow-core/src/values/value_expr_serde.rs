@@ -662,4 +662,89 @@ mod tests {
             _ => panic!("Expected EscapedLiteral"),
         }
     }
+
+    #[test]
+    fn test_mixed_literal_and_expression_object() {
+        // Test pattern: { messages: {$step: create_messages}, model: "gpt-3.5-turbo", max_tokens: 150 }
+        // This should work WITHOUT requiring $literal on each literal value
+        let json_str = r#"{
+            "messages": {"$step": "create_messages"},
+            "model": "gpt-3.5-turbo",
+            "max_tokens": 150
+        }"#;
+
+        let parsed: ValueExpr = serde_json::from_str(json_str).unwrap();
+
+        // Verify structure
+        match &parsed {
+            ValueExpr::Object(fields) => {
+                assert_eq!(fields.len(), 3);
+
+                // "messages" should be a Step reference
+                let messages = fields.iter().find(|(k, _)| k == "messages").unwrap();
+                match &messages.1 {
+                    ValueExpr::Step { step, .. } => {
+                        assert_eq!(step, "create_messages");
+                    }
+                    _ => panic!("Expected Step for messages field, got {:?}", messages.1),
+                }
+
+                // "model" should be a Literal string
+                let model = fields.iter().find(|(k, _)| k == "model").unwrap();
+                assert_eq!(model.1, ValueExpr::Literal(json!("gpt-3.5-turbo")));
+
+                // "max_tokens" should be a Literal number
+                let max_tokens = fields.iter().find(|(k, _)| k == "max_tokens").unwrap();
+                assert_eq!(max_tokens.1, ValueExpr::Literal(json!(150)));
+            }
+            _ => panic!("Expected Object, got {:?}", parsed),
+        }
+
+        // Verify round-trip serialization
+        let serialized = serde_json::to_string(&parsed).unwrap();
+        let reparsed: ValueExpr = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(parsed, reparsed);
+    }
+
+    #[test]
+    fn test_mixed_literal_and_expression_with_nested_objects() {
+        // More complex mixed pattern with nested objects
+        let json_str = r#"{
+            "config": {
+                "api_key": {"$variable": "openai_api_key"},
+                "timeout": 30,
+                "options": {
+                    "stream": true,
+                    "user_data": {"$input": "user"}
+                }
+            },
+            "messages": [
+                {"$step": "system_prompt"},
+                {"role": "user", "content": {"$input": "message"}}
+            ],
+            "temperature": 0.7
+        }"#;
+
+        let parsed: ValueExpr = serde_json::from_str(json_str).unwrap();
+
+        // Verify round-trip
+        let serialized = serde_json::to_string(&parsed).unwrap();
+        let reparsed: ValueExpr = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(parsed, reparsed);
+
+        // Verify structure is correctly parsed
+        match &parsed {
+            ValueExpr::Object(fields) => {
+                assert_eq!(fields.len(), 3);
+                assert!(fields.iter().any(|(k, _)| k == "config"));
+                assert!(fields.iter().any(|(k, _)| k == "messages"));
+                assert!(fields.iter().any(|(k, _)| k == "temperature"));
+
+                // Verify temperature is a literal
+                let temp = fields.iter().find(|(k, _)| k == "temperature").unwrap();
+                assert_eq!(temp.1, ValueExpr::Literal(json!(0.7)));
+            }
+            _ => panic!("Expected Object"),
+        }
+    }
 }

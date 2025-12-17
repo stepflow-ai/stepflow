@@ -6,7 +6,7 @@ info:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
     - visualize
-    - "--flow=tests/mock/conditional_skip.yaml"
+    - tests/mock/conditional_skip.yaml
     - "--format=dot"
   env:
     STEPFLOW_LOG_DESTINATION: ""
@@ -50,8 +50,11 @@ digraph workflow {
   ];
 
   "workflow_input" -> "conditional_step" [
-    color="black",
-    style="solid",
+    label="input",
+  ];
+  "workflow_input" -> "conditional_step" [
+    style="dotted",
+    label="skipIf",
   ];
   "expr_0" [
     label="$coalesce",
@@ -61,25 +64,13 @@ digraph workflow {
 
   "conditional_step" -> "expr_0" [
     label="0",
-    color="blue",
-  ];
-  "expr_1" [
-    label="null",
-    shape=plaintext,
-    fontsize=10,
-  ];
-  "expr_1" -> "expr_0" [
-    label="1",
-    color="blue",
   ];
 
   "expr_0" -> "dependent_step" [
-    color="black",
-    style="solid",
+    label="input",
   ];
   "dependent_step" -> "workflow_output" [
-    color="green",
-    style="solid",
+    label="dependentResult",
   ];
 }
 

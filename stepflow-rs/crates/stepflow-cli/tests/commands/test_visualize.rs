@@ -48,7 +48,7 @@ fn test_visualize_basic_workflow_dot() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
     );
@@ -63,7 +63,7 @@ fn test_visualize_basic_workflow_dot_stdout() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg("--format=dot")
     );
 }
@@ -83,7 +83,7 @@ fn test_visualize_basic_workflow_svg() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=svg")
     );
@@ -103,7 +103,7 @@ fn test_visualize_with_no_servers_option() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
             .arg("--no-servers")
@@ -124,7 +124,7 @@ fn test_visualize_with_no_details_option() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
             .arg("--no-details")
@@ -145,7 +145,7 @@ fn test_visualize_conditional_skip_workflow() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/conditional_skip.yaml")
+            .arg("tests/mock/conditional_skip.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
     );
@@ -165,7 +165,7 @@ fn test_visualize_with_custom_config() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/builtins/blob_test.yaml")
+            .arg("tests/builtins/blob_test.yaml")
             .arg("--config=tests/builtins/stepflow-config.yml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
@@ -181,7 +181,7 @@ fn test_visualize_nonexistent_workflow() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=nonexistent.yaml")
+            .arg("nonexistent.yaml")
             .arg("--output=output.dot")
             .arg("--format=dot")
     );
@@ -199,7 +199,7 @@ fn test_visualize_png_format() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=png")
     );
@@ -219,7 +219,7 @@ fn test_visualize_invalid_format() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=xyz")
     );
@@ -229,13 +229,21 @@ fn test_visualize_invalid_format() {
 
 #[test]
 fn test_visualize_stdout_non_dot_format() {
-    // Test error handling for non-DOT format with stdout
+    // Test that SVG format without --output creates file next to workflow
+    let output_path = test_workflow_path("tests/mock/basic.svg");
+
+    // Clean up any existing output from previous test runs
+    let _ = std::fs::remove_file(&output_path);
+
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg("--format=svg")
     );
+
+    // Clean up the generated file
+    let _ = std::fs::remove_file(&output_path);
 }
 
 #[test]
@@ -244,7 +252,7 @@ fn test_visualize_conditional_skip_workflow_stdout() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/conditional_skip.yaml")
+            .arg("tests/mock/conditional_skip.yaml")
             .arg("--format=dot")
     );
 }
@@ -255,7 +263,7 @@ fn test_visualize_stdout_with_options() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg("--format=dot")
             .arg("--no-servers")
             .arg("--no-details")
@@ -273,7 +281,7 @@ fn test_visualize_all_options_combined() {
     assert_cmd_snapshot!(
         stepflow()
             .arg("visualize")
-            .arg("--flow=tests/mock/basic.yaml")
+            .arg("tests/mock/basic.yaml")
             .arg(format!("--output={}", output_file.display()))
             .arg("--format=dot")
             .arg("--no-servers")
@@ -282,4 +290,222 @@ fn test_visualize_all_options_combined() {
 
     // Clean up the temporary file
     let _ = std::fs::remove_file(&output_file);
+}
+
+// ============================================================================
+// Path handling tests - verify files are created in the correct locations
+// ============================================================================
+
+/// Get the path to test files relative to the project root
+fn test_workflow_path(relative: &str) -> std::path::PathBuf {
+    // Project root is 3 parents up from CARGO_MANIFEST_DIR
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let project_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .expect("Failed to find project root");
+    project_root.join(relative)
+}
+
+/// Test that DOT output with explicit path creates file in correct location
+#[test]
+fn test_visualize_path_explicit_output_creates_file() {
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let output_file = temp_dir.path().join("output.dot");
+    let workflow_path = test_workflow_path("tests/mock/basic.yaml");
+
+    let status = stepflow()
+        .arg("visualize")
+        .arg(&workflow_path)
+        .arg(format!("--output={}", output_file.display()))
+        .arg("--format=dot")
+        .status()
+        .expect("Failed to run command");
+
+    assert!(status.success(), "Command should succeed");
+    assert!(
+        output_file.exists(),
+        "Output file should exist at: {}",
+        output_file.display()
+    );
+
+    // Verify it's a valid DOT file
+    let content = std::fs::read_to_string(&output_file).expect("Failed to read output");
+    assert!(
+        content.contains("digraph workflow"),
+        "Output should be a valid DOT file"
+    );
+}
+
+/// Test that inferred SVG output creates file next to workflow
+#[test]
+fn test_visualize_path_inferred_svg_creates_file() {
+    // Skip if graphviz not installed
+    if which::which("dot").is_err() {
+        eprintln!("Skipping test: graphviz not installed");
+        return;
+    }
+
+    // Copy workflow to temp dir so we can test inferred output
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let workflow_path = temp_dir.path().join("test_workflow.yaml");
+    let expected_output = temp_dir.path().join("test_workflow.svg");
+    let source_workflow = test_workflow_path("tests/mock/basic.yaml");
+
+    // Copy the workflow file
+    std::fs::copy(&source_workflow, &workflow_path).expect("Failed to copy workflow");
+
+    // Clean up any existing output file
+    let _ = std::fs::remove_file(&expected_output);
+
+    let status = stepflow()
+        .arg("visualize")
+        .arg(&workflow_path)
+        .arg("--format=svg")
+        .status()
+        .expect("Failed to run command");
+
+    assert!(status.success(), "Command should succeed");
+    assert!(
+        expected_output.exists(),
+        "Inferred SVG output should exist at: {}",
+        expected_output.display()
+    );
+
+    // Verify it's a valid SVG file
+    let content = std::fs::read_to_string(&expected_output).expect("Failed to read output");
+    assert!(
+        content.contains("<svg") || content.contains("<?xml"),
+        "Output should be a valid SVG file"
+    );
+}
+
+/// Test that running from subdirectory with relative path works
+#[test]
+fn test_visualize_path_relative_workflow_from_subdir() {
+    // Skip if graphviz not installed
+    if which::which("dot").is_err() {
+        eprintln!("Skipping test: graphviz not installed");
+        return;
+    }
+
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let source_workflow = test_workflow_path("tests/mock/basic.yaml");
+
+    // Create a subdirectory structure: temp/workflows/flow.yaml
+    let workflows_dir = temp_dir.path().join("workflows");
+    std::fs::create_dir_all(&workflows_dir).expect("Failed to create workflows dir");
+
+    let workflow_path = workflows_dir.join("flow.yaml");
+    std::fs::copy(&source_workflow, &workflow_path).expect("Failed to copy workflow");
+
+    // Expected output next to workflow
+    let expected_output = workflows_dir.join("flow.svg");
+    let _ = std::fs::remove_file(&expected_output);
+
+    // Run from temp_dir with relative path to workflow
+    let status = stepflow()
+        .current_dir(temp_dir.path())
+        .arg("visualize")
+        .arg("workflows/flow.yaml")
+        .arg("--format=svg")
+        .status()
+        .expect("Failed to run command");
+
+    assert!(status.success(), "Command should succeed");
+    assert!(
+        expected_output.exists(),
+        "Output should be created next to workflow at: {}",
+        expected_output.display()
+    );
+}
+
+/// Test that explicit relative output path is relative to CWD, not workflow
+#[test]
+fn test_visualize_path_explicit_output_relative_to_cwd() {
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let source_workflow = test_workflow_path("tests/mock/basic.yaml");
+
+    // Create subdirectory for workflow
+    let workflows_dir = temp_dir.path().join("workflows");
+    std::fs::create_dir_all(&workflows_dir).expect("Failed to create workflows dir");
+
+    let workflow_path = workflows_dir.join("flow.yaml");
+    std::fs::copy(&source_workflow, &workflow_path).expect("Failed to copy workflow");
+
+    // Output should be in CWD (temp_dir), not next to workflow
+    let expected_output = temp_dir.path().join("my_output.dot");
+    let _ = std::fs::remove_file(&expected_output);
+
+    // Run from temp_dir with explicit relative output
+    let status = stepflow()
+        .current_dir(temp_dir.path())
+        .arg("visualize")
+        .arg("workflows/flow.yaml")
+        .arg("--output=my_output.dot")
+        .arg("--format=dot")
+        .status()
+        .expect("Failed to run command");
+
+    assert!(status.success(), "Command should succeed");
+    assert!(
+        expected_output.exists(),
+        "Output should be in CWD at: {}",
+        expected_output.display()
+    );
+
+    // Verify it should NOT be next to the workflow
+    let wrong_location = workflows_dir.join("my_output.dot");
+    assert!(
+        !wrong_location.exists(),
+        "Output should NOT be next to workflow"
+    );
+}
+
+/// Test that existing file blocks inferred output
+#[test]
+fn test_visualize_path_inferred_output_blocked_by_existing() {
+    // Skip if graphviz not installed
+    if which::which("dot").is_err() {
+        eprintln!("Skipping test: graphviz not installed");
+        return;
+    }
+
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let source_workflow = test_workflow_path("tests/mock/basic.yaml");
+    let workflow_path = temp_dir.path().join("flow.yaml");
+    let existing_output = temp_dir.path().join("flow.svg");
+
+    std::fs::copy(&source_workflow, &workflow_path).expect("Failed to copy workflow");
+
+    // Create an existing output file
+    std::fs::write(&existing_output, "existing content").expect("Failed to create existing file");
+
+    let output = stepflow()
+        .current_dir(temp_dir.path())
+        .arg("visualize")
+        .arg("flow.yaml")
+        .arg("--format=svg")
+        .output()
+        .expect("Failed to run command");
+
+    assert!(
+        !output.status.success(),
+        "Command should fail when output exists"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("already exists"),
+        "Error should mention file exists: {}",
+        stderr
+    );
+
+    // Verify original file wasn't overwritten
+    let content = std::fs::read_to_string(&existing_output).expect("Failed to read file");
+    assert_eq!(
+        content, "existing content",
+        "Existing file should not be modified"
+    );
 }

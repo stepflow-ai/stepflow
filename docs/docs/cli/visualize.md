@@ -16,28 +16,31 @@ Visualize workflow structure as a graph.
 
 Generate a visual representation of workflow structure showing steps, dependencies, and component routing. Supports multiple output formats (DOT, SVG, PNG) with optional features like component server coloring and detailed tooltips.
 
+For SVG and PNG formats, output defaults to a file next to the workflow with matching extension (e.g., workflow.yaml → workflow.svg). Use --output to override. DOT format outputs to stdout by default.
+
 # Examples
 
-```bash
+```bash # Generate SVG visualization (writes to workflow.svg) stepflow visualize workflow.yaml
 
-# Generate SVG visualization (default) stepflow visualize --flow=workflow.yaml --output=workflow.svg
+# Generate PNG (writes to workflow.png) stepflow visualize workflow.yaml --format=png
 
-# Generate PNG with component server info stepflow visualize --flow=workflow.yaml --output=workflow.png --format=png
+# Specify custom output path stepflow visualize workflow.yaml --output=diagrams/flow.svg
 
-# Generate DOT file for custom processing stepflow visualize --flow=workflow.yaml --output=workflow.dot --format=dot
+# Output DOT to stdout for piping stepflow visualize workflow.yaml --format=dot
 
-# Output DOT to stdout stepflow visualize --flow=workflow.yaml --format=dot
+# Minimal visualization without server details stepflow visualize workflow.yaml --no-servers ```
 
-# Minimal visualization without server details stepflow visualize --flow=workflow.yaml --output=workflow.svg --no-servers
+**Usage:** `visualize [OPTIONS] <FLOW>`
 
-```
+###### **Arguments:**
 
-**Usage:** `visualize [OPTIONS] --flow <FILE>`
+* `<FLOW>` — Path to the workflow file to visualize
 
 ###### **Options:**
 
-* `--flow <FILE>` — Path to the workflow file to visualize
-* `-o`, `--output <FILE>` — Path to write the visualization output. If not specified, outputs DOT format to stdout
+* `-o`, `--output <FILE>` — Path to write the visualization output.
+
+   For SVG/PNG formats, defaults to a file next to the workflow (e.g., workflow.svg). For DOT format, defaults to stdout.
 * `--format <FORMAT>` — Output format for the visualization
 
   Default value: `svg`
