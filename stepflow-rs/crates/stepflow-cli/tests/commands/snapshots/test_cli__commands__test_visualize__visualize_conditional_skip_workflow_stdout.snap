@@ -1,13 +1,21 @@
 ---
-source: crates/stepflow-main/tests/commands/test_visualize.rs
+source: crates/stepflow-cli/tests/commands/test_visualize.rs
 info:
   program: stepflow
   args:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
     - visualize
-    - "--flow=tests/mock/conditional_skip.yaml"
+    - tests/mock/conditional_skip.yaml
     - "--format=dot"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -42,22 +50,27 @@ digraph workflow {
   ];
 
   "workflow_input" -> "conditional_step" [
-    color="blue",
-    style="solid",
+    label="input",
   ];
   "workflow_input" -> "conditional_step" [
-    color="purple",
     style="dotted",
-    label="skip condition",
+    label="skipIf",
   ];
-  "conditional_step" -> "dependent_step" [
-    color="orange",
-    style="dashed",
-    label="optional",
+  "expr_0" [
+    label="$coalesce",
+    shape=diamond,
+    fillcolor="lightcyan",
+  ];
+
+  "conditional_step" -> "expr_0" [
+    label="0",
+  ];
+
+  "expr_0" -> "dependent_step" [
+    label="input",
   ];
   "dependent_step" -> "workflow_output" [
-    color="green",
-    style="solid",
+    label="dependentResult",
   ];
 }
 

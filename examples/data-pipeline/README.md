@@ -126,5 +126,5 @@ This demonstrates how Stepflow automatically handles dependencies and runs indep
 The examples have been updated to use the correct Stepflow syntax:
 - Use `input` instead of `args` for step inputs
 - Use `output` (singular) instead of `outputs` (plural)
-- Use proper reference format: `{ $from: { step: step_id }, path: "field" }` or `{ $from: { workflow: input }, path: "field" }`
+- Use proper reference format: `{ $step: "step_id", path: "field" }` or `{ $input: "field" }`
 - Nested workflows in eval components must be wrapped in `$literal`

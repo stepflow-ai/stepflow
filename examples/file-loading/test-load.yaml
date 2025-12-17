@@ -1,20 +1,22 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Test File Loading"
-description: "Simple test of the load_file component"
-
+name: Test File Loading
+description: Simple test of the load_file component
 steps:
-  - id: load_sales_data
-    component: /builtin/load_file
-    input:
-      path: "test-data.json"
-
+- id: load_sales_data
+  component: /builtin/load_file
+  input:
+    path: test-data.json
 output:
-  loaded_data: { $from: { step: "load_sales_data" }, path: "data" }
+  loaded_data:
+    $step: load_sales_data
+    path: data
   file_metadata:
-    size_bytes: { $from: { step: "load_sales_data" }, path: "$.metadata.size_bytes" }
-    format: { $from: { step: "load_sales_data" }, path: "$.metadata.format" }
-
-
+    size_bytes:
+      $step: load_sales_data
+      path: $.metadata.size_bytes
+    format:
+      $step: load_sales_data
+      path: $.metadata.format
 test:
   cases:
   - name: load_test_data_file
@@ -24,8 +26,8 @@ test:
       outcome: success
       result:
         loaded_data:
-          test: "data"
+          test: data
           value: 42
         file_metadata:
           size_bytes: 29
-          format: "json"
+          format: json

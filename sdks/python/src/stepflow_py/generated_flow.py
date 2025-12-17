@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Annotated, Any, ClassVar, Dict, List, Literal
 
 from msgspec import Meta, Struct, field
@@ -37,41 +36,19 @@ Component = Annotated[
 ]
 
 
-class StepReference(Struct, kw_only=True):
-    step: str
+class StepRef(Struct, kw_only=True):
+    field_step: str = field(name='$step')
+    path: Annotated[str, Meta(description='JSONPath expression')] | None = None
 
 
-class WorkflowRef(Enum):
-    input = 'input'
+class InputRef(Struct, kw_only=True):
+    field_input: Annotated[str, Meta(description='JSONPath expression')] = field(
+        name='$input'
+    )
 
 
-Value = Annotated[
-    Any,
-    Meta(
-        description='Any JSON value (object, array, string, number, boolean, or null)'
-    ),
-]
-
-
-JsonPath = Annotated[
-    str,
-    Meta(
-        description='JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.',
-        examples=['field', '$.field', '$["field"]', '$[0]', '$.field[0].nested'],
-    ),
-]
-
-
-class OnSkipSkip(Struct, kw_only=True):
-    action: Literal['skip']
-
-
-class OnSkipDefault(Struct, kw_only=True):
-    action: Literal['useDefault']
-    defaultValue: Value | None = None
-
-
-SkipAction = OnSkipSkip | OnSkipDefault
+class LiteralModel(Struct, kw_only=True):
+    field_literal: Any = field(name='$literal')
 
 
 class OnErrorFail(Struct, kw_only=True):
@@ -114,6 +91,14 @@ class TestServerHealthCheck(Struct, kw_only=True):
     ) = 1000
 
 
+Value = Annotated[
+    Any,
+    Meta(
+        description='Any JSON value (object, array, string, number, boolean, or null)'
+    ),
+]
+
+
 class FlowError(Struct, kw_only=True):
     code: int
     message: str
@@ -152,40 +137,6 @@ class ExampleInput(Struct, kw_only=True):
         ]
         | None
     ) = None
-
-
-class EscapedLiteral(Struct, kw_only=True):
-    field_literal: Annotated[
-        Value,
-        Meta(
-            description='A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion.'
-        ),
-    ] = field(name='$literal')
-
-
-class WorkflowReference(Struct, kw_only=True):
-    workflow: WorkflowRef
-
-
-class VariableReference(Struct, kw_only=True):
-    variable: str
-    default: (
-        Annotated[
-            Value | None,
-            Meta(
-                description='Optional default value to use if the variable is not available.\n\nThis will be preferred over any default value defined in the workflow variable schema.'
-            ),
-        ]
-        | None
-    ) = None
-
-
-BaseRef = Annotated[
-    WorkflowReference | StepReference | VariableReference,
-    Meta(
-        description='An expression that can be either a literal value or a template expression.'
-    ),
-]
 
 
 class TestServerConfig(Struct, kw_only=True):
@@ -253,38 +204,6 @@ FlowResult = Annotated[
 ]
 
 
-class Reference(Struct, kw_only=True):
-    field_from: Annotated[BaseRef, Meta(description='The source of the reference.')] = (
-        field(name='$from')
-    )
-    path: (
-        Annotated[
-            JsonPath,
-            Meta(
-                description='JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.'
-            ),
-        ]
-        | None
-    ) = None
-    onSkip: SkipAction | None = None
-
-
-Expr = Annotated[
-    Reference | EscapedLiteral | Value,
-    Meta(
-        description='An expression that can be either a literal value or a template expression.'
-    ),
-]
-
-
-ValueTemplate = Annotated[
-    Expr | bool | float | str | List['ValueTemplate'] | Dict[str, 'ValueTemplate'] | None,
-    Meta(
-        description='A value that can be either a literal JSON value or an expression that references other values using the $from syntax'
-    ),
-]
-
-
 class TestCase(Struct, kw_only=True):
     name: Annotated[str, Meta(description='Unique identifier for the test case.')]
     input: Annotated[
@@ -304,14 +223,6 @@ class TestCase(Struct, kw_only=True):
         ]
         | None
     ) = None
-
-
-class OnErrorDefault(Struct, kw_only=True):
-    action: Literal['useDefault']
-    defaultValue: ValueTemplate | None = None
-
-
-ErrorAction = OnErrorFail | OnErrorSkip | OnErrorDefault | OnErrorRetry
 
 
 class TestConfig(Struct, kw_only=True):
@@ -335,56 +246,6 @@ class TestConfig(Struct, kw_only=True):
     ) = None
     cases: (
         Annotated[List[TestCase], Meta(description='Test cases for the workflow.')]
-        | None
-    ) = None
-
-
-class Step(Struct, kw_only=True):
-    id: Annotated[str, Meta(description='Identifier for the step')]
-    component: Annotated[
-        Component, Meta(description='The component to execute in this step')
-    ]
-    inputSchema: (
-        Annotated[Schema | None, Meta(description='The input schema for this step.')]
-        | None
-    ) = None
-    outputSchema: (
-        Annotated[Schema | None, Meta(description='The output schema for this step.')]
-        | None
-    ) = None
-    skipIf: (
-        Annotated[
-            Expr | None,
-            Meta(
-                description='If set and the referenced value is truthy, this step will be skipped.'
-            ),
-        ]
-        | None
-    ) = None
-    onError: ErrorAction | None = None
-    input: (
-        Annotated[
-            ValueTemplate,
-            Meta(description='Arguments to pass to the component for this step'),
-        ]
-        | None
-    ) = None
-    mustExecute: (
-        Annotated[
-            bool | None,
-            Meta(
-                description='If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.'
-            ),
-        ]
-        | None
-    ) = None
-    metadata: (
-        Annotated[
-            Dict[str, Any],
-            Meta(
-                description='Extensible metadata for the step that can be used by tools and frameworks.'
-            ),
-        ]
         | None
     ) = None
 
@@ -421,7 +282,7 @@ class FlowV1(Struct, kw_only=True):
     ) = []
     output: (
         Annotated[
-            ValueTemplate,
+            ValueExpr,
             Meta(
                 description='The outputs of the flow, mapping output names to their values.'
             ),
@@ -461,3 +322,97 @@ Flow = Annotated[
         title='Flow',
     ),
 ]
+
+
+class Step(Struct, kw_only=True):
+    id: Annotated[str, Meta(description='Identifier for the step')]
+    component: Annotated[
+        Component, Meta(description='The component to execute in this step')
+    ]
+    inputSchema: (
+        Annotated[Schema | None, Meta(description='The input schema for this step.')]
+        | None
+    ) = None
+    outputSchema: (
+        Annotated[Schema | None, Meta(description='The output schema for this step.')]
+        | None
+    ) = None
+    skipIf: (
+        Annotated[
+            ValueExpr | None,
+            Meta(
+                description='If set and the referenced value is truthy, this step will be skipped.'
+            ),
+        ]
+        | None
+    ) = None
+    onError: ErrorAction | None = None
+    input: (
+        Annotated[
+            ValueExpr,
+            Meta(description='Arguments to pass to the component for this step'),
+        ]
+        | None
+    ) = None
+    mustExecute: (
+        Annotated[
+            bool | None,
+            Meta(
+                description='If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.'
+            ),
+        ]
+        | None
+    ) = None
+    metadata: (
+        Annotated[
+            Dict[str, Any],
+            Meta(
+                description='Extensible metadata for the step that can be used by tools and frameworks.'
+            ),
+        ]
+        | None
+    ) = None
+
+
+class VariableRef(Struct, kw_only=True):
+    field_variable: Annotated[
+        str, Meta(description='JSONPath expression including variable name')
+    ] = field(name='$variable')
+    default: ValueExpr | None = None
+
+
+class If(Struct, kw_only=True):
+    field_if: ValueExpr = field(name='$if')
+    then: ValueExpr
+    else_: ValueExpr | None = field(name='else', default=None)
+
+
+class Coalesce(Struct, kw_only=True):
+    field_coalesce: List['ValueExpr'] = field(name='$coalesce')
+
+
+ValueExpr = Annotated[
+    StepRef
+    | InputRef
+    | VariableRef
+    | LiteralModel
+    | If
+    | Coalesce
+    | List['ValueExpr']
+    | Dict[str, 'ValueExpr']
+    | bool
+    | float
+    | str
+    | None,
+    Meta(
+        description='A value expression that can contain literal data or references to other values'
+    ),
+]
+
+
+class OnErrorDefault(Struct, kw_only=True):
+    action: Literal['useDefault']
+    defaultValue: ValueExpr | None = None
+
+
+ErrorAction = OnErrorFail | OnErrorSkip | OnErrorDefault | OnErrorRetry

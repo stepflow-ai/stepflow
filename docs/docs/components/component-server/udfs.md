@@ -65,16 +65,14 @@ steps:
   component: /python/udf
   input:
     blob_id:
-      $from: { step: create_average_udf }
-      path: blob_id
+      { $step: create_average_udf, path: blob_id }
     input:
       numbers:
-        $from: { workflow: input }
-        path: numbers
+        { $input: "numbers" }
 
 output:
   average:
-    $from: { step: calculate_average }
+    { $step: calculate_average }
 ```
 
 :::note

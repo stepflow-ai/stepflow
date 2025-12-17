@@ -26,3 +26,4 @@ pub use flow_result::*;
 pub use blob::{BlobData, BlobId, BlobType};
 pub use context_params::{SubmitBatchParams, SubmitFlowParams};
 pub use error_stack::{ErrorStack, ErrorStackEntry};
+pub use values::ValueExpr;

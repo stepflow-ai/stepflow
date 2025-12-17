@@ -14,8 +14,8 @@ The following example is a minimal step -- a name for referencing it's results, 
     component: /path/to/component
     input:
       a: 1
-      b: { $from: { workflow: input }, path: "input_value" }
-      c: { $from: { step: previous_step }, path: "result_field" }
+      b: { $input: "input_value" }
+      c: { $step: previous_step, path: "result_field" }
 ```
 
 As you can see, inputs can reference flow inputs, step outputs, or literal values.

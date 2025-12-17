@@ -274,6 +274,22 @@ impl FlowResult {
             _ => None,
         }
     }
+
+    /// Unwrap a successful result, panicking if the result is not Success.
+    ///
+    /// This is primarily useful for testing where we expect a successful result.
+    #[cfg(test)]
+    pub fn unwrap_success(self) -> ValueRef {
+        match self {
+            Self::Success(result) => result,
+            Self::Skipped { reason } => {
+                panic!("Expected Success, got Skipped: {:?}", reason)
+            }
+            Self::Failed(error) => {
+                panic!("Expected Success, got Failed: {}", error)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

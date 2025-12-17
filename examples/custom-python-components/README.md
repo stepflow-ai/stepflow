@@ -137,8 +137,8 @@ steps:
   - id: analyze_customer_data
     component: "/custom/analyze_customers"
     input:
-      customers: { $from: { workflow: input }, path: "customers" }
-      orders: { $from: { workflow: input }, path: "orders" }
+      customers: { $input: "customers" }
+      orders: { $input: "orders" }
 ```
 
 ## Benefits of This Approach

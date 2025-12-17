@@ -4,107 +4,83 @@ description: Test flow and step metadata access
 version: 1.0.0
 metadata:
   flow_type: test_workflow
-
 input_schema:
   type: object
   properties:
     message:
       type: string
       default: hello
-
 steps:
-  # Create a UDF that returns both flow metadata and current step metadata
-  - id: create_metadata_reader
-    component: /builtin/put_blob
-    metadata:
-      step_purpose: udf_creation
+- id: create_metadata_reader
+  component: /builtin/put_blob
+  metadata:
+    step_purpose: udf_creation
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          message:
+            type: string
+      code: "async def get_metadata_info(input, context):\n  # Get metadata for current\
+        \ step (context will provide the step_id automatically)\n  metadata_result\
+        \ = await context.get_metadata()\n\n  return {\n    'input_message': input['message'],\n\
+        \    'flow_metadata': metadata_result.get('flow_metadata', {}),\n    'step_metadata':\
+        \ metadata_result.get('step_metadata'),\n    'context_step_id': context.step_id\n\
+        \  }\n\nget_metadata_info\n"
+    blob_type: data
+- id: first_metadata_step
+  component: /python/udf
+  metadata:
+    step_purpose: first_execution
+    execution_order: 1
+  input:
+    blob_id:
+      $step: create_metadata_reader
+      path: blob_id
     input:
-      data:
-        input_schema:
-          type: object
-          properties:
-            message:
-              type: string
-        code: |
-          async def get_metadata_info(input, context):
-            # Get metadata for current step (context will provide the step_id automatically)
-            metadata_result = await context.get_metadata()
-
-            return {
-              'input_message': input['message'],
-              'flow_metadata': metadata_result.get('flow_metadata', {}),
-              'step_metadata': metadata_result.get('step_metadata'),
-              'context_step_id': context.step_id
-            }
-
-          get_metadata_info
-      blob_type: data
-
-  # Execute the UDF with first step metadata
-  - id: first_metadata_step
-    component: /python/udf
-    metadata:
-      step_purpose: first_execution
-      execution_order: 1
+      message:
+        $input: message
+- id: second_metadata_step
+  component: /python/udf
+  metadata:
+    step_purpose: second_execution
+    execution_order: 2
+    extra_info: additional_data
+  input:
+    blob_id:
+      $step: create_metadata_reader
+      path: blob_id
     input:
-      blob_id:
-        $from:
-          step: create_metadata_reader
-        path: blob_id
-      input:
-        message:
-          $from:
-            workflow: input
-          path: message
-
-  # Execute the UDF with second step metadata
-  - id: second_metadata_step
-    component: /python/udf
-    metadata:
-      step_purpose: second_execution
-      execution_order: 2
-      extra_info: additional_data
-    input:
-      blob_id:
-        $from:
-          step: create_metadata_reader
-        path: blob_id
-      input:
-        message:
-          $from:
-            workflow: input
-          path: message
-
+      message:
+        $input: message
 output:
   first_step_result:
-    $from:
-      step: first_metadata_step
+    $step: first_metadata_step
   second_step_result:
-    $from:
-      step: second_metadata_step
-
+    $step: second_metadata_step
 test:
   cases:
-    - name: simple metadata access test
-      input:
-        message: "test-input"
-      output:
-        outcome: success
-        result:
-          first_step_result:
-            input_message: "test-input"
-            flow_metadata:
-              flow_type: test_workflow
-            step_metadata:
-              step_purpose: first_execution
-              execution_order: 1
-            context_step_id: first_metadata_step
-          second_step_result:
-            input_message: "test-input"
-            flow_metadata:
-              flow_type: test_workflow
-            step_metadata:
-              step_purpose: second_execution
-              execution_order: 2
-              extra_info: additional_data
-            context_step_id: second_metadata_step
+  - name: simple metadata access test
+    input:
+      message: test-input
+    output:
+      outcome: success
+      result:
+        first_step_result:
+          input_message: test-input
+          flow_metadata:
+            flow_type: test_workflow
+          step_metadata:
+            step_purpose: first_execution
+            execution_order: 1
+          context_step_id: first_metadata_step
+        second_step_result:
+          input_message: test-input
+          flow_metadata:
+            flow_type: test_workflow
+          step_metadata:
+            step_purpose: second_execution
+            execution_order: 2
+            extra_info: additional_data
+          context_step_id: second_metadata_step

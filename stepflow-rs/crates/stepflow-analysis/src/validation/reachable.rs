@@ -12,9 +12,7 @@
 
 use std::collections::HashSet;
 
-use stepflow_core::values::ValueTemplate;
-use stepflow_core::workflow::BaseRef;
-use stepflow_core::workflow::Expr;
+use stepflow_core::ValueExpr;
 use stepflow_core::workflow::Flow;
 
 use crate::DiagnosticMessage;
@@ -28,14 +26,14 @@ pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) ->
 
     // Collect steps referenced by other steps
     for step in flow.steps() {
-        collect_value_template_dependencies(&step.input, &mut referenced_steps)?;
+        collect_expr_step_dependencies(&step.input, &mut referenced_steps)?;
         if let Some(skip_if) = &step.skip_if {
-            collect_expression_dependencies(skip_if, &mut referenced_steps);
+            collect_expr_step_dependencies(skip_if, &mut referenced_steps)?;
         }
     }
 
     // Collect steps referenced by workflow output
-    collect_value_template_dependencies(flow.output(), &mut referenced_steps)?;
+    collect_expr_step_dependencies(flow.output(), &mut referenced_steps)?;
 
     // Find unreachable steps
     for (index, step) in flow.steps().iter().enumerate() {
@@ -52,25 +50,12 @@ pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) ->
     Ok(())
 }
 
-/// Collect step dependencies from an expression
-fn collect_expression_dependencies(expr: &Expr, dependencies: &mut HashSet<String>) {
-    match expr {
-        Expr::Ref { from, .. } => {
-            if let BaseRef::Step { step } = from {
-                dependencies.insert(step.clone());
-            }
-        }
-        Expr::EscapedLiteral { .. } | Expr::Literal(_) => {}
-    }
-}
-
-/// Collect step dependencies from ValueTemplate
-fn collect_value_template_dependencies(
-    template: &ValueTemplate,
+/// Collect step dependencies from ValueExpr using shared dependency analysis
+fn collect_expr_step_dependencies(
+    expr: &ValueExpr,
     dependencies: &mut HashSet<String>,
 ) -> Result<()> {
-    // Extract dependencies using ValueTemplate's method
-    let deps = crate::dependency::analyze_template_dependencies(template)?;
+    let deps = crate::dependency::analyze_expr_dependencies(expr)?;
 
     for dep in deps.dependencies() {
         if let Some(step_id) = dep.step_id() {

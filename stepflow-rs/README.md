@@ -135,7 +135,7 @@ Stepflow supports workflow variables that can be referenced in steps, enabling p
 
 ### Workflow Variables
 
-Variables are declared at the flow level using JSON Schema format and referenced in steps using the `$from` syntax:
+Variables are declared at the flow level using JSON Schema format and referenced in steps using the `$variable` syntax:
 
 ```yaml
 # workflow.yaml
@@ -160,10 +160,10 @@ steps:
   - id: chat
     component: "/builtin/openai"
     input:
-      api_key: { $from: { variable: api_key } }
-      temperature: { $from: { variable: temperature } }
-      model: { $from: { variable: model } }
-      messages: { $from: { workflow: input }, path: "messages" }
+      api_key: { $variable: "api_key" }
+      temperature: { $variable: "temperature" }
+      model: { $variable: "model" }
+      messages: { $input: "messages" }
 ```
 
 ### Providing Variable Values
@@ -207,13 +207,13 @@ cargo run -- run --flow=workflow.yaml --env-variables
 - **Required Variables**: Mark variables as required in the schema
 - **Secret Handling**: Mark variables as `is_secret: true` for secure handling
 - **Environment Fallback**: Use `STEPFLOW_VAR_<NAME>` pattern for missing variables
-- **JSON Path Support**: Access nested variable properties with `{ $from: { variable: config }, path: "$.api.timeout" }`
+- **JSON Path Support**: Access nested variable properties with `{ $variable: "config.api.timeout" }`
 
 ### Security Considerations
 
 Variables marked with `is_secret: true` are handled securely:
 - Redacted in logs and traces as `[REDACTED]`
-- Not displayed in error messages or debug output  
+- Not displayed in error messages or debug output
 - Proper handling throughout the execution pipeline
 
 **Example with secrets:**

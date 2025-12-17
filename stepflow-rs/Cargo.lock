@@ -4731,7 +4731,6 @@ dependencies = [
  "async-trait",
  "error-stack",
  "hex",
- "indexmap 2.12.1",
  "insta",
  "json-patch",
  "log",

@@ -14,23 +14,23 @@ steps:
   - id: create_msg1
     component: /builtin/create_messages
     input:
-      user_prompt: { $from: { workflow: input }, path: message1 }
+      user_prompt: { $input: message1 }
 
   - id: create_msg2
     component: /builtin/create_messages
     input:
-      user_prompt: { $from: { workflow: input }, path: message2 }
+      user_prompt: { $input: message2 }
 
   - id: store_result
     component: /builtin/put_blob
     input:
       data:
-        msg1: { $from: { step: create_msg1 } }
-        msg2: { $from: { step: create_msg2 } }
+        msg1: { $step: create_msg1 }
+        msg2: { $step: create_msg2 }
       blob_type: "data"
 
 output:
-  blob_id: { $from: { step: store_result }, path: blob_id }
+  blob_id: { $step: store_result, path: blob_id }
   messages:
-    first: { $from: { step: create_msg1 } }
-    second: { $from: { step: create_msg2 } }
+    first: { $step: create_msg1 }
+    second: { $step: create_msg2 }

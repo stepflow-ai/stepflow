@@ -282,6 +282,7 @@ pub fn apply_overrides(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ValueExpr;
     use serde_json::json;
 
     fn create_test_flow() -> Flow {
@@ -299,11 +300,11 @@ mod tests {
                 output_schema: None,
                 skip_if: None,
                 on_error: None,
-                input: super::super::ValueTemplate::null(),
+                input: ValueExpr::null(),
                 must_execute: None,
                 metadata: std::collections::HashMap::new(),
             }],
-            output: super::super::ValueTemplate::null(),
+            output: ValueExpr::null(),
             test: None,
             examples: None,
             metadata: std::collections::HashMap::new(),

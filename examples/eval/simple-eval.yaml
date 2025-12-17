@@ -1,29 +1,29 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Simple Eval Component Test"
-description: "Basic test of the eval builtin component"
-
+name: Simple Eval Component Test
+description: Basic test of the eval builtin component
 steps:
-  - id: create_nested_flow
-    component: /builtin/put_blob
-    input:
-      data:
-        $literal:
-          schema: https://stepflow.org/schemas/v1/flow.json
-          name: "Simple Nested Workflow"
-          steps: []
-          output:
-            test_result: "Hello from nested workflow!"
-      blob_type: "flow"
-
-  - id: test_eval
-    component: /builtin/eval
-    input:
-      flow_id: { $from: { step: create_nested_flow }, path: "blob_id" }
-      input: {}
-
+- id: create_nested_flow
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
+        name: Simple Nested Workflow
+        steps: []
+        output:
+          test_result: Hello from nested workflow!
+    blob_type: flow
+- id: test_eval
+  component: /builtin/eval
+  input:
+    flow_id:
+      $step: create_nested_flow
+      path: blob_id
+    input: {}
 output:
-  result: { $from: { step: test_eval }, path: "result" }
-
+  result:
+    $step: test_eval
+    path: result
 test:
   cases:
   - name: basic_eval_test
@@ -35,4 +35,4 @@ test:
         result:
           outcome: success
           result:
-            test_result: "Hello from nested workflow!"
+            test_result: Hello from nested workflow!

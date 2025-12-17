@@ -33,35 +33,33 @@ value:
     - true
 ```
 
-## References (`$from`) {#references}
+## References {#references}
 
-JSON objects with a `$from` field are treated as expressions that reference data from the flow or earlier steps.
-The value of the `$from` field indicates the source of the data.
+Value reference allow you to dynamically reference data from earlier in the flow using special `$` prefixed keys.
 
-The object may also have an optional `path` that is applied to the referenced value.
+Some expressions may also have an optional `path` field that is applied to the referenced value.
 This may be the name of a field (assuming the value is an object) or a JSON path expression starting with `$`.
 
 ```yaml
 reference_examples:
   # Referencing workflow input
-  - { $from: { workflow: input} }                       # entire workflow input
-  - { $from: { workflow: input }, path: "user" }        # just user field
-  - { $from: { workflow: input }, path: "$.user.name" } # just user.name field
+  - { $input: user }              # just user field from workflow input
+  - { $input: "$.user.name" }     # just user.name field using JSONPath
 
   # Referencing step output
-  - { $from: { step: step1 } }                          # entire output of step1
-  - { $from: { step: step1 }, path: "result" }          # result field of step1 output
-  - { $from: { step: step1 }, path: "$.data.items[0]" } # first item in data.items array
-  
+  - { $step: step1 }                          # entire output of step1
+  - { $step: step1, path: "result" }          # result field of step1 output
+  - { $step: step1, path: "$.data.items[0]" } # first item in data.items array
+
   # Referencing variables
-  - { $from: { variable: api_endpoint } }               # entire variable value
-  - { $from: { variable: api_key } }                    # variable (often used for secrets)
+  - { $variable: api_endpoint }   # entire variable value
+  - { $variable: api_key }        # variable (often used for secrets)
 ```
 
 See [Variables](./variables.md) for comprehensive documentation on using variables in workflows.
 
-:::tip[Escaping Literals with `$from`]
-If you want to use an object that contains a `$from` field without evaluating the reference, see [Escaped Literals](#escaped-literals).
+:::tip[Escaping Literals]
+If you want to use an object that contains special `$` prefixed keys without being a reference, see [Escaped Literals](#escaped-literals).
 :::
 
 :::note[Skip Handling]
@@ -78,10 +76,10 @@ In these cases, the value `{ "$literal": ...value...}` will evaluate to the `...
 
 ```yaml
 value_with_expressions:
-  a: { $from: { step: some_step } }
+  a: { $step: some_step }
   b:
     $literal:
-      c: { $from: { step: another_step } }
+      c: { $step: another_step }
 ```
 
 If `some_step` produced the value `{ "x": 10", "y": "hello" }`, then the result of the above expression is:
@@ -90,7 +88,7 @@ If `some_step` produced the value `{ "x": 10", "y": "hello" }`, then the result 
 {
   "a": { "x": 10, "y": "hello" },
   "b": {
-    "c": { "$from": { "step": "another_step" } }
+    "c": { "$step": "another_step" }
   }
 }
 ```

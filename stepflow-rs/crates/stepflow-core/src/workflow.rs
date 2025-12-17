@@ -12,9 +12,7 @@
 
 mod builders;
 mod component;
-mod expr;
 mod flow;
-mod json_path;
 mod overrides;
 mod step;
 mod step_id;
@@ -22,13 +20,11 @@ mod variable_schema;
 
 pub use builders::*;
 pub use component::*;
-pub use expr::*;
 pub use flow::*;
-pub use json_path::*;
 pub use overrides::*;
 pub use step::*;
 pub use step_id::*;
 pub use variable_schema::*;
 
 // Re-export values from the values module
-pub use crate::values::{ValueRef, ValueTemplate, ValueTemplateRepr};
+pub use crate::values::{JsonPath, PathPart, ValueRef};

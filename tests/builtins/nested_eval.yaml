@@ -16,21 +16,20 @@ steps:
             user_prompt: Hello from nested flow
         output:
           result:
-            $from:
-              step: inner_step
-    blob_type: "flow"
-
+            $step: inner_step
+    blob_type: flow
 - id: nested_flow
   component: /builtin/eval
   inputSchema: null
   outputSchema: null
   input:
-    flow_id: { $from: { step: create_nested_flow }, path: "blob_id" }
+    flow_id:
+      $step: create_nested_flow
+      path: blob_id
     input: {}
 output:
   nested_result:
-    $from:
-      step: nested_flow
+    $step: nested_flow
     path: $.result
 test:
   cases:

@@ -149,7 +149,7 @@ routes:
 The examples have been updated to use the correct workflow syntax:
 - Use `input` instead of `args` for step inputs
 - Use `output` (singular) instead of `outputs` (plural)
-- Use proper reference format: `{ $from: { step: step_id }, path: "field" }`
+- Use proper reference format: `{ $step: "step_id", path: "field" }`
 - Nested workflows must be wrapped in `$literal` when defined inline
 
 ### Example of Correct Syntax:
@@ -167,7 +167,7 @@ steps:
       input: {}
 
 output:  # Not 'outputs'
-  result: { $from: { step: my_eval_step }, path: "result" }
+  result: { $step: "my_eval_step", path: "result" }
 ```
 
 ## Troubleshooting
@@ -207,18 +207,18 @@ Once you've verified the basic examples work, you can use eval components for:
           - id: filter_data
             component: "/python/filter_by_field"
             input:
-              data: { $from: { workflow: input }, path: "sales_data" }
+              data: { $input: "sales_data" }
               field: "region"
-              value: { $from: { workflow: input }, path: "region_name" }
+              value: { $input: "region_name" }
           - id: calculate_metrics
             component: "/python/sum_field"
             input:
-              data: { $from: { step: filter_data }, path: "filtered_data" }
+              data: { $step: "filter_data", path: "filtered_data" }
               field: "revenue"
         output:
-          region_revenue: { $from: { step: calculate_metrics }, path: "result" }
+          region_revenue: { $step: "calculate_metrics", path: "result" }
     input:
-      sales_data: { $from: { step: load_data }, path: "data" }
+      sales_data: { $step: "load_data", path: "data" }
       region_name: "West"
 ```
 
@@ -227,8 +227,8 @@ Once you've verified the basic examples work, you can use eval components for:
 - id: process_all_regions
   component: /builtin/eval
   input:
-    workflow: { $from: { step: generate_region_workflow }, path: "workflow_def" }
-    input: { $from: { step: prepare_region_data }, path: "data" }
+    workflow: { $step: "generate_region_workflow", path: "workflow_def" }
+    input: { $step: "prepare_region_data", path: "data" }
 ```
 
 ## Real-World Applications

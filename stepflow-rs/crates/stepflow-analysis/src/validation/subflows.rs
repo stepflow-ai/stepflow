@@ -11,10 +11,8 @@
 // the License.
 
 use serde_json::Value;
+use stepflow_core::ValueExpr;
 use stepflow_core::values::ValueRef;
-use stepflow_core::values::ValueTemplate;
-use stepflow_core::values::ValueTemplateRepr;
-use stepflow_core::workflow::Expr;
 use stepflow_core::workflow::Flow;
 
 use crate::Diagnostics;
@@ -33,7 +31,7 @@ pub fn validate_literal_subflows(flow: &Flow, diagnostics: &mut Diagnostics) -> 
     path.push("steps");
     for (step_index, step) in flow.steps().iter().enumerate() {
         path.push(step_index);
-        validate_value_template(&step.input, &mut path, diagnostics)?;
+        validate_value_expr(&step.input, &mut path, diagnostics)?;
         path.pop();
     }
     Ok(())
@@ -103,37 +101,49 @@ fn validate_value_ref(
     Ok(())
 }
 
-fn validate_value_template(
-    value_template: &ValueTemplate,
+fn validate_value_expr(
+    value_expr: &ValueExpr,
     path: &mut Path,
     diagnostics: &mut Diagnostics,
 ) -> Result<()> {
-    match value_template.as_ref() {
-        ValueTemplateRepr::Expression(Expr::Literal(literal)) => {
-            validate_value_ref(literal, path, diagnostics)?;
+    use stepflow_core::ValueExpr;
+
+    match value_expr {
+        ValueExpr::Literal(literal) => {
+            validate_value_ref_from_json(literal, path, diagnostics)?;
         }
-        ValueTemplateRepr::Expression(Expr::EscapedLiteral { literal }) => {
+        ValueExpr::EscapedLiteral { literal } => {
             path.push("$literal");
-            validate_value_ref(literal, path, diagnostics)?;
+            validate_value_ref_from_json(literal, path, diagnostics)?;
             path.pop();
         }
-        ValueTemplateRepr::Array(items) => {
+        ValueExpr::Array(items) => {
             for (index, item) in items.iter().enumerate() {
                 path.push(index);
-                validate_value_template(item, path, diagnostics)?;
+                validate_value_expr(item, path, diagnostics)?;
                 path.pop();
             }
         }
-        ValueTemplateRepr::Object(index_map) => {
+        ValueExpr::Object(fields) => {
             // We only want to validate the sub-flow if it is a literal, in which case
             // it would be parsed as a literal or escaped literal.
-            for (key, item) in index_map.iter() {
+            for (key, item) in fields.iter() {
                 path.push(key.to_string());
-                validate_value_template(item, path, diagnostics)?;
+                validate_value_expr(item, path, diagnostics)?;
                 path.pop();
             }
         }
+        // References don't need validation for subflows
         _ => {}
     }
     Ok(())
+}
+
+fn validate_value_ref_from_json(
+    json: &serde_json::Value,
+    path: &mut Path,
+    diagnostics: &mut Diagnostics,
+) -> Result<()> {
+    let value_ref = ValueRef::new(json.clone());
+    validate_value_ref(&value_ref, path, diagnostics)
 }

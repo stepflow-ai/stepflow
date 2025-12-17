@@ -14,6 +14,7 @@ use crate::dependencies::{Dependency, ValueDependencies};
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Arc;
 use stepflow_core::{BlobId, workflow::Flow};
 
@@ -131,6 +132,6 @@ fn default_dependencies() -> Arc<Dependencies> {
 pub struct StepAnalysis {
     /// Input dependencies for this step
     pub input_depends: ValueDependencies,
-    /// Optional skip condition dependency
-    pub skip_if_depend: Option<Dependency>,
+    /// Skip condition dependencies (empty if no skip condition or no dependencies)
+    pub skip_if_depends: HashSet<Dependency>,
 }

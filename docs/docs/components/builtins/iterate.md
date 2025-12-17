@@ -56,12 +56,12 @@ steps:
           - id: check_count
             component: /builtin/eval
             input:
-              flow_id: { $from: { step: countdown_logic } }
-              input: { $from: { workflow: input } }
+              flow_id: { $step: countdown_logic }
+              input: { $input: "$" }
         output:
           # Return "result" if count reaches 0, otherwise "next" with decremented count
           $if:
-            condition: { $from: { workflow: input }, path: "count" }
+            condition: { $input: "count" }
             equals: 0
           then:
             result: "Countdown complete!"

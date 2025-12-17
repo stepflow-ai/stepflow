@@ -1,16 +1,15 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Test Builtins Registry"
-
+name: Test Builtins Registry
 steps:
-  - id: test_create_messages
-    component: /builtin/create_messages
-    input:
-      system_instructions: "You are a test assistant"
-      user_prompt: "Say hello"
-
+- id: test_create_messages
+  component: /builtin/create_messages
+  input:
+    system_instructions: You are a test assistant
+    user_prompt: Say hello
 output:
-  messages: { $from: { step: test_create_messages }, path: "messages" }
-
+  messages:
+    $step: test_create_messages
+    path: messages
 test:
   cases:
   - name: create_messages_test
@@ -20,7 +19,7 @@ test:
       outcome: success
       result:
         messages:
-        - role: "system"
-          content: "You are a test assistant"
-        - role: "user"
-          content: "Say hello"
+        - role: system
+          content: You are a test assistant
+        - role: user
+          content: Say hello

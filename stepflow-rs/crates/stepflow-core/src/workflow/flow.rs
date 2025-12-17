@@ -13,8 +13,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use super::{Step, ValueRef, ValueTemplate, VariableSchema};
-use crate::{FlowResult, schema::SchemaRef};
+use super::{Step, ValueRef, VariableSchema};
+use crate::{FlowResult, ValueExpr, schema::SchemaRef};
 use schemars::JsonSchema;
 
 /// A workflow consisting of a sequence of steps and their outputs.
@@ -142,7 +142,7 @@ impl Flow {
     }
 
     /// Returns a reference to the flow's output value.
-    pub fn output(&self) -> &ValueTemplate {
+    pub fn output(&self) -> &ValueExpr {
         &self.latest().output
     }
 
@@ -218,8 +218,8 @@ pub struct FlowV1 {
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
-    #[serde(default, skip_serializing_if = "ValueTemplate::is_null")]
-    pub output: ValueTemplate,
+    #[serde(default, skip_serializing_if = "ValueExpr::is_null")]
+    pub output: ValueExpr,
 
     /// Test configuration for the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -506,8 +506,8 @@ mod tests {
             input:
               a: "hello world 2"
         output:
-            s1a: { $from: { step: s1 }, path: "a" }
-            s2b: { $from: { step: s2 }, path: a }
+            s1a: { $step: s1, path: "a" }
+            s2b: { $step: s2, path: a }
         outputSchema:
             type: object
             properties:
@@ -545,8 +545,8 @@ mod tests {
         assert_eq!(latest.output, deserialized.latest().output);
 
         // Verify that the output contains proper expression structures
-        // The output should not be literal but should contain parsed expressions
-        assert!(!latest.output.is_literal());
+        // The output should be parsed as an Object expression containing step references
+        assert!(matches!(latest.output, ValueExpr::Object(_)));
 
         // Test full structural equality
         let expected_flow_built = FlowBuilder::new()
@@ -570,9 +570,9 @@ mod tests {
                     .build(),
             ])
             .output(
-                ValueTemplate::parse_value(serde_json::json!({
-                    "s1a": { "$from": { "step": "s1" }, "path": "a" },
-                    "s2b": { "$from": { "step": "s2" }, "path": "a" }
+                serde_json::from_value(serde_json::json!({
+                    "s1a": { "$step": "s1", "path": "a" },
+                    "s2b": { "$step": "s2", "path": "a" }
                 }))
                 .unwrap(),
             )
@@ -591,7 +591,7 @@ mod tests {
         // Create a flow with both examples and test cases
         let flow = FlowBuilder::new()
             .name("test_flow")
-            .output(ValueTemplate::literal(json!({})))
+            .output(ValueExpr::literal(json!({})))
             .examples(vec![ExampleInput {
                 name: "example1".to_string(),
                 description: Some("Direct example".to_string()),

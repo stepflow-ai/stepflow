@@ -8,13 +8,10 @@ steps:
   output_schema: null
   input:
     user_prompt:
-      $from:
-        workflow: input
-      path: message
+      $input: message
 output:
   result:
-    $from:
-      step: message_step
+    $step: message_step
 test:
   cases:
   - name: simple_echo

@@ -1,91 +1,100 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Basic Math Operations"
-description: "Demonstrates basic mathematical operations using UDFs"
-
+name: Basic Math Operations
+description: Demonstrates basic mathematical operations using UDFs
 input_schema:
   type: object
   properties:
     m:
       type: integer
-      description: "First number"
+      description: First number
     n:
       type: integer
-      description: "Second number"
-
+      description: Second number
 output_schema:
   type: object
   properties:
     m_plus_n:
       type: integer
-      description: "Sum of m and n"
+      description: Sum of m and n
     m_times_n:
       type: integer
-      description: "Product of m and n"
+      description: Product of m and n
     m_plus_n_times_n:
       type: integer
-      description: "Sum of m and n, multiplied by n"
-
+      description: Sum of m and n, multiplied by n
 steps:
-  # Create UDF for addition
-  - id: create_addition_udf
-    component: /builtin/put_blob
+- id: create_addition_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          a:
+            type: integer
+          b:
+            type: integer
+        required:
+        - a
+        - b
+      code: input['a'] + input['b']
+    blob_type: data
+- id: create_multiplication_udf
+  component: /builtin/put_blob
+  input:
+    data:
+      input_schema:
+        type: object
+        properties:
+          a:
+            type: integer
+          b:
+            type: integer
+        required:
+        - a
+        - b
+      code: input['a'] * input['b']
+    blob_type: data
+- id: m_plus_n
+  component: /python/udf
+  input:
+    blob_id:
+      $step: create_addition_udf
+      path: blob_id
     input:
-      data:
-        input_schema:
-          type: object
-          properties:
-            a: { type: integer }
-            b: { type: integer }
-          required: [a, b]
-        code: "input['a'] + input['b']"
-      blob_type: "data"
-
-  # Create UDF for multiplication
-  - id: create_multiplication_udf
-    component: /builtin/put_blob
+      a:
+        $input: m
+      b:
+        $input: n
+- id: m_times_n
+  component: /python/udf
+  input:
+    blob_id:
+      $step: create_multiplication_udf
+      path: blob_id
     input:
-      data:
-        input_schema:
-          type: object
-          properties:
-            a: { type: integer }
-            b: { type: integer }
-          required: [a, b]
-        code: "input['a'] * input['b']"
-      blob_type: "data"
-
-  # Calculate m + n using UDF
-  - id: m_plus_n
-    component: /python/udf
+      a:
+        $input: m
+      b:
+        $input: n
+- id: m_plus_n_times_n
+  component: /python/udf
+  input:
+    blob_id:
+      $step: create_multiplication_udf
+      path: blob_id
     input:
-      blob_id: { $from: { step: create_addition_udf }, path: "blob_id" }
-      input:
-        a: { $from: { workflow: input }, path: "m" }
-        b: { $from: { workflow: input }, path: "n" }
-
-  # Calculate m * n using UDF
-  - id: m_times_n
-    component: /python/udf
-    input:
-      blob_id: { $from: { step: create_multiplication_udf }, path: "blob_id" }
-      input:
-        a: { $from: { workflow: input }, path: "m" }
-        b: { $from: { workflow: input }, path: "n" }
-
-  # Calculate (m + n) * n using UDF
-  - id: m_plus_n_times_n
-    component: /python/udf
-    input:
-      blob_id: { $from: { step: create_multiplication_udf }, path: "blob_id" }
-      input:
-        a: { $from: { step: m_plus_n } }
-        b: { $from: { workflow: input }, path: "n" }
-
+      a:
+        $step: m_plus_n
+      b:
+        $input: n
 output:
-  m_plus_n: { $from: { step: m_plus_n } }
-  m_times_n: { $from: { step: m_times_n } }
-  m_plus_n_times_n: { $from: { step: m_plus_n_times_n } }
-
+  m_plus_n:
+    $step: m_plus_n
+  m_times_n:
+    $step: m_times_n
+  m_plus_n_times_n:
+    $step: m_plus_n_times_n
 test:
   cases:
   - name: calculate_with_8_and_5

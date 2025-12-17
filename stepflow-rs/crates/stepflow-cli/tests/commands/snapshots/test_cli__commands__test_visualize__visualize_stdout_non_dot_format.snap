@@ -1,17 +1,25 @@
 ---
-source: crates/stepflow-main/tests/commands/test_visualize.rs
+source: crates/stepflow-cli/tests/commands/test_visualize.rs
 info:
   program: stepflow
   args:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
     - visualize
-    - "--flow=tests/mock/basic.yaml"
+    - tests/mock/basic.yaml
     - "--format=svg"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
-success: false
-exit_code: 1
+success: true
+exit_code: 0
 ----- stdout -----
 
 ----- stderr -----
-Error: Only DOT format is supported for stdout output. Use --format=dot or specify --output=<file> for other formats.
+✅ Visualization generated: tests/mock/basic.svg

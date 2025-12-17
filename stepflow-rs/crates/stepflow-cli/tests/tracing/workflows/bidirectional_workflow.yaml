@@ -16,7 +16,7 @@ steps:
   - id: store_input_data
     component: /builtin/put_blob
     input:
-      data: { $from: { workflow: input }, path: data }
+      data: { $input: data }
       blob_type: "data"
 
   # Step 2: Create the Python function blob
@@ -57,17 +57,17 @@ steps:
   - id: process_data
     component: /python/udf
     input:
-      blob_id: { $from: { step: create_processor_function }, path: blob_id }
+      blob_id: { $step: create_processor_function }, path: blob_id }
       input:
-        data_blob_id: { $from: { step: store_input_data }, path: blob_id }
-        multiplier: { $from: { workflow: input }, path: multiplier }
+        data_blob_id: { $step: store_input_data }, path: blob_id }
+        multiplier: { $input: multiplier }
 
   # Step 4: Retrieve final result
   - id: get_result
     component: /builtin/get_blob
     input:
-      blob_id: { $from: { step: process_data }, path: processed_blob_id }
+      blob_id: { $step: process_data }, path: processed_blob_id }
 
 output:
-  processed_data: { $from: { step: get_result }, path: data }
-  count: { $from: { step: process_data }, path: count }
+  processed_data: { $step: get_result }, path: data }
+  count: { $step: process_data }, path: count }

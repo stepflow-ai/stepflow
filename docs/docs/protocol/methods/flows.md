@@ -72,7 +72,7 @@ sequenceDiagram
   "method": "flows/evaluate",
   "params": {
     "expression": {
-      "$from": {"step": "data_processor"},
+      "$step": "data_processor",
       "path": "$.results.total_count"
     }
   }
@@ -98,7 +98,7 @@ sequenceDiagram
 ```json
 {
   "expression": {
-    "$from": {"workflow": "input"},
+    "$input",
     "path": "$.user.preferences.theme"
   }
 }
@@ -109,7 +109,7 @@ sequenceDiagram
 ```json
 {
   "expression": {
-    "$from": {"step": "user_validation"},
+    "$step": "user_validation",
     "path": "$.validation_result.is_valid"
   }
 }
@@ -121,11 +121,11 @@ sequenceDiagram
 {
   "expression": {
     "user_data": {
-      "$from": {"workflow": "input"},
+      "$input",
       "path": "$.user"
     },
     "validation_status": {
-      "$from": {"step": "user_validation"},
+      "$step": "user_validation",
       "path": "$.status"
     },
     "static_config": {

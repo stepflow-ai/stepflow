@@ -34,8 +34,8 @@ steps:
     component: /builtin/put_blob
     input:
       data:
-        user_id: { $from: { workflow: input }, path: "user_id" }
-        profile: { $from: { step: load_profile } }
-        preferences: { $from: { step: load_preferences } }
+        user_id: { $input: "user_id" }
+        profile: { $step: load_profile }
+        preferences: { $step: load_preferences }
       blob_type: "data"
 ```

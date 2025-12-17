@@ -50,22 +50,19 @@ steps:
   component: /filesystem/write_file
   input:
     path:
-      $from: { workflow: input }
-      path: filename
+      { $input: "filename" }
     content:
-      $from: { workflow: input }
-      path: content
+      { $input: "content" }
 
 - id: read_file
   component: /filesystem/read_file
   input:
     path:
-      $from: { workflow: input }
-      path: filename
+      { $input: "filename" }
 
 output:
   file_content:
-    $from: { step: read_file }
+    { $step: read_file }
 ```
 
 ## Next Steps

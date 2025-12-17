@@ -14,8 +14,8 @@ use crate::dependencies::Dependency;
 use indexmap::IndexMap;
 use std::sync::Arc;
 use stepflow_core::{
-    BlobId,
-    workflow::{BaseRef, Expr, Flow, Step, ValueTemplate, WorkflowRef},
+    BlobId, ValueExpr,
+    workflow::{Flow, Step},
 };
 
 use crate::{
@@ -57,7 +57,7 @@ fn analyze_dependencies_internal(flow: Arc<Flow>, flow_id: BlobId) -> Result<Flo
         .collect::<Result<IndexMap<_, _>>>()?;
 
     // Analyze workflow output dependencies
-    let output_depends = analyze_template_dependencies(flow.output())?;
+    let output_depends = analyze_expr_dependencies(flow.output())?;
 
     // Build dependency graph for execution
     let mut builder = DependenciesBuilder::new(steps.len());
@@ -78,30 +78,29 @@ fn analyze_dependencies_internal(flow: Arc<Flow>, flow_id: BlobId) -> Result<Flo
 
 /// Extract the list of step IDs that the given step depends on
 fn extract_step_dependencies(step_analysis: &StepAnalysis) -> impl Iterator<Item = &str> + '_ {
-    let dependencies = step_analysis.input_depends.step_dependencies();
+    let input_deps = step_analysis.input_depends.step_dependencies();
 
-    let skip_if = step_analysis
-        .skip_if_depend
-        .as_ref()
-        .and_then(|s| s.step_id())
-        .into_iter();
+    let skip_if_deps = step_analysis
+        .skip_if_depends
+        .iter()
+        .filter_map(|d| d.step_id());
 
-    dependencies.chain(skip_if)
+    input_deps.chain(skip_if_deps)
 }
 
 fn analyze_step(step: &Step) -> Result<StepAnalysis> {
-    let input_depends = analyze_template_dependencies(&step.input)?;
+    let input_depends = analyze_expr_dependencies(&step.input)?;
 
     // Extract dependencies from skip condition
-    let skip_if_depend = if let Some(skip_if) = &step.skip_if {
-        extract_dep_from_expr(skip_if)?
+    let skip_if_depends = if let Some(skip_if) = &step.skip_if {
+        collect_expr_dependencies(skip_if)?
     } else {
-        None
+        std::collections::HashSet::new()
     };
 
     Ok(StepAnalysis {
         input_depends,
-        skip_if_depend,
+        skip_if_depends,
     })
 }
 
@@ -114,71 +113,91 @@ pub enum DependencyError {
     MalformedReference,
 }
 
-/// Analyze dependencies within a ValueTemplate using the expression iterator.
+/// Analyze dependencies within a ValueExpr.
 ///
 /// This handles both structured (object) and unstructured dependency analysis
-/// by examining the template structure and iterating over contained expressions.
-pub(crate) fn analyze_template_dependencies(
-    template: &ValueTemplate,
+/// by examining the expression structure recursively.
+pub(crate) fn analyze_expr_dependencies(
+    expr: &ValueExpr,
 ) -> Result<crate::dependencies::ValueDependencies> {
     use crate::dependencies::ValueDependencies;
-    use std::collections::HashSet;
-    use stepflow_core::values::ValueTemplateRepr;
 
-    match template.as_ref() {
-        ValueTemplateRepr::Object(obj) => {
+    match expr {
+        ValueExpr::Object(fields) => {
             // For objects, analyze each field separately to maintain structure
-            let fields = obj
+            let field_deps = fields
                 .iter()
-                .map(|(field, field_template)| {
-                    let mut deps = HashSet::new();
-                    for expr in field_template.expressions() {
-                        if let Some(dep) = extract_dep_from_expr(expr)? {
-                            deps.insert(dep);
-                        }
-                    }
+                .map(|(field, field_expr)| {
+                    let deps = collect_expr_dependencies(field_expr)?;
                     Ok((field.clone(), deps))
                 })
                 .collect::<Result<indexmap::IndexMap<_, _>>>()?;
-            Ok(ValueDependencies::Object(fields))
+            Ok(ValueDependencies::Object(field_deps))
         }
         _ => {
             // For non-objects, collect all dependencies into a single set
-            let mut deps = HashSet::new();
-            for expr in template.expressions() {
-                if let Some(dep) = extract_dep_from_expr(expr)? {
-                    deps.insert(dep);
-                }
-            }
+            let deps = collect_expr_dependencies(expr)?;
             Ok(ValueDependencies::Other(deps))
         }
     }
 }
 
-/// Extract dependencies from an expression
-fn extract_dep_from_expr(expr: &Expr) -> Result<Option<Dependency>> {
+/// Recursively collect all step dependencies from a ValueExpr
+fn collect_expr_dependencies(expr: &ValueExpr) -> Result<std::collections::HashSet<Dependency>> {
+    use std::collections::HashSet;
+
+    let mut deps = HashSet::new();
+
     match expr {
-        Expr::Ref {
-            from,
-            path,
-            on_skip,
+        ValueExpr::Step { step, .. } => {
+            deps.insert(Dependency::StepOutput {
+                step_id: step.clone(),
+                field: None,
+                optional: false,
+            });
+        }
+        ValueExpr::Input { .. } => {
+            deps.insert(Dependency::FlowInput { field: None });
+        }
+        ValueExpr::Variable { .. } => {
+            // Variables are not step dependencies
+        }
+        ValueExpr::If {
+            condition,
+            then,
+            else_expr,
         } => {
-            let field = path.outer_field().map(|f| f.to_string());
-            match from {
-                BaseRef::Step { step } => Ok(Some(Dependency::StepOutput {
-                    step_id: step.clone(),
-                    field,
-                    optional: on_skip.as_ref().is_some_and(|s| s.is_optional()),
-                })),
-                BaseRef::Workflow(WorkflowRef::Input) => Ok(Some(Dependency::FlowInput { field })),
-                BaseRef::Variable { .. } => {
-                    // Variables don't create step dependencies - they're resolved at runtime
-                    Ok(None)
-                }
+            // Collect dependencies from condition
+            deps.extend(collect_expr_dependencies(condition)?);
+            // Collect dependencies from then branch
+            deps.extend(collect_expr_dependencies(then)?);
+            // Collect dependencies from else branch if present
+            if let Some(else_val) = else_expr {
+                deps.extend(collect_expr_dependencies(else_val)?);
             }
         }
-        Expr::EscapedLiteral { .. } | Expr::Literal(_) => Ok(None),
+        ValueExpr::Coalesce { values } => {
+            // Collect dependencies from all coalesce values
+            for value in values {
+                deps.extend(collect_expr_dependencies(value)?);
+            }
+        }
+        ValueExpr::Array(items) => {
+            for item in items {
+                deps.extend(collect_expr_dependencies(item)?);
+            }
+        }
+        ValueExpr::Object(fields) => {
+            for (_key, value) in fields {
+                deps.extend(collect_expr_dependencies(value)?);
+            }
+        }
+        ValueExpr::Literal(_) | ValueExpr::EscapedLiteral { .. } => {
+            // Literals have no dependencies
+        }
     }
+
+    Ok(deps)
 }
 
 #[cfg(test)]
@@ -198,14 +217,10 @@ mod tests {
     fn create_test_flow() -> Flow {
         FlowBuilder::test_flow()
             .steps(vec![
-                StepBuilder::mock_step("step1")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
-                    .build(),
-                StepBuilder::mock_step("step2")
-                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
-                    .build(),
+                StepBuilder::workflow_input("step1").build(),
+                StepBuilder::step_ref("step2", "step1").build(),
             ])
-            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .output(ValueExpr::step_output("step2"))
             .build()
     }
 
@@ -252,14 +267,9 @@ mod tests {
     fn test_analyze_with_skip_condition() {
         let mut flow = create_test_flow();
         // Add skip condition to step2 that depends on step1
-        flow.step_mut(1).skip_if = Some(Expr::Ref {
-            from: BaseRef::Step {
-                step: "step1".to_string(),
-            },
-            path: "should_skip".into(),
-            on_skip: Some(stepflow_core::workflow::SkipAction::UseDefault {
-                default_value: None,
-            }),
+        flow.step_mut(1).skip_if = Some(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: JsonPath::parse("should_skip").unwrap(),
         });
 
         let result = validate_and_analyze(
@@ -289,12 +299,16 @@ mod tests {
         assert_eq!(step2.input_depends, expected_step2_deps);
 
         // Check that step2 has a skip condition dependency
-        let expected_skip_dep = Some(Dependency::StepOutput {
-            step_id: "step1".to_string(),
-            field: Some("should_skip".to_string()),
-            optional: true,
-        });
-        assert_eq!(step2.skip_if_depend, expected_skip_dep);
+        let expected_skip_deps = {
+            let mut deps = HashSet::new();
+            deps.insert(Dependency::StepOutput {
+                step_id: "step1".to_string(),
+                field: None, // collect_expr_dependencies doesn't extract field from path
+                optional: false,
+            });
+            deps
+        };
+        assert_eq!(step2.skip_if_depends, expected_skip_deps);
 
         // Check step1 depends on workflow input
         let step1 = analysis.steps.get("step1").expect("Should find step1");
@@ -310,9 +324,9 @@ mod tests {
     fn test_analyze_complex_input_object() {
         let mut flow = create_test_flow();
         // Give step2 a complex input object with multiple dependencies
-        flow.step_mut(1).input = ValueTemplate::parse_value(json!({
-            "data": {"$from": {"step": "step1"}},
-            "config": {"$from": {"workflow": "input"}, "path": "config"},
+        flow.step_mut(1).input = serde_json::from_value(json!({
+            "data": {"$step": "step1"},
+            "config": {"$input": "config"},
             "literal_value": 42
         }))
         .unwrap();
@@ -401,10 +415,13 @@ mod tests {
         let flow = FlowBuilder::new()
             .name("invalid_workflow")
             .steps(vec![
-                create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
-                create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
+                create_test_step("step1", json!({"$step": "step2"})), // Forward reference
+                create_test_step("step1", json!({"$input": "$"})),    // Duplicate ID
             ])
-            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .output(ValueExpr::Step {
+                step: "step1".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result = validate_and_analyze(
@@ -496,17 +513,27 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .must_execute(true) // Mark as must_execute
                     .build(),
             ])
-            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .output(ValueExpr::Step {
+                step: "step2".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -569,16 +596,26 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+            .output(ValueExpr::Step {
+                step: "step2".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -631,14 +668,19 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueTemplate::literal(json!({"value": 42})))
+                    .input(ValueExpr::literal(json!({"value": 42})))
                     .must_execute(true)
                     .build(),
             ])
-            .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+            .output(ValueExpr::Step {
+                step: "step1".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -689,24 +731,28 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueTemplate::literal(json!({"value": 42})))
-                    .skip_if(Expr::Ref {
-                        from: BaseRef::Step {
-                            step: "step1".to_string(),
-                        },
+                    .input(ValueExpr::literal(json!({"value": 42})))
+                    .skip_if(ValueExpr::Step {
+                        step: "step1".to_string(),
                         path: JsonPath::default(),
-                        on_skip: None,
                     })
                     .must_execute(true)
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueTemplate::step_ref("step3", JsonPath::default()))
+            .output(ValueExpr::Step {
+                step: "step3".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -765,22 +811,30 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
-                    .skip_if(Expr::Ref {
-                        from: BaseRef::Workflow(WorkflowRef::Input),
-                        path: JsonPath::parse("$.should_skip").unwrap(),
-                        on_skip: None,
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
+                    .skip_if(ValueExpr::Input {
+                        input: JsonPath::parse("$.should_skip").unwrap(),
                     })
                     .must_execute(true)
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueTemplate::step_ref("step3", JsonPath::default()))
+            .output(ValueExpr::Step {
+                step: "step3".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =
@@ -827,22 +881,30 @@ mod tests {
         let flow = FlowBuilder::test_flow()
             .steps(vec![
                 StepBuilder::mock_step("step1")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
                 StepBuilder::mock_step("step2")
-                    .input(ValueTemplate::step_ref("step1", JsonPath::default()))
-                    .skip_if(Expr::Ref {
-                        from: BaseRef::Workflow(WorkflowRef::Input),
-                        path: JsonPath::parse("$.should_skip").unwrap(),
-                        on_skip: None,
+                    .input(ValueExpr::Step {
+                        step: "step1".to_string(),
+                        path: Default::default(),
+                    })
+                    .skip_if(ValueExpr::Input {
+                        input: JsonPath::parse("$.should_skip").unwrap(),
                     })
                     .must_execute(true)
                     .build(),
                 StepBuilder::mock_step("step3")
-                    .input(ValueTemplate::workflow_input(JsonPath::default()))
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
                     .build(),
             ])
-            .output(ValueTemplate::step_ref("step3", JsonPath::default()))
+            .output(ValueExpr::Step {
+                step: "step3".to_string(),
+                path: Default::default(),
+            })
             .build();
 
         let result =

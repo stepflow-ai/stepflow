@@ -46,21 +46,21 @@ steps:
             - id: process
               component: /data/analyze
               input:
-                data: { $from: { workflow: input }, path: "data" }
+                data: { $input: "data" }
             - id: summarize
               component: /data/summarize
               input:
-                analysis: { $from: { step: process } }
+                analysis: { $step: process }
           output:
-            summary: { $from: { step: summarize } }
+            summary: { $step: summarize }
       blob_type: "flow"
 
   - id: run_analysis
     component: /builtin/eval
     input:
-      flow_id: { $from: { step: store_workflow }, path: "blob_id" }
+      flow_id: { $step: store_workflow, path: "blob_id" }
       input:
-        data: { $from: { step: load_data } }
+        data: { $step: load_data }
 ```
 
 #### Use Cases

@@ -71,7 +71,7 @@
         },
         "output": {
           "description": "The outputs of the flow, mapping output names to their values.",
-          "$ref": "#/$defs/ValueTemplate"
+          "$ref": "#/$defs/ValueExpr"
         },
         "test": {
           "description": "Test configuration for the flow.",
@@ -154,7 +154,7 @@
           "description": "If set and the referenced value is truthy, this step will be skipped.",
           "anyOf": [
             {
-              "$ref": "#/$defs/Expr"
+              "$ref": "#/$defs/ValueExpr"
             },
             {
               "type": "null"
@@ -173,7 +173,7 @@
         },
         "input": {
           "description": "Arguments to pass to the component for this step",
-          "$ref": "#/$defs/ValueTemplate"
+          "$ref": "#/$defs/ValueExpr"
         },
         "mustExecute": {
           "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.",
@@ -202,170 +202,142 @@
         "/python/udf"
       ]
     },
-    "Expr": {
-      "description": "An expression that can be either a literal value or a template expression.",
-      "anyOf": [
+    "ValueExpr": {
+      "description": "A value expression that can contain literal data or references to other values",
+      "oneOf": [
         {
-          "title": "Reference",
-          "description": "Reference a value from a step, workflow, or other source.",
+          "title": "StepRef",
+          "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
           "type": "object",
           "properties": {
-            "$from": {
-              "description": "The source of the reference.",
-              "$ref": "#/$defs/BaseRef"
+            "$step": {
+              "type": "string"
             },
             "path": {
-              "description": "JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object.",
-              "$ref": "#/$defs/JsonPath"
-            },
-            "onSkip": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SkipAction"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "description": "JSONPath expression",
+              "type": "string"
             }
           },
           "required": [
-            "$from"
-          ]
-        },
-        {
-          "title": "EscapedLiteral",
-          "description": "A literal value that was escaped.\n\nNo template expansion is performed within the value, allowing\nfor raw JSON values that include `$from` or other special characters.",
-          "type": "object",
-          "properties": {
-            "$literal": {
-              "description": "A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion.",
-              "$ref": "#/$defs/Value"
-            }
-          },
-          "required": [
-            "$literal"
-          ]
-        },
-        {
-          "title": "Literal",
-          "description": "A direct literal value that serializes naturally without special syntax",
-          "$ref": "#/$defs/Value"
-        }
-      ]
-    },
-    "BaseRef": {
-      "description": "An expression that can be either a literal value or a template expression.",
-      "anyOf": [
-        {
-          "title": "WorkflowReference",
-          "description": "Reference properties of the workflow.",
-          "type": "object",
-          "properties": {
-            "workflow": {
-              "$ref": "#/$defs/WorkflowRef"
-            }
-          },
-          "required": [
-            "workflow"
+            "$step"
           ],
           "additionalProperties": false
         },
         {
-          "title": "StepReference",
-          "description": "Reference the output of a step.",
+          "title": "InputRef",
+          "description": "Workflow input reference: { $input: \"path\" }",
           "type": "object",
           "properties": {
-            "step": {
+            "$input": {
+              "description": "JSONPath expression",
               "type": "string"
             }
           },
           "required": [
-            "step"
-          ]
+            "$input"
+          ],
+          "additionalProperties": false
         },
         {
-          "title": "VariableReference",
-          "description": "Reference a workflow variable.",
+          "title": "VariableRef",
+          "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
           "type": "object",
           "properties": {
-            "variable": {
+            "$variable": {
+              "description": "JSONPath expression including variable name",
               "type": "string"
             },
             "default": {
-              "description": "Optional default value to use if the variable is not available.\n\nThis will be preferred over any default value defined in the workflow variable schema.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Value"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/ValueExpr"
             }
           },
           "required": [
-            "variable"
-          ]
-        }
-      ]
-    },
-    "WorkflowRef": {
-      "type": "string",
-      "enum": [
-        "input"
-      ]
-    },
-    "Value": {
-      "description": "Any JSON value (object, array, string, number, boolean, or null)"
-    },
-    "JsonPath": {
-      "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
-      "type": "string",
-      "examples": [
-        "field",
-        "$.field",
-        "$[\"field\"]",
-        "$[0]",
-        "$.field[0].nested"
-      ]
-    },
-    "SkipAction": {
-      "oneOf": [
-        {
-          "title": "OnSkipSkip",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "skip"
-            }
-          },
-          "required": [
-            "action"
-          ]
+            "$variable"
+          ],
+          "additionalProperties": false
         },
         {
-          "title": "OnSkipDefault",
+          "title": "Literal",
+          "description": "Escaped literal: { $literal: any }",
           "type": "object",
           "properties": {
-            "defaultValue": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Value"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+            "$literal": {}
+          },
+          "required": [
+            "$literal"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "If",
+          "description": "Conditional: { $if: condition, then: expr, else?: expr }",
+          "type": "object",
+          "properties": {
+            "$if": {
+              "$ref": "#/$defs/ValueExpr"
             },
-            "action": {
-              "type": "string",
-              "const": "useDefault"
+            "then": {
+              "$ref": "#/$defs/ValueExpr"
+            },
+            "else": {
+              "$ref": "#/$defs/ValueExpr"
             }
           },
           "required": [
-            "action"
+            "$if",
+            "then"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Coalesce",
+          "description": "Coalesce: { $coalesce: [expr1, expr2, ...] }",
+          "type": "object",
+          "properties": {
+            "$coalesce": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ValueExpr"
+              }
+            }
+          },
+          "required": [
+            "$coalesce"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "ArrayExpr",
+          "description": "Array of expressions",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValueExpr"
+          }
+        },
+        {
+          "title": "ObjectExpr",
+          "description": "Object with expression values",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ValueExpr"
+          }
+        },
+        {
+          "title": "PrimitiveValue",
+          "description": "Literal primitive value",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
           ]
         }
       ]
@@ -408,7 +380,7 @@
             "defaultValue": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/ValueTemplate"
+                  "$ref": "#/$defs/ValueExpr"
                 },
                 {
                   "type": "null"
@@ -437,45 +409,6 @@
           "required": [
             "action"
           ]
-        }
-      ]
-    },
-    "ValueTemplate": {
-      "description": "A value that can be either a literal JSON value or an expression that references other values using the $from syntax",
-      "anyOf": [
-        {
-          "description": "An expression with `$from` syntax for referencing other values",
-          "$ref": "#/$defs/Expr"
-        },
-        {
-          "description": "JSON null value",
-          "type": "null"
-        },
-        {
-          "description": "JSON boolean value",
-          "type": "boolean"
-        },
-        {
-          "description": "JSON numeric value",
-          "type": "number"
-        },
-        {
-          "description": "JSON string value",
-          "type": "string"
-        },
-        {
-          "description": "JSON array where each element can be a template",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ValueTemplate"
-          }
-        },
-        {
-          "description": "JSON object where each value can be a template",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/ValueTemplate"
-          }
         }
       ]
     },
@@ -653,6 +586,9 @@
         "name",
         "input"
       ]
+    },
+    "Value": {
+      "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "FlowResult": {
       "title": "FlowResult",

@@ -49,7 +49,7 @@ steps:
   - id: ask_ai
     component: /builtin/openai
     input:
-      messages: { $from: { step: prepare_chat }, path: "messages" }
+      messages: { $step: prepare_chat, path: "messages" }
       max_tokens: 200
       temperature: 0.3
 ```
@@ -62,12 +62,12 @@ steps:
     component: /builtin/create_messages
     input:
       system_instructions: "You are a code review assistant. Analyze code for potential issues."
-      user_prompt: { $from: { workflow: input }, path: "code_snippet" }
+      user_prompt: { $input: "code_snippet" }
 
   - id: analyze_code
     component: /builtin/openai
     input:
-      messages: { $from: { step: create_prompt }, path: "messages" }
+      messages: { $step: create_prompt, path: "messages" }
       max_tokens: 500
       temperature: 0.2
 ```

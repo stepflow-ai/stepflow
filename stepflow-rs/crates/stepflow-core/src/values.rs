@@ -12,19 +12,22 @@
 
 //! Value handling and resolution for Stepflow flows.
 //!
-//! This module contains all value-related functionality including:
-//! - `ValueRef`: References to concrete JSON values
-//! - `ValueTemplate`: Pre-parsed templates that may contain expressions
-//! - `ValueResolver`: Resolution engine for templates and expressions
-//! - `SanitizedValue`: Safe display wrapper that redacts secrets
-//! - `ValueLoader`: Trait for loading values from external sources
+//! This module contains all value-related functionality:
+//! - `ValueExpr`: Expression type for dynamic values and references
+//! - `ValueRef`: Arc-wrapped JSON values for efficient storage
+//! - `ValueResolver`: Resolution engine for evaluating expressions
+//! - `JsonPath`: JSONPath implementation for nested field access
+//! - `Secrets`: Secret field redaction for safe logging
 
+pub mod json_path;
 pub mod redacted_value;
+pub mod value_expr;
+mod value_expr_serde; // Keep private
 pub mod value_ref;
 pub mod value_resolver;
-pub mod value_template;
 
+pub use json_path::*;
 pub use redacted_value::*;
+pub use value_expr::*;
 pub use value_ref::*;
 pub use value_resolver::*;
-pub use value_template::*;

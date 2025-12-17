@@ -82,10 +82,10 @@ Map workflow output to step results:
 ```yaml
 output:
   summary:
-    total_processed: { $from: { step: count_items } }
-    success_count: { $from: { step: analyze_results }, path: "success_count" }
-    error_count: { $from: { step: analyze_results }, path: "error_count" }
-  results: { $from: { step: collect_results } }
+    total_processed: { $step: count_items }
+    success_count: { $step: analyze_results, path: "success_count" }
+    error_count: { $step: analyze_results, path: "error_count" }
+  results: { $step: collect_results }
 ```
 
 The output section uses [Expressions](./expressions.md) to reference data from steps within the flow.

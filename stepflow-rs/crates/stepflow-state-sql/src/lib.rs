@@ -24,9 +24,8 @@ pub use sqlite_state_store::{SqliteStateStore, SqliteStateStoreConfig};
 mod tests {
     use super::*;
     use serde_json::json;
-    use stepflow_core::values::ValueTemplate;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
-    use stepflow_core::{BlobType, FlowResult, workflow::ValueRef};
+    use stepflow_core::{BlobType, FlowResult, ValueExpr, workflow::ValueRef};
     use stepflow_state::{StateStore as _, StepResult};
     use uuid::Uuid;
 
@@ -57,11 +56,11 @@ mod tests {
 
         // First store a workflow
         let flow = FlowBuilder::new()
-            .output(ValueTemplate::empty_object())
+            .output(ValueExpr::Object(Default::default()))
             .step(
                 StepBuilder::new("test_step")
                     .component("/test/mock")
-                    .input(ValueTemplate::empty_object())
+                    .input(ValueExpr::Object(Default::default()))
                     .build(),
             )
             .build();

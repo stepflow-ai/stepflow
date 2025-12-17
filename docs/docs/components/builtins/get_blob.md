@@ -31,7 +31,7 @@ steps:
   - id: retrieve_user_data
     component: /builtin/get_blob
     input:
-      blob_id: { $from: { step: store_user_data }, path: "blob_id" }
+      blob_id: { $step: store_user_data, path: "blob_id" }
 ```
 
 #### Use Cases

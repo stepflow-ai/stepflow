@@ -1,64 +1,73 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-name: "Math Eval Test"
-description: "Test eval with actual computation"
-
+name: Math Eval Test
+description: Test eval with actual computation
 input_schema:
   type: object
   properties:
     numbers:
       type: array
-
 steps:
-  - id: create_nested_flow
-    component: /builtin/put_blob
+- id: create_nested_flow
+  component: /builtin/put_blob
+  input:
+    data:
+      $literal:
+        schema: https://stepflow.org/schemas/v1/flow.json
+        name: Nested Math Workflow
+        steps:
+        - id: add_udf
+          component: /builtin/put_blob
+          input:
+            data:
+              $literal:
+                input_schema:
+                  type: object
+                  properties:
+                    a:
+                      type: integer
+                    b:
+                      type: integer
+                  required:
+                  - a
+                  - b
+                code: input['a'] + input['b']
+            blob_type: data
+        - id: compute_sum
+          component: /python/udf
+          input:
+            blob_id:
+              $step: add_udf
+              path: blob_id
+            input:
+              a:
+                $input: x
+              b:
+                $input: y
+        output:
+          sum_result:
+            $step: compute_sum
+    blob_type: flow
+- id: nested_math
+  component: /builtin/eval
+  input:
+    flow_id:
+      $step: create_nested_flow
+      path: blob_id
     input:
-      data:
-        $literal:
-          schema: https://stepflow.org/schemas/v1/flow.json
-          name: "Nested Math Workflow"
-          steps:
-            - id: add_udf
-              component: /builtin/put_blob
-              input:
-                data:
-                  $literal:
-                    input_schema:
-                      type: object
-                      properties:
-                        a: { type: integer }
-                        b: { type: integer }
-                      required: [a, b]
-                    code: "input['a'] + input['b']"
-                blob_type: "data"
-
-            - id: compute_sum
-              component: "/python/udf"
-              input:
-                blob_id: { $from: { step: add_udf }, path: "blob_id" }
-                input:
-                  a: { $from: { workflow: input }, path: "x" }
-                  b: { $from: { workflow: input }, path: "y" }
-          output:
-            sum_result: { $from: { step: compute_sum } }
-      blob_type: "flow"
-
-  - id: nested_math
-    component: /builtin/eval
-    input:
-      flow_id: { $from: { step: create_nested_flow }, path: "blob_id" }
-      input:
-        x: 5
-        y: 3
-
+      x: 5
+      y: 3
 output:
-  math_result: { $from: { step: nested_math }, path: "result" }
-
+  math_result:
+    $step: nested_math
+    path: result
 test:
   cases:
   - name: nested_math_calculation
     description: Test nested workflow evaluation with math
     input:
-      numbers: [5, 3]
+      numbers:
+      - 5
+      - 3
     output:
       outcome: success
       result:

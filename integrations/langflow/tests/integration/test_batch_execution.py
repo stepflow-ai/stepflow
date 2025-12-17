@@ -111,14 +111,14 @@ def simple_workflow_yaml():
                 "component": "/python/udf",
                 "input": {
                     "blob_id": {
-                        "$from": {"step": "create_double_blob"},
+                        "$step": "create_double_blob",
                         "path": "blob_id",
                     },
-                    "input": {"x": {"$from": {"workflow": "input"}, "path": "x"}},
+                    "input": {"x": {"$input": "x"}},
                 },
             },
         ],
-        "output": {"result": {"$from": {"step": "double"}}},
+        "output": {"result": {"$step": "double"}},
     }
     return yaml.dump(workflow, default_flow_style=False, sort_keys=False)
 

@@ -166,7 +166,7 @@ impl BuiltinComponent for IterateComponent {
 mod tests {
     use super::*;
     use crate::mock_context::MockContext;
-    use stepflow_core::values::ValueTemplate;
+    use stepflow_core::ValueExpr;
     use stepflow_core::workflow::FlowV1;
 
     #[tokio::test]
@@ -177,7 +177,7 @@ mod tests {
         let test_flow = Flow::V1(FlowV1 {
             name: Some("test-result".to_string()),
             steps: vec![],
-            output: ValueTemplate::literal(serde_json::json!({"result": "test"})),
+            output: ValueExpr::Literal(serde_json::json!({"result": "test"})),
             ..Default::default()
         });
 
@@ -212,7 +212,7 @@ mod tests {
         let test_flow = Flow::V1(FlowV1 {
             name: Some("test-next".to_string()),
             steps: vec![],
-            output: ValueTemplate::literal(serde_json::json!({"next": "continued_value"})),
+            output: ValueExpr::Literal(serde_json::json!({"next": "continued_value"})),
             ..Default::default()
         });
 
@@ -247,7 +247,7 @@ mod tests {
         let test_flow = Flow::V1(FlowV1 {
             name: Some("test-infinite".to_string()),
             steps: vec![],
-            output: ValueTemplate::literal(serde_json::json!({"next": "forever"})),
+            output: ValueExpr::Literal(serde_json::json!({"next": "forever"})),
             ..Default::default()
         });
 

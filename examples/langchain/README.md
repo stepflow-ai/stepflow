@@ -199,7 +199,7 @@ Python code is created as a blob and executed via the `/udf` component. The work
   component: /udf
   input:
     blob_id:
-      $from: {step: create_text_processor_blob}
+      $step: create_text_processor_blob
       path: blob_id
     input:
       text: "Your text here"

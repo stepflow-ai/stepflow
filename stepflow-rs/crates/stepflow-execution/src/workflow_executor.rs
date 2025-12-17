@@ -18,9 +18,9 @@ use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
 use stepflow_core::BlobId;
 use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
-    FlowResult,
-    values::{ValueRef, ValueResolver, ValueTemplate},
-    workflow::{Expr, Flow, StepId, WorkflowOverrides},
+    FlowResult, ValueExpr,
+    values::{ValueRef, ValueResolver},
+    workflow::{Flow, StepId, WorkflowOverrides},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
@@ -697,7 +697,7 @@ impl WorkflowExecutor {
         // Resolve step inputs
         let step_input = match self
             .resolver
-            .resolve_template(&step.input)
+            .resolve(&step.input)
             .await
             .change_context_lazy(|| ExecutionError::ResolveStepInput(step.id.clone()))?
         {
@@ -781,7 +781,7 @@ impl WorkflowExecutor {
     /// Resolve the workflow output.
     pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
         self.resolver
-            .resolve_template(self.flow.output())
+            .resolve(self.flow.output())
             .await
             .change_context(ExecutionError::ResolveWorkflowOutput)
     }
@@ -797,10 +797,10 @@ impl WorkflowExecutor {
     /// - If the expression resolves to a truthy value, the step is skipped
     /// - If the expression references skipped steps or fails, the step is NOT skipped
     ///   (allowing the step to potentially handle the skip/error via on_skip logic)
-    async fn should_skip_step(&self, step_id: &str, skip_if: &Expr) -> Result<bool> {
+    async fn should_skip_step(&self, step_id: &str, skip_if: &ValueExpr) -> Result<bool> {
         let resolved_value = self
             .resolver
-            .resolve_expr(skip_if)
+            .resolve(skip_if)
             .await
             .change_context_lazy(|| ExecutionError::ResolveSkipIf(step_id.to_owned()))?;
 
@@ -858,7 +858,7 @@ impl WorkflowExecutor {
                 // this step should also be skipped (unless using on_skip with use_default)
                 let step_input = self
                     .resolver
-                    .resolve_template(&step_input)
+                    .resolve(&step_input)
                     .await
                     .change_context_lazy(|| ExecutionError::ResolveStepInput(step_id.clone()))?;
                 let step_input = match step_input {
@@ -1044,13 +1044,11 @@ pub(crate) async fn execute_step_async(
                     );
                     let template = match default_value {
                         Some(default) => default.clone(),
-                        None => ValueTemplate::null(),
+                        None => ValueExpr::null(),
                     };
                     // Resolve the ValueTemplate to get the actual value
-                    let default_value = resolver
-                        .resolve_template(&template)
-                        .await
-                        .change_context_lazy(|| {
+                    let default_value =
+                        resolver.resolve(&template).await.change_context_lazy(|| {
                             ExecutionError::ResolveDefaultValue(step.id.clone())
                         })?;
                     match default_value {
@@ -1116,8 +1114,8 @@ impl StepExecutionResult {
 pub struct StepInspection {
     #[serde(flatten)]
     pub metadata: StepMetadata,
-    pub input: ValueTemplate,
-    pub skip_if: Option<Expr>,
+    pub input: stepflow_core::ValueExpr,
+    pub skip_if: Option<stepflow_core::ValueExpr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
     pub state: StepStatus,
 }
@@ -1129,7 +1127,8 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::FlowError;
-    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder, StepId, ValueTemplate};
+    use stepflow_core::ValueExpr;
+    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder, StepId};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
@@ -1249,7 +1248,7 @@ mod tests {
         StepBuilder::mock_step(id).input_json(input).build()
     }
 
-    fn create_test_flow(steps: Vec<Step>, output: ValueTemplate) -> Flow {
+    fn create_test_flow(steps: Vec<Step>, output: ValueExpr) -> Flow {
         FlowBuilder::new().steps(steps).output(output).build()
     }
 
@@ -1258,12 +1257,15 @@ mod tests {
         // Test that we can create dependencies and tracker correctly
         let steps = vec![
             create_test_step("step1", json!({"value": 42})),
-            create_test_step("step2", json!({"$from": {"step": "step1"}})),
+            create_test_step("step2", json!({"$step": "step1"})),
         ];
 
         let flow = Arc::new(create_test_flow(
             steps,
-            ValueTemplate::parse_value(json!({"$from": {"step": "step2"}})).unwrap(),
+            ValueExpr::Step {
+                step: "step2".to_string(),
+                path: Default::default(),
+            },
         ));
 
         // Build dependencies using analysis crate
@@ -1293,11 +1295,9 @@ steps:
   - id: step1
     component: /mock/simple
     input:
-      $from:
-        workflow: input
+      $input: "$"
 output:
-  $from:
-    step: step1
+  $step: step1
 "#;
 
         let input_value = json!({"message": "hello"});
@@ -1326,16 +1326,13 @@ steps:
   - id: step1
     component: /mock/first
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: step2
     component: /mock/second
     input:
-      $from:
-        step: step1
+      $step: step1
 output:
-  $from:
-    step: step2
+  $step: step2
 "#;
 
         let workflow_input = json!({"value": 10});
@@ -1373,16 +1370,13 @@ steps:
   - id: step1
     component: /mock/first
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: step2
     component: /mock/second
     input:
-      $from:
-        step: step1
+      $step: step1
 output:
-  $from:
-    step: step2
+  $step: step2
 "#;
 
         let workflow_input = json!({"value": 10});
@@ -1459,9 +1453,9 @@ steps:
   - id: step2
     component: /mock/identity
     input:
-      value: { $from: { step: step1 } }
+      value: { $step: step1 }
 output:
-  final: { $from: { step: step2 } }
+  final: { $step: step2 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1551,13 +1545,13 @@ steps:
   - id: step2
     component: /mock/identity
     input:
-      value: { $from: { step: step1 } }
+      value: { $step: step1 }
   - id: step3
     component: /mock/identity
     input:
-      value: { $from: { step: step2 } }
+      value: { $step: step2 }
 output:
-  final: { $from: { step: step3 } }
+  final: { $step: step3 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1644,17 +1638,17 @@ steps:
   - id: step3
     component: /mock/identity
     input:
-      value: { $from: { step: step1 } }
+      value: { $step: step1 }
   - id: step4
     component: /mock/identity
     input:
-      value: { $from: { step: step2 } }
+      value: { $step: step2 }
   - id: step5
     component: /mock/identity
     input:
-      deps: [{ $from: { step: step3 } }, { $from: { step: step4 } }]
+      deps: [{ $step: step3 }, { $step: step4 }]
 output:
-  final: { $from: { step: step5 } }
+  final: { $step: step5 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1735,7 +1729,7 @@ steps:
     input:
       value: "step1_result"
 output:
-  final: { $from: { step: step1 } }
+  final: { $step: step1 }
 "#;
 
         let workflow: Arc<Flow> = Arc::new(serde_yaml_ng::from_str(workflow_yaml).unwrap());
@@ -1776,25 +1770,20 @@ steps:
   - id: step1
     component: /mock/parallel1
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: step2
     component: /mock/parallel2
     input:
-      $from:
-        workflow: input
+      $input: "$"
   - id: final
     component: /mock/combiner
     input:
       step1:
-        $from:
-          step: step1
+        $step: step1
       step2:
-        $from:
-          step: step2
+        $step: step2
 output:
-  $from:
-    step: final
+  $step: final
 "#;
 
         let workflow_input = json!({"value": 42});
@@ -1884,8 +1873,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -1919,8 +1907,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -1952,8 +1939,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -1985,8 +1971,7 @@ steps:
     input:
       mode: error
 output:
-  $from:
-    step: failing_step
+  $step: failing_step
 "#;
 
         let mock_behaviors = vec![(
@@ -2018,8 +2003,7 @@ steps:
       action: skip
     input: {}
 output:
-  $from:
-    step: success_step
+  $step: success_step
 "#;
 
         let mock_behaviors = vec![(
@@ -2054,11 +2038,9 @@ steps:
   - id: downstream_step
     component: /mock/success
     input:
-      $from:
-        step: failing_step
+      $step: failing_step
 output:
-  $from:
-    step: downstream_step
+  $step: downstream_step
 "#;
 
         let mock_behaviors = vec![

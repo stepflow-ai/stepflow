@@ -49,6 +49,6 @@ steps:
   - id: load_data
     component: /builtin/load_file
     input:
-      path: { $from: { workflow: input }, path: "data_file" }
+      path: { $input: "data_file" }
       format: "json"
 ```

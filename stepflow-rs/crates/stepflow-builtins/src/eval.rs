@@ -96,7 +96,7 @@ impl BuiltinComponent for EvalComponent {
 
 #[cfg(test)]
 mod tests {
-    use stepflow_core::values::ValueTemplate;
+    use stepflow_core::ValueExpr;
     use stepflow_core::workflow::{Flow, FlowV1};
 
     use super::*;
@@ -111,7 +111,7 @@ mod tests {
         let test_flow = Flow::V1(FlowV1 {
             name: Some("test-nested".to_string()),
             steps: vec![],
-            output: ValueTemplate::literal(serde_json::json!({
+            output: ValueExpr::Literal(serde_json::json!({
                 "result": "Hello from nested flow"
             })),
             ..Default::default()

@@ -13,10 +13,9 @@
 use super::*;
 use crate::diagnostics::DiagnosticMessage;
 use serde_json::json;
-use stepflow_core::{
-    values::ValueTemplate,
-    workflow::{FlowBuilder, JsonPath, Step, StepBuilder},
-};
+use stepflow_core::ValueExpr;
+use stepflow_core::values::JsonPath;
+use stepflow_core::workflow::{FlowBuilder, Step, StepBuilder};
 
 fn create_test_step(id: &str, input: serde_json::Value) -> Step {
     StepBuilder::mock_step(id).input_json(input).build()
@@ -27,10 +26,13 @@ fn test_valid_workflow() {
     let flow = FlowBuilder::test_flow()
         .description("A test workflow")
         .steps(vec![
-            create_test_step("step1", json!({"$from": {"workflow": "input"}})),
-            create_test_step("step2", json!({"$from": {"step": "step1"}})),
+            create_test_step("step1", json!({"$input": "$"})),
+            create_test_step("step2", json!({"$step":"step1"})),
         ])
-        .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step2".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -41,10 +43,13 @@ fn test_valid_workflow() {
 fn test_forward_reference_error() {
     let flow = FlowBuilder::test_flow()
         .steps(vec![
-            create_test_step("step1", json!({"$from": {"step": "step2"}})), // Forward reference
-            create_test_step("step2", json!({"$from": {"workflow": "input"}})),
+            create_test_step("step1", json!({"$step":"step2"})), // Forward reference
+            create_test_step("step2", json!({"$input": "$"})),
         ])
-        .output(ValueTemplate::step_ref("step2", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step2".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -60,10 +65,13 @@ fn test_forward_reference_error() {
 fn test_duplicate_step_ids() {
     let flow = FlowBuilder::test_flow()
         .steps(vec![
-            create_test_step("step1", json!({"$from": {"workflow": "input"}})),
-            create_test_step("step1", json!({"$from": {"workflow": "input"}})), // Duplicate ID
+            create_test_step("step1", json!({"$input": "$"})),
+            create_test_step("step1", json!({"$input": "$"})), // Duplicate ID
         ])
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -79,11 +87,11 @@ fn test_duplicate_step_ids() {
 #[test]
 fn test_self_reference() {
     let flow = FlowBuilder::test_flow()
-        .steps(vec![create_test_step(
-            "step1",
-            json!({"$from": {"step": "step1"}}),
-        )])
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .steps(vec![create_test_step("step1", json!({"$step":"step1"}))])
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -100,10 +108,13 @@ fn test_self_reference() {
 fn test_unreachable_step() {
     let flow = FlowBuilder::test_flow()
         .steps(vec![
-            create_test_step("step1", json!({"$from": {"workflow": "input"}})),
-            create_test_step("step2", json!({"$from": {"workflow": "input"}})), // Not referenced
+            create_test_step("step1", json!({"$input": "$"})),
+            create_test_step("step2", json!({"$input": "$"})), // Not referenced
         ])
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -119,11 +130,11 @@ fn test_unreachable_step() {
 #[test]
 fn test_workflow_with_no_name_and_description() {
     let flow = FlowBuilder::new() // No name/description
-        .steps(vec![create_test_step(
-            "step1",
-            json!({"$from": {"workflow": "input"}}),
-        )])
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .steps(vec![create_test_step("step1", json!({"$input": "$"}))])
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -149,10 +160,15 @@ fn test_empty_component_name() {
         .step(
             StepBuilder::new("step1")
                 .component("") // Empty builtin name
-                .input(ValueTemplate::workflow_input(JsonPath::default()))
+                .input(ValueExpr::Input {
+                    input: JsonPath::default(),
+                })
                 .build(),
         )
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -171,10 +187,15 @@ fn test_valid_builtin_component() {
     let flow = FlowBuilder::test_flow()
         .step(
             StepBuilder::builtin_step("step1", "eval")
-                .input(ValueTemplate::workflow_input(JsonPath::default()))
+                .input(ValueExpr::Input {
+                    input: JsonPath::default(),
+                })
                 .build(),
         )
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -193,11 +214,11 @@ fn test_combined_validation() {
 
     let flow = FlowBuilder::test_flow()
         .description("A test workflow")
-        .step(create_test_step(
-            "step1",
-            json!({"$from": {"workflow": "input"}}),
-        ))
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .step(create_test_step("step1", json!({"$input": "$"})))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let mut plugins = IndexMap::new();
@@ -247,11 +268,14 @@ fn test_undefined_required_variable() {
         .step(
             StepBuilder::mock_step("step1")
                 .input_json(json!({
-                    "key": {"$from": {"variable": "undefined_var"}}
+                    "key": {"$variable":"undefined_var"}
                 }))
                 .build(),
         )
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -290,11 +314,14 @@ fn test_valid_variable_reference() {
         .step(
             StepBuilder::mock_step("step1")
                 .input_json(json!({
-                    "key": {"$from": {"variable": "api_key"}}
+                    "key": {"$variable":"api_key"}
                 }))
                 .build(),
         )
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -313,11 +340,14 @@ fn test_variable_reference_without_schema() {
         .step(
             StepBuilder::mock_step("step1")
                 .input_json(json!({
-                    "key": {"$from": {"variable": "some_var"}}
+                    "key": {"$variable":"some_var"}
                 }))
                 .build(),
         )
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -354,15 +384,16 @@ fn test_undefined_optional_variable_with_default() {
             StepBuilder::mock_step("step1")
                 .input_json(json!({
                     "key": {
-                        "$from": {
-                            "variable": "undefined_var",
-                            "default": "fallback_value"
-                        }
+                        "$variable": "undefined_var",
+                        "default": "fallback_value"
                     }
                 }))
                 .build(),
         )
-        .output(ValueTemplate::step_ref("step1", JsonPath::default()))
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -407,10 +438,10 @@ fn test_literal_subflow_validation() {
             "id": "sub_step1",
             "component": "/mock/test",
             "input": {
-                "key": {"$from": {"variable": "api_key"}}
+                "key": {"$variable":"api_key"}
             }
         }],
-        "output": {"$from": {"step": "sub_step1"}}
+        "output": {"$step":"sub_step1"}
     });
 
     // Create parent flow with put_blob step containing literal subflow
@@ -428,10 +459,10 @@ fn test_literal_subflow_validation() {
                 }))
                 .build(),
         )
-        .output(ValueTemplate::step_ref(
-            "create_subflow",
-            JsonPath::default(),
-        ))
+        .output(ValueExpr::Step {
+            step: "create_subflow".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -478,10 +509,10 @@ fn test_subflow_undefined_variable() {
             "id": "sub_step1",
             "component": "/mock/test",
             "input": {
-                "key": {"$from": {"variable": "undefined_var"}}
+                "key": {"$variable":"undefined_var"}
             }
         }],
-        "output": {"$from": {"step": "sub_step1"}}
+        "output": {"$step":"sub_step1"}
     });
 
     let flow = FlowBuilder::new()
@@ -498,10 +529,10 @@ fn test_subflow_undefined_variable() {
                 }))
                 .build(),
         )
-        .output(ValueTemplate::step_ref(
-            "create_subflow",
-            JsonPath::default(),
-        ))
+        .output(ValueExpr::Step {
+            step: "create_subflow".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
@@ -538,7 +569,7 @@ fn test_subflow_with_validation_errors() {
             {
                 "id": "step1",
                 "component": "/mock/test",
-                "input": {"$from": {"step": "step2"}}  // Forward reference!
+                "input": {"$step":"step2"}  // Forward reference!
             },
             {
                 "id": "step2",
@@ -546,7 +577,7 @@ fn test_subflow_with_validation_errors() {
                 "input": {}
             }
         ],
-        "output": {"$from": {"step": "step2"}}
+        "output": {"$step":"step2"}
     });
 
     let flow = FlowBuilder::new()
@@ -563,10 +594,10 @@ fn test_subflow_with_validation_errors() {
                 }))
                 .build(),
         )
-        .output(ValueTemplate::step_ref(
-            "create_subflow",
-            JsonPath::default(),
-        ))
+        .output(ValueExpr::Step {
+            step: "create_subflow".to_string(),
+            path: Default::default(),
+        })
         .build();
 
     let diagnostics = validate(&flow).unwrap();
