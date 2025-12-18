@@ -285,31 +285,44 @@ steps:
 
 ### AI Response Caching
 
-Cache AI responses for repeated queries:
+Cache AI responses for repeated queries using `$coalesce` for fallback logic:
 
 ```yaml
 steps:
-  # Check cache first
+  # Create cache key from request
+  - id: create_cache_key
+    component: /cache/create_key
+    input:
+      messages: { $input: "messages" }
+
+  # Try to get cached response (returns null on cache miss)
   - id: check_ai_cache
-    component: /cache/check
+    component: /cache/get
     input:
       key: { $step: create_cache_key, path: "cache_key" }
 
-  # Only call AI if not cached
+  # Generate fresh AI response (only executes if output is needed)
   - id: generate_ai_response
     component: /builtin/openai
-    skipIf: { $step: check_ai_cache, path: "cache_hit" }
     input:
-      messages: { $step: create_messages }
+      messages: { $input: "messages" }
 
-  # Store response in cache
-  - id: cache_ai_response
-    component: /cache/store
-    skipIf: { $step: check_ai_cache, path: "cache_hit" }
+  # Store and return new response (only executes if generate_ai_response runs)
+  - id: cache_and_return
+    component: /cache/store_and_return
     input:
       key: { $step: create_cache_key, path: "cache_key" }
       value: { $step: generate_ai_response }
+
+output:
+  # Return cached value if available, otherwise generate and cache new response
+  response:
+    $coalesce:
+      - { $step: check_ai_cache }
+      - { $step: cache_and_return }
 ```
+
+With lazy evaluation, `generate_ai_response` and `cache_and_return` only execute when the cache misses (returns null), since `$coalesce` short-circuits on the first non-null value.
 
 ## Workflow Architecture Patterns
 
