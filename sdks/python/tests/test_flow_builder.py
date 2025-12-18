@@ -18,7 +18,6 @@ from stepflow_py import (
     OnErrorDefault,
     OnErrorFail,
     OnErrorRetry,
-    OnErrorSkip,
     StepReference,
     Value,
     WorkflowInput,
@@ -171,12 +170,6 @@ def test_error_handling():
         on_error=OnErrorFail(action="fail"),
     )
     builder.add_step(
-        id="skip_step",
-        component="/test/component",
-        input_data={"value": 2},
-        on_error=OnErrorSkip(action="skip"),
-    )
-    builder.add_step(
         id="retry_step",
         component="/test/component",
         input_data={"value": 3},
@@ -187,16 +180,12 @@ def test_error_handling():
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps or []) == 3
+    assert len(flow.steps or []) == 2
 
     # Check that error actions were set correctly
     fail_step = next(step for step in (flow.steps or []) if step.id == "fail_step")
     assert isinstance(fail_step.onError, OnErrorFail)
     assert fail_step.onError.action == "fail"
-
-    skip_step = next(step for step in (flow.steps or []) if step.id == "skip_step")
-    assert isinstance(skip_step.onError, OnErrorSkip)
-    assert skip_step.onError.action == "skip"
 
     retry_step = next(step for step in (flow.steps or []) if step.id == "retry_step")
     assert isinstance(retry_step.onError, OnErrorRetry)
@@ -375,30 +364,6 @@ def test_get_step_references():
     paths = [str(ref.path) for ref in references]
     assert "$.value" in paths
     assert "$.config.setting" in paths
-
-
-def test_get_references_with_skip_condition():
-    """Test extracting references from skipIf conditions."""
-    builder = FlowBuilder()
-
-    # Add a step with a skipIf condition
-    step1 = builder.add_step(
-        id="skip_test",
-        component="/test/component",
-        input_data={"value": 42},
-        skip_if=Value.input().skip_flag,
-    )
-
-    # Set output to make the test complete
-    builder.set_output({"result": "done"})
-
-    flow = builder.build()
-    references = builder.step("skip_test").get_references()
-
-    # Should find the skipIf reference
-    assert len(references) == 1
-    assert isinstance(references[0], WorkflowInput)
-    assert str(references[0].path) == "$.skip_flag"
 
 
 def test_get_references_with_literal_values():

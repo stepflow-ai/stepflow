@@ -142,14 +142,6 @@ class CodeCompilationError(StepflowExecutionError):
             self.data = {"code": code}
 
 
-class StepflowSkipped(Exception):
-    """Exception raised when a step or flow is skipped."""
-
-    def __init__(self, message: str = "Flow execution was skipped"):
-        super().__init__(message)
-        self.message = message
-
-
 class StepflowFailed(Exception):
     """Exception raised when a step or flow fails with a business logic error."""
 
@@ -158,24 +150,3 @@ class StepflowFailed(Exception):
         self.error_code = error_code
         self.message = message
         self.data = data
-
-
-class SkipStep(Exception):
-    """Exception raised by components to request that the current step be skipped.
-
-    Components can raise this exception during execution to indicate that the step
-    should be marked as skipped rather than failed. This is useful for conditional
-    logic, resource availability checks, or other runtime decisions where skipping
-    is the appropriate response rather than failing.
-
-    Example:
-        @server.component
-        def conditional_processor(input: MyInput) -> MyOutput:
-            if not input.should_process:
-                raise SkipStep("Processing not required for this input")
-            return process_data(input.data)
-    """
-
-    def __init__(self, message: str = "Component requested step skip"):
-        super().__init__(message)
-        self.message = message

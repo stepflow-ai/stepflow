@@ -26,7 +26,6 @@ import msgspec
 from stepflow_py.context import StepflowContext
 from stepflow_py.exceptions import (
     ComponentNotFoundError,
-    SkipStep,
     StepflowError,
     StepflowExecutionError,
     StepflowProtocolError,
@@ -39,7 +38,6 @@ from stepflow_py.generated_protocol import (
     ComponentInfoResult,
     ComponentListParams,
     Error,
-    FlowResultSkipped,
     InitializeResult,
     ListComponentsResult,
     Message,
@@ -442,13 +440,6 @@ class StepflowServer:
                 logger.debug(f"Component output: {output}")
                 return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
 
-        except SkipStep as e:
-            # Component requested to be skipped - return FlowResultSkipped
-            skip_result = FlowResultSkipped(reason=e.message)
-            result = ComponentExecuteResult(output=skip_result)
-            logger = logging.getLogger(__name__)
-            logger.info(f"Skipped component {params.component}: {e.message}")
-            return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
         except Exception as e:
             logger = logging.getLogger(__name__)
             logger.error(

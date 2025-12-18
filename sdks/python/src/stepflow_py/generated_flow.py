@@ -36,6 +36,25 @@ Component = Annotated[
 ]
 
 
+class OnErrorFail(Struct, kw_only=True):
+    action: Literal['fail']
+
+
+class OnErrorDefault(Struct, kw_only=True):
+    action: Literal['useDefault']
+    defaultValue: Any | None = None
+
+
+class OnErrorRetry(Struct, kw_only=True):
+    action: Literal['retry']
+
+
+ErrorAction = Annotated[
+    OnErrorFail | OnErrorDefault | OnErrorRetry,
+    Meta(description='Error action determines what happens when a step fails.'),
+]
+
+
 class StepRef(Struct, kw_only=True):
     field_step: str = field(name='$step')
     path: Annotated[str, Meta(description='JSONPath expression')] | None = None
@@ -49,18 +68,6 @@ class InputRef(Struct, kw_only=True):
 
 class LiteralModel(Struct, kw_only=True):
     field_literal: Any = field(name='$literal')
-
-
-class OnErrorFail(Struct, kw_only=True):
-    action: Literal['fail']
-
-
-class OnErrorSkip(Struct, kw_only=True):
-    action: Literal['skip']
-
-
-class OnErrorRetry(Struct, kw_only=True):
-    action: Literal['retry']
 
 
 class TestServerHealthCheck(Struct, kw_only=True):
@@ -108,16 +115,6 @@ class FlowError(Struct, kw_only=True):
 class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
     outcome: ClassVar[Annotated[Literal['success'], Meta(title='FlowOutcome')]]
     result: Value
-
-
-class FlowResultSkipped(Struct, kw_only=True, tag_field='outcome', tag='skipped'):
-    outcome: ClassVar[Annotated[Literal['skipped'], Meta(title='FlowOutcome')]]
-    reason: (
-        Annotated[
-            str, Meta(description='Optional reason for why the step was skipped.')
-        ]
-        | None
-    ) = None
 
 
 class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
@@ -199,7 +196,7 @@ class TestServerConfig(Struct, kw_only=True):
 
 
 FlowResult = Annotated[
-    FlowResultSuccess | FlowResultSkipped | FlowResultFailed,
+    FlowResultSuccess | FlowResultFailed,
     Meta(description='The results of a step execution.', title='FlowResult'),
 ]
 
@@ -337,15 +334,6 @@ class Step(Struct, kw_only=True):
         Annotated[Schema | None, Meta(description='The output schema for this step.')]
         | None
     ) = None
-    skipIf: (
-        Annotated[
-            ValueExpr | None,
-            Meta(
-                description='If set and the referenced value is truthy, this step will be skipped.'
-            ),
-        ]
-        | None
-    ) = None
     onError: ErrorAction | None = None
     input: (
         Annotated[
@@ -358,7 +346,7 @@ class Step(Struct, kw_only=True):
         Annotated[
             bool | None,
             Meta(
-                description='If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.'
+                description='If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).'
             ),
         ]
         | None
@@ -408,11 +396,3 @@ ValueExpr = Annotated[
         description='A value expression that can contain literal data or references to other values'
     ),
 ]
-
-
-class OnErrorDefault(Struct, kw_only=True):
-    action: Literal['useDefault']
-    defaultValue: ValueExpr | None = None
-
-
-ErrorAction = OnErrorFail | OnErrorSkip | OnErrorDefault | OnErrorRetry
