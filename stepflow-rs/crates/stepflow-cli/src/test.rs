@@ -92,10 +92,7 @@ fn partial_match(expected: &FlowResult, actual: &FlowResult) -> bool {
         }
         (FlowResult::Failed(exp), FlowResult::Failed(act)) => {
             // For errors, check code, message, and data if specified
-            if exp.code != act.code {
-                return false;
-            }
-            if exp.message != act.message {
+            if exp.code != act.code || exp.message != act.message {
                 return false;
             }
             // Only check data if expected has data specified

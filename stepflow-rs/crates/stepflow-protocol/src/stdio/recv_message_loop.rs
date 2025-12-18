@@ -35,9 +35,6 @@ use crate::{Message, MessageHandlerRegistry, RequestId};
 
 use super::{client::RestartCounter, launcher::Launcher};
 
-/// Maximum number of stderr lines to buffer after initialization.
-const MAX_STDERR_LINES: usize = 100;
-
 /// Controls how component stderr is handled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum StderrMode {
@@ -72,6 +69,8 @@ struct ReceiveMessageLoop {
     stderr_mode: StderrMode,
     /// Whether the component server has been initialized (received "initialize" response).
     initialized: bool,
+    /// Size of the stderr buffer.
+    max_stderr_buffer: usize,
     /// Buffer for stderr lines when in quiet mode.
     stderr_buffer: VecDeque<String>,
     /// Request ID of pending "initialize" request, if any.
@@ -90,6 +89,14 @@ impl ReceiveMessageLoop {
         let from_child_stderr = child.stderr.take().expect("stderr requested");
         let from_child_stderr = LinesStream::new(BufReader::new(from_child_stderr).lines());
 
+        let max_stderr_buffer = match option_env!("STEPFLOW_MAX_STDERR_LINES") {
+            None => 100,
+            Some(s) => {
+                use std::str::FromStr as _;
+                usize::from_str(s).expect("STEPFLOW_MAX_STDERR_LINES should be usize")
+            }
+        };
+
         Ok(Self {
             child,
             to_child,
@@ -100,6 +107,7 @@ impl ReceiveMessageLoop {
             launcher,
             stderr_mode: StderrMode::from_env(),
             initialized: false,
+            max_stderr_buffer,
             stderr_buffer: VecDeque::new(),
             pending_initialize_id: None,
         })
@@ -417,23 +425,21 @@ impl ReceiveMessageLoop {
     ) -> Result<bool> {
         tokio::select! {
             child = self.child.wait() => {
-                match child {
+                let context = match child {
                     Ok(status) if status.success() => {
                         log::info!("Child process exited with status {status}");
-                        // Flush buffer on clean exit if there was any output
-                        if !self.stderr_buffer.is_empty() {
-                            self.flush_stderr_buffer("on exit");
-                        }
+                        "on exit"
                     }
                     Ok(status) => {
                         log::error!("Child process exited with status {status}");
-                        self.flush_stderr_buffer("on crash");
+                        "on crash"
                     }
                     Err(e) => {
                         log::error!("Child process exited with error: {e}");
-                        self.flush_stderr_buffer("on error");
+                        "on error"
                     }
-                }
+                };
+                self.flush_stderr_buffer(context);
                 Ok(false)
             }
             Some(outgoing) = outgoing_rx.recv() => {
