@@ -52,13 +52,6 @@ fn validate_step_references(
 ) {
     let mut path = make_path!("steps", step_index);
 
-    // Validate skip condition references
-    if let Some(skip_if) = &step.skip_if {
-        path.push("skip_if".to_string());
-        validate_value_expr(skip_if, &path, available_steps, &step.id, flow, diagnostics);
-        path.pop();
-    }
-
     path.push("input");
     validate_value_expr(
         &step.input,

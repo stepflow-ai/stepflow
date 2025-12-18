@@ -34,10 +34,6 @@ pub struct Step {
     /// The output schema for this step.
     pub output_schema: Option<SchemaRef>,
 
-    /// If set and the referenced value is truthy, this step will be skipped.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_if: Option<ValueExpr>,
-
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_error: Option<ErrorAction>,
 
@@ -47,9 +43,6 @@ pub struct Step {
 
     /// If true, this step must execute even if its output is not used by the workflow output.
     /// Useful for steps with side effects (e.g., writing to databases, sending notifications).
-    ///
-    /// Note: If the step has `skip_if` that evaluates to true, the step will still be skipped
-    /// and its dependencies will not be forced to execute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub must_execute: Option<bool>,
 
@@ -74,25 +67,32 @@ impl Step {
     }
 }
 
+/// Error action determines what happens when a step fails.
 #[derive(
-    Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, JsonSchema, utoipa::ToSchema,
+    Clone,
+    Debug,
+    PartialEq,
+    JsonSchema,
+    utoipa::ToSchema,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
 )]
-#[serde(rename_all = "camelCase", tag = "action")]
-#[derive(Default)]
+#[serde(tag = "action", rename_all = "camelCase")]
 pub enum ErrorAction {
     /// # OnErrorFail
     /// If the step fails, the flow will fail.
     #[default]
     Fail,
-    /// # OnErrorSkip
-    /// If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.
-    Skip,
     /// # OnErrorDefault
     /// If the step fails, use the `defaultValue` instead.
+    /// If `defaultValue` is not specified, the step returns null.
+    /// The default value must be a literal JSON value (not an expression).
+    /// For dynamic defaults, use `$coalesce` in the consuming expression instead.
     #[serde(rename_all = "camelCase")]
     UseDefault {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        default_value: Option<ValueExpr>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        default_value: Option<serde_json::Value>,
     },
     /// # OnErrorRetry
     /// If the step fails, retry it.
@@ -115,18 +115,24 @@ mod tests {
         let fail = ErrorAction::Fail;
         assert_eq!(serde_yaml_ng::to_string(&fail).unwrap(), "action: fail\n");
 
-        let skip = ErrorAction::Skip;
-        assert_eq!(serde_yaml_ng::to_string(&skip).unwrap(), "action: skip\n");
-
         let retry = ErrorAction::Retry;
         assert_eq!(serde_yaml_ng::to_string(&retry).unwrap(), "action: retry\n");
 
         let use_default = ErrorAction::UseDefault {
-            default_value: Some(ValueExpr::literal(serde_json::json!("test_default"))),
+            default_value: Some(serde_json::json!("test_default")),
         };
         assert_eq!(
             serde_yaml_ng::to_string(&use_default).unwrap(),
             "action: useDefault\ndefaultValue: test_default\n"
+        );
+
+        // UseDefault with no value serializes without defaultValue field
+        let use_default_none = ErrorAction::UseDefault {
+            default_value: None,
+        };
+        assert_eq!(
+            serde_yaml_ng::to_string(&use_default_none).unwrap(),
+            "action: useDefault\n"
         );
     }
 
@@ -134,9 +140,6 @@ mod tests {
     fn test_error_action_deserialization() {
         let fail: ErrorAction = serde_yaml_ng::from_str("action: fail").unwrap();
         assert_eq!(fail, ErrorAction::Fail);
-
-        let skip: ErrorAction = serde_yaml_ng::from_str("action: skip").unwrap();
-        assert_eq!(skip, ErrorAction::Skip);
 
         let retry: ErrorAction = serde_yaml_ng::from_str("action: retry").unwrap();
         assert_eq!(retry, ErrorAction::Retry);
@@ -146,7 +149,7 @@ mod tests {
         assert_eq!(
             use_default,
             ErrorAction::UseDefault {
-                default_value: Some(ValueExpr::literal(serde_json::json!("test_default")))
+                default_value: Some(serde_json::json!("test_default"))
             }
         );
     }
@@ -155,11 +158,10 @@ mod tests {
     fn test_error_action_default() {
         assert_eq!(ErrorAction::default(), ErrorAction::Fail);
         assert!(ErrorAction::Fail.is_default());
-        assert!(!ErrorAction::Skip.is_default());
         assert!(!ErrorAction::Retry.is_default());
         assert!(
             !ErrorAction::UseDefault {
-                default_value: Some(ValueExpr::literal(serde_json::json!("test")))
+                default_value: Some(serde_json::json!("test"))
             }
             .is_default()
         );
@@ -170,7 +172,7 @@ mod tests {
         let step = StepBuilder::new("test_step")
             .component("/mock/test_component")
             .on_error(ErrorAction::UseDefault {
-                default_value: Some(ValueExpr::literal(serde_json::json!("fallback"))),
+                default_value: Some(serde_json::json!("fallback")),
             })
             .input(ValueExpr::null())
             .build();

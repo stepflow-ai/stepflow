@@ -635,12 +635,6 @@ async fn handle_inspect_command(step_id: String, state: &ReplState) -> Result<()
                         .change_context(MainError::FlowExecution)?;
                     println!("  Input: {input_json}");
 
-                    if let Some(skip_if) = &inspection.skip_if {
-                        let skip_json = serde_json::to_string_pretty(skip_if)
-                            .change_context(MainError::FlowExecution)?;
-                        println!("  Skip condition: {skip_json}");
-                    }
-
                     println!("  Error handling: {:?}", inspection.on_error);
                 }
                 Err(e) => {
@@ -680,7 +674,6 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
                         for step in &completed_steps {
                             let status = match &step.result {
                                 stepflow_core::FlowResult::Success(_) => "SUCCESS",
-                                stepflow_core::FlowResult::Skipped { .. } => "SKIPPED",
                                 stepflow_core::FlowResult::Failed(_) => "FAILED",
                             };
                             println!(
@@ -721,7 +714,7 @@ async fn handle_output_command(step_id: String, state: &ReplState) -> Result<()>
 
     if let Some(last_run) = &state.last_run {
         if let Some(debug_session) = &last_run.last_execution {
-            match debug_session.get_step_output(&step_id).await {
+            match debug_session.get_step_output(&step_id) {
                 Ok(result) => {
                     println!("Output of step '{step_id}':");
                     print_flow_result(&result)?;
@@ -756,13 +749,6 @@ fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
             let result_json = serde_json::to_string_pretty(result.as_ref())
                 .change_context(MainError::FlowExecution)?;
             println!("Result: {result_json}");
-        }
-        stepflow_core::FlowResult::Skipped { reason } => {
-            if let Some(reason) = reason {
-                println!("Result: SKIPPED - {reason}");
-            } else {
-                println!("Result: SKIPPED");
-            }
         }
         stepflow_core::FlowResult::Failed(error) => {
             println!("Result: FAILED - {error}");

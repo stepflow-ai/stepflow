@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_list_components.rs
+source: crates/stepflow-cli/tests/commands/test_list_components.rs
 info:
   program: stepflow
   args:
@@ -9,6 +9,14 @@ info:
     - list-components
     - "--config=tests/stepflow-config.yml"
     - "--schemas=true"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -291,18 +299,12 @@ Component: /map (plugin: builtin)
           "type": "integer",
           "format": "uint32",
           "minimum": 0
-        },
-        "skipped": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
         }
       },
       "required": [
         "results",
         "successful",
-        "failed",
-        "skipped"
+        "failed"
       ]
     }
 

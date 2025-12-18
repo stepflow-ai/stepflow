@@ -165,26 +165,6 @@ fn test_visualize_with_no_details_option() {
 }
 
 #[test]
-fn test_visualize_conditional_skip_workflow() {
-    // Test visualization with conditional skip workflow which has optional dependencies
-    let temp_dir = std::env::temp_dir();
-    apply_visualize_filters!(temp_dir);
-
-    let output_file = temp_dir.join("stepflow_test_conditional_skip.dot");
-
-    assert_cmd_snapshot!(
-        stepflow()
-            .arg("visualize")
-            .arg("tests/mock/conditional_skip.yaml")
-            .arg(format!("--output={}", output_file.display()))
-            .arg("--format=dot")
-    );
-
-    // Clean up the temporary file
-    let _ = std::fs::remove_file(&output_file);
-}
-
-#[test]
 fn test_visualize_with_custom_config() {
     // Test visualization with custom config that defines different plugins
     let temp_dir = std::env::temp_dir();
@@ -275,17 +255,6 @@ fn test_visualize_stdout_non_dot_format() {
 
     // Clean up the generated file
     let _ = std::fs::remove_file(&output_path);
-}
-
-#[test]
-fn test_visualize_conditional_skip_workflow_stdout() {
-    // Test visualization with conditional skip workflow output to stdout
-    assert_cmd_snapshot!(
-        stepflow()
-            .arg("visualize")
-            .arg("tests/mock/conditional_skip.yaml")
-            .arg("--format=dot")
-    );
 }
 
 #[test]

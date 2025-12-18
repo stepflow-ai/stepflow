@@ -150,17 +150,6 @@
             }
           ]
         },
-        "skipIf": {
-          "description": "If set and the referenced value is truthy, this step will be skipped.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ValueExpr"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "onError": {
           "anyOf": [
             {
@@ -176,7 +165,7 @@
           "$ref": "#/$defs/ValueExpr"
         },
         "mustExecute": {
-          "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute.",
+          "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).",
           "type": [
             "boolean",
             "null"
@@ -200,6 +189,54 @@
         "/builtin/eval",
         "/mcpfs/list_files",
         "/python/udf"
+      ]
+    },
+    "ErrorAction": {
+      "description": "Error action determines what happens when a step fails.",
+      "oneOf": [
+        {
+          "title": "OnErrorFail",
+          "description": "If the step fails, the flow will fail.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "fail"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "title": "OnErrorDefault",
+          "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+          "type": "object",
+          "properties": {
+            "defaultValue": true,
+            "action": {
+              "type": "string",
+              "const": "useDefault"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "title": "OnErrorRetry",
+          "description": "If the step fails, retry it.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "retry"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        }
       ]
     },
     "ValueExpr": {
@@ -338,76 +375,6 @@
             {
               "type": "string"
             }
-          ]
-        }
-      ]
-    },
-    "ErrorAction": {
-      "oneOf": [
-        {
-          "title": "OnErrorFail",
-          "description": "If the step fails, the flow will fail.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "fail"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorSkip",
-          "description": "If the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "skip"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorDefault",
-          "description": "If the step fails, use the `defaultValue` instead.",
-          "type": "object",
-          "properties": {
-            "defaultValue": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ValueExpr"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "action": {
-              "type": "string",
-              "const": "useDefault"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "title": "OnErrorRetry",
-          "description": "If the step fails, retry it.",
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "const": "retry"
-            }
-          },
-          "required": [
-            "action"
           ]
         }
       ]
@@ -598,9 +565,6 @@
           "$ref": "#/$defs/FlowResultSuccess"
         },
         {
-          "$ref": "#/$defs/FlowResultSkipped"
-        },
-        {
           "$ref": "#/$defs/FlowResultFailed"
         }
       ],
@@ -608,7 +572,6 @@
         "propertyName": "outcome",
         "mapping": {
           "success": "#/$defs/FlowResultSuccess",
-          "skipped": "#/$defs/FlowResultSkipped",
           "failed": "#/$defs/FlowResultFailed"
         }
       }
@@ -655,23 +618,6 @@
       "required": [
         "outcome",
         "result"
-      ]
-    },
-    "FlowResultSkipped": {
-      "type": "object",
-      "properties": {
-        "outcome": {
-          "title": "FlowOutcome",
-          "const": "skipped",
-          "default": "skipped"
-        },
-        "reason": {
-          "description": "Optional reason for why the step was skipped.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "outcome"
       ]
     },
     "FlowResultFailed": {

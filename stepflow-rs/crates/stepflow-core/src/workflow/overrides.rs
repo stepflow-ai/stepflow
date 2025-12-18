@@ -298,7 +298,6 @@ mod tests {
                 component: super::super::Component::from_string("/test/component"),
                 input_schema: None,
                 output_schema: None,
-                skip_if: None,
                 on_error: None,
                 input: ValueExpr::null(),
                 must_execute: None,

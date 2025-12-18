@@ -17,8 +17,6 @@ output_schema:
       type: integer
     failed:
       type: integer
-    skipped:
-      type: integer
 steps:
 - id: map_prompts
   component: /builtin/map
@@ -52,9 +50,6 @@ output:
   failed:
     $step: map_prompts
     path: failed
-  skipped:
-    $step: map_prompts
-    path: skipped
 test:
   cases:
   - name: test map with three prompts
@@ -68,7 +63,6 @@ test:
       result:
         successful: 3
         failed: 0
-        skipped: 0
         results:
         - outcome: success
           result:
@@ -93,5 +87,4 @@ test:
       result:
         successful: 0
         failed: 0
-        skipped: 0
         results: []

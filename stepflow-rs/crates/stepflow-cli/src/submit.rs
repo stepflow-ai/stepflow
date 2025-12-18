@@ -114,7 +114,7 @@ pub async fn submit(
         .change_context(MainError::ServerError)?;
 
     // Display validation results
-    let failure_count = display_diagnostics(&store_result.analysis_result.diagnostics);
+    let failure_count = display_diagnostics(&store_result.diagnostics);
 
     // Check if the workflow was stored successfully
     let flow_id = store_result.flow_id.ok_or_else(|| {

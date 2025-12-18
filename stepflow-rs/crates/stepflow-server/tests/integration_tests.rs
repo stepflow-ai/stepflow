@@ -593,11 +593,6 @@ async fn test_flow_crud_operations() {
 
     assert_eq!(get_response["flowId"], flow_id);
     assert_eq!(get_response["flow"]["name"], "test_workflow");
-
-    // Check that analysis is included in the get_flow response
-    assert!(get_response["analysis"].is_object());
-    assert_eq!(get_response["analysis"]["flowId"], flow_id);
-    assert!(get_response["analysis"]["steps"].is_object());
 }
 
 #[tokio::test]

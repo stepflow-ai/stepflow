@@ -150,13 +150,6 @@ impl BuiltinComponent for IterateComponent {
                     // Propagate the failure from the workflow
                     return Ok(FlowResult::Failed(error));
                 }
-                FlowResult::Skipped { .. } => {
-                    // Treat skipped as an error in this context
-                    return Ok(FlowResult::Failed(stepflow_core::FlowError::new(
-                        400,
-                        "Workflow cannot be skipped during iteration",
-                    )));
-                }
             }
         }
     }

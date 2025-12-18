@@ -715,9 +715,6 @@
           "$ref": "#/$defs/FlowResultSuccess"
         },
         {
-          "$ref": "#/$defs/FlowResultSkipped"
-        },
-        {
           "$ref": "#/$defs/FlowResultFailed"
         }
       ],
@@ -725,7 +722,6 @@
         "propertyName": "outcome",
         "mapping": {
           "success": "#/$defs/FlowResultSuccess",
-          "skipped": "#/$defs/FlowResultSkipped",
           "failed": "#/$defs/FlowResultFailed"
         }
       }
@@ -772,23 +768,6 @@
       "required": [
         "outcome",
         "result"
-      ]
-    },
-    "FlowResultSkipped": {
-      "type": "object",
-      "properties": {
-        "outcome": {
-          "title": "FlowOutcome",
-          "const": "skipped",
-          "default": "skipped"
-        },
-        "reason": {
-          "description": "Optional reason for why the step was skipped.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "outcome"
       ]
     },
     "FlowResultFailed": {

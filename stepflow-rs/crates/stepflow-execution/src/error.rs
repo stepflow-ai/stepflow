@@ -49,6 +49,8 @@ pub enum ExecutionError {
     MalformedReference { message: String },
     #[error("step not found: {step}")]
     StepNotFound { step: String },
+    #[error("step not completed: {step}")]
+    StepNotCompleted { step: String },
     #[error("step not runnable: {step}")]
     StepNotRunnable { step: String },
     #[error("error accessing state store")]
@@ -61,12 +63,8 @@ pub enum ExecutionError {
     WorkflowNotFound(BlobId),
     #[error("failed to resolve input for step '{0}'")]
     ResolveStepInput(String),
-    #[error("failed to resolve skip_if for step '{0}'")]
-    ResolveSkipIf(String),
     #[error("failed to resolve value for step '{0}'")]
     ResolveStepOutput(String),
-    #[error("failed to resolve default for error in step '{0}'")]
-    ResolveDefaultValue(String),
     #[error("failed to resolve workflow output")]
     ResolveWorkflowOutput,
 }

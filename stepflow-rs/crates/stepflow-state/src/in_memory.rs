@@ -1052,7 +1052,7 @@ mod tests {
         // Test data
         let step1_result =
             FlowResult::Success(ValueRef::new(serde_json::json!({"output":"hello"})));
-        let step2_result = FlowResult::Skipped { reason: None };
+        let step2_result = FlowResult::Success(ValueRef::new(serde_json::json!(null)));
 
         // Record step results with both index and ID
         store.record_step_result(run_id, StepResult::new(0, "step1", step1_result.clone()));
@@ -1114,7 +1114,7 @@ mod tests {
         // Insert steps out of order to test ordering
         let step2_result = FlowResult::Success(ValueRef::new(serde_json::json!({"step":2})));
         let step0_result = FlowResult::Success(ValueRef::new(serde_json::json!({"step":0})));
-        let step1_result = FlowResult::Skipped { reason: None };
+        let step1_result = FlowResult::Success(ValueRef::new(serde_json::json!(null)));
 
         // Record in non-sequential order
         store.record_step_result(run_id, StepResult::new(2, "step2", step2_result.clone()));
