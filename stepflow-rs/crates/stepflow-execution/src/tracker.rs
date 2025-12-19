@@ -76,6 +76,8 @@ impl StepIndex {
 pub(crate) struct ExecutionTracker {
     /// Step index mapping for ID <-> index lookups.
     step_index: StepIndex,
+    /// For each step, whether it is currently executing.
+    executing: BitSet,
     /// For each step, whether it has completed execution.
     completed: BitSet,
     /// Cached results for completed steps.
@@ -111,6 +113,7 @@ impl ExecutionTracker {
         let num_steps = step_index.num_steps();
         Self {
             step_index,
+            executing: BitSet::with_capacity(num_steps),
             completed: BitSet::with_capacity(num_steps),
             results: vec![None; num_steps],
             needed: BitSet::with_capacity(num_steps),
@@ -217,6 +220,9 @@ impl ExecutionTracker {
     /// Returns the set of steps that became newly unblocked (their waiting_on
     /// set is now empty after removing this completed step).
     pub fn complete_step(&mut self, step: usize, result: FlowResult) -> BitSet {
+        // Clear executing flag
+        self.executing.remove(step);
+
         // Record completion
         if !self.completed.insert(step) {
             // Already completed - shouldn't happen, but handle gracefully
@@ -246,10 +252,12 @@ impl ExecutionTracker {
     ///
     /// A step is ready if:
     /// - It is needed
+    /// - It is not already executing
     /// - It is not completed
     /// - It has no waiting dependencies (waiting_on is empty)
     pub fn ready_steps(&self) -> BitSet {
         let mut ready = self.needed.clone();
+        ready.difference_with(&self.executing);
         ready.difference_with(&self.completed);
 
         // Only include steps with empty waiting_on sets
@@ -257,6 +265,13 @@ impl ExecutionTracker {
             .iter()
             .filter(|&step| self.waiting_on[step].is_empty())
             .collect()
+    }
+
+    /// Mark a step as currently executing.
+    ///
+    /// This prevents the step from appearing in `ready_steps()` until it completes.
+    pub fn start_step(&mut self, step: usize) {
+        self.executing.insert(step);
     }
 
     /// Check if all needed steps have completed.
@@ -722,5 +737,37 @@ mod tests {
             tracker.all_needed_completed(),
             "All needed steps (step1 for output, step2 for must_execute) have completed"
         );
+    }
+
+    #[test]
+    fn test_executing_steps_excluded_from_ready() {
+        // Regression test: ensure that once a step is started (marked as executing),
+        // it does not appear in ready_steps() again. This prevents the same step
+        // from being executed multiple times in parallel.
+        let flow = create_flow(&["step1", "step2"]);
+        let mut tracker = create_tracker_with_all_needed(&flow);
+
+        // Both steps should initially be ready
+        assert_bitset_eq(&tracker.ready_steps(), &[0, 1]);
+
+        // Start step1 - it should no longer appear in ready_steps
+        tracker.start_step(0);
+        assert_bitset_eq(&tracker.ready_steps(), &[1]);
+
+        // Calling ready_steps multiple times should consistently exclude step1
+        assert_bitset_eq(&tracker.ready_steps(), &[1]);
+        assert_bitset_eq(&tracker.ready_steps(), &[1]);
+
+        // Start step2 - now no steps should be ready
+        tracker.start_step(1);
+        assert_bitset_eq(&tracker.ready_steps(), &[]);
+
+        // Complete step1 - it should NOT reappear (it's completed, not just not-executing)
+        tracker.complete_step(0, success_result());
+        assert_bitset_eq(&tracker.ready_steps(), &[]);
+
+        // Complete step2
+        tracker.complete_step(1, success_result());
+        assert_bitset_eq(&tracker.ready_steps(), &[]);
     }
 }

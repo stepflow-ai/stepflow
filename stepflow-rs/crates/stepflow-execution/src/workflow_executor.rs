@@ -822,6 +822,9 @@ impl WorkflowExecutor {
                 }
             };
 
+            // Mark step as executing to prevent it from appearing in ready_steps() again
+            self.tracker.start_step(step_index);
+
             // Start async execution
             self.start_step_execution(step_index, step_input, running_tasks)
                 .await?;
