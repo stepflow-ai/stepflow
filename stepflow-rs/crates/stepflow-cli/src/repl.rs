@@ -475,7 +475,9 @@ async fn handle_queue_command(step_id: String, state: &mut ReplState) -> Result<
                 }
             }
         } else {
-            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+            println!(
+                "No debug session active. Use 'run --flow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
@@ -519,7 +521,9 @@ async fn handle_next_command(state: &mut ReplState) -> Result<()> {
                 }
             }
         } else {
-            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+            println!(
+                "No debug session active. Use 'run --flow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
@@ -545,10 +549,14 @@ async fn handle_run_queue_command(state: &mut ReplState) -> Result<()> {
                     } else {
                         println!("Ran {} steps:", results.len());
                         for result in &results {
-                            println!("  {} - {:?}", result.metadata.step_id, match &result.result {
-                                stepflow_core::FlowResult::Success(_) => "SUCCESS",
-                                stepflow_core::FlowResult::Failed(_) => "FAILED",
-                            });
+                            println!(
+                                "  {} - {:?}",
+                                result.metadata.step_id,
+                                match &result.result {
+                                    stepflow_core::FlowResult::Success(_) => "SUCCESS",
+                                    stepflow_core::FlowResult::Failed(_) => "FAILED",
+                                }
+                            );
                         }
                     }
                 }
@@ -557,7 +565,9 @@ async fn handle_run_queue_command(state: &mut ReplState) -> Result<()> {
                 }
             }
         } else {
-            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+            println!(
+                "No debug session active. Use 'run --flow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
@@ -586,7 +596,9 @@ async fn handle_show_command(step_id: String, state: &ReplState) -> Result<()> {
                 }
             }
         } else {
-            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+            println!(
+                "No debug session active. Use 'run --flow=<file> --debug' to start debugging."
+            );
         }
     } else {
         println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");

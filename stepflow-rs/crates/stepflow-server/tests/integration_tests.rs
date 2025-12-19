@@ -1522,8 +1522,18 @@ async fn test_debug_queue_persists_across_requests() {
         .await
         .unwrap();
     let queue_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(queue_response["queued"].as_array().unwrap().contains(&json!("step1")));
-    assert!(queue_response["queued"].as_array().unwrap().contains(&json!("step2")));
+    assert!(
+        queue_response["queued"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("step1"))
+    );
+    assert!(
+        queue_response["queued"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("step2"))
+    );
 
     // 2. Verify queue persists - new request should see the queue
     let queue_get_request = Request::builder()
@@ -1846,7 +1856,12 @@ async fn test_debug_queue_accepts_single_or_list() {
         .await
         .unwrap();
     let queue_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(queue_response["queued"].as_array().unwrap().contains(&json!("step1")));
+    assert!(
+        queue_response["queued"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("step1"))
+    );
 
     // Test 2: Queue with array of strings
     let queue_array = Request::builder()

@@ -979,8 +979,7 @@ impl StateStore for InMemoryStateStore {
 
         let mut entry = self.debug_queues.entry(run_id).or_default();
         // Use a HashSet to avoid duplicates - collect existing as owned strings
-        let existing: std::collections::HashSet<String> =
-            entry.iter().cloned().collect();
+        let existing: std::collections::HashSet<String> = entry.iter().cloned().collect();
         for step_id in step_ids {
             if !existing.contains(step_id) {
                 entry.push(step_id.clone());

@@ -175,7 +175,7 @@ pub async fn debug_queue(
 
     let mut all_queued = Vec::new();
     for step_id in &req.step_ids {
-        let queued = debug_session.queue_step(&step_id)?;
+        let queued = debug_session.queue_step(step_id)?;
         all_queued.extend(queued);
     }
 
@@ -189,7 +189,10 @@ pub async fn debug_queue(
         .map(|s| s.step_id.clone())
         .collect();
 
-    Ok(Json(DebugQueueResponse { queued: all_queued, ready }))
+    Ok(Json(DebugQueueResponse {
+        queued: all_queued,
+        ready,
+    }))
 }
 
 /// Run the next ready step from the queue
@@ -222,7 +225,7 @@ pub async fn debug_next(
     let (step_id, result) = match &step_result {
         Some(r) => {
             debug_session
-                .remove_steps_from_debug_queue(&[r.metadata.step_id.clone()])
+                .remove_steps_from_debug_queue(std::slice::from_ref(&r.metadata.step_id))
                 .await?;
             (Some(r.metadata.step_id.clone()), Some(r.result.clone()))
         }
@@ -280,7 +283,10 @@ pub async fn debug_run_queue(
 
     let mut results = std::collections::HashMap::new();
     for step_result in &step_results {
-        results.insert(step_result.metadata.step_id.clone(), step_result.result.clone());
+        results.insert(
+            step_result.metadata.step_id.clone(),
+            step_result.result.clone(),
+        );
     }
 
     Ok(Json(DebugRunQueueResponse {
