@@ -70,7 +70,7 @@ impl StepIndex {
 ///
 /// waiting_on and waiters are used to record when expressions like `$if` or
 /// `$coalesce` are waiting for some results before they can be resolved. Once
-/// the steps they were waiting on are comptued, the expression will be
+/// the steps they were waiting on are computed, the expression will be
 /// re-evaluated to see if it is  ready for resolution or new needed steps are
 /// discovered (and started).
 pub(crate) struct ExecutionTracker {
@@ -82,7 +82,7 @@ pub(crate) struct ExecutionTracker {
     results: Vec<Option<FlowResult>>,
     /// Steps that are dynamically determined to be needed.
     needed: BitSet,
-    /// For each step, the set of steps it's waiting on for re-evalutaion.
+    /// For each step, the set of steps it's waiting on for re-evaluation.
     /// When all steps in waiting_on[i] are completed, step i should be re-evaluated.
     waiting_on: Vec<BitSet>,
     /// Reverse mapping: for each step, which steps are waiting on it.
