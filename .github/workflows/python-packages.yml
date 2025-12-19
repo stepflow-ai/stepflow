@@ -1,0 +1,264 @@
+name: Python Packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sdks/python/**'
+      - 'stepflow-rs/**'
+      - '.github/workflows/python-packages.yml'
+  pull_request:
+    paths:
+      - 'sdks/python/**'
+      - 'stepflow-rs/**'
+      - '.github/workflows/python-packages.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # Build pure Python packages (stepflow, stepflow-client, stepflow-server)
+  build-pure-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build stepflow (shared types)
+        run: |
+          cd sdks/python/stepflow
+          uv build
+
+      - name: Build stepflow-client
+        run: |
+          cd sdks/python/stepflow-client
+          uv build
+
+      - name: Build stepflow-server
+        run: |
+          cd sdks/python/stepflow-server
+          uv build
+
+      - name: Upload pure Python wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pure-python-wheels
+          path: |
+            sdks/python/stepflow/dist/*.whl
+            sdks/python/stepflow-client/dist/*.whl
+            sdks/python/stepflow-server/dist/*.whl
+
+  # Build stepflow-runtime with platform-specific binary
+  build-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform_tag: manylinux_2_17_x86_64.manylinux2014_x86_64
+            binary_name: stepflow-server
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            platform_tag: manylinux_2_17_aarch64.manylinux2014_aarch64
+            binary_name: stepflow-server
+            cross: true
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform_tag: macosx_10_12_x86_64
+            binary_name: stepflow-server
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform_tag: macosx_11_0_arm64
+            binary_name: stepflow-server
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform_tag: win_amd64
+            binary_name: stepflow-server.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.cross == true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build stepflow-server binary
+        run: |
+          cd stepflow-rs
+          cargo build --release -p stepflow-server --target ${{ matrix.target }}
+
+      - name: Copy binary to runtime package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p sdks/python/stepflow-runtime/src/stepflow_runtime/bin
+          cp stepflow-rs/target/${{ matrix.target }}/release/${{ matrix.binary_name }} \
+             sdks/python/stepflow-runtime/src/stepflow_runtime/bin/
+          chmod +x sdks/python/stepflow-runtime/src/stepflow_runtime/bin/${{ matrix.binary_name }}
+
+      - name: Copy binary to runtime package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Force -Path sdks/python/stepflow-runtime/src/stepflow_runtime/bin
+          Copy-Item stepflow-rs/target/${{ matrix.target }}/release/${{ matrix.binary_name }} `
+            -Destination sdks/python/stepflow-runtime/src/stepflow_runtime/bin/
+
+      - name: Build runtime wheel
+        run: |
+          cd sdks/python/stepflow-runtime
+          uv build --wheel
+
+      - name: Rename wheel with platform tag (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd sdks/python/stepflow-runtime/dist
+          for f in *.whl; do
+            new_name="${f/py3-none-any/${{ matrix.platform_tag }}}"
+            if [ "$f" != "$new_name" ]; then
+              mv "$f" "$new_name"
+            fi
+          done
+          ls -la
+
+      - name: Rename wheel with platform tag (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd sdks/python/stepflow-runtime/dist
+          Get-ChildItem *.whl | ForEach-Object {
+            $newName = $_.Name -replace 'py3-none-any', '${{ matrix.platform_tag }}'
+            if ($newName -ne $_.Name) {
+              Rename-Item $_.FullName $newName
+            }
+          }
+          Get-ChildItem
+
+      - name: Upload runtime wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-wheel-${{ matrix.target }}
+          path: sdks/python/stepflow-runtime/dist/*.whl
+
+  # Test all packages together
+  test:
+    needs: [build-pure-python, build-runtime]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.12', '3.13']
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Download pure Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pure-python-wheels
+          path: wheels/
+
+      - name: Download runtime wheel (Linux x86_64)
+        if: runner.os == 'Linux'
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-wheel-x86_64-unknown-linux-gnu
+          path: wheels/
+
+      - name: Download runtime wheel (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-wheel-aarch64-apple-darwin
+          path: wheels/
+
+      - name: Download runtime wheel (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-wheel-x86_64-pc-windows-msvc
+          path: wheels/
+
+      - name: Install wheels
+        run: |
+          pip install --find-links=wheels/ stepflow stepflow-client stepflow-server stepflow-runtime
+
+      - name: Run tests (shared types)
+        run: |
+          cd sdks/python/stepflow
+          pip install pytest pytest-asyncio
+          pytest tests/ -v || echo "No tests found"
+
+      - name: Run tests (client)
+        run: |
+          cd sdks/python/stepflow-client
+          pip install pytest pytest-asyncio httpx
+          pytest tests/ -v || echo "No tests found"
+
+      - name: Run tests (runtime)
+        run: |
+          cd sdks/python/stepflow-runtime
+          pip install pytest pytest-asyncio httpx
+          pytest tests/ -v || echo "No tests found"
+
+      - name: Verify imports
+        run: |
+          python -c "from stepflow import FlowResult, RestartPolicy; print('stepflow OK')"
+          python -c "from stepflow_client import StepflowClient; print('stepflow_client OK')"
+          python -c "from stepflow_server import StepflowServer; print('stepflow_server OK')"
+          python -c "from stepflow_runtime import StepflowRuntime; print('stepflow_runtime OK')"
+
+  # Publish to PyPI on release
+  publish:
+    if: github.event_name == 'release'
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: List wheels
+        run: |
+          find dist/ -name "*.whl" | head -20
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

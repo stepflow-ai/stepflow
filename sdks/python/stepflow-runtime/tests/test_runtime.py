@@ -1,0 +1,100 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions and limitations under
+# the License.
+
+"""Tests for StepflowRuntime."""
+
+import pytest
+
+from stepflow import RestartPolicy
+from stepflow_runtime import StepflowRuntime, StepflowRuntimeError
+from stepflow_runtime.logging import LogConfig
+
+
+class TestStepflowRuntimeUnit:
+    """Unit tests that don't require the binary."""
+
+    def test_runtime_error(self):
+        error = StepflowRuntimeError("Test error")
+        assert str(error) == "Test error"
+
+    def test_restart_policy_values(self):
+        assert RestartPolicy.NEVER.value == "never"
+        assert RestartPolicy.ON_FAILURE.value == "on_failure"
+        assert RestartPolicy.ALWAYS.value == "always"
+
+
+class TestStepflowRuntimeIntegration:
+    """Integration tests that require the binary."""
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    def test_runtime_start_stop(self):
+        runtime = StepflowRuntime.start()
+        try:
+            assert runtime.is_alive
+            assert runtime.url.startswith("http://")
+        finally:
+            runtime.stop()
+        assert not runtime.is_alive
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    def test_runtime_context_manager(self):
+        with StepflowRuntime.start() as runtime:
+            assert runtime.is_alive
+        assert not runtime.is_alive
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    async def test_runtime_async_context_manager(self):
+        async with StepflowRuntime.start() as runtime:
+            assert runtime.is_alive
+        assert not runtime.is_alive
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    def test_runtime_with_config(self):
+        log_config = LogConfig(level="debug", capture=True)
+        with StepflowRuntime.start(log_config=log_config) as runtime:
+            assert runtime.is_alive
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    def test_runtime_with_restart_policy(self):
+        with StepflowRuntime.start(
+            restart_policy=RestartPolicy.ON_FAILURE,
+            max_restarts=3,
+        ) as runtime:
+            assert runtime.is_alive
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    async def test_runtime_run_workflow(self):
+        async with StepflowRuntime.start() as runtime:
+            result = await runtime.run(
+                "examples/basic/workflow.yaml",
+                {"m": 3, "n": 4},
+            )
+            assert result.is_success
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    def test_runtime_port_selection(self):
+        # Test that port is auto-selected
+        with StepflowRuntime.start() as runtime:
+            assert runtime.port > 0
+            assert f":{runtime.port}" in runtime.url
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    def test_runtime_explicit_port(self):
+        with StepflowRuntime.start(port=18080) as runtime:
+            assert runtime.port == 18080
+
+    @pytest.mark.skip(reason="Requires bundled binary")
+    def test_runtime_get_recent_logs(self):
+        log_config = LogConfig(capture=True)
+        with StepflowRuntime.start(log_config=log_config) as runtime:
+            logs = runtime.get_recent_logs(limit=10)
+            assert isinstance(logs, list)
