@@ -549,6 +549,57 @@ pub trait StateStore: Send + Sync {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<(Uuid, usize)>, StateError>>;
+
+    // Debug State Management
+
+    /// Add steps to the debug queue for a run.
+    ///
+    /// This adds step IDs to the queue of steps awaiting execution in debug mode.
+    /// The queue persists across HTTP requests, allowing step-through debugging
+    /// with queue + next workflow.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `step_ids` - The step IDs to add to the debug queue
+    ///
+    /// # Returns
+    /// Success if the steps were added
+    fn add_to_debug_queue(
+        &self,
+        run_id: Uuid,
+        step_ids: &[String],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Remove steps from the debug queue for a run.
+    ///
+    /// This removes step IDs from the queue after they have been executed.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `step_ids` - The step IDs to remove from the debug queue
+    ///
+    /// # Returns
+    /// Success if the steps were removed
+    fn remove_from_debug_queue(
+        &self,
+        run_id: Uuid,
+        step_ids: &[String],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Get the debug queue for a run.
+    ///
+    /// Retrieves the list of step IDs that were previously queued for
+    /// execution in debug mode.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    ///
+    /// # Returns
+    /// The queued step IDs if any exist, or None if no debug queue is set
+    fn get_debug_queue(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>>;
 }
 
 /// The step result.

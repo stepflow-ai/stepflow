@@ -4885,6 +4885,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "serde_with",
  "stepflow-analysis",
  "stepflow-builtins",
  "stepflow-config",

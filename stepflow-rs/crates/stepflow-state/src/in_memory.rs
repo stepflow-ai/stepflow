@@ -122,6 +122,8 @@ pub struct InMemoryStateStore {
     batches: DashMap<Uuid, BatchState>,
     /// Reverse map from run_id to (batch_id, batch_input_index)
     run_to_batch: DashMap<Uuid, (Uuid, usize)>,
+    /// Map from run_id to debug queue (step IDs queued for execution)
+    debug_queues: DashMap<Uuid, Vec<String>>,
 }
 
 impl InMemoryStateStore {
@@ -134,6 +136,7 @@ impl InMemoryStateStore {
             flow_labels: DashMap::new(),
             batches: DashMap::new(),
             run_to_batch: DashMap::new(),
+            debug_queues: DashMap::new(),
         }
     }
 
@@ -963,6 +966,55 @@ impl StateStore for InMemoryStateStore {
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<(Uuid, usize)>, StateError>> {
         async move { Ok(self.run_to_batch.get(&run_id).map(|entry| *entry.value())) }.boxed()
+    }
+
+    fn add_to_debug_queue(
+        &self,
+        run_id: Uuid,
+        step_ids: &[String],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        if step_ids.is_empty() {
+            return async move { Ok(()) }.boxed();
+        }
+
+        let mut entry = self.debug_queues.entry(run_id).or_default();
+        // Use a HashSet to avoid duplicates - collect existing as owned strings
+        let existing: std::collections::HashSet<String> =
+            entry.iter().cloned().collect();
+        for step_id in step_ids {
+            if !existing.contains(step_id) {
+                entry.push(step_id.clone());
+            }
+        }
+        async move { Ok(()) }.boxed()
+    }
+
+    fn remove_from_debug_queue(
+        &self,
+        run_id: Uuid,
+        step_ids: &[String],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        if step_ids.is_empty() {
+            return async move { Ok(()) }.boxed();
+        }
+
+        if let Some(mut entry) = self.debug_queues.get_mut(&run_id) {
+            let to_remove: std::collections::HashSet<&String> = step_ids.iter().collect();
+            entry.retain(|id| !to_remove.contains(id));
+        }
+        async move { Ok(()) }.boxed()
+    }
+
+    fn get_debug_queue(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>> {
+        let queue = self
+            .debug_queues
+            .get(&run_id)
+            .map(|entry| entry.clone())
+            .filter(|v| !v.is_empty());
+        async move { Ok(queue) }.boxed()
     }
 }
 

@@ -176,30 +176,30 @@ pub enum ReplCommand {
     /// Show all steps in the workflow (debug mode only)
     #[command(name = "steps")]
     Steps,
-    /// Show currently runnable steps (debug mode only)
-    #[command(name = "runnable")]
-    Runnable,
-    /// Execute a specific step (debug mode only)
-    #[command(name = "run-step")]
-    RunStep {
-        /// Step ID to execute
+    /// Evaluate a step: queue it and run all dependencies, return result (debug mode only)
+    #[command(name = "eval")]
+    Eval {
+        /// Step ID to evaluate
         step_id: String,
     },
-    /// Execute multiple steps (debug mode only)
-    #[command(name = "run-steps")]
-    RunSteps {
-        /// Step IDs to execute (space-separated)
-        step_ids: Vec<String>,
+    /// Queue a step and its dependencies for execution (debug mode only)
+    #[command(name = "queue")]
+    Queue {
+        /// Step ID to queue
+        step_id: String,
     },
-    /// Execute all currently runnable steps (debug mode only)
-    #[command(name = "run-all")]
-    RunAll,
-    /// Continue workflow execution from current state (debug mode only)
-    #[command(name = "continue")]
-    Continue,
-    /// Pause workflow execution (debug mode only)
-    #[command(name = "pause")]
-    Pause,
+    /// Run the next ready step from the queue (debug mode only)
+    #[command(name = "next")]
+    Next,
+    /// Run all steps in the queue until empty (debug mode only)
+    #[command(name = "run-queue")]
+    RunQueue,
+    /// Show the result of a step, or indicate it hasn't been run yet (debug mode only)
+    #[command(name = "show")]
+    Show {
+        /// Step ID to show result for
+        step_id: String,
+    },
     /// Inspect details of a specific step (debug mode only)
     #[command(name = "inspect")]
     Inspect {
@@ -209,12 +209,6 @@ pub enum ReplCommand {
     /// Show completed steps and their results (debug mode only)
     #[command(name = "completed")]
     Completed,
-    /// Get the output of a specific step (debug mode only)
-    #[command(name = "output")]
-    Output {
-        /// Step ID to get output for
-        step_id: String,
-    },
 }
 
 /// Parse a command line into a ReplCommand using clap
@@ -253,15 +247,13 @@ async fn handle_command(command: ReplCommand, state: &mut ReplState) -> Result<(
             Ok(())
         }
         ReplCommand::Steps => handle_steps_command(state).await,
-        ReplCommand::Runnable => handle_runnable_command(state).await,
-        ReplCommand::RunStep { step_id } => handle_run_step_command(step_id, state).await,
-        ReplCommand::RunSteps { step_ids } => handle_run_steps_command(step_ids, state).await,
-        ReplCommand::RunAll => handle_run_all_command(state).await,
-        ReplCommand::Continue => handle_continue_command(state).await,
-        ReplCommand::Pause => handle_pause_command(state).await,
+        ReplCommand::Eval { step_id } => handle_eval_command(step_id, state).await,
+        ReplCommand::Queue { step_id } => handle_queue_command(step_id, state).await,
+        ReplCommand::Next => handle_next_command(state).await,
+        ReplCommand::RunQueue => handle_run_queue_command(state).await,
+        ReplCommand::Show { step_id } => handle_show_command(step_id, state).await,
         ReplCommand::Inspect { step_id } => handle_inspect_command(step_id, state).await,
         ReplCommand::Completed => handle_completed_command(state).await,
-        ReplCommand::Output { step_id } => handle_output_command(step_id, state).await,
     }
 }
 
@@ -288,9 +280,10 @@ async fn handle_run_command(
         // Create debug execution
         last_run.create_debug_execution(&state.executor).await?;
 
-        println!("Debug mode enabled. Workflow loaded but not started.");
-        println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
-        println!("Use 'run-step <step_id>' to execute a specific step, or 'continue' to run all.");
+        println!("Debug mode enabled. Queue is empty.");
+        println!("Use 'eval <step_id>' to evaluate a step (runs dependencies automatically).");
+        println!("Or use 'queue <step_id>' + 'next' for step-by-step control.");
+        println!("Use 'steps' to see all steps, 'show <step_id>' for results.");
     } else {
         // Execute flow normally
         last_run.execute_normal(&state.executor).await?;
@@ -323,9 +316,9 @@ async fn handle_rerun_command(
         // Create debug execution
         last_run.create_debug_execution(&state.executor).await?;
 
-        println!("Debug mode enabled. Workflow loaded but not started.");
-        println!("Use 'steps' to see all steps, 'runnable' to see runnable steps.");
-        println!("Use 'run-step <step_id>' to execute a specific step, or 'continue' to run all.");
+        println!("Debug mode enabled. Queue is empty.");
+        println!("Use 'eval <step_id>' to evaluate a step (runs dependencies automatically).");
+        println!("Or use 'queue <step_id>' + 'next' for step-by-step control.");
         Ok(())
     } else {
         // Execute workflow normally
@@ -418,198 +411,186 @@ async fn handle_steps_command(state: &ReplState) -> Result<()> {
     Ok(())
 }
 
-/// Handle the runnable command - show currently runnable steps
-async fn handle_runnable_command(state: &ReplState) -> Result<()> {
+/// Handle the eval command - evaluate a step (runs dependencies automatically)
+async fn handle_eval_command(step_id: String, state: &mut ReplState) -> Result<()> {
     if !state.debug_mode {
         println!(
-            "Runnable command is only available in debug mode. Use 'run --debug' to enable debug mode."
+            "Eval command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
+        return Ok(());
+    }
+
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            match debug_session.eval_step(&step_id).await {
+                Ok(result) => {
+                    print_flow_result(&result)?;
+                }
+                Err(e) => {
+                    println!("Failed to evaluate step '{step_id}': {e}");
+                }
+            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --flow=<file> --debug' to start debugging."
+            );
+        }
+    } else {
+        println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+    }
+    Ok(())
+}
+
+/// Handle the queue command - queue a step and its dependencies
+async fn handle_queue_command(step_id: String, state: &mut ReplState) -> Result<()> {
+    if !state.debug_mode {
+        println!(
+            "Queue command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
+        return Ok(());
+    }
+
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            match debug_session.queue_step(&step_id) {
+                Ok(newly_queued) => {
+                    if newly_queued.is_empty() {
+                        println!("Step '{step_id}' already queued.");
+                    } else {
+                        println!("Queued: [{}]", newly_queued.join(", "));
+                    }
+                    // Show what's ready to run
+                    let ready_steps = debug_session.get_queued_steps();
+                    let ready: Vec<_> = ready_steps
+                        .iter()
+                        .filter(|s| s.status == stepflow_core::status::StepStatus::Runnable)
+                        .map(|s| s.step_id.as_str())
+                        .collect();
+                    if !ready.is_empty() {
+                        println!("Ready to run: [{}]", ready.join(", "));
+                    }
+                }
+                Err(e) => {
+                    println!("Failed to queue step '{step_id}': {e}");
+                }
+            }
+        } else {
+            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+        }
+    } else {
+        println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+    }
+    Ok(())
+}
+
+/// Handle the next command - run the next ready step
+async fn handle_next_command(state: &mut ReplState) -> Result<()> {
+    if !state.debug_mode {
+        println!(
+            "Next command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
+        return Ok(());
+    }
+
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            match debug_session.run_next_step().await {
+                Ok(Some(result)) => {
+                    println!("Running: {}", result.metadata.step_id);
+                    print_flow_result(&result.result)?;
+                    // Show what's ready now
+                    let ready_steps = debug_session.get_queued_steps();
+                    let ready: Vec<_> = ready_steps
+                        .iter()
+                        .filter(|s| s.status == stepflow_core::status::StepStatus::Runnable)
+                        .map(|s| s.step_id.as_str())
+                        .collect();
+                    if ready.is_empty() {
+                        println!("Queue empty.");
+                    } else {
+                        println!("Ready to run: [{}]", ready.join(", "));
+                    }
+                }
+                Ok(None) => {
+                    println!("No steps ready to run. Use 'queue <step_id>' to add steps.");
+                }
+                Err(e) => {
+                    println!("Failed to run next step: {e}");
+                }
+            }
+        } else {
+            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+        }
+    } else {
+        println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+    }
+    Ok(())
+}
+
+/// Handle the run-queue command - run all queued steps
+async fn handle_run_queue_command(state: &mut ReplState) -> Result<()> {
+    if !state.debug_mode {
+        println!(
+            "Run-queue command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
+        return Ok(());
+    }
+
+    if let Some(last_run) = &mut state.last_run {
+        if let Some(debug_session) = last_run.debug_execution() {
+            match debug_session.run_queue().await {
+                Ok(results) => {
+                    if results.is_empty() {
+                        println!("No steps to run. Use 'queue <step_id>' to add steps.");
+                    } else {
+                        println!("Ran {} steps:", results.len());
+                        for result in &results {
+                            println!("  {} - {:?}", result.metadata.step_id, match &result.result {
+                                stepflow_core::FlowResult::Success(_) => "SUCCESS",
+                                stepflow_core::FlowResult::Failed(_) => "FAILED",
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Failed to run queue: {e}");
+                }
+            }
+        } else {
+            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+        }
+    } else {
+        println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+    }
+    Ok(())
+}
+
+/// Handle the show command - show the result of a step
+async fn handle_show_command(step_id: String, state: &ReplState) -> Result<()> {
+    if !state.debug_mode {
+        println!(
+            "Show command is only available in debug mode. Use 'run --debug' to enable debug mode."
         );
         return Ok(());
     }
 
     if let Some(last_run) = &state.last_run {
         if let Some(debug_session) = &last_run.last_execution {
-            let runnable_steps = debug_session.get_runnable_steps().await;
-            if runnable_steps.is_empty() {
-                println!(
-                    "No steps are currently runnable. All dependencies may be satisfied or workflow is complete."
-                );
-            } else {
-                println!("Currently runnable steps ({} total):", runnable_steps.len());
-                for step_status in &runnable_steps {
-                    println!(
-                        "  [{}] {}: {}",
-                        step_status.step_index, step_status.step_id, step_status.component
-                    );
+            match debug_session.get_step_result(&step_id) {
+                Some(result) => {
+                    println!("Step '{step_id}':");
+                    print_flow_result(&result)?;
+                }
+                None => {
+                    println!("Step '{step_id}' has not been run yet.");
                 }
             }
         } else {
-            println!(
-                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-            );
+            println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
         }
     } else {
-        println!(
-            "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-        );
+        println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
     }
-    Ok(())
-}
-
-/// Handle the run-step command - execute a specific step
-async fn handle_run_step_command(step_id: String, state: &mut ReplState) -> Result<()> {
-    if !state.debug_mode {
-        println!(
-            "Run-step command is only available in debug mode. Use 'run --debug' to enable debug mode."
-        );
-        return Ok(());
-    }
-
-    if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
-            match debug_session.execute_step_by_id(&step_id).await {
-                Ok(result) => {
-                    print_step_result(&step_id, &result.result)?;
-                }
-                Err(e) => {
-                    println!("Failed to execute step '{step_id}': {e}");
-                }
-            }
-        } else {
-            println!(
-                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-            );
-        }
-    } else {
-        println!(
-            "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-        );
-    }
-    Ok(())
-}
-
-/// Handle the run-steps command - execute multiple specific steps
-async fn handle_run_steps_command(step_ids: Vec<String>, state: &mut ReplState) -> Result<()> {
-    if !state.debug_mode {
-        println!(
-            "Run-steps command is only available in debug mode. Use 'run --debug' to enable debug mode."
-        );
-        return Ok(());
-    }
-
-    if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
-            match debug_session.execute_steps(&step_ids).await {
-                Ok(results) => {
-                    println!("Executed {} steps:", results.len());
-                    for result in results {
-                        print_step_result(&result.metadata.step_id, &result.result)?;
-                    }
-                }
-                Err(e) => {
-                    println!("Failed to execute steps: {e}");
-                }
-            }
-        } else {
-            println!(
-                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-            );
-        }
-    } else {
-        println!(
-            "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-        );
-    }
-    Ok(())
-}
-
-/// Handle the run-all command - execute all currently runnable steps
-async fn handle_run_all_command(state: &mut ReplState) -> Result<()> {
-    if !state.debug_mode {
-        println!(
-            "Run-all command is only available in debug mode. Use 'run --debug' to enable debug mode."
-        );
-        return Ok(());
-    }
-
-    if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
-            match debug_session.execute_all_runnable().await {
-                Ok(results) => {
-                    if results.is_empty() {
-                        println!("No runnable steps to execute.");
-                    } else {
-                        println!("Executed {} runnable steps:", results.len());
-                        for result in results {
-                            print_step_result(&result.metadata.step_id, &result.result)?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    println!("Failed to execute runnable steps: {e}");
-                }
-            }
-        } else {
-            println!(
-                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-            );
-        }
-    } else {
-        println!(
-            "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-        );
-    }
-    Ok(())
-}
-
-/// Handle the continue command - continue workflow execution
-async fn handle_continue_command(state: &mut ReplState) -> Result<()> {
-    if !state.debug_mode {
-        println!(
-            "Continue command is only available in debug mode. Use 'run --debug' to enable debug mode."
-        );
-        return Ok(());
-    }
-
-    if let Some(last_run) = &mut state.last_run {
-        if let Some(debug_session) = last_run.debug_execution() {
-            println!("Continuing workflow execution to completion...");
-            match debug_session.execute_to_completion().await {
-                Ok(final_result) => {
-                    // Print final result
-                    let result_json = serde_json::to_string_pretty(&final_result)
-                        .change_context(MainError::FlowExecution)?;
-                    println!("Workflow completed successfully.");
-                    println!("Final result: {result_json}");
-                }
-                Err(e) => {
-                    println!("Workflow execution failed: {e}");
-                }
-            }
-        } else {
-            println!(
-                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-            );
-        }
-    } else {
-        println!(
-            "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-        );
-    }
-    Ok(())
-}
-
-/// Handle the pause command - pause workflow execution
-async fn handle_pause_command(state: &ReplState) -> Result<()> {
-    if !state.debug_mode {
-        println!(
-            "Pause command is only available in debug mode. Use 'run --debug' to enable debug mode."
-        );
-        return Ok(());
-    }
-
-    // TODO: Implement pause functionality
-    println!("Pausing workflow execution (not yet implemented)");
     Ok(())
 }
 
@@ -703,45 +684,6 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
     Ok(())
 }
 
-/// Handle the output command - get output of a specific step
-async fn handle_output_command(step_id: String, state: &ReplState) -> Result<()> {
-    if !state.debug_mode {
-        println!(
-            "Output command is only available in debug mode. Use 'run --debug' to enable debug mode."
-        );
-        return Ok(());
-    }
-
-    if let Some(last_run) = &state.last_run {
-        if let Some(debug_session) = &last_run.last_execution {
-            match debug_session.get_step_output(&step_id) {
-                Ok(result) => {
-                    println!("Output of step '{step_id}':");
-                    print_flow_result(&result)?;
-                }
-                Err(e) => {
-                    println!("Failed to get output for step '{step_id}': {e}");
-                }
-            }
-        } else {
-            println!(
-                "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-            );
-        }
-    } else {
-        println!(
-            "No debug session active. Use 'run --workflow=<file> --debug' to start debugging."
-        );
-    }
-    Ok(())
-}
-
-/// Print the result of a step execution
-fn print_step_result(step_id: &str, result: &stepflow_core::FlowResult) -> Result<()> {
-    println!("Step '{step_id}' executed successfully.");
-    print_flow_result(result)
-}
-
 /// Print a FlowResult in a formatted way
 fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
     match result {
@@ -775,8 +717,8 @@ fn print_help() {
 
     // Add some additional context
     println!();
-    println!("Note: Debug commands (steps, runnable, run-step, etc.) are only available when");
-    println!("a workflow is loaded in debug mode using 'run --workflow=<file> --debug'.");
+    println!("Note: Debug commands (eval, queue, next, etc.) are only available when");
+    println!("a workflow is loaded in debug mode using 'run --flow=<file> --debug'.");
 }
 
 /// Main REPL function
@@ -850,7 +792,8 @@ mod tests {
             ("quit", "Quit"),
             ("exit", "Exit"),
             ("steps", "Steps"),
-            ("runnable", "Runnable"),
+            ("next", "Next"),
+            ("run-queue", "RunQueue"),
         ];
 
         for (input, expected_variant) in commands {
@@ -865,6 +808,36 @@ mod tests {
                 }
                 Err(e) => panic!("Failed to parse '{input}': {e}"),
             }
+        }
+    }
+
+    #[test]
+    fn test_new_debug_commands_parsing() {
+        // Test eval command
+        let result = parse_command("eval step1");
+        match result {
+            Ok(ReplCommand::Eval { step_id }) => {
+                assert_eq!(step_id, "step1");
+            }
+            _ => panic!("Expected eval command, got: {result:?}"),
+        }
+
+        // Test queue command
+        let result = parse_command("queue step2");
+        match result {
+            Ok(ReplCommand::Queue { step_id }) => {
+                assert_eq!(step_id, "step2");
+            }
+            _ => panic!("Expected queue command, got: {result:?}"),
+        }
+
+        // Test show command
+        let result = parse_command("show step3");
+        match result {
+            Ok(ReplCommand::Show { step_id }) => {
+                assert_eq!(step_id, "step3");
+            }
+            _ => panic!("Expected show command, got: {result:?}"),
         }
     }
 

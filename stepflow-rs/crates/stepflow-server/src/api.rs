@@ -50,9 +50,12 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
     paths(
         health::health_check,
         components::list_components,
-        debug::debug_execute_step,
-        debug::debug_continue,
-        debug::debug_get_runnable,
+        debug::debug_eval,
+        debug::debug_queue,
+        debug::debug_next,
+        debug::debug_run_queue,
+        debug::debug_get_queue,
+        debug::debug_show,
         runs::create_run,
         runs::get_run,
         runs::get_run_flow,
@@ -87,9 +90,15 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         stepflow_state::BatchStatus,
         components::ListComponentsResponse,
         components::ListComponentsQuery,
-        debug::DebugStepRequest,
-        debug::DebugStepResponse,
-        debug::DebugRunnableResponse,
+        debug::DebugEvalRequest,
+        debug::DebugQueueRequest,
+        debug::DebugEvalResponse,
+        debug::DebugQueueResponse,
+        debug::DebugNextResponse,
+        debug::DebugRunQueueResponse,
+        debug::DebugQueueStatusResponse,
+        debug::QueuedStep,
+        debug::DebugShowResponse,
         health::HealthQuery,
         health::HealthResponse,
         runs::CreateRunRequest,
@@ -118,9 +127,12 @@ pub fn create_api_router() -> OpenApiRouter<Arc<StepflowExecutor>> {
     OpenApiRouter::with_openapi(StepflowApi::openapi())
         .routes(routes!(health::health_check))
         .routes(routes!(components::list_components))
-        .routes(routes!(debug::debug_execute_step))
-        .routes(routes!(debug::debug_continue))
-        .routes(routes!(debug::debug_get_runnable))
+        .routes(routes!(debug::debug_eval))
+        .routes(routes!(debug::debug_queue))
+        .routes(routes!(debug::debug_next))
+        .routes(routes!(debug::debug_run_queue))
+        .routes(routes!(debug::debug_get_queue))
+        .routes(routes!(debug::debug_show))
         .routes(routes!(runs::create_run))
         .routes(routes!(runs::get_run))
         .routes(routes!(runs::get_run_flow))
