@@ -865,11 +865,14 @@ impl WorkflowExecutor {
         let step_input = match step.input.resolve(&self.tracker) {
             FlowResult::Success(result) => result,
             FlowResult::Failed(error) => {
+                // Record the failure as a step completion to prevent infinite loops
+                let result = FlowResult::Failed(error);
+                self.record_step_completion(step_index, &result).await?;
                 return Ok(StepExecutionResult::new(
                     step_index,
                     step_id,
                     component_string,
-                    FlowResult::Failed(error),
+                    result,
                 ));
             }
         };
