@@ -16,7 +16,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_analysis::{AnalysisResult, FlowAnalysis, validate_and_analyze};
+use stepflow_analysis::{Diagnostics, validate};
 use stepflow_core::{
     BlobId, BlobType,
     workflow::{Flow, ValueRef},
@@ -41,9 +41,8 @@ pub struct StoreFlowResponse {
     /// The ID of the stored flow (only present if no fatal diagnostics)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flow_id: Option<BlobId>,
-    /// Analysis result with diagnostics and optional analysis
-    #[serde(flatten)]
-    pub analysis_result: AnalysisResult,
+    /// Validation diagnostics
+    pub diagnostics: Diagnostics,
 }
 
 /// Response containing a flow definition and its ID
@@ -57,8 +56,6 @@ pub struct FlowResponse {
     /// All available examples (includes both examples and test cases)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub all_examples: Vec<stepflow_core::workflow::ExampleInput>,
-    /// Optional analysis of the flow
-    pub analysis: FlowAnalysis,
 }
 
 /// Store a flow and return its hash
@@ -78,12 +75,11 @@ pub async fn store_flow(
 ) -> Result<Json<StoreFlowResponse>, ErrorResponse> {
     let flow = req.flow;
 
-    // First validate the workflow - we need a temporary ID for analysis
-    let temp_flow_id = BlobId::from_flow(flow.as_ref()).unwrap();
-    let analysis_result = validate_and_analyze(flow.clone(), temp_flow_id.clone())?;
+    // Validate the workflow
+    let diagnostics = validate(&flow)?;
 
     // Determine if we can store the flow (no fatal diagnostics)
-    let stored_flow_id = if analysis_result.diagnostics.has_fatal() {
+    let flow_id = if diagnostics.has_fatal() {
         // Validation failed: don't store the flow
         None
     } else {
@@ -102,8 +98,8 @@ pub async fn store_flow(
     };
 
     Ok(Json(StoreFlowResponse {
-        flow_id: stored_flow_id,
-        analysis_result,
+        flow_id,
+        diagnostics,
     }))
 }
 
@@ -154,31 +150,12 @@ pub async fn get_flow(
 
     let flow = Arc::new(flow);
 
-    // Generate analysis for the flow.
-    // TODO: Cache this to avoid re-analysis.
-    let analysis_result = validate_and_analyze(flow.clone(), flow_id.clone())?;
-
-    let analysis = match &analysis_result.analysis {
-        Some(analysis) => analysis.clone(),
-        None => {
-            // If validation fails, return a 400 error with diagnostic details
-            let fatal = analysis_result.diagnostics().num_fatal;
-            let error = analysis_result.diagnostics().num_error;
-            return Err(ErrorResponse {
-                code: axum::http::StatusCode::BAD_REQUEST,
-                message: format!(
-                    "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
-                ),
-                stack: vec![],
-            });
-        }
-    };
+    // Don't need to validate -- we validated before saving.
 
     Ok(Json(FlowResponse {
         all_examples: flow.get_all_examples(),
         flow,
         flow_id,
-        analysis,
     }))
 }
 

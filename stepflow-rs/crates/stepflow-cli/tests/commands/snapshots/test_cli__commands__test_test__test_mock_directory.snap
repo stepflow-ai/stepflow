@@ -27,29 +27,10 @@ Running Test Case test with input 'hello'
 Running Test Case test with input 'world'
 tests/mock/basic.yaml: 3/3 passed
 ----------
-Running Test Case do not skip with input 'a'
-----------
-Running Test Case skip with input 'a'
-----------
-Running Test Case do not skip with input 'hello'
-tests/mock/conditional_skip.yaml: 3/3 passed
-----------
-Running Test Case do not skip with input 'a'
-----------
-Running Test Case skip with input 'a'
-----------
-Running Test Case do not skip with input 'hello'
-tests/mock/conditional_skip_use_default.yaml: 3/3 passed
-----------
 Running Test Case test error case that should fail
 ----------
 Running Test Case test success case
 tests/mock/error_fail.yaml: 2/2 passed
-----------
-Running Test Case test error case that should skip
-----------
-Running Test Case test success case
-tests/mock/error_skip.yaml: 2/2 passed
 ----------
 Running Test Case test error case that uses default
 ----------
@@ -61,25 +42,20 @@ Running Test Case test error case that uses default value
 Running Test Case test success case
 tests/mock/error_use_default_value.yaml: 2/2 passed
 ----------
-Running Test Case must_execute with skipIf true - step skipped, workflow succeeds
+Running Test Case lazy_evaluation_true_branch
 ----------
-Running Test Case must_execute with skipIf false - step executes and fails
-----------
-Running Test Case must_execute input dependency required
-tests/mock/must_execute_skip_if.yaml: 3/3 passed
+Running Test Case lazy_evaluation_false_branch
+tests/mock/lazy_evaluation.yaml: 2/2 passed
 tests/mock/basic.yaml: 3/3 passed
-tests/mock/conditional_skip.yaml: 3/3 passed
-tests/mock/conditional_skip_use_default.yaml: 3/3 passed
 tests/mock/error_fail.yaml: 2/2 passed
-tests/mock/error_skip.yaml: 2/2 passed
 tests/mock/error_use_default.yaml: 2/2 passed
 tests/mock/error_use_default_value.yaml: 2/2 passed
-tests/mock/must_execute_skip_if.yaml: 3/3 passed
+tests/mock/lazy_evaluation.yaml: 2/2 passed
 
 === Test Summary ===
-Files tested: 8
-Total test cases: 20
-Passed: 20
+Files tested: 5
+Total test cases: 11
+Passed: 11
 Failed: 0
 
 ----- stderr -----

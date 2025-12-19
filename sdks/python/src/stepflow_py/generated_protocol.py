@@ -133,16 +133,6 @@ class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'
     result: Value
 
 
-class FlowResultSkipped(Struct, kw_only=True, tag_field='outcome', tag='skipped'):
-    outcome: ClassVar[Annotated[Literal['skipped'], Meta(title='FlowOutcome')]]
-    reason: (
-        Annotated[
-            str, Meta(description='Optional reason for why the step was skipped.')
-        ]
-        | None
-    ) = None
-
-
 class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
     outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
     error: FlowError
@@ -401,7 +391,7 @@ class ListComponentsResult(Struct, kw_only=True):
 
 
 FlowResult = Annotated[
-    FlowResultSuccess | FlowResultSkipped | FlowResultFailed,
+    FlowResultSuccess | FlowResultFailed,
     Meta(description='The results of a step execution.', title='FlowResult'),
 ]
 

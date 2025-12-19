@@ -17,23 +17,19 @@ use stepflow_core::workflow::Flow;
 
 use crate::DiagnosticMessage;
 use crate::Diagnostics;
-use crate::Result;
 use crate::validation::path::make_path;
 
 /// Detect unreachable steps (steps that no other step or output depends on)
-pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) -> Result<()> {
+pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) {
     let mut referenced_steps = HashSet::new();
 
     // Collect steps referenced by other steps
     for step in flow.steps() {
-        collect_expr_step_dependencies(&step.input, &mut referenced_steps)?;
-        if let Some(skip_if) = &step.skip_if {
-            collect_expr_step_dependencies(skip_if, &mut referenced_steps)?;
-        }
+        collect_step_references(&step.input, &mut referenced_steps);
     }
 
     // Collect steps referenced by workflow output
-    collect_expr_step_dependencies(flow.output(), &mut referenced_steps)?;
+    collect_step_references(flow.output(), &mut referenced_steps);
 
     // Find unreachable steps
     for (index, step) in flow.steps().iter().enumerate() {
@@ -46,22 +42,45 @@ pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) ->
             );
         }
     }
-
-    Ok(())
 }
 
-/// Collect step dependencies from ValueExpr using shared dependency analysis
-fn collect_expr_step_dependencies(
-    expr: &ValueExpr,
-    dependencies: &mut HashSet<String>,
-) -> Result<()> {
-    let deps = crate::dependency::analyze_expr_dependencies(expr)?;
-
-    for dep in deps.dependencies() {
-        if let Some(step_id) = dep.step_id() {
-            dependencies.insert(step_id.to_string());
+/// Recursively collect all step IDs referenced by a ValueExpr
+fn collect_step_references(expr: &ValueExpr, references: &mut HashSet<String>) {
+    match expr {
+        ValueExpr::Step { step, .. } => {
+            references.insert(step.clone());
+        }
+        ValueExpr::Input { .. } | ValueExpr::Variable { .. } => {
+            // No step references
+        }
+        ValueExpr::If {
+            condition,
+            then,
+            else_expr,
+        } => {
+            collect_step_references(condition, references);
+            collect_step_references(then, references);
+            if let Some(else_val) = else_expr {
+                collect_step_references(else_val, references);
+            }
+        }
+        ValueExpr::Coalesce { values } => {
+            for value in values {
+                collect_step_references(value, references);
+            }
+        }
+        ValueExpr::Array(items) => {
+            for item in items {
+                collect_step_references(item, references);
+            }
+        }
+        ValueExpr::Object(fields) => {
+            for (_key, value) in fields {
+                collect_step_references(value, references);
+            }
+        }
+        ValueExpr::Literal(_) | ValueExpr::EscapedLiteral { .. } => {
+            // Literals have no references
         }
     }
-
-    Ok(())
 }

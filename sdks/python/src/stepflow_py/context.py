@@ -26,7 +26,6 @@ from stepflow_py.generated_protocol import (
     EvaluateFlowParams,
     EvaluateFlowResult,
     FlowResultFailed,
-    FlowResultSkipped,
     FlowResultSuccess,
     GetBatchParams,
     GetBatchResult,
@@ -227,7 +226,6 @@ class StepflowContext:
             The result value on success
 
         Raises:
-            StepflowSkipped: If the flow execution was skipped
             StepflowFailed: If the flow execution failed with a business logic error
             Exception: For system/runtime errors
         """
@@ -256,11 +254,10 @@ class StepflowContext:
             The result value on success
 
         Raises:
-            StepflowSkipped: If the flow execution was skipped
             StepflowFailed: If the flow execution failed with a business logic error
             Exception: For system/runtime errors
         """
-        from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
+        from stepflow_py.exceptions import StepflowFailed
         from stepflow_py.observability import get_tracer
 
         tracer = get_tracer(__name__)
@@ -285,8 +282,6 @@ class StepflowContext:
             # raise appropriate exception
             if isinstance(flow_result, FlowResultSuccess):
                 return flow_result.result
-            elif isinstance(flow_result, FlowResultSkipped):
-                raise StepflowSkipped("Flow execution was skipped")
             elif isinstance(flow_result, FlowResultFailed):
                 error = flow_result.error
                 raise StepflowFailed(
@@ -510,9 +505,9 @@ class StepflowContext:
             List of results corresponding to each input, in the same order
 
         Raises:
-            Exception: If any of the runs failed or were skipped
+            Exception: If any of the runs failed
         """
-        from stepflow_py.exceptions import StepflowFailed, StepflowSkipped
+        from stepflow_py.exceptions import StepflowFailed
 
         # Submit the batch
         batch_id = await self.submit_batch_by_id(
@@ -540,10 +535,6 @@ class StepflowContext:
             # Check the outcome and either append the result or raise exception
             if isinstance(flow_result, FlowResultSuccess):
                 results.append(flow_result.result)
-            elif isinstance(flow_result, FlowResultSkipped):
-                raise StepflowSkipped(
-                    f"Run at index {output_info.batch_input_index} was skipped"
-                )
             elif isinstance(flow_result, FlowResultFailed):
                 error = flow_result.error
                 raise StepflowFailed(

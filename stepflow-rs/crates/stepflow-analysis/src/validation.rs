@@ -36,7 +36,7 @@ pub fn validate(flow: &Flow) -> Result<Diagnostics> {
     flow_structure::validate_flow_structure(flow, &mut diagnostics);
     references::validate_references(flow, &mut diagnostics);
     components::validate_components(flow, &mut diagnostics);
-    reachable::validate_step_reachability(flow, &mut diagnostics)?;
+    reachable::validate_step_reachability(flow, &mut diagnostics);
 
     subflows::validate_literal_subflows(flow, &mut diagnostics)?;
     Ok(diagnostics)

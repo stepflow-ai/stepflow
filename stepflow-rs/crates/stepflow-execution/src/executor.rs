@@ -438,8 +438,7 @@ impl Context for StepflowExecutor {
                                             stepflow_core::FlowResult::Success(_) => {
                                                 stepflow_core::status::ExecutionStatus::Completed
                                             }
-                                            stepflow_core::FlowResult::Failed(_)
-                                            | stepflow_core::FlowResult::Skipped { .. } => {
+                                            stepflow_core::FlowResult::Failed(_) => {
                                                 stepflow_core::status::ExecutionStatus::Failed
                                             }
                                         };

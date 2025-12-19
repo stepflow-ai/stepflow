@@ -15,7 +15,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use error_stack::{ResultExt as _, report};
-use stepflow_analysis::{Dependency, FlowAnalysis, validate_and_analyze};
+use stepflow_analysis::validate;
 use stepflow_core::{ValueExpr, workflow::Flow};
 use stepflow_plugin::routing::PluginRouter;
 
@@ -118,14 +118,9 @@ impl FlowVisualizer {
         writeln!(&mut dot, "  edge [fontsize=10];").unwrap();
         writeln!(&mut dot).unwrap();
 
-        // Analyze the entire workflow to get dependencies
-        let blob_id = stepflow_core::BlobId::new(
-            "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        )
-        .unwrap();
-
-        let analysis_result = validate_and_analyze(self.flow.clone(), blob_id)
-            .change_context(MainError::internal("Failed to analyze flow dependencies"))?;
+        // Run validation but continue even if there are errors (visualization helps debug invalid flows)
+        let _diagnostics =
+            validate(&self.flow).change_context(MainError::internal("Failed to validate flow"))?;
 
         // Create color mapping for component servers
         let server_colors = self.create_server_color_mapping();
@@ -160,19 +155,10 @@ impl FlowVisualizer {
         writeln!(&mut dot).unwrap();
 
         // Add edges based on dependencies
-        if let Some(analysis) = analysis_result.analysis.as_ref() {
-            self.add_edges(&mut dot, analysis)?;
-        } else {
-            // If analysis failed due to validation errors, we can still show the basic structure
-            log::warn!(
-                "Workflow analysis failed, showing basic structure without detailed dependencies"
-            );
-        }
+        self.add_edges(&mut dot)?;
 
         // Add edges from steps to workflow output
-        if let Some(analysis) = analysis_result.analysis.as_ref() {
-            self.add_output_edges(&mut dot, analysis)?;
-        }
+        self.add_output_edges(&mut dot)?;
 
         // End the digraph
         writeln!(&mut dot, "}}").unwrap();
@@ -424,13 +410,12 @@ impl FlowVisualizer {
         }
     }
 
-    fn add_edges(&mut self, dot: &mut String, analysis: &FlowAnalysis) -> Result<()> {
+    fn add_edges(&mut self, dot: &mut String) -> Result<()> {
         let num_steps = self.flow.steps().len();
         for step_idx in 0..num_steps {
             let step = &self.flow.steps()[step_idx];
             let step_id = step.id.clone();
             let step_input = step.input.clone();
-            let step_skip_if = step.skip_if.clone();
 
             // Collect edges from the step input expression
             let edges = self.collect_expr_edges(dot, &step_input, "")?;
@@ -445,39 +430,12 @@ impl FlowVisualizer {
                     writeln!(dot, "  ];").unwrap();
                 }
             }
-
-            // Add edges for skip conditions
-            if let Some(skip_if) = &step_skip_if {
-                let skip_edges = self.collect_expr_edges(dot, skip_if, "")?;
-                for (source, _label) in skip_edges {
-                    writeln!(dot, "  \"{}\" -> \"{}\" [", source, step_id).unwrap();
-                    writeln!(dot, "    style=\"dotted\",").unwrap();
-                    writeln!(dot, "    label=\"skipIf\",").unwrap();
-                    writeln!(dot, "  ];").unwrap();
-                }
-            }
-
-            // Also check analysis for skip_if_depends (from analysis)
-            if step_skip_if.is_none()
-                && let Some(step_analysis) = analysis.steps.get(&step_id)
-            {
-                for skip_dep in &step_analysis.skip_if_depends {
-                    let source = match skip_dep {
-                        Dependency::FlowInput { .. } => "workflow_input".to_string(),
-                        Dependency::StepOutput { step_id, .. } => step_id.clone(),
-                    };
-                    writeln!(dot, "  \"{}\" -> \"{}\" [", source, step_id).unwrap();
-                    writeln!(dot, "    style=\"dotted\",").unwrap();
-                    writeln!(dot, "    label=\"skipIf\",").unwrap();
-                    writeln!(dot, "  ];").unwrap();
-                }
-            }
         }
 
         Ok(())
     }
 
-    fn add_output_edges(&mut self, dot: &mut String, _analysis: &FlowAnalysis) -> Result<()> {
+    fn add_output_edges(&mut self, dot: &mut String) -> Result<()> {
         // Collect edges from the workflow output expression
         let output = self.flow.output().clone();
         let edges = self.collect_expr_edges(dot, &output, "")?;
@@ -515,15 +473,8 @@ impl FlowVisualizer {
     ) -> String {
         let mut tooltip = format!("Step: {}\\nComponent: {}", step.id, step.component.path());
 
-        if let Some(_skip_condition) = &step.skip_if {
-            tooltip.push_str("\\nSkip Condition: Present");
-        }
-
         match step.on_error_or_default() {
             stepflow_core::workflow::ErrorAction::Fail => {}
-            stepflow_core::workflow::ErrorAction::Skip => {
-                tooltip.push_str("\\nError Action: Skip");
-            }
             stepflow_core::workflow::ErrorAction::UseDefault { .. } => {
                 tooltip.push_str("\\nError Action: Use Default");
             }

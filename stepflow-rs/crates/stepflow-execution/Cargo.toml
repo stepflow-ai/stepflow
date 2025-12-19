@@ -16,7 +16,6 @@ workspace = true
 doctest = false
 
 [dependencies]
-async-trait.workspace = true
 bit-set.workspace = true
 error-stack.workspace = true
 futures.workspace = true

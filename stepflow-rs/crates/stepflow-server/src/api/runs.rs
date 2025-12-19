@@ -203,7 +203,7 @@ pub async fn create_run(
                 debug: debug_mode,
             }))
         }
-        FlowResult::Failed(_) | FlowResult::Skipped { .. } => {
+        FlowResult::Failed(_) => {
             // Update execution status to failed
             state_store
                 .update_run_status(run_id, ExecutionStatus::Failed, None)

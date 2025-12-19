@@ -82,12 +82,6 @@ pub enum FlowResult {
     /// # Success
     /// The step execution was successful.
     Success(ValueRef),
-    /// # Skipped
-    /// The step was skipped.
-    Skipped {
-        /// Optional reason for why the step was skipped.
-        reason: Option<Cow<'static, str>>,
-    },
     /// # Failed
     /// The step failed with the given error.
     Failed(FlowError),
@@ -105,15 +99,6 @@ impl Serialize for FlowResult {
                 let mut state = serializer.serialize_struct("FlowResult", 2)?;
                 state.serialize_field("outcome", "success")?;
                 state.serialize_field("result", result)?;
-                state.end()
-            }
-            FlowResult::Skipped { reason } => {
-                let field_count = if reason.is_some() { 2 } else { 1 };
-                let mut state = serializer.serialize_struct("FlowResult", field_count)?;
-                state.serialize_field("outcome", "skipped")?;
-                if let Some(reason) = reason {
-                    state.serialize_field("reason", reason)?;
-                }
                 state.end()
             }
             FlowResult::Failed(error) => {
@@ -147,13 +132,6 @@ impl<'de> Deserialize<'de> for FlowResult {
                 let result_ref = ValueRef::new(result.clone());
                 Ok(FlowResult::Success(result_ref))
             }
-            "skipped" => {
-                let reason = value
-                    .get("reason")
-                    .and_then(|v| v.as_str())
-                    .map(|s| Cow::Owned(s.to_string()));
-                Ok(FlowResult::Skipped { reason })
-            }
             "failed" => {
                 let error = FlowError::deserialize(
                     value
@@ -163,10 +141,7 @@ impl<'de> Deserialize<'de> for FlowResult {
                 .map_err(D::Error::custom)?;
                 Ok(FlowResult::Failed(error))
             }
-            _ => Err(D::Error::unknown_variant(
-                outcome,
-                &["success", "skipped", "failed"],
-            )),
+            _ => Err(D::Error::unknown_variant(outcome, &["success", "failed"])),
         }
     }
 }
@@ -196,24 +171,6 @@ impl JsonSchema for FlowResult {
             }),
         );
         defs.insert(
-            "FlowResultSkipped".to_string(),
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "outcome": {
-                        "title": "FlowOutcome",
-                        "const": "skipped",
-                        "default": "skipped"
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Optional reason for why the step was skipped."
-                    },
-                },
-                "required": ["outcome"],
-            }),
-        );
-        defs.insert(
             "FlowResultFailed".to_string(),
             serde_json::json!({
                 "type": "object",
@@ -234,14 +191,12 @@ impl JsonSchema for FlowResult {
             "description": "The results of a step execution.",
             "oneOf": [
                 {"$ref": "#/$defs/FlowResultSuccess"},
-                {"$ref": "#/$defs/FlowResultSkipped"},
                 {"$ref": "#/$defs/FlowResultFailed"}
             ],
             "discriminator": {
                 "propertyName": "outcome",
                 "mapping": {
                     "success": "#/$defs/FlowResultSuccess",
-                    "skipped": "#/$defs/FlowResultSkipped",
                     "failed": "#/$defs/FlowResultFailed"
                 }
             },
@@ -264,10 +219,6 @@ impl FlowResult {
         }
     }
 
-    pub fn skipped(&self) -> bool {
-        matches!(self, Self::Skipped { .. })
-    }
-
     pub fn failed(&self) -> Option<&FlowError> {
         match self {
             Self::Failed(error) => Some(error),
@@ -282,9 +233,6 @@ impl FlowResult {
     pub fn unwrap_success(self) -> ValueRef {
         match self {
             Self::Success(result) => result,
-            Self::Skipped { reason } => {
-                panic!("Expected Success, got Skipped: {:?}", reason)
-            }
             Self::Failed(error) => {
                 panic!("Expected Success, got Failed: {}", error)
             }

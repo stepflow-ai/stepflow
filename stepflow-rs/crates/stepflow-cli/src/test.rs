@@ -40,7 +40,6 @@ fn normalize_flow_result(result: FlowResult) -> FlowResult {
                 .data
                 .map(|data| normalize_json_value(data.clone_value()).into()),
         }),
-        other => other,
     }
 }
 

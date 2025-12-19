@@ -9,9 +9,6 @@ homepage.workspace = true
 repository.workspace = true
 publish = false
 
-[package.metadata.cargo-machete]
-ignored = ["safer_owning_ref"]
-
 [lints]
 workspace = true
 
@@ -19,7 +16,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-async-trait.workspace = true
+bit-set.workspace = true
 error-stack.workspace = true
 hex.workspace = true
 json-patch.workspace = true
@@ -33,9 +30,7 @@ stepflow-observability.workspace = true
 thiserror.workspace = true
 log.workspace = true
 utoipa.workspace = true
-uuid.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
 similar-asserts.workspace = true
-tokio.workspace = true

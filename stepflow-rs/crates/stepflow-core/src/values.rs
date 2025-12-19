@@ -15,19 +15,18 @@
 //! This module contains all value-related functionality:
 //! - `ValueExpr`: Expression type for dynamic values and references
 //! - `ValueRef`: Arc-wrapped JSON values for efficient storage
-//! - `ValueResolver`: Resolution engine for evaluating expressions
 //! - `JsonPath`: JSONPath implementation for nested field access
 //! - `Secrets`: Secret field redaction for safe logging
 
 pub mod json_path;
 pub mod redacted_value;
+pub mod step_context;
 pub mod value_expr;
 mod value_expr_serde; // Keep private
 pub mod value_ref;
-pub mod value_resolver;
 
 pub use json_path::*;
 pub use redacted_value::*;
+pub use step_context::*;
 pub use value_expr::*;
 pub use value_ref::*;
-pub use value_resolver::*;

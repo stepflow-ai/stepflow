@@ -4607,7 +4607,6 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "stepflow-analysis"
 version = "0.8.0"
 dependencies = [
- "bit-set",
  "error-stack",
  "indexmap 2.12.1",
  "schemars 1.1.0",
@@ -4728,7 +4727,7 @@ dependencies = [
 name = "stepflow-core"
 version = "0.8.0"
 dependencies = [
- "async-trait",
+ "bit-set",
  "error-stack",
  "hex",
  "insta",
@@ -4743,16 +4742,13 @@ dependencies = [
  "similar-asserts",
  "stepflow-observability",
  "thiserror 2.0.17",
- "tokio",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
 name = "stepflow-execution"
 version = "0.8.0"
 dependencies = [
- "async-trait",
  "bit-set",
  "chrono",
  "error-stack",

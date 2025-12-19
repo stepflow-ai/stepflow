@@ -148,7 +148,6 @@ pub struct StepBuilder {
     input: Option<ValueExpr>,
     input_schema: Option<SchemaRef>,
     output_schema: Option<SchemaRef>,
-    skip_if: Option<ValueExpr>,
     on_error: Option<ErrorAction>,
     must_execute: Option<bool>,
     metadata: HashMap<String, serde_json::Value>,
@@ -163,7 +162,6 @@ impl StepBuilder {
             input: None,
             input_schema: None,
             output_schema: None,
-            skip_if: None,
             on_error: None,
             must_execute: None,
             metadata: HashMap::new(),
@@ -203,12 +201,6 @@ impl StepBuilder {
     /// Set the output schema.
     pub fn output_schema(mut self, schema: SchemaRef) -> Self {
         self.output_schema = Some(schema);
-        self
-    }
-
-    /// Set the skip condition.
-    pub fn skip_if(mut self, condition: ValueExpr) -> Self {
-        self.skip_if = Some(condition);
         self
     }
 
@@ -264,7 +256,6 @@ impl StepBuilder {
             input: self.input.unwrap_or_else(ValueExpr::null),
             input_schema: self.input_schema,
             output_schema: self.output_schema,
-            skip_if: self.skip_if,
             on_error: self.on_error,
             must_execute: self.must_execute,
             metadata: self.metadata,

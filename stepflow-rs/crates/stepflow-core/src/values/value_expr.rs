@@ -10,7 +10,10 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use super::JsonPath;
+use bit_set::BitSet;
+
+use super::{JsonPath, PathPart, StepContext, ValueRef};
+use crate::FlowResult;
 use schemars::JsonSchema;
 use serde_json::Value;
 
@@ -158,6 +161,311 @@ impl ValueExpr {
     /// Check if this expression is a null literal
     pub fn is_null(&self) -> bool {
         matches!(self, ValueExpr::Literal(serde_json::Value::Null))
+    }
+
+    /// Returns the set of step indices needed to evaluate this expression.
+    ///
+    /// An empty set means the expression is ready to be fully resolved.
+    /// This method evaluates lazily - for conditional expressions like `$if`,
+    /// it only returns the condition's dependencies until the condition can
+    /// be evaluated, then returns the appropriate branch's dependencies.
+    ///
+    /// # Arguments
+    /// * `ctx` - Context providing step completion state and results
+    ///
+    /// # Example
+    /// For `{ $if: { $step: foo }, then: { $step: bar }, else: { $step: baz } }`:
+    /// 1. First call (foo not complete): returns `{foo_index}`
+    /// 2. After foo completes (truthy): returns `{bar_index}`
+    /// 3. After bar completes: returns `{}` (ready!)
+    pub fn needed_steps(&self, ctx: &impl StepContext) -> BitSet {
+        /// Collect needed steps into a mutable BitSet.
+        /// Returns `true` if we should stop early (for short-circuit evaluation).
+        fn collect<C: StepContext>(expr: &ValueExpr, ctx: &C, needed: &mut BitSet) -> bool {
+            match expr {
+                ValueExpr::Step { step, .. } => {
+                    if let Some(idx) = ctx.step_index(step)
+                        && !ctx.is_completed(idx)
+                    {
+                        needed.insert(idx);
+                    }
+                    false
+                }
+
+                ValueExpr::Input { .. } | ValueExpr::Variable { .. } => false,
+
+                ValueExpr::Literal(_) | ValueExpr::EscapedLiteral { .. } => false,
+
+                ValueExpr::If {
+                    condition,
+                    then,
+                    else_expr,
+                } => {
+                    // First collect condition's needs
+                    let before = needed.len();
+                    collect(condition, ctx, needed);
+                    if needed.len() > before {
+                        // Condition has unmet dependencies - stop here
+                        return true;
+                    }
+
+                    // Condition is ready - evaluate to determine which branch
+                    let cond_result = condition.resolve(ctx);
+                    if is_truthy(&cond_result) {
+                        collect(then, ctx, needed)
+                    } else if let Some(else_e) = else_expr {
+                        collect(else_e, ctx, needed)
+                    } else {
+                        false
+                    }
+                }
+
+                ValueExpr::Coalesce { values } => {
+                    for value in values {
+                        let before = needed.len();
+                        collect(value, ctx, needed);
+                        if needed.len() > before {
+                            // This value has unmet dependencies - stop here
+                            return true;
+                        }
+
+                        // Value is ready - evaluate to decide if we should continue
+                        let result = value.resolve(ctx);
+                        match &result {
+                            FlowResult::Success(v) if !v.as_ref().is_null() => {
+                                // Found non-null value - done
+                                return true;
+                            }
+                            FlowResult::Failed(_) => {
+                                // Error - done (will propagate during resolution)
+                                return true;
+                            }
+                            _ => {
+                                // Null or skipped - continue to next value
+                                continue;
+                            }
+                        }
+                    }
+                    false
+                }
+
+                ValueExpr::Array(items) => {
+                    for item in items {
+                        collect(item, ctx, needed);
+                    }
+                    false
+                }
+
+                ValueExpr::Object(fields) => {
+                    for (_, value) in fields {
+                        collect(value, ctx, needed);
+                    }
+                    false
+                }
+            }
+        }
+
+        let mut needed = BitSet::new();
+        collect(self, ctx, &mut needed);
+        needed
+    }
+
+    /// Resolve this expression using the provided context.
+    ///
+    /// This should only be called when `needed_steps()` returns an empty set,
+    /// meaning all required step results are available in the context.
+    ///
+    /// The context provides access to:
+    /// - Step results (`$step` references)
+    /// - Workflow input (`$input` references)
+    /// - Variables (`$variable` references)
+    pub fn resolve(&self, ctx: &impl StepContext) -> FlowResult {
+        match self {
+            ValueExpr::Step { step, path } => {
+                let Some(idx) = ctx.step_index(step) else {
+                    return FlowResult::Failed(crate::FlowError::new(
+                        404,
+                        format!("Unknown step: {}", step),
+                    ));
+                };
+
+                let Some(result) = ctx.get_result(idx) else {
+                    return FlowResult::Failed(crate::FlowError::new(
+                        500,
+                        format!("Step {} not completed", step),
+                    ));
+                };
+
+                // Apply path if needed
+                match result {
+                    // If the step returned null, propagate null (even if path is specified)
+                    // This enables $coalesce to work with skipped steps that return null
+                    FlowResult::Success(value) if value.as_ref().is_null() => {
+                        FlowResult::Success(value.clone())
+                    }
+                    FlowResult::Success(value) if !path.is_empty() => {
+                        if let Some(sub_value) = value.resolve_json_path(path) {
+                            FlowResult::Success(sub_value)
+                        } else {
+                            FlowResult::Failed(crate::FlowError::new(
+                                crate::FLOW_ERROR_UNDEFINED_FIELD,
+                                format!("Path {} not found", path),
+                            ))
+                        }
+                    }
+                    other => other.clone(),
+                }
+            }
+
+            ValueExpr::Input { input: path } => {
+                let Some(input_value) = ctx.get_input() else {
+                    return FlowResult::Failed(crate::FlowError::new(
+                        500,
+                        "Workflow input not available in context",
+                    ));
+                };
+
+                // Apply path if provided
+                if path.is_empty() {
+                    FlowResult::Success(input_value.clone())
+                } else if let Some(sub_value) = input_value.resolve_json_path(path) {
+                    FlowResult::Success(sub_value)
+                } else {
+                    FlowResult::Failed(crate::FlowError::new(
+                        crate::FLOW_ERROR_UNDEFINED_FIELD,
+                        format!("Input path {} not found", path),
+                    ))
+                }
+            }
+
+            ValueExpr::Variable { variable, default } => {
+                // Parse the variable name and path from the JsonPath
+                let parts = variable.parts();
+                if parts.is_empty() {
+                    return FlowResult::Failed(crate::FlowError::new(
+                        500,
+                        "Variable path is empty",
+                    ));
+                }
+
+                // First part is the variable name
+                let var_name = match &parts[0] {
+                    PathPart::Field(name) | PathPart::IndexStr(name) => name.as_str(),
+                    PathPart::Index(_) => {
+                        return FlowResult::Failed(crate::FlowError::new(
+                            500,
+                            "Variable name must be a string",
+                        ));
+                    }
+                };
+
+                // Try to get the variable value
+                if let Some(var_value) = ctx.get_variable(var_name) {
+                    // Apply remaining path if any
+                    if parts.len() > 1 {
+                        let sub_path = JsonPath::from_parts(parts[1..].to_vec());
+                        if let Some(sub_value) = var_value.resolve_json_path(&sub_path) {
+                            return FlowResult::Success(sub_value);
+                        } else {
+                            // Path not found - try default
+                        }
+                    } else {
+                        return FlowResult::Success(var_value);
+                    }
+                }
+
+                // Variable not found or path failed - try default if available
+                if let Some(default_expr) = default {
+                    log::debug!("Variable '{}' not found, using default", var_name);
+                    return default_expr.resolve(ctx);
+                }
+
+                // No variable and no default - error
+                FlowResult::Failed(crate::FlowError::new(
+                    crate::FLOW_ERROR_UNDEFINED_FIELD,
+                    format!("Undefined variable: {}", var_name),
+                ))
+            }
+
+            ValueExpr::Literal(value) => FlowResult::Success(ValueRef::new(value.clone())),
+
+            ValueExpr::EscapedLiteral { literal } => {
+                FlowResult::Success(ValueRef::new(literal.clone()))
+            }
+
+            ValueExpr::If {
+                condition,
+                then,
+                else_expr,
+            } => {
+                let cond_result = condition.resolve(ctx);
+                if is_truthy(&cond_result) {
+                    then.resolve(ctx)
+                } else if let Some(else_e) = else_expr {
+                    else_e.resolve(ctx)
+                } else {
+                    FlowResult::Success(ValueRef::new(serde_json::Value::Null))
+                }
+            }
+
+            ValueExpr::Coalesce { values } => {
+                for value in values {
+                    let result = value.resolve(ctx);
+                    match &result {
+                        FlowResult::Success(v) if !v.as_ref().is_null() => {
+                            return result;
+                        }
+                        FlowResult::Failed(_) => {
+                            return result;
+                        }
+                        _ => continue,
+                    }
+                }
+                FlowResult::Success(ValueRef::new(serde_json::Value::Null))
+            }
+
+            ValueExpr::Array(items) => {
+                let mut result_array = Vec::new();
+                for item in items {
+                    match item.resolve(ctx) {
+                        FlowResult::Success(value) => {
+                            result_array.push(value.as_ref().clone());
+                        }
+                        other => return other,
+                    }
+                }
+                FlowResult::Success(ValueRef::new(serde_json::Value::Array(result_array)))
+            }
+
+            ValueExpr::Object(fields) => {
+                let mut result_map = serde_json::Map::new();
+                for (k, v) in fields {
+                    match v.resolve(ctx) {
+                        FlowResult::Success(value) => {
+                            result_map.insert(k.clone(), value.as_ref().clone());
+                        }
+                        other => return other,
+                    }
+                }
+                FlowResult::Success(ValueRef::new(serde_json::Value::Object(result_map)))
+            }
+        }
+    }
+}
+
+/// Check if a FlowResult is truthy for conditional evaluation.
+///
+/// - `Success` with non-null, non-false value is truthy
+/// - `Success` with null or false is falsy
+/// - `Failed` is treated as falsy (condition evaluation failed)
+fn is_truthy(result: &FlowResult) -> bool {
+    match result {
+        FlowResult::Success(value) => match value.as_ref() {
+            serde_json::Value::Null => false,
+            serde_json::Value::Bool(b) => *b,
+            _ => true,
+        },
+        FlowResult::Failed(_) => false,
     }
 }
 
@@ -419,6 +727,7 @@ impl utoipa::ToSchema for ValueExpr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::values::Secrets;
     use serde_json::json;
 
     #[test]
@@ -627,5 +936,413 @@ mod tests {
         use utoipa::ToSchema;
         let _name = ValueExpr::name();
         // If we get here without stack overflow, the implementation is safe
+    }
+
+    // ========== Tests for needed_steps() ==========
+
+    /// Mock StepContext for testing
+    struct MockStepContext {
+        step_names: Vec<String>,
+        completed: BitSet,
+        results: Vec<Option<FlowResult>>,
+        input: Option<ValueRef>,
+    }
+
+    impl MockStepContext {
+        fn new(step_names: Vec<&str>) -> Self {
+            let len = step_names.len();
+            Self {
+                step_names: step_names.into_iter().map(|s| s.to_string()).collect(),
+                completed: BitSet::new(),
+                results: vec![None; len],
+                input: None,
+            }
+        }
+
+        #[allow(dead_code)]
+        fn with_input(step_names: Vec<&str>, input: serde_json::Value) -> Self {
+            let mut ctx = Self::new(step_names);
+            ctx.input = Some(ValueRef::new(input));
+            ctx
+        }
+
+        fn complete_step(&mut self, name: &str, result: FlowResult) {
+            if let Some(idx) = self.step_names.iter().position(|s| s == name) {
+                self.completed.insert(idx);
+                self.results[idx] = Some(result);
+            }
+        }
+    }
+
+    impl StepContext for MockStepContext {
+        fn step_index(&self, step_id: &str) -> Option<usize> {
+            self.step_names.iter().position(|s| s == step_id)
+        }
+
+        fn is_completed(&self, step_index: usize) -> bool {
+            self.completed.contains(step_index)
+        }
+
+        fn get_result(&self, step_index: usize) -> Option<&FlowResult> {
+            self.results.get(step_index).and_then(|r| r.as_ref())
+        }
+
+        fn get_input(&self) -> Option<&ValueRef> {
+            self.input.as_ref()
+        }
+
+        fn get_variable(&self, _name: &str) -> Option<ValueRef> {
+            None // Mock doesn't support variables
+        }
+
+        fn get_variable_secrets(&self, _name: &str) -> Secrets {
+            Secrets::empty().clone()
+        }
+    }
+
+    #[test]
+    fn test_needed_steps_literal() {
+        let ctx = MockStepContext::new(vec!["step1"]);
+        let expr = ValueExpr::literal(json!(42));
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.is_empty(), "Literals should need no steps");
+    }
+
+    #[test]
+    fn test_needed_steps_step_not_completed() {
+        let ctx = MockStepContext::new(vec!["step1", "step2"]);
+        let expr = ValueExpr::step("step1", JsonPath::default());
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.contains(0), "Should need step1 (index 0)");
+        assert!(!needs.contains(1), "Should not need step2");
+    }
+
+    #[test]
+    fn test_needed_steps_step_completed() {
+        let mut ctx = MockStepContext::new(vec!["step1"]);
+        ctx.complete_step("step1", FlowResult::Success(ValueRef::new(json!(42))));
+
+        let expr = ValueExpr::step("step1", JsonPath::default());
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.is_empty(), "Completed step should need nothing");
+    }
+
+    #[test]
+    fn test_needed_steps_if_condition_not_ready() {
+        let ctx = MockStepContext::new(vec!["cond", "then_step", "else_step"]);
+
+        // { $if: { $step: cond }, then: { $step: then_step }, else: { $step: else_step } }
+        let expr = ValueExpr::if_expr(
+            ValueExpr::step("cond", JsonPath::default()),
+            ValueExpr::step("then_step", JsonPath::default()),
+            Some(ValueExpr::step("else_step", JsonPath::default())),
+        );
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.contains(0), "Should need condition step");
+        assert!(!needs.contains(1), "Should NOT need then_step yet");
+        assert!(!needs.contains(2), "Should NOT need else_step yet");
+    }
+
+    #[test]
+    fn test_needed_steps_if_condition_true() {
+        let mut ctx = MockStepContext::new(vec!["cond", "then_step", "else_step"]);
+        ctx.complete_step("cond", FlowResult::Success(ValueRef::new(json!(true))));
+
+        let expr = ValueExpr::if_expr(
+            ValueExpr::step("cond", JsonPath::default()),
+            ValueExpr::step("then_step", JsonPath::default()),
+            Some(ValueExpr::step("else_step", JsonPath::default())),
+        );
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(!needs.contains(0), "Should not need condition (completed)");
+        assert!(
+            needs.contains(1),
+            "Should need then_step (condition was true)"
+        );
+        assert!(!needs.contains(2), "Should NOT need else_step");
+    }
+
+    #[test]
+    fn test_needed_steps_if_condition_false() {
+        let mut ctx = MockStepContext::new(vec!["cond", "then_step", "else_step"]);
+        ctx.complete_step("cond", FlowResult::Success(ValueRef::new(json!(false))));
+
+        let expr = ValueExpr::if_expr(
+            ValueExpr::step("cond", JsonPath::default()),
+            ValueExpr::step("then_step", JsonPath::default()),
+            Some(ValueExpr::step("else_step", JsonPath::default())),
+        );
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(!needs.contains(0), "Should not need condition (completed)");
+        assert!(!needs.contains(1), "Should NOT need then_step");
+        assert!(
+            needs.contains(2),
+            "Should need else_step (condition was false)"
+        );
+    }
+
+    #[test]
+    fn test_needed_steps_if_fully_ready() {
+        let mut ctx = MockStepContext::new(vec!["cond", "then_step", "else_step"]);
+        ctx.complete_step("cond", FlowResult::Success(ValueRef::new(json!(true))));
+        ctx.complete_step(
+            "then_step",
+            FlowResult::Success(ValueRef::new(json!("result"))),
+        );
+
+        let expr = ValueExpr::if_expr(
+            ValueExpr::step("cond", JsonPath::default()),
+            ValueExpr::step("then_step", JsonPath::default()),
+            Some(ValueExpr::step("else_step", JsonPath::default())),
+        );
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.is_empty(), "All needed steps completed - ready");
+    }
+
+    #[test]
+    fn test_needed_steps_coalesce_first_value_not_ready() {
+        let ctx = MockStepContext::new(vec!["step1", "step2"]);
+
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::step("step1", JsonPath::default()),
+            ValueExpr::step("step2", JsonPath::default()),
+        ]);
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.contains(0), "Should need step1 first");
+        assert!(!needs.contains(1), "Should NOT need step2 yet");
+    }
+
+    #[test]
+    fn test_needed_steps_coalesce_first_value_null() {
+        let mut ctx = MockStepContext::new(vec!["step1", "step2"]);
+        ctx.complete_step("step1", FlowResult::Success(ValueRef::new(json!(null))));
+
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::step("step1", JsonPath::default()),
+            ValueExpr::step("step2", JsonPath::default()),
+        ]);
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(!needs.contains(0), "step1 completed (null)");
+        assert!(needs.contains(1), "Should now need step2");
+    }
+
+    #[test]
+    fn test_needed_steps_coalesce_first_value_success() {
+        let mut ctx = MockStepContext::new(vec!["step1", "step2"]);
+        ctx.complete_step("step1", FlowResult::Success(ValueRef::new(json!("value"))));
+
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::step("step1", JsonPath::default()),
+            ValueExpr::step("step2", JsonPath::default()),
+        ]);
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.is_empty(), "Found non-null - no more steps needed");
+    }
+
+    #[test]
+    fn test_needed_steps_coalesce_null_continues() {
+        let mut ctx = MockStepContext::new(vec!["step1", "step2"]);
+        // Step completed with null value (equivalent to old "skipped")
+        ctx.complete_step("step1", FlowResult::Success(ValueRef::new(json!(null))));
+
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::step("step1", JsonPath::default()),
+            ValueExpr::step("step2", JsonPath::default()),
+        ]);
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(!needs.contains(0), "step1 completed (null)");
+        assert!(
+            needs.contains(1),
+            "Should now need step2 (coalesce continues on null)"
+        );
+    }
+
+    #[test]
+    fn test_needed_steps_array_union() {
+        let ctx = MockStepContext::new(vec!["step1", "step2", "step3"]);
+
+        let expr = ValueExpr::array(vec![
+            ValueExpr::step("step1", JsonPath::default()),
+            ValueExpr::step("step2", JsonPath::default()),
+            ValueExpr::literal(json!("literal")),
+        ]);
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.contains(0), "Should need step1");
+        assert!(needs.contains(1), "Should need step2");
+        assert!(!needs.contains(2), "Should not need step3 (not referenced)");
+    }
+
+    #[test]
+    fn test_needed_steps_object_union() {
+        let ctx = MockStepContext::new(vec!["step1", "step2"]);
+
+        let expr = ValueExpr::object(vec![
+            (
+                "a".to_string(),
+                ValueExpr::step("step1", JsonPath::default()),
+            ),
+            (
+                "b".to_string(),
+                ValueExpr::step("step2", JsonPath::default()),
+            ),
+        ]);
+
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.contains(0), "Should need step1");
+        assert!(needs.contains(1), "Should need step2");
+    }
+
+    #[test]
+    fn test_needed_steps_nested_if_in_coalesce() {
+        let ctx = MockStepContext::new(vec!["cond", "then_step", "fallback"]);
+
+        // { $coalesce: [{ $if: { $step: cond }, then: { $step: then_step } }, { $step: fallback }] }
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::if_expr(
+                ValueExpr::step("cond", JsonPath::default()),
+                ValueExpr::step("then_step", JsonPath::default()),
+                None,
+            ),
+            ValueExpr::step("fallback", JsonPath::default()),
+        ]);
+
+        // First: need condition for the $if
+        let needs = expr.needed_steps(&ctx);
+        assert!(needs.contains(0), "Should need cond first");
+        assert!(!needs.contains(1), "Should NOT need then_step yet");
+        assert!(!needs.contains(2), "Should NOT need fallback yet");
+    }
+
+    #[test]
+    fn test_needed_steps_nested_if_condition_false_returns_null() {
+        let mut ctx = MockStepContext::new(vec!["cond", "then_step", "fallback"]);
+        ctx.complete_step("cond", FlowResult::Success(ValueRef::new(json!(false))));
+
+        // $if with no else returns null when condition is false
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::if_expr(
+                ValueExpr::step("cond", JsonPath::default()),
+                ValueExpr::step("then_step", JsonPath::default()),
+                None, // No else - returns null
+            ),
+            ValueExpr::step("fallback", JsonPath::default()),
+        ]);
+
+        let needs = expr.needed_steps(&ctx);
+        // Condition is false, $if returns null, coalesce moves to fallback
+        assert!(!needs.contains(0), "Condition completed");
+        assert!(!needs.contains(1), "then_step not needed (condition false)");
+        assert!(needs.contains(2), "Should need fallback now");
+    }
+
+    #[test]
+    fn test_resolve_literal() {
+        let ctx = MockStepContext::new(vec![]);
+        let expr = ValueExpr::literal(json!(42));
+        let result = expr.resolve(&ctx);
+        assert_eq!(result.success().unwrap().as_ref(), &json!(42));
+    }
+
+    #[test]
+    fn test_resolve_step() {
+        let mut ctx = MockStepContext::new(vec!["step1"]);
+        ctx.complete_step(
+            "step1",
+            FlowResult::Success(ValueRef::new(json!({"value": 42}))),
+        );
+
+        let expr = ValueExpr::step("step1", JsonPath::default());
+        let result = expr.resolve(&ctx);
+        assert_eq!(result.success().unwrap().as_ref(), &json!({"value": 42}));
+    }
+
+    #[test]
+    fn test_resolve_step_with_path() {
+        let mut ctx = MockStepContext::new(vec!["step1"]);
+        ctx.complete_step(
+            "step1",
+            FlowResult::Success(ValueRef::new(json!({"value": 42}))),
+        );
+
+        let expr = ValueExpr::step("step1", JsonPath::from("value"));
+        let result = expr.resolve(&ctx);
+        assert_eq!(result.success().unwrap().as_ref(), &json!(42));
+    }
+
+    #[test]
+    fn test_resolve_if_true() {
+        let mut ctx = MockStepContext::new(vec!["cond", "then_step"]);
+        ctx.complete_step("cond", FlowResult::Success(ValueRef::new(json!(true))));
+        ctx.complete_step(
+            "then_step",
+            FlowResult::Success(ValueRef::new(json!("then_value"))),
+        );
+
+        let expr = ValueExpr::if_expr(
+            ValueExpr::step("cond", JsonPath::default()),
+            ValueExpr::step("then_step", JsonPath::default()),
+            Some(ValueExpr::literal(json!("else_value"))),
+        );
+
+        let result = expr.resolve(&ctx);
+        assert_eq!(result.success().unwrap().as_ref(), &json!("then_value"));
+    }
+
+    #[test]
+    fn test_resolve_if_false() {
+        let mut ctx = MockStepContext::new(vec!["cond"]);
+        ctx.complete_step("cond", FlowResult::Success(ValueRef::new(json!(false))));
+
+        let expr = ValueExpr::if_expr(
+            ValueExpr::step("cond", JsonPath::default()),
+            ValueExpr::literal(json!("then_value")),
+            Some(ValueExpr::literal(json!("else_value"))),
+        );
+
+        let result = expr.resolve(&ctx);
+        assert_eq!(result.success().unwrap().as_ref(), &json!("else_value"));
+    }
+
+    #[test]
+    fn test_resolve_coalesce() {
+        let mut ctx = MockStepContext::new(vec!["step1", "step2"]);
+        ctx.complete_step("step1", FlowResult::Success(ValueRef::new(json!(null))));
+        ctx.complete_step("step2", FlowResult::Success(ValueRef::new(json!("value"))));
+
+        let expr = ValueExpr::coalesce(vec![
+            ValueExpr::step("step1", JsonPath::default()),
+            ValueExpr::step("step2", JsonPath::default()),
+        ]);
+
+        let result = expr.resolve(&ctx);
+        assert_eq!(result.success().unwrap().as_ref(), &json!("value"));
+    }
+
+    #[test]
+    fn test_is_truthy() {
+        // Truthy values
+        assert!(is_truthy(&FlowResult::Success(ValueRef::new(json!(true)))));
+        assert!(is_truthy(&FlowResult::Success(ValueRef::new(json!(1)))));
+        assert!(is_truthy(&FlowResult::Success(ValueRef::new(json!("str")))));
+        assert!(is_truthy(&FlowResult::Success(ValueRef::new(json!([])))));
+        assert!(is_truthy(&FlowResult::Success(ValueRef::new(json!({})))));
+
+        // Falsy values
+        assert!(!is_truthy(&FlowResult::Success(ValueRef::new(json!(null)))));
+        assert!(!is_truthy(&FlowResult::Success(ValueRef::new(json!(
+            false
+        )))));
+        assert!(!is_truthy(&FlowResult::Failed(crate::FlowError::new(
+            500, "error"
+        ))));
     }
 }

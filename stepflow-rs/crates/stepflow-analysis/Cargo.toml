@@ -16,7 +16,6 @@ workspace = true
 doctest = false
 
 [dependencies]
-bit-set.workspace = true
 error-stack.workspace = true
 indexmap.workspace = true
 schemars.workspace = true

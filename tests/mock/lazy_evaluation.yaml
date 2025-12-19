@@ -1,0 +1,91 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions and limitations under
+# the License.
+
+# Test lazy evaluation: only execute steps that are actually needed
+#
+# This workflow tests that:
+# 1. When $if condition is true, only the "then" branch steps execute
+# 2. When $if condition is false, only the "else" branch steps execute
+# 3. Steps that would fail if executed are NOT executed when on the non-taken branch
+#
+# The key test is that when use_success=true, the failing_step is NOT executed,
+# even though it's defined in the workflow and referenced in $if.
+
+schema: https://stepflow.org/schemas/v1/flow.json
+name: Lazy Evaluation Test
+description: Test that $if conditionally executes only the needed branch
+
+input_schema:
+  type: object
+  properties:
+    use_success:
+      type: boolean
+      description: If true, use success step; if false, use failing step
+
+steps:
+  # This step always succeeds
+  - id: success_step
+    component: /mock/error
+    input:
+      mode: succeed
+
+  # This step uses an input that has no behavior defined, so it will fail if executed
+  - id: failing_step
+    component: /mock/error
+    input:
+      mode: undefined_mode_will_fail
+
+output:
+  # Use $if to conditionally select which step result to use.
+  # With lazy evaluation, only the selected branch's step should execute.
+  result:
+    $if:
+      $input: use_success
+    then:
+      $step: success_step
+      path: output
+    else:
+      $step: failing_step
+      path: output
+
+test:
+  cases:
+    # When use_success=true, only success_step should execute
+    # The failing_step should NOT execute, so the workflow should succeed
+    - name: lazy_evaluation_true_branch
+      description: When condition is true, only the then-branch step executes
+      input:
+        use_success: true
+      output:
+        outcome: success
+        result:
+          result: succeeded
+
+    # When use_success=false, the failing_step will execute and fail
+    # This verifies that the step DOES run when it's on the taken branch
+    - name: lazy_evaluation_false_branch
+      description: When condition is false, the else-branch step executes (and fails)
+      input:
+        use_success: false
+      output:
+        outcome: failed
+        error:
+          code: 500
+          message: step "failing_step" failed
+          data:
+            stack:
+            - attachments:
+              - 'Component: /error'
+              - Component execution failed for step 'failing_step'
+              - No behavior defined for /error on {"mode":"undefined_mode_will_fail"}
+              error: step "failing_step" failed
+            - error: error executing user-defined function

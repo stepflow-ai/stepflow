@@ -18,16 +18,16 @@ use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
 use stepflow_core::BlobId;
 use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
-    FlowResult, ValueExpr,
-    values::{ValueRef, ValueResolver},
-    workflow::{Flow, StepId, WorkflowOverrides},
+    FlowResult,
+    values::{StepContext as _, ValueRef},
+    workflow::{Flow, WorkflowOverrides},
 };
 use stepflow_observability::{RunInfoGuard, StepIdGuard};
 use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
 use stepflow_state::{StateStore, StepResult};
 use uuid::Uuid;
 
-use crate::{ExecutionError, Result, StateValueLoader, StepflowExecutor, write_cache::WriteCache};
+use crate::{ExecutionError, Result, StepflowExecutor};
 
 /// Execute a workflow and return the result.
 pub(crate) async fn execute_workflow(
@@ -90,9 +90,6 @@ pub(crate) async fn execute_workflow(
         Ok(FlowResult::Success(_)) => {
             log::info!("Workflow execution completed successfully");
         }
-        Ok(FlowResult::Skipped { .. }) => {
-            log::info!("Workflow execution completed with skipped result");
-        }
         Ok(FlowResult::Failed(error)) => {
             log::warn!("Workflow execution failed: {}", error.message);
         }
@@ -109,10 +106,8 @@ pub(crate) async fn execute_workflow(
 /// This serves as the core execution engine that can be used directly for
 /// run-to-completion execution, or controlled step-by-step by the debug session.
 pub struct WorkflowExecutor {
-    /// Dependency tracker for determining runnable steps
-    tracker: stepflow_analysis::DependencyTracker,
-    /// Value resolver for resolving step inputs
-    resolver: ValueResolver<StateValueLoader>,
+    /// Execution tracker for managing workflow execution state
+    tracker: crate::tracker::ExecutionTracker,
     /// State store for step results
     state_store: Arc<dyn StateStore>,
     /// Executor for getting plugins and execution context
@@ -121,8 +116,6 @@ pub struct WorkflowExecutor {
     flow: Arc<Flow>,
     /// Execution context for this session
     context: ExecutionContext,
-    /// Write-through cache for avoiding unnecessary flushes
-    write_cache: WriteCache,
 }
 
 impl WorkflowExecutor {
@@ -136,44 +129,27 @@ impl WorkflowExecutor {
         state_store: Arc<dyn StateStore>,
         variables: Option<HashMap<String, ValueRef>>,
     ) -> Result<Self> {
-        // Build dependencies for the workflow using the analysis crate
-        let analysis_result =
-            stepflow_analysis::validate_and_analyze(flow.clone(), flow_id.clone())
-                .change_context(ExecutionError::AnalysisError)?;
+        // Validate the workflow before execution.
+        // This is a sanity check since the Flow has been validated before executing.
+        let diagnostics =
+            stepflow_analysis::validate(&flow).change_context(ExecutionError::AnalysisError)?;
 
-        let analysis = match analysis_result.analysis {
-            Some(analysis) => analysis,
-            None => {
-                // Convert validation failure to execution error
-                let fatal = analysis_result.diagnostics().num_fatal;
-                let error = analysis_result.diagnostics().num_error;
-                return Err(
-                    error_stack::report!(ExecutionError::AnalysisError).attach_printable(format!(
-                        "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
-                    )),
-                );
-            }
-        };
+        if diagnostics.has_fatal() {
+            let fatal = diagnostics.num_fatal;
+            let error = diagnostics.num_error;
+            return Err(
+                error_stack::report!(ExecutionError::AnalysisError).attach_printable(format!(
+                    "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
+                )),
+            );
+        }
 
-        // Create tracker from analysis
-        let tracker = analysis.new_dependency_tracker();
-
-        // Create write cache and step ID mapping
-        let write_cache = WriteCache::new(flow.steps().len());
-
-        // Create state value loader and value resolver
-        let state_loader = StateValueLoader::new(
+        // Create tracker with workflow input and variables
+        let tracker = crate::tracker::ExecutionTracker::new(
+            &flow,
             input.clone(),
-            state_store.clone(),
-            write_cache.clone(),
-            flow.clone(),
+            variables.clone().unwrap_or_default(),
         );
-        let resolver = match variables {
-            Some(vars) => {
-                ValueResolver::new_with_variables(run_id, input, state_loader, flow.clone(), vars)
-            }
-            None => ValueResolver::new(run_id, input, state_loader, flow.clone()),
-        };
 
         // Create workflow-aware execution context
         let context = ExecutionContext::for_workflow_with_flow(
@@ -183,15 +159,18 @@ impl WorkflowExecutor {
             flow_id,
         );
 
-        Ok(Self {
+        let mut workflow_executor = Self {
             tracker,
-            resolver,
             state_store,
             executor,
-            write_cache,
             flow,
             context,
-        })
+        };
+
+        // Initialize needed steps using lazy evaluation
+        workflow_executor.initialize_needed_steps();
+
+        Ok(workflow_executor)
     }
 
     /// Get the execution ID for this executor.
@@ -206,7 +185,7 @@ impl WorkflowExecutor {
 
     /// Get currently runnable step indices.
     pub fn get_runnable_step_indices(&self) -> BitSet {
-        self.tracker.unblocked_steps()
+        self.tracker.ready_steps()
     }
 
     /// Recover execution state from the state store and fix any missed status transitions.
@@ -239,13 +218,10 @@ impl WorkflowExecutor {
             let step_index = step_result.step_idx();
 
             // Mark the step as completed in the tracker
-            let newly_unblocked = self.tracker.complete_step(step_index);
+            let newly_unblocked = self
+                .tracker
+                .complete_step(step_index, step_result.result().clone());
             recovered_steps.insert(step_index);
-
-            // Cache the step result to avoid unnecessary database queries
-            self.write_cache
-                .cache_step_result(step_index, step_result.result().clone())
-                .await;
 
             log::debug!(
                 "Recovered step {} ({}), newly unblocked: [{}]",
@@ -272,7 +248,7 @@ impl WorkflowExecutor {
         }
 
         // Step 4: Identify steps that should be runnable but aren't
-        let should_be_runnable = self.tracker.unblocked_steps();
+        let should_be_runnable = self.tracker.ready_steps();
         let mut steps_to_fix = BitSet::new();
 
         for step_index in should_be_runnable.iter() {
@@ -298,11 +274,6 @@ impl WorkflowExecutor {
         // Step 5: Update status for steps that need fixing
         let corrections_made = steps_to_fix.len();
         if corrections_made > 0 {
-            // Cache the status updates
-            self.write_cache
-                .cache_step_statuses(StepStatus::Runnable, &steps_to_fix)
-                .await;
-
             // Update in state store
             self.state_store
                 .queue_write(stepflow_state::StateWriteOperation::UpdateStepStatuses {
@@ -327,8 +298,10 @@ impl WorkflowExecutor {
         Ok(corrections_made)
     }
 
-    /// Execute the workflow to completion using parallel execution.
-    /// This method runs until all steps are completed and returns the final result.
+    /// Execute the workflow to completion using parallel execution with lazy evaluation.
+    ///
+    /// This method dynamically determines which steps are needed based on expression
+    /// evaluation, only executing steps that are actually required for the output.
     pub async fn execute_to_completion(&mut self) -> Result<FlowResult> {
         // Record start time for metrics
         let start_time = std::time::Instant::now();
@@ -337,42 +310,43 @@ impl WorkflowExecutor {
 
         log::debug!("Starting execution of {} steps", self.flow.steps().len());
 
-        // Start initial unblocked steps
-        let initial_unblocked = self.tracker.unblocked_steps();
+        // Initialize: evaluate output's needed_steps and add must_execute steps
+        self.initialize_needed_steps();
+
+        // Get initial ready steps
+        let initial_ready = self.tracker.ready_steps();
         log::debug!(
             "Initially runnable steps: [{}]",
-            initial_unblocked
+            initial_ready
                 .iter()
                 .map(|idx| self.flow.step(idx).id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
 
-        self.start_unblocked_steps(&initial_unblocked, &mut running_tasks)
+        self.start_ready_steps(&initial_ready, &mut running_tasks)
             .await?;
 
         // Process task completions as they arrive
         while let Some((completed_step_index, step_result)) = running_tasks.next().await {
             let step_result = step_result?;
 
-            // Update tracker and store result
-            let newly_unblocked = self.tracker.complete_step(completed_step_index);
+            // Update tracker and store result - returns steps that were waiting on this one
+            let waiters = self
+                .tracker
+                .complete_step(completed_step_index, step_result.clone());
 
             // Record the completed result in the state store (non-blocking)
             let step_id = &self.flow.step(completed_step_index).id;
             log::debug!(
-                "Step {} completed, newly unblocked steps: [{}]",
+                "Step {} completed, waiters to re-evaluate: [{}]",
                 step_id,
-                newly_unblocked
+                waiters
                     .iter()
                     .map(|idx| self.flow.step(idx).id.as_str())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-            // Cache the step result before writing to state store
-            self.write_cache
-                .cache_step_result(completed_step_index, step_result.clone())
-                .await;
 
             self.state_store
                 .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
@@ -381,60 +355,74 @@ impl WorkflowExecutor {
                 })
                 .change_context(ExecutionError::StateError)?;
 
-            // Update status of newly unblocked steps (non-blocking)
-            if !newly_unblocked.is_empty() {
-                // Cache the status updates before writing to state store
-                self.write_cache
-                    .cache_step_statuses(StepStatus::Runnable, &newly_unblocked)
-                    .await;
+            // Re-evaluate steps that were waiting on this completion
+            for waiter_idx in waiters.iter() {
+                self.tracker.add_or_update_needed(waiter_idx, &self.flow);
+            }
 
+            // Re-evaluate output to see if we're done or need more steps
+            let output_needs = self.flow.output().needed_steps(&self.tracker);
+            if output_needs.is_empty() {
+                log::debug!("Output is ready, checking for must_execute steps");
+                // Output ready - but still need to wait for must_execute steps
+                if self.tracker.all_needed_completed() {
+                    log::debug!("All needed steps completed, finishing execution");
+                    break;
+                }
+            } else {
+                // Output needs more steps - add them with transitive deps
+                for idx in output_needs.iter() {
+                    self.tracker.add_or_update_needed(idx, &self.flow);
+                }
+            }
+
+            // Get newly ready steps (the tracker already excludes executing steps)
+            let newly_ready_to_start = self.tracker.ready_steps();
+
+            // Update status for newly ready steps
+            if !newly_ready_to_start.is_empty() {
                 self.state_store
                     .queue_write(stepflow_state::StateWriteOperation::UpdateStepStatuses {
                         run_id: self.context.run_id(),
                         status: StepStatus::Runnable,
-                        step_indices: newly_unblocked.clone(),
+                        step_indices: newly_ready_to_start.clone(),
                     })
                     .change_context(ExecutionError::StateError)?;
             }
 
-            // Start newly unblocked steps
-            self.start_unblocked_steps(&newly_unblocked, &mut running_tasks)
+            // Start newly ready steps
+            self.start_ready_steps(&newly_ready_to_start, &mut running_tasks)
                 .await?;
 
-            // Check if we can exit early: no running tasks and all required steps completed
-            // This allows us to finish as soon as possible without waiting for unnecessary steps
-            if running_tasks.is_empty() && self.tracker.all_required_completed() {
-                log::debug!("All required steps completed, finishing execution");
-                break;
+            // Check for deadlock: no running tasks but not done
+            if running_tasks.is_empty() && !self.tracker.all_needed_completed() {
+                log::error!(
+                    "Deadlock detected: no running tasks but needed steps not complete. Ready: {:?}",
+                    self.tracker.ready_steps().iter().collect::<Vec<_>>()
+                );
+                return Err(error_stack::report!(ExecutionError::Deadlock));
             }
         }
 
         // All required tasks completed - check for must_execute step failures before resolving output
         // If any must_execute step has failed, the workflow should fail
         for (step_index, step) in self.flow.steps().iter().enumerate() {
-            if step.must_execute() {
-                let step_id = StepId {
-                    index: step_index,
-                    flow: self.flow.clone(),
-                };
-                if let Some(FlowResult::Failed(error)) =
-                    self.write_cache.get_step_result(&step_id).await
-                {
-                    log::info!("Must-execute step '{}' failed, workflow fails", step.id);
-                    return Ok(FlowResult::Failed(error.clone()));
-                }
+            if step.must_execute()
+                && let Some(FlowResult::Failed(error)) = self.tracker.get_result(step_index)
+            {
+                log::info!("Must-execute step '{}' failed, workflow fails", step.id);
+                return Ok(FlowResult::Failed(error.clone()));
             }
         }
 
         // All must_execute steps succeeded - resolve the workflow output
-        let result = self.resolve_workflow_output().await?;
+        let result = self.resolve_workflow_output();
 
         // Record metrics
         let duration = start_time.elapsed().as_secs_f64();
         let outcome = match &result {
             FlowResult::Success { .. } => "success",
             FlowResult::Failed { .. } => "failed",
-            FlowResult::Skipped { .. } => "skipped",
         };
         stepflow_observability::record_workflow_execution(outcome, duration);
 
@@ -464,7 +452,7 @@ impl WorkflowExecutor {
         for (idx, step) in self.flow.steps().iter().enumerate() {
             let state = status_map.get(&idx).copied().unwrap_or_else(|| {
                 // Fallback: check if step is runnable using in-memory tracker
-                let runnable = self.tracker.unblocked_steps();
+                let runnable = self.tracker.ready_steps();
                 if runnable.contains(idx) {
                     StepStatus::Runnable
                 } else {
@@ -565,7 +553,7 @@ impl WorkflowExecutor {
 
         // Keep executing until the target step is runnable or completed
         loop {
-            let runnable = self.tracker.unblocked_steps();
+            let runnable = self.tracker.ready_steps();
 
             // Check if target step is runnable
             if runnable.contains(target_step_index) {
@@ -611,11 +599,20 @@ impl WorkflowExecutor {
     }
 
     /// Get the output/result of a specific step by ID.
-    pub async fn get_step_output(&self, step_id: &str) -> Result<FlowResult> {
-        self.resolver
-            .resolve_step(step_id)
-            .await
-            .change_context_lazy(|| ExecutionError::ResolveStepOutput(step_id.to_owned()))
+    pub fn get_step_output(&self, step_id: &str) -> Result<FlowResult> {
+        let step_index =
+            self.tracker
+                .step_index(step_id)
+                .ok_or_else(|| ExecutionError::StepNotFound {
+                    step: step_id.to_string(),
+                })?;
+
+        self.tracker.get_result(step_index).cloned().ok_or_else(|| {
+            ExecutionError::StepNotCompleted {
+                step: step_id.to_string(),
+            }
+            .into()
+        })
     }
 
     /// Get the details of a specific step for inspection.
@@ -630,7 +627,7 @@ impl WorkflowExecutor {
             })?;
 
         let step = &self.flow.step(step_index);
-        let runnable = self.tracker.unblocked_steps();
+        let runnable = self.tracker.ready_steps();
 
         let state = if runnable.contains(step_index) {
             StepStatus::Runnable
@@ -643,7 +640,6 @@ impl WorkflowExecutor {
             {
                 Ok(result) => match result {
                     FlowResult::Success(_) => StepStatus::Completed,
-                    FlowResult::Skipped { .. } => StepStatus::Skipped,
                     FlowResult::Failed { .. } => StepStatus::Failed,
                 },
                 Err(_) => StepStatus::Blocked,
@@ -657,7 +653,6 @@ impl WorkflowExecutor {
                 component: step.component.to_string(),
             },
             input: step.input.clone(),
-            skip_if: step.skip_if.clone(),
             on_error: step.on_error_or_default(),
             state,
         })
@@ -673,46 +668,16 @@ impl WorkflowExecutor {
         let component_string = step.component.to_string();
 
         // Check if the step is runnable
-        if !self.tracker.unblocked_steps().contains(step_index) {
+        if !self.tracker.ready_steps().contains(step_index) {
             return Err(ExecutionError::StepNotRunnable {
                 step: step.id.clone(),
             }
             .into());
         }
 
-        // Check skip condition if present
-        if let Some(skip_if) = &step.skip_if
-            && self.should_skip_step(&step.id, skip_if).await?
-        {
-            let result = FlowResult::Skipped { reason: None };
-            self.record_step_completion(step_index, &result).await?;
-            return Ok(StepExecutionResult::new(
-                step_index,
-                step_id,
-                component_string,
-                result,
-            ));
-        }
-
         // Resolve step inputs
-        let step_input = match self
-            .resolver
-            .resolve(&step.input)
-            .await
-            .change_context_lazy(|| ExecutionError::ResolveStepInput(step.id.clone()))?
-        {
+        let step_input = match step.input.resolve(&self.tracker) {
             FlowResult::Success(result) => result,
-            FlowResult::Skipped { .. } => {
-                // Step inputs contain skipped values - skip this step
-                let result = FlowResult::Skipped { reason: None };
-                self.record_step_completion(step_index, &result).await?;
-                return Ok(StepExecutionResult::new(
-                    step_index,
-                    step_id,
-                    component_string,
-                    result,
-                ));
-            }
             FlowResult::Failed(error) => {
                 return Ok(StepExecutionResult::new(
                     step_index,
@@ -731,15 +696,8 @@ impl WorkflowExecutor {
         // Create step-specific execution context reusing the workflow context
         let step_context = self.context.with_step(step_id.clone());
 
-        let result = execute_step_async(
-            plugin,
-            step,
-            &resolved_component,
-            step_input,
-            step_context,
-            &self.resolver,
-        )
-        .await?;
+        let result =
+            execute_step_async(plugin, step, &resolved_component, step_input, step_context).await?;
 
         // Record the result
         self.record_step_completion(step_index, &result).await?;
@@ -758,13 +716,8 @@ impl WorkflowExecutor {
         step_index: usize,
         result: &FlowResult,
     ) -> Result<()> {
-        // Update dependency tracker
-        self.tracker.complete_step(step_index);
-
-        // Cache the step result before writing to state store
-        self.write_cache
-            .cache_step_result(step_index, result.clone())
-            .await;
+        // Update tracker (stores result internally)
+        self.tracker.complete_step(step_index, result.clone());
 
         // Record in state store (non-blocking)
         let step_id = &self.flow.step(step_index).id;
@@ -779,11 +732,8 @@ impl WorkflowExecutor {
     }
 
     /// Resolve the workflow output.
-    pub async fn resolve_workflow_output(&self) -> Result<FlowResult> {
-        self.resolver
-            .resolve(self.flow.output())
-            .await
-            .change_context(ExecutionError::ResolveWorkflowOutput)
+    pub fn resolve_workflow_output(&self) -> FlowResult {
+        self.flow.output().resolve(&self.tracker)
     }
 
     /// Get access to the state store for querying step results.
@@ -791,143 +741,96 @@ impl WorkflowExecutor {
         &self.state_store
     }
 
-    /// Check if a step should be skipped based on its skip condition.
+    /// Initialize the needed steps set using lazy evaluation.
     ///
-    /// Evaluates the skip_if expression and returns true if the step should be skipped.
-    /// - If the expression resolves to a truthy value, the step is skipped
-    /// - If the expression references skipped steps or fails, the step is NOT skipped
-    ///   (allowing the step to potentially handle the skip/error via on_skip logic)
-    async fn should_skip_step(&self, step_id: &str, skip_if: &ValueExpr) -> Result<bool> {
-        let resolved_value = self
-            .resolver
-            .resolve(skip_if)
-            .await
-            .change_context_lazy(|| ExecutionError::ResolveSkipIf(step_id.to_owned()))?;
-
-        match resolved_value {
-            FlowResult::Success(result) => Ok(result.is_truthy()),
-            FlowResult::Skipped { .. } => Ok(false), // Don't skip if condition references skipped values
-            FlowResult::Failed { .. } => Ok(false),  // Don't skip if condition evaluation failed
-        }
-    }
-
-    /// Start all newly unblocked steps, handling skips and starting executions.
-    ///
-    /// This method implements a "fast skip" optimization where skip conditions and input-based
-    /// skips are evaluated synchronously before spawning async tasks. This avoids the overhead
-    /// of creating async tasks for steps that will immediately skip, and handles skip chains
-    /// (A skips → B skips → C skips) efficiently in a single loop.
-    ///
-    /// The loop continues until no more steps can be fast-skipped, ensuring that cascading
-    /// skips are processed without waiting for async execution cycles.
-    async fn start_unblocked_steps(
-        &mut self,
-        unblocked: &BitSet,
-        running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
-    ) -> Result<()> {
-        // Filter out the virtual output node (last index in dependency graph)
-        let virtual_output_index = self.flow.steps().len();
-        let mut steps_to_process = unblocked.clone();
-        steps_to_process.remove(virtual_output_index);
-
-        // Fast skip loop: process chains of skippable steps synchronously
-        // This avoids spawning async tasks for steps that will immediately skip
-        while !steps_to_process.is_empty() {
-            let mut additional_unblocked = BitSet::new();
-
-            for step_index in steps_to_process.iter() {
-                // Extract step data to avoid borrowing issues
-                let (step_id, skip_if, step_input) = {
-                    let step = &self.flow.step(step_index);
-                    (step.id.clone(), step.skip_if.clone(), step.input.clone())
-                };
-
-                // Check explicit skip condition (skip_if expression)
-                if let Some(skip_if) = &skip_if {
-                    let should_skip = self.should_skip_step(&step_id, skip_if).await?;
-                    log::debug!("Step {step_id} skip condition evaluated to {should_skip}");
-                    if should_skip {
-                        // Skip this step and collect any newly unblocked dependent steps
-                        additional_unblocked
-                            .union_with(&self.skip_step(&step_id, step_index).await?);
-                        continue;
-                    }
-                }
-
-                // Check for input-based skips: if any input references a skipped step,
-                // this step should also be skipped (unless using on_skip with use_default)
-                let step_input = self
-                    .resolver
-                    .resolve(&step_input)
-                    .await
-                    .change_context_lazy(|| ExecutionError::ResolveStepInput(step_id.clone()))?;
-                let step_input = match step_input {
-                    FlowResult::Success(result) => result,
-                    FlowResult::Skipped { .. } => {
-                        // Step inputs contain skipped values - propagate the skip
-                        additional_unblocked
-                            .union_with(&self.skip_step(&step_id, step_index).await?);
-                        continue;
-                    }
-                    FlowResult::Failed(error) => {
-                        log::error!(
-                            "Failed to resolve inputs for step {step_id} - input resolution failed: {error:?}"
-                        );
-                        return Err(error_stack::report!(ExecutionError::StepFailed {
-                            step: step_id
-                        })
-                        .attach_printable(format!("Input resolution failed: {}", error.message))
-                        .attach_printable(format!("Error code: {}", error.code)));
-                    }
-                };
-
-                // Step passed all skip checks - start async execution
-                self.start_step_execution(step_index, step_input, running_tasks)
-                    .await?;
-            }
-
-            // Process any steps that were unblocked by skips in this iteration
-            // This enables skip chains: A skips → B skips → C skips
-            steps_to_process = additional_unblocked;
-        }
-
-        Ok(())
-    }
-
-    /// Skip a step and record the result.
-    async fn skip_step(&mut self, step_id: &str, step_index: usize) -> Result<BitSet> {
-        log::debug!("Skipping step {step_id} at index {step_index}");
-
-        let newly_unblocked_from_skip = self.tracker.complete_step(step_index);
-        let skip_result = FlowResult::Skipped { reason: None };
-
-        // Cache the skipped result before writing to state store
-        self.write_cache
-            .cache_step_result(step_index, skip_result.clone())
-            .await;
-
-        // Record the skipped result in the state store (non-blocking)
-        if let Err(e) =
-            self.state_store
-                .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                    run_id: self.context.run_id(),
-                    step_result: StepResult::new(step_index, step_id, skip_result),
-                })
-        {
-            log::error!("Failed to queue step result: {e:?}");
-        }
-
+    /// This dynamically determines which steps are needed based on the workflow output
+    /// expression and any must_execute steps. Uses `add_needed_with_deps` to evaluate
+    /// expressions and transitively discover all required steps.
+    fn initialize_needed_steps(&mut self) {
+        // 1. Evaluate output's needed_steps and add with transitive deps
+        let output_needs = self.flow.output().needed_steps(&self.tracker);
         log::debug!(
-            "Step {} skipped, newly unblocked steps: [{}]",
-            step_id,
-            newly_unblocked_from_skip
+            "Output needs steps: [{}]",
+            output_needs
                 .iter()
                 .map(|idx| self.flow.step(idx).id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
 
-        Ok(newly_unblocked_from_skip)
+        for idx in output_needs.iter() {
+            self.tracker.add_or_update_needed(idx, &self.flow);
+        }
+
+        // 2. Add must_execute steps with their transitive deps
+        let must_execute_indices: Vec<usize> = self
+            .flow
+            .steps()
+            .iter()
+            .enumerate()
+            .filter(|(_, step)| step.must_execute())
+            .map(|(idx, _)| idx)
+            .collect();
+
+        for idx in must_execute_indices {
+            self.tracker.add_or_update_needed(idx, &self.flow);
+        }
+
+        log::debug!(
+            "Initial ready steps after evaluation: [{}]",
+            self.tracker
+                .ready_steps()
+                .iter()
+                .map(|idx| self.flow.step(idx).id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    /// Start all newly ready steps and begin their executions.
+    async fn start_ready_steps(
+        &mut self,
+        ready: &BitSet,
+        running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
+    ) -> Result<()> {
+        // Filter out the virtual output node (last index in dependency graph)
+        let virtual_output_index = self.flow.steps().len();
+        let mut steps_to_process = ready.clone();
+        steps_to_process.remove(virtual_output_index);
+
+        for step_index in steps_to_process.iter() {
+            // Extract step data to avoid borrowing issues
+            let (step_id, step_input) = {
+                let step = &self.flow.step(step_index);
+                (step.id.clone(), step.input.clone())
+            };
+
+            // Resolve step inputs
+            let step_input = match step_input.resolve(&self.tracker) {
+                FlowResult::Success(result) => result,
+                FlowResult::Failed(error) => {
+                    log::error!(
+                        "Failed to resolve inputs for step {} - input resolution failed: {:?}",
+                        step_id,
+                        error
+                    );
+                    return Err(error_stack::report!(ExecutionError::StepFailed {
+                        step: step_id.clone()
+                    })
+                    .attach_printable(format!("Input resolution failed: {}", error.message))
+                    .attach_printable(format!("Error code: {}", error.code)));
+                }
+            };
+
+            // Mark step as executing to prevent it from appearing in ready_steps() again
+            self.tracker.start_step(step_index);
+
+            // Start async execution
+            self.start_step_execution(step_index, step_input, running_tasks)
+                .await?;
+        }
+
+        Ok(())
     }
 
     /// Start asynchronous execution of a step.
@@ -949,7 +852,6 @@ impl WorkflowExecutor {
         // Clone necessary data for the async task
         let flow = self.flow.clone();
         let base_context = self.context.clone();
-        let resolver = self.resolver.clone();
 
         // Create the async task
         let plugin_clone = plugin.clone();
@@ -964,7 +866,6 @@ impl WorkflowExecutor {
                 &resolved_component_clone,
                 step_input,
                 step_context,
-                &resolver,
             )
             .await;
             (step_index, result)
@@ -983,7 +884,6 @@ pub(crate) async fn execute_step_async(
     resolved_component: &str,
     input: ValueRef,
     context: ExecutionContext,
-    resolver: &ValueResolver<StateValueLoader>,
 ) -> Result<FlowResult> {
     use stepflow_observability::fastrace::prelude::*;
 
@@ -1028,42 +928,14 @@ pub(crate) async fn execute_step_async(
     match &result {
         FlowResult::Failed(error) => {
             match step.on_error_or_default() {
-                stepflow_core::workflow::ErrorAction::Skip => {
-                    log::debug!(
-                        "Step {} failed but configured to skip: {:?}",
-                        step.id,
-                        error
-                    );
-                    Ok(FlowResult::Skipped { reason: None })
-                }
                 stepflow_core::workflow::ErrorAction::UseDefault { default_value } => {
                     log::debug!(
                         "Step {} failed but using default value: {:?}",
                         step.id,
                         error
                     );
-                    let template = match default_value {
-                        Some(default) => default.clone(),
-                        None => ValueExpr::null(),
-                    };
-                    // Resolve the ValueTemplate to get the actual value
-                    let default_value =
-                        resolver.resolve(&template).await.change_context_lazy(|| {
-                            ExecutionError::ResolveDefaultValue(step.id.clone())
-                        })?;
-                    match default_value {
-                        FlowResult::Success(result) => Ok(FlowResult::Success(result)),
-                        FlowResult::Skipped { .. } => {
-                            // Default value resolved to skipped - treat as null
-                            Ok(FlowResult::Success(ValueRef::new(serde_json::Value::Null)))
-                        }
-                        FlowResult::Failed(error) => {
-                            error_stack::bail!(ExecutionError::internal(format!(
-                                "Default value resolution failed for step {}: {:?}",
-                                step.id, error
-                            )))
-                        }
-                    }
+                    let value = default_value.clone().unwrap_or(serde_json::Value::Null);
+                    Ok(FlowResult::Success(ValueRef::new(value)))
                 }
                 stepflow_core::workflow::ErrorAction::Fail => Ok(result),
                 stepflow_core::workflow::ErrorAction::Retry => {
@@ -1115,7 +987,6 @@ pub struct StepInspection {
     #[serde(flatten)]
     pub metadata: StepMetadata,
     pub input: stepflow_core::ValueExpr,
-    pub skip_if: Option<stepflow_core::ValueExpr>,
     pub on_error: stepflow_core::workflow::ErrorAction,
     pub state: StepStatus,
 }
@@ -1128,7 +999,7 @@ mod tests {
     use serde_json::json;
     use stepflow_core::FlowError;
     use stepflow_core::ValueExpr;
-    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder, StepId};
+    use stepflow_core::workflow::{Flow, FlowBuilder, Step, StepBuilder};
     use stepflow_mock::{MockComponentBehavior, MockPlugin};
     use stepflow_state::InMemoryStateStore;
 
@@ -1268,23 +1139,54 @@ mod tests {
             },
         ));
 
-        // Build dependencies using analysis crate
-        let analysis_result = stepflow_analysis::validate_and_analyze(
-            flow.clone(),
-            BlobId::new("a".repeat(64)).unwrap(),
-        )
-        .unwrap();
+        // Create tracker - starts empty with dynamic evaluation
+        let mut tracker = crate::tracker::ExecutionTracker::new(
+            &flow,
+            stepflow_core::values::ValueRef::new(serde_json::Value::Null),
+            std::collections::HashMap::new(),
+        );
 
-        // Create tracker from analysis
-        let analysis = analysis_result.analysis.unwrap();
-        let tracker = analysis.new_dependency_tracker();
+        // Initially empty - no steps needed yet
+        assert_eq!(tracker.ready_steps().len(), 0);
 
-        // Only step1 should be runnable initially
-        let unblocked = tracker.unblocked_steps();
-        assert_eq!(unblocked.len(), 1);
-        assert!(unblocked.contains(0)); // step1
+        // Evaluate what the output needs using needed_steps()
+        // The output is { $step: step2 }, which needs step2
+        let output_needs = flow.output().needed_steps(&tracker);
+        assert!(output_needs.contains(1)); // step2 is needed
 
-        // This confirms the tracker integration is working
+        // Add output deps directly (dynamic evaluation, no static transitive deps)
+        for idx in output_needs.iter() {
+            tracker.add_needed(idx);
+        }
+
+        // Evaluate step2's needs - it depends on step1
+        let step2_needs = flow.step(1).input.needed_steps(&tracker);
+        assert!(step2_needs.contains(0)); // step2 needs step1
+
+        // Set up waiting_on for step2 and add step1 to needed
+        tracker.set_waiting(1, step2_needs.clone());
+        for idx in step2_needs.iter() {
+            tracker.add_needed(idx);
+        }
+
+        // Only step1 should be ready (step2 is waiting on step1)
+        let ready = tracker.ready_steps();
+        assert_eq!(ready.len(), 1);
+        assert!(ready.contains(0)); // step1 is ready
+
+        // Complete step1 - step2 should become unblocked
+        let newly_unblocked = tracker.complete_step(
+            0,
+            FlowResult::Success(ValueRef::new(json!({"result": "done"}))),
+        );
+        assert!(newly_unblocked.contains(1)); // step2 is now unblocked
+
+        // Now step2 should be ready
+        let ready = tracker.ready_steps();
+        assert_eq!(ready.len(), 1);
+        assert!(ready.contains(1)); // step2 is now ready
+
+        // This confirms the tracker integration with lazy evaluation is working
     }
 
     #[tokio::test]
@@ -1432,7 +1334,7 @@ output:
         assert_eq!(runnable.len(), 0);
 
         // Resolve final output
-        let final_result = workflow_executor.resolve_workflow_output().await.unwrap();
+        let final_result = workflow_executor.resolve_workflow_output();
         match final_result {
             FlowResult::Success(result) => {
                 assert_eq!(result.as_ref(), &json!({"final": 30}));
@@ -1516,14 +1418,8 @@ output:
         // Recovery should have made status corrections (step2 should be marked as Runnable)
         assert_eq!(corrections_made, 1);
 
-        // Verify that step1 result is cached
-        let cached_result = workflow_executor
-            .write_cache
-            .get_step_result(&StepId {
-                index: 0,
-                flow: workflow_executor.flow().clone(),
-            })
-            .await;
+        // Verify that step1 result is stored in tracker
+        let cached_result = workflow_executor.tracker.get_result(0);
         assert!(cached_result.is_some());
         match cached_result.unwrap() {
             FlowResult::Success(result) => {
@@ -1849,7 +1745,7 @@ output:
                     .unwrap();
             }
         }
-        let sequential_result = sequential_executor.resolve_workflow_output().await.unwrap();
+        let sequential_result = sequential_executor.resolve_workflow_output();
 
         // Both should produce the same result
         match (&parallel_result, &sequential_result) {
@@ -1869,7 +1765,7 @@ steps:
   - id: failing_step
     component: /mock/error
     onError:
-      action: skip
+      action: useDefault
     input:
       mode: error
 output:
@@ -1885,12 +1781,12 @@ output:
             .await
             .unwrap();
 
-        // The workflow should complete with skipped result
+        // The workflow should complete with null (skip returns null now)
         match result {
-            FlowResult::Skipped { .. } => {
-                // Expected - the step failed but was configured to skip
+            FlowResult::Success(value) if value.as_ref().is_null() => {
+                // Expected - the step failed but was configured to skip, returns null
             }
-            _ => panic!("Expected skipped result, got: {result:?}"),
+            _ => panic!("Expected success with null result (skipped), got: {result:?}"),
         }
     }
 
@@ -2000,7 +1896,7 @@ steps:
   - id: success_step
     component: /mock/success
     onError:
-      action: skip
+      action: useDefault
     input: {}
 output:
   $step: success_step
@@ -2024,46 +1920,39 @@ output:
     }
 
     #[tokio::test]
-    async fn test_error_handling_skip_with_multi_step() {
-        // Test that when a step is skipped, downstream steps handle it correctly
+    async fn test_error_handling_skip_with_coalesce() {
+        // Test that when a step is skipped (returns null), $coalesce can provide a fallback
         let workflow_yaml = r#"
 schema: https://stepflow.org/schemas/v1/flow.json
 steps:
   - id: failing_step
     component: /mock/error
     onError:
-      action: skip
+      action: useDefault
     input:
       mode: error
-  - id: downstream_step
-    component: /mock/success
-    input:
-      $step: failing_step
 output:
-  $step: downstream_step
+  # Use $coalesce to handle null from skipped step
+  $coalesce:
+    - { $step: failing_step }
+    - { fallback: "skipped" }
 "#;
 
-        let mock_behaviors = vec![
-            (
-                "/mock/error",
-                FlowResult::Failed(FlowError::new(500, "Test error")),
-            ),
-            (
-                "/mock/success",
-                FlowResult::Success(ValueRef::new(json!({"handled_skip":true}))),
-            ),
-        ];
+        let mock_behaviors = vec![(
+            "/mock/error",
+            FlowResult::Failed(FlowError::new(500, "Test error")),
+        )];
 
         let result = execute_workflow_from_yaml_simple(workflow_yaml, json!({}), mock_behaviors)
             .await
             .unwrap();
 
-        // The downstream step should skip because its input depends on a skipped step
+        // The output should use the fallback value since the step was skipped (null)
         match result {
-            FlowResult::Skipped { .. } => {
-                // Expected - the downstream step should be skipped when its input is skipped
+            FlowResult::Success(value) => {
+                assert_eq!(value.as_ref(), &json!({"fallback": "skipped"}));
             }
-            _ => panic!("Expected skipped result for downstream step, got: {result:?}"),
+            _ => panic!("Expected success with fallback result, got: {result:?}"),
         }
     }
 }

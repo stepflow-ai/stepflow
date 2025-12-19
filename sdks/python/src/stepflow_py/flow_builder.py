@@ -239,7 +239,6 @@ class FlowBuilder:
         input_data: Any = None,  # Accept any data structure
         input_schema: dict[str, Any] | Schema | None = None,
         output_schema: dict[str, Any] | Schema | None = None,
-        skip_if: StepReference | WorkflowInput | Value | None = None,
         on_error: ErrorAction | None = None,
         must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
@@ -264,18 +263,6 @@ class FlowBuilder:
         input_schema_obj = input_schema
         output_schema_obj = output_schema
 
-        # Convert skip_if to ValueExpr
-        skip_if_expr = None
-        if skip_if is not None:
-            if isinstance(skip_if, Value):
-                skip_if_expr = skip_if.to_value_expr()
-            elif isinstance(skip_if, StepReference | WorkflowInput):
-                skip_if_expr = Value._convert_to_value_expr(skip_if)
-            else:
-                raise ValueError(
-                    "skip_if must be a Value, StepReference, or WorkflowInput"
-                )
-
         # on_error is already an ErrorAction or None
         on_error_action = on_error
 
@@ -291,7 +278,6 @@ class FlowBuilder:
             input=input_expr,
             inputSchema=input_schema_obj,  # type: ignore
             outputSchema=output_schema_obj,  # type: ignore
-            skipIf=skip_if_expr,
             onError=on_error_action,
             mustExecute=must_execute,
             metadata=metadata or {},
@@ -437,10 +423,6 @@ class FlowBuilder:
         # Get references from step input
         if step.input:
             references.extend(self.get_value_expr_references(step.input))
-
-        # Get references from skipIf condition
-        if step.skipIf:
-            references.extend(self.get_value_expr_references(step.skipIf))
 
         # Get references from onError default value
         if (
