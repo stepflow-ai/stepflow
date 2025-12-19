@@ -344,3 +344,41 @@ This specifically allows local development to use the same workflow definitions 
 
 Locally, component servers are started to execute the workflow.
 In production, the Stepflow runtime connects to remote component servers over HTTP, allowing the component servers to be separately deployed and scaled.
+
+## Runtime Environment Variables
+
+Stepflow behavior can be configured through environment variables. These are separate from the [environment variable substitution](#environment-variable-substitution) used in configuration files.
+
+### Orchestrator Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STEPFLOW_COMPONENT_STDERR` | `quiet` | Controls how component server stderr is handled. `quiet` buffers stderr and only shows it on crash. `verbose` logs all stderr immediately (useful for debugging). |
+
+#### Stderr Handling
+
+When using stdio transport, component servers write logs and errors to stderr. By default, Stepflow uses **quiet mode** to reduce log noise:
+
+- **Quiet mode** (default): Buffers stderr output and only displays it if the component server crashes. During initialization, all stderr is preserved (unbounded). After initialization, only the last 100 lines are kept.
+- **Verbose mode**: Logs all stderr immediately with the prefix `Component stderr:`. Useful for debugging component issues.
+
+```bash
+# Enable verbose stderr for debugging
+STEPFLOW_COMPONENT_STDERR=verbose stepflow run --flow workflow.yaml
+```
+
+### Python SDK Variables
+
+The Python SDK supports additional environment variables for observability:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STEPFLOW_OTLP_ENDPOINT` | (none) | OpenTelemetry collector endpoint for traces and logs |
+| `STEPFLOW_LOG_DESTINATION` | `stderr` (or `otlp` if endpoint set) | Where to send logs: `stderr`, `otlp`, `file`, or comma-separated combination |
+| `STEPFLOW_LOG_LEVEL` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `STEPFLOW_LOG_FILE` | (none) | File path when using `file` log destination |
+| `STEPFLOW_TRACE_ENABLED` | `true` | Enable/disable OpenTelemetry tracing |
+
+:::tip Reducing Log Noise
+When `STEPFLOW_OTLP_ENDPOINT` is configured, the Python SDK automatically defaults `STEPFLOW_LOG_DESTINATION` to `otlp` instead of `stderr`. This sends logs to your observability backend rather than the orchestrator's stderr, reducing noise in production deployments.
+:::

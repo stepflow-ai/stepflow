@@ -83,6 +83,71 @@ fn normalize_json_value(mut value: serde_json::Value) -> serde_json::Value {
     }
 }
 
+/// Check if actual FlowResult matches expected FlowResult using partial matching.
+/// Only fields present in `expected` are checked against `actual`.
+fn partial_match(expected: &FlowResult, actual: &FlowResult) -> bool {
+    match (expected, actual) {
+        (FlowResult::Success(exp), FlowResult::Success(act)) => {
+            partial_match_json(exp.as_ref(), act.as_ref())
+        }
+        (FlowResult::Failed(exp), FlowResult::Failed(act)) => {
+            // For errors, check code, message, and data if specified
+            if exp.code != act.code || exp.message != act.message {
+                return false;
+            }
+            // Only check data if expected has data specified
+            if let Some(exp_data) = &exp.data {
+                if let Some(act_data) = &act.data {
+                    if !partial_match_json(exp_data.as_ref(), act_data.as_ref()) {
+                        return false;
+                    }
+                } else {
+                    return false; // Expected data but actual has none
+                }
+            }
+            true
+        }
+        _ => false, // Different variants don't match
+    }
+}
+
+/// Check if actual JSON value contains all fields from expected JSON value.
+/// Extra fields in actual are allowed.
+fn partial_match_json(expected: &serde_json::Value, actual: &serde_json::Value) -> bool {
+    use serde_json::Value;
+
+    match (expected, actual) {
+        (Value::Object(exp_map), Value::Object(act_map)) => {
+            // All keys in expected must exist in actual with matching values
+            for (key, exp_val) in exp_map {
+                match act_map.get(key) {
+                    Some(act_val) => {
+                        if !partial_match_json(exp_val, act_val) {
+                            return false;
+                        }
+                    }
+                    None => return false, // Expected key not found in actual
+                }
+            }
+            true
+        }
+        (Value::Array(exp_arr), Value::Array(act_arr)) => {
+            // Arrays must have same length and matching elements
+            if exp_arr.len() != act_arr.len() {
+                return false;
+            }
+            for (exp_val, act_val) in exp_arr.iter().zip(act_arr.iter()) {
+                if !partial_match_json(exp_val, act_val) {
+                    return false;
+                }
+            }
+            true
+        }
+        // For primitives, do exact match
+        (exp, act) => exp == act,
+    }
+}
+
 /// Show a diff between expected and actual outputs using the similar crate
 fn show_diff(expected: &FlowResult, actual: &FlowResult, test_name: &str) {
     let expected_yaml = serde_yaml_ng::to_string(expected)
@@ -416,7 +481,8 @@ async fn run_single_flow_test(
                 match &test_case.output {
                     Some(expected_output) => {
                         let normalized_expected = normalize_flow_result(expected_output.clone());
-                        if normalized_output != normalized_expected {
+                        // Use partial matching - expected fields must match, extra fields in actual are OK
+                        if !partial_match(&normalized_expected, &normalized_output) {
                             if options.diff {
                                 show_diff(
                                     &normalized_expected,
