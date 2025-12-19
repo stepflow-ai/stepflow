@@ -18,11 +18,15 @@ steps:
   - id: error_step
     component: "/test_stdio/error_test"
     input:
-      mode: { $from: { workflow: input }, path: "mode" }
-      message: { $from: { workflow: input }, path: "message" }
+      mode:
+        $input: mode
+      message:
+        $input: message
 
 output:
-  result: { $from: { step: error_step }, path: "result" }
+  result:
+    $step: error_step
+    path: result
 
 test:
   # Use inline config to avoid initializing the HTTP plugin from shared config

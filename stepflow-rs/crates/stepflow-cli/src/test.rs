@@ -107,7 +107,6 @@ fn partial_match(expected: &FlowResult, actual: &FlowResult) -> bool {
             }
             true
         }
-        (FlowResult::Skipped { .. }, FlowResult::Skipped { .. }) => true,
         _ => false, // Different variants don't match
     }
 }

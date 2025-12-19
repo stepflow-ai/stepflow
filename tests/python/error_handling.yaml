@@ -45,13 +45,18 @@ steps:
   - id: error_step
     component: /python/udf
     input:
-      blob_id: { $from: { step: create_error_test_blob }, path: blob_id }
+      blob_id:
+        $step: create_error_test_blob
+        path: blob_id
       input:
-        mode: { $from: { workflow: input }, path: "mode" }
-        message: { $from: { workflow: input }, path: "message" }
+        mode:
+          $input: mode
+        message:
+          $input: message
 
 output:
-  result: { $from: { step: error_step } }
+  result:
+    $step: error_step
 
 test:
   cases:

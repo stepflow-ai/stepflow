@@ -334,10 +334,10 @@ impl ReceiveMessageLoop {
 
     /// Buffer a stderr line using two-phase strategy:
     /// - Before initialization: keep all lines (unbounded)
-    /// - After initialization: keep only the last MAX_STDERR_LINES
+    /// - After initialization: keep only the last max_stderr_buffer lines
     fn buffer_stderr_line(&mut self, line: String) {
         // After initialization, limit buffer size
-        if self.initialized && self.stderr_buffer.len() >= MAX_STDERR_LINES {
+        if self.initialized && self.stderr_buffer.len() >= self.max_stderr_buffer {
             self.stderr_buffer.pop_front();
         }
         // During initialization, keep all lines (unbounded)
@@ -345,7 +345,7 @@ impl ReceiveMessageLoop {
     }
 
     /// Mark the component server as initialized.
-    /// Trims the buffer to MAX_STDERR_LINES if it grew large during init.
+    /// Trims the buffer to max_stderr_buffer if it grew large during init.
     fn mark_initialized(&mut self) {
         if self.initialized {
             return; // Already initialized
@@ -355,8 +355,8 @@ impl ReceiveMessageLoop {
             "Component initialized, stderr buffer has {} lines",
             self.stderr_buffer.len()
         );
-        // Trim buffer to MAX_STDERR_LINES if it grew large during init
-        while self.stderr_buffer.len() > MAX_STDERR_LINES {
+        // Trim buffer to max_stderr_buffer if it grew large during init
+        while self.stderr_buffer.len() > self.max_stderr_buffer {
             self.stderr_buffer.pop_front();
         }
     }
