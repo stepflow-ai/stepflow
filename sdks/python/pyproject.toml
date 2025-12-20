@@ -213,3 +213,19 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv.workspace]
+members = [
+    "stepflow",
+    "stepflow-api",
+    "stepflow-client",
+    "stepflow-runtime",
+    "stepflow-server",
+]
+
+[tool.uv.sources]
+stepflow = { workspace = true }
+stepflow-api = { workspace = true }
+stepflow-client = { workspace = true }
+stepflow-runtime = { workspace = true }
+stepflow-server = { workspace = true }

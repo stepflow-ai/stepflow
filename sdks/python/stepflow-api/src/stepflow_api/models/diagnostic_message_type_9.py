@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, TypeVar
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..models.diagnostic_message_type_9_type import DiagnosticMessageType9Type
+
+T = TypeVar("T", bound="DiagnosticMessageType9")
+
+
+@_attrs_define
+class DiagnosticMessageType9:
+    """
+    Attributes:
+        field (str):
+        step_id (str):
+        type_ (DiagnosticMessageType9Type):
+        violation (str):
+    """
+
+    field: str
+    step_id: str
+    type_: DiagnosticMessageType9Type
+    violation: str
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        field = self.field
+
+        step_id = self.step_id
+
+        type_ = self.type_.value
+
+        violation = self.violation
+
+        field_dict: dict[str, Any] = {}
+        field_dict.update(self.additional_properties)
+        field_dict.update(
+            {
+                "field": field,
+                "stepId": step_id,
+                "type": type_,
+                "violation": violation,
+            }
+        )
+
+        return field_dict
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        d = dict(src_dict)
+        field = d.pop("field")
+
+        step_id = d.pop("stepId")
+
+        type_ = DiagnosticMessageType9Type(d.pop("type"))
+
+        violation = d.pop("violation")
+
+        diagnostic_message_type_9 = cls(
+            field=field,
+            step_id=step_id,
+            type_=type_,
+            violation=violation,
+        )
+
+        diagnostic_message_type_9.additional_properties = d
+        return diagnostic_message_type_9
+
+    @property
+    def additional_keys(self) -> list[str]:
+        return list(self.additional_properties.keys())
+
+    def __getitem__(self, key: str) -> Any:
+        return self.additional_properties[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.additional_properties[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self.additional_properties[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.additional_properties

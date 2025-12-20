@@ -36,40 +36,106 @@ class TestStepflowClient:
         error = StepflowClientError("Test error")
         assert str(error) == "Test error"
 
+    def test_client_error_with_status_code(self):
+        error = StepflowClientError("Test error", status_code=404)
+        assert error.status_code == 404
+
+    def test_client_error_with_details(self):
+        error = StepflowClientError("Test error", details={"key": "value"})
+        assert error.details == {"key": "value"}
+
 
 class TestStepflowClientIntegration:
-    """Integration tests that require a running server."""
+    """Integration tests that require a running server.
+
+    These tests are skipped by default. The stepflow-runtime package
+    has comprehensive e2e tests that exercise the client through the runtime.
+    """
 
     @pytest.mark.skip(reason="Requires running stepflow server")
-    async def test_client_run(self):
+    async def test_client_store_flow(self):
+        """Test storing a flow definition."""
         async with StepflowClient("http://localhost:7837") as client:
-            result = await client.run(
-                "examples/basic/workflow.yaml",
-                {"m": 3, "n": 4},
+            flow = {
+                "schema": "https://stepflow.org/schemas/v1/flow.json",
+                "name": "test-flow",
+                "steps": [
+                    {
+                        "id": "echo",
+                        "component": "/builtin/eval",
+                        "input": {"expr": "'hello'"},
+                    }
+                ],
+                "output": {"result": {"$from": {"step": "echo"}}},
+            }
+            response = await client.store_flow(flow)
+            assert response.flow_id is not None
+
+    @pytest.mark.skip(reason="Requires running stepflow server")
+    async def test_client_create_run(self):
+        """Test creating and executing a run."""
+        async with StepflowClient("http://localhost:7837") as client:
+            # First store a flow
+            flow = {
+                "schema": "https://stepflow.org/schemas/v1/flow.json",
+                "name": "test-flow",
+                "inputSchema": {"type": "object"},
+                "steps": [
+                    {
+                        "id": "echo",
+                        "component": "/builtin/eval",
+                        "input": {"expr": "'hello'"},
+                    }
+                ],
+                "output": {"result": {"$from": {"step": "echo"}}},
+            }
+            store_response = await client.store_flow(flow)
+
+            # Then create a run
+            run_response = await client.create_run(
+                flow_id=store_response.flow_id,
+                input={},
             )
-            assert result.is_success
+            assert run_response.run_id is not None
 
     @pytest.mark.skip(reason="Requires running stepflow server")
-    async def test_client_submit_and_get(self):
+    async def test_client_get_run(self):
+        """Test getting run details."""
         async with StepflowClient("http://localhost:7837") as client:
-            run_id = await client.submit(
-                "examples/basic/workflow.yaml",
-                {"m": 3, "n": 4},
+            # First store and run a flow
+            flow = {
+                "schema": "https://stepflow.org/schemas/v1/flow.json",
+                "name": "test-flow",
+                "inputSchema": {"type": "object"},
+                "steps": [
+                    {
+                        "id": "echo",
+                        "component": "/builtin/eval",
+                        "input": {"expr": "'hello'"},
+                    }
+                ],
+                "output": {"result": {"$from": {"step": "echo"}}},
+            }
+            store_response = await client.store_flow(flow)
+            run_response = await client.create_run(
+                flow_id=store_response.flow_id,
+                input={},
             )
-            assert run_id
 
-            result = await client.get_result(run_id)
-            # Result may still be running
-            assert result.status is not None
-
-    @pytest.mark.skip(reason="Requires running stepflow server")
-    async def test_client_validate(self):
-        async with StepflowClient("http://localhost:7837") as client:
-            result = await client.validate("examples/basic/workflow.yaml")
-            assert result.valid
+            # Then get the run details
+            details = await client.get_run(str(run_response.run_id))
+            assert details.status is not None
 
     @pytest.mark.skip(reason="Requires running stepflow server")
     async def test_client_list_components(self):
+        """Test listing available components."""
         async with StepflowClient("http://localhost:7837") as client:
-            components = await client.list_components()
-            assert isinstance(components, list)
+            response = await client.list_components()
+            assert response.components is not None
+
+    @pytest.mark.skip(reason="Requires running stepflow server")
+    async def test_client_health(self):
+        """Test health check endpoint."""
+        async with StepflowClient("http://localhost:7837") as client:
+            response = await client.health()
+            assert response.status == "ok"

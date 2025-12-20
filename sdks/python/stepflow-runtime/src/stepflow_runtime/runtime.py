@@ -31,15 +31,135 @@ import httpx
 
 from stepflow import (
     ComponentInfo,
+    Diagnostic,
+    FlowError,
     FlowResult,
+    FlowResultStatus,
     LogEntry,
     RestartPolicy,
     ValidationResult,
 )
 from stepflow_client import StepflowClient
 
+from stepflow_api.models import (
+    ExecutionStatus,
+    FlowResultType0,
+    FlowResultType1,
+    FlowResultType2,
+)
+from stepflow_api.types import UNSET, Unset
+
 from .logging import LogConfig, LogForwarder
 from .utils import find_free_port, get_binary_path
+
+if TYPE_CHECKING:
+    from stepflow_api.models import CreateRunResponse, RunDetails
+
+
+def _convert_api_result_to_flow_result(
+    result: FlowResultType0 | FlowResultType1 | FlowResultType2 | dict[str, Any] | None,
+) -> FlowResult | None:
+    """Convert API FlowResult types to stepflow FlowResult.
+
+    Handles both typed objects (FlowResultType0/1/2) and raw dicts
+    with the {outcome, result/error} format.
+    """
+    if result is None:
+        return None
+
+    # Handle raw dict format: {outcome: "success"|"failure"|"skipped", result/error: ...}
+    if isinstance(result, dict):
+        outcome = result.get("outcome", "").lower()
+        if outcome == "success":
+            output = result.get("result", {})
+            if not isinstance(output, dict):
+                output = {"value": output}
+            return FlowResult.success(output)
+        elif outcome == "skipped":
+            reason = result.get("reason")
+            return FlowResult.skipped(reason)
+        elif outcome in ("failure", "failed"):
+            error_data = result.get("error", {})
+            if isinstance(error_data, dict):
+                code = error_data.get("code", 500)
+                message = error_data.get("message", "Unknown error")
+                details = error_data.get("data")
+            else:
+                code = 500
+                message = str(error_data)
+                details = None
+            return FlowResult.failed(code, message, details)
+        # Handle typed dict format with Success/Skipped/Failed keys
+        elif "Success" in result:
+            output = result["Success"]
+            if not isinstance(output, dict):
+                output = {"value": output}
+            return FlowResult.success(output)
+        elif "Skipped" in result:
+            skipped = result["Skipped"]
+            reason = skipped.get("reason") if isinstance(skipped, dict) else None
+            return FlowResult.skipped(reason)
+        elif "Failed" in result:
+            failed = result["Failed"]
+            if isinstance(failed, dict):
+                code = failed.get("code", 500)
+                message = failed.get("message", "Unknown error")
+                details = failed.get("data")
+            else:
+                code = 500
+                message = str(failed)
+                details = None
+            return FlowResult.failed(code, message, details)
+
+    # Handle typed object format
+    if isinstance(result, FlowResultType0):
+        # Success variant
+        output = result.success if isinstance(result.success, dict) else {"value": result.success}
+        return FlowResult.success(output)
+    elif isinstance(result, FlowResultType1):
+        # Skipped variant
+        reason = None
+        if hasattr(result, "skipped") and hasattr(result.skipped, "reason"):
+            reason = result.skipped.reason
+        return FlowResult.skipped(reason)
+    elif isinstance(result, FlowResultType2):
+        # Failed variant
+        error = result.failed
+        details = None
+        if hasattr(error, "data") and not isinstance(error.data, Unset):
+            details = error.data if isinstance(error.data, dict) else {"data": error.data}
+        return FlowResult.failed(error.code, error.message, details)
+
+    return None
+
+
+def _get_flow_result_from_response(
+    response: "CreateRunResponse | RunDetails",
+) -> FlowResult:
+    """Extract FlowResult from a CreateRunResponse or RunDetails."""
+    # Check if result is available
+    result = getattr(response, "result", UNSET)
+    if isinstance(result, Unset) or result is None:
+        # If no result, infer from status
+        status = response.status
+        if status == ExecutionStatus.COMPLETED:
+            return FlowResult.success({})
+        elif status == ExecutionStatus.FAILED:
+            return FlowResult.failed(500, f"Execution failed with status: {status}")
+        elif status == ExecutionStatus.CANCELLED:
+            return FlowResult.failed(499, "Execution was cancelled")
+        elif status == ExecutionStatus.RUNNING:
+            return FlowResult.failed(202, "Execution still running")
+        elif status == ExecutionStatus.PAUSED:
+            return FlowResult.failed(202, "Execution is paused")
+        else:
+            return FlowResult.failed(500, f"Unknown status: {status}")
+
+    converted = _convert_api_result_to_flow_result(result)
+    if converted is None:
+        return FlowResult.failed(500, "Failed to parse result")
+    return converted
+
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -361,7 +481,7 @@ class StepflowRuntime:
             return []
         return self._log_forwarder.get_recent(limit)
 
-    # StepflowExecutor protocol methods - delegate to client
+    # StepflowExecutor protocol methods - convenience wrappers around client API
 
     async def run(
         self,
@@ -369,8 +489,54 @@ class StepflowRuntime:
         input: dict[str, Any],
         overrides: dict[str, Any] | None = None,
     ) -> FlowResult:
-        """Run a workflow and wait for the result."""
-        return await self.client.run(flow, input, overrides)
+        """Run a workflow and wait for the result.
+
+        This is a convenience method that:
+        1. Stores the flow definition
+        2. Creates a run
+        3. Returns the result as a FlowResult
+
+        Args:
+            flow: Path to a YAML/JSON workflow file, or flow dict
+            input: Input data for the workflow
+            overrides: Optional workflow overrides
+
+        Returns:
+            FlowResult with execution outcome
+        """
+        from stepflow_api.models import WorkflowOverrides
+
+        # Store the flow
+        store_response = await self.client.store_flow(flow)
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+            # Check diagnostics for errors
+            from stepflow_api.models import DiagnosticLevel
+            errors = [d for d in store_response.diagnostics.diagnostics if d.level == DiagnosticLevel.ERROR]
+            if errors:
+                return FlowResult.failed(
+                    400,
+                    f"Flow validation failed: {errors[0].text}",
+                    {"diagnostics": [d.to_dict() for d in errors]},
+                )
+            return FlowResult.failed(400, "Failed to store flow")
+
+        # Create the run
+        workflow_overrides = None
+        if overrides:
+            from stepflow_api.models import WorkflowOverridesSteps, StepOverride
+
+            steps = WorkflowOverridesSteps()
+            for step_id, step_override_dict in overrides.items():
+                steps[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps)
+
+        run_response = await self.client.create_run(
+            flow_id=store_response.flow_id,
+            input=input,
+            overrides=workflow_overrides,
+        )
+
+        return _get_flow_result_from_response(run_response)
 
     async def submit(
         self,
@@ -378,24 +544,134 @@ class StepflowRuntime:
         input: dict[str, Any],
         overrides: dict[str, Any] | None = None,
     ) -> str:
-        """Submit a workflow for execution (returns immediately)."""
-        return await self.client.submit(flow, input, overrides)
+        """Submit a workflow for execution (returns immediately).
+
+        This is a convenience method that:
+        1. Stores the flow definition
+        2. Creates a run
+        3. Returns the run_id immediately without waiting
+
+        Args:
+            flow: Path to a YAML/JSON workflow file, or flow dict
+            input: Input data for the workflow
+            overrides: Optional workflow overrides
+
+        Returns:
+            The run_id for checking status later
+
+        Raises:
+            StepflowRuntimeError: If flow storage or run creation fails
+        """
+        from stepflow_api.models import DiagnosticLevel, WorkflowOverrides, WorkflowOverridesSteps, StepOverride
+
+        # Store the flow
+        store_response = await self.client.store_flow(flow)
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+            errors = [d for d in store_response.diagnostics.diagnostics if d.level == DiagnosticLevel.ERROR]
+            msg = errors[0].text if errors else "Unknown error"
+            raise StepflowRuntimeError(f"Failed to store flow: {msg}")
+
+        # Create the run
+        workflow_overrides = None
+        if overrides:
+            steps = WorkflowOverridesSteps()
+            for step_id, step_override_dict in overrides.items():
+                steps[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps)
+
+        run_response = await self.client.create_run(
+            flow_id=store_response.flow_id,
+            input=input,
+            overrides=workflow_overrides,
+        )
+
+        return str(run_response.run_id)
 
     async def get_result(self, run_id: str) -> FlowResult:
-        """Get the result of a workflow run."""
-        return await self.client.get_result(run_id)
+        """Get the result of a workflow run.
+
+        Args:
+            run_id: The run ID to get results for
+
+        Returns:
+            FlowResult with execution outcome
+        """
+        run_details = await self.client.get_run(run_id)
+        return _get_flow_result_from_response(run_details)
 
     async def validate(self, flow: str | Path) -> ValidationResult:
-        """Validate a workflow definition."""
-        return await self.client.validate(flow)
+        """Validate a workflow definition.
+
+        Args:
+            flow: Path to a YAML/JSON workflow file, or flow dict
+
+        Returns:
+            ValidationResult with diagnostics
+        """
+        store_response = await self.client.store_flow(flow)
+
+        # Convert API diagnostics to stepflow Diagnostic type
+        diagnostics = []
+        for item in store_response.diagnostics.diagnostics:
+            # DiagnosticLevel is an enum, get its value
+            level = str(item.level.value).lower() if hasattr(item.level, "value") else str(item.level).lower()
+            # Path is a list of strings, join them
+            location = "/".join(item.path) if item.path else None
+            diagnostics.append(
+                Diagnostic(
+                    level=level,
+                    message=item.text,
+                    location=location,
+                )
+            )
+
+        # Valid if we got a flow_id
+        valid = store_response.flow_id is not None and not isinstance(
+            store_response.flow_id, Unset
+        )
+
+        return ValidationResult(valid=valid, diagnostics=diagnostics)
 
     async def list_components(self) -> list[ComponentInfo]:
-        """List available components."""
-        return await self.client.list_components()
+        """List available components.
+
+        Returns:
+            List of ComponentInfo objects describing available components
+        """
+        response = await self.client.list_components()
+
+        components = []
+        for comp in response.components:
+            input_schema = None
+            output_schema = None
+            if hasattr(comp, "input_schema") and not isinstance(comp.input_schema, Unset):
+                input_schema = comp.input_schema.to_dict() if hasattr(comp.input_schema, "to_dict") else comp.input_schema
+            if hasattr(comp, "output_schema") and not isinstance(comp.output_schema, Unset):
+                output_schema = comp.output_schema.to_dict() if hasattr(comp.output_schema, "to_dict") else comp.output_schema
+
+            description = None
+            if hasattr(comp, "description") and not isinstance(comp.description, Unset):
+                description = comp.description
+
+            components.append(
+                ComponentInfo(
+                    path=comp.component,  # API uses 'component' not 'path'
+                    description=description,
+                    input_schema=input_schema,
+                    output_schema=output_schema,
+                )
+            )
+
+        return components
 
     async def health(self) -> dict[str, Any]:
-        """Check the health of the server."""
-        return await self.client.health()
+        """Check the health of the server.
+
+        Returns:
+            Dict with health information (status, version, timestamp)
+        """
+        response = await self.client.health()
+        return response.to_dict()
 
     async def submit_batch(
         self,
@@ -404,14 +680,74 @@ class StepflowRuntime:
         max_concurrent: int | None = None,
         overrides: dict[str, Any] | None = None,
     ) -> str:
-        """Submit a batch of workflow runs."""
-        return await self.client.submit_batch(flow, inputs, max_concurrent, overrides)
+        """Submit a batch of workflow runs.
+
+        Args:
+            flow: Path to a YAML/JSON workflow file, or flow dict
+            inputs: List of input data for each workflow run
+            max_concurrent: Maximum number of concurrent executions
+            overrides: Optional workflow overrides
+
+        Returns:
+            The batch_id for checking status later
+
+        Raises:
+            StepflowRuntimeError: If flow storage or batch creation fails
+        """
+        from stepflow_api.models import DiagnosticLevel, WorkflowOverrides, WorkflowOverridesSteps, StepOverride
+
+        # Store the flow
+        store_response = await self.client.store_flow(flow)
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+            errors = [d for d in store_response.diagnostics.diagnostics if d.level == DiagnosticLevel.ERROR]
+            msg = errors[0].text if errors else "Unknown error"
+            raise StepflowRuntimeError(f"Failed to store flow: {msg}")
+
+        # Create the batch
+        workflow_overrides = None
+        if overrides:
+            steps = WorkflowOverridesSteps()
+            for step_id, step_override_dict in overrides.items():
+                steps[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps)
+
+        batch_response = await self.client.create_batch(
+            flow_id=store_response.flow_id,
+            inputs=inputs,
+            max_concurrency=max_concurrent,
+            overrides=workflow_overrides,
+        )
+
+        return str(batch_response.batch_id)
 
     async def get_batch(
         self, batch_id: str, include_results: bool = True
     ) -> tuple[dict[str, Any], list[FlowResult] | None]:
-        """Get batch execution status and results."""
-        return await self.client.get_batch(batch_id, include_results)
+        """Get batch execution status and results.
+
+        Args:
+            batch_id: The batch ID
+            include_results: Whether to include individual run results
+
+        Returns:
+            Tuple of (batch_details dict, list of FlowResult or None)
+        """
+        # Get batch details
+        batch_details = await self.client.get_batch(batch_id)
+        details_dict = batch_details.to_dict()
+
+        results: list[FlowResult] | None = None
+        if include_results:
+            outputs_response = await self.client.get_batch_outputs(batch_id)
+            results = []
+            for output in outputs_response.outputs:
+                result = getattr(output, "result", None)
+                if result is not None:
+                    converted = _convert_api_result_to_flow_result(result)
+                    if converted:
+                        results.append(converted)
+
+        return (details_dict, results)
 
     # Context manager support
 

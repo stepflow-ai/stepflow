@@ -60,10 +60,10 @@ class TestFlowResult:
 
 class TestFlowError:
     def test_error_creation(self):
-        error = FlowError(code=500, message="Internal error", data={"detail": "oops"})
+        error = FlowError(code=500, message="Internal error", details={"detail": "oops"})
         assert error.code == 500
         assert error.message == "Internal error"
-        assert error.data == {"detail": "oops"}
+        assert error.details == {"detail": "oops"}
 
 
 class TestValidationResult:
@@ -75,15 +75,15 @@ class TestValidationResult:
     def test_invalid_result(self):
         diagnostics = [
             Diagnostic(
-                severity="error",
+                level="error",
                 message="Missing required field",
-                path="$.input.name",
+                location="$.input.name",
             )
         ]
         result = ValidationResult(valid=False, diagnostics=diagnostics)
         assert not result.valid
         assert len(result.diagnostics) == 1
-        assert result.diagnostics[0].severity == "error"
+        assert result.diagnostics[0].level == "error"
 
 
 class TestLogEntry:
