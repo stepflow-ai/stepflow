@@ -37,6 +37,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
+    // Apply debug queue table migration
+    apply_migration(pool, "004_add_debug_queue", || add_debug_queue_table(pool)).await?;
+
     Ok(())
 }
 
@@ -266,6 +269,34 @@ async fn add_overrides_column(pool: &SqlitePool) -> Result<(), StateError> {
     let sql = "ALTER TABLE runs ADD COLUMN overrides_json TEXT";
 
     sqlx::query(sql)
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Add debug_queue table for persisting debug session queue
+/// Uses a normalized structure with one row per step for efficient add/remove
+async fn add_debug_queue_table(pool: &SqlitePool) -> Result<(), StateError> {
+    let sql = r#"
+        CREATE TABLE IF NOT EXISTS debug_queue (
+            run_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (run_id, step_id),
+            FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+        )
+    "#;
+
+    sqlx::query(sql)
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    // Add index for efficient lookups by run_id
+    let index_sql = "CREATE INDEX IF NOT EXISTS idx_debug_queue_run_id ON debug_queue(run_id)";
+    sqlx::query(index_sql)
         .execute(pool)
         .await
         .change_context(StateError::Initialization)?;

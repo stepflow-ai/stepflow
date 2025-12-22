@@ -14,7 +14,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use bit_set::BitSet;
 use error_stack::ResultExt as _;
-use futures::{StreamExt as _, future::BoxFuture, stream::FuturesUnordered};
 use stepflow_core::BlobId;
 use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::{
@@ -159,18 +158,13 @@ impl WorkflowExecutor {
             flow_id,
         );
 
-        let mut workflow_executor = Self {
+        Ok(Self {
             tracker,
             state_store,
             executor,
             flow,
             context,
-        };
-
-        // Initialize needed steps using lazy evaluation
-        workflow_executor.initialize_needed_steps();
-
-        Ok(workflow_executor)
+        })
     }
 
     /// Get the execution ID for this executor.
@@ -295,128 +289,51 @@ impl WorkflowExecutor {
             );
         }
 
+        // Step 6: Recover the debug queue if present
+        if let Some(queued_step_ids) = self
+            .state_store
+            .get_debug_queue(run_id)
+            .await
+            .change_context(ExecutionError::StateError)?
+        {
+            for step_id in &queued_step_ids {
+                // Find step index and add to needed (will re-discover deps if needed)
+                if let Some(step_index) = self
+                    .flow
+                    .steps()
+                    .iter()
+                    .position(|step| &step.id == step_id)
+                {
+                    // Only add if not already completed
+                    if !self.tracker.is_completed(step_index) {
+                        self.tracker.add_or_update_needed(step_index, &self.flow);
+                    }
+                }
+            }
+            log::debug!(
+                "Recovered debug queue with {} steps: [{}]",
+                queued_step_ids.len(),
+                queued_step_ids.join(", ")
+            );
+        }
+
         Ok(corrections_made)
     }
 
     /// Execute the workflow to completion using parallel execution with lazy evaluation.
     ///
-    /// This method dynamically determines which steps are needed based on expression
-    /// evaluation, only executing steps that are actually required for the output.
+    /// This is equivalent to: `queue_must_execute() + eval_output()`
     pub async fn execute_to_completion(&mut self) -> Result<FlowResult> {
         // Record start time for metrics
         let start_time = std::time::Instant::now();
 
-        let mut running_tasks = FuturesUnordered::new();
-
         log::debug!("Starting execution of {} steps", self.flow.steps().len());
 
-        // Initialize: evaluate output's needed_steps and add must_execute steps
-        self.initialize_needed_steps();
+        // Queue must_execute steps
+        self.queue_must_execute();
 
-        // Get initial ready steps
-        let initial_ready = self.tracker.ready_steps();
-        log::debug!(
-            "Initially runnable steps: [{}]",
-            initial_ready
-                .iter()
-                .map(|idx| self.flow.step(idx).id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-
-        self.start_ready_steps(&initial_ready, &mut running_tasks)
-            .await?;
-
-        // Process task completions as they arrive
-        while let Some((completed_step_index, step_result)) = running_tasks.next().await {
-            let step_result = step_result?;
-
-            // Update tracker and store result - returns steps that were waiting on this one
-            let waiters = self
-                .tracker
-                .complete_step(completed_step_index, step_result.clone());
-
-            // Record the completed result in the state store (non-blocking)
-            let step_id = &self.flow.step(completed_step_index).id;
-            log::debug!(
-                "Step {} completed, waiters to re-evaluate: [{}]",
-                step_id,
-                waiters
-                    .iter()
-                    .map(|idx| self.flow.step(idx).id.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-
-            self.state_store
-                .queue_write(stepflow_state::StateWriteOperation::RecordStepResult {
-                    run_id: self.context.run_id(),
-                    step_result: StepResult::new(completed_step_index, step_id, step_result),
-                })
-                .change_context(ExecutionError::StateError)?;
-
-            // Re-evaluate steps that were waiting on this completion
-            for waiter_idx in waiters.iter() {
-                self.tracker.add_or_update_needed(waiter_idx, &self.flow);
-            }
-
-            // Re-evaluate output to see if we're done or need more steps
-            let output_needs = self.flow.output().needed_steps(&self.tracker);
-            if output_needs.is_empty() {
-                log::debug!("Output is ready, checking for must_execute steps");
-                // Output ready - but still need to wait for must_execute steps
-                if self.tracker.all_needed_completed() {
-                    log::debug!("All needed steps completed, finishing execution");
-                    break;
-                }
-            } else {
-                // Output needs more steps - add them with transitive deps
-                for idx in output_needs.iter() {
-                    self.tracker.add_or_update_needed(idx, &self.flow);
-                }
-            }
-
-            // Get newly ready steps (the tracker already excludes executing steps)
-            let newly_ready_to_start = self.tracker.ready_steps();
-
-            // Update status for newly ready steps
-            if !newly_ready_to_start.is_empty() {
-                self.state_store
-                    .queue_write(stepflow_state::StateWriteOperation::UpdateStepStatuses {
-                        run_id: self.context.run_id(),
-                        status: StepStatus::Runnable,
-                        step_indices: newly_ready_to_start.clone(),
-                    })
-                    .change_context(ExecutionError::StateError)?;
-            }
-
-            // Start newly ready steps
-            self.start_ready_steps(&newly_ready_to_start, &mut running_tasks)
-                .await?;
-
-            // Check for deadlock: no running tasks but not done
-            if running_tasks.is_empty() && !self.tracker.all_needed_completed() {
-                log::error!(
-                    "Deadlock detected: no running tasks but needed steps not complete. Ready: {:?}",
-                    self.tracker.ready_steps().iter().collect::<Vec<_>>()
-                );
-                return Err(error_stack::report!(ExecutionError::Deadlock));
-            }
-        }
-
-        // All required tasks completed - check for must_execute step failures before resolving output
-        // If any must_execute step has failed, the workflow should fail
-        for (step_index, step) in self.flow.steps().iter().enumerate() {
-            if step.must_execute()
-                && let Some(FlowResult::Failed(error)) = self.tracker.get_result(step_index)
-            {
-                log::info!("Must-execute step '{}' failed, workflow fails", step.id);
-                return Ok(FlowResult::Failed(error.clone()));
-            }
-        }
-
-        // All must_execute steps succeeded - resolve the workflow output
-        let result = self.resolve_workflow_output();
+        // Evaluate output (runs all dependencies)
+        let result = self.eval_output().await?;
 
         // Record metrics
         let duration = start_time.elapsed().as_secs_f64();
@@ -615,6 +532,275 @@ impl WorkflowExecutor {
         })
     }
 
+    // ========================================================================
+    // Queue/Eval API - Unified primitives for normal execution and debugging
+    // ========================================================================
+
+    /// Queue a step (and its dependencies) for execution.
+    ///
+    /// This uses lazy evaluation to discover all transitive dependencies.
+    /// Returns the list of newly queued step IDs.
+    pub fn queue_step(&mut self, step_id: &str) -> Result<Vec<String>> {
+        let step_index = self
+            .flow
+            .steps()
+            .iter()
+            .position(|step| step.id == step_id)
+            .ok_or_else(|| ExecutionError::StepNotFound {
+                step: step_id.to_string(),
+            })?;
+
+        let newly_needed = self.tracker.add_or_update_needed(step_index, &self.flow);
+
+        let newly_queued: Vec<String> = newly_needed
+            .iter()
+            .map(|idx| self.flow.step(idx).id.clone())
+            .collect();
+
+        log::debug!(
+            "Queued step '{}'. Newly discovered: [{}]",
+            step_id,
+            newly_queued.join(", ")
+        );
+
+        Ok(newly_queued)
+    }
+
+    /// Queue all steps with `must_execute: true`.
+    ///
+    /// Returns the list of queued step IDs (including their dependencies).
+    pub fn queue_must_execute(&mut self) -> Vec<String> {
+        let must_execute_indices: Vec<usize> = self
+            .flow
+            .steps()
+            .iter()
+            .enumerate()
+            .filter(|(_, step)| step.must_execute())
+            .map(|(idx, _)| idx)
+            .collect();
+
+        let mut all_newly_queued = Vec::new();
+        for idx in must_execute_indices {
+            let newly_needed = self.tracker.add_or_update_needed(idx, &self.flow);
+            for dep_idx in newly_needed.iter() {
+                all_newly_queued.push(self.flow.step(dep_idx).id.clone());
+            }
+        }
+
+        log::debug!(
+            "Queued must_execute steps. Newly discovered: [{}]",
+            all_newly_queued.join(", ")
+        );
+
+        all_newly_queued
+    }
+
+    /// Evaluate a step: queue it, run all dependencies, return the result.
+    ///
+    /// This is idempotent - if the step is already completed, returns the cached result.
+    pub async fn eval_step(&mut self, step_id: &str) -> Result<FlowResult> {
+        let step_index = self
+            .flow
+            .steps()
+            .iter()
+            .position(|step| step.id == step_id)
+            .ok_or_else(|| ExecutionError::StepNotFound {
+                step: step_id.to_string(),
+            })?;
+
+        // If already completed, return cached result
+        if let Some(result) = self.tracker.get_result(step_index) {
+            return Ok(result.clone());
+        }
+
+        // Queue the step (discovers dependencies)
+        self.tracker.add_or_update_needed(step_index, &self.flow);
+
+        // Run until target step completes
+        while !self.tracker.is_completed(step_index) {
+            let ready = self.tracker.ready_steps();
+            if ready.is_empty() {
+                return Err(error_stack::report!(ExecutionError::Deadlock)
+                    .attach_printable(format!("Cannot make progress towards step '{}'", step_id)));
+            }
+
+            // Execute all ready steps
+            for idx in ready.iter() {
+                self.execute_step_by_index(idx).await?;
+                // Re-evaluate dependencies after each completion
+                self.tracker.add_or_update_needed(step_index, &self.flow);
+            }
+        }
+
+        Ok(self.tracker.get_result(step_index).unwrap().clone())
+    }
+
+    /// Evaluate the workflow output: queue dependencies, run them, return resolved output.
+    ///
+    /// This also ensures all `must_execute` steps complete successfully.
+    pub async fn eval_output(&mut self) -> Result<FlowResult> {
+        // Queue output dependencies
+        let output_needs = self.flow.output().needed_steps(&self.tracker);
+        for idx in output_needs.iter() {
+            self.tracker.add_or_update_needed(idx, &self.flow);
+        }
+
+        // Run until output is resolvable and all needed steps complete
+        loop {
+            // Check if output is ready
+            let output_needs = self.flow.output().needed_steps(&self.tracker);
+            if output_needs.is_empty() && self.tracker.all_needed_completed() {
+                break;
+            }
+
+            // Queue any newly discovered output dependencies
+            for idx in output_needs.iter() {
+                self.tracker.add_or_update_needed(idx, &self.flow);
+            }
+
+            let ready = self.tracker.ready_steps();
+            if ready.is_empty() {
+                if !self.tracker.all_needed_completed() {
+                    return Err(error_stack::report!(ExecutionError::Deadlock)
+                        .attach_printable("Cannot make progress towards output"));
+                }
+                break;
+            }
+
+            // Execute all ready steps (execute_step_by_index handles completion)
+            for idx in ready.iter() {
+                self.execute_step_by_index(idx).await?;
+            }
+        }
+
+        // Check for must_execute step failures
+        for (step_index, step) in self.flow.steps().iter().enumerate() {
+            if step.must_execute()
+                && let Some(FlowResult::Failed(error)) = self.tracker.get_result(step_index)
+            {
+                return Ok(FlowResult::Failed(error.clone()));
+            }
+        }
+
+        Ok(self.resolve_workflow_output())
+    }
+
+    /// Run the next ready step from the queue.
+    ///
+    /// Returns the execution result, or None if no steps are ready.
+    pub async fn run_next_step(&mut self) -> Result<Option<StepExecutionResult>> {
+        let ready = self.tracker.ready_steps();
+        if ready.is_empty() {
+            return Ok(None);
+        }
+
+        // Get the first ready step
+        let step_index = ready.iter().next().unwrap();
+        let result = self.execute_step_by_index(step_index).await?;
+
+        Ok(Some(result))
+    }
+
+    /// Run all steps in the queue until empty.
+    ///
+    /// Returns all execution results.
+    pub async fn run_queue(&mut self) -> Result<Vec<StepExecutionResult>> {
+        let mut results = Vec::new();
+
+        loop {
+            let ready = self.tracker.ready_steps();
+            if ready.is_empty() {
+                break;
+            }
+
+            for idx in ready.iter() {
+                let result = self.execute_step_by_index(idx).await?;
+                results.push(result);
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Get steps that are queued (needed) but not yet completed.
+    pub fn get_queued_steps(&self) -> Vec<StepExecution> {
+        let mut queued = Vec::new();
+        let ready = self.tracker.ready_steps();
+
+        for (idx, step) in self.flow.steps().iter().enumerate() {
+            if self.tracker.is_needed(idx) && !self.tracker.is_completed(idx) {
+                let status = if ready.contains(idx) {
+                    StepStatus::Runnable
+                } else {
+                    StepStatus::Blocked
+                };
+                queued.push(StepExecution::new(
+                    idx,
+                    step.id.clone(),
+                    step.component.to_string(),
+                    status,
+                ));
+            }
+        }
+
+        queued
+    }
+
+    /// Get the cached result of a step, or None if not yet completed.
+    pub fn get_step_result(&self, step_id: &str) -> Option<FlowResult> {
+        let step_index = self.tracker.step_index(step_id)?;
+        self.tracker.get_result(step_index).cloned()
+    }
+
+    /// Add steps to the persistent debug queue.
+    ///
+    /// This should be called after `queue_step()` returns newly queued steps.
+    /// The queue persists across HTTP requests for step-through debugging.
+    pub async fn add_steps_to_debug_queue(&self, step_ids: &[String]) -> Result<()> {
+        if step_ids.is_empty() {
+            return Ok(());
+        }
+
+        self.state_store
+            .add_to_debug_queue(self.context.run_id(), step_ids)
+            .await
+            .change_context(ExecutionError::StateError)?;
+
+        log::debug!(
+            "Added to debug queue for run {}: [{}]",
+            self.context.run_id(),
+            step_ids.join(", ")
+        );
+
+        Ok(())
+    }
+
+    /// Remove steps from the persistent debug queue.
+    ///
+    /// This should be called after executing steps via `run_next_step()` or `run_queue()`.
+    pub async fn remove_steps_from_debug_queue(&self, step_ids: &[String]) -> Result<()> {
+        if step_ids.is_empty() {
+            return Ok(());
+        }
+
+        self.state_store
+            .remove_from_debug_queue(self.context.run_id(), step_ids)
+            .await
+            .change_context(ExecutionError::StateError)?;
+
+        log::debug!(
+            "Removed from debug queue for run {}: [{}]",
+            self.context.run_id(),
+            step_ids.join(", ")
+        );
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // End Queue/Eval API
+    // ========================================================================
+
     /// Get the details of a specific step for inspection.
     pub async fn inspect_step(&self, step_id: &str) -> Result<StepInspection> {
         let step_index = self
@@ -679,11 +865,14 @@ impl WorkflowExecutor {
         let step_input = match step.input.resolve(&self.tracker) {
             FlowResult::Success(result) => result,
             FlowResult::Failed(error) => {
+                // Record the failure as a step completion to prevent infinite loops
+                let result = FlowResult::Failed(error);
+                self.record_step_completion(step_index, &result).await?;
                 return Ok(StepExecutionResult::new(
                     step_index,
                     step_id,
                     component_string,
-                    FlowResult::Failed(error),
+                    result,
                 ));
             }
         };
@@ -739,141 +928,6 @@ impl WorkflowExecutor {
     /// Get access to the state store for querying step results.
     pub fn state_store(&self) -> &Arc<dyn StateStore> {
         &self.state_store
-    }
-
-    /// Initialize the needed steps set using lazy evaluation.
-    ///
-    /// This dynamically determines which steps are needed based on the workflow output
-    /// expression and any must_execute steps. Uses `add_needed_with_deps` to evaluate
-    /// expressions and transitively discover all required steps.
-    fn initialize_needed_steps(&mut self) {
-        // 1. Evaluate output's needed_steps and add with transitive deps
-        let output_needs = self.flow.output().needed_steps(&self.tracker);
-        log::debug!(
-            "Output needs steps: [{}]",
-            output_needs
-                .iter()
-                .map(|idx| self.flow.step(idx).id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-
-        for idx in output_needs.iter() {
-            self.tracker.add_or_update_needed(idx, &self.flow);
-        }
-
-        // 2. Add must_execute steps with their transitive deps
-        let must_execute_indices: Vec<usize> = self
-            .flow
-            .steps()
-            .iter()
-            .enumerate()
-            .filter(|(_, step)| step.must_execute())
-            .map(|(idx, _)| idx)
-            .collect();
-
-        for idx in must_execute_indices {
-            self.tracker.add_or_update_needed(idx, &self.flow);
-        }
-
-        log::debug!(
-            "Initial ready steps after evaluation: [{}]",
-            self.tracker
-                .ready_steps()
-                .iter()
-                .map(|idx| self.flow.step(idx).id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-
-    /// Start all newly ready steps and begin their executions.
-    async fn start_ready_steps(
-        &mut self,
-        ready: &BitSet,
-        running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
-    ) -> Result<()> {
-        // Filter out the virtual output node (last index in dependency graph)
-        let virtual_output_index = self.flow.steps().len();
-        let mut steps_to_process = ready.clone();
-        steps_to_process.remove(virtual_output_index);
-
-        for step_index in steps_to_process.iter() {
-            // Extract step data to avoid borrowing issues
-            let (step_id, step_input) = {
-                let step = &self.flow.step(step_index);
-                (step.id.clone(), step.input.clone())
-            };
-
-            // Resolve step inputs
-            let step_input = match step_input.resolve(&self.tracker) {
-                FlowResult::Success(result) => result,
-                FlowResult::Failed(error) => {
-                    log::error!(
-                        "Failed to resolve inputs for step {} - input resolution failed: {:?}",
-                        step_id,
-                        error
-                    );
-                    return Err(error_stack::report!(ExecutionError::StepFailed {
-                        step: step_id.clone()
-                    })
-                    .attach_printable(format!("Input resolution failed: {}", error.message))
-                    .attach_printable(format!("Error code: {}", error.code)));
-                }
-            };
-
-            // Mark step as executing to prevent it from appearing in ready_steps() again
-            self.tracker.start_step(step_index);
-
-            // Start async execution
-            self.start_step_execution(step_index, step_input, running_tasks)
-                .await?;
-        }
-
-        Ok(())
-    }
-
-    /// Start asynchronous execution of a step.
-    async fn start_step_execution(
-        &self,
-        step_index: usize,
-        step_input: ValueRef,
-        running_tasks: &mut FuturesUnordered<BoxFuture<'static, (usize, Result<FlowResult>)>>,
-    ) -> Result<()> {
-        let step = self.flow.step(step_index);
-        log::debug!("Starting execution of step {}", step.id);
-
-        // Get plugin and resolved component name for this step
-        let (plugin, resolved_component) = self
-            .executor
-            .get_plugin_and_component(&step.component, step_input.clone())
-            .await?;
-
-        // Clone necessary data for the async task
-        let flow = self.flow.clone();
-        let base_context = self.context.clone();
-
-        // Create the async task
-        let plugin_clone = plugin.clone();
-        let resolved_component_clone = resolved_component.clone();
-        let task_future: BoxFuture<'static, (usize, Result<FlowResult>)> = Box::pin(async move {
-            let step = flow.step(step_index);
-            // Create step-specific execution context reusing the workflow context
-            let step_context = base_context.with_step(step.id.clone());
-            let result = execute_step_async(
-                &plugin_clone,
-                step,
-                &resolved_component_clone,
-                step_input,
-                step_context,
-            )
-            .await;
-            (step_index, result)
-        });
-
-        running_tasks.push(task_future);
-
-        Ok(())
     }
 }
 
@@ -1092,7 +1146,8 @@ mod tests {
         .await
     }
 
-    /// Create a WorkflowExecutor from YAML string for step-by-step testing
+    /// Create a WorkflowExecutor from YAML string for step-by-step testing.
+    /// This initializes the queue with must_execute and output dependencies.
     pub async fn create_workflow_executor_from_yaml_simple(
         yaml_str: &str,
         input: serde_json::Value,
@@ -1104,7 +1159,7 @@ mod tests {
         let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let input_ref = ValueRef::new(input);
 
-        WorkflowExecutor::new(
+        let mut workflow_executor = WorkflowExecutor::new(
             executor,
             flow,
             flow_id,
@@ -1112,7 +1167,20 @@ mod tests {
             input_ref,
             state_store,
             None,
-        )
+        )?;
+        // Initialize the queue for normal execution (queue output deps + must_execute)
+        workflow_executor.queue_must_execute();
+        // Also queue output dependencies for proper test setup
+        let output_needs = workflow_executor
+            .flow
+            .output()
+            .needed_steps(&workflow_executor.tracker);
+        for idx in output_needs.iter() {
+            workflow_executor
+                .tracker
+                .add_or_update_needed(idx, &workflow_executor.flow);
+        }
+        Ok(workflow_executor)
     }
 
     fn create_test_step(id: &str, input: serde_json::Value) -> Step {
@@ -1377,6 +1445,18 @@ output:
             None,
         )
         .unwrap();
+        // Initialize the queue for normal execution
+        workflow_executor.queue_must_execute();
+        // Also queue output dependencies
+        let output_needs = workflow_executor
+            .flow
+            .output()
+            .needed_steps(&workflow_executor.tracker);
+        for idx in output_needs.iter() {
+            workflow_executor
+                .tracker
+                .add_or_update_needed(idx, &workflow_executor.flow);
+        }
 
         // Manually execute step1 to simulate partial execution
         let step1_result = FlowResult::Success(ValueRef::new(json!("step1_output")));
@@ -1401,7 +1481,7 @@ output:
         // At this point, step2 should be runnable but the dependency tracker doesn't know about step1 completion
         // and step2 status is not updated to "Runnable"
 
-        // Verify initial state: step2 should not be runnable in the tracker yet
+        // Verify initial state: step1 should be runnable in the tracker (step2 is blocked)
         let runnable_before = workflow_executor.get_runnable_step_indices();
         assert_eq!(runnable_before.len(), 1);
         assert!(runnable_before.contains(0)); // Only step1 should be runnable initially
@@ -1563,6 +1643,18 @@ output:
             None,
         )
         .unwrap();
+        // Initialize the queue for normal execution
+        workflow_executor.queue_must_execute();
+        // Also queue output dependencies
+        let output_needs = workflow_executor
+            .flow
+            .output()
+            .needed_steps(&workflow_executor.tracker);
+        for idx in output_needs.iter() {
+            workflow_executor
+                .tracker
+                .add_or_update_needed(idx, &workflow_executor.flow);
+        }
 
         // Simulate completed step1 and step2
         let step1_result = StepResult::new(
@@ -1596,7 +1688,7 @@ output:
             .await
             .unwrap();
 
-        // Before recovery: only step1 and step2 should be runnable (fresh tracker)
+        // Before recovery: step1 and step2 are runnable (their results not yet in tracker)
         let runnable_before = workflow_executor.get_runnable_step_indices();
         assert_eq!(runnable_before.len(), 2);
         assert!(runnable_before.contains(0)); // step1
@@ -1644,12 +1736,24 @@ output:
             None,
         )
         .unwrap();
+        // Initialize the queue for normal execution
+        workflow_executor.queue_must_execute();
+        // Also queue output dependencies
+        let output_needs = workflow_executor
+            .flow
+            .output()
+            .needed_steps(&workflow_executor.tracker);
+        for idx in output_needs.iter() {
+            workflow_executor
+                .tracker
+                .add_or_update_needed(idx, &workflow_executor.flow);
+        }
 
         // Test with a fresh execution - since there are no completed steps and no step info
         // in the database, recovery should mark the initially runnable step as Runnable
         let corrections_made = workflow_executor.recover_from_state_store().await.unwrap();
 
-        // Since step1 should be runnable but there's no status info, recovery should fix it
+        // Since step1 is already runnable from queue_must_execute, recovery should make 1 correction
         assert_eq!(corrections_made, 1);
 
         // step1 should still be runnable
@@ -1953,6 +2057,329 @@ output:
                 assert_eq!(value.as_ref(), &json!({"fallback": "skipped"}));
             }
             _ => panic!("Expected success with fallback result, got: {result:?}"),
+        }
+    }
+
+    /// Create a WorkflowExecutor in debug mode (empty queue) for step-by-step testing.
+    pub async fn create_debug_workflow_executor(
+        yaml_str: &str,
+        input: serde_json::Value,
+        mock_behaviors: Vec<(&str, FlowResult)>,
+    ) -> Result<WorkflowExecutor> {
+        let (executor, flow, flow_id) =
+            create_workflow_from_yaml_simple(yaml_str, mock_behaviors).await;
+        let run_id = Uuid::now_v7();
+        let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+        let input_ref = ValueRef::new(input);
+
+        // Debug mode: don't initialize the queue - start empty
+        WorkflowExecutor::new(
+            executor,
+            flow,
+            flow_id,
+            run_id,
+            input_ref,
+            state_store,
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn test_debug_queue_step_discovers_dependencies() {
+        // Test that queue_step() correctly discovers and queues dependencies
+        let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
+steps:
+  - id: step1
+    component: /mock/first
+    input:
+      value: 10
+  - id: step2
+    component: /mock/second
+    input:
+      $step: step1
+  - id: step3
+    component: /mock/third
+    input:
+      $step: step2
+output:
+  $step: step3
+"#;
+
+        let mock_behaviors = vec![
+            (
+                "/mock/first",
+                FlowResult::Success(ValueRef::new(json!({"a": 1}))),
+            ),
+            (
+                "/mock/second",
+                FlowResult::Success(ValueRef::new(json!({"b": 2}))),
+            ),
+            (
+                "/mock/third",
+                FlowResult::Success(ValueRef::new(json!({"c": 3}))),
+            ),
+        ];
+
+        let mut executor = create_debug_workflow_executor(workflow_yaml, json!({}), mock_behaviors)
+            .await
+            .unwrap();
+
+        // Queue should be empty initially
+        assert!(executor.get_queued_steps().is_empty());
+
+        // Queue step3 - should discover step2 and step1 as dependencies
+        let queued = executor.queue_step("step3").unwrap();
+        assert_eq!(queued.len(), 3);
+        assert!(queued.contains(&"step1".to_string()));
+        assert!(queued.contains(&"step2".to_string()));
+        assert!(queued.contains(&"step3".to_string()));
+
+        // Verify the queue state
+        let queue_state = executor.get_queued_steps();
+        assert_eq!(queue_state.len(), 3);
+
+        // Only step1 should be runnable (step2, step3 are blocked)
+        let runnable: Vec<_> = queue_state
+            .iter()
+            .filter(|s| s.status == stepflow_core::status::StepStatus::Runnable)
+            .collect();
+        assert_eq!(runnable.len(), 1);
+        assert_eq!(runnable[0].step_id, "step1");
+    }
+
+    #[tokio::test]
+    async fn test_debug_run_next_step() {
+        // Test that run_next_step() executes one step at a time
+        let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
+steps:
+  - id: step1
+    component: /mock/first
+    input:
+      value: 10
+  - id: step2
+    component: /mock/second
+    input:
+      $step: step1
+output:
+  $step: step2
+"#;
+
+        let mock_behaviors = vec![
+            (
+                "/mock/first",
+                FlowResult::Success(ValueRef::new(json!({"result": 20}))),
+            ),
+            (
+                "/mock/second",
+                FlowResult::Success(ValueRef::new(json!({"final": 30}))),
+            ),
+        ];
+
+        let mut executor = create_debug_workflow_executor(workflow_yaml, json!({}), mock_behaviors)
+            .await
+            .unwrap();
+
+        // Queue step2 (will also queue step1)
+        executor.queue_step("step2").unwrap();
+
+        // Run next step - should execute step1
+        let result1 = executor.run_next_step().await.unwrap();
+        assert!(result1.is_some());
+        let result1 = result1.unwrap();
+        assert_eq!(result1.metadata.step_id, "step1");
+        match result1.result {
+            FlowResult::Success(v) => assert_eq!(v.as_ref(), &json!({"result": 20})),
+            _ => panic!("Expected success"),
+        }
+
+        // Run next step - should execute step2
+        let result2 = executor.run_next_step().await.unwrap();
+        assert!(result2.is_some());
+        let result2 = result2.unwrap();
+        assert_eq!(result2.metadata.step_id, "step2");
+        match result2.result {
+            FlowResult::Success(v) => assert_eq!(v.as_ref(), &json!({"final": 30})),
+            _ => panic!("Expected success"),
+        }
+
+        // No more steps to run
+        let result3 = executor.run_next_step().await.unwrap();
+        assert!(result3.is_none());
+
+        // Queue should be empty (all completed)
+        assert!(executor.get_queued_steps().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_debug_eval_step() {
+        // Test that eval_step() automatically runs dependencies and returns result
+        // Using identity-like behavior where output matches input format
+        let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
+steps:
+  - id: step1
+    component: /mock/first
+    input:
+      value: 10
+  - id: step2
+    component: /mock/second
+    input:
+      value: 10
+  - id: step3
+    component: /mock/third
+    input:
+      value: 10
+output:
+  $step: step3
+"#;
+
+        let mock_behaviors = vec![
+            (
+                "/mock/first",
+                FlowResult::Success(ValueRef::new(json!({"result": "step1"}))),
+            ),
+            (
+                "/mock/second",
+                FlowResult::Success(ValueRef::new(json!({"result": "step2"}))),
+            ),
+            (
+                "/mock/third",
+                FlowResult::Success(ValueRef::new(json!({"result": "step3"}))),
+            ),
+        ];
+
+        let mut executor = create_debug_workflow_executor(workflow_yaml, json!({}), mock_behaviors)
+            .await
+            .unwrap();
+
+        // Eval step2 - should automatically run step1 first (step1 is not a dep of step2 in this case)
+        // Actually these are independent steps - let me check
+        // step2 input: {value: 10} - doesn't depend on step1
+        let result = executor.eval_step("step2").await.unwrap();
+        match result {
+            FlowResult::Success(v) => assert_eq!(v.as_ref(), &json!({"result": "step2"})),
+            _ => panic!("Expected success"),
+        }
+
+        // Only step2 should be completed since step1 is not a dependency
+        assert!(executor.get_step_result("step1").is_none());
+        assert!(executor.get_step_result("step2").is_some());
+        assert!(executor.get_step_result("step3").is_none());
+
+        // Eval step2 again - should return cached result (idempotent)
+        let result_cached = executor.eval_step("step2").await.unwrap();
+        match result_cached {
+            FlowResult::Success(v) => assert_eq!(v.as_ref(), &json!({"result": "step2"})),
+            _ => panic!("Expected cached success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_debug_run_queue() {
+        // Test that run_queue() runs all queued steps until empty
+        // Using independent steps to simplify mock matching
+        let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
+steps:
+  - id: step1
+    component: /mock/first
+    input:
+      value: 10
+  - id: step2
+    component: /mock/second
+    input:
+      value: 10
+  - id: step3
+    component: /mock/third
+    input:
+      value: 10
+output:
+  result:
+    a: { $step: step1, path: result }
+    b: { $step: step2, path: result }
+    c: { $step: step3, path: result }
+"#;
+
+        let mock_behaviors = vec![
+            (
+                "/mock/first",
+                FlowResult::Success(ValueRef::new(json!({"result": "step1"}))),
+            ),
+            (
+                "/mock/second",
+                FlowResult::Success(ValueRef::new(json!({"result": "step2"}))),
+            ),
+            (
+                "/mock/third",
+                FlowResult::Success(ValueRef::new(json!({"result": "step3"}))),
+            ),
+        ];
+
+        let mut executor = create_debug_workflow_executor(workflow_yaml, json!({}), mock_behaviors)
+            .await
+            .unwrap();
+
+        // Queue all steps by queueing each explicitly
+        executor.queue_step("step1").unwrap();
+        executor.queue_step("step2").unwrap();
+        executor.queue_step("step3").unwrap();
+        assert_eq!(executor.get_queued_steps().len(), 3);
+
+        // Run all queued steps
+        let results = executor.run_queue().await.unwrap();
+        assert_eq!(results.len(), 3);
+
+        // All steps should have executed (order may vary since they're independent)
+        let step_ids: Vec<_> = results
+            .iter()
+            .map(|r| r.metadata.step_id.as_str())
+            .collect();
+        assert!(step_ids.contains(&"step1"));
+        assert!(step_ids.contains(&"step2"));
+        assert!(step_ids.contains(&"step3"));
+
+        // Queue should be empty
+        assert!(executor.get_queued_steps().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_step_result() {
+        // Test that get_step_result() returns cached results
+        let workflow_yaml = r#"
+schema: https://stepflow.org/schemas/v1/flow.json
+steps:
+  - id: step1
+    component: /mock/first
+    input:
+      value: 10
+output:
+  $step: step1
+"#;
+
+        let mock_behaviors = vec![(
+            "/mock/first",
+            FlowResult::Success(ValueRef::new(json!({"result": 42}))),
+        )];
+
+        let mut executor = create_debug_workflow_executor(workflow_yaml, json!({}), mock_behaviors)
+            .await
+            .unwrap();
+
+        // No result before execution
+        assert!(executor.get_step_result("step1").is_none());
+
+        // Queue and run
+        executor.queue_step("step1").unwrap();
+        executor.run_next_step().await.unwrap();
+
+        // Result should be available
+        let result = executor.get_step_result("step1");
+        assert!(result.is_some());
+        match result.unwrap() {
+            FlowResult::Success(v) => assert_eq!(v.as_ref(), &json!({"result": 42})),
+            _ => panic!("Expected success"),
         }
     }
 }

@@ -270,6 +270,7 @@ impl ExecutionTracker {
     /// Mark a step as currently executing.
     ///
     /// This prevents the step from appearing in `ready_steps()` until it completes.
+    #[cfg(test)]
     pub fn start_step(&mut self, step: usize) {
         self.executing.insert(step);
     }
@@ -280,9 +281,13 @@ impl ExecutionTracker {
     }
 
     /// Check if a step has been marked as needed.
-    #[cfg(test)]
     pub fn is_needed(&self, step: usize) -> bool {
         self.needed.contains(step)
+    }
+
+    /// Check if a step has been completed.
+    pub fn is_completed(&self, step: usize) -> bool {
+        self.completed.contains(step)
     }
 }
 

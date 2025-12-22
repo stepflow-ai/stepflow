@@ -16,155 +16,358 @@ use axum::{
 };
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
+use serde_with::{OneOrMany, serde_as};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
-use stepflow_core::status::ExecutionStatus;
+use stepflow_core::status::StepStatus;
 use stepflow_execution::StepflowExecutor;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
 
-/// Request to execute specific steps in debug mode
+/// Request to eval a step
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct DebugStepRequest {
-    /// Step IDs to execute
+pub struct DebugEvalRequest {
+    /// Step ID to evaluate
+    pub step_id: String,
+}
+
+/// Request to queue steps - accepts either a single step ID or a list
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugQueueRequest {
+    /// Step ID(s) to queue - can be a single string or an array
+    #[serde_as(as = "OneOrMany<_>")]
     pub step_ids: Vec<String>,
 }
 
-/// Response from debug step runs
+/// Response from eval step
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct DebugStepResponse {
-    /// Results of executed steps
+pub struct DebugEvalResponse {
+    /// Result of the evaluated step
+    pub result: FlowResult,
+}
+
+/// Response from queue step
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugQueueResponse {
+    /// Newly queued step IDs (including dependencies)
+    pub queued: Vec<String>,
+    /// Steps that are ready to run
+    pub ready: Vec<String>,
+}
+
+/// Response from next step
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugNextResponse {
+    /// Step that was executed (if any)
+    pub step_id: Option<String>,
+    /// Result of the executed step (if any)
+    pub result: Option<FlowResult>,
+    /// Steps that are ready to run after this execution
+    pub ready: Vec<String>,
+}
+
+/// Response from run-queue
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugRunQueueResponse {
+    /// Number of steps executed
+    pub executed_count: usize,
+    /// Results keyed by step ID
     pub results: std::collections::HashMap<String, FlowResult>,
 }
 
-/// Response for runnable steps in debug mode
+/// Response for queued steps
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct DebugRunnableResponse {
-    /// Steps that can be executed
-    pub runnable_steps: Vec<String>,
+pub struct DebugQueueStatusResponse {
+    /// Steps in the queue (not yet completed)
+    pub queued: Vec<QueuedStep>,
+    /// Steps that are ready to run
+    pub ready: Vec<String>,
 }
 
-/// Execute specific steps in debug mode
+/// A queued step with its status
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedStep {
+    /// Step ID
+    pub step_id: String,
+    /// Step status (Runnable or Blocked)
+    pub status: String,
+}
+
+/// Response from show step
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugShowResponse {
+    /// Step ID
+    pub step_id: String,
+    /// Whether the step has been run
+    pub completed: bool,
+    /// Result if the step has been run
+    pub result: Option<FlowResult>,
+}
+
+/// Evaluate a step: queue it, run all dependencies, return result
 #[utoipa::path(
     post,
-    path = "/runs/{run_id}/debug/step",
+    path = "/runs/{run_id}/debug/eval",
     params(
         ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
-    request_body = DebugStepRequest,
+    request_body = DebugEvalRequest,
     responses(
-        (status = 200, description = "Steps executed successfully", body = DebugStepResponse),
+        (status = 200, description = "Step evaluated successfully", body = DebugEvalResponse),
         (status = 400, description = "Invalid run ID or request"),
         (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::DEBUG_TAG,
 )]
-pub async fn debug_execute_step(
+pub async fn debug_eval(
     State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
-    Json(req): Json<DebugStepRequest>,
-) -> Result<Json<DebugStepResponse>, ErrorResponse> {
-    // Get the debug session for this run
+    Json(req): Json<DebugEvalRequest>,
+) -> Result<Json<DebugEvalResponse>, ErrorResponse> {
     let mut debug_session = executor
         .debug_session(run_id)
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
-    // Execute the requested steps
-    let step_results = debug_session.execute_steps(&req.step_ids).await?;
+    let result = debug_session.eval_step(&req.step_id).await?;
 
-    // Convert results to the expected format
-    let mut results = std::collections::HashMap::new();
-    for step_result in step_results {
-        results.insert(step_result.metadata.step_id, step_result.result);
-    }
-
-    Ok(Json(DebugStepResponse { results }))
+    Ok(Json(DebugEvalResponse { result }))
 }
 
-/// Continue debug run to completion
+/// Queue one or more steps and their dependencies for execution
 #[utoipa::path(
     post,
-    path = "/runs/{run_id}/debug/continue",
+    path = "/runs/{run_id}/debug/queue",
     params(
         ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
+    request_body = DebugQueueRequest,
     responses(
-        (status = 200, description = "Run continued successfully", body = super::runs::CreateRunResponse),
-        (status = 400, description = "Invalid run ID"),
+        (status = 200, description = "Steps queued successfully", body = DebugQueueResponse),
+        (status = 400, description = "Invalid run ID or request"),
         (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::DEBUG_TAG,
 )]
-pub async fn debug_continue(
+pub async fn debug_queue(
     State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
-) -> Result<Json<super::runs::CreateRunResponse>, ErrorResponse> {
-    // Get the debug session for this run
+    Json(req): Json<DebugQueueRequest>,
+) -> Result<Json<DebugQueueResponse>, ErrorResponse> {
     let mut debug_session = executor
         .debug_session(run_id)
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
-    // Continue run to completion
-    let final_result = debug_session.execute_to_completion().await?;
+    let mut all_queued = Vec::new();
+    for step_id in &req.step_ids {
+        let queued = debug_session.queue_step(step_id)?;
+        all_queued.extend(queued);
+    }
 
-    // Update run status based on the result
-    let state_store = executor.state_store();
-    let status = match &final_result {
-        FlowResult::Success(_) => ExecutionStatus::Completed,
-        FlowResult::Failed(_) => ExecutionStatus::Failed,
-    };
+    // Persist the newly queued steps
+    debug_session.add_steps_to_debug_queue(&all_queued).await?;
 
-    state_store.update_run_status(run_id, status, None).await?;
+    let ready_steps = debug_session.get_queued_steps();
+    let ready: Vec<String> = ready_steps
+        .iter()
+        .filter(|s| s.status == StepStatus::Runnable)
+        .map(|s| s.step_id.clone())
+        .collect();
 
-    Ok(Json(super::runs::CreateRunResponse {
-        run_id,
-        result: Some(final_result),
-        status,
-        debug: true,
+    Ok(Json(DebugQueueResponse {
+        queued: all_queued,
+        ready,
     }))
 }
 
-/// Get runnable steps in debug mode
+/// Run the next ready step from the queue
 #[utoipa::path(
-    get,
-    path = "/runs/{run_id}/debug/runnable",
+    post,
+    path = "/runs/{run_id}/debug/next",
     params(
         ("run_id" = Uuid, Path, description = "Run ID (UUID)")
     ),
     responses(
-        (status = 200, description = "Runnable steps retrieved successfully", body = DebugRunnableResponse),
+        (status = 200, description = "Next step executed", body = DebugNextResponse),
         (status = 400, description = "Invalid run ID"),
         (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = crate::api::DEBUG_TAG,
 )]
-pub async fn debug_get_runnable(
+pub async fn debug_next(
     State(executor): State<Arc<StepflowExecutor>>,
     Path(run_id): Path<Uuid>,
-) -> Result<Json<DebugRunnableResponse>, ErrorResponse> {
-    // Get the debug session for this run
+) -> Result<Json<DebugNextResponse>, ErrorResponse> {
+    let mut debug_session = executor
+        .debug_session(run_id)
+        .await
+        .change_context(ServerError::ExecutionNotFound(run_id))?;
+
+    let step_result = debug_session.run_next_step().await?;
+
+    // Remove the executed step from the persistent queue
+    let (step_id, result) = match &step_result {
+        Some(r) => {
+            debug_session
+                .remove_steps_from_debug_queue(std::slice::from_ref(&r.metadata.step_id))
+                .await?;
+            (Some(r.metadata.step_id.clone()), Some(r.result.clone()))
+        }
+        None => (None, None),
+    };
+
+    let ready_steps = debug_session.get_queued_steps();
+    let ready: Vec<String> = ready_steps
+        .iter()
+        .filter(|s| s.status == StepStatus::Runnable)
+        .map(|s| s.step_id.clone())
+        .collect();
+
+    Ok(Json(DebugNextResponse {
+        step_id,
+        result,
+        ready,
+    }))
+}
+
+/// Run all steps in the queue until empty
+#[utoipa::path(
+    post,
+    path = "/runs/{run_id}/debug/run-queue",
+    params(
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Queue executed", body = DebugRunQueueResponse),
+        (status = 400, description = "Invalid run ID"),
+        (status = 404, description = "Run not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = crate::api::DEBUG_TAG,
+)]
+pub async fn debug_run_queue(
+    State(executor): State<Arc<StepflowExecutor>>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<DebugRunQueueResponse>, ErrorResponse> {
+    let mut debug_session = executor
+        .debug_session(run_id)
+        .await
+        .change_context(ServerError::ExecutionNotFound(run_id))?;
+
+    let step_results = debug_session.run_queue().await?;
+
+    // Remove all executed steps from the persistent queue
+    let executed_step_ids: Vec<String> = step_results
+        .iter()
+        .map(|r| r.metadata.step_id.clone())
+        .collect();
+    debug_session
+        .remove_steps_from_debug_queue(&executed_step_ids)
+        .await?;
+
+    let mut results = std::collections::HashMap::new();
+    for step_result in &step_results {
+        results.insert(
+            step_result.metadata.step_id.clone(),
+            step_result.result.clone(),
+        );
+    }
+
+    Ok(Json(DebugRunQueueResponse {
+        executed_count: step_results.len(),
+        results,
+    }))
+}
+
+/// Get queued steps and their status
+#[utoipa::path(
+    get,
+    path = "/runs/{run_id}/debug/queue",
+    params(
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Queue status retrieved", body = DebugQueueStatusResponse),
+        (status = 400, description = "Invalid run ID"),
+        (status = 404, description = "Run not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = crate::api::DEBUG_TAG,
+)]
+pub async fn debug_get_queue(
+    State(executor): State<Arc<StepflowExecutor>>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<DebugQueueStatusResponse>, ErrorResponse> {
     let debug_session = executor
         .debug_session(run_id)
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
-    // Get runnable steps
-    let runnable_steps = debug_session
-        .get_runnable_steps()
-        .await
-        .into_iter()
-        .map(|step| step.step_id)
+    let queued_steps = debug_session.get_queued_steps();
+
+    let queued: Vec<QueuedStep> = queued_steps
+        .iter()
+        .map(|s| QueuedStep {
+            step_id: s.step_id.clone(),
+            status: format!("{:?}", s.status),
+        })
         .collect();
 
-    Ok(Json(DebugRunnableResponse { runnable_steps }))
+    let ready: Vec<String> = queued_steps
+        .iter()
+        .filter(|s| s.status == StepStatus::Runnable)
+        .map(|s| s.step_id.clone())
+        .collect();
+
+    Ok(Json(DebugQueueStatusResponse { queued, ready }))
+}
+
+/// Get the result of a specific step
+#[utoipa::path(
+    get,
+    path = "/runs/{run_id}/debug/show/{step_id}",
+    params(
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)"),
+        ("step_id" = String, Path, description = "Step ID")
+    ),
+    responses(
+        (status = 200, description = "Step result retrieved", body = DebugShowResponse),
+        (status = 400, description = "Invalid run ID"),
+        (status = 404, description = "Run not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = crate::api::DEBUG_TAG,
+)]
+pub async fn debug_show(
+    State(executor): State<Arc<StepflowExecutor>>,
+    Path((run_id, step_id)): Path<(Uuid, String)>,
+) -> Result<Json<DebugShowResponse>, ErrorResponse> {
+    let debug_session = executor
+        .debug_session(run_id)
+        .await
+        .change_context(ServerError::ExecutionNotFound(run_id))?;
+
+    let result = debug_session.get_step_result(&step_id);
+
+    Ok(Json(DebugShowResponse {
+        step_id,
+        completed: result.is_some(),
+        result,
+    }))
 }
