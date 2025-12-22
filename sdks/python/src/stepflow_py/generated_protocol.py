@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, ClassVar, Dict, List, Literal
+from typing import Annotated, Any, Dict, List, Literal
 
 from msgspec import Meta, Struct, field
 
@@ -50,23 +50,6 @@ class Method(Enum):
     flows_get_batch = 'flows/get_batch'
 
 
-BlobId = Annotated[
-    str,
-    Meta(
-        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
-    ),
-]
-
-
-Component = Annotated[
-    str,
-    Meta(
-        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
-        examples=['/builtin/eval', '/mcpfs/list_files', '/python/udf'],
-    ),
-]
-
-
 Value = Annotated[
     Any,
     Meta(
@@ -75,23 +58,55 @@ Value = Annotated[
 ]
 
 
-class ComponentInfoParams(Struct, kw_only=True):
-    component: Annotated[
-        Component, Meta(description='The component to get information about.')
+class MethodRequest(Struct, kw_only=True):
+    id: RequestId
+    method: Annotated[Method, Meta(description='The method being called.')]
+    jsonrpc: JsonRpc | None = '2.0'
+    params: Value | None = None
+
+
+class Error(Struct, kw_only=True):
+    code: Annotated[int, Meta(description='A numeric code indicating the error type.')]
+    message: Annotated[
+        str, Meta(description='Concise, single-sentence description of the error.')
     ]
+    data: Value | None = None
 
 
-class ComponentListParams(Struct, kw_only=True):
-    pass
+class MethodError(Struct, kw_only=True):
+    id: RequestId
+    error: Annotated[
+        Error, Meta(description='An error that occurred during method execution.')
+    ]
+    jsonrpc: JsonRpc | None = '2.0'
 
 
-class BlobType(Enum):
-    flow = 'flow'
-    data = 'data'
+class MethodSuccess(Struct, kw_only=True):
+    id: RequestId
+    result: Annotated[
+        Value, Meta(description='The result of a successful method execution.')
+    ]
+    jsonrpc: JsonRpc | None = '2.0'
 
 
-OverrideType = Annotated[
-    str, Meta(description='The type of override operation to perform.')
+class Notification(Struct, kw_only=True):
+    method: Annotated[Any, Meta(description='The notification method being called.')]
+    jsonrpc: (
+        Annotated[
+            Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')
+        ]
+        | None
+    ) = '2.0'
+    params: (
+        Annotated[Any, Meta(description='The parameters for the notification.')] | None
+    ) = None
+
+
+BlobId = Annotated[
+    str,
+    Meta(
+        description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
+    ),
 ]
 
 
@@ -105,12 +120,40 @@ class InitializeResult(Struct, kw_only=True):
     ]
 
 
+class Initialized(Struct, kw_only=True):
+    pass
+
+
+Component = Annotated[
+    str,
+    Meta(
+        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
+        examples=['/builtin/eval', '/mcpfs/list_files', '/python/udf'],
+    ),
+]
+
+
 class ComponentExecuteResult(Struct, kw_only=True):
     output: Annotated[Value, Meta(description='The result of the component execution.')]
 
 
+class ComponentInfoParams(Struct, kw_only=True):
+    component: Annotated[
+        Component, Meta(description='The component to get information about.')
+    ]
+
+
 class Schema(Struct, kw_only=True):
     pass
+
+
+class ComponentListParams(Struct, kw_only=True):
+    pass
+
+
+class BlobType(Enum):
+    flow = 'flow'
+    data = 'data'
 
 
 class GetBlobResult(Struct, kw_only=True):
@@ -122,19 +165,24 @@ class PutBlobResult(Struct, kw_only=True):
     blob_id: BlobId
 
 
+class OverrideType(Enum):
+    merge_patch = 'merge_patch'
+    json_patch = 'json_patch'
+
+
 class FlowError(Struct, kw_only=True):
     code: int
     message: str
     data: Value | None = None
 
 
-class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
-    outcome: ClassVar[Annotated[Literal['success'], Meta(title='FlowOutcome')]]
+class FlowResultSuccess(Struct, kw_only=True):
+    outcome: Literal['success']
     result: Value
 
 
-class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
-    outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
+class FlowResultFailed(Struct, kw_only=True):
+    outcome: Literal['failed']
     error: FlowError
 
 
@@ -189,24 +237,29 @@ class BatchDetails(Struct, kw_only=True):
     ) = None
 
 
-class Error(Struct, kw_only=True):
-    code: Annotated[int, Meta(description='A numeric code indicating the error type.')]
-    message: Annotated[
-        str, Meta(description='Concise, single-sentence description of the error.')
-    ]
-    data: (
-        Annotated[
-            Value | None,
-            Meta(
-                description='Primitive or structured value that contains additional information about the error.'
-            ),
-        ]
-        | None
-    ) = None
+Message1 = Annotated[
+    MethodRequest | MethodSuccess | MethodError | Notification,
+    Meta(
+        description='The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.'
+    ),
+]
 
 
-class Initialized(Struct, kw_only=True):
-    pass
+Message = Annotated[
+    MethodRequest | MethodSuccess | MethodError | Notification,
+    Meta(
+        description='The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.',
+        title='Message',
+    ),
+]
+
+
+MethodResponse = Annotated[
+    MethodSuccess | MethodError,
+    Meta(
+        description="Response to a method request. This is an untagged union - success responses have a 'result' field while error responses have an 'error' field."
+    ),
+]
 
 
 class ObservabilityContext(Struct, kw_only=True):
@@ -237,15 +290,7 @@ class ObservabilityContext(Struct, kw_only=True):
         ]
         | None
     ) = None
-    flow_id: (
-        Annotated[
-            BlobId | None,
-            Meta(
-                description='The ID of the flow being executed.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and understanding which workflow is being executed.'
-            ),
-        ]
-        | None
-    ) = None
+    flow_id: BlobId | None = None
     step_id: (
         Annotated[
             str | None,
@@ -255,6 +300,17 @@ class ObservabilityContext(Struct, kw_only=True):
         ]
         | None
     ) = None
+
+
+class InitializeParams(Struct, kw_only=True):
+    runtime_protocol_version: Annotated[
+        int,
+        Meta(
+            description='Maximum version of the protocol being used by the Stepflow runtime.',
+            ge=0,
+        ),
+    ]
+    observability: ObservabilityContext | None = None
 
 
 class ComponentExecuteParams(Struct, kw_only=True):
@@ -273,27 +329,37 @@ class ComponentExecuteParams(Struct, kw_only=True):
     ]
 
 
-class GetBlobParams(Struct, kw_only=True):
-    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
-    observability: (
+class ComponentInfo(Struct, kw_only=True):
+    component: Annotated[Component, Meta(description='The component ID.')]
+    description: (
         Annotated[
-            ObservabilityContext | None,
-            Meta(description='Observability context for tracing bidirectional calls.'),
+            str | None, Meta(description='Optional description of the component.')
         ]
         | None
     ) = None
+    input_schema: Schema | None = None
+    output_schema: Schema | None = None
+
+
+class ComponentInfoResult(Struct, kw_only=True):
+    info: Annotated[ComponentInfo, Meta(description='Information about the component.')]
+
+
+class ListComponentsResult(Struct, kw_only=True):
+    components: Annotated[
+        List[ComponentInfo], Meta(description='A list of all available components.')
+    ]
+
+
+class GetBlobParams(Struct, kw_only=True):
+    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
+    observability: ObservabilityContext | None = None
 
 
 class PutBlobParams(Struct, kw_only=True):
     data: Value
     blob_type: BlobType
-    observability: (
-        Annotated[
-            ObservabilityContext | None,
-            Meta(description='Observability context for tracing bidirectional calls.'),
-        ]
-        | None
-    ) = None
+    observability: ObservabilityContext | None = None
 
 
 class StepOverride(Struct, kw_only=True):
@@ -311,7 +377,19 @@ class StepOverride(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = field(name='$type', default='merge_patch')
+    ) = field(name='$type', default=None)
+
+
+FlowResult = Annotated[
+    FlowResultSuccess | FlowResultFailed,
+    Meta(description='The results of a step execution.', title='FlowResult'),
+]
+
+
+class EvaluateFlowResult(Struct, kw_only=True):
+    result: Annotated[
+        FlowResult, Meta(description='The result of the flow evaluation.')
+    ]
 
 
 class GetFlowMetadataParams(Struct, kw_only=True):
@@ -325,13 +403,7 @@ class GetFlowMetadataParams(Struct, kw_only=True):
         ]
         | None
     ) = None
-    observability: (
-        Annotated[
-            ObservabilityContext | None,
-            Meta(description='Observability context for tracing metadata requests.'),
-        ]
-        | None
-    ) = None
+    observability: ObservabilityContext | None = None
 
 
 class GetBatchParams(Struct, kw_only=True):
@@ -342,58 +414,12 @@ class GetBatchParams(Struct, kw_only=True):
             Meta(description='If true, wait for batch completion before returning.'),
         ]
         | None
-    ) = False
+    ) = None
     include_results: (
         Annotated[bool, Meta(description='If true, include full outputs in response.')]
         | None
-    ) = False
-    observability: (
-        Annotated[
-            ObservabilityContext | None,
-            Meta(description='Observability context for tracing batch queries.'),
-        ]
-        | None
     ) = None
-
-
-class ComponentInfo(Struct, kw_only=True):
-    component: Annotated[Component, Meta(description='The component ID.')]
-    description: (
-        Annotated[
-            str | None, Meta(description='Optional description of the component.')
-        ]
-        | None
-    ) = None
-    input_schema: (
-        Annotated[
-            Schema | None,
-            Meta(
-                description='The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
-            ),
-        ]
-        | None
-    ) = None
-    output_schema: (
-        Annotated[
-            Schema | None,
-            Meta(
-                description='The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
-            ),
-        ]
-        | None
-    ) = None
-
-
-class ListComponentsResult(Struct, kw_only=True):
-    components: Annotated[
-        List[ComponentInfo], Meta(description='A list of all available components.')
-    ]
-
-
-FlowResult = Annotated[
-    FlowResultSuccess | FlowResultFailed,
-    Meta(description='The results of a step execution.', title='FlowResult'),
-]
+    observability: ObservabilityContext | None = None
 
 
 class BatchOutputInfo(Struct, kw_only=True):
@@ -401,100 +427,7 @@ class BatchOutputInfo(Struct, kw_only=True):
         int, Meta(description='Position in the batch input array.', ge=0)
     ]
     status: Annotated[str, Meta(description='The execution status.')]
-    result: (
-        Annotated[
-            FlowResult | None, Meta(description='The flow result (if completed).')
-        ]
-        | None
-    ) = None
-
-
-class MethodError(Struct, kw_only=True):
-    id: RequestId
-    error: Annotated[
-        Error, Meta(description='An error that occurred during method execution.')
-    ]
-    jsonrpc: JsonRpc | None = '2.0'
-
-
-class Notification(Struct, kw_only=True):
-    method: Annotated[Method, Meta(description='The notification method being called.')]
-    params: Annotated[
-        Initialized,
-        Meta(
-            description='The parameters for the notification.',
-            title='NotificationParams',
-        ),
-    ]
-    jsonrpc: JsonRpc | None = '2.0'
-
-
-class InitializeParams(Struct, kw_only=True):
-    runtime_protocol_version: Annotated[
-        int,
-        Meta(
-            description='Maximum version of the protocol being used by the Stepflow runtime.',
-            ge=0,
-        ),
-    ]
-    observability: (
-        Annotated[
-            ObservabilityContext | None,
-            Meta(
-                description='Observability context for tracing initialization (trace context only, no flow/run).'
-            ),
-        ]
-        | None
-    ) = None
-
-
-WorkflowOverrides = Dict[str, StepOverride] | None
-
-
-class SubmitBatchParams(Struct, kw_only=True):
-    flow_id: Annotated[
-        BlobId,
-        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
-    ]
-    inputs: Annotated[
-        List[Value], Meta(description='The inputs to provide to the flow for each run.')
-    ]
-    overrides: (
-        Annotated[
-            WorkflowOverrides | None,
-            Meta(
-                description='Optional workflow overrides to apply to all runs before execution.'
-            ),
-        ]
-        | None
-    ) = None
-    max_concurrency: (
-        Annotated[
-            int | None,
-            Meta(
-                description='Maximum number of concurrent executions (defaults to number of inputs if not specified).',
-                ge=0,
-            ),
-        ]
-        | None
-    ) = None
-    observability: (
-        Annotated[
-            ObservabilityContext | None,
-            Meta(description='Observability context for tracing batch submission.'),
-        ]
-        | None
-    ) = None
-
-
-class ComponentInfoResult(Struct, kw_only=True):
-    info: Annotated[ComponentInfo, Meta(description='Information about the component.')]
-
-
-class EvaluateFlowResult(Struct, kw_only=True):
-    result: Annotated[
-        FlowResult, Meta(description='The result of the flow evaluation.')
-    ]
+    result: FlowResult | None = None
 
 
 class GetBatchResult(Struct, kw_only=True):
@@ -513,82 +446,40 @@ class GetBatchResult(Struct, kw_only=True):
     ) = None
 
 
+class WorkflowOverrides(Struct, kw_only=True):
+    steps: Annotated[
+        Dict[str, StepOverride],
+        Meta(description='Map of step ID to override specification'),
+    ]
+
+
 class EvaluateFlowParams(Struct, kw_only=True):
     flow_id: Annotated[
         BlobId,
         Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
     ]
     input: Annotated[Value, Meta(description='The input to provide to the flow.')]
-    overrides: (
+    overrides: WorkflowOverrides | None = None
+    observability: ObservabilityContext | None = None
+
+
+class SubmitBatchParams(Struct, kw_only=True):
+    flow_id: Annotated[
+        BlobId,
+        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
+    ]
+    inputs: Annotated[
+        List[Value], Meta(description='The inputs to provide to the flow for each run.')
+    ]
+    overrides: WorkflowOverrides | None = None
+    max_concurrency: (
         Annotated[
-            WorkflowOverrides | None,
-            Meta(description='Optional workflow overrides to apply before execution.'),
-        ]
-        | None
-    ) = None
-    observability: (
-        Annotated[
-            ObservabilityContext | None,
+            int | None,
             Meta(
-                description='Observability context for tracing nested flow execution.'
+                description='Maximum number of concurrent executions (defaults to number of inputs if not specified).',
+                ge=0,
             ),
         ]
         | None
     ) = None
-
-
-class MethodSuccess(Struct, kw_only=True):
-    id: RequestId
-    result: Annotated[
-        InitializeResult
-        | ComponentExecuteResult
-        | ComponentInfoResult
-        | ListComponentsResult
-        | GetBlobResult
-        | PutBlobResult
-        | EvaluateFlowResult
-        | GetFlowMetadataResult
-        | SubmitBatchResult
-        | GetBatchResult,
-        Meta(
-            description='The result of a successful method execution.',
-            title='MethodResult',
-        ),
-    ]
-    jsonrpc: JsonRpc | None = '2.0'
-
-
-class MethodRequest(Struct, kw_only=True):
-    id: RequestId
-    method: Annotated[Method, Meta(description='The method being called.')]
-    params: Annotated[
-        InitializeParams
-        | ComponentExecuteParams
-        | ComponentInfoParams
-        | ComponentListParams
-        | GetBlobParams
-        | PutBlobParams
-        | EvaluateFlowParams
-        | GetFlowMetadataParams
-        | SubmitBatchParams
-        | GetBatchParams,
-        Meta(
-            description='The parameters for the method call. Set on method requests.',
-            title='MethodParams',
-        ),
-    ]
-    jsonrpc: JsonRpc | None = '2.0'
-
-
-MethodResponse = Annotated[
-    MethodSuccess | MethodError, Meta(description='Response to a method request.')
-]
-
-
-Message = Annotated[
-    MethodRequest | MethodSuccess | MethodError | Notification,
-    Meta(
-        description='The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.',
-        title='Message',
-    ),
-]
+    observability: ObservabilityContext | None = None

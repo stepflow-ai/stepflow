@@ -4007,26 +4007,10 @@ version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9558e172d4e8533736ba97870c4b2cd63f84b382a3d6eb063da41b91cce17289"
 dependencies = [
- "chrono",
  "dyn-clone",
- "indexmap 2.12.1",
  "ref-cast",
- "schemars_derive",
  "serde",
  "serde_json",
- "url",
-]
-
-[[package]]
-name = "schemars_derive"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "301858a4023d78debd2353c7426dc486001bddc91ae31a76fb1f55132f7e2633"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_derive_internals",
- "syn 2.0.111",
 ]
 
 [[package]]
@@ -4116,17 +4100,6 @@ name = "serde_derive"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
-]
-
-[[package]]
-name = "serde_derive_internals"
-version = "0.29.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4609,7 +4582,6 @@ version = "0.8.0"
 dependencies = [
  "error-stack",
  "indexmap 2.12.1",
- "schemars 1.1.0",
  "serde",
  "serde_json",
  "stepflow-core",
@@ -4626,7 +4598,6 @@ dependencies = [
  "error-stack",
  "log",
  "openai-api-rs",
- "schemars 1.1.0",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -4638,6 +4609,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "trait-variant",
+ "utoipa",
  "uuid",
 ]
 
@@ -4734,7 +4706,6 @@ dependencies = [
  "json-patch",
  "log",
  "safer_owning_ref",
- "schemars 1.1.0",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -4857,7 +4828,6 @@ dependencies = [
  "log",
  "reqwest",
  "reqwest-eventsource",
- "schemars 1.1.0",
  "serde",
  "serde_json",
  "similar-asserts",
@@ -4869,6 +4839,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tokio-stream",
+ "utoipa",
  "uuid",
  "which 7.0.3",
 ]

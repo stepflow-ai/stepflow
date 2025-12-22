@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::borrow::Cow;
 use std::fmt;
 
 use error_stack::ResultExt as _;
@@ -128,20 +127,6 @@ pub enum BlobType {
     Data,
 }
 
-impl schemars::JsonSchema for BlobType {
-    fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("BlobType")
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "Type of blob stored in the blob store",
-            "type": "string",
-            "enum": ["flow", "data"]
-        })
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum BlobIdError {
     #[error("Invalid blob ID length: expected {expected}, got {actual}")]
@@ -157,26 +142,10 @@ pub enum BlobIdError {
     BlobNotFound { blob_id: String },
 }
 
-/// A type-safe wrapper for blob identifiers.
-///
-/// Blob IDs are SHA-256 hashes of the content, providing deterministic
-/// identification and automatic deduplication.
+/// A SHA-256 hash of the blob content, represented as a hexadecimal string.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[repr(transparent)]
 pub struct BlobId(String);
-
-impl schemars::JsonSchema for BlobId {
-    fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("BlobId")
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-            "type": "string",
-        })
-    }
-}
 
 impl BlobId {
     /// Create a new BlobId from a hex-encoded hash string.

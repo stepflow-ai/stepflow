@@ -36,7 +36,7 @@ impl Default for PutBlobComponent {
 }
 
 /// Input for the put_blob component
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct PutBlobInput {
     /// The JSON data to store as a blob
     data: serde_json::Value,
@@ -45,7 +45,7 @@ struct PutBlobInput {
 }
 
 /// Output from the put_blob component
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct PutBlobOutput {
     /// The blob ID for the stored data
     blob_id: String,
@@ -110,14 +110,14 @@ impl Default for GetBlobComponent {
 }
 
 /// Input for the get_blob component
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct GetBlobInput {
     /// The blob ID to retrieve
     blob_id: String,
 }
 
 /// Output from the get_blob component
-#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 struct GetBlobOutput {
     /// The JSON data stored in the blob
     data: serde_json::Value,

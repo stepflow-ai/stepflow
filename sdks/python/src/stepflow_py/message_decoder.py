@@ -181,10 +181,11 @@ class MessageDecoder(Generic[T]):
                     f"Response with id '{raw_message.id}' has no pending request"
                 )
 
+            result = msgspec.json.decode(raw_message.result, type=result_type)
             message = MethodSuccess(
                 jsonrpc=raw_message.jsonrpc,
                 id=raw_message.id,
-                result=msgspec.json.decode(raw_message.result, type=result_type),
+                result=result,
             )
             return (message, context)
 

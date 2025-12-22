@@ -10,12 +10,12 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::{JsonSchema, Schema, json_schema};
 use serde::{Deserialize, Serialize};
 use strum::IntoStaticStr;
+use utoipa::ToSchema;
 
 #[derive(
-    Serialize, Deserialize, Debug, JsonSchema, Hash, PartialEq, Eq, Clone, Copy, IntoStaticStr,
+    Serialize, Deserialize, Debug, ToSchema, Hash, PartialEq, Eq, Clone, Copy, IntoStaticStr,
 )]
 pub enum Method {
     #[serde(rename = "initialize")]
@@ -77,55 +77,6 @@ pub trait ProtocolMethod {
 
 pub trait ProtocolNotification {
     const METHOD_NAME: Method;
-}
-
-pub(crate) fn method_params(generator: &mut schemars::SchemaGenerator) -> Schema {
-    let params = vec![
-        generator.subschema_for::<super::initialization::InitializeParams>(),
-        generator.subschema_for::<super::components::ComponentExecuteParams>(),
-        generator.subschema_for::<super::components::ComponentInfoParams>(),
-        generator.subschema_for::<super::components::ComponentListParams>(),
-        generator.subschema_for::<super::blobs::GetBlobParams>(),
-        generator.subschema_for::<super::blobs::PutBlobParams>(),
-        generator.subschema_for::<super::flows::EvaluateFlowParams>(),
-        generator.subschema_for::<super::flows::GetFlowMetadataParams>(),
-        generator.subschema_for::<super::flows::SubmitBatchParams>(),
-        generator.subschema_for::<super::flows::GetBatchParams>(),
-    ];
-    json_schema!({
-        "title": "MethodParams",
-        "description": "Parameters for the method call.",
-        "oneOf": params
-    })
-}
-
-pub(crate) fn method_result(generator: &mut schemars::SchemaGenerator) -> Schema {
-    let params: Vec<Schema> = vec![
-        generator.subschema_for::<super::initialization::InitializeResult>(),
-        generator.subschema_for::<super::components::ComponentExecuteResult>(),
-        generator.subschema_for::<super::components::ComponentInfoResult>(),
-        generator.subschema_for::<super::components::ListComponentsResult>(),
-        generator.subschema_for::<super::blobs::GetBlobResult>(),
-        generator.subschema_for::<super::blobs::PutBlobResult>(),
-        generator.subschema_for::<super::flows::EvaluateFlowResult>(),
-        generator.subschema_for::<super::flows::GetFlowMetadataResult>(),
-        generator.subschema_for::<super::flows::SubmitBatchResult>(),
-        generator.subschema_for::<super::flows::GetBatchResult>(),
-    ];
-    json_schema!({
-        "title": "MethodResult",
-        "description": "Result of the method call.",
-        "oneOf": params
-    })
-}
-
-pub(crate) fn notification_params(generator: &mut schemars::SchemaGenerator) -> Schema {
-    let params = vec![generator.subschema_for::<super::initialization::Initialized>()];
-    json_schema!({
-        "title": "NotificationParams",
-        "description": "Parameters for the notification.",
-        "oneOf": params
-    })
 }
 
 #[cfg(test)]

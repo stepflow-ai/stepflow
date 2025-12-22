@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Identifies a specific plugin and atomic functionality to execute.
@@ -19,29 +18,25 @@ use serde::{Deserialize, Serialize};
 /// - The plugin name
 /// - The component name within that plugin
 /// - Optional sub-path for specific functionality
-#[derive(
-    Debug, Eq, PartialEq, Clone, Hash, utoipa::ToSchema, Serialize, Deserialize, Ord, PartialOrd,
-)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash, Serialize, Deserialize, Ord, PartialOrd)]
 #[repr(transparent)]
 pub struct Component(String);
 
-impl JsonSchema for Component {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "Component".into()
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "type": "string",
-            "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
-            "examples": [
-                "/builtin/eval",
-                "/mcpfs/list_files",
-                "/python/udf",
-            ]
-        })
+impl utoipa::PartialSchema for Component {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(
+            utoipa::openapi::ObjectBuilder::new()
+                .schema_type(utoipa::openapi::schema::SchemaType::Type(
+                    utoipa::openapi::schema::Type::String,
+                ))
+                .description(Some("Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf')."))
+                .examples(["/builtin/eval", "/mcpfs/list_files", "/python/udf"])
+                .build(),
+        ))
     }
 }
+
+impl utoipa::ToSchema for Component {}
 
 impl std::fmt::Display for Component {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

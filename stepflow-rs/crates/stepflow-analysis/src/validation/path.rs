@@ -10,9 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 pub(crate) enum PathPart {
     String(Cow<'static, str>),
     Index(usize),
@@ -36,9 +34,7 @@ impl From<usize> for PathPart {
     }
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize, utoipa::ToSchema)]
 #[repr(transparent)]
 pub struct Path(pub(crate) Vec<PathPart>);
 
@@ -74,7 +70,6 @@ macro_rules! make_path {
 use std::borrow::Cow;
 
 pub(crate) use make_path;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 impl Path {

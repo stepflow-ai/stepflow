@@ -12,17 +12,17 @@
 
 use std::collections::HashMap;
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{ValueRef, WorkflowOverrides};
 use stepflow_core::{BlobId, FlowResult};
+use utoipa::ToSchema;
 
 use crate::protocol::Method;
 
 use super::{ObservabilityContext, ProtocolMethod};
 
 /// Sent from the component server to the Stepflow to evaluate a flow with the provided input.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EvaluateFlowParams {
     /// The ID of the flow to evaluate (blob ID of the flow).
     pub flow_id: BlobId,
@@ -37,7 +37,7 @@ pub struct EvaluateFlowParams {
 }
 
 /// Sent from the Stepflow back to the component server with the result of the flow evaluation.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EvaluateFlowResult {
     /// The result of the flow evaluation.
     pub result: FlowResult,
@@ -53,7 +53,7 @@ impl ProtocolMethod for EvaluateFlowParams {
 /// This request allows components to access workflow-level metadata and step-specific metadata
 /// during execution. The metadata can contain arbitrary JSON values defined in the workflow
 /// YAML/JSON.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GetFlowMetadataParams {
     /// The flow to retrieve metadata for.
     pub flow_id: BlobId,
@@ -76,7 +76,7 @@ pub struct GetFlowMetadataParams {
 /// Contains the flow metadata and step metadata if a specific step was requested.
 /// The metadata values are arbitrary JSON objects that can be accessed by components during
 /// workflow execution.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GetFlowMetadataResult {
     /// Metadata for the current flow.
     ///
@@ -99,7 +99,7 @@ impl ProtocolMethod for GetFlowMetadataParams {
 }
 
 /// Sent from the component server to Stepflow to submit a batch execution.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubmitBatchParams {
     /// The ID of the flow to evaluate (blob ID of the flow).
     pub flow_id: BlobId,
@@ -117,7 +117,7 @@ pub struct SubmitBatchParams {
 }
 
 /// Sent from Stepflow back to the component server with the batch submission result.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubmitBatchResult {
     /// The batch ID (UUID).
     pub batch_id: String,
@@ -131,7 +131,7 @@ impl ProtocolMethod for SubmitBatchParams {
 }
 
 /// Sent from the component server to Stepflow to get batch status and optionally results.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GetBatchParams {
     /// The batch ID to query.
     pub batch_id: String,
@@ -147,7 +147,7 @@ pub struct GetBatchParams {
 }
 
 /// Output information for a single run in a batch.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchOutputInfo {
     /// Position in the batch input array.
     pub batch_input_index: usize,
@@ -159,7 +159,7 @@ pub struct BatchOutputInfo {
 }
 
 /// Batch details including metadata and statistics.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchDetails {
     /// The batch ID.
     pub batch_id: String,
@@ -186,7 +186,7 @@ pub struct BatchDetails {
 }
 
 /// Sent from Stepflow back to the component server with batch details and optional outputs.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GetBatchResult {
     /// Always included: batch details with metadata and statistics.
     pub details: BatchDetails,

@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 mod level;
@@ -22,7 +21,7 @@ pub use message::DiagnosticMessage;
 use crate::Path;
 
 /// A single diagnostic with its context
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
     /// The diagnostic message and type (boxed to handle varying sizes)
@@ -65,7 +64,7 @@ impl Diagnostic {
 }
 
 /// Collection of diagnostics with utility methods
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostics {
     /// All diagnostics found

@@ -21,7 +21,7 @@ from typing import Any
 
 from .generated_flow import (
     InputRef,
-    LiteralModel,
+    LiteralExpr,
     StepRef,
     ValueExpr,
     VariableRef,
@@ -231,7 +231,7 @@ class Value:
                     StepRef
                     | InputRef
                     | VariableRef
-                    | LiteralModel
+                    | LiteralExpr
                     | list
                     | dict
                     | str
@@ -250,7 +250,7 @@ class Value:
 
         This is equivalent to using $literal in the workflow definition.
         """
-        return Value(LiteralModel(field_literal=value))
+        return Value(LiteralExpr(field_literal=value))
 
     @staticmethod
     def step(step_id: str, path: str | None = None) -> Value:
@@ -284,7 +284,7 @@ class Value:
             return Value._convert_workflow_input(data)
 
         # ValueExpr types pass through as-is
-        if isinstance(data, StepRef | InputRef | VariableRef | LiteralModel):
+        if isinstance(data, StepRef | InputRef | VariableRef | LiteralExpr):
             return data
 
         if isinstance(data, dict):
@@ -358,7 +358,7 @@ Valuable = (
     | StepRef
     | InputRef
     | VariableRef
-    | LiteralModel
+    | LiteralExpr
     | str
     | int
     | float

@@ -12,9 +12,9 @@
 
 //! Observability context for distributed tracing and logging.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use stepflow_core::BlobId;
+use utoipa::ToSchema;
 
 /// Observability context for distributed tracing and logging.
 ///
@@ -26,7 +26,7 @@ use stepflow_core::BlobId;
 /// - `trace_id` and `span_id`: Present when tracing is enabled, None otherwise
 /// - `run_id` and `flow_id`: Present for workflow execution requests, None for init/discovery
 /// - `step_id`: Present for step-level execution, None for workflow-level operations
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ObservabilityContext {
     /// OpenTelemetry trace ID (128-bit, hex encoded).
     ///

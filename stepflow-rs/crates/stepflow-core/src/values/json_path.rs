@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -220,27 +219,22 @@ impl<'de> Deserialize<'de> for JsonPath {
     }
 }
 
-impl JsonSchema for JsonPath {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "JsonPath".into()
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "type": "string",
-            "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
-            "examples": ["field", "$.field", "$[\"field\"]", "$[0]", "$.field[0].nested"]
-        })
-    }
-}
-
 impl utoipa::PartialSchema for JsonPath {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        // Use a simple string schema
-        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::AllOf(
-            utoipa::openapi::AllOfBuilder::new()
+        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(
+            utoipa::openapi::ObjectBuilder::new()
+                .schema_type(utoipa::openapi::schema::SchemaType::Type(
+                    utoipa::openapi::schema::Type::String,
+                ))
                 .description(Some("JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object."))
-                .build()
+                .examples([
+                    "field",
+                    "$.field",
+                    "$[\"field\"]",
+                    "$[0]",
+                    "$.field[0].nested",
+                ])
+                .build(),
         ))
     }
 }

@@ -22,7 +22,7 @@ use crate::{BuiltinComponent, Result, error::BuiltinError};
 
 pub struct CreateMessagesComponent;
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema, Default)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema, Default)]
 struct CreateMessagesInput {
     /// The system instructions to include in the message list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,7 +32,7 @@ struct CreateMessagesInput {
     user_prompt: String,
 }
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema, Default)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema, Default)]
 
 struct CreateMessagesOutput {
     messages: Vec<ChatMessage>,

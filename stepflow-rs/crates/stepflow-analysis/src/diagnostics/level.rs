@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Diagnostic level indicating severity and impact
@@ -24,7 +23,6 @@ use serde::{Deserialize, Serialize};
     Ord,
     Serialize,
     Deserialize,
-    JsonSchema,
     utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]

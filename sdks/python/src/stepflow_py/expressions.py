@@ -44,7 +44,7 @@ from .generated_flow import (
     Coalesce,
     If,
     InputRef,
-    LiteralModel,
+    LiteralExpr,
     StepRef,
     VariableRef,
 )
@@ -142,7 +142,7 @@ class ValueExpr:
             >>> ValueExpr.literal([1, 2, 3])
             >>> ValueExpr.literal("hello")
         """
-        return LiteralModel(field_literal=value)
+        return LiteralExpr(field_literal=value)
 
     @staticmethod
     def if_(

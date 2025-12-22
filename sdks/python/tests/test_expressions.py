@@ -21,7 +21,7 @@ from stepflow_py.generated_flow import (
     Coalesce,
     If,
     InputRef,
-    LiteralModel,
+    LiteralExpr,
     StepRef,
     VariableRef,
 )
@@ -80,17 +80,17 @@ def test_literal():
     """Test creating literal values."""
     # String literal
     expr_str = ValueExpr.literal("hello")
-    assert isinstance(expr_str, LiteralModel)
+    assert isinstance(expr_str, LiteralExpr)
     assert expr_str.field_literal == "hello"
 
     # Number literal
     expr_num = ValueExpr.literal(42)
-    assert isinstance(expr_num, LiteralModel)
+    assert isinstance(expr_num, LiteralExpr)
     assert expr_num.field_literal == 42
 
     # Object literal
     expr_obj = ValueExpr.literal({"key": "value"})
-    assert isinstance(expr_obj, LiteralModel)
+    assert isinstance(expr_obj, LiteralExpr)
     assert expr_obj.field_literal == {"key": "value"}
 
 

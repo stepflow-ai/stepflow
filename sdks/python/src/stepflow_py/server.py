@@ -304,7 +304,7 @@ class StepflowServer:
         # Return protocol version
         result = InitializeResult(server_protocol_version=1)
 
-        return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+        return MethodSuccess(id=request.id, result=result)
 
     async def _handle_component_list(self, request: MethodRequest) -> MethodResponse:
         """Handle the components/list method."""
@@ -324,7 +324,7 @@ class StepflowServer:
             )
 
         result = ListComponentsResult(components=component_infos)
-        return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+        return MethodSuccess(id=request.id, result=result)
 
     async def _handle_component_info(self, request: MethodRequest) -> MethodResponse:
         """Handle the components/info method."""
@@ -343,7 +343,7 @@ class StepflowServer:
         )
 
         result = ComponentInfoResult(info=info)
-        return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+        return MethodSuccess(id=request.id, result=result)
 
     async def _handle_component_execute(
         self, request: MethodRequest, context: StepflowContext | None = None
@@ -438,7 +438,7 @@ class StepflowServer:
                 result = ComponentExecuteResult(output=output)
                 logger.info(f"Component {params.component} executed successfully")
                 logger.debug(f"Component output: {output}")
-                return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+                return MethodSuccess(id=request.id, result=result)
 
         except Exception as e:
             logger = logging.getLogger(__name__)

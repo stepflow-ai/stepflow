@@ -14,11 +14,10 @@
 
 use crate::schema::SchemaRef;
 use crate::workflow::Component;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ComponentInfo {
     /// The component ID.
     pub component: Component,
