@@ -98,7 +98,9 @@ class LogForwarder:
     def __post_init__(self) -> None:
         self._logger = logging.getLogger(self.logger_name)
         self._entries = deque(maxlen=self.max_entries)
-        self._thread = threading.Thread(target=self._run, daemon=True, name="stepflow-log-forwarder")
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="stepflow-log-forwarder"
+        )
 
     def start(self) -> None:
         """Start the log forwarding thread."""
@@ -164,10 +166,21 @@ class LogForwarder:
                 span_id=data.get("span_id"),
                 run_id=data.get("run_id"),
                 step_id=data.get("step_id"),
-                extra={k: v for k, v in data.items() if k not in {
-                    "timestamp", "level", "message", "target",
-                    "trace_id", "span_id", "run_id", "step_id"
-                }},
+                extra={
+                    k: v
+                    for k, v in data.items()
+                    if k
+                    not in {
+                        "timestamp",
+                        "level",
+                        "message",
+                        "target",
+                        "trace_id",
+                        "span_id",
+                        "run_id",
+                        "step_id",
+                    }
+                },
             )
         except json.JSONDecodeError:
             # Not JSON - treat as plain text

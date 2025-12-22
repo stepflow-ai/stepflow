@@ -41,8 +41,6 @@ For the low-level generated API client, use `stepflow_api` directly:
     ```
 """
 
-from .client import StepflowClient, StepflowClientError
-
 # Re-export commonly used types from stepflow_api for convenience
 from stepflow_api.models import (
     BatchDetails,
@@ -62,6 +60,8 @@ from stepflow_api.models import (
     StoreFlowResponse,
     WorkflowOverrides,
 )
+
+from .client import StepflowClient, StepflowClientError
 
 __version__ = "0.1.0"
 

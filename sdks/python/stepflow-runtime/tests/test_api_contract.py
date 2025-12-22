@@ -21,8 +21,8 @@ If these tests fail, it indicates the Python client needs updating to match
 server API changes.
 """
 
-import pytest
 import httpx
+import pytest
 
 from stepflow_runtime import StepflowRuntime
 from stepflow_runtime.logging import LogConfig
@@ -71,7 +71,7 @@ class TestApiContract:
             elif method not in paths[path]:
                 missing.append(f"{method.upper()} {path} - method not found")
 
-        assert not missing, f"Missing endpoints in OpenAPI spec:\n" + "\n".join(missing)
+        assert not missing, "Missing endpoints in OpenAPI spec:\n" + "\n".join(missing)
 
     def test_flow_store_request_schema(self, openapi_spec):
         """Verify POST /flows request body matches client expectations."""

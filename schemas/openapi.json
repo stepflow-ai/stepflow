@@ -1,0 +1,3168 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Stepflow API",
+    "description": "API for Stepflow flows and runs",
+    "contact": {
+      "name": "Ben Chambers"
+    },
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    },
+    "version": "0.7.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:17837/api/v1",
+      "description": "Localhost development server"
+    }
+  ],
+  "paths": {
+    "/batches": {
+      "get": {
+        "tags": [
+          "Batch"
+        ],
+        "summary": "List batches with optional filtering",
+        "operationId": "list_batches",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by batch status",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/BatchStatus"
+                }
+              ]
+            }
+          },
+          {
+            "name": "flowName",
+            "in": "query",
+            "description": "Filter by flow name",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of results to skip",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batches listed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBatchesResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Batch"
+        ],
+        "summary": "Create and execute a batch of flows",
+        "operationId": "create_batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Batch created successfully and execution started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Flow not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/batches/{batch_id}": {
+      "get": {
+        "tags": [
+          "Batch"
+        ],
+        "summary": "Get batch details by ID",
+        "operationId": "get_batch",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "description": "Batch ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid batch ID format"
+          },
+          "404": {
+            "description": "Batch not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/batches/{batch_id}/cancel": {
+      "post": {
+        "tags": [
+          "Batch"
+        ],
+        "summary": "Cancel a batch execution",
+        "operationId": "cancel_batch",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "description": "Batch ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch cancelled successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid batch ID format"
+          },
+          "404": {
+            "description": "Batch not found"
+          },
+          "409": {
+            "description": "Batch already completed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/batches/{batch_id}/outputs": {
+      "get": {
+        "tags": [
+          "Batch"
+        ],
+        "summary": "Get batch outputs (results for all runs)",
+        "operationId": "get_batch_outputs",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "description": "Batch ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch outputs retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBatchOutputsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid batch ID format"
+          },
+          "404": {
+            "description": "Batch not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/batches/{batch_id}/runs": {
+      "get": {
+        "tags": [
+          "Batch"
+        ],
+        "summary": "List runs in a batch",
+        "operationId": "list_batch_runs",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "description": "Batch ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch runs listed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBatchRunsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid batch ID format"
+          },
+          "404": {
+            "description": "Batch not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/components": {
+      "get": {
+        "tags": [
+          "Component"
+        ],
+        "summary": "List all available components from plugins",
+        "operationId": "list_components",
+        "parameters": [
+          {
+            "name": "includeSchemas",
+            "in": "query",
+            "description": "Whether to include schemas in the response (default: true)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Components listed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListComponentsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/flows": {
+      "post": {
+        "tags": [
+          "Flow"
+        ],
+        "summary": "Store a flow and return its hash",
+        "operationId": "store_flow",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreFlowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Flow stored successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreFlowResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid flow"
+          }
+        }
+      }
+    },
+    "/flows/{flow_id}": {
+      "get": {
+        "tags": [
+          "Flow"
+        ],
+        "summary": "Get a flow by its ID",
+        "operationId": "get_flow",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "description": "Flow ID to retrieve",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flow retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Flow not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Flow"
+        ],
+        "summary": "Delete a flow by ID",
+        "operationId": "delete_flow",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "description": "Flow ID to delete",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Flow deleted successfully"
+          },
+          "404": {
+            "description": "Flow not found"
+          },
+          "409": {
+            "description": "Flow has active runs"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Check service health",
+        "operationId": "health_check",
+        "parameters": [
+          {
+            "name": "error",
+            "in": "query",
+            "description": "Trigger an error for testing error response format",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - triggered by ?error=bad_request"
+          },
+          "404": {
+            "description": "Not found - triggered by ?error=not_found"
+          },
+          "500": {
+            "description": "Internal server error - triggered by ?error=internal or ?error=stack"
+          }
+        }
+      }
+    },
+    "/runs": {
+      "get": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "List executions with optional filtering",
+        "operationId": "list_runs",
+        "responses": {
+          "200": {
+            "description": "Runs listed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListRunsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Create and execute a flow by hash",
+        "operationId": "create_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Flow run created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Flow not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Get execution details by ID",
+        "operationId": "get_run",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid run ID format"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Delete a completed execution",
+        "operationId": "delete_run",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Run deleted successfully"
+          },
+          "400": {
+            "description": "Invalid run ID format"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "409": {
+            "description": "Run still running"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Cancel a running execution",
+        "operationId": "cancel_run",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run cancelled successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid run ID format"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "409": {
+            "description": "Run already completed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/debug/continue": {
+      "post": {
+        "tags": [
+          "Debug"
+        ],
+        "summary": "Continue debug run to completion",
+        "operationId": "debug_continue",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run continued successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid run ID"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/debug/runnable": {
+      "get": {
+        "tags": [
+          "Debug"
+        ],
+        "summary": "Get runnable steps in debug mode",
+        "operationId": "debug_get_runnable",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runnable steps retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugRunnableResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid run ID"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/debug/step": {
+      "post": {
+        "tags": [
+          "Debug"
+        ],
+        "summary": "Execute specific steps in debug mode",
+        "operationId": "debug_execute_step",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugStepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Steps executed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugStepResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid run ID or request"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/flow": {
+      "get": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Get the workflow definition for an execution",
+        "operationId": "get_run_flow",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run workflow retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunFlowResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid run ID format"
+          },
+          "404": {
+            "description": "Run or workflow not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/steps": {
+      "get": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Get step-level execution details for a specific execution",
+        "operationId": "get_run_steps",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run step details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListStepRunsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid run ID format"
+          },
+          "404": {
+            "description": "Run not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalysisResult": {
+        "type": "object",
+        "description": "Result of workflow analysis including diagnostics",
+        "required": [
+          "diagnostics"
+        ],
+        "properties": {
+          "analysis": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FlowAnalysis",
+                "description": "Analysis results (None if fatal diagnostics prevented analysis)"
+              }
+            ]
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/Diagnostics",
+            "description": "All diagnostics found during analysis"
+          }
+        }
+      },
+      "BaseRef": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "# WorkflowReference\nReference properties of the workflow.",
+            "required": [
+              "workflow"
+            ],
+            "properties": {
+              "workflow": {
+                "$ref": "#/components/schemas/WorkflowRef",
+                "description": "# WorkflowReference\nReference properties of the workflow."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# StepReference\nReference the output of a step.",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "type": "object",
+                "description": "# StepReference\nReference the output of a step.",
+                "required": [
+                  "step"
+                ],
+                "properties": {
+                  "step": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# VariableReference\nReference a workflow variable.",
+            "required": [
+              "variable"
+            ],
+            "properties": {
+              "variable": {
+                "type": "object",
+                "description": "# VariableReference\nReference a workflow variable.",
+                "required": [
+                  "variable"
+                ],
+                "properties": {
+                  "default": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ValueRef",
+                        "description": "Optional default value to use if the variable is not available.\n\nThis will be preferred over any default value defined in the workflow variable schema."
+                      }
+                    ]
+                  },
+                  "variable": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "description": "An expression that can be either a literal value or a template expression."
+      },
+      "BatchDetails": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BatchMetadata"
+          },
+          {
+            "$ref": "#/components/schemas/BatchStatistics"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "completedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        ],
+        "description": "Complete batch details for API responses"
+      },
+      "BatchMetadata": {
+        "type": "object",
+        "description": "Immutable batch metadata",
+        "required": [
+          "batchId",
+          "flowId",
+          "totalInputs",
+          "createdAt",
+          "status"
+        ],
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId"
+          },
+          "flowName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/BatchStatus"
+          },
+          "totalInputs": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "BatchOutputInfo": {
+        "type": "object",
+        "description": "Output information for a single run in a batch",
+        "required": [
+          "batchInputIndex",
+          "status"
+        ],
+        "properties": {
+          "batchInputIndex": {
+            "type": "integer",
+            "description": "Position in the batch input array",
+            "minimum": 0
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FlowResult",
+                "description": "The flow result (if completed)"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionStatus",
+            "description": "The execution status"
+          }
+        }
+      },
+      "BatchRunInfo": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RunSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "batchInputIndex"
+            ],
+            "properties": {
+              "batchInputIndex": {
+                "type": "integer",
+                "description": "Position in the batch input array",
+                "minimum": 0
+              }
+            }
+          }
+        ],
+        "description": "Run information with batch context"
+      },
+      "BatchStatistics": {
+        "type": "object",
+        "description": "Calculated batch statistics (not stored, computed via queries)",
+        "required": [
+          "completedRuns",
+          "runningRuns",
+          "failedRuns",
+          "cancelledRuns",
+          "pausedRuns"
+        ],
+        "properties": {
+          "cancelledRuns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completedRuns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failedRuns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pausedRuns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runningRuns": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "BatchStatus": {
+        "type": "string",
+        "description": "Batch execution status",
+        "enum": [
+          "running",
+          "cancelled"
+        ]
+      },
+      "BlobId": {
+        "type": "string",
+        "description": "A type-safe wrapper for blob identifiers.\n\nBlob IDs are SHA-256 hashes of the content, providing deterministic\nidentification and automatic deduplication."
+      },
+      "CancelBatchResponse": {
+        "type": "object",
+        "description": "Response for cancel batch operations",
+        "required": [
+          "batchId",
+          "status"
+        ],
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The batch ID"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BatchStatus",
+            "description": "The updated batch status"
+          }
+        }
+      },
+      "Component": {
+        "type": "string",
+        "description": "Identifies a specific plugin and atomic functionality to execute.\n\nA component is identified by a path that specifies:\n- The plugin name\n- The component name within that plugin\n- Optional sub-path for specific functionality"
+      },
+      "ComponentInfo": {
+        "type": "object",
+        "required": [
+          "component"
+        ],
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/Component",
+            "description": "The component ID."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description of the component."
+          },
+          "input_schema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaRef",
+                "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.)."
+              }
+            ]
+          },
+          "output_schema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaRef",
+                "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.)."
+              }
+            ]
+          }
+        }
+      },
+      "CreateBatchRequest": {
+        "type": "object",
+        "description": "Request to create a batch execution",
+        "required": [
+          "flowId",
+          "inputs"
+        ],
+        "properties": {
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The flow hash to execute"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValueRef"
+            },
+            "description": "Array of input data for each run in the batch"
+          },
+          "maxConcurrency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum number of concurrent executions (defaults to number of inputs if not specified)",
+            "minimum": 0
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/WorkflowOverrides",
+            "description": "Optional workflow overrides to apply before execution"
+          }
+        }
+      },
+      "CreateBatchResponse": {
+        "type": "object",
+        "description": "Response for create batch operations",
+        "required": [
+          "batchId",
+          "totalInputs",
+          "status"
+        ],
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The batch ID"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BatchStatus",
+            "description": "The batch status"
+          },
+          "totalInputs": {
+            "type": "integer",
+            "description": "Total number of inputs in the batch",
+            "minimum": 0
+          }
+        }
+      },
+      "CreateRunRequest": {
+        "type": "object",
+        "description": "Request to create/execute a flow",
+        "required": [
+          "flowId",
+          "input"
+        ],
+        "properties": {
+          "debug": {
+            "type": "boolean",
+            "description": "Whether to run in debug mode (pauses execution for step-by-step control)"
+          },
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The flow hash to execute"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ValueRef",
+            "description": "Input data for the flow"
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/WorkflowOverrides",
+            "description": "Optional workflow overrides to apply before execution"
+          },
+          "variables": {
+            "type": "object",
+            "description": "Optional variables to provide for variable references in the workflow",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ValueRef"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CreateRunResponse": {
+        "type": "object",
+        "description": "Response for create run operations",
+        "required": [
+          "runId",
+          "status",
+          "debug"
+        ],
+        "properties": {
+          "debug": {
+            "type": "boolean",
+            "description": "Whether this run is in debug mode"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FlowResult",
+                "description": "The result of the flow execution (if completed)"
+              }
+            ]
+          },
+          "runId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The run ID"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionStatus",
+            "description": "The run status"
+          }
+        }
+      },
+      "DebugRunnableResponse": {
+        "type": "object",
+        "description": "Response for runnable steps in debug mode",
+        "required": [
+          "runnableSteps"
+        ],
+        "properties": {
+          "runnableSteps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Steps that can be executed"
+          }
+        }
+      },
+      "DebugStepRequest": {
+        "type": "object",
+        "description": "Request to execute specific steps in debug mode",
+        "required": [
+          "stepIds"
+        ],
+        "properties": {
+          "stepIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Step IDs to execute"
+          }
+        }
+      },
+      "DebugStepResponse": {
+        "type": "object",
+        "description": "Response from debug step runs",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "object",
+            "description": "Results of executed steps",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FlowResult"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Dependency": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Comes from workflow input",
+            "required": [
+              "flowInput"
+            ],
+            "properties": {
+              "flowInput": {
+                "type": "object",
+                "description": "Comes from workflow input",
+                "properties": {
+                  "field": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional field path within workflow input"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Comes from another step's output",
+            "required": [
+              "stepOutput"
+            ],
+            "properties": {
+              "stepOutput": {
+                "type": "object",
+                "description": "Comes from another step's output",
+                "required": [
+                  "stepId",
+                  "optional"
+                ],
+                "properties": {
+                  "field": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional field path within step output"
+                  },
+                  "optional": {
+                    "type": "boolean",
+                    "description": "If true, the step_id may be skipped and this step still executed."
+                  },
+                  "stepId": {
+                    "type": "string",
+                    "description": "Which step produces this data"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "description": "Source of input data"
+      },
+      "Diagnostic": {
+        "type": "object",
+        "description": "A single diagnostic with its context",
+        "required": [
+          "message",
+          "level",
+          "text",
+          "path",
+          "ignore"
+        ],
+        "properties": {
+          "ignore": {
+            "type": "boolean",
+            "description": "Whether this diagnostic should be ignored by default"
+          },
+          "level": {
+            "$ref": "#/components/schemas/DiagnosticLevel",
+            "description": "The severity level"
+          },
+          "message": {
+            "$ref": "#/components/schemas/DiagnosticMessage",
+            "description": "The diagnostic message and type"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "JSON path to the field with the issue"
+          },
+          "text": {
+            "type": "string",
+            "description": "Human-readable message text"
+          }
+        }
+      },
+      "DiagnosticLevel": {
+        "type": "string",
+        "description": "Diagnostic level indicating severity and impact",
+        "enum": [
+          "fatal",
+          "error",
+          "warning"
+        ]
+      },
+      "DiagnosticMessage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "type"
+            ],
+            "properties": {
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "duplicateStepId"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "emptyStepId"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fromStep",
+              "toStep",
+              "type"
+            ],
+            "properties": {
+              "fromStep": {
+                "type": "string"
+              },
+              "toStep": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "forwardReference"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "type"
+            ],
+            "properties": {
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "selfReference"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "referencedStep",
+              "type"
+            ],
+            "properties": {
+              "fromStep": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "referencedStep": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "undefinedStepReference"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "error",
+              "type"
+            ],
+            "properties": {
+              "error": {
+                "type": "string"
+              },
+              "field": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stepId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "invalidReferenceExpression"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "field",
+              "reason",
+              "type"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "invalidFieldAccess"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "component",
+              "error",
+              "type"
+            ],
+            "properties": {
+              "component": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "invalidComponent"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "type"
+            ],
+            "properties": {
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "emptyComponentName"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "field",
+              "violation",
+              "type"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "schemaViolation"
+                ]
+              },
+              "violation": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "type"
+            ],
+            "properties": {
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "mockComponent"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "type"
+            ],
+            "properties": {
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "unreachableStep"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "missingWorkflowName"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "missingWorkflowDescription"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stepId",
+              "field",
+              "reason",
+              "type"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "unvalidatedFieldAccess"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "noPluginsConfigured"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "noRoutingRulesConfigured"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "routePath",
+              "ruleIndex",
+              "plugin",
+              "type"
+            ],
+            "properties": {
+              "plugin": {
+                "type": "string"
+              },
+              "routePath": {
+                "type": "string"
+              },
+              "ruleIndex": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "invalidRouteReference"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "plugin",
+              "type"
+            ],
+            "properties": {
+              "plugin": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "unusedPlugin"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Specific diagnostic message with context"
+      },
+      "Diagnostics": {
+        "type": "object",
+        "description": "Collection of diagnostics with utility methods",
+        "required": [
+          "diagnostics"
+        ],
+        "properties": {
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "description": "All diagnostics found"
+          }
+        }
+      },
+      "ErrorAction": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "# OnErrorFail\nIf the step fails, the flow will fail.",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "fail"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# OnErrorSkip\nIf the step fails, mark it as skipped. This allows down-stream steps to handle the skipped step.",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "skip"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# OnErrorDefault\nIf the step fails, use the `defaultValue` instead.",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "useDefault"
+                ]
+              },
+              "defaultValue": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ValueTemplate"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# OnErrorRetry\nIf the step fails, retry it.",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "retry"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ExampleInput": {
+        "type": "object",
+        "description": "An example input for a workflow that can be used in UI dropdowns.",
+        "required": [
+          "name",
+          "input"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description of what this example demonstrates."
+          },
+          "input": {
+            "$ref": "#/components/schemas/ValueRef",
+            "description": "The input data for this example."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the example input for display purposes."
+          }
+        }
+      },
+      "ExecutionStatus": {
+        "type": "string",
+        "description": "Status of a workflow execution",
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled",
+          "paused"
+        ]
+      },
+      "Expr": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "# Reference\nReference a value from a step, workflow, or other source.",
+            "required": [
+              "$from"
+            ],
+            "properties": {
+              "$from": {
+                "$ref": "#/components/schemas/BaseRef",
+                "description": "The source of the reference."
+              },
+              "onSkip": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SkipAction"
+                  }
+                ]
+              },
+              "path": {
+                "$ref": "#/components/schemas/JsonPath",
+                "description": "JSON path expression to apply to the referenced value.\n\nDefaults to `$` (the whole referenced value).\nMay also be a bare field name (without the leading $) if\nthe referenced value is an object."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# EscapedLiteral\nA literal value that was escaped.\n\nNo template expansion is performed within the value, allowing\nfor raw JSON values that include `$from` or other special characters.",
+            "required": [
+              "$literal"
+            ],
+            "properties": {
+              "$literal": {
+                "$ref": "#/components/schemas/ValueRef",
+                "description": "A literal value that should not be expanded for expressions.\nThis allows creating JSON values that contain `$from` without expansion."
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/ValueRef",
+            "description": "# Literal\nA direct literal value that serializes naturally without special syntax"
+          }
+        ],
+        "description": "An expression that can be either a literal value or a template expression."
+      },
+      "Flow": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FlowV1"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "type": "string",
+                    "enum": [
+                      "https://stepflow.org/schemas/v1/flow.json"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`."
+      },
+      "FlowAnalysis": {
+        "type": "object",
+        "description": "High-level analysis of a flow that supports both frontend consumption and execution",
+        "required": [
+          "flowId",
+          "flow",
+          "steps",
+          "outputDepends"
+        ],
+        "properties": {
+          "flow": {
+            "$ref": "#/components/schemas/Flow",
+            "description": "The workflow reference"
+          },
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The workflow ID for this analysis"
+          },
+          "outputDepends": {
+            "$ref": "#/components/schemas/ValueDependencies",
+            "description": "Dependencies for the workflow output."
+          },
+          "steps": {
+            "type": "object",
+            "description": "Step-by-step analysis keyed by step ID for easy lookup",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StepAnalysis"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "FlowError": {
+        "type": "object",
+        "description": "An error reported from within a flow or step.",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "data": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ValueRef"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "FlowResponse": {
+        "type": "object",
+        "description": "Response containing a flow definition and its ID",
+        "required": [
+          "flow",
+          "flowId",
+          "analysis"
+        ],
+        "properties": {
+          "allExamples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExampleInput"
+            },
+            "description": "All available examples (includes both examples and test cases)"
+          },
+          "analysis": {
+            "$ref": "#/components/schemas/FlowAnalysis",
+            "description": "Optional analysis of the flow"
+          },
+          "flow": {
+            "$ref": "#/components/schemas/Flow",
+            "description": "The flow definition"
+          },
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The flow ID"
+          }
+        }
+      },
+      "FlowResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "# Success\nThe step execution was successful.",
+            "required": [
+              "Success"
+            ],
+            "properties": {
+              "Success": {
+                "$ref": "#/components/schemas/ValueRef",
+                "description": "# Success\nThe step execution was successful."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# Skipped\nThe step was skipped.",
+            "required": [
+              "Skipped"
+            ],
+            "properties": {
+              "Skipped": {
+                "type": "object",
+                "description": "# Skipped\nThe step was skipped.",
+                "properties": {
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional reason for why the step was skipped."
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# Failed\nThe step failed with the given error.",
+            "required": [
+              "Failed"
+            ],
+            "properties": {
+              "Failed": {
+                "$ref": "#/components/schemas/FlowError",
+                "description": "# Failed\nThe step failed with the given error."
+              }
+            }
+          }
+        ],
+        "description": "The results of a step execution."
+      },
+      "FlowV1": {
+        "type": "object",
+        "description": "# FlowV1",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The description of the flow."
+          },
+          "examples": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ExampleInput"
+            },
+            "description": "Example inputs for the workflow that can be used for testing and UI dropdowns."
+          },
+          "inputSchema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaRef",
+                "description": "The input schema of the flow."
+              }
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Extensible metadata for the flow that can be used by tools and frameworks.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the flow."
+          },
+          "output": {
+            "$ref": "#/components/schemas/ValueTemplate",
+            "description": "The outputs of the flow, mapping output names to their values."
+          },
+          "outputSchema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaRef",
+                "description": "The output schema of the flow."
+              }
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "description": "The steps to execute for the flow."
+          },
+          "test": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TestConfig",
+                "description": "Test configuration for the flow."
+              }
+            ]
+          },
+          "variables": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaRef",
+                "description": "Schema for workflow variables that can be referenced in steps."
+              }
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The version of the flow."
+          }
+        }
+      },
+      "GetBatchResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BatchDetails"
+          }
+        ],
+        "description": "Response for get batch operations (metadata + statistics)"
+      },
+      "HealthQuery": {
+        "type": "object",
+        "description": "Health check query parameters",
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Trigger an error for testing error response format"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "description": "Health check response",
+        "required": [
+          "status",
+          "timestamp",
+          "version"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Service status"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Timestamp when health was checked (RFC3339 format)"
+          },
+          "version": {
+            "type": "string",
+            "description": "Service version"
+          }
+        }
+      },
+      "JsonPath": {
+        "allOf": [],
+        "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object."
+      },
+      "ListBatchOutputsResponse": {
+        "type": "object",
+        "description": "Response for listing batch outputs",
+        "required": [
+          "outputs"
+        ],
+        "properties": {
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchOutputInfo"
+            },
+            "description": "List of outputs sorted by batch_input_index"
+          }
+        }
+      },
+      "ListBatchRunsResponse": {
+        "type": "object",
+        "description": "Response for listing batch runs",
+        "required": [
+          "runs"
+        ],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchRunInfo"
+            },
+            "description": "List of runs with batch context"
+          }
+        }
+      },
+      "ListBatchesQuery": {
+        "type": "object",
+        "description": "Query parameters for listing batches",
+        "properties": {
+          "flowName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Filter by flow name"
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum number of results to return",
+            "minimum": 0
+          },
+          "offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of results to skip",
+            "minimum": 0
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BatchStatus",
+                "description": "Filter by batch status"
+              }
+            ]
+          }
+        }
+      },
+      "ListBatchesResponse": {
+        "type": "object",
+        "description": "Response for listing batches",
+        "required": [
+          "batches"
+        ],
+        "properties": {
+          "batches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchMetadata"
+            },
+            "description": "List of batch metadata"
+          }
+        }
+      },
+      "ListComponentsQuery": {
+        "type": "object",
+        "description": "Query parameters for listing components",
+        "properties": {
+          "includeSchemas": {
+            "type": "boolean",
+            "description": "Whether to include schemas in the response (default: true)"
+          }
+        }
+      },
+      "ListComponentsResponse": {
+        "type": "object",
+        "description": "Response for listing components",
+        "required": [
+          "components"
+        ],
+        "properties": {
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComponentInfo"
+            },
+            "description": "List of available components"
+          }
+        }
+      },
+      "ListRunsResponse": {
+        "type": "object",
+        "description": "Response for listing runs",
+        "required": [
+          "runs"
+        ],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "description": "List of run summaries"
+          }
+        }
+      },
+      "ListStepRunsResponse": {
+        "type": "object",
+        "description": "Response for listing step runs",
+        "required": [
+          "steps"
+        ],
+        "properties": {
+          "steps": {
+            "type": "object",
+            "description": "Dictionary of step run results keyed by step ID",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StepRunResponse"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "OverrideType": {
+        "type": "string",
+        "description": "The type of override operation to perform.",
+        "enum": [
+          "merge_patch",
+          "json_patch"
+        ]
+      },
+      "RunDetails": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RunSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "input"
+            ],
+            "properties": {
+              "input": {
+                "$ref": "#/components/schemas/ValueRef"
+              },
+              "overrides": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowOverrides",
+                    "description": "Optional workflow overrides applied to this run"
+                  }
+                ]
+              },
+              "result": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FlowResult"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Detailed flow run information including input and result."
+      },
+      "RunFlowResponse": {
+        "type": "object",
+        "description": "Response containing a flow definition and its hash for run endpoints",
+        "required": [
+          "flow",
+          "flowId"
+        ],
+        "properties": {
+          "flow": {
+            "$ref": "#/components/schemas/Flow",
+            "description": "The flow definition"
+          },
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The flow hash"
+          }
+        }
+      },
+      "RunSummary": {
+        "type": "object",
+        "description": "Summary information about a flow run.",
+        "required": [
+          "runId",
+          "flowId",
+          "status",
+          "debugMode",
+          "createdAt"
+        ],
+        "properties": {
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "debugMode": {
+            "type": "boolean"
+          },
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId"
+          },
+          "flowLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "flowName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionStatus"
+          }
+        }
+      },
+      "SchemaRef": {
+        "type": "object",
+        "description": "A valid JSON Schema object."
+      },
+      "SkipAction": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "# OnSkipSkip",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "skip"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "# OnSkipDefault",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "useDefault"
+                ]
+              },
+              "defaultValue": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ValueRef"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "Step": {
+        "type": "object",
+        "description": "A step in a workflow that executes a component with specific arguments.",
+        "required": [
+          "id",
+          "component"
+        ],
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/Component",
+            "description": "The component to execute in this step"
+          },
+          "id": {
+            "type": "string",
+            "description": "Identifier for the step"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ValueTemplate",
+            "description": "Arguments to pass to the component for this step"
+          },
+          "inputSchema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaRef",
+                "description": "The input schema for this step."
+              }
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Extensible metadata for the step that can be used by tools and frameworks.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "mustExecute": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).\n\nNote: If the step has `skip_if` that evaluates to true, the step will still be skipped\nand its dependencies will not be forced to execute."
+          },
+          "onError": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ErrorAction"
+              }
+            ]
+          },
+          "outputSchema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaRef",
+                "description": "The output schema for this step."
+              }
+            ]
+          },
+          "skipIf": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Expr",
+                "description": "If set and the referenced value is truthy, this step will be skipped."
+              }
+            ]
+          }
+        }
+      },
+      "StepAnalysis": {
+        "type": "object",
+        "description": "Analysis for a single step",
+        "required": [
+          "inputDepends"
+        ],
+        "properties": {
+          "inputDepends": {
+            "$ref": "#/components/schemas/ValueDependencies",
+            "description": "Input dependencies for this step"
+          },
+          "skipIfDepend": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Dependency",
+                "description": "Optional skip condition dependency"
+              }
+            ]
+          }
+        }
+      },
+      "StepOverride": {
+        "type": "object",
+        "description": "Override specification for a single step.\n\nContains the override type (merge patch, json patch, etc.) and the value\nto apply. The type field uses `$type` to avoid collisions with step properties.",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "$type": {
+            "$ref": "#/components/schemas/OverrideType",
+            "description": "The type of override to apply. Defaults to \"merge_patch\" if not specified."
+          },
+          "value": {
+            "description": "The override value to apply, interpreted based on the override type."
+          }
+        }
+      },
+      "StepRunResponse": {
+        "type": "object",
+        "description": "Response for step run details",
+        "required": [
+          "stepIndex",
+          "stepId",
+          "status"
+        ],
+        "properties": {
+          "component": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Component name/URL that this step executes"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FlowResult",
+                "description": "The result of the step execution (if completed)"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/StepStatus",
+            "description": "Current status of the step"
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step ID"
+          },
+          "stepIndex": {
+            "type": "integer",
+            "description": "Step index in the flow",
+            "minimum": 0
+          }
+        }
+      },
+      "StepStatus": {
+        "type": "string",
+        "description": "Status of an individual step within a workflow",
+        "enum": [
+          "blocked",
+          "runnable",
+          "running",
+          "completed",
+          "skipped",
+          "failed"
+        ]
+      },
+      "StoreFlowRequest": {
+        "type": "object",
+        "description": "Request to store a flow",
+        "required": [
+          "flow"
+        ],
+        "properties": {
+          "flow": {
+            "$ref": "#/components/schemas/Flow",
+            "description": "The flow to store"
+          }
+        }
+      },
+      "StoreFlowResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AnalysisResult",
+            "description": "Analysis result with diagnostics and optional analysis"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "flowId": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BlobId",
+                    "description": "The ID of the stored flow (only present if no fatal diagnostics)"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Response when a flow is stored"
+      },
+      "TestCase": {
+        "type": "object",
+        "description": "A single test case for a workflow.",
+        "required": [
+          "name",
+          "input"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description of what this test case verifies."
+          },
+          "input": {
+            "$ref": "#/components/schemas/ValueRef",
+            "description": "Input data for the workflow in this test case."
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique identifier for the test case."
+          },
+          "output": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FlowResult",
+                "description": "Expected output from the workflow for this test case."
+              }
+            ]
+          }
+        }
+      },
+      "TestConfig": {
+        "type": "object",
+        "description": "Configuration for testing a workflow.",
+        "properties": {
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestCase"
+            },
+            "description": "Test cases for the workflow."
+          },
+          "config": {
+            "description": "Stepflow configuration specific to tests.\nCan reference server URLs using placeholders like {server_name.url}."
+          },
+          "servers": {
+            "type": "object",
+            "description": "Test servers to start before running tests.\nKey is the server name, value is the server configuration.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TestServerConfig"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TestServerConfig": {
+        "type": "object",
+        "description": "Configuration for a test server.",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Arguments for the server command."
+          },
+          "command": {
+            "type": "string",
+            "description": "Command to start the server."
+          },
+          "env": {
+            "type": "object",
+            "description": "Environment variables for the server process.\nValues can contain placeholders like {port} which will be substituted.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "healthCheck": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TestServerHealthCheck",
+                "description": "Health check configuration."
+              }
+            ]
+          },
+          "portRange": {
+            "type": "array",
+            "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used.",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "shutdownTimeoutMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum time to wait for server shutdown (in milliseconds).",
+            "minimum": 0
+          },
+          "startupTimeoutMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum time to wait for server startup (in milliseconds).",
+            "minimum": 0
+          },
+          "workingDirectory": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Working directory for the server process."
+          }
+        }
+      },
+      "TestServerHealthCheck": {
+        "type": "object",
+        "description": "Health check configuration for test servers.",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path for health check endpoint (e.g., \"/health\")."
+          },
+          "retryAttempts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of retry attempts for health checks.",
+            "minimum": 0
+          },
+          "retryDelayMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Delay between retry attempts (in milliseconds).",
+            "minimum": 0
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Timeout for health check requests (in milliseconds).",
+            "minimum": 0
+          }
+        }
+      },
+      "ValueDependencies": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Value is an object with named fields",
+            "required": [
+              "object"
+            ],
+            "properties": {
+              "object": {
+                "type": "object",
+                "description": "Value is an object with named fields",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Dependency"
+                  },
+                  "uniqueItems": true
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Value is not an object (single value, array, etc.)",
+            "required": [
+              "other"
+            ],
+            "properties": {
+              "other": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Dependency"
+                },
+                "description": "Value is not an object (single value, array, etc.)",
+                "uniqueItems": true
+              }
+            }
+          }
+        ],
+        "description": "How a value receives its input data"
+      },
+      "ValueRef": {
+        "allOf": [],
+        "description": "Any JSON value (object, array, string, number, boolean, or null)"
+      },
+      "ValueTemplate": {
+        "allOf": [],
+        "description": "A value that can be either a literal JSON value or an expression that references other values using the $from syntax"
+      },
+      "WorkflowOverrides": {
+        "type": "object",
+        "description": "Workflow overrides that can be applied to modify step behavior at runtime.\n\nOverrides are keyed by step ID and contain merge patches or other transformation\nspecifications to modify step properties before execution.",
+        "required": [
+          "steps"
+        ],
+        "properties": {
+          "steps": {
+            "type": "object",
+            "description": "Map of step ID to override specification",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StepOverride"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkflowRef": {
+        "type": "string",
+        "enum": [
+          "input"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Batch",
+      "description": "Batch API endpoints"
+    },
+    {
+      "name": "Component",
+      "description": "Component API endpoints"
+    },
+    {
+      "name": "Flow",
+      "description": "Flow API endpoints"
+    },
+    {
+      "name": "Run",
+      "description": "Run API endpoints"
+    },
+    {
+      "name": "Debug",
+      "description": "Debug API endpoints"
+    }
+  ]
+}

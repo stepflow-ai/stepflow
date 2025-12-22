@@ -1,12 +1,5 @@
-from enum import Enum
+"""Re-export ExecutionStatus from generated models."""
 
+from .generated import ExecutionStatus
 
-class ExecutionStatus(str, Enum):
-    CANCELLED = "cancelled"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    PAUSED = "paused"
-    RUNNING = "running"
-
-    def __str__(self) -> str:
-        return str(self.value)
+__all__ = ["ExecutionStatus"]

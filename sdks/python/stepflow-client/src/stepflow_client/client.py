@@ -25,7 +25,6 @@ from typing import Any
 
 import httpx
 import yaml
-
 from stepflow_api import Client
 from stepflow_api.api.batch import (
     cancel_batch,
@@ -47,7 +46,6 @@ from stepflow_api.models import (
     CreateBatchResponse,
     CreateRunRequest,
     CreateRunResponse,
-    ExecutionStatus,
     HealthResponse,
     ListBatchesResponse,
     ListBatchOutputsResponse,
@@ -474,9 +472,7 @@ class StepflowClient:
         Returns:
             ListBatchOutputsResponse with individual run results
         """
-        response = await get_batch_outputs.asyncio_detailed(
-            client=self._client, batch_id=batch_id
-        )
+        response = await get_batch_outputs.asyncio_detailed(client=self._client, batch_id=batch_id)
 
         if response.status_code.value >= 400:
             raise StepflowClientError(

@@ -1,9 +1,5 @@
-from enum import Enum
+"""Re-export BatchStatus from generated models."""
 
+from .generated import BatchStatus
 
-class BatchStatus(str, Enum):
-    CANCELLED = "cancelled"
-    RUNNING = "running"
-
-    def __str__(self) -> str:
-        return str(self.value)
+__all__ = ["BatchStatus"]

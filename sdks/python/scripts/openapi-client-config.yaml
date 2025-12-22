@@ -1,0 +1,11 @@
+# Configuration for openapi-python-client
+# See: https://github.com/openapi-generators/openapi-python-client
+
+project_name_override: stepflow-api
+package_name_override: stepflow_api
+
+# Use modern Python features
+use_path_prefix_for_security: false
+
+# Field naming style
+field_prefix: ""

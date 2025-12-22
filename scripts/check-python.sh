@@ -184,6 +184,19 @@ else
     fi
 fi
 
+output "✅ Verifying API client models are up-to-date..."
+if [ "$QUIET" = true ]; then
+    if ! ./scripts/generate-api-client.sh --check >/dev/null 2>&1; then
+        echo "❌ API client models are out of date. Run './scripts/generate-api-client.sh' to fix."
+        FAILED_CHECKS+=("api-client-check")
+    fi
+else
+    if ! ./scripts/generate-api-client.sh --check; then
+        echo "❌ API client models are out of date. Run './scripts/generate-api-client.sh' to fix."
+        FAILED_CHECKS+=("api-client-check")
+    fi
+fi
+
 # =============================================================================
 # RESULTS SUMMARY
 # =============================================================================
@@ -226,6 +239,9 @@ else
                 ;;
             "codegen-check")
                 echo "  - Run: uv run poe codegen-fix"
+                ;;
+            "api-client-check")
+                echo "  - Run: ./scripts/generate-api-client.sh"
                 ;;
         esac
     done

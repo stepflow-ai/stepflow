@@ -29,7 +29,6 @@ import pytest
 from stepflow_runtime import StepflowRuntime
 from stepflow_runtime.logging import LogConfig
 
-
 # Simple workflow for testing - stores data and returns blob_id
 STORE_DATA_WORKFLOW = {
     "schema": "https://stepflow.org/schemas/v1/flow.json",

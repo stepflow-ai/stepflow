@@ -13,8 +13,8 @@
 """Tests for StepflowRuntime."""
 
 import pytest
-
 from stepflow import RestartPolicy
+
 from stepflow_runtime import StepflowRuntime, StepflowRuntimeError
 from stepflow_runtime.logging import LogConfig
 from stepflow_runtime.utils import get_binary_path

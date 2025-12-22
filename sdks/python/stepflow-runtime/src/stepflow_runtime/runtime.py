@@ -24,23 +24,19 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import httpx
-
 from stepflow import (
     ComponentInfo,
     Diagnostic,
-    FlowError,
     FlowResult,
-    FlowResultStatus,
     LogEntry,
     RestartPolicy,
     ValidationResult,
 )
-from stepflow_client import StepflowClient
-
 from stepflow_api.models import (
     ExecutionStatus,
     FlowResultType0,
@@ -48,6 +44,7 @@ from stepflow_api.models import (
     FlowResultType2,
 )
 from stepflow_api.types import UNSET, Unset
+from stepflow_client import StepflowClient
 
 from .logging import LogConfig, LogForwarder
 from .utils import find_free_port, get_binary_path
@@ -134,7 +131,7 @@ def _convert_api_result_to_flow_result(
 
 
 def _get_flow_result_from_response(
-    response: "CreateRunResponse | RunDetails",
+    response: CreateRunResponse | RunDetails,
 ) -> FlowResult:
     """Extract FlowResult from a CreateRunResponse or RunDetails."""
     # Check if result is available
@@ -434,9 +431,7 @@ class StepflowRuntime:
             self._client = None
 
         # Run the rest synchronously (subprocess operations)
-        await asyncio.get_event_loop().run_in_executor(
-            None, lambda: self._stop_process(timeout)
-        )
+        await asyncio.get_event_loop().run_in_executor(None, lambda: self._stop_process(timeout))
 
     def _stop_process(self, timeout: float) -> None:
         """Stop the subprocess (internal helper)."""
@@ -511,7 +506,12 @@ class StepflowRuntime:
         if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
             # Check diagnostics for errors
             from stepflow_api.models import DiagnosticLevel
-            errors = [d for d in store_response.diagnostics.diagnostics if d.level == DiagnosticLevel.ERROR]
+
+            errors = [
+                d
+                for d in store_response.diagnostics.diagnostics
+                if d.level == DiagnosticLevel.ERROR
+            ]
             if errors:
                 return FlowResult.failed(
                     400,
@@ -523,7 +523,7 @@ class StepflowRuntime:
         # Create the run
         workflow_overrides = None
         if overrides:
-            from stepflow_api.models import WorkflowOverridesSteps, StepOverride
+            from stepflow_api.models import StepOverride, WorkflowOverridesSteps
 
             steps = WorkflowOverridesSteps()
             for step_id, step_override_dict in overrides.items():
@@ -562,12 +562,21 @@ class StepflowRuntime:
         Raises:
             StepflowRuntimeError: If flow storage or run creation fails
         """
-        from stepflow_api.models import DiagnosticLevel, WorkflowOverrides, WorkflowOverridesSteps, StepOverride
+        from stepflow_api.models import (
+            DiagnosticLevel,
+            StepOverride,
+            WorkflowOverrides,
+            WorkflowOverridesSteps,
+        )
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
         if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
-            errors = [d for d in store_response.diagnostics.diagnostics if d.level == DiagnosticLevel.ERROR]
+            errors = [
+                d
+                for d in store_response.diagnostics.diagnostics
+                if d.level == DiagnosticLevel.ERROR
+            ]
             msg = errors[0].text if errors else "Unknown error"
             raise StepflowRuntimeError(f"Failed to store flow: {msg}")
 
@@ -614,7 +623,11 @@ class StepflowRuntime:
         diagnostics = []
         for item in store_response.diagnostics.diagnostics:
             # DiagnosticLevel is an enum, get its value
-            level = str(item.level.value).lower() if hasattr(item.level, "value") else str(item.level).lower()
+            level = (
+                str(item.level.value).lower()
+                if hasattr(item.level, "value")
+                else str(item.level).lower()
+            )
             # Path is a list of strings, join them
             location = "/".join(item.path) if item.path else None
             diagnostics.append(
@@ -626,9 +639,7 @@ class StepflowRuntime:
             )
 
         # Valid if we got a flow_id
-        valid = store_response.flow_id is not None and not isinstance(
-            store_response.flow_id, Unset
-        )
+        valid = store_response.flow_id is not None and not isinstance(store_response.flow_id, Unset)
 
         return ValidationResult(valid=valid, diagnostics=diagnostics)
 
@@ -645,9 +656,17 @@ class StepflowRuntime:
             input_schema = None
             output_schema = None
             if hasattr(comp, "input_schema") and not isinstance(comp.input_schema, Unset):
-                input_schema = comp.input_schema.to_dict() if hasattr(comp.input_schema, "to_dict") else comp.input_schema
+                input_schema = (
+                    comp.input_schema.to_dict()
+                    if hasattr(comp.input_schema, "to_dict")
+                    else comp.input_schema
+                )
             if hasattr(comp, "output_schema") and not isinstance(comp.output_schema, Unset):
-                output_schema = comp.output_schema.to_dict() if hasattr(comp.output_schema, "to_dict") else comp.output_schema
+                output_schema = (
+                    comp.output_schema.to_dict()
+                    if hasattr(comp.output_schema, "to_dict")
+                    else comp.output_schema
+                )
 
             description = None
             if hasattr(comp, "description") and not isinstance(comp.description, Unset):
@@ -694,12 +713,21 @@ class StepflowRuntime:
         Raises:
             StepflowRuntimeError: If flow storage or batch creation fails
         """
-        from stepflow_api.models import DiagnosticLevel, WorkflowOverrides, WorkflowOverridesSteps, StepOverride
+        from stepflow_api.models import (
+            DiagnosticLevel,
+            StepOverride,
+            WorkflowOverrides,
+            WorkflowOverridesSteps,
+        )
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
         if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
-            errors = [d for d in store_response.diagnostics.diagnostics if d.level == DiagnosticLevel.ERROR]
+            errors = [
+                d
+                for d in store_response.diagnostics.diagnostics
+                if d.level == DiagnosticLevel.ERROR
+            ]
             msg = errors[0].text if errors else "Unknown error"
             raise StepflowRuntimeError(f"Failed to store flow: {msg}")
 
@@ -864,9 +892,7 @@ class StepflowRuntime:
 
             time.sleep(0.1)
 
-        raise TimeoutError(
-            f"stepflow-server did not become ready within {self._startup_timeout}s"
-        )
+        raise TimeoutError(f"stepflow-server did not become ready within {self._startup_timeout}s")
 
     async def _wait_for_ready_async(self) -> None:
         """Wait for the server to be ready (asynchronous)."""
@@ -894,9 +920,7 @@ class StepflowRuntime:
 
                 await asyncio.sleep(0.1)
 
-        raise TimeoutError(
-            f"stepflow-server did not become ready within {self._startup_timeout}s"
-        )
+        raise TimeoutError(f"stepflow-server did not become ready within {self._startup_timeout}s")
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
@@ -911,9 +935,7 @@ class StepflowRuntime:
         if sys.platform != "win32":
             for sig in (signal.SIGTERM, signal.SIGINT):
                 try:
-                    self._original_handlers[sig] = signal.signal(
-                        sig, self._signal_handler
-                    )
+                    self._original_handlers[sig] = signal.signal(sig, self._signal_handler)
                 except (ValueError, OSError):
                     # Can't set signal handler (not main thread, etc.)
                     pass
@@ -998,9 +1020,8 @@ class StepflowRuntime:
                 logger.exception("on_crash callback failed")
 
         # Determine if we should restart
-        should_restart = (
-            self._restart_policy == RestartPolicy.ALWAYS
-            or (self._restart_policy == RestartPolicy.ON_FAILURE and exit_code != 0)
+        should_restart = self._restart_policy == RestartPolicy.ALWAYS or (
+            self._restart_policy == RestartPolicy.ON_FAILURE and exit_code != 0
         )
 
         if should_restart and self._restart_count < self._max_restarts:
@@ -1019,7 +1040,5 @@ class StepflowRuntime:
                 self._crashed = True
         else:
             if should_restart:
-                logger.error(
-                    f"Max restarts ({self._max_restarts}) exceeded, not restarting"
-                )
+                logger.error(f"Max restarts ({self._max_restarts}) exceeded, not restarting")
             self._crashed = True
