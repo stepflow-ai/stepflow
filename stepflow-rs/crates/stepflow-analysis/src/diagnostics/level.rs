@@ -10,22 +10,11 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Diagnostic level indicating severity and impact
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-    JsonSchema,
-    utoipa::ToSchema,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticLevel {

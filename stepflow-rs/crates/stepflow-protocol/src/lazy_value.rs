@@ -13,9 +13,10 @@
 use std::borrow::Cow;
 
 use error_stack::ResultExt as _;
-use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Deserializer, Serialize};
 use stepflow_core::workflow::ValueRef;
+use utoipa::openapi::RefOr;
+use utoipa::{PartialSchema, ToSchema};
 
 pub trait ErasedSerializeDebug: erased_serde::Serialize + std::fmt::Debug {}
 impl<T: erased_serde::Serialize + std::fmt::Debug> ErasedSerializeDebug for T {}
@@ -28,17 +29,15 @@ pub enum LazyValue<'a> {
     Read(&'a serde_json::value::RawValue),
 }
 
-impl<'a> JsonSchema for LazyValue<'a> {
-    fn schema_name() -> Cow<'static, str> {
-        ValueRef::schema_name()
+impl<'a> PartialSchema for LazyValue<'a> {
+    fn schema() -> RefOr<utoipa::openapi::schema::Schema> {
+        ValueRef::schema()
     }
+}
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> Schema {
-        ValueRef::json_schema(generator)
-    }
-
-    fn inline_schema() -> bool {
-        ValueRef::inline_schema()
+impl<'a> ToSchema for LazyValue<'a> {
+    fn name() -> Cow<'static, str> {
+        ValueRef::name()
     }
 }
 

@@ -10,13 +10,10 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Status of a workflow execution
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ExecutionStatus {
     /// Execution is currently running
@@ -50,9 +47,7 @@ impl std::fmt::Display for ExecutionStatus {
 }
 
 /// Status of an individual step within a workflow
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum StepStatus {
     /// Step is waiting for dependencies to complete
@@ -83,7 +78,7 @@ impl std::fmt::Display for StepStatus {
 }
 
 /// Detailed step execution information combining status and context
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct StepExecution {
     /// Step index in the workflow
     pub step_index: usize,

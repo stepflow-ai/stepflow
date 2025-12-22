@@ -12,16 +12,14 @@
 
 use std::borrow::Cow;
 
-use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
+use utoipa::PartialSchema as _;
 
 use crate::error_stack::ErrorStack;
 use crate::workflow::ValueRef;
 
 /// An error reported from within a flow or step.
-#[derive(
-    Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct FlowError {
     pub code: i64,
     pub message: Cow<'static, str>,
@@ -77,14 +75,112 @@ impl FlowError {
 }
 
 /// The results of a step execution.
-#[derive(Debug, Clone, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FlowResult {
-    /// # Success
     /// The step execution was successful.
     Success(ValueRef),
-    /// # Failed
     /// The step failed with the given error.
     Failed(FlowError),
+}
+
+// Manual ToSchema implementation to match the custom serde format
+// Wire format uses "outcome" discriminator with "success"/"failed" values
+impl utoipa::PartialSchema for FlowResult {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::RefOr::Ref(utoipa::openapi::Ref::new("#/components/schemas/FlowResult"))
+    }
+}
+
+impl utoipa::ToSchema for FlowResult {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("FlowResult")
+    }
+
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        use utoipa::openapi::*;
+
+        // Add dependent schemas
+        FlowError::schemas(schemas);
+        schemas.push(("FlowError".to_string(), FlowError::schema()));
+        schemas.push(("Value".to_string(), ValueRef::schema()));
+
+        // FlowResultSuccess: { outcome: enum["success"] (default: "success"), result: Value }
+        // Using enum with single value creates const constraint for Python code generator
+        // Title "FlowOutcome" on the outcome property makes datamodel-code-generator generate ClassVar
+        let success_schema = schema::ObjectBuilder::new()
+            .title(Some("FlowResultSuccess"))
+            .description(Some("The step execution was successful."))
+            .property(
+                "outcome",
+                schema::ObjectBuilder::new()
+                    .title(Some("FlowOutcome"))
+                    .schema_type(schema::SchemaType::Type(schema::Type::String))
+                    .enum_values(Some(["success"]))
+                    .default(Some(serde_json::json!("success"))),
+            )
+            .property("result", RefOr::Ref(Ref::new("#/components/schemas/Value")))
+            .required("outcome")
+            .required("result")
+            .build();
+        schemas.push((
+            "FlowResultSuccess".to_string(),
+            RefOr::T(schema::Schema::Object(success_schema)),
+        ));
+
+        // FlowResultFailed: { outcome: enum["failed"] (default: "failed"), error: FlowError }
+        // Using enum with single value creates const constraint for Python code generator
+        // Title "FlowOutcome" on the outcome property makes datamodel-code-generator generate ClassVar
+        let failed_schema = schema::ObjectBuilder::new()
+            .title(Some("FlowResultFailed"))
+            .description(Some("The step failed with the given error."))
+            .property(
+                "outcome",
+                schema::ObjectBuilder::new()
+                    .title(Some("FlowOutcome"))
+                    .schema_type(schema::SchemaType::Type(schema::Type::String))
+                    .enum_values(Some(["failed"]))
+                    .default(Some(serde_json::json!("failed"))),
+            )
+            .property(
+                "error",
+                RefOr::Ref(Ref::new("#/components/schemas/FlowError")),
+            )
+            .required("outcome")
+            .required("error")
+            .build();
+        schemas.push((
+            "FlowResultFailed".to_string(),
+            RefOr::T(schema::Schema::Object(failed_schema)),
+        ));
+
+        // FlowResult oneOf with discriminator
+        let flow_result_schema = schema::OneOfBuilder::new()
+            .title(Some("FlowResult"))
+            .description(Some("The results of a step execution."))
+            .item(RefOr::Ref(Ref::new(
+                "#/components/schemas/FlowResultSuccess",
+            )))
+            .item(RefOr::Ref(Ref::new(
+                "#/components/schemas/FlowResultFailed",
+            )))
+            .discriminator(Some(schema::Discriminator::with_mapping(
+                "outcome",
+                [
+                    ("success", "#/components/schemas/FlowResultSuccess"),
+                    ("failed", "#/components/schemas/FlowResultFailed"),
+                ],
+            )))
+            .build();
+        schemas.push((
+            "FlowResult".to_string(),
+            RefOr::T(schema::Schema::OneOf(flow_result_schema)),
+        ));
+    }
 }
 
 impl Serialize for FlowResult {
@@ -143,64 +239,6 @@ impl<'de> Deserialize<'de> for FlowResult {
             }
             _ => Err(D::Error::unknown_variant(outcome, &["success", "failed"])),
         }
-    }
-}
-
-impl JsonSchema for FlowResult {
-    fn schema_name() -> Cow<'static, str> {
-        "FlowResult".into()
-    }
-
-    fn json_schema(generator: &mut schemars::generate::SchemaGenerator) -> Schema {
-        let value_schema = generator.subschema_for::<ValueRef>();
-        let error_schema = generator.subschema_for::<FlowError>();
-        let defs = generator.definitions_mut();
-        defs.insert(
-            "FlowResultSuccess".to_string(),
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "outcome": {
-                        "title": "FlowOutcome",
-                        "const": "success",
-                        "default": "success",
-                    },
-                    "result": value_schema,
-                },
-                "required": ["outcome", "result"],
-            }),
-        );
-        defs.insert(
-            "FlowResultFailed".to_string(),
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "outcome": {
-                        "title": "FlowOutcome",
-                        "const": "failed",
-                        "default": "failed"
-                    },
-                    "error": error_schema,
-                },
-                "required": ["outcome", "error"],
-            }),
-        );
-
-        schemars::json_schema!({
-            "title": "FlowResult",
-            "description": "The results of a step execution.",
-            "oneOf": [
-                {"$ref": "#/$defs/FlowResultSuccess"},
-                {"$ref": "#/$defs/FlowResultFailed"}
-            ],
-            "discriminator": {
-                "propertyName": "outcome",
-                "mapping": {
-                    "success": "#/$defs/FlowResultSuccess",
-                    "failed": "#/$defs/FlowResultFailed"
-                }
-            },
-        })
     }
 }
 

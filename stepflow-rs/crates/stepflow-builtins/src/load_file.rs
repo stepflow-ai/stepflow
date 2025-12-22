@@ -23,7 +23,7 @@ use crate::{BuiltinComponent, Result, error::BuiltinError};
 /// Component for loading data from files (JSON, YAML, or plain text)
 pub struct LoadFileComponent;
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct LoadFileInput {
     /// Path to the file to load
     path: String,
@@ -33,7 +33,7 @@ struct LoadFileInput {
     format: Option<FileFormat>,
 }
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema, Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 enum FileFormat {
     Json,
@@ -41,7 +41,7 @@ enum FileFormat {
     Text,
 }
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct LoadFileOutput {
     /// The loaded data (parsed JSON/YAML or raw text)
     data: serde_json::Value,
@@ -50,7 +50,7 @@ struct LoadFileOutput {
     metadata: FileMetadata,
 }
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct FileMetadata {
     /// The resolved absolute path
     resolved_path: String,

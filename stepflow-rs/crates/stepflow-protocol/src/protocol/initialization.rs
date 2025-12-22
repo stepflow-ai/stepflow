@@ -10,15 +10,15 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::protocol::Method;
 
 use super::{ObservabilityContext, ProtocolMethod, ProtocolNotification};
 
 /// Sent from Stepflow to the component server to begin the initialization process.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct InitializeParams {
     /// Maximum version of the protocol being used by the Stepflow runtime.
     pub runtime_protocol_version: u32,
@@ -29,7 +29,7 @@ pub struct InitializeParams {
 
 /// Sent from the component server back to Stepflow with the result of initialization.
 /// The component server will not be initialized until it receives the `initialized` notification.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct InitializeResult {
     /// Version of the protocol being used by the component server.
     pub server_protocol_version: u32,
@@ -41,7 +41,7 @@ impl ProtocolMethod for InitializeParams {
 }
 
 /// Sent from Stepflow to the component server after initialization is complete.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Initialized {}
 
 impl ProtocolNotification for Initialized {

@@ -26,7 +26,7 @@ from .generated_flow import (
     ErrorAction,
     Flow,
     InputRef,
-    LiteralModel,
+    LiteralExpr,
     Schema,
     Step,
     StepRef,
@@ -338,7 +338,7 @@ class FlowBuilder:
             | StepRef
             | InputRef
             | VariableRef
-            | LiteralModel
+            | LiteralExpr
             | str
             | int
             | float
@@ -455,7 +455,7 @@ class FlowBuilder:
         elif isinstance(value_expr, VariableRef):
             # Variable reference - variables don't appear in step/input references
             pass
-        elif isinstance(value_expr, LiteralModel):
+        elif isinstance(value_expr, LiteralExpr):
             # Escaped literal - check if it contains nested references
             if isinstance(value_expr.field_literal, dict | list):
                 references.extend(

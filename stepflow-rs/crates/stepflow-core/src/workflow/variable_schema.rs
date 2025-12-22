@@ -15,7 +15,6 @@ use crate::{
     values::{Secrets, ValueRef},
 };
 use log::debug;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -48,16 +47,6 @@ pub struct VariableSchema {
     defaults: HashMap<String, ValueRef>,
     secrets: Secrets,
     required: HashSet<String>,
-}
-
-impl JsonSchema for VariableSchema {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        SchemaRef::schema_name()
-    }
-
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        SchemaRef::json_schema(generator)
-    }
 }
 
 impl utoipa::PartialSchema for VariableSchema {

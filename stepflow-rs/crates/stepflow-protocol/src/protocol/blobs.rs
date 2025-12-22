@@ -10,17 +10,17 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::ValueRef;
 use stepflow_core::{BlobId, BlobType};
+use utoipa::ToSchema;
 
 use crate::protocol::Method;
 
 use super::{ObservabilityContext, ProtocolMethod};
 
 /// Sent from the component server to the Stepflow to retrieve the content of a specific blob.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GetBlobParams {
     /// The ID of the blob to retrieve.
     pub blob_id: BlobId,
@@ -30,7 +30,7 @@ pub struct GetBlobParams {
 }
 
 /// Sent from the Stepflow back to the component server with the blob data and metadata.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GetBlobResult {
     pub data: ValueRef,
     pub blob_type: BlobType,
@@ -42,7 +42,7 @@ impl ProtocolMethod for GetBlobParams {
 }
 
 /// Sent from the component server to the Stepflow to store a blob with the provided content.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PutBlobParams {
     pub data: ValueRef,
     pub blob_type: BlobType,
@@ -52,7 +52,7 @@ pub struct PutBlobParams {
 }
 
 /// Sent from the Stepflow back to the component server with the ID of the stored blob.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PutBlobResult {
     pub blob_id: BlobId,
 }

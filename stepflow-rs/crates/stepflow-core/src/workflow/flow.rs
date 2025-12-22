@@ -10,12 +10,10 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 
 use super::{Step, ValueRef, VariableSchema};
 use crate::{FlowResult, ValueExpr, schema::SchemaRef};
-use schemars::JsonSchema;
 
 /// A workflow consisting of a sequence of steps and their outputs.
 ///
@@ -25,7 +23,7 @@ use schemars::JsonSchema;
 ///
 /// Flows should not be cloned. They should generally be stored and passed as a
 /// reference or inside an `Arc`.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(tag = "schema")]
 pub enum Flow {
     #[serde(rename = "https://stepflow.org/schemas/v1/flow.json")]
@@ -176,17 +174,9 @@ impl Flow {
 
 /// # FlowV1
 #[derive(
-    Debug,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-    PartialEq,
-    Default,
-    JsonSchema,
-    utoipa::ToSchema,
+    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]
-#[schemars(inline)]
 pub struct FlowV1 {
     /// The name of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -213,7 +203,6 @@ pub struct FlowV1 {
     pub variables: Option<VariableSchema>,
 
     /// The steps to execute for the flow.
-    #[schemars(extend("default" = []))]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<Step>,
 
@@ -307,27 +296,8 @@ impl<'de> serde::Deserialize<'de> for FlowRef {
     }
 }
 
-impl JsonSchema for FlowRef {
-    fn schema_name() -> Cow<'static, str> {
-        Flow::schema_name()
-    }
-
-    fn schema_id() -> Cow<'static, str> {
-        Flow::schema_id()
-    }
-
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        Flow::json_schema(generator)
-    }
-
-    fn inline_schema() -> bool {
-        Flow::inline_schema()
-    }
-}
 /// Configuration for a test server.
-#[derive(
-    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestServerConfig {
     /// Command to start the server.
@@ -357,17 +327,17 @@ pub struct TestServerConfig {
 
     /// Maximum time to wait for server startup (in milliseconds).
     #[serde(default = "default_startup_timeout")]
+    #[schema(default = default_startup_timeout)]
     pub startup_timeout_ms: u64,
 
     /// Maximum time to wait for server shutdown (in milliseconds).
     #[serde(default = "default_shutdown_timeout")]
+    #[schema(default = default_shutdown_timeout)]
     pub shutdown_timeout_ms: u64,
 }
 
 /// Health check configuration for test servers.
-#[derive(
-    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestServerHealthCheck {
     /// Path for health check endpoint (e.g., "/health").
@@ -375,14 +345,17 @@ pub struct TestServerHealthCheck {
 
     /// Timeout for health check requests (in milliseconds).
     #[serde(default = "default_health_check_timeout")]
+    #[schema(default = default_health_check_timeout)]
     pub timeout_ms: u64,
 
     /// Number of retry attempts for health checks.
     #[serde(default = "default_health_check_retries")]
+    #[schema(default = default_health_check_retries)]
     pub retry_attempts: u32,
 
     /// Delay between retry attempts (in milliseconds).
     #[serde(default = "default_health_check_delay")]
+    #[schema(default = default_health_check_delay)]
     pub retry_delay_ms: u64,
 }
 
@@ -403,9 +376,7 @@ fn default_health_check_delay() -> u64 {
 }
 
 /// Configuration for testing a workflow.
-#[derive(
-    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConfig {
     /// Test servers to start before running tests.
@@ -428,9 +399,7 @@ pub struct TestConfig {
 }
 
 /// A single test case for a workflow.
-#[derive(
-    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestCase {
     /// Unique identifier for the test case.
@@ -449,9 +418,7 @@ pub struct TestCase {
 }
 
 /// An example input for a workflow that can be used in UI dropdowns.
-#[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, JsonSchema, utoipa::ToSchema,
-)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExampleInput {
     /// Name of the example input for display purposes.
@@ -639,14 +606,11 @@ mod tests {
 
     #[test]
     fn test_schema_comparison_with_flow_json() {
+        use crate::json_schema::generate_json_schema_with_defs;
         use std::env;
 
-        // Generate schema from Rust types
-        let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
-        let generated_schema = generator.root_schema_for::<Flow>();
-        let generated_json = serde_json::to_value(&generated_schema)
-            .expect("Failed to convert generated schema to JSON");
-
+        // Generate schema from Rust types using utoipa-based utility
+        let generated_json = generate_json_schema_with_defs::<Flow>();
         let generated_schema_str = serde_json::to_string_pretty(&generated_json).unwrap();
 
         let flow_schema_path = format!("{}/../../../schemas/flow.json", env!("CARGO_MANIFEST_DIR"));
@@ -660,6 +624,7 @@ mod tests {
 
             std::fs::write(&flow_schema_path, &generated_schema_str)
                 .expect("Failed to write updated schema");
+            eprintln!("Updated flow.json at {}", flow_schema_path);
         } else {
             match std::fs::read_to_string(&flow_schema_path) {
                 Ok(expected_schema_str) => {
@@ -678,5 +643,35 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_utoipa_schema_generation() {
+        use crate::json_schema::generate_json_schema_with_defs;
+
+        // Generate schema using the utoipa-based utility
+        let generated = generate_json_schema_with_defs::<Flow>();
+        let generated_str = serde_json::to_string_pretty(&generated).unwrap();
+
+        // Print the schema for manual comparison during development
+        // This test is primarily for development/debugging - will be replaced
+        // by the actual schema comparison test once we verify the output
+        if std::env::var("PRINT_SCHEMA").is_ok() {
+            eprintln!("Generated Flow schema:\n{}", generated_str);
+        }
+
+        // Basic structural checks
+        assert!(generated.get("$schema").is_some(), "Missing $schema");
+        assert!(generated.get("title").is_some(), "Missing title");
+
+        // Should have $defs with referenced types
+        let defs = generated.get("$defs");
+        assert!(defs.is_some(), "Missing $defs");
+
+        // Verify no #/components/schemas references remain
+        assert!(
+            !generated_str.contains("#/components/schemas"),
+            "Found unconverted #/components/schemas reference"
+        );
     }
 }

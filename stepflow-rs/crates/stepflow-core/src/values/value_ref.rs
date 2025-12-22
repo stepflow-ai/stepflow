@@ -11,7 +11,6 @@
 // the License.
 
 use owning_ref::ArcRef;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -45,18 +44,6 @@ impl Default for ValueRef {
     }
 }
 
-impl JsonSchema for ValueRef {
-    fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("Value")
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "Any JSON value (object, array, string, number, boolean, or null)",
-        })
-    }
-}
-
 impl utoipa::PartialSchema for ValueRef {
     fn schema() -> RefOr<Schema> {
         RefOr::T(utoipa::openapi::schema::Schema::AllOf(
@@ -69,7 +56,12 @@ impl utoipa::PartialSchema for ValueRef {
     }
 }
 
-impl utoipa::ToSchema for ValueRef {}
+impl utoipa::ToSchema for ValueRef {
+    fn name() -> Cow<'static, str> {
+        // Use "Value" as the semantic name (the "Ref" is an implementation detail)
+        Cow::Borrowed("Value")
+    }
+}
 
 impl Serialize for ValueRef {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

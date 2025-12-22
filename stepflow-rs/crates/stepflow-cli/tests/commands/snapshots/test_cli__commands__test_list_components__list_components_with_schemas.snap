@@ -30,27 +30,34 @@ Component: /create_messages (plugin: builtin)
     /builtin/create_messages
   Input Schema:
     {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CreateMessagesInput",
       "type": "object",
+      "required": [
+        "user_prompt"
+      ],
       "properties": {
         "system_instructions": {
-          "description": "The system instructions to include in the message list.",
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "The system instructions to include in the message list."
         },
         "user_prompt": {
-          "description": "The user prompt to include in the message list.",
-          "type": "string"
+          "type": "string",
+          "description": "The user prompt to include in the message list."
         }
-      },
-      "required": [
-        "user_prompt"
-      ]
+      }
     }
   Output Schema:
     {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CreateMessagesOutput",
       "type": "object",
+      "required": [
+        "messages"
+      ],
       "properties": {
         "messages": {
           "type": "array",
@@ -58,10 +65,7 @@ Component: /create_messages (plugin: builtin)
             "$ref": "#/$defs/ChatMessage"
           }
         }
-      },
-      "required": [
-        "messages"
-      ]
+      }
     }
 
 Component: /eval (plugin: builtin)
@@ -70,41 +74,45 @@ Component: /eval (plugin: builtin)
     /builtin/eval
   Input Schema:
     {
-      "description": "Input for the eval component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "EvalInput",
       "type": "object",
-      "properties": {
-        "flow_id": {
-          "description": "The ID of the workflow to execute (blob ID)",
-          "$ref": "#/$defs/BlobId"
-        },
-        "input": {
-          "description": "The input to pass to the workflow",
-          "$ref": "#/$defs/Value"
-        }
-      },
+      "description": "Input for the eval component",
       "required": [
         "flow_id",
         "input"
-      ]
+      ],
+      "properties": {
+        "flow_id": {
+          "$ref": "#/$defs/BlobId",
+          "description": "The ID of the workflow to execute (blob ID)"
+        },
+        "input": {
+          "$ref": "#/$defs/Value",
+          "description": "The input to pass to the workflow"
+        }
+      }
     }
   Output Schema:
     {
-      "description": "Output from the eval component\n\nThe output is simply the result of the nested workflow execution",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "EvalOutput",
       "type": "object",
-      "properties": {
-        "result": {
-          "description": "The result from executing the nested workflow",
-          "$ref": "#/$defs/FlowResult"
-        },
-        "run_id": {
-          "description": "The run ID of the nested workflow",
-          "type": "string"
-        }
-      },
+      "description": "Output from the eval component\n\nThe output is simply the result of the nested workflow execution",
       "required": [
         "result",
         "run_id"
-      ]
+      ],
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/FlowResult",
+          "description": "The result from executing the nested workflow"
+        },
+        "run_id": {
+          "type": "string",
+          "description": "The run ID of the nested workflow"
+        }
+      }
     }
 
 Component: /get_blob (plugin: builtin)
@@ -113,30 +121,34 @@ Component: /get_blob (plugin: builtin)
     /builtin/get_blob
   Input Schema:
     {
-      "description": "Input for the get_blob component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "GetBlobInput",
       "type": "object",
-      "properties": {
-        "blob_id": {
-          "description": "The blob ID to retrieve",
-          "type": "string"
-        }
-      },
+      "description": "Input for the get_blob component",
       "required": [
         "blob_id"
-      ]
+      ],
+      "properties": {
+        "blob_id": {
+          "type": "string",
+          "description": "The blob ID to retrieve"
+        }
+      }
     }
   Output Schema:
     {
-      "description": "Output from the get_blob component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "GetBlobOutput",
       "type": "object",
+      "description": "Output from the get_blob component",
+      "required": [
+        "data"
+      ],
       "properties": {
         "data": {
           "description": "The JSON data stored in the blob"
         }
-      },
-      "required": [
-        "data"
-      ]
+      }
     }
 
 Component: /iterate (plugin: builtin)
@@ -145,55 +157,58 @@ Component: /iterate (plugin: builtin)
     /builtin/iterate
   Input Schema:
     {
-      "description": "Input for the iterate component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "IterateInput",
       "type": "object",
-      "properties": {
-        "flow": {
-          "description": "The workflow to iterate. Must return either {\"result\": value} or {\"next\": value}",
-          "$ref": "#/$defs/Flow"
-        },
-        "initial_input": {
-          "description": "The initial input to pass to the workflow",
-          "$ref": "#/$defs/Value"
-        },
-        "max_iterations": {
-          "description": "Maximum number of iterations to prevent infinite loops (default: 1000)",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0,
-          "default": 1000
-        }
-      },
+      "description": "Input for the iterate component",
       "required": [
         "flow",
         "initial_input"
-      ]
+      ],
+      "properties": {
+        "flow": {
+          "$ref": "#/$defs/Flow",
+          "description": "The workflow to iterate. Must return either {\"result\": value} or {\"next\": value}"
+        },
+        "initial_input": {
+          "$ref": "#/$defs/Value",
+          "description": "The initial input to pass to the workflow"
+        },
+        "max_iterations": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Maximum number of iterations to prevent infinite loops (default: 1000)",
+          "minimum": 0
+        }
+      }
     }
   Output Schema:
     {
-      "description": "Output from the iterate component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "IterateOutput",
       "type": "object",
-      "properties": {
-        "result": {
-          "description": "The final result value",
-          "$ref": "#/$defs/Value"
-        },
-        "iterations": {
-          "description": "The number of iterations performed",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "terminated": {
-          "description": "Whether the iteration was terminated by max_iterations",
-          "type": "boolean"
-        }
-      },
+      "description": "Output from the iterate component",
       "required": [
         "result",
         "iterations",
         "terminated"
-      ]
+      ],
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/Value",
+          "description": "The final result value"
+        },
+        "iterations": {
+          "type": "integer",
+          "format": "int32",
+          "description": "The number of iterations performed",
+          "minimum": 0
+        },
+        "terminated": {
+          "type": "boolean",
+          "description": "Whether the iteration was terminated by max_iterations"
+        }
+      }
     }
 
 Component: /load_file (plugin: builtin)
@@ -202,44 +217,48 @@ Component: /load_file (plugin: builtin)
     /builtin/load_file
   Input Schema:
     {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "LoadFileInput",
       "type": "object",
+      "required": [
+        "path"
+      ],
       "properties": {
         "path": {
-          "description": "Path to the file to load",
-          "type": "string"
+          "type": "string",
+          "description": "Path to the file to load"
         },
         "format": {
-          "description": "Format of the file (json, yaml, text). If not specified, inferred from extension",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/FileFormat"
-            },
+          "oneOf": [
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/FileFormat",
+              "description": "Format of the file (json, yaml, text). If not specified, inferred from extension"
             }
           ]
         }
-      },
-      "required": [
-        "path"
-      ]
+      }
     }
   Output Schema:
     {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "LoadFileOutput",
       "type": "object",
+      "required": [
+        "data",
+        "metadata"
+      ],
       "properties": {
         "data": {
           "description": "The loaded data (parsed JSON/YAML or raw text)"
         },
         "metadata": {
-          "description": "Metadata about the loaded file",
-          "$ref": "#/$defs/FileMetadata"
+          "$ref": "#/$defs/FileMetadata",
+          "description": "Metadata about the loaded file"
         }
-      },
-      "required": [
-        "data",
-        "metadata"
-      ]
+      }
     }
 
 Component: /map (plugin: builtin)
@@ -248,64 +267,67 @@ Component: /map (plugin: builtin)
     /builtin/map
   Input Schema:
     {
-      "description": "Input for the map component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MapInput",
       "type": "object",
+      "description": "Input for the map component",
+      "required": [
+        "workflow",
+        "items"
+      ],
       "properties": {
         "workflow": {
-          "description": "The workflow to apply to each item",
-          "$ref": "#/$defs/Flow"
+          "$ref": "#/$defs/Flow",
+          "description": "The workflow to apply to each item"
         },
         "items": {
-          "description": "The list of items to process",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Value"
-          }
+          },
+          "description": "The list of items to process"
         },
         "max_concurrency": {
-          "description": "Maximum number of concurrent executions (optional, defaults to number of items)",
           "type": [
             "integer",
             "null"
           ],
-          "format": "uint",
+          "description": "Maximum number of concurrent executions (optional, defaults to number of items)",
           "minimum": 0
         }
-      },
-      "required": [
-        "workflow",
-        "items"
-      ]
+      }
     }
   Output Schema:
     {
-      "description": "Output from the map component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MapOutput",
       "type": "object",
-      "properties": {
-        "results": {
-          "description": "The results from processing each item",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/FlowResult"
-          }
-        },
-        "successful": {
-          "description": "Summary statistics",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "failed": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        }
-      },
+      "description": "Output from the map component",
       "required": [
         "results",
         "successful",
         "failed"
-      ]
+      ],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FlowResult"
+          },
+          "description": "The results from processing each item"
+        },
+        "successful": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Summary statistics",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        }
+      }
     }
 
 Component: /openai (plugin: builtin)
@@ -314,59 +336,62 @@ Component: /openai (plugin: builtin)
     /builtin/openai
   Input Schema:
     {
-      "description": "Input for the OpenAI component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "OpenAIInput",
       "type": "object",
+      "description": "Input for the OpenAI component",
+      "required": [
+        "messages"
+      ],
       "properties": {
         "messages": {
-          "description": "The messages to send to the API",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ChatMessage"
-          }
+          },
+          "description": "The messages to send to the API"
         },
         "max_tokens": {
-          "description": "Max tokens to generate (optional)",
           "type": [
             "integer",
             "null"
           ],
-          "format": "uint16",
-          "minimum": 0,
-          "maximum": 65535
+          "format": "int32",
+          "description": "Max tokens to generate (optional)",
+          "minimum": 0
         },
         "temperature": {
-          "description": "Temperature setting (optional)",
           "type": [
             "number",
             "null"
           ],
-          "format": "float"
+          "format": "float",
+          "description": "Temperature setting (optional)"
         },
         "api_key": {
-          "description": "API key override (optional - uses environment variable if not provided)",
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "API key override (optional - uses environment variable if not provided)"
         }
-      },
-      "required": [
-        "messages"
-      ]
+      }
     }
   Output Schema:
     {
-      "description": "Output from the OpenAI component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "OpenAIOutput",
       "type": "object",
-      "properties": {
-        "response": {
-          "description": "The generated response text",
-          "type": "string"
-        }
-      },
+      "description": "Output from the OpenAI component",
       "required": [
         "response"
-      ]
+      ],
+      "properties": {
+        "response": {
+          "type": "string",
+          "description": "The generated response text"
+        }
+      }
     }
 
 Component: /put_blob (plugin: builtin)
@@ -375,35 +400,39 @@ Component: /put_blob (plugin: builtin)
     /builtin/put_blob
   Input Schema:
     {
-      "description": "Input for the put_blob component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "PutBlobInput",
       "type": "object",
+      "description": "Input for the put_blob component",
+      "required": [
+        "data",
+        "blob_type"
+      ],
       "properties": {
         "data": {
           "description": "The JSON data to store as a blob"
         },
         "blob_type": {
-          "description": "The type of blob to store",
-          "$ref": "#/$defs/BlobType"
+          "$ref": "#/$defs/BlobType",
+          "description": "The type of blob to store"
         }
-      },
-      "required": [
-        "data",
-        "blob_type"
-      ]
+      }
     }
   Output Schema:
     {
-      "description": "Output from the put_blob component",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "PutBlobOutput",
       "type": "object",
-      "properties": {
-        "blob_id": {
-          "description": "The blob ID for the stored data",
-          "type": "string"
-        }
-      },
+      "description": "Output from the put_blob component",
       "required": [
         "blob_id"
-      ]
+      ],
+      "properties": {
+        "blob_id": {
+          "type": "string",
+          "description": "The blob ID for the stored data"
+        }
+      }
     }
 
 Total components: 8

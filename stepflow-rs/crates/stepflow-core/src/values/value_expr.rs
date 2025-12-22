@@ -14,7 +14,6 @@ use bit_set::BitSet;
 
 use super::{JsonPath, PathPart, StepContext, ValueRef};
 use crate::FlowResult;
-use schemars::JsonSchema;
 use serde_json::Value;
 
 /// A value expression that can contain literal data or references to other values.
@@ -475,110 +474,6 @@ impl Default for ValueExpr {
     }
 }
 
-// Manual JsonSchema implementation to match the actual wire format
-impl JsonSchema for ValueExpr {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "ValueExpr".into()
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "A value expression that can contain literal data or references to other values",
-            "oneOf": [
-                {
-                    "title": "StepRef",
-                    "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
-                    "type": "object",
-                    "properties": {
-                        "$step": { "type": "string" },
-                        "path": { "type": "string", "description": "JSONPath expression" }
-                    },
-                    "required": ["$step"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "InputRef",
-                    "description": "Workflow input reference: { $input: \"path\" }",
-                    "type": "object",
-                    "properties": {
-                        "$input": { "type": "string", "description": "JSONPath expression" }
-                    },
-                    "required": ["$input"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "VariableRef",
-                    "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
-                    "type": "object",
-                    "properties": {
-                        "$variable": { "type": "string", "description": "JSONPath expression including variable name" },
-                        "default": { "$ref": "#/$defs/ValueExpr" }
-                    },
-                    "required": ["$variable"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "Literal",
-                    "description": "Escaped literal: { $literal: any }",
-                    "type": "object",
-                    "properties": {
-                        "$literal": {}
-                    },
-                    "required": ["$literal"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "If",
-                    "description": "Conditional: { $if: condition, then: expr, else?: expr }",
-                    "type": "object",
-                    "properties": {
-                        "$if": { "$ref": "#/$defs/ValueExpr" },
-                        "then": { "$ref": "#/$defs/ValueExpr" },
-                        "else": { "$ref": "#/$defs/ValueExpr" }
-                    },
-                    "required": ["$if", "then"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "Coalesce",
-                    "description": "Coalesce: { $coalesce: [expr1, expr2, ...] }",
-                    "type": "object",
-                    "properties": {
-                        "$coalesce": {
-                            "type": "array",
-                            "items": { "$ref": "#/$defs/ValueExpr" }
-                        }
-                    },
-                    "required": ["$coalesce"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "ArrayExpr",
-                    "description": "Array of expressions",
-                    "type": "array",
-                    "items": { "$ref": "#/$defs/ValueExpr" }
-                },
-                {
-                    "title": "ObjectExpr",
-                    "description": "Object with expression values",
-                    "type": "object",
-                    "additionalProperties": { "$ref": "#/$defs/ValueExpr" }
-                },
-                {
-                    "title": "PrimitiveValue",
-                    "description": "Literal primitive value",
-                    "oneOf": [
-                        { "type": "null" },
-                        { "type": "boolean" },
-                        { "type": "number" },
-                        { "type": "string" }
-                    ]
-                }
-            ]
-        })
-    }
-}
-
 // Manual utoipa::ToSchema implementation to prevent stack overflow from recursion
 impl utoipa::PartialSchema for ValueExpr {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
@@ -602,33 +497,58 @@ impl utoipa::ToSchema for ValueExpr {
         use utoipa::openapi::schema::*;
         use utoipa::openapi::*;
 
+        // Helper for creating a string type schema
+        let string_type = || {
+            RefOr::T(Schema::Object(
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::Type(Type::String))
+                    .build(),
+            ))
+        };
+
+        // Helper for creating a string type with description
+        let string_type_with_desc = |desc: &'static str| {
+            RefOr::T(Schema::Object(
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::Type(Type::String))
+                    .description(Some(desc))
+                    .build(),
+            ))
+        };
+
         // Create a oneOf schema with each variant described
-        // Note: We don't need to explicitly set schema types for objects since ObjectBuilder
-        // defaults to object type. For primitive types, we can just describe them in documentation.
         let one_of_items = vec![
             // Step reference: { $step: "step_id", path?: "..." }
             Schema::Object(
                 ObjectBuilder::new()
-                    .property("$step", Object::new())
-                    .property("path", Object::new())
+                    .title(Some("StepRef"))
+                    .property("$step", string_type())
+                    .property("path", string_type_with_desc("JSONPath expression"))
                     .required("$step")
                     .description(Some(
                         "Step reference: { $step: \"step_id\", path?: \"...\" }",
                     ))
+                    .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
             ),
             // Input reference: { $input: "path" }
             Schema::Object(
                 ObjectBuilder::new()
-                    .property("$input", Object::new())
+                    .title(Some("InputRef"))
+                    .property("$input", string_type_with_desc("JSONPath expression"))
                     .required("$input")
                     .description(Some("Workflow input reference: { $input: \"path\" }"))
+                    .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
             ),
             // Variable reference: { $variable: "path", default?: ValueExpr }
             Schema::Object(
                 ObjectBuilder::new()
-                    .property("$variable", Object::new())
+                    .title(Some("VariableRef"))
+                    .property(
+                        "$variable",
+                        string_type_with_desc("JSONPath expression including variable name"),
+                    )
                     .property(
                         "default",
                         RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
@@ -637,19 +557,28 @@ impl utoipa::ToSchema for ValueExpr {
                     .description(Some(
                         "Variable reference: { $variable: \"path\", default?: ValueExpr }",
                     ))
+                    .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
             ),
             // Escaped literal: { $literal: any }
+            // Note: Named "LiteralExpr" to avoid conflict with Python's typing.Literal
             Schema::Object(
                 ObjectBuilder::new()
-                    .property("$literal", Object::new())
+                    .title(Some("LiteralExpr"))
+                    .property(
+                        "$literal",
+                        // Empty AllOf means "any value" (produces {} in JSON)
+                        Schema::AllOf(AllOfBuilder::new().build()),
+                    )
                     .required("$literal")
                     .description(Some("Escaped literal: { $literal: any }"))
+                    .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
             ),
             // Conditional: { $if: condition, then: expr, else?: expr }
             Schema::Object(
                 ObjectBuilder::new()
+                    .title(Some("If"))
                     .property(
                         "$if",
                         RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
@@ -667,11 +596,13 @@ impl utoipa::ToSchema for ValueExpr {
                     .description(Some(
                         "Conditional: { $if: condition, then: expr, else?: expr }",
                     ))
+                    .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
             ),
             // Coalesce: { $coalesce: [expr1, expr2, ...] }
             Schema::Object(
                 ObjectBuilder::new()
+                    .title(Some("Coalesce"))
                     .property(
                         "$coalesce",
                         ArrayBuilder::new()
@@ -679,11 +610,13 @@ impl utoipa::ToSchema for ValueExpr {
                     )
                     .required("$coalesce")
                     .description(Some("Coalesce: { $coalesce: [expr1, expr2, ...] }"))
+                    .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
             ),
             // Array of expressions
             Schema::Array(
                 ArrayBuilder::new()
+                    .title(Some("ArrayExpr"))
                     .items(RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
                     .description(Some("Array of expressions"))
                     .build(),
@@ -691,17 +624,37 @@ impl utoipa::ToSchema for ValueExpr {
             // Object with expression values
             Schema::Object(
                 ObjectBuilder::new()
+                    .title(Some("ObjectExpr"))
                     .additional_properties(Some(RefOr::Ref(Ref::new(
                         "#/components/schemas/ValueExpr",
                     ))))
                     .description(Some("Object with expression values"))
                     .build(),
             ),
-            // Literal primitive value - just describe as allowing any value
-            Schema::Object(
-                ObjectBuilder::new()
-                    .description(Some(
-                        "Literal primitive value (null, boolean, number, or string)",
+            // Literal primitive value - oneOf for null, boolean, number, string
+            Schema::OneOf(
+                OneOfBuilder::new()
+                    .title(Some("PrimitiveValue"))
+                    .description(Some("Literal primitive value"))
+                    .item(Schema::Object(
+                        ObjectBuilder::new()
+                            .schema_type(SchemaType::Type(Type::Null))
+                            .build(),
+                    ))
+                    .item(Schema::Object(
+                        ObjectBuilder::new()
+                            .schema_type(SchemaType::Type(Type::Boolean))
+                            .build(),
+                    ))
+                    .item(Schema::Object(
+                        ObjectBuilder::new()
+                            .schema_type(SchemaType::Type(Type::Number))
+                            .build(),
+                    ))
+                    .item(Schema::Object(
+                        ObjectBuilder::new()
+                            .schema_type(SchemaType::Type(Type::String))
+                            .build(),
                     ))
                     .build(),
             ),

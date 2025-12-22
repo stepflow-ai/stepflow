@@ -27,6 +27,21 @@ class Schema(Struct, kw_only=True):
     pass
 
 
+class StepRef(Struct, kw_only=True):
+    field_step: str = field(name='$step')
+    path: Annotated[str, Meta(description='JSONPath expression')] | None = None
+
+
+class InputRef(Struct, kw_only=True):
+    field_input: Annotated[str, Meta(description='JSONPath expression')] = field(
+        name='$input'
+    )
+
+
+class LiteralExpr(Struct, kw_only=True):
+    field_literal: Any = field(name='$literal')
+
+
 Component = Annotated[
     str,
     Meta(
@@ -47,27 +62,6 @@ class OnErrorDefault(Struct, kw_only=True):
 
 class OnErrorRetry(Struct, kw_only=True):
     action: Literal['retry']
-
-
-ErrorAction = Annotated[
-    OnErrorFail | OnErrorDefault | OnErrorRetry,
-    Meta(description='Error action determines what happens when a step fails.'),
-]
-
-
-class StepRef(Struct, kw_only=True):
-    field_step: str = field(name='$step')
-    path: Annotated[str, Meta(description='JSONPath expression')] | None = None
-
-
-class InputRef(Struct, kw_only=True):
-    field_input: Annotated[str, Meta(description='JSONPath expression')] = field(
-        name='$input'
-    )
-
-
-class LiteralModel(Struct, kw_only=True):
-    field_literal: Any = field(name='$literal')
 
 
 class TestServerHealthCheck(Struct, kw_only=True):
@@ -136,6 +130,12 @@ class ExampleInput(Struct, kw_only=True):
     ) = None
 
 
+ErrorAction = Annotated[
+    OnErrorFail | OnErrorDefault | OnErrorRetry,
+    Meta(description='Error action determines what happens when a step fails.'),
+]
+
+
 class TestServerConfig(Struct, kw_only=True):
     command: Annotated[str, Meta(description='Command to start the server.')]
     args: (
@@ -166,13 +166,7 @@ class TestServerConfig(Struct, kw_only=True):
         ]
         | None
     ) = None
-    healthCheck: (
-        Annotated[
-            TestServerHealthCheck | None,
-            Meta(description='Health check configuration.'),
-        ]
-        | None
-    ) = None
+    healthCheck: TestServerHealthCheck | None = None
     startupTimeoutMs: (
         Annotated[
             int,
@@ -213,13 +207,7 @@ class TestCase(Struct, kw_only=True):
         ]
         | None
     ) = None
-    output: (
-        Annotated[
-            FlowResult | None,
-            Meta(description='Expected output from the workflow for this test case.'),
-        ]
-        | None
-    ) = None
+    output: FlowResult | None = None
 
 
 class TestConfig(Struct, kw_only=True):
@@ -256,27 +244,13 @@ class FlowV1(Struct, kw_only=True):
     version: (
         Annotated[str | None, Meta(description='The version of the flow.')] | None
     ) = None
-    inputSchema: (
-        Annotated[Schema | None, Meta(description='The input schema of the flow.')]
-        | None
-    ) = None
-    outputSchema: (
-        Annotated[Schema | None, Meta(description='The output schema of the flow.')]
-        | None
-    ) = None
-    variables: (
-        Annotated[
-            Schema | None,
-            Meta(
-                description='Schema for workflow variables that can be referenced in steps.'
-            ),
-        ]
-        | None
-    ) = None
+    inputSchema: Schema | None = None
+    outputSchema: Schema | None = None
+    variables: Schema | None = None
     steps: (
         Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
         | None
-    ) = []
+    ) = None
     output: (
         Annotated[
             ValueExpr,
@@ -286,12 +260,7 @@ class FlowV1(Struct, kw_only=True):
         ]
         | None
     ) = None
-    test: (
-        Annotated[
-            TestConfig | None, Meta(description='Test configuration for the flow.')
-        ]
-        | None
-    ) = None
+    test: TestConfig | None = None
     examples: (
         Annotated[
             List[ExampleInput],
@@ -321,19 +290,58 @@ Flow = Annotated[
 ]
 
 
+class FlowV11(Struct, kw_only=True):
+    name: Annotated[str | None, Meta(description='The name of the flow.')] | None = None
+    description: (
+        Annotated[str | None, Meta(description='The description of the flow.')] | None
+    ) = None
+    version: (
+        Annotated[str | None, Meta(description='The version of the flow.')] | None
+    ) = None
+    inputSchema: Schema | None = None
+    outputSchema: Schema | None = None
+    variables: Schema | None = None
+    steps: (
+        Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
+        | None
+    ) = None
+    output: (
+        Annotated[
+            ValueExpr,
+            Meta(
+                description='The outputs of the flow, mapping output names to their values.'
+            ),
+        ]
+        | None
+    ) = None
+    test: TestConfig | None = None
+    examples: (
+        Annotated[
+            List[ExampleInput],
+            Meta(
+                description='Example inputs for the workflow that can be used for testing and UI dropdowns.'
+            ),
+        ]
+        | None
+    ) = None
+    metadata: (
+        Annotated[
+            Dict[str, Any],
+            Meta(
+                description='Extensible metadata for the flow that can be used by tools and frameworks.'
+            ),
+        ]
+        | None
+    ) = None
+
+
 class Step(Struct, kw_only=True):
     id: Annotated[str, Meta(description='Identifier for the step')]
     component: Annotated[
         Component, Meta(description='The component to execute in this step')
     ]
-    inputSchema: (
-        Annotated[Schema | None, Meta(description='The input schema for this step.')]
-        | None
-    ) = None
-    outputSchema: (
-        Annotated[Schema | None, Meta(description='The output schema for this step.')]
-        | None
-    ) = None
+    inputSchema: Schema | None = None
+    outputSchema: Schema | None = None
     onError: ErrorAction | None = None
     input: (
         Annotated[
@@ -383,7 +391,7 @@ ValueExpr = Annotated[
     StepRef
     | InputRef
     | VariableRef
-    | LiteralModel
+    | LiteralExpr
     | If
     | Coalesce
     | List['ValueExpr']

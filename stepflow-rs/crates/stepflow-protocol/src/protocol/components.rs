@@ -10,17 +10,17 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use stepflow_core::component::ComponentInfo;
 use stepflow_core::workflow::{Component, ValueRef};
+use utoipa::ToSchema;
 
 use crate::protocol::Method;
 
 use super::{ObservabilityContext, ProtocolMethod};
 
 /// Sent from Stepflow to the component server to execute a specific component with the provided input.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ComponentExecuteParams {
     /// The component to execute.
     pub component: Component,
@@ -33,7 +33,7 @@ pub struct ComponentExecuteParams {
 }
 
 /// Sent from the component server back to Stepflow with the result of the component execution.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ComponentExecuteResult {
     /// The result of the component execution.
     pub output: ValueRef,
@@ -45,14 +45,14 @@ impl ProtocolMethod for ComponentExecuteParams {
 }
 
 /// Sent from Stepflow to the component server to request information about a specific component.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ComponentInfoParams {
     /// The component to get information about.
     pub component: Component,
 }
 
 /// Sent from the component server back to Stepflow with information about the requested component.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ComponentInfoResult {
     /// Information about the component.
     pub info: ComponentInfo,
@@ -64,11 +64,11 @@ impl ProtocolMethod for ComponentInfoParams {
 }
 
 /// Sent from Stepflow to the component server to request a list of all available components.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ComponentListParams {}
 
 /// Sent from the component server back to Stepflow with a list of all available components.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListComponentsResult {
     /// A list of all available components.
     pub components: Vec<ComponentInfo>,

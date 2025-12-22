@@ -36,7 +36,7 @@ impl Default for EvalComponent {
 }
 
 /// Input for the eval component
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct EvalInput {
     /// The ID of the workflow to execute (blob ID)
     flow_id: BlobId,
@@ -48,7 +48,7 @@ struct EvalInput {
 /// Output from the eval component
 ///
 /// The output is simply the result of the nested workflow execution
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 struct EvalOutput {
     /// The result from executing the nested workflow
     result: FlowResult,

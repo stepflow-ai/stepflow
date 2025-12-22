@@ -1,7 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Message",
-  "description": "The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.\n\nNote that this defines a superset containing both client-sent and server-sent messages.",
   "oneOf": [
     {
       "$ref": "#/$defs/MethodRequest"
@@ -16,74 +15,16 @@
       "$ref": "#/$defs/Notification"
     }
   ],
+  "description": "The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.",
   "$defs": {
-    "MethodRequest": {
-      "description": "Request to execute a method.",
-      "type": "object",
-      "properties": {
-        "jsonrpc": {
-          "$ref": "#/$defs/JsonRpc",
-          "default": "2.0"
-        },
-        "id": {
-          "$ref": "#/$defs/RequestId"
-        },
-        "method": {
-          "description": "The method being called.",
-          "$ref": "#/$defs/Method"
-        },
-        "params": {
-          "title": "MethodParams",
-          "description": "The parameters for the method call. Set on method requests.",
-          "oneOf": [
-            {
-              "$ref": "#/$defs/InitializeParams"
-            },
-            {
-              "$ref": "#/$defs/ComponentExecuteParams"
-            },
-            {
-              "$ref": "#/$defs/ComponentInfoParams"
-            },
-            {
-              "$ref": "#/$defs/ComponentListParams"
-            },
-            {
-              "$ref": "#/$defs/GetBlobParams"
-            },
-            {
-              "$ref": "#/$defs/PutBlobParams"
-            },
-            {
-              "$ref": "#/$defs/EvaluateFlowParams"
-            },
-            {
-              "$ref": "#/$defs/GetFlowMetadataParams"
-            },
-            {
-              "$ref": "#/$defs/SubmitBatchParams"
-            },
-            {
-              "$ref": "#/$defs/GetBatchParams"
-            }
-          ]
-        }
-      },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ]
-    },
     "JsonRpc": {
-      "description": "The version of the JSON-RPC protocol.",
       "type": "string",
-      "const": "2.0",
-      "default": "2.0"
+      "description": "The version of the JSON-RPC protocol.",
+      "default": "2.0",
+      "const": "2.0"
     },
     "RequestId": {
-      "description": "The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.",
-      "anyOf": [
+      "oneOf": [
         {
           "type": "string"
         },
@@ -91,7 +32,8 @@
           "type": "integer",
           "format": "int64"
         }
-      ]
+      ],
+      "description": "The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications."
     },
     "Method": {
       "type": "string",
@@ -109,566 +51,427 @@
         "flows/get_batch"
       ]
     },
-    "InitializeParams": {
-      "description": "Sent from Stepflow to the component server to begin the initialization process.",
-      "type": "object",
-      "properties": {
-        "runtime_protocol_version": {
-          "description": "Maximum version of the protocol being used by the Stepflow runtime.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "observability": {
-          "description": "Observability context for tracing initialization (trace context only, no flow/run).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObservabilityContext"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "runtime_protocol_version"
-      ]
-    },
-    "ObservabilityContext": {
-      "description": "Observability context for distributed tracing and logging.\n\nThis context is passed with protocol requests to enable trace correlation\nand structured logging across the Stepflow runtime and component servers.\n\n# Field Presence\n\n- `trace_id` and `span_id`: Present when tracing is enabled, None otherwise\n- `run_id` and `flow_id`: Present for workflow execution requests, None for init/discovery\n- `step_id`: Present for step-level execution, None for workflow-level operations",
-      "type": "object",
-      "properties": {
-        "trace_id": {
-          "description": "OpenTelemetry trace ID (128-bit, hex encoded).\n\nPresent when tracing is enabled, None otherwise.\nUsed to correlate all operations within a single trace.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "span_id": {
-          "description": "OpenTelemetry span ID (64-bit, hex encoded).\n\nUsed to establish parent-child span relationships.\nComponent servers should use this as the parent span when creating their spans.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "run_id": {
-          "description": "The ID of the workflow run.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and associating operations with specific workflow runs.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "flow_id": {
-          "description": "The ID of the flow being executed.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and understanding which workflow is being executed.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/BlobId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "step_id": {
-          "description": "The ID of the step being executed.\n\nPresent for step-level execution, None for workflow-level operations.\nUsed for filtering logs and associating operations with specific workflow steps.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
-    "BlobId": {
-      "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-      "type": "string"
-    },
-    "ComponentExecuteParams": {
-      "description": "Sent from Stepflow to the component server to execute a specific component with the provided input.",
-      "type": "object",
-      "properties": {
-        "component": {
-          "description": "The component to execute.",
-          "$ref": "#/$defs/Component"
-        },
-        "input": {
-          "description": "The input to the component.",
-          "$ref": "#/$defs/Value"
-        },
-        "attempt": {
-          "description": "The attempt number for this execution (1-based, for retry logic).",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        },
-        "observability": {
-          "description": "Observability context for tracing and logging.",
-          "$ref": "#/$defs/ObservabilityContext"
-        }
-      },
-      "required": [
-        "component",
-        "input",
-        "attempt",
-        "observability"
-      ]
-    },
-    "Component": {
-      "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
-      "type": "string",
-      "examples": [
-        "/builtin/eval",
-        "/mcpfs/list_files",
-        "/python/udf"
-      ]
-    },
     "Value": {
+      "allOf": [],
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
-    "ComponentInfoParams": {
-      "description": "Sent from Stepflow to the component server to request information about a specific component.",
+    "MethodRequest": {
       "type": "object",
-      "properties": {
-        "component": {
-          "description": "The component to get information about.",
-          "$ref": "#/$defs/Component"
-        }
-      },
+      "description": "Request to execute a method.",
       "required": [
-        "component"
-      ]
-    },
-    "ComponentListParams": {
-      "description": "Sent from Stepflow to the component server to request a list of all available components.",
-      "type": "object"
-    },
-    "GetBlobParams": {
-      "description": "Sent from the component server to the Stepflow to retrieve the content of a specific blob.",
-      "type": "object",
+        "id",
+        "method"
+      ],
       "properties": {
-        "blob_id": {
-          "description": "The ID of the blob to retrieve.",
-          "$ref": "#/$defs/BlobId"
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpc"
         },
-        "observability": {
-          "description": "Observability context for tracing bidirectional calls.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObservabilityContext"
-            },
+        "id": {
+          "$ref": "#/$defs/RequestId"
+        },
+        "method": {
+          "$ref": "#/$defs/Method",
+          "description": "The method being called."
+        },
+        "params": {
+          "oneOf": [
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Value",
+              "description": "The parameters for the method call. Set on method requests."
             }
           ]
         }
-      },
-      "required": [
-        "blob_id"
-      ]
-    },
-    "PutBlobParams": {
-      "description": "Sent from the component server to the Stepflow to store a blob with the provided content.",
-      "type": "object",
-      "properties": {
-        "data": {
-          "$ref": "#/$defs/Value"
-        },
-        "blob_type": {
-          "$ref": "#/$defs/BlobType"
-        },
-        "observability": {
-          "description": "Observability context for tracing bidirectional calls.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObservabilityContext"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "data",
-        "blob_type"
-      ]
-    },
-    "BlobType": {
-      "description": "Type of blob stored in the blob store",
-      "type": "string",
-      "enum": [
-        "flow",
-        "data"
-      ]
-    },
-    "EvaluateFlowParams": {
-      "description": "Sent from the component server to the Stepflow to evaluate a flow with the provided input.",
-      "type": "object",
-      "properties": {
-        "flow_id": {
-          "description": "The ID of the flow to evaluate (blob ID of the flow).",
-          "$ref": "#/$defs/BlobId"
-        },
-        "input": {
-          "description": "The input to provide to the flow.",
-          "$ref": "#/$defs/Value"
-        },
-        "overrides": {
-          "description": "Optional workflow overrides to apply before execution.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/WorkflowOverrides"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "observability": {
-          "description": "Observability context for tracing nested flow execution.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObservabilityContext"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "flow_id",
-        "input"
-      ]
-    },
-    "WorkflowOverrides": {
-      "description": "Workflow overrides that can be applied to modify step behavior at runtime.\n\nOverrides are keyed by step ID and contain merge patches or other transformation\nspecifications to modify step properties before execution.",
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/StepOverride"
       }
     },
-    "StepOverride": {
-      "description": "Override specification for a single step.\n\nContains the override type (merge patch, json patch, etc.) and the value\nto apply. The type field uses `$type` to avoid collisions with step properties.",
+    "Error": {
       "type": "object",
-      "properties": {
-        "$type": {
-          "description": "The type of override to apply. Defaults to \"merge_patch\" if not specified.",
-          "$ref": "#/$defs/OverrideType",
-          "default": "merge_patch"
-        },
-        "value": {
-          "description": "The override value to apply, interpreted based on the override type."
-        }
-      },
+      "description": "An error returned from a method execution.",
       "required": [
-        "value"
-      ]
-    },
-    "OverrideType": {
-      "description": "The type of override operation to perform.",
-      "oneOf": [
-        {
-          "description": "Apply a JSON Merge Patch (RFC 7396) to the step.\n\nThis is the default override type. The value should be a JSON object\nwhere null values indicate fields to remove and other values are merged\ninto the target step.",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int64",
+          "description": "A numeric code indicating the error type."
+        },
+        "message": {
           "type": "string",
-          "const": "merge_patch"
+          "description": "Concise, single-sentence description of the error."
         },
-        {
-          "description": "Apply a JSON Patch (RFC 6902) to the step. (Future extension)\n\nThe value should be an array of JSON Patch operations.\nThis is reserved for future use.",
-          "type": "string",
-          "const": "json_patch"
+        "data": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Value",
+              "description": "Primitive or structured value that contains additional information about the error."
+            }
+          ]
         }
-      ]
+      }
     },
-    "GetFlowMetadataParams": {
-      "description": "Sent from the component server to Stepflow to get flow and step metadata.\n\nThis request allows components to access workflow-level metadata and step-specific metadata\nduring execution. The metadata can contain arbitrary JSON values defined in the workflow\nYAML/JSON.",
+    "MethodError": {
       "type": "object",
-      "properties": {
-        "flow_id": {
-          "description": "The flow to retrieve metadata for.",
-          "$ref": "#/$defs/BlobId"
-        },
-        "step_id": {
-          "description": "The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "observability": {
-          "description": "Observability context for tracing metadata requests.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObservabilityContext"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
       "required": [
-        "flow_id"
-      ]
-    },
-    "SubmitBatchParams": {
-      "description": "Sent from the component server to Stepflow to submit a batch execution.",
-      "type": "object",
+        "id",
+        "error"
+      ],
       "properties": {
-        "flow_id": {
-          "description": "The ID of the flow to evaluate (blob ID of the flow).",
-          "$ref": "#/$defs/BlobId"
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpc"
         },
-        "inputs": {
-          "description": "The inputs to provide to the flow for each run.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Value"
-          }
+        "id": {
+          "$ref": "#/$defs/RequestId"
         },
-        "overrides": {
-          "description": "Optional workflow overrides to apply to all runs before execution.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/WorkflowOverrides"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "max_concurrency": {
-          "description": "Maximum number of concurrent executions (defaults to number of inputs if not specified).",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint",
-          "minimum": 0
-        },
-        "observability": {
-          "description": "Observability context for tracing batch submission.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObservabilityContext"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "error": {
+          "$ref": "#/$defs/Error",
+          "description": "An error that occurred during method execution."
         }
-      },
-      "required": [
-        "flow_id",
-        "inputs"
-      ]
-    },
-    "GetBatchParams": {
-      "description": "Sent from the component server to Stepflow to get batch status and optionally results.",
-      "type": "object",
-      "properties": {
-        "batch_id": {
-          "description": "The batch ID to query.",
-          "type": "string"
-        },
-        "wait": {
-          "description": "If true, wait for batch completion before returning.",
-          "type": "boolean",
-          "default": false
-        },
-        "include_results": {
-          "description": "If true, include full outputs in response.",
-          "type": "boolean",
-          "default": false
-        },
-        "observability": {
-          "description": "Observability context for tracing batch queries.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ObservabilityContext"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "batch_id"
-      ]
+      }
     },
     "MethodResponse": {
-      "description": "Response to a method request.",
-      "anyOf": [
+      "oneOf": [
         {
           "$ref": "#/$defs/MethodSuccess"
         },
         {
           "$ref": "#/$defs/MethodError"
         }
-      ]
+      ],
+      "description": "Response to a method request. This is an untagged union - success responses have a 'result' field while error responses have an 'error' field."
     },
     "MethodSuccess": {
-      "description": "The result of a successful method execution.",
       "type": "object",
+      "description": "The result of a successful method execution.",
+      "required": [
+        "id",
+        "result"
+      ],
       "properties": {
         "jsonrpc": {
-          "$ref": "#/$defs/JsonRpc",
-          "default": "2.0"
+          "$ref": "#/$defs/JsonRpc"
         },
         "id": {
           "$ref": "#/$defs/RequestId"
         },
         "result": {
-          "title": "MethodResult",
-          "description": "The result of a successful method execution.",
+          "$ref": "#/$defs/Value",
+          "description": "The result of a successful method execution."
+        }
+      }
+    },
+    "Notification": {
+      "type": "object",
+      "description": "A JSON-RPC notification message. Unlike requests, notifications do not have an 'id' field and do not expect a response. They are used for one-way communication.",
+      "required": [
+        "method"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "type": "string",
+          "description": "The version of the JSON-RPC protocol.",
+          "default": "2.0",
+          "const": "2.0"
+        },
+        "method": {
+          "description": "The notification method being called."
+        },
+        "params": {
           "oneOf": [
             {
-              "$ref": "#/$defs/InitializeResult"
+              "type": "null"
             },
             {
-              "$ref": "#/$defs/ComponentExecuteResult"
-            },
-            {
-              "$ref": "#/$defs/ComponentInfoResult"
-            },
-            {
-              "$ref": "#/$defs/ListComponentsResult"
-            },
-            {
-              "$ref": "#/$defs/GetBlobResult"
-            },
-            {
-              "$ref": "#/$defs/PutBlobResult"
-            },
-            {
-              "$ref": "#/$defs/EvaluateFlowResult"
-            },
-            {
-              "$ref": "#/$defs/GetFlowMetadataResult"
-            },
-            {
-              "$ref": "#/$defs/SubmitBatchResult"
-            },
-            {
-              "$ref": "#/$defs/GetBatchResult"
+              "allOf": [],
+              "description": "Any JSON value (object, array, string, number, boolean, or null)"
             }
-          ]
+          ],
+          "description": "The parameters for the notification."
         }
-      },
-      "required": [
-        "id",
-        "result"
-      ]
+      }
     },
-    "InitializeResult": {
-      "description": "Sent from the component server back to Stepflow with the result of initialization.\nThe component server will not be initialized until it receives the `initialized` notification.",
+    "ObservabilityContext": {
       "type": "object",
+      "description": "Observability context for distributed tracing and logging.\n\nThis context is passed with protocol requests to enable trace correlation\nand structured logging across the Stepflow runtime and component servers.\n\n# Field Presence\n\n- `trace_id` and `span_id`: Present when tracing is enabled, None otherwise\n- `run_id` and `flow_id`: Present for workflow execution requests, None for init/discovery\n- `step_id`: Present for step-level execution, None for workflow-level operations",
       "properties": {
-        "server_protocol_version": {
-          "description": "Version of the protocol being used by the component server.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
-        }
-      },
-      "required": [
-        "server_protocol_version"
-      ]
-    },
-    "ComponentExecuteResult": {
-      "description": "Sent from the component server back to Stepflow with the result of the component execution.",
-      "type": "object",
-      "properties": {
-        "output": {
-          "description": "The result of the component execution.",
-          "$ref": "#/$defs/Value"
-        }
-      },
-      "required": [
-        "output"
-      ]
-    },
-    "ComponentInfoResult": {
-      "description": "Sent from the component server back to Stepflow with information about the requested component.",
-      "type": "object",
-      "properties": {
-        "info": {
-          "description": "Information about the component.",
-          "$ref": "#/$defs/ComponentInfo"
-        }
-      },
-      "required": [
-        "info"
-      ]
-    },
-    "ComponentInfo": {
-      "type": "object",
-      "properties": {
-        "component": {
-          "description": "The component ID.",
-          "$ref": "#/$defs/Component"
-        },
-        "description": {
-          "description": "Optional description of the component.",
+        "trace_id": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "OpenTelemetry trace ID (128-bit, hex encoded).\n\nPresent when tracing is enabled, None otherwise.\nUsed to correlate all operations within a single trace."
         },
-        "input_schema": {
-          "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
-            },
+        "span_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "OpenTelemetry span ID (64-bit, hex encoded).\n\nUsed to establish parent-child span relationships.\nComponent servers should use this as the parent span when creating their spans."
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The ID of the workflow run.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and associating operations with specific workflow runs."
+        },
+        "flow_id": {
+          "oneOf": [
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/BlobId",
+              "description": "The ID of the flow being executed.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and understanding which workflow is being executed."
+            }
+          ]
+        },
+        "step_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The ID of the step being executed.\n\nPresent for step-level execution, None for workflow-level operations.\nUsed for filtering logs and associating operations with specific workflow steps."
+        }
+      }
+    },
+    "BlobId": {
+      "type": "string",
+      "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string."
+    },
+    "InitializeParams": {
+      "type": "object",
+      "description": "Sent from Stepflow to the component server to begin the initialization process.",
+      "required": [
+        "runtime_protocol_version"
+      ],
+      "properties": {
+        "runtime_protocol_version": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Maximum version of the protocol being used by the Stepflow runtime.",
+          "minimum": 0
+        },
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing initialization (trace context only, no flow/run)."
+            }
+          ]
+        }
+      }
+    },
+    "InitializeResult": {
+      "type": "object",
+      "description": "Sent from the component server back to Stepflow with the result of initialization.\nThe component server will not be initialized until it receives the `initialized` notification.",
+      "required": [
+        "server_protocol_version"
+      ],
+      "properties": {
+        "server_protocol_version": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Version of the protocol being used by the component server.",
+          "minimum": 0
+        }
+      }
+    },
+    "Initialized": {
+      "type": "object",
+      "description": "Sent from Stepflow to the component server after initialization is complete."
+    },
+    "Component": {
+      "type": "string",
+      "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
+      "examples": [
+        "/builtin/eval",
+        "/mcpfs/list_files",
+        "/python/udf"
+      ]
+    },
+    "ComponentExecuteParams": {
+      "type": "object",
+      "description": "Sent from Stepflow to the component server to execute a specific component with the provided input.",
+      "required": [
+        "component",
+        "input",
+        "attempt",
+        "observability"
+      ],
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/Component",
+          "description": "The component to execute."
+        },
+        "input": {
+          "$ref": "#/$defs/Value",
+          "description": "The input to the component."
+        },
+        "attempt": {
+          "type": "integer",
+          "format": "int32",
+          "description": "The attempt number for this execution (1-based, for retry logic).",
+          "minimum": 0
+        },
+        "observability": {
+          "$ref": "#/$defs/ObservabilityContext",
+          "description": "Observability context for tracing and logging."
+        }
+      }
+    },
+    "ComponentExecuteResult": {
+      "type": "object",
+      "description": "Sent from the component server back to Stepflow with the result of the component execution.",
+      "required": [
+        "output"
+      ],
+      "properties": {
+        "output": {
+          "$ref": "#/$defs/Value",
+          "description": "The result of the component execution."
+        }
+      }
+    },
+    "ComponentInfoParams": {
+      "type": "object",
+      "description": "Sent from Stepflow to the component server to request information about a specific component.",
+      "required": [
+        "component"
+      ],
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/Component",
+          "description": "The component to get information about."
+        }
+      }
+    },
+    "ComponentInfo": {
+      "type": "object",
+      "required": [
+        "component"
+      ],
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/Component",
+          "description": "The component ID."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional description of the component."
+        },
+        "input_schema": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Schema",
+              "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.)."
             }
           ]
         },
         "output_schema": {
-          "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
-            },
+          "oneOf": [
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Schema",
+              "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.)."
             }
           ]
         }
-      },
-      "required": [
-        "component"
-      ]
+      }
     },
     "Schema": {
-      "description": "A JSON schema describing allowed JSON values.",
       "type": "object",
-      "additionalProperties": true,
-      "example": "\n                {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"item\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                        \"label\": {\"type\": \"string\"},\n                    },\n                    \"required\": [\"label\"]\n                    }\n                },\n                \"required\": [\"item\"]\n                }\n            "
+      "description": "A valid JSON Schema object."
+    },
+    "ComponentInfoResult": {
+      "type": "object",
+      "description": "Sent from the component server back to Stepflow with information about the requested component.",
+      "required": [
+        "info"
+      ],
+      "properties": {
+        "info": {
+          "$ref": "#/$defs/ComponentInfo",
+          "description": "Information about the component."
+        }
+      }
+    },
+    "ComponentListParams": {
+      "type": "object",
+      "description": "Sent from Stepflow to the component server to request a list of all available components."
     },
     "ListComponentsResult": {
-      "description": "Sent from the component server back to Stepflow with a list of all available components.",
       "type": "object",
+      "description": "Sent from the component server back to Stepflow with a list of all available components.",
+      "required": [
+        "components"
+      ],
       "properties": {
         "components": {
-          "description": "A list of all available components.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ComponentInfo"
-          }
+          },
+          "description": "A list of all available components."
         }
-      },
+      }
+    },
+    "GetBlobParams": {
+      "type": "object",
+      "description": "Sent from the component server to the Stepflow to retrieve the content of a specific blob.",
       "required": [
-        "components"
+        "blob_id"
+      ],
+      "properties": {
+        "blob_id": {
+          "$ref": "#/$defs/BlobId",
+          "description": "The ID of the blob to retrieve."
+        },
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing bidirectional calls."
+            }
+          ]
+        }
+      }
+    },
+    "BlobType": {
+      "type": "string",
+      "description": "Type of blob stored in the blob store.",
+      "enum": [
+        "flow",
+        "data"
       ]
     },
     "GetBlobResult": {
-      "description": "Sent from the Stepflow back to the component server with the blob data and metadata.",
       "type": "object",
+      "description": "Sent from the Stepflow back to the component server with the blob data and metadata.",
+      "required": [
+        "data",
+        "blob_type"
+      ],
       "properties": {
         "data": {
           "$ref": "#/$defs/Value"
@@ -676,40 +479,131 @@
         "blob_type": {
           "$ref": "#/$defs/BlobType"
         }
-      },
+      }
+    },
+    "PutBlobParams": {
+      "type": "object",
+      "description": "Sent from the component server to the Stepflow to store a blob with the provided content.",
       "required": [
         "data",
         "blob_type"
-      ]
+      ],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/Value"
+        },
+        "blob_type": {
+          "$ref": "#/$defs/BlobType"
+        },
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing bidirectional calls."
+            }
+          ]
+        }
+      }
     },
     "PutBlobResult": {
-      "description": "Sent from the Stepflow back to the component server with the ID of the stored blob.",
       "type": "object",
+      "description": "Sent from the Stepflow back to the component server with the ID of the stored blob.",
+      "required": [
+        "blob_id"
+      ],
       "properties": {
         "blob_id": {
           "$ref": "#/$defs/BlobId"
         }
-      },
+      }
+    },
+    "WorkflowOverrides": {
+      "type": "object",
+      "description": "Workflow overrides that can be applied to modify step behavior at runtime.\n\nOverrides are keyed by step ID and contain merge patches or other transformation\nspecifications to modify step properties before execution.",
       "required": [
-        "blob_id"
+        "steps"
+      ],
+      "properties": {
+        "steps": {
+          "type": "object",
+          "description": "Map of step ID to override specification",
+          "additionalProperties": {
+            "$ref": "#/$defs/StepOverride"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "StepOverride": {
+      "type": "object",
+      "description": "Override specification for a single step.\n\nContains the override type (merge patch, json patch, etc.) and the value\nto apply. The type field uses `$type` to avoid collisions with step properties.",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "$type": {
+          "$ref": "#/$defs/OverrideType",
+          "description": "The type of override to apply. Defaults to \"merge_patch\" if not specified."
+        },
+        "value": {
+          "description": "The override value to apply, interpreted based on the override type."
+        }
+      }
+    },
+    "OverrideType": {
+      "type": "string",
+      "description": "The type of override operation to perform.",
+      "enum": [
+        "merge_patch",
+        "json_patch"
       ]
     },
-    "EvaluateFlowResult": {
-      "description": "Sent from the Stepflow back to the component server with the result of the flow evaluation.",
+    "EvaluateFlowParams": {
       "type": "object",
-      "properties": {
-        "result": {
-          "description": "The result of the flow evaluation.",
-          "$ref": "#/$defs/FlowResult"
-        }
-      },
+      "description": "Sent from the component server to the Stepflow to evaluate a flow with the provided input.",
       "required": [
-        "result"
-      ]
+        "flow_id",
+        "input"
+      ],
+      "properties": {
+        "flow_id": {
+          "$ref": "#/$defs/BlobId",
+          "description": "The ID of the flow to evaluate (blob ID of the flow)."
+        },
+        "input": {
+          "$ref": "#/$defs/Value",
+          "description": "The input to provide to the flow."
+        },
+        "overrides": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/WorkflowOverrides",
+              "description": "Optional workflow overrides to apply before execution."
+            }
+          ]
+        },
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing nested flow execution."
+            }
+          ]
+        }
+      }
     },
     "FlowResult": {
-      "title": "FlowResult",
-      "description": "The results of a step execution.",
       "oneOf": [
         {
           "$ref": "#/$defs/FlowResultSuccess"
@@ -718,17 +612,23 @@
           "$ref": "#/$defs/FlowResultFailed"
         }
       ],
+      "title": "FlowResult",
+      "description": "The results of a step execution.",
       "discriminator": {
         "propertyName": "outcome",
         "mapping": {
-          "success": "#/$defs/FlowResultSuccess",
-          "failed": "#/$defs/FlowResultFailed"
+          "failed": "#/$defs/FlowResultFailed",
+          "success": "#/$defs/FlowResultSuccess"
         }
       }
     },
     "FlowError": {
-      "description": "An error reported from within a flow or step.",
       "type": "object",
+      "description": "An error reported from within a flow or step.",
+      "required": [
+        "code",
+        "message"
+      ],
       "properties": {
         "code": {
           "type": "integer",
@@ -738,187 +638,234 @@
           "type": "string"
         },
         "data": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Value"
-            },
+          "oneOf": [
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Value"
             }
           ]
         }
-      },
-      "required": [
-        "code",
-        "message"
-      ]
+      }
     },
     "FlowResultSuccess": {
       "type": "object",
+      "title": "FlowResultSuccess",
+      "description": "The step execution was successful.",
+      "required": [
+        "outcome",
+        "result"
+      ],
       "properties": {
         "outcome": {
+          "type": "string",
           "title": "FlowOutcome",
-          "const": "success",
-          "default": "success"
+          "default": "success",
+          "const": "success"
         },
         "result": {
           "$ref": "#/$defs/Value"
         }
-      },
-      "required": [
-        "outcome",
-        "result"
-      ]
+      }
     },
     "FlowResultFailed": {
       "type": "object",
+      "title": "FlowResultFailed",
+      "description": "The step failed with the given error.",
+      "required": [
+        "outcome",
+        "error"
+      ],
       "properties": {
         "outcome": {
+          "type": "string",
           "title": "FlowOutcome",
-          "const": "failed",
-          "default": "failed"
+          "default": "failed",
+          "const": "failed"
         },
         "error": {
           "$ref": "#/$defs/FlowError"
         }
-      },
+      }
+    },
+    "EvaluateFlowResult": {
+      "type": "object",
+      "description": "Sent from the Stepflow back to the component server with the result of the flow evaluation.",
       "required": [
-        "outcome",
-        "error"
-      ]
+        "result"
+      ],
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/FlowResult",
+          "description": "The result of the flow evaluation."
+        }
+      }
+    },
+    "GetFlowMetadataParams": {
+      "type": "object",
+      "description": "Sent from the component server to Stepflow to get flow and step metadata.\n\nThis request allows components to access workflow-level metadata and step-specific metadata\nduring execution. The metadata can contain arbitrary JSON values defined in the workflow\nYAML/JSON.",
+      "required": [
+        "flow_id"
+      ],
+      "properties": {
+        "flow_id": {
+          "$ref": "#/$defs/BlobId",
+          "description": "The flow to retrieve metadata for."
+        },
+        "step_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response."
+        },
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing metadata requests."
+            }
+          ]
+        }
+      }
     },
     "GetFlowMetadataResult": {
-      "description": "Sent from Stepflow back to the component server with the requested metadata.\n\nContains the flow metadata and step metadata if a specific step was requested.\nThe metadata values are arbitrary JSON objects that can be accessed by components during\nworkflow execution.",
       "type": "object",
+      "description": "Sent from Stepflow back to the component server with the requested metadata.\n\nContains the flow metadata and step metadata if a specific step was requested.\nThe metadata values are arbitrary JSON objects that can be accessed by components during\nworkflow execution.",
+      "required": [
+        "flow_metadata"
+      ],
       "properties": {
         "flow_metadata": {
-          "description": "Metadata for the current flow.\n\nThis always contains the flow-level metadata defined in the workflow file.\nCommon fields include name, description, version, but can contain any\narbitrary JSON structure defined by the workflow author.",
           "type": "object",
-          "additionalProperties": true
+          "description": "Metadata for the current flow.\n\nThis always contains the flow-level metadata defined in the workflow file.\nCommon fields include name, description, version, but can contain any\narbitrary JSON structure defined by the workflow author.",
+          "additionalProperties": {},
+          "propertyNames": {
+            "type": "string"
+          }
         },
         "step_metadata": {
-          "description": "Metadata for the specified step (only present if step_id was provided and found).\n\nThis contains step-specific metadata defined in the workflow file.\nWill be None if no step_id was provided in the request",
           "type": [
             "object",
             "null"
           ],
-          "additionalProperties": true
+          "description": "Metadata for the specified step (only present if step_id was provided and found).\n\nThis contains step-specific metadata defined in the workflow file.\nWill be None if no step_id was provided in the request",
+          "additionalProperties": {},
+          "propertyNames": {
+            "type": "string"
+          }
         }
-      },
+      }
+    },
+    "SubmitBatchParams": {
+      "type": "object",
+      "description": "Sent from the component server to Stepflow to submit a batch execution.",
       "required": [
-        "flow_metadata"
-      ]
+        "flow_id",
+        "inputs"
+      ],
+      "properties": {
+        "flow_id": {
+          "$ref": "#/$defs/BlobId",
+          "description": "The ID of the flow to evaluate (blob ID of the flow)."
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Value"
+          },
+          "description": "The inputs to provide to the flow for each run."
+        },
+        "overrides": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/WorkflowOverrides",
+              "description": "Optional workflow overrides to apply to all runs before execution."
+            }
+          ]
+        },
+        "max_concurrency": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Maximum number of concurrent executions (defaults to number of inputs if not specified).",
+          "minimum": 0
+        },
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing batch submission."
+            }
+          ]
+        }
+      }
     },
     "SubmitBatchResult": {
-      "description": "Sent from Stepflow back to the component server with the batch submission result.",
       "type": "object",
-      "properties": {
-        "batch_id": {
-          "description": "The batch ID (UUID).",
-          "type": "string"
-        },
-        "total_runs": {
-          "description": "Total number of runs in the batch.",
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0
-        }
-      },
+      "description": "Sent from Stepflow back to the component server with the batch submission result.",
       "required": [
         "batch_id",
         "total_runs"
-      ]
-    },
-    "GetBatchResult": {
-      "description": "Sent from Stepflow back to the component server with batch details and optional outputs.",
-      "type": "object",
-      "properties": {
-        "details": {
-          "description": "Always included: batch details with metadata and statistics.",
-          "$ref": "#/$defs/BatchDetails"
-        },
-        "outputs": {
-          "description": "Only included if include_results=true.",
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": {
-            "$ref": "#/$defs/BatchOutputInfo"
-          }
-        }
-      },
-      "required": [
-        "details"
-      ]
-    },
-    "BatchDetails": {
-      "description": "Batch details including metadata and statistics.",
-      "type": "object",
+      ],
       "properties": {
         "batch_id": {
-          "description": "The batch ID.",
-          "type": "string"
-        },
-        "flow_id": {
-          "description": "The flow ID.",
-          "$ref": "#/$defs/BlobId"
-        },
-        "flow_name": {
-          "description": "The flow name (optional).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string",
+          "description": "The batch ID (UUID)."
         },
         "total_runs": {
+          "type": "integer",
           "description": "Total number of runs in the batch.",
-          "type": "integer",
-          "format": "uint",
           "minimum": 0
+        }
+      }
+    },
+    "GetBatchParams": {
+      "type": "object",
+      "description": "Sent from the component server to Stepflow to get batch status and optionally results.",
+      "required": [
+        "batch_id"
+      ],
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "description": "The batch ID to query."
         },
-        "status": {
-          "description": "Batch status (running | cancelled).",
-          "type": "string"
+        "wait": {
+          "type": "boolean",
+          "description": "If true, wait for batch completion before returning."
         },
-        "created_at": {
-          "description": "Timestamp when the batch was created.",
-          "type": "string"
+        "include_results": {
+          "type": "boolean",
+          "description": "If true, include full outputs in response."
         },
-        "completed_runs": {
-          "description": "Statistics for the batch.",
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0
-        },
-        "running_runs": {
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0
-        },
-        "failed_runs": {
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0
-        },
-        "cancelled_runs": {
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0
-        },
-        "paused_runs": {
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0
-        },
-        "completed_at": {
-          "description": "Completion timestamp (if all runs complete).",
-          "type": [
-            "string",
-            "null"
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing batch queries."
+            }
           ]
         }
-      },
+      }
+    },
+    "BatchDetails": {
+      "type": "object",
+      "description": "Batch details including metadata and statistics.",
       "required": [
         "batch_id",
         "flow_id",
@@ -930,119 +877,135 @@
         "failed_runs",
         "cancelled_runs",
         "paused_runs"
-      ]
-    },
-    "BatchOutputInfo": {
-      "description": "Output information for a single run in a batch.",
-      "type": "object",
+      ],
       "properties": {
-        "batch_input_index": {
-          "description": "Position in the batch input array.",
+        "batch_id": {
+          "type": "string",
+          "description": "The batch ID."
+        },
+        "flow_id": {
+          "$ref": "#/$defs/BlobId",
+          "description": "The flow ID."
+        },
+        "flow_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The flow name (optional)."
+        },
+        "total_runs": {
           "type": "integer",
-          "format": "uint",
+          "description": "Total number of runs in the batch.",
           "minimum": 0
         },
         "status": {
-          "description": "The execution status.",
-          "type": "string"
+          "type": "string",
+          "description": "Batch status (running | cancelled)."
         },
-        "result": {
-          "description": "The flow result (if completed).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/FlowResult"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "created_at": {
+          "type": "string",
+          "description": "Timestamp when the batch was created."
+        },
+        "completed_runs": {
+          "type": "integer",
+          "description": "Statistics for the batch.",
+          "minimum": 0
+        },
+        "running_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cancelled_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "paused_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Completion timestamp (if all runs complete)."
         }
-      },
+      }
+    },
+    "BatchOutputInfo": {
+      "type": "object",
+      "description": "Output information for a single run in a batch.",
       "required": [
         "batch_input_index",
         "status"
-      ]
-    },
-    "MethodError": {
-      "type": "object",
+      ],
       "properties": {
-        "jsonrpc": {
-          "$ref": "#/$defs/JsonRpc",
-          "default": "2.0"
-        },
-        "id": {
-          "$ref": "#/$defs/RequestId"
-        },
-        "error": {
-          "description": "An error that occurred during method execution.",
-          "$ref": "#/$defs/Error"
-        }
-      },
-      "required": [
-        "id",
-        "error"
-      ]
-    },
-    "Error": {
-      "description": "An error returned from a method execution.",
-      "type": "object",
-      "properties": {
-        "code": {
-          "description": "A numeric code indicating the error type.",
+        "batch_input_index": {
           "type": "integer",
-          "format": "int64"
+          "description": "Position in the batch input array.",
+          "minimum": 0
         },
-        "message": {
-          "description": "Concise, single-sentence description of the error.",
-          "type": "string"
+        "status": {
+          "type": "string",
+          "description": "The execution status."
         },
-        "data": {
-          "description": "Primitive or structured value that contains additional information about the error.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Value"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "message"
-      ]
-    },
-    "Notification": {
-      "description": "Notification.",
-      "type": "object",
-      "properties": {
-        "jsonrpc": {
-          "$ref": "#/$defs/JsonRpc",
-          "default": "2.0"
-        },
-        "method": {
-          "description": "The notification method being called.",
-          "$ref": "#/$defs/Method"
-        },
-        "params": {
-          "title": "NotificationParams",
-          "description": "The parameters for the notification.",
+        "result": {
           "oneOf": [
             {
-              "$ref": "#/$defs/Initialized"
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/FlowResult",
+              "description": "The flow result (if completed)."
             }
           ]
         }
-      },
-      "required": [
-        "method",
-        "params"
-      ]
+      }
     },
-    "Initialized": {
-      "description": "Sent from Stepflow to the component server after initialization is complete.",
-      "type": "object"
+    "GetBatchResult": {
+      "type": "object",
+      "description": "Sent from Stepflow back to the component server with batch details and optional outputs.",
+      "required": [
+        "details"
+      ],
+      "properties": {
+        "details": {
+          "$ref": "#/$defs/BatchDetails",
+          "description": "Always included: batch details with metadata and statistics."
+        },
+        "outputs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/BatchOutputInfo"
+          },
+          "description": "Only included if include_results=true."
+        }
+      }
+    },
+    "Message": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MethodRequest"
+        },
+        {
+          "$ref": "#/$defs/MethodSuccess"
+        },
+        {
+          "$ref": "#/$defs/MethodError"
+        },
+        {
+          "$ref": "#/$defs/Notification"
+        }
+      ],
+      "description": "The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages."
     }
   }
 }

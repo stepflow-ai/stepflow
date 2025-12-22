@@ -12,57 +12,31 @@
 
 //! Schema manipulation and validation types.
 
-use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::borrow::Cow;
 use std::sync::Arc;
+use utoipa::{PartialSchema, ToSchema};
 
-/// Type alias for a shared schema reference.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+use crate::json_schema::generate_json_schema;
+
+/// A shared reference to a JSON Schema.
+///
+/// This wraps a `serde_json::Value` that represents a JSON Schema.
+/// The value should be either an object or a boolean (the valid top-level
+/// JSON Schema values).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[repr(transparent)]
-#[derive(Default)]
-pub struct SchemaRef(Arc<Schema>);
+pub struct SchemaRef(Arc<Value>);
 
-impl JsonSchema for SchemaRef {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "Schema".into()
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        // Technically, this should be `{ "$ref": _generator.settings().meta_schema }`, but
-        // most code generators seem to struggle with the use of `allOf` and the meta schema.
-        // In practice, we don't anticipate users generating JSON schema using the types
-        // generated our JSON schemas, so we instead just allow *any* JSON scheam.
-        schemars::json_schema!({
-            "type": "object",
-            "description": "A JSON schema describing allowed JSON values.",
-            "additionalProperties": true,
-            "example": r#"
-                {
-                "type": "object",
-                "properties": {
-                    "item": {
-                    "type": "object",
-                    "properties": {
-                        "label": {"type": "string"},
-                    },
-                    "required": ["label"]
-                    }
-                },
-                "required": ["item"]
-                }
-            "#,
-        })
+impl From<Value> for SchemaRef {
+    fn from(value: Value) -> Self {
+        SchemaRef(Arc::new(value))
     }
 }
 
-impl From<Schema> for SchemaRef {
-    fn from(schema: Schema) -> Self {
-        SchemaRef(Arc::new(schema))
-    }
-}
-
-impl AsRef<Schema> for SchemaRef {
-    fn as_ref(&self) -> &Schema {
+impl AsRef<Value> for SchemaRef {
+    fn as_ref(&self) -> &Value {
         &self.0
     }
 }
@@ -78,24 +52,28 @@ impl utoipa::PartialSchema for SchemaRef {
     }
 }
 
-impl utoipa::ToSchema for SchemaRef {}
+impl utoipa::ToSchema for SchemaRef {
+    fn name() -> Cow<'static, str> {
+        // Use "Schema" as the semantic name (the "Ref" is an implementation detail)
+        Cow::Borrowed("Schema")
+    }
+}
 
 impl SchemaRef {
-    /// Create a schema reference from a type that implements JsonSchema.
-    pub fn for_type<T: JsonSchema>() -> Self {
-        // TODO: Look into caching this? We could use the `schema_id`?
-        let mut generator = schemars::SchemaGenerator::default();
-        let schema = T::json_schema(&mut generator);
-        schema.into()
+    /// Create a schema reference from a type that implements ToSchema.
+    pub fn for_type<T: ToSchema + PartialSchema>() -> Self {
+        let json_schema = generate_json_schema::<T>();
+        json_schema.into()
     }
 
+    /// Parse a JSON Schema from a JSON string.
     pub fn parse_json(s: &str) -> Result<Self, serde_json::Error> {
-        let schema = serde_json::from_str::<Schema>(s)?;
-        Ok(schema.into())
+        let value = serde_json::from_str::<Value>(s)?;
+        Ok(value.into())
     }
 
     /// Get the schema as a JSON value reference.
-    pub fn as_value(&self) -> &serde_json::Value {
-        self.0.as_value()
+    pub fn as_value(&self) -> &Value {
+        &self.0
     }
 }

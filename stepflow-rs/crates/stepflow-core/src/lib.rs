@@ -14,6 +14,7 @@ pub mod blob;
 pub mod component;
 pub mod context_params;
 pub mod error_stack;
+pub mod json_schema;
 pub mod schema;
 pub mod status;
 pub mod values;

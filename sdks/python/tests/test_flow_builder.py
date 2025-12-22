@@ -163,6 +163,7 @@ def test_error_handling():
     builder = FlowBuilder()
 
     # Add steps with different error handling
+    # Note: action field must be explicitly provided
     builder.add_step(
         id="fail_step",
         component="/test/component",
@@ -182,14 +183,12 @@ def test_error_handling():
     flow = builder.build()
     assert len(flow.steps or []) == 2
 
-    # Check that error actions were set correctly
+    # Check that error actions were set correctly by type
     fail_step = next(step for step in (flow.steps or []) if step.id == "fail_step")
     assert isinstance(fail_step.onError, OnErrorFail)
-    assert fail_step.onError.action == "fail"
 
     retry_step = next(step for step in (flow.steps or []) if step.id == "retry_step")
     assert isinstance(retry_step.onError, OnErrorRetry)
-    assert retry_step.onError.action == "retry"
 
 
 def test_error_default_handling():
@@ -197,6 +196,7 @@ def test_error_default_handling():
     builder = FlowBuilder()
 
     # Add step with OnErrorDefault
+    # Note: action field must be explicitly provided
     builder.add_step(
         id="default_step",
         component="/test/component",
@@ -213,7 +213,6 @@ def test_error_default_handling():
     # Check that OnErrorDefault was set correctly
     default_step = (flow.steps or [])[0]
     assert isinstance(default_step.onError, OnErrorDefault)
-    assert default_step.onError.action == "useDefault"
     assert default_step.onError.defaultValue == "fallback_value"
 
 

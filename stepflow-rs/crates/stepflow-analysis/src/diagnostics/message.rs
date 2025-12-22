@@ -12,13 +12,12 @@
 
 use std::borrow::Cow;
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::DiagnosticLevel;
 
 /// Specific diagnostic message with context
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum DiagnosticMessage {
     // Fatal diagnostics (prevent analysis)
