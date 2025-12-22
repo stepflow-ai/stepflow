@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Literal
+from typing import Annotated, Any, ClassVar, Dict, List, Literal
 
 from msgspec import Meta, Struct, field
 
@@ -176,13 +176,13 @@ class FlowError(Struct, kw_only=True):
     data: Value | None = None
 
 
-class FlowResultSuccess(Struct, kw_only=True):
-    outcome: Literal['success']
+class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
+    outcome: ClassVar[Annotated[Literal['success'], Meta(title='FlowOutcome')]]
     result: Value
 
 
-class FlowResultFailed(Struct, kw_only=True):
-    outcome: Literal['failed']
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
+    outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
     error: FlowError
 
 

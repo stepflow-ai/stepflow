@@ -109,16 +109,18 @@ impl utoipa::ToSchema for FlowResult {
         schemas.push(("FlowError".to_string(), FlowError::schema()));
         schemas.push(("Value".to_string(), ValueRef::schema()));
 
-        // FlowResultSuccess: { outcome: string (default: "success"), result: Value }
-        // The outcome property is a plain string without const constraint.
-        // The discriminator mapping provides the constraint at the oneOf level.
+        // FlowResultSuccess: { outcome: enum["success"] (default: "success"), result: Value }
+        // Using enum with single value creates const constraint for Python code generator
+        // Title "FlowOutcome" on the outcome property makes datamodel-code-generator generate ClassVar
         let success_schema = schema::ObjectBuilder::new()
             .title(Some("FlowResultSuccess"))
             .description(Some("The step execution was successful."))
             .property(
                 "outcome",
                 schema::ObjectBuilder::new()
+                    .title(Some("FlowOutcome"))
                     .schema_type(schema::SchemaType::Type(schema::Type::String))
+                    .enum_values(Some(["success"]))
                     .default(Some(serde_json::json!("success"))),
             )
             .property("result", RefOr::Ref(Ref::new("#/components/schemas/Value")))
@@ -130,16 +132,18 @@ impl utoipa::ToSchema for FlowResult {
             RefOr::T(schema::Schema::Object(success_schema)),
         ));
 
-        // FlowResultFailed: { outcome: string (default: "failed"), error: FlowError }
-        // The outcome property is a plain string without const constraint.
-        // The discriminator mapping provides the constraint at the oneOf level.
+        // FlowResultFailed: { outcome: enum["failed"] (default: "failed"), error: FlowError }
+        // Using enum with single value creates const constraint for Python code generator
+        // Title "FlowOutcome" on the outcome property makes datamodel-code-generator generate ClassVar
         let failed_schema = schema::ObjectBuilder::new()
             .title(Some("FlowResultFailed"))
             .description(Some("The step failed with the given error."))
             .property(
                 "outcome",
                 schema::ObjectBuilder::new()
+                    .title(Some("FlowOutcome"))
                     .schema_type(schema::SchemaType::Type(schema::Type::String))
+                    .enum_values(Some(["failed"]))
                     .default(Some(serde_json::json!("failed"))),
             )
             .property(
