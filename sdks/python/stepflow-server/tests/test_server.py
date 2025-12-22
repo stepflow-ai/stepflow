@@ -26,8 +26,8 @@ import inspect
 import msgspec
 import pytest
 
-from stepflow_py import StepflowContext
-from stepflow_py.generated_protocol import (
+from stepflow_server import StepflowContext
+from stepflow_server.generated_protocol import (
     ComponentExecuteParams,
     ComponentInfoParams,
     ComponentListParams,
@@ -36,8 +36,8 @@ from stepflow_py.generated_protocol import (
     MethodRequest,
     ObservabilityContext,
 )
-from stepflow_py.server import ComponentEntry, StepflowServer
-from stepflow_py.stdio_server import StepflowStdioServer
+from stepflow_server.server import ComponentEntry, StepflowServer
+from stepflow_server.stdio_server import StepflowStdioServer
 
 
 # Helper function to create test observability context

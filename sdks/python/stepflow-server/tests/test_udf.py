@@ -16,9 +16,9 @@ import msgspec
 import pytest
 from pytest_mock import MockerFixture
 
-from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import StepflowValueError
-from stepflow_py.udf import UdfCompilationError, _compile_function, _InputWrapper
+from stepflow_server.context import StepflowContext
+from stepflow_server.exceptions import SkipStep, StepflowValueError
+from stepflow_server.udf import UdfCompilationError, _compile_function, _InputWrapper
 
 
 class DummyContext:
@@ -43,7 +43,7 @@ def mock_context(mocker: MockerFixture) -> StepflowContext:
     Mocks my_module.MyClass with autospec=True.
     """
     mock_context_class = mocker.patch(
-        "stepflow_py.context.StepflowContext", autospec=True
+        "stepflow_server.context.StepflowContext", autospec=True
     )
     mock_instance = mock_context_class.return_value
     mock_instance.session_id = "test_session"
@@ -402,7 +402,7 @@ async def test_udf_compilation_error_includes_blob_context():
     """
     Test that UdfCompilationError includes blob_id context when called through udf().
     """
-    from stepflow_py.udf import UdfInput, udf
+    from stepflow_server.udf import UdfInput, udf
 
     # Create a mock context
     async def mock_get_blob(self, blob_id):
@@ -424,3 +424,32 @@ async def test_udf_compilation_error_includes_blob_context():
     assert error.blob_id == test_blob_id
     assert error.data["blob_id"] == test_blob_id
     assert f"Blob '{test_blob_id}'" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_skip_step_through_udf_function():
+    """Test that SkipStep propagates correctly through the full udf() function."""
+    from stepflow_server.udf import UdfInput, udf
+
+    # Create a mock context that returns blob with skip code
+    async def mock_get_blob(self, blob_id):
+        return {
+            "code": "raise SkipStep('UDF function skip test')",
+            "input_schema": {
+                "type": "object",
+                "properties": {"test": {"type": "string"}},
+                "required": ["test"],
+            },
+        }
+
+    mock_context = type("MockContext", (), {"get_blob": mock_get_blob})()
+
+    test_blob_id = "test_skip_blob_123"
+    udf_input = UdfInput(blob_id=test_blob_id, input={"test": "value"})
+
+    with pytest.raises(SkipStep) as exc_info:
+        await udf(udf_input, mock_context)
+
+    # Verify the exception propagated correctly
+    assert str(exc_info.value) == "UDF function skip test"
+    assert exc_info.value.message == "UDF function skip test"

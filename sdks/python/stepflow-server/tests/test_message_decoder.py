@@ -20,8 +20,8 @@ import json
 
 import pytest
 
-from stepflow_py.exceptions import StepflowProtocolError
-from stepflow_py.generated_protocol import (
+from stepflow_server.exceptions import StepflowProtocolError
+from stepflow_server.generated_protocol import (
     ComponentExecuteResult,
     Initialized,
     InitializeParams,
@@ -32,7 +32,7 @@ from stepflow_py.generated_protocol import (
     MethodSuccess,
     Notification,
 )
-from stepflow_py.message_decoder import MessageDecoder
+from stepflow_server.message_decoder import MessageDecoder
 
 
 class TestMessageDecoder:

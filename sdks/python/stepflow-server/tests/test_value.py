@@ -14,9 +14,13 @@
 
 import pytest
 
-from stepflow_py.flow_builder import FlowBuilder
-from stepflow_py.generated_flow import LiteralExpr
-from stepflow_py.value import JsonPath, StepReference, Value, WorkflowInput
+from stepflow_server import (
+    OnSkipDefault,
+    OnSkipSkip,
+)
+from stepflow_server.flow_builder import FlowBuilder
+from stepflow_server.generated_flow import EscapedLiteral as LiteralExpr
+from stepflow_server.value import JsonPath, StepReference, Value, WorkflowInput
 
 
 def test_value_api_methods():
@@ -277,7 +281,7 @@ def test_json_path_class():
     assert str(mutable_path) == '$.config["env"].setting'
 
     # Test path consistency with actual usage using proper FlowBuilder API
-    from stepflow_py.flow_builder import FlowBuilder
+    from stepflow_server.flow_builder import FlowBuilder
 
     builder = FlowBuilder()
     step_handle = builder.add_step(id="test_step", component="test/component")
@@ -294,7 +298,7 @@ def test_json_path_consistency():
     # All these should produce consistent JSON Path format
 
     # StepHandle -> StepReference
-    from stepflow_py.flow_builder import FlowBuilder
+    from stepflow_server.flow_builder import FlowBuilder
 
     builder = FlowBuilder()
     handle = builder.add_step(id="step1", component="test/component")
