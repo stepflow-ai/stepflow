@@ -659,7 +659,8 @@
       ],
       "properties": {
         "outcome": {
-          "type": "string"
+          "type": "string",
+          "default": "success"
         },
         "result": {
           "$ref": "#/$defs/Value"
@@ -676,7 +677,8 @@
       ],
       "properties": {
         "outcome": {
-          "type": "string"
+          "type": "string",
+          "default": "failed"
         },
         "error": {
           "$ref": "#/$defs/FlowError"

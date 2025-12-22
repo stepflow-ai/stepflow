@@ -13,7 +13,7 @@
 use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
-use utoipa::PartialSchema;
+use utoipa::PartialSchema as _;
 
 use crate::error_stack::ErrorStack;
 use crate::workflow::ValueRef;
@@ -97,7 +97,10 @@ impl utoipa::ToSchema for FlowResult {
     }
 
     fn schemas(
-        schemas: &mut Vec<(String, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>)>,
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
     ) {
         use utoipa::openapi::*;
 
@@ -106,7 +109,7 @@ impl utoipa::ToSchema for FlowResult {
         schemas.push(("FlowError".to_string(), FlowError::schema()));
         schemas.push(("Value".to_string(), ValueRef::schema()));
 
-        // FlowResultSuccess: { outcome: string, result: Value }
+        // FlowResultSuccess: { outcome: string (default: "success"), result: Value }
         // The outcome property is a plain string without const constraint.
         // The discriminator mapping provides the constraint at the oneOf level.
         let success_schema = schema::ObjectBuilder::new()
@@ -115,7 +118,8 @@ impl utoipa::ToSchema for FlowResult {
             .property(
                 "outcome",
                 schema::ObjectBuilder::new()
-                    .schema_type(schema::SchemaType::Type(schema::Type::String)),
+                    .schema_type(schema::SchemaType::Type(schema::Type::String))
+                    .default(Some(serde_json::json!("success"))),
             )
             .property("result", RefOr::Ref(Ref::new("#/components/schemas/Value")))
             .required("outcome")
@@ -126,7 +130,7 @@ impl utoipa::ToSchema for FlowResult {
             RefOr::T(schema::Schema::Object(success_schema)),
         ));
 
-        // FlowResultFailed: { outcome: string, error: FlowError }
+        // FlowResultFailed: { outcome: string (default: "failed"), error: FlowError }
         // The outcome property is a plain string without const constraint.
         // The discriminator mapping provides the constraint at the oneOf level.
         let failed_schema = schema::ObjectBuilder::new()
@@ -135,9 +139,13 @@ impl utoipa::ToSchema for FlowResult {
             .property(
                 "outcome",
                 schema::ObjectBuilder::new()
-                    .schema_type(schema::SchemaType::Type(schema::Type::String)),
+                    .schema_type(schema::SchemaType::Type(schema::Type::String))
+                    .default(Some(serde_json::json!("failed"))),
             )
-            .property("error", RefOr::Ref(Ref::new("#/components/schemas/FlowError")))
+            .property(
+                "error",
+                RefOr::Ref(Ref::new("#/components/schemas/FlowError")),
+            )
             .required("outcome")
             .required("error")
             .build();
@@ -150,8 +158,12 @@ impl utoipa::ToSchema for FlowResult {
         let flow_result_schema = schema::OneOfBuilder::new()
             .title(Some("FlowResult"))
             .description(Some("The results of a step execution."))
-            .item(RefOr::Ref(Ref::new("#/components/schemas/FlowResultSuccess")))
-            .item(RefOr::Ref(Ref::new("#/components/schemas/FlowResultFailed")))
+            .item(RefOr::Ref(Ref::new(
+                "#/components/schemas/FlowResultSuccess",
+            )))
+            .item(RefOr::Ref(Ref::new(
+                "#/components/schemas/FlowResultFailed",
+            )))
             .discriminator(Some(schema::Discriminator::with_mapping(
                 "outcome",
                 [

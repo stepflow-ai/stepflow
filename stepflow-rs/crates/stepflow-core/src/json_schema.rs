@@ -81,8 +81,10 @@ pub fn generate_json_schema_with_refs<T: ToSchema + PartialSchema>(refs: Refs) -
 
 fn generate_json_schema_impl<T: ToSchema + PartialSchema>(refs: Refs) -> Value {
     // Collect all schemas from the type
-    let mut schemas: Vec<(String, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>)> =
-        Vec::new();
+    let mut schemas: Vec<(
+        String,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    )> = Vec::new();
     T::schemas(&mut schemas);
 
     // Get the root schema
@@ -117,17 +119,16 @@ fn generate_json_schema_impl<T: ToSchema + PartialSchema>(refs: Refs) -> Value {
         // If root is just a $ref, resolve it (only for Local refs where we have defs)
         if obj.len() == 1 && obj.contains_key("$ref") && matches!(refs, Refs::Local) {
             // Get the referenced schema name from #/$defs/Name
-            if let Some(Value::String(ref_path)) = obj.get("$ref") {
-                if let Some(ref_name) = ref_path.strip_prefix("#/$defs/") {
-                    if let Some(referenced_schema) = defs.get(ref_name) {
-                        // Copy properties from the referenced schema
-                        if let Some(ref_obj) = referenced_schema.as_object() {
-                            for (key, value) in ref_obj {
-                                if key != "title" {
-                                    // Keep our title
-                                    result.insert(key.clone(), value.clone());
-                                }
-                            }
+            if let Some(Value::String(ref_path)) = obj.get("$ref")
+                && let Some(ref_name) = ref_path.strip_prefix("#/$defs/")
+                && let Some(referenced_schema) = defs.get(ref_name)
+            {
+                // Copy properties from the referenced schema
+                if let Some(ref_obj) = referenced_schema.as_object() {
+                    for (key, value) in ref_obj {
+                        if key != "title" {
+                            // Keep our title
+                            result.insert(key.clone(), value.clone());
                         }
                     }
                 }
@@ -166,43 +167,42 @@ fn transform_refs(value: Value, refs: &Refs) -> Value {
     match value {
         Value::Object(mut map) => {
             // Check if this is a $ref
-            if let Some(Value::String(ref_str)) = map.get("$ref") {
-                if let Some(name) = ref_str.strip_prefix("#/components/schemas/") {
-                    let new_ref = match refs {
-                        Refs::Omit | Refs::Local => format!("#/$defs/{}", name),
-                        Refs::External(base_url) => format!("{}#/$defs/{}", base_url, name),
-                    };
-                    map.insert("$ref".to_string(), Value::String(new_ref));
-                }
+            if let Some(Value::String(ref_str)) = map.get("$ref")
+                && let Some(name) = ref_str.strip_prefix("#/components/schemas/")
+            {
+                let new_ref = match refs {
+                    Refs::Omit | Refs::Local => format!("#/$defs/{}", name),
+                    Refs::External(base_url) => format!("{}#/$defs/{}", base_url, name),
+                };
+                map.insert("$ref".to_string(), Value::String(new_ref));
             }
 
             // Convert single-item enum to const
             // e.g., {"type": "string", "enum": ["value"]} -> {"type": "string", "const": "value"}
-            if let Some(Value::Array(enum_values)) = map.get("enum") {
-                if enum_values.len() == 1 {
-                    let const_value = enum_values[0].clone();
-                    map.remove("enum");
-                    map.insert("const".to_string(), const_value);
-                }
+            if let Some(Value::Array(enum_values)) = map.get("enum")
+                && enum_values.len() == 1
+            {
+                let const_value = enum_values[0].clone();
+                map.remove("enum");
+                map.insert("const".to_string(), const_value);
             }
 
             // Handle discriminator mapping values
-            if let Some(discriminator) = map.get_mut("discriminator") {
-                if let Some(mapping) = discriminator.get_mut("mapping") {
-                    if let Some(mapping_obj) = mapping.as_object_mut() {
-                        for (_, v) in mapping_obj.iter_mut() {
-                            if let Some(ref_str) = v.as_str() {
-                                if let Some(name) = ref_str.strip_prefix("#/components/schemas/") {
-                                    let new_ref = match refs {
-                                        Refs::Omit | Refs::Local => format!("#/$defs/{}", name),
-                                        Refs::External(base_url) => {
-                                            format!("{}#/$defs/{}", base_url, name)
-                                        }
-                                    };
-                                    *v = Value::String(new_ref);
-                                }
+            if let Some(discriminator) = map.get_mut("discriminator")
+                && let Some(mapping) = discriminator.get_mut("mapping")
+                && let Some(mapping_obj) = mapping.as_object_mut()
+            {
+                for (_, v) in mapping_obj.iter_mut() {
+                    if let Some(ref_str) = v.as_str()
+                        && let Some(name) = ref_str.strip_prefix("#/components/schemas/")
+                    {
+                        let new_ref = match refs {
+                            Refs::Omit | Refs::Local => format!("#/$defs/{}", name),
+                            Refs::External(base_url) => {
+                                format!("{}#/$defs/{}", base_url, name)
                             }
-                        }
+                        };
+                        *v = Value::String(new_ref);
                     }
                 }
             }
@@ -214,7 +214,9 @@ fn transform_refs(value: Value, refs: &Refs) -> Value {
                 .collect();
             Value::Object(transformed)
         }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(|v| transform_refs(v, refs)).collect()),
+        Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(|v| transform_refs(v, refs)).collect())
+        }
         other => other,
     }
 }
@@ -238,56 +240,57 @@ fn inline_root_one_of(schema: &mut Value, defs: &Map<String, Value>) {
                     };
 
                     // Get the referenced schema
-                    if let Some(Value::String(ref_path)) = ref_item.get("$ref") {
-                        if let Some(ref_name) = ref_path.strip_prefix("#/$defs/") {
-                            if let Some(referenced_schema) = defs.get(ref_name) {
-                                // Create a new inlined schema
-                                let mut inlined = referenced_schema.clone();
-                                if let Some(inlined_obj) = inlined.as_object_mut() {
-                                    // Add title if not present
-                                    if !inlined_obj.contains_key("title") {
-                                        inlined_obj
-                                            .insert("title".to_string(), Value::String(ref_name.to_string()));
-                                    }
+                    if let Some(Value::String(ref_path)) = ref_item.get("$ref")
+                        && let Some(ref_name) = ref_path.strip_prefix("#/$defs/")
+                        && let Some(referenced_schema) = defs.get(ref_name)
+                    {
+                        // Create a new inlined schema
+                        let mut inlined = referenced_schema.clone();
+                        if let Some(inlined_obj) = inlined.as_object_mut() {
+                            // Add title if not present
+                            if !inlined_obj.contains_key("title") {
+                                inlined_obj.insert(
+                                    "title".to_string(),
+                                    Value::String(ref_name.to_string()),
+                                );
+                            }
 
-                                    // Merge extra properties (discriminator) into the inlined schema
-                                    if let Some(extra_obj) = extra.as_object() {
-                                        // Merge properties
-                                        if let Some(extra_props) =
-                                            extra_obj.get("properties").and_then(|v| v.as_object())
-                                        {
-                                            let props = inlined_obj
-                                                .entry("properties")
-                                                .or_insert_with(|| Value::Object(Map::new()));
-                                            if let Some(props_obj) = props.as_object_mut() {
-                                                for (k, v) in extra_props {
-                                                    props_obj.insert(k.clone(), v.clone());
-                                                }
-                                            }
-                                        }
-
-                                        // Merge required
-                                        if let Some(extra_required) =
-                                            extra_obj.get("required").and_then(|v| v.as_array())
-                                        {
-                                            let required = inlined_obj
-                                                .entry("required")
-                                                .or_insert_with(|| Value::Array(vec![]));
-                                            if let Some(required_arr) = required.as_array_mut() {
-                                                for req in extra_required {
-                                                    if !required_arr.contains(req) {
-                                                        required_arr.push(req.clone());
-                                                    }
-                                                }
-                                            }
+                            // Merge extra properties (discriminator) into the inlined schema
+                            if let Some(extra_obj) = extra.as_object() {
+                                // Merge properties
+                                if let Some(extra_props) =
+                                    extra_obj.get("properties").and_then(|v| v.as_object())
+                                {
+                                    let props = inlined_obj
+                                        .entry("properties")
+                                        .or_insert_with(|| Value::Object(Map::new()));
+                                    if let Some(props_obj) = props.as_object_mut() {
+                                        for (k, v) in extra_props {
+                                            props_obj.insert(k.clone(), v.clone());
                                         }
                                     }
                                 }
 
-                                // Replace the allOf with the inlined schema
-                                *item = inlined;
+                                // Merge required
+                                if let Some(extra_required) =
+                                    extra_obj.get("required").and_then(|v| v.as_array())
+                                {
+                                    let required = inlined_obj
+                                        .entry("required")
+                                        .or_insert_with(|| Value::Array(vec![]));
+                                    if let Some(required_arr) = required.as_array_mut() {
+                                        for req in extra_required {
+                                            if !required_arr.contains(req) {
+                                                required_arr.push(req.clone());
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+
+                        // Replace the allOf with the inlined schema
+                        *item = inlined;
                     }
                 }
             }

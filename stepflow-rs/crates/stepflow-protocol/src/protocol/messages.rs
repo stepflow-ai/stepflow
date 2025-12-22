@@ -17,8 +17,8 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::lazy_value::LazyValue;
-use crate::protocol::json_rpc::JsonRpc;
 use crate::protocol::Method;
+use crate::protocol::json_rpc::JsonRpc;
 
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
@@ -53,14 +53,12 @@ impl<'a> ToSchema for Message<'a> {
         use crate::protocol::flows::*;
         use crate::protocol::initialization::*;
         use crate::protocol::observability::*;
+        use utoipa::PartialSchema;
         use utoipa::openapi::schema::*;
         use utoipa::openapi::*;
-        use utoipa::PartialSchema;
 
         // Helper to add a type's schema AND its dependencies
-        fn push_schema<T: ToSchema + PartialSchema>(
-            schemas: &mut Vec<(String, RefOr<Schema>)>,
-        ) {
+        fn push_schema<T: ToSchema + PartialSchema>(schemas: &mut Vec<(String, RefOr<Schema>)>) {
             T::schemas(schemas);
             schemas.push((T::name().to_string(), T::schema()));
         }
@@ -325,9 +323,9 @@ impl<'a> utoipa::ToSchema for MethodResponse<'a> {
             utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
         )>,
     ) {
+        use utoipa::PartialSchema as _;
         use utoipa::openapi::schema::*;
         use utoipa::openapi::*;
-        use utoipa::PartialSchema;
 
         // Include the schemas for the variants (these register themselves)
         MethodSuccess::<'static>::schemas(schemas);
@@ -458,7 +456,7 @@ impl<'a> utoipa::ToSchema for Notification<'a> {
             utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
         )>,
     ) {
-        use utoipa::PartialSchema;
+        use utoipa::PartialSchema as _;
 
         // Include the schemas for nested types
         JsonRpc::schemas(schemas);

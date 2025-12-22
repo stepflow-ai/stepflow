@@ -14,16 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// Diagnostic level indicating severity and impact
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-    utoipa::ToSchema,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticLevel {

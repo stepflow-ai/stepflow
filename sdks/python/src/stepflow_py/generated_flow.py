@@ -57,7 +57,7 @@ class OnErrorFail(Struct, kw_only=True):
 
 class OnErrorDefault(Struct, kw_only=True):
     action: Literal['useDefault']
-    defaultValue: Dict[str, Any] | None = None
+    defaultValue: Any | None = None
 
 
 class OnErrorRetry(Struct, kw_only=True):
@@ -76,20 +76,20 @@ class TestServerHealthCheck(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = 5000
     retryAttempts: (
         Annotated[
             int, Meta(description='Number of retry attempts for health checks.', ge=0)
         ]
         | None
-    ) = None
+    ) = 3
     retryDelayMs: (
         Annotated[
             int,
             Meta(description='Delay between retry attempts (in milliseconds).', ge=0),
         ]
         | None
-    ) = None
+    ) = 1000
 
 
 Value = Annotated[
@@ -176,7 +176,7 @@ class TestServerConfig(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = 10000
     shutdownTimeoutMs: (
         Annotated[
             int,
@@ -186,7 +186,7 @@ class TestServerConfig(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = 5000
 
 
 FlowResult = Annotated[

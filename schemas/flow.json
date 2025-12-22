@@ -535,7 +535,7 @@
           "type": "string"
         },
         "defaultValue": {
-          "type": "object"
+          "allOf": []
         }
       }
     },
@@ -622,12 +622,14 @@
           "type": "integer",
           "format": "int64",
           "description": "Maximum time to wait for server startup (in milliseconds).",
+          "default": 10000,
           "minimum": 0
         },
         "shutdownTimeoutMs": {
           "type": "integer",
           "format": "int64",
           "description": "Maximum time to wait for server shutdown (in milliseconds).",
+          "default": 5000,
           "minimum": 0
         }
       }
@@ -683,18 +685,21 @@
           "type": "integer",
           "format": "int64",
           "description": "Timeout for health check requests (in milliseconds).",
+          "default": 5000,
           "minimum": 0
         },
         "retryAttempts": {
           "type": "integer",
           "format": "int32",
           "description": "Number of retry attempts for health checks.",
+          "default": 3,
           "minimum": 0
         },
         "retryDelayMs": {
           "type": "integer",
           "format": "int64",
           "description": "Delay between retry attempts (in milliseconds).",
+          "default": 1000,
           "minimum": 0
         }
       }
@@ -759,7 +764,8 @@
       ],
       "properties": {
         "outcome": {
-          "type": "string"
+          "type": "string",
+          "default": "success"
         },
         "result": {
           "$ref": "#/$defs/Value"
@@ -776,7 +782,8 @@
       ],
       "properties": {
         "outcome": {
-          "type": "string"
+          "type": "string",
+          "default": "failed"
         },
         "error": {
           "$ref": "#/$defs/FlowError"

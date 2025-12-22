@@ -327,10 +327,12 @@ pub struct TestServerConfig {
 
     /// Maximum time to wait for server startup (in milliseconds).
     #[serde(default = "default_startup_timeout")]
+    #[schema(default = default_startup_timeout)]
     pub startup_timeout_ms: u64,
 
     /// Maximum time to wait for server shutdown (in milliseconds).
     #[serde(default = "default_shutdown_timeout")]
+    #[schema(default = default_shutdown_timeout)]
     pub shutdown_timeout_ms: u64,
 }
 
@@ -343,14 +345,17 @@ pub struct TestServerHealthCheck {
 
     /// Timeout for health check requests (in milliseconds).
     #[serde(default = "default_health_check_timeout")]
+    #[schema(default = default_health_check_timeout)]
     pub timeout_ms: u64,
 
     /// Number of retry attempts for health checks.
     #[serde(default = "default_health_check_retries")]
+    #[schema(default = default_health_check_retries)]
     pub retry_attempts: u32,
 
     /// Delay between retry attempts (in milliseconds).
     #[serde(default = "default_health_check_delay")]
+    #[schema(default = default_health_check_delay)]
     pub retry_delay_ms: u64,
 }
 

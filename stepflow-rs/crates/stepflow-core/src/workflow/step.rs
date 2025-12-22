@@ -141,7 +141,9 @@ impl utoipa::PartialSchema for ErrorAction {
                 .item(RefOr::Ref(Ref::new("#/components/schemas/OnErrorFail")))
                 .item(RefOr::Ref(Ref::new("#/components/schemas/OnErrorDefault")))
                 .item(RefOr::Ref(Ref::new("#/components/schemas/OnErrorRetry")))
-                .description(Some("Error action determines what happens when a step fails."))
+                .description(Some(
+                    "Error action determines what happens when a step fails.",
+                ))
                 .discriminator(Some(discriminator))
                 .build(),
         ))
@@ -166,24 +168,20 @@ impl utoipa::ToSchema for ErrorAction {
         );
         schemas.push(("OnErrorFail".to_string(), RefOr::T(fail)));
 
+        // defaultValue can be any JSON value (true in JSON Schema means "any")
+        let any_value_schema = Schema::AllOf(AllOfBuilder::new().build());
         let use_default = error_action_variant_schema(
             "OnErrorDefault",
             "If the step fails, use the `defaultValue` instead.\n\
              If `defaultValue` is not specified, the step returns null.\n\
              The default value must be a literal JSON value (not an expression).\n\
              For dynamic defaults, use `$coalesce` in the consuming expression instead.",
-            Some((
-                "defaultValue",
-                Schema::Object(ObjectBuilder::new().build()),
-            )),
+            Some(("defaultValue", any_value_schema)),
         );
         schemas.push(("OnErrorDefault".to_string(), RefOr::T(use_default)));
 
-        let retry = error_action_variant_schema(
-            "OnErrorRetry",
-            "If the step fails, retry it.",
-            None,
-        );
+        let retry =
+            error_action_variant_schema("OnErrorRetry", "If the step fails, retry it.", None);
         schemas.push(("OnErrorRetry".to_string(), RefOr::T(retry)));
     }
 }
