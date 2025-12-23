@@ -23,10 +23,6 @@ from typing import Annotated, Any, ClassVar, Dict, List, Literal
 from msgspec import Meta, Struct, field
 
 
-class Schema(Struct, kw_only=True):
-    pass
-
-
 class StepRef(Struct, kw_only=True):
     field_step: str = field(name='$step')
     path: Annotated[str, Meta(description='JSONPath expression')] | None = None
@@ -40,6 +36,10 @@ class InputRef(Struct, kw_only=True):
 
 class LiteralExpr(Struct, kw_only=True):
     field_literal: Any = field(name='$literal')
+
+
+class Schema(Struct, kw_only=True):
+    pass
 
 
 Component = Annotated[
@@ -114,6 +114,24 @@ class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'
 class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
     outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
     error: FlowError
+
+
+class FlowSchema(Struct, kw_only=True):
+    defs: Annotated[
+        Dict[str, Schema],
+        Meta(
+            description='Shared type definitions that can be referenced by other schemas.\nReferences use the format `#/schemas/$defs/TypeName`.'
+        ),
+    ]
+    steps: Annotated[
+        Dict[str, Schema],
+        Meta(
+            description='Output schemas for each step, keyed by step ID.\nNote: Step input schemas are not included here as they are\ncomponent metadata, not flow-specific schemas.\nUses IndexMap to preserve insertion order for deterministic serialization.'
+        ),
+    ]
+    input: Schema | None = None
+    output: Schema | None = None
+    variables: Schema | None = None
 
 
 class ExampleInput(Struct, kw_only=True):
@@ -244,9 +262,15 @@ class FlowV1(Struct, kw_only=True):
     version: (
         Annotated[str | None, Meta(description='The version of the flow.')] | None
     ) = None
-    inputSchema: Schema | None = None
-    outputSchema: Schema | None = None
-    variables: Schema | None = None
+    schemas: (
+        Annotated[
+            FlowSchema,
+            Meta(
+                description='Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`.'
+            ),
+        ]
+        | None
+    ) = None
     steps: (
         Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
         | None
@@ -298,9 +322,15 @@ class FlowV11(Struct, kw_only=True):
     version: (
         Annotated[str | None, Meta(description='The version of the flow.')] | None
     ) = None
-    inputSchema: Schema | None = None
-    outputSchema: Schema | None = None
-    variables: Schema | None = None
+    schemas: (
+        Annotated[
+            FlowSchema,
+            Meta(
+                description='Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`.'
+            ),
+        ]
+        | None
+    ) = None
     steps: (
         Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
         | None
@@ -340,8 +370,6 @@ class Step(Struct, kw_only=True):
     component: Annotated[
         Component, Meta(description='The component to execute in this step')
     ]
-    inputSchema: Schema | None = None
-    outputSchema: Schema | None = None
     onError: ErrorAction | None = None
     input: (
         Annotated[

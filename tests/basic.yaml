@@ -4,8 +4,6 @@ description: Simple workflow to test the new test command
 steps:
 - id: message_step
   component: /builtin/create_messages
-  input_schema: null
-  output_schema: null
   input:
     user_prompt:
       $input: message

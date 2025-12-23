@@ -19,8 +19,6 @@ output_schema:
 steps:
 - id: create_analyze_scores_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -51,8 +49,6 @@ steps:
     blob_type: data
 - id: analyze_scores
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_analyze_scores_blob

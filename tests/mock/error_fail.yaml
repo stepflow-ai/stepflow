@@ -9,8 +9,6 @@ output_schema:
 steps:
 - id: error
   component: /mock/error
-  input_schema: null
-  output_schema: null
   input:
     mode:
       $input: mode

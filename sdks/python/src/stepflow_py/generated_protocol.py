@@ -42,6 +42,7 @@ class Method(Enum):
     components_list = 'components/list'
     components_info = 'components/info'
     components_execute = 'components/execute'
+    components_infer_schema = 'components/infer_schema'
     blobs_put = 'blobs/put'
     blobs_get = 'blobs/get'
     flows_evaluate = 'flows/evaluate'
@@ -149,6 +150,22 @@ class Schema(Struct, kw_only=True):
 
 class ComponentListParams(Struct, kw_only=True):
     pass
+
+
+class ComponentInferSchemaParams(Struct, kw_only=True):
+    component: Annotated[
+        Component, Meta(description='The component to infer the schema for.')
+    ]
+    input_schema: Annotated[
+        Schema,
+        Meta(
+            description='The schema of the input that will be provided to the component.'
+        ),
+    ]
+
+
+class ComponentInferSchemaResult(Struct, kw_only=True):
+    output_schema: Schema | None = None
 
 
 class BlobType(Enum):

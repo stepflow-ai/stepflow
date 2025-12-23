@@ -12,8 +12,224 @@
 
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
+use serde_with::{DefaultOnNull, serde_as};
+
 use super::{Step, ValueRef, VariableSchema};
 use crate::{FlowResult, ValueExpr, schema::SchemaRef};
+
+/// Consolidated schema information for a flow.
+///
+/// This struct contains all schema/type information for the flow in a single location,
+/// allowing shared `$defs` across all schemas and avoiding duplication.
+///
+/// Serializes as a valid JSON Schema with `type: "object"` and flow-specific
+/// properties (`input`, `output`, `variables`, `steps`) under the `properties` key.
+#[derive(Debug, Clone, PartialEq, Default, utoipa::ToSchema)]
+#[schema(default)]
+pub struct FlowSchema {
+    /// Shared type definitions that can be referenced by other schemas.
+    /// References use the format `#/schemas/$defs/TypeName`.
+    #[schema(default)]
+    pub defs: HashMap<String, SchemaRef>,
+
+    /// The input schema for the flow.
+    pub input: Option<SchemaRef>,
+
+    /// The output schema for the flow.
+    pub output: Option<SchemaRef>,
+
+    /// Schema for workflow variables. This is a JSON Schema object where
+    /// properties define the available variables and their types.
+    pub variables: Option<SchemaRef>,
+
+    /// Output schemas for each step, keyed by step ID.
+    /// Note: Step input schemas are not included here as they are
+    /// component metadata, not flow-specific schemas.
+    /// Uses IndexMap to preserve insertion order for deterministic serialization.
+    #[schema(default)]
+    pub steps: IndexMap<String, SchemaRef>,
+}
+
+impl serde::Serialize for FlowSchema {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        // Build properties object
+        let mut properties = serde_json::Map::new();
+
+        if let Some(input) = &self.input {
+            properties.insert(
+                "input".to_string(),
+                serde_json::to_value(input).map_err(serde::ser::Error::custom)?,
+            );
+        }
+
+        if let Some(output) = &self.output {
+            properties.insert(
+                "output".to_string(),
+                serde_json::to_value(output).map_err(serde::ser::Error::custom)?,
+            );
+        }
+
+        if let Some(variables) = &self.variables {
+            properties.insert(
+                "variables".to_string(),
+                serde_json::to_value(variables).map_err(serde::ser::Error::custom)?,
+            );
+        }
+
+        if !self.steps.is_empty() {
+            // Build steps as { type: object, properties: { step1: ..., step2: ... } }
+            let mut step_properties = serde_json::Map::new();
+            for (step_id, step_schema) in &self.steps {
+                step_properties.insert(
+                    step_id.clone(),
+                    serde_json::to_value(step_schema).map_err(serde::ser::Error::custom)?,
+                );
+            }
+
+            let steps_schema = serde_json::json!({
+                "type": "object",
+                "properties": step_properties
+            });
+            properties.insert("steps".to_string(), steps_schema);
+        }
+
+        // Count fields to serialize
+        let mut field_count = 1; // type is always present
+        if !self.defs.is_empty() {
+            field_count += 1;
+        }
+        if !properties.is_empty() {
+            field_count += 1;
+        }
+
+        let mut map = serializer.serialize_map(Some(field_count))?;
+
+        map.serialize_entry("type", "object")?;
+
+        if !self.defs.is_empty() {
+            map.serialize_entry("$defs", &self.defs)?;
+        }
+
+        if !properties.is_empty() {
+            map.serialize_entry("properties", &properties)?;
+        }
+
+        map.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FlowSchema {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        // Deserialize as a generic JSON value first
+        let value = serde_json::Value::deserialize(deserializer)?;
+
+        // Handle null as empty schema
+        if value.is_null() {
+            return Ok(FlowSchema::default());
+        }
+
+        let obj = value
+            .as_object()
+            .ok_or_else(|| D::Error::custom("FlowSchema must be an object"))?;
+
+        // Extract $defs
+        let defs: HashMap<String, SchemaRef> = if let Some(defs_val) = obj.get("$defs") {
+            if defs_val.is_null() {
+                HashMap::new()
+            } else {
+                serde_json::from_value(defs_val.clone()).map_err(D::Error::custom)?
+            }
+        } else {
+            HashMap::new()
+        };
+
+        // Extract properties
+        let properties = obj.get("properties").and_then(|p| p.as_object());
+
+        let input: Option<SchemaRef> = if let Some(props) = properties {
+            props
+                .get("input")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()
+                .map_err(D::Error::custom)?
+        } else {
+            None
+        };
+
+        let output: Option<SchemaRef> = if let Some(props) = properties {
+            props
+                .get("output")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()
+                .map_err(D::Error::custom)?
+        } else {
+            None
+        };
+
+        let variables: Option<SchemaRef> = if let Some(props) = properties {
+            props
+                .get("variables")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()
+                .map_err(D::Error::custom)?
+        } else {
+            None
+        };
+
+        // Extract steps from properties.steps.properties
+        let steps: IndexMap<String, SchemaRef> = if let Some(props) = properties {
+            if let Some(steps_obj) = props.get("steps").and_then(|s| s.as_object()) {
+                if let Some(step_properties) =
+                    steps_obj.get("properties").and_then(|p| p.as_object())
+                {
+                    let mut steps_map = IndexMap::new();
+                    for (step_id, step_schema) in step_properties {
+                        let schema: SchemaRef =
+                            serde_json::from_value(step_schema.clone()).map_err(D::Error::custom)?;
+                        steps_map.insert(step_id.clone(), schema);
+                    }
+                    steps_map
+                } else {
+                    IndexMap::new()
+                }
+            } else {
+                IndexMap::new()
+            }
+        } else {
+            IndexMap::new()
+        };
+
+        Ok(FlowSchema {
+            defs,
+            input,
+            output,
+            variables,
+            steps,
+        })
+    }
+}
+
+impl FlowSchema {
+    /// Returns true if all fields are empty/None.
+    pub fn is_empty(&self) -> bool {
+        self.defs.is_empty()
+            && self.input.is_none()
+            && self.output.is_none()
+            && self.variables.is_none()
+            && self.steps.is_empty()
+    }
+}
 
 /// A workflow consisting of a sequence of steps and their outputs.
 ///
@@ -113,10 +329,17 @@ impl Flow {
         }
     }
 
-    pub fn variables(&self) -> Option<&VariableSchema> {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.variables.as_ref(),
-        }
+    /// Get the variable schema for the flow.
+    ///
+    /// This constructs a `VariableSchema` from the schema definition, extracting
+    /// runtime metadata like defaults, secrets, and required variables.
+    pub fn variables(&self) -> Option<VariableSchema> {
+        self.schemas().variables.clone().map(VariableSchema::from)
+    }
+
+    /// Get a reference to the variable schema (raw SchemaRef).
+    pub fn variable_schema(&self) -> Option<&SchemaRef> {
+        self.schemas().variables.as_ref()
     }
 
     /// Returns a reference to the step at the given index.
@@ -154,6 +377,56 @@ impl Flow {
         }
     }
 
+    /// Get the flow's schema information.
+    pub fn schemas(&self) -> &FlowSchema {
+        &self.latest().schemas
+    }
+
+    /// Get a mutable reference to the flow's schema information.
+    pub fn schemas_mut(&mut self) -> &mut FlowSchema {
+        match self {
+            Flow::V1(flow_v1) => &mut flow_v1.schemas,
+        }
+    }
+
+    /// Get the flow's input schema.
+    pub fn input_schema(&self) -> Option<&SchemaRef> {
+        self.latest().schemas.input.as_ref()
+    }
+
+    /// Set the flow's input schema.
+    pub fn set_input_schema(&mut self, input_schema: Option<SchemaRef>) {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.schemas.input = input_schema,
+        }
+    }
+
+    /// Get the flow's output schema.
+    pub fn output_schema(&self) -> Option<&SchemaRef> {
+        self.latest().schemas.output.as_ref()
+    }
+
+    /// Set the flow's output schema.
+    pub fn set_output_schema(&mut self, output_schema: Option<SchemaRef>) {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.schemas.output = output_schema,
+        }
+    }
+
+    /// Get the output schema for a specific step.
+    pub fn step_output_schema(&self, step_id: &str) -> Option<&SchemaRef> {
+        self.latest().schemas.steps.get(step_id)
+    }
+
+    /// Set the output schema for a specific step.
+    pub fn set_step_output_schema(&mut self, step_id: String, step_schema: SchemaRef) {
+        match self {
+            Flow::V1(flow_v1) => {
+                flow_v1.schemas.steps.insert(step_id, step_schema);
+            }
+        }
+    }
+
     /// Get all example inputs, including those derived from test cases.
     pub fn get_all_examples(&self) -> Vec<ExampleInput> {
         let mut examples = self.examples().to_vec();
@@ -173,6 +446,7 @@ impl Flow {
 }
 
 /// # FlowV1
+#[serde_as]
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, utoipa::ToSchema,
 )]
@@ -190,17 +464,11 @@ pub struct FlowV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 
-    /// The input schema of the flow.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub input_schema: Option<SchemaRef>,
-
-    /// The output schema of the flow.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_schema: Option<SchemaRef>,
-
-    /// Schema for workflow variables that can be referenced in steps.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variables: Option<VariableSchema>,
+    /// Consolidated schema information for the flow.
+    /// Contains input/output schemas, step output schemas, and shared `$defs`.
+    #[serde(default, skip_serializing_if = "FlowSchema::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
+    pub schemas: FlowSchema,
 
     /// The steps to execute for the flow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -455,14 +723,24 @@ mod tests {
         name: test
         description: test
         version: 1.0.0
-        inputSchema:
+        schemas:
             type: object
             properties:
-                name:
-                    type: string
-                    description: The name to echo
-                count:
-                    type: integer
+                input:
+                    type: object
+                    properties:
+                        name:
+                            type: string
+                            description: The name to echo
+                        count:
+                            type: integer
+                output:
+                    type: object
+                    properties:
+                        s1a:
+                            type: string
+                        s2b:
+                            type: string
         steps:
           - component: /langflow/echo
             id: s1
@@ -475,13 +753,6 @@ mod tests {
         output:
             s1a: { $step: s1, path: "a" }
             s2b: { $step: s2, path: a }
-        outputSchema:
-            type: object
-            properties:
-                s1a:
-                    type: string
-                s2b:
-                    type: string
         "#;
         let flow: Flow = serde_yaml_ng::from_str(yaml).unwrap();
         let input_schema = SchemaRef::parse_json(r#"{"type":"object","properties":{"name":{"type":"string","description":"The name to echo"},"count":{"type":"integer"}}}"#).unwrap();
@@ -494,8 +765,8 @@ mod tests {
         assert_eq!(latest.name, Some("test".to_owned()));
         assert_eq!(latest.description, Some("test".to_owned()));
         assert_eq!(latest.version, Some("1.0.0".to_owned()));
-        assert_eq!(latest.input_schema, Some(input_schema.clone()));
-        assert_eq!(latest.output_schema, Some(output_schema.clone()));
+        assert_eq!(latest.schemas.input, Some(input_schema.clone()));
+        assert_eq!(latest.schemas.output, Some(output_schema.clone()));
         assert_eq!(latest.steps.len(), 2);
 
         // Verify step details

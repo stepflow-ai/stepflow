@@ -1,0 +1,140 @@
+---
+source: crates/stepflow-cli/tests/commands/test_infer.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - infer
+    - "--flow=tests/builtins/blob_test.yaml"
+    - "--config=tests/builtins/stepflow-config.yml"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
+---
+success: true
+exit_code: 0
+----- stdout -----
+✅ Validation passed with no errors
+schema: https://stepflow.org/schemas/v1/flow.json
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        data:
+          description: The JSON data to store as a blob
+      required:
+      - data
+    output:
+      type: object
+      properties:
+        blob_id:
+          type: string
+          description: The blob ID for the stored data
+        retrieved_data:
+          description: The JSON data stored in the blob
+      required:
+      - blob_id
+      - retrieved_data
+    steps:
+      type: object
+      properties:
+        put_blob:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          title: PutBlobOutput
+          type: object
+          description: Output from the put_blob component
+          required:
+          - blob_id
+          properties:
+            blob_id:
+              type: string
+              description: The blob ID for the stored data
+        get_blob:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          title: GetBlobOutput
+          type: object
+          description: Output from the get_blob component
+          required:
+          - data
+          properties:
+            data:
+              description: The JSON data stored in the blob
+steps:
+- id: put_blob
+  component: /builtin/put_blob
+  input:
+    data:
+      $input: $.data
+    blob_type: data
+- id: get_blob
+  component: /builtin/get_blob
+  input:
+    blob_id:
+      $step: put_blob
+      path: $.blob_id
+output:
+  blob_id:
+    $step: put_blob
+    path: $.blob_id
+  retrieved_data:
+    $step: get_blob
+    path: $.data
+test:
+  cases:
+  - name: test complex data structure
+    input:
+      data:
+        message: Hello, blobs!
+        number: 42
+        nested:
+          array:
+          - 1
+          - 2
+          - 3
+          boolean: true
+    output:
+      outcome: success
+      result:
+        blob_id: 868591347a854ba1d0f4875b2dd44e1e8335052af03725a9819f89e0142318b0
+        retrieved_data:
+          message: Hello, blobs!
+          number: 42
+          nested:
+            array:
+            - 1
+            - 2
+            - 3
+            boolean: true
+  - name: test nested object structure
+    input:
+      data:
+        simple: test
+        complex:
+          deeply:
+            nested:
+              value: works
+    output:
+      outcome: success
+      result:
+        blob_id: aa05cc227a02bd66a2a91fde7500be122d28e87c45832d1aa9cb0b432eef7e04
+        retrieved_data:
+          simple: test
+          complex:
+            deeply:
+              nested:
+                value: works
+
+
+----- stderr -----
+
+📊 Inferred step output types:
+  put_blob: { blob_id: string }
+  get_blob: { data: any }

@@ -12,6 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 use stepflow_core::component::ComponentInfo;
+use stepflow_core::schema::SchemaRef;
 use stepflow_core::workflow::{Component, ValueRef};
 use utoipa::ToSchema;
 
@@ -77,4 +78,26 @@ pub struct ListComponentsResult {
 impl ProtocolMethod for ComponentListParams {
     const METHOD_NAME: Method = Method::ComponentsList;
     type Response = ListComponentsResult;
+}
+
+/// Sent from Stepflow to the component server to infer the output schema for a component
+/// given an input schema. This enables static type checking of workflows.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ComponentInferSchemaParams {
+    /// The component to infer the schema for.
+    pub component: Component,
+    /// The schema of the input that will be provided to the component.
+    pub input_schema: SchemaRef,
+}
+
+/// Sent from the component server back to Stepflow with the inferred output schema.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ComponentInferSchemaResult {
+    /// The inferred output schema, or None if the component cannot determine it.
+    pub output_schema: Option<SchemaRef>,
+}
+
+impl ProtocolMethod for ComponentInferSchemaParams {
+    const METHOD_NAME: Method = Method::ComponentsInferSchema;
+    type Response = ComponentInferSchemaResult;
 }

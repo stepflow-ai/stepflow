@@ -28,6 +28,8 @@ pub enum Method {
     ComponentsInfo,
     #[serde(rename = "components/execute")]
     ComponentsExecute,
+    #[serde(rename = "components/infer_schema")]
+    ComponentsInferSchema,
     #[serde(rename = "blobs/put")]
     BlobsPut,
     #[serde(rename = "blobs/get")]
@@ -56,6 +58,7 @@ impl std::fmt::Display for Method {
             Method::ComponentsList => write!(f, "components/list"),
             Method::ComponentsInfo => write!(f, "components/info"),
             Method::ComponentsExecute => write!(f, "components/execute"),
+            Method::ComponentsInferSchema => write!(f, "components/infer_schema"),
             Method::BlobsPut => write!(f, "blobs/put"),
             Method::BlobsGet => write!(f, "blobs/get"),
             Method::FlowsEvaluate => write!(f, "flows/evaluate"),

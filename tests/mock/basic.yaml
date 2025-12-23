@@ -16,15 +16,11 @@ output_schema:
 steps:
 - id: step1
   component: /mock/one_output
-  input_schema: null
-  output_schema: null
   input:
     input:
       $input: name
 - id: step2
   component: /mock/two_outputs
-  input_schema: null
-  output_schema: null
   input:
     input:
       $step: step1

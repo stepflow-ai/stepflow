@@ -22,6 +22,7 @@ serde_json.workspace = true
 serde.workspace = true
 stepflow-core.workspace = true
 stepflow-plugin.workspace = true
+stepflow-typecheck.workspace = true
 utoipa.workspace = true
 thiserror.workspace = true
 

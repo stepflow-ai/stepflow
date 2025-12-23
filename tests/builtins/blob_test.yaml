@@ -14,16 +14,12 @@ output_schema:
 steps:
 - id: put_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       $input: data
     blob_type: data
 - id: get_blob
   component: /builtin/get_blob
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: put_blob

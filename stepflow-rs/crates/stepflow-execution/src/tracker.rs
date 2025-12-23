@@ -121,7 +121,7 @@ impl ExecutionTracker {
             waiters: vec![BitSet::new(); num_steps],
             input: Some(input),
             variables,
-            variable_schema: flow.variables().cloned(),
+            variable_schema: flow.variables(),
         }
     }
 

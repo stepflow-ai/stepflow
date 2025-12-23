@@ -33,6 +33,8 @@ from stepflow_py.exceptions import (
 from stepflow_py.generated_protocol import (
     ComponentExecuteParams,
     ComponentExecuteResult,
+    ComponentInferSchemaParams,
+    ComponentInferSchemaResult,
     ComponentInfo,
     ComponentInfoParams,
     ComponentInfoResult,
@@ -270,6 +272,8 @@ class StepflowServer:
                 return await self._handle_component_list(request)
             elif request.method == Method.components_info:
                 return await self._handle_component_info(request)
+            elif request.method == Method.components_infer_schema:
+                return await self._handle_component_infer_schema(request)
             elif request.method == Method.components_execute:
                 return await self._handle_component_execute(request, context)
             else:
@@ -343,6 +347,28 @@ class StepflowServer:
         )
 
         result = ComponentInfoResult(info=info)
+        return MethodSuccess(id=request.id, result=result)
+
+    async def _handle_component_infer_schema(
+        self, request: MethodRequest
+    ) -> MethodResponse:
+        """Handle the components/infer_schema method.
+
+        Infers the output schema for a component given an input schema.
+        For now, this returns the static output schema from the component's
+        type annotations. In the future, this could be extended to support
+        dynamic schema inference based on the input schema.
+        """
+        assert isinstance(request.params, ComponentInferSchemaParams)
+        params: ComponentInferSchemaParams = request.params
+
+        component = self._components.get(params.component)
+        if component is None:
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
+
+        # Return the static output schema from the component's type annotations
+        # In the future, components could implement dynamic schema inference
+        result = ComponentInferSchemaResult(output_schema=component.output_schema())
         return MethodSuccess(id=request.id, result=result)
 
     async def _handle_component_execute(

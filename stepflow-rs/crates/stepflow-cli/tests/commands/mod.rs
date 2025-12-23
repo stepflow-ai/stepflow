@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod test_infer;
 mod test_list_components;
 mod test_repl;
 mod test_run;

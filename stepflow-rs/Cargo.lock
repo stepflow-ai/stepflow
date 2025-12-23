@@ -4586,6 +4586,7 @@ dependencies = [
  "serde_json",
  "stepflow-core",
  "stepflow-plugin",
+ "stepflow-typecheck",
  "thiserror 2.0.17",
  "utoipa",
 ]
@@ -4644,6 +4645,7 @@ dependencies = [
  "stepflow-server",
  "stepflow-state",
  "stepflow-state-sql",
+ "stepflow-typecheck",
  "strum",
  "tempfile",
  "testcontainers",
@@ -4702,12 +4704,14 @@ dependencies = [
  "bit-set",
  "error-stack",
  "hex",
+ "indexmap 2.12.1",
  "insta",
  "json-patch",
  "log",
  "safer_owning_ref",
  "serde",
  "serde_json",
+ "serde_with",
  "serde_yaml_ng",
  "sha2",
  "similar-asserts",
@@ -4910,6 +4914,16 @@ dependencies = [
  "stepflow-state",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "stepflow-typecheck"
+version = "0.8.0"
+dependencies = [
+ "indexmap 2.12.1",
+ "serde_json",
+ "stepflow-core",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

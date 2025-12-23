@@ -7,6 +7,14 @@ info:
     - "--omit-stack-trace"
     - validate
     - "--help"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -23,6 +31,10 @@ Validate workflow files and configuration without executing them. This performs 
 
 # Validate with specific config stepflow validate --flow=workflow.yaml --config=my-config.yml
 
+# Validate with type checking stepflow validate --flow=workflow.yaml --type-check
+
+# Validate with strict type checking stepflow validate --flow=workflow.yaml --type-check --strict
+
 ```
 
 Usage: stepflow validate [OPTIONS] --flow <FILE>
@@ -30,6 +42,16 @@ Usage: stepflow validate [OPTIONS] --flow <FILE>
 Options:
       --flow <FILE>
           Path to the workflow file to validate
+
+      --type-check
+          Enable type checking in addition to validation.
+          
+          Performs static type analysis to catch type mismatches before execution.
+
+      --strict
+          Treat untyped component outputs as errors instead of warnings.
+          
+          Only applicable when --type-check is enabled.
 
       --config <FILE>
           The path to the stepflow config file.

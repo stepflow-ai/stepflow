@@ -18,8 +18,6 @@ output_schema:
 steps:
 - id: create_word_analysis_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -42,8 +40,6 @@ steps:
     blob_type: data
 - id: create_pattern_search_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -62,8 +58,6 @@ steps:
     blob_type: data
 - id: create_sentiment_analysis_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -86,8 +80,6 @@ steps:
     blob_type: data
 - id: word_analysis
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_word_analysis_blob
@@ -97,8 +89,6 @@ steps:
         $input: text
 - id: pattern_search
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_pattern_search_blob
@@ -110,8 +100,6 @@ steps:
         $input: pattern
 - id: sentiment_analysis
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_sentiment_analysis_blob

@@ -37,3 +37,26 @@ fn test_validate_basic_workflow() {
 fn test_validate_nonexistent_workflow() {
     assert_cmd_snapshot!(stepflow().arg("validate").arg("--flow=nonexistent.yaml"));
 }
+
+#[test]
+fn test_validate_with_type_check() {
+    // Validate with type checking enabled
+    assert_cmd_snapshot!(
+        stepflow()
+            .arg("validate")
+            .arg("--flow=tests/basic.yaml")
+            .arg("--type-check")
+    );
+}
+
+#[test]
+fn test_validate_builtins_with_type_check() {
+    // Validate builtin components with type checking
+    assert_cmd_snapshot!(
+        stepflow()
+            .arg("validate")
+            .arg("--flow=tests/builtins/blob_test.yaml")
+            .arg("--config=tests/builtins/stepflow-config.yml")
+            .arg("--type-check")
+    );
+}

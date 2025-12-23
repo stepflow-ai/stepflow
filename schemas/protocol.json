@@ -43,6 +43,7 @@
         "components/list",
         "components/info",
         "components/execute",
+        "components/infer_schema",
         "blobs/put",
         "blobs/get",
         "flows/evaluate",
@@ -430,6 +431,41 @@
             "$ref": "#/$defs/ComponentInfo"
           },
           "description": "A list of all available components."
+        }
+      }
+    },
+    "ComponentInferSchemaParams": {
+      "type": "object",
+      "description": "Sent from Stepflow to the component server to infer the output schema for a component\ngiven an input schema. This enables static type checking of workflows.",
+      "required": [
+        "component",
+        "input_schema"
+      ],
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/Component",
+          "description": "The component to infer the schema for."
+        },
+        "input_schema": {
+          "$ref": "#/$defs/Schema",
+          "description": "The schema of the input that will be provided to the component."
+        }
+      }
+    },
+    "ComponentInferSchemaResult": {
+      "type": "object",
+      "description": "Sent from the component server back to Stepflow with the inferred output schema.",
+      "properties": {
+        "output_schema": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Schema",
+              "description": "The inferred output schema, or None if the component cannot determine it."
+            }
+          ]
         }
       }
     },

@@ -1,0 +1,28 @@
+---
+source: crates/stepflow-cli/tests/commands/test_validate.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - validate
+    - "--flow=tests/basic.yaml"
+    - "--type-check"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
+---
+success: true
+exit_code: 0
+----- stdout -----
+📊 Validation results: 0 fatal, 0 errors, 1 warnings
+
+⚠️  Warnings:
+  WARN Field access '$.message' on step 'workflow_input' cannot be validated: no input schema available ($.steps[0].input.user_prompt)
+
+----- stderr -----
