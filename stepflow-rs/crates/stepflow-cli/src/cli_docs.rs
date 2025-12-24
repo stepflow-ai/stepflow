@@ -25,15 +25,13 @@ use crate::cli::Cli;
 /// This ensures consistent ordering and fails if new commands are added without explicit positioning
 const COMMAND_ORDER: &[(&str, u32)] = &[
     ("run", 2),
-    ("run-batch", 3),
-    ("submit", 4),
-    ("submit-batch", 5),
-    ("test", 6),
-    ("list-components", 7),
-    ("repl", 8),
-    ("validate", 9),
-    ("infer", 10),
-    ("visualize", 11),
+    ("submit", 3),
+    ("test", 4),
+    ("list-components", 5),
+    ("repl", 6),
+    ("validate", 7),
+    ("infer", 8),
+    ("visualize", 9),
 ];
 
 /// Generate custom CLI index documentation with command list and links

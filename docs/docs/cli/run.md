@@ -40,6 +40,14 @@ echo '{"m": 1, "n": 2}' | stepflow run --flow=workflow.yaml --stdin-format=json
 
 stepflow run --flow=workflow.yaml --input=input.json --config=my-config.yml --output=result.json
 
+# Run batch with multiple inputs from JSONL file
+
+stepflow run --flow=workflow.yaml --inputs=inputs.jsonl --output=results.jsonl
+
+# Run batch with limited concurrency
+
+stepflow run --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=5
+
 ```
 
 **Usage:** `run [OPTIONS] --flow <FILE>`
@@ -63,6 +71,12 @@ stepflow run --flow=workflow.yaml --input=input.json --config=my-config.yml --ou
 
   Possible values: `json`, `yaml`
 
+* `--inputs <FILE>` — Path to JSONL file containing multiple inputs (one JSON object per line).
+
+   When specified, the workflow is executed once per line in the file. Results are written in JSONL format (one result per line).
+* `--max-concurrent <N>` — Maximum number of concurrent executions (only used with --inputs).
+
+   Defaults to number of inputs if not specified.
 * `--variables <FILE>` — The path to the variables file.
 
    Should be JSON or YAML. Format is inferred from file extension.

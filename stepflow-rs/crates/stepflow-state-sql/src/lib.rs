@@ -76,7 +76,7 @@ mod tests {
                 workflow_name: None,
                 workflow_label: None,
                 debug_mode: false,
-                input: ValueRef::new(json!({})),
+                inputs: vec![ValueRef::new(json!({}))],
                 overrides: Default::default(),
                 variables: Default::default(),
             })

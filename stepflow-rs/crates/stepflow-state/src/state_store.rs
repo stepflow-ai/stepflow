@@ -25,6 +25,9 @@ use uuid::Uuid;
 use crate::StateError;
 
 /// Parameters for creating a new workflow run
+///
+/// A run can have one or more input items. For single-item runs, use `new()`.
+/// For multi-item (batch) runs, use `with_inputs()`.
 #[derive(Debug, Clone)]
 pub struct CreateRunParams {
     /// Unique identifier for the workflow execution
@@ -33,12 +36,12 @@ pub struct CreateRunParams {
     pub flow_id: BlobId,
     /// Optional workflow name for display and organization
     pub workflow_name: Option<String>,
-    /// Optional workflow label for version identification  
+    /// Optional workflow label for version identification
     pub workflow_label: Option<String>,
     /// Whether to start in debug/paused mode
     pub debug_mode: bool,
-    /// Input data for the workflow execution
-    pub input: ValueRef,
+    /// Input data for the workflow execution (one per item)
+    pub inputs: Vec<ValueRef>,
     /// Runtime overrides for step inputs
     pub overrides: WorkflowOverrides,
     /// Variables to provide for variable references in the workflow
@@ -46,17 +49,44 @@ pub struct CreateRunParams {
 }
 
 impl CreateRunParams {
+    /// Create params for a single-item run.
     pub fn new(run_id: Uuid, flow_id: BlobId, input: ValueRef) -> Self {
         Self {
             run_id,
             flow_id,
-            input,
+            inputs: vec![input],
             workflow_name: None,
             workflow_label: None,
             debug_mode: false,
             overrides: WorkflowOverrides::default(),
             variables: HashMap::new(),
         }
+    }
+
+    /// Create params for a multi-item run.
+    pub fn with_inputs(run_id: Uuid, flow_id: BlobId, inputs: Vec<ValueRef>) -> Self {
+        Self {
+            run_id,
+            flow_id,
+            inputs,
+            workflow_name: None,
+            workflow_label: None,
+            debug_mode: false,
+            overrides: WorkflowOverrides::default(),
+            variables: HashMap::new(),
+        }
+    }
+
+    /// Get the number of items in this run.
+    pub fn item_count(&self) -> usize {
+        self.inputs.len()
+    }
+
+    /// Get the input for a single-item run.
+    /// Panics if this is a multi-item run.
+    pub fn input(&self) -> &ValueRef {
+        assert_eq!(self.inputs.len(), 1, "Expected single-item run");
+        &self.inputs[0]
     }
 }
 
@@ -329,12 +359,11 @@ pub trait StateStore: Send + Sync {
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>>;
 
-    /// Update run status.
+    /// Update the status of a run.
     ///
     /// # Arguments
     /// * `run_id` - The run identifier
     /// * `status` - The new status
-    /// * `result` - Optional result data as JSON
     ///
     /// # Returns
     /// Success if the run was updated
@@ -342,7 +371,22 @@ pub trait StateStore: Send + Sync {
         &self,
         run_id: Uuid,
         status: ExecutionStatus,
-        result: Option<ValueRef>,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Record the result of a single item in a multi-item run.
+    ///
+    /// This allows items to be persisted individually as they complete,
+    /// rather than waiting to collect all results.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `item_index` - The index of the item (0-based)
+    /// * `result` - The result of the item execution
+    fn record_item_result(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        result: FlowResult,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Get run details.
@@ -438,118 +482,6 @@ pub trait StateStore: Send + Sync {
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
 
-    // Batch Execution Management
-
-    /// Create a new batch record.
-    ///
-    /// # Arguments
-    /// * `batch_id` - Unique identifier for the batch
-    /// * `flow_id` - Workflow blob ID
-    /// * `flow_name` - Optional workflow name
-    /// * `total_inputs` - Total number of input elements in the batch
-    ///
-    /// # Returns
-    /// Success if the batch was created
-    fn create_batch(
-        &self,
-        batch_id: Uuid,
-        flow_id: BlobId,
-        flow_name: Option<&str>,
-        total_inputs: usize,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Link a run to a batch with its input index.
-    ///
-    /// # Arguments
-    /// * `batch_id` - Batch identifier
-    /// * `run_id` - Run identifier
-    /// * `batch_input_index` - Position in the batch input array
-    ///
-    /// # Returns
-    /// Success if the run was linked to the batch
-    fn add_run_to_batch(
-        &self,
-        batch_id: Uuid,
-        run_id: Uuid,
-        batch_input_index: usize,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Get batch metadata (without statistics).
-    ///
-    /// # Arguments
-    /// * `batch_id` - Batch identifier
-    ///
-    /// # Returns
-    /// Batch metadata if found
-    fn get_batch(
-        &self,
-        batch_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BatchMetadata>, StateError>>;
-
-    /// Get batch statistics by querying associated runs.
-    ///
-    /// # Arguments
-    /// * `batch_id` - Batch identifier
-    ///
-    /// # Returns
-    /// Batch statistics computed from run states
-    fn get_batch_statistics(
-        &self,
-        batch_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<BatchStatistics, StateError>>;
-
-    /// Update batch status (for cancellation).
-    ///
-    /// # Arguments
-    /// * `batch_id` - Batch identifier
-    /// * `status` - New batch status
-    ///
-    /// # Returns
-    /// Success if the batch status was updated
-    fn update_batch_status(
-        &self,
-        batch_id: Uuid,
-        status: BatchStatus,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// List batches with optional filtering.
-    ///
-    /// # Arguments
-    /// * `filters` - Filters for batch queries
-    ///
-    /// # Returns
-    /// A vector of batch metadata matching the filters
-    fn list_batches(
-        &self,
-        filters: &BatchFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<BatchMetadata>, StateError>>;
-
-    /// List runs belonging to a batch with their input indices.
-    ///
-    /// # Arguments
-    /// * `batch_id` - Batch identifier
-    /// * `filters` - Filters for run queries
-    ///
-    /// # Returns
-    /// A vector of (run_summary, batch_input_index) tuples
-    fn list_batch_runs(
-        &self,
-        batch_id: Uuid,
-        filters: &RunFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(RunSummary, usize)>, StateError>>;
-
-    /// Get batch context for a specific run (if it belongs to a batch).
-    ///
-    /// # Arguments
-    /// * `run_id` - Run identifier
-    ///
-    /// # Returns
-    /// Optional (batch_id, batch_input_index) tuple if the run belongs to a batch
-    fn get_run_batch_context(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<(Uuid, usize)>, StateError>>;
-
     // Debug State Management
 
     /// Add steps to the debug queue for a run.
@@ -600,6 +532,53 @@ pub trait StateStore: Send + Sync {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>>;
+
+    // Item Result Management
+
+    /// Get all item results for a run, ordered by item index.
+    ///
+    /// For single-item runs (item_count=1), returns a single item derived from run details.
+    /// For multi-item runs, returns results from the item_results table.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    ///
+    /// # Returns
+    /// A vector of item results ordered by item_index
+    fn get_item_results(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
+        // Default implementation: derive item results from run details
+        async move {
+            let run_details = self
+                .get_run(run_id)
+                .await?
+                .ok_or_else(|| error_stack::report!(StateError::RunNotFound { run_id }))?;
+
+            // Build item results from the results vector
+            let items: Vec<ItemResult> = run_details
+                .results
+                .into_iter()
+                .enumerate()
+                .map(|(idx, result)| {
+                    let status = match &result {
+                        Some(FlowResult::Success(_)) => ExecutionStatus::Completed,
+                        Some(FlowResult::Failed(_)) => ExecutionStatus::Failed,
+                        None => ExecutionStatus::Running,
+                    };
+                    ItemResult {
+                        item_index: idx,
+                        status,
+                        result,
+                    }
+                })
+                .collect();
+
+            Ok(items)
+        }
+        .boxed()
+    }
 }
 
 /// The step result.
@@ -670,6 +649,47 @@ pub struct WorkflowLabelMetadata {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Statistics about items in a run.
+#[derive(
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemStatistics {
+    /// Total number of items in this run.
+    pub total: usize,
+    /// Number of completed items.
+    pub completed: usize,
+    /// Number of currently running items.
+    pub running: usize,
+    /// Number of failed items.
+    pub failed: usize,
+    /// Number of cancelled items.
+    pub cancelled: usize,
+}
+
+impl ItemStatistics {
+    /// Create statistics for a single-item run with the given status.
+    pub fn single(status: ExecutionStatus) -> Self {
+        let mut stats = Self {
+            total: 1,
+            ..Default::default()
+        };
+        match status {
+            ExecutionStatus::Completed => stats.completed = 1,
+            ExecutionStatus::Running => stats.running = 1,
+            ExecutionStatus::Failed => stats.failed = 1,
+            ExecutionStatus::Cancelled => stats.cancelled = 1,
+            ExecutionStatus::Paused => stats.running = 1, // Paused counts as running
+        }
+        stats
+    }
+
+    /// Check if all items are complete (none running).
+    pub fn is_complete(&self) -> bool {
+        self.running == 0
+    }
+}
+
 /// Summary information about a flow run.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -679,20 +699,25 @@ pub struct RunSummary {
     pub flow_name: Option<String>,
     pub flow_label: Option<String>,
     pub status: ExecutionStatus,
+    /// Statistics about items in this run.
+    #[serde(default)]
+    pub items: ItemStatistics,
     pub debug_mode: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-/// Detailed flow run information including input and result.
+/// Detailed flow run information including inputs and results.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunDetails {
     #[serde(flatten)]
     pub summary: RunSummary,
-    pub input: ValueRef,
-    pub result: Option<FlowResult>,
-    /// Optional workflow overrides applied to this run
+    /// Input values for each item in this run.
+    pub inputs: Vec<ValueRef>,
+    /// Results for each item (None if not yet complete).
+    pub results: Vec<Option<FlowResult>>,
+    /// Optional workflow overrides applied to this run (per-run, not per-item).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub overrides: Option<WorkflowOverrides>,
 }
@@ -703,86 +728,123 @@ pub struct RunFilters {
     pub status: Option<ExecutionStatus>,
     pub flow_name: Option<String>,
     pub flow_label: Option<String>,
+    /// Filter to runs under this root (includes the root itself).
+    pub root_run_id: Option<Uuid>,
+    /// Filter to direct children of this parent run.
+    pub parent_run_id: Option<Uuid>,
+    /// Maximum depth for hierarchy queries (0 = root only).
+    pub max_depth: Option<u32>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
 
-/// Batch execution status
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
-)]
-#[serde(rename_all = "lowercase")]
-#[derive(Default)]
-pub enum BatchStatus {
-    /// Batch is currently running
-    #[default]
-    Running,
-    /// Batch has been cancelled
-    Cancelled,
-}
-
-/// Immutable batch metadata
+/// Result for an individual item in a multi-item run.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct BatchMetadata {
-    pub batch_id: Uuid,
-    pub flow_id: BlobId,
-    pub flow_name: Option<String>,
-    pub total_inputs: usize,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub status: BatchStatus,
-}
-
-/// Calculated batch statistics (not stored, computed via queries)
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-#[derive(Default)]
-pub struct BatchStatistics {
-    pub completed_runs: usize,
-    pub running_runs: usize,
-    pub failed_runs: usize,
-    pub cancelled_runs: usize,
-    pub paused_runs: usize,
-}
-
-/// Complete batch details for API responses
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct BatchDetails {
-    #[serde(flatten)]
-    pub metadata: BatchMetadata,
-    #[serde(flatten)]
-    pub statistics: BatchStatistics,
-    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-/// Filters for listing batches
-#[derive(Debug, Clone, Default)]
-pub struct BatchFilters {
-    pub status: Option<BatchStatus>,
-    pub flow_name: Option<String>,
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-}
-
-/// Output information for a single run in a batch
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct BatchOutputInfo {
-    /// Position in the batch input array
-    pub batch_input_index: usize,
-    /// The execution status
+pub struct ItemResult {
+    /// Index of this item in the input array (0-based).
+    pub item_index: usize,
+    /// Execution status of this item.
     pub status: ExecutionStatus,
-    /// The flow result (if completed)
+    /// Result of this item, if completed.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<FlowResult>,
+}
+
+/// Unified run status returned by submit_run and get_run.
+///
+/// Contains status information and optionally item results.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RunStatus {
+    pub run_id: Uuid,
+    pub flow_id: BlobId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_label: Option<String>,
+    pub status: ExecutionStatus,
+    /// Statistics about items in this run.
+    pub items: ItemStatistics,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Item results, only populated if include_results=true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub results: Option<Vec<ItemResult>>,
+}
+
+impl RunStatus {
+    /// Create RunStatus from RunDetails without results.
+    pub fn from_details(details: &RunDetails) -> Self {
+        Self {
+            run_id: details.summary.run_id,
+            flow_id: details.summary.flow_id.clone(),
+            flow_name: details.summary.flow_name.clone(),
+            flow_label: details.summary.flow_label.clone(),
+            status: details.summary.status,
+            items: details.summary.items.clone(),
+            created_at: details.summary.created_at,
+            completed_at: details.summary.completed_at,
+            results: None,
+        }
+    }
+
+    /// Create RunStatus from RunDetails with results.
+    pub fn from_details_with_results(details: &RunDetails) -> Self {
+        let results: Vec<ItemResult> = details
+            .results
+            .iter()
+            .enumerate()
+            .map(|(idx, result)| {
+                let status = match result {
+                    Some(FlowResult::Success(_)) => ExecutionStatus::Completed,
+                    Some(FlowResult::Failed(_)) => ExecutionStatus::Failed,
+                    None => ExecutionStatus::Running,
+                };
+                ItemResult {
+                    item_index: idx,
+                    status,
+                    result: result.clone(),
+                }
+            })
+            .collect();
+
+        Self {
+            run_id: details.summary.run_id,
+            flow_id: details.summary.flow_id.clone(),
+            flow_name: details.summary.flow_name.clone(),
+            flow_label: details.summary.flow_label.clone(),
+            status: details.summary.status,
+            items: details.summary.items.clone(),
+            created_at: details.summary.created_at,
+            completed_at: details.summary.completed_at,
+            results: Some(results),
+        }
+    }
+
+    /// Create RunStatus from RunSummary (for list operations).
+    pub fn from_summary(summary: &RunSummary) -> Self {
+        Self {
+            run_id: summary.run_id,
+            flow_id: summary.flow_id.clone(),
+            flow_name: summary.flow_name.clone(),
+            flow_label: summary.flow_label.clone(),
+            status: summary.status,
+            items: summary.items.clone(),
+            created_at: summary.created_at,
+            completed_at: summary.completed_at,
+            results: None,
+        }
+    }
 }
 
 /// Run details with resolved input and result blobs.
 #[derive(Debug)]
 pub struct RunWithBlobs {
     pub run: RunDetails,
-    pub input: Option<ValueRef>,
-    pub result: Option<ValueRef>,
+    pub inputs: Vec<Option<ValueRef>>,
+    pub results: Vec<Option<ValueRef>>,
 }
 
 /// Comprehensive run step details for server inspection.
@@ -791,7 +853,6 @@ pub struct RunStepDetails {
     pub run: RunDetails,
     pub workflow: Option<Arc<stepflow_core::workflow::Flow>>,
     pub step_results: Vec<StepResult>,
-    pub input: Option<ValueRef>,
 }
 
 /// Complete data needed for debug session creation.
@@ -799,7 +860,6 @@ pub struct RunStepDetails {
 pub struct DebugSessionData {
     pub run: RunDetails,
     pub workflow: Arc<stepflow_core::workflow::Flow>,
-    pub input: ValueRef,
     pub step_results: Vec<StepResult>,
 }
 
@@ -842,14 +902,17 @@ mod tests {
                 flow_name: Some("test-workflow".to_string()),
                 flow_label: Some("production".to_string()),
                 status: ExecutionStatus::Completed,
+                items: ItemStatistics::single(ExecutionStatus::Completed),
                 debug_mode: false,
                 created_at: now,
                 completed_at: Some(now),
             },
-            input: stepflow_core::workflow::ValueRef::new(json!({"test": "input"})),
-            result: Some(FlowResult::Success(stepflow_core::workflow::ValueRef::new(
-                json!({"test": "output"}),
-            ))),
+            inputs: vec![stepflow_core::workflow::ValueRef::new(
+                json!({"test": "input"}),
+            )],
+            results: vec![Some(FlowResult::Success(
+                stepflow_core::workflow::ValueRef::new(json!({"test": "output"})),
+            ))],
             overrides: None,
         };
 
@@ -868,10 +931,10 @@ mod tests {
         assert_eq!(value["debugMode"], json!(false));
 
         // Verify that detail-specific fields are also present
-        assert_eq!(value["input"], json!({"test": "input"}));
+        assert_eq!(value["inputs"], json!([{"test": "input"}]));
         assert_eq!(
-            value["result"],
-            json!({"outcome": "success", "result": {"test": "output"}})
+            value["results"],
+            json!([{"outcome": "success", "result": {"test": "output"}}])
         );
 
         // Verify there's no nested "summary" object

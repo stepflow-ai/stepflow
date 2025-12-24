@@ -17,8 +17,7 @@ mod state_store;
 pub use error::{Result, StateError};
 pub use in_memory::InMemoryStateStore;
 pub use state_store::{
-    BatchDetails, BatchFilters, BatchMetadata, BatchOutputInfo, BatchStatistics, BatchStatus,
-    CreateRunParams, DebugSessionData, RunDetails, RunFilters, RunStepDetails, RunSummary,
-    RunWithBlobs, StateStore, StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata,
-    WorkflowWithMetadata,
+    CreateRunParams, DebugSessionData, ItemResult, ItemStatistics, RunDetails, RunFilters,
+    RunStatus, RunStepDetails, RunSummary, RunWithBlobs, StateStore, StateWriteOperation, StepInfo,
+    StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
 };

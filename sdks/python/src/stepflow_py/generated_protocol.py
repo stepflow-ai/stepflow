@@ -45,10 +45,8 @@ class Method(Enum):
     components_infer_schema = 'components/infer_schema'
     blobs_put = 'blobs/put'
     blobs_get = 'blobs/get'
-    flows_evaluate = 'flows/evaluate'
-    flows_get_metadata = 'flows/get_metadata'
-    flows_submit_batch = 'flows/submit_batch'
-    flows_get_batch = 'flows/get_batch'
+    runs_submit = 'runs/submit'
+    runs_get = 'runs/get'
 
 
 Value = Annotated[
@@ -187,6 +185,29 @@ class OverrideType(Enum):
     json_patch = 'json_patch'
 
 
+class ResultOrder(Enum):
+    by_index = 'by_index'
+    by_completion = 'by_completion'
+
+
+class ItemStatistics(Struct, kw_only=True):
+    total: Annotated[int, Meta(description='Total number of items in this run.', ge=0)]
+    completed: Annotated[int, Meta(description='Number of completed items.', ge=0)]
+    running: Annotated[
+        int, Meta(description='Number of currently running items.', ge=0)
+    ]
+    failed: Annotated[int, Meta(description='Number of failed items.', ge=0)]
+    cancelled: Annotated[int, Meta(description='Number of cancelled items.', ge=0)]
+
+
+class ExecutionStatus(Enum):
+    running = 'running'
+    completed = 'completed'
+    failed = 'failed'
+    cancelled = 'cancelled'
+    paused = 'paused'
+
+
 class FlowError(Struct, kw_only=True):
     code: int
     message: str
@@ -201,57 +222,6 @@ class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'
 class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
     outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
     error: FlowError
-
-
-class GetFlowMetadataResult(Struct, kw_only=True):
-    flow_metadata: Annotated[
-        Dict[str, Any],
-        Meta(
-            description='Metadata for the current flow.\n\nThis always contains the flow-level metadata defined in the workflow file.\nCommon fields include name, description, version, but can contain any\narbitrary JSON structure defined by the workflow author.'
-        ),
-    ]
-    step_metadata: (
-        Annotated[
-            Dict[str, Any] | None,
-            Meta(
-                description='Metadata for the specified step (only present if step_id was provided and found).\n\nThis contains step-specific metadata defined in the workflow file.\nWill be None if no step_id was provided in the request'
-            ),
-        ]
-        | None
-    ) = None
-
-
-class SubmitBatchResult(Struct, kw_only=True):
-    batch_id: Annotated[str, Meta(description='The batch ID (UUID).')]
-    total_runs: Annotated[
-        int, Meta(description='Total number of runs in the batch.', ge=0)
-    ]
-
-
-class BatchDetails(Struct, kw_only=True):
-    batch_id: Annotated[str, Meta(description='The batch ID.')]
-    flow_id: Annotated[BlobId, Meta(description='The flow ID.')]
-    total_runs: Annotated[
-        int, Meta(description='Total number of runs in the batch.', ge=0)
-    ]
-    status: Annotated[str, Meta(description='Batch status (running | cancelled).')]
-    created_at: Annotated[
-        str, Meta(description='Timestamp when the batch was created.')
-    ]
-    completed_runs: Annotated[int, Meta(description='Statistics for the batch.', ge=0)]
-    running_runs: Annotated[int, Meta(ge=0)]
-    failed_runs: Annotated[int, Meta(ge=0)]
-    cancelled_runs: Annotated[int, Meta(ge=0)]
-    paused_runs: Annotated[int, Meta(ge=0)]
-    flow_name: (
-        Annotated[str | None, Meta(description='The flow name (optional).')] | None
-    ) = None
-    completed_at: (
-        Annotated[
-            str | None, Meta(description='Completion timestamp (if all runs complete).')
-        ]
-        | None
-    ) = None
 
 
 Message1 = Annotated[
@@ -397,70 +367,33 @@ class StepOverride(Struct, kw_only=True):
     ) = field(name='$type', default=None)
 
 
+class GetRunProtocolParams(Struct, kw_only=True):
+    runId: Annotated[str, Meta(description='The run ID to query.')]
+    wait: (
+        Annotated[
+            bool, Meta(description='If true, wait for run completion before returning.')
+        ]
+        | None
+    ) = None
+    includeResults: (
+        Annotated[
+            bool, Meta(description='If true, include item results in the response.')
+        ]
+        | None
+    ) = None
+    resultOrder: (
+        Annotated[
+            ResultOrder, Meta(description='Order of results (byIndex or byCompletion).')
+        ]
+        | None
+    ) = None
+    observability: ObservabilityContext | None = None
+
+
 FlowResult = Annotated[
     FlowResultSuccess | FlowResultFailed,
     Meta(description='The results of a step execution.', title='FlowResult'),
 ]
-
-
-class EvaluateFlowResult(Struct, kw_only=True):
-    result: Annotated[
-        FlowResult, Meta(description='The result of the flow evaluation.')
-    ]
-
-
-class GetFlowMetadataParams(Struct, kw_only=True):
-    flow_id: Annotated[BlobId, Meta(description='The flow to retrieve metadata for.')]
-    step_id: (
-        Annotated[
-            str | None,
-            Meta(
-                description="The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response."
-            ),
-        ]
-        | None
-    ) = None
-    observability: ObservabilityContext | None = None
-
-
-class GetBatchParams(Struct, kw_only=True):
-    batch_id: Annotated[str, Meta(description='The batch ID to query.')]
-    wait: (
-        Annotated[
-            bool,
-            Meta(description='If true, wait for batch completion before returning.'),
-        ]
-        | None
-    ) = None
-    include_results: (
-        Annotated[bool, Meta(description='If true, include full outputs in response.')]
-        | None
-    ) = None
-    observability: ObservabilityContext | None = None
-
-
-class BatchOutputInfo(Struct, kw_only=True):
-    batch_input_index: Annotated[
-        int, Meta(description='Position in the batch input array.', ge=0)
-    ]
-    status: Annotated[str, Meta(description='The execution status.')]
-    result: FlowResult | None = None
-
-
-class GetBatchResult(Struct, kw_only=True):
-    details: Annotated[
-        BatchDetails,
-        Meta(
-            description='Always included: batch details with metadata and statistics.'
-        ),
-    ]
-    outputs: (
-        Annotated[
-            List[BatchOutputInfo],
-            Meta(description='Only included if include_results=true.'),
-        ]
-        | None
-    ) = None
 
 
 class WorkflowOverrides(Struct, kw_only=True):
@@ -470,33 +403,47 @@ class WorkflowOverrides(Struct, kw_only=True):
     ]
 
 
-class EvaluateFlowParams(Struct, kw_only=True):
-    flow_id: Annotated[
-        BlobId,
-        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
-    ]
-    input: Annotated[Value, Meta(description='The input to provide to the flow.')]
-    overrides: WorkflowOverrides | None = None
-    observability: ObservabilityContext | None = None
-
-
-class SubmitBatchParams(Struct, kw_only=True):
-    flow_id: Annotated[
-        BlobId,
-        Meta(description='The ID of the flow to evaluate (blob ID of the flow).'),
+class SubmitRunProtocolParams(Struct, kw_only=True):
+    flowId: Annotated[
+        BlobId, Meta(description='The ID of the flow to execute (blob ID).')
     ]
     inputs: Annotated[
-        List[Value], Meta(description='The inputs to provide to the flow for each run.')
+        List[Value], Meta(description='Input values for each item in the run.')
     ]
-    overrides: WorkflowOverrides | None = None
-    max_concurrency: (
+    wait: (
         Annotated[
-            int | None,
-            Meta(
-                description='Maximum number of concurrent executions (defaults to number of inputs if not specified).',
-                ge=0,
-            ),
+            bool, Meta(description='If true, wait for completion before returning.')
         ]
         | None
     ) = None
+    maxConcurrency: (
+        Annotated[
+            int | None,
+            Meta(description='Maximum number of concurrent executions.', ge=0),
+        ]
+        | None
+    ) = None
+    overrides: WorkflowOverrides | None = None
     observability: ObservabilityContext | None = None
+
+
+class ItemResult(Struct, kw_only=True):
+    itemIndex: Annotated[
+        int, Meta(description='Index of this item in the input array (0-based).', ge=0)
+    ]
+    status: Annotated[
+        ExecutionStatus, Meta(description='Execution status of this item.')
+    ]
+    result: FlowResult | None = None
+
+
+class RunStatusProtocol(Struct, kw_only=True):
+    runId: str
+    flowId: BlobId
+    status: str
+    items: ItemStatistics
+    createdAt: str
+    flowName: str | None = None
+    flowLabel: str | None = None
+    completedAt: str | None = None
+    results: List[ItemResult] | None = None

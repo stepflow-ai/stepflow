@@ -13,7 +13,7 @@ The protocol methods are organized into four main categories:
 1. **[Initialization](./initialization.md)** - Protocol connection and capability negotiation
 2. **[Components](./components.md)** - Component discovery, introspection, and execution
 3. **[Blob Storage](./blobs.md)** - Content-addressable data storage and retrieval
-4. **[Flows](./flows.md)** - Workflow expression evaluation and context access
+4. **[Runs](./runs.md)** - Workflow run submission and status retrieval
 
 ## Complete Method Reference
 
@@ -29,5 +29,6 @@ The protocol methods are organized into four main categories:
 | **Blob Storage** | | | |
 | [`blobs/put`](./blobs.md#blobsput-method) | Component → Runtime | Request | Store JSON data and receive content-addressable ID |
 | [`blobs/get`](./blobs.md#blobsget-method) | Component → Runtime | Request | Retrieve data by blob ID |
-| **Flows** | | | |
-| [`flows/evaluate`](./flows.md#flowsevaluate-method) | Component → Runtime | Request | Evaluate workflow expressions in runtime context |
+| **Runs** | | | |
+| [`runs/submit`](./runs.md#runssubmit-method) | Component → Runtime | Request | Submit a workflow run for execution |
+| [`runs/get`](./runs.md#runsget-method) | Component → Runtime | Request | Retrieve run status and results |

@@ -17,10 +17,10 @@ Batch execution enables:
 
 ## Local Batch Execution
 
-Execute batches locally using the `run-batch` command:
+Execute batches locally using the `run` command with the `--inputs` flag:
 
 ```bash
-stepflow run-batch --flow=workflow.yaml --inputs=batch-inputs.jsonl
+stepflow run --flow=workflow.yaml --inputs=batch-inputs.jsonl
 ```
 
 ### Input Format
@@ -37,7 +37,7 @@ Batch inputs are provided as JSONL (JSON Lines) format - one JSON object per lin
 
 ```bash
 # Process 100 items with default concurrency
-stepflow run-batch \
+stepflow run \
   --flow=data-pipeline.yaml \
   --inputs=items.jsonl \
   --output=results.jsonl
@@ -49,7 +49,7 @@ Limit concurrent executions to manage resource usage:
 
 ```bash
 # Limit to 10 concurrent executions
-stepflow run-batch \
+stepflow run \
   --flow=workflow.yaml \
   --inputs=batch-inputs.jsonl \
   --max-concurrent=10
@@ -66,35 +66,14 @@ stepflow run-batch \
 Submit batches to a remote Stepflow server for distributed execution:
 
 ```bash
-stepflow submit-batch \
+stepflow submit \
   --url=https://stepflow.company.com/api/v1 \
   --flow=workflow.yaml \
   --inputs=batch-inputs.jsonl \
   --max-concurrent=50
 ```
 
-### Batch Tracking
-
-Monitor batch progress and retrieve results:
-
-```bash
-# Submit batch and get batch ID
-BATCH_ID=$(stepflow submit-batch \
-  --url=$STEPFLOW_URL \
-  --flow=workflow.yaml \
-  --inputs=inputs.jsonl \
-  --output=/dev/null | jq -r '.batch_id')
-
-# Check batch status
-stepflow get-batch --url=$STEPFLOW_URL --batch-id=$BATCH_ID
-
-# Wait for completion and get results
-stepflow get-batch \
-  --url=$STEPFLOW_URL \
-  --batch-id=$BATCH_ID \
-  --wait \
-  --output=results.jsonl
-```
+The `submit` command uploads the workflow and inputs, then waits for completion and returns results.
 
 ## Batch Execution Patterns
 
@@ -148,7 +127,7 @@ output:
 ```
 
 ```bash
-stepflow run-batch \
+stepflow run \
   --flow=data-pipeline.yaml \
   --inputs=items.jsonl \
   --max-concurrent=20 \
@@ -201,7 +180,7 @@ output:
 
 ```bash
 # Process 1000 documents with controlled concurrency
-stepflow run-batch \
+stepflow run \
   --flow=ai-analysis.yaml \
   --inputs=documents.jsonl \
   --max-concurrent=10 \
@@ -257,7 +236,7 @@ output:
 ```
 
 ```bash
-stepflow run-batch \
+stepflow run \
   --flow=test-workflow.yaml \
   --inputs=test-cases.jsonl \
   --max-concurrent=5
@@ -265,49 +244,15 @@ stepflow run-batch \
 
 ### 4. Batch with User-Defined Components
 
-Use Python SDK's `evaluate_batch` for programmatic batch execution:
+Use Python SDK components for programmatic batch execution:
 
 ```python
-from stepflow_py import StepflowContext, Flow
-import asyncio
-
-async def process_batch():
-    async with StepflowContext.from_config("stepflow-config.yml") as ctx:
-        # Load workflow
-        flow = Flow.from_file("workflow.yaml")
-
-        # Prepare batch inputs
-        inputs = [
-            {"item_id": f"item{i}", "value": i * 10}
-            for i in range(100)
-        ]
-
-        # Execute batch with concurrency control
-        results = await ctx.evaluate_batch(
-            flow=flow,
-            inputs=inputs,
-            max_concurrency=20
-        )
-
-        # Process results
-        for i, result in enumerate(results):
-            print(f"Item {i}: {result}")
-
-asyncio.run(process_batch())
-```
-
-## Batch Execution Within Workflows
-
-Execute batches from within a workflow using custom components:
-
-```python
-# batch_processor.py
 from stepflow_py import StepflowStdioServer, StepflowContext
 import msgspec
 
 class Input(msgspec.Struct):
     items: list[dict]
-    workflow_path: str
+    workflow_id: str
     max_concurrency: int = 10
 
 class Output(msgspec.Struct):
@@ -321,24 +266,22 @@ server = StepflowStdioServer()
 @server.component
 async def batch_processor(input: Input, ctx: StepflowContext) -> Output:
     """Process a batch of items using a sub-workflow"""
-    from stepflow_py import Flow
 
-    # Load the sub-workflow
-    flow = Flow.from_file(input.workflow_path)
-
-    # Execute batch
-    results = await ctx.evaluate_batch(
-        flow=flow,
+    # Submit batch using the runs/submit protocol method
+    run_status = await ctx.submit_run(
+        flow_id=input.workflow_id,
         inputs=input.items,
+        wait=True,
         max_concurrency=input.max_concurrency
     )
 
     # Aggregate results
-    success_count = sum(1 for r in results if r.get("success", False))
-    error_count = len(results) - success_count
+    results = run_status.results or []
+    success_count = run_status.items.success
+    error_count = run_status.items.failed
 
     return Output(
-        results=results,
+        results=[r.result for r in results],
         total_processed=len(results),
         success_count=success_count,
         error_count=error_count
@@ -363,7 +306,7 @@ steps:
     component: /python/batch_processor
     input:
       items: { $step: load_items, path: "items" }
-      workflow_path: "item-processor.yaml"
+      workflow_id: "sha256:abc123..."
       max_concurrency: 20
 
   - id: aggregate_results
@@ -374,8 +317,8 @@ steps:
 
 ## Related Documentation
 
-- [CLI: run-batch](../cli/run-batch.md) - Local batch execution
-- [CLI: submit-batch](../cli/submit-batch.md) - Remote batch execution
+- [CLI: run](../cli/run.md) - Local execution with batch support
+- [CLI: submit](../cli/submit.md) - Remote execution with batch support
 - [Control Flow](./control-flow.md) - Error handling in workflows
 - [Runtime Overrides](./overrides.md) - Batch-specific configuration
 - [Configuration](../configuration.md) - Distributed execution setup

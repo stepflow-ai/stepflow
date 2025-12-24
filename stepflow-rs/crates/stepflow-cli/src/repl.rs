@@ -49,25 +49,33 @@ impl LastRun {
 
     /// Execute this workflow normally (non-debug mode)
     pub async fn execute_normal(&self, executor: &StepflowExecutor) -> Result<()> {
-        let params = stepflow_core::SubmitFlowParams::new(
+        // Use the unified submit_run API with wait=true
+        let mut params = stepflow_core::SubmitRunParams::new(
             self.flow.clone(),
             self.flow_id.clone(),
             self.input.clone(),
         );
-        let run_id = executor
-            .submit_flow(params)
+        params = params.with_wait(true);
+
+        let run_status = executor
+            .submit_run(params)
             .await
             .change_context(MainError::FlowExecution)?;
 
-        let result = executor
-            .flow_result(run_id)
-            .await
-            .change_context(MainError::FlowExecution)?;
+        // Extract result from run status
+        let result = run_status
+            .results
+            .and_then(|r| r.into_iter().next())
+            .and_then(|item| item.result);
 
         // Display result
-        let result_json =
-            serde_json::to_string_pretty(&result).change_context(MainError::FlowExecution)?;
-        println!("Result:\n{result_json}");
+        if let Some(result) = result {
+            let result_json =
+                serde_json::to_string_pretty(&result).change_context(MainError::FlowExecution)?;
+            println!("Result:\n{result_json}");
+        } else {
+            println!("No result available");
+        }
 
         Ok(())
     }

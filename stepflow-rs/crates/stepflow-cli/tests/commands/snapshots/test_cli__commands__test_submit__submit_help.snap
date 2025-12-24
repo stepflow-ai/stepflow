@@ -39,6 +39,10 @@ stepflow submit --url=http://production-server:7840 --flow=workflow.yaml --input
 
 stepflow submit --flow=workflow.yaml --input-yaml='param: value'
 
+# Submit batch with multiple inputs from JSONL file
+
+stepflow submit --flow=workflow.yaml --inputs=inputs.jsonl --output=results.jsonl
+
 ```
 
 Usage: stepflow submit [OPTIONS] --flow <FILE>
@@ -71,6 +75,19 @@ Options:
           [default: json]
           [possible values: json, yaml]
 
+      --inputs <FILE>
+          Path to JSONL file containing multiple inputs (one JSON object per line).
+          
+          When specified, the workflow is executed once per line in the file. Results are written in JSONL format (one result per line).
+
+      --max-concurrent <N>
+          Maximum number of concurrent executions on the server (only used with --inputs).
+          
+          Defaults to number of inputs if not specified.
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
       --variables <FILE>
           The path to the variables file.
           
@@ -78,9 +95,6 @@ Options:
 
       --variables-json <JSON>
           The variables as a JSON string
-
-      --omit-stack-trace
-          Omit stack traces (line numbers of errors)
 
       --variables-yaml <YAML>
           The variables as a YAML string

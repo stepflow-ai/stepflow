@@ -53,8 +53,10 @@ pub enum ServerError {
     #[error("Batch '{batch_id}' cannot be cancelled (status: {status:?})")]
     BatchNotCancellable {
         batch_id: Uuid,
-        status: stepflow_state::BatchStatus,
+        status: stepflow_core::status::ExecutionStatus,
     },
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
 }
 
 impl ServerError {
@@ -66,6 +68,7 @@ impl ServerError {
             ServerError::ExecutionNotCancellable { .. }
             | ServerError::ExecutionStillRunning(_)
             | ServerError::BatchNotCancellable { .. } => StatusCode::CONFLICT,
+            ServerError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
         }
     }
 }

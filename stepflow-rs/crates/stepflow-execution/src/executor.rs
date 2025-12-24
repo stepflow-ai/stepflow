@@ -17,11 +17,11 @@ use crate::{ExecutionError, Result};
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::{
-    FlowError, FlowResult, SubmitBatchParams, SubmitFlowParams,
+    FlowError, FlowResult, GetRunOptions, SubmitRunParams,
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{Context, DynPlugin, ExecutionContext, Plugin as _, routing::PluginRouter};
-use stepflow_state::{InMemoryStateStore, StateStore};
+use stepflow_state::{InMemoryStateStore, RunStatus, StateStore};
 use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 
@@ -144,12 +144,13 @@ impl StepflowExecutor {
 
         // Create a new WorkflowExecutor for this debug session
         // TODO: Retrieve variables from execution state store
+        let input = execution.inputs.first().cloned().unwrap_or_default();
         let mut workflow_executor = WorkflowExecutor::new(
             self.executor(),
             workflow,
             flow_id,
             run_id,
-            execution.input,
+            input,
             self.state_store.clone(),
             None, // Variables not supported in debug sessions yet
         )?;
@@ -169,144 +170,236 @@ impl StepflowExecutor {
 }
 
 impl Context for StepflowExecutor {
-    /// Submits a nested workflow for execution and returns it's execution ID.
+    // ========================================================================
+    // New unified API
+    // ========================================================================
+
+    /// Submit a run with 1 or N items.
     ///
-    /// This method starts the workflow execution in the background and immediately
-    /// returns a unique ID that can be used to retrieve the result later.
-    fn submit_flow(
+    /// If `params.wait` is false, returns immediately with status=Running.
+    /// If `params.wait` is true, blocks until completion and returns final status.
+    fn submit_run(
         &self,
-        params: SubmitFlowParams,
-    ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
+        params: SubmitRunParams,
+    ) -> BoxFuture<'_, stepflow_plugin::Result<RunStatus>> {
         let executor = self.executor();
+        let wait = params.wait;
 
         async move {
             let run_id = Uuid::now_v7();
+            let state_store = executor.state_store();
+            let item_count = params.item_count();
+            let max_concurrency = params.max_concurrency.unwrap_or(item_count);
 
-            // Ensure the flow is stored as a blob (idempotent operation)
+            // Ensure the flow is stored as a blob
             let flow_value = ValueRef::new(serde_json::to_value(params.flow.as_ref()).unwrap());
             self.state_store
                 .put_blob(flow_value, stepflow_core::BlobType::Flow)
                 .await
                 .change_context(stepflow_plugin::PluginError::Execution)?;
 
-            let (tx, rx) = oneshot::channel();
-
-            // Store the receiver for later retrieval
-            {
-                let mut pending = self.pending.write().await;
-                pending.insert(run_id, rx.shared());
+            // Create run record with all inputs
+            let mut run_params = stepflow_state::CreateRunParams::with_inputs(
+                run_id,
+                params.flow_id.clone(),
+                params.inputs.clone(),
+            );
+            run_params.workflow_name = params.flow.name().map(|s| s.to_string());
+            if let Some(ref o) = params.overrides {
+                run_params.overrides = o.clone();
             }
+            state_store
+                .create_run(run_params)
+                .await
+                .change_context(stepflow_plugin::PluginError::Execution)?;
 
-            // Spawn the execution
+            // Collect inputs with their indices for execution
+            let indexed_inputs: Vec<_> = params.inputs.into_iter().enumerate().collect();
+
+            // Spawn background task for execution
+            let executor_clone = executor.clone();
+            let flow_clone = params.flow.clone();
+            let flow_id_clone = params.flow_id.clone();
+            let overrides_clone = params.overrides.clone();
+
             tokio::spawn(async move {
                 use stepflow_observability::fastrace::prelude::*;
 
-                log::info!("Executing workflow using tracker-based execution");
-                let state_store = executor.state_store.clone();
-
-                // Create span for this flow execution
-                // When parent_context is provided, create a child span within the parent's trace.
-                // Otherwise, create a new root span with a fresh trace_id.
-                //
-                // Design: Always use unique trace_id, store run_id as span attribute
-                // - Consistent pattern across all executions (root, nested, batch)
-                // - run_id is queryable as a span attribute in trace viewers
-                // - trace_id represents the distributed trace tree, not business ID
-                let span_context = params.parent_context.unwrap_or_else(|| {
-                    // Generate fresh trace_id for new trace
+                // Create span for run execution
+                let run_span_context = params.parent_context.unwrap_or_else(|| {
                     SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default())
                 });
 
-                let span = Span::root("flow_execution", span_context)
-                    .with_property(|| ("run_id", run_id.to_string()));
+                let run_span = Span::root("run_execution", run_span_context)
+                    .with_property(|| ("run_id", run_id.to_string()))
+                    .with_property(|| ("item_count", item_count.to_string()))
+                    .with_property(|| ("max_concurrency", max_concurrency.to_string()));
 
-                // Apply overrides if provided
-                let final_flow = if let Some(overrides) = &params.overrides {
-                    match stepflow_core::workflow::apply_overrides(params.flow.clone(), overrides) {
-                        Ok(modified_flow) => modified_flow,
-                        Err(e) => {
-                            log::error!("Failed to apply overrides: {e}");
-                            let _ = tx.send(FlowResult::Failed(FlowError::new(
-                                400,
-                                "Failed to apply overrides",
-                            )));
-                            return;
-                        }
+                async move {
+                    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
+                    let mut tasks = vec![];
+                    let results = Arc::new(tokio::sync::Mutex::new(Vec::with_capacity(item_count)));
+
+                    for (idx, input) in indexed_inputs {
+                        let permit = match semaphore.clone().acquire_owned().await {
+                            Ok(permit) => permit,
+                            Err(_) => {
+                                log::error!("Semaphore closed, aborting run execution");
+                                break;
+                            }
+                        };
+
+                        let executor_ref = executor_clone.clone();
+                        let flow_ref = flow_clone.clone();
+                        let flow_id_ref = flow_id_clone.clone();
+                        let overrides_ref = overrides_clone.clone();
+                        let run_ctx = SpanContext::current_local_parent();
+                        let results_ref = results.clone();
+
+                        let task = tokio::spawn(async move {
+                            let _permit = permit;
+
+                            // Use private helper methods for flow execution
+                            let flow_result = match executor_ref
+                                .submit_flow_item(
+                                    flow_ref,
+                                    flow_id_ref,
+                                    input,
+                                    overrides_ref,
+                                    run_ctx,
+                                )
+                                .await
+                            {
+                                Ok(submitted_run_id) => {
+                                    match executor_ref.get_flow_item_result(submitted_run_id).await
+                                    {
+                                        Ok(result) => result,
+                                        Err(e) => {
+                                            log::error!(
+                                                "Run item {idx} failed to get result: {e:?}"
+                                            );
+                                            FlowResult::Failed(FlowError::new(
+                                                500,
+                                                "Failed to get result",
+                                            ))
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Run item {idx} failed to submit: {e:?}");
+                                    FlowResult::Failed(FlowError::new(500, "Failed to submit"))
+                                }
+                            };
+
+                            // Record result immediately
+                            let _ = executor_ref
+                                .state_store()
+                                .record_item_result(run_id, idx, flow_result.clone())
+                                .await;
+
+                            // Also store in memory for status computation
+                            results_ref.lock().await.push((idx, flow_result));
+                        });
+
+                        tasks.push(task);
                     }
-                } else {
-                    params.flow.clone()
-                };
 
-                let result = execute_workflow(
-                    executor,
-                    final_flow,
-                    params.flow_id,
-                    run_id,
-                    params.input,
-                    state_store,
-                    params.variables,
-                )
-                .in_span(span)
-                .await;
-
-                let flow_result = match result {
-                    Ok(flow_result) => flow_result,
-                    Err(e) => {
-                        if let Some(error) = e.downcast_ref::<FlowError>().cloned() {
-                            FlowResult::Failed(error)
-                        } else {
-                            log::error!("Flow execution failed: {:?}", e);
-                            FlowResult::Failed(stepflow_core::FlowError::from_error_stack(e))
-                        }
+                    for task in tasks {
+                        let _ = task.await;
                     }
-                };
 
-                // Send the result back
-                let _ = tx.send(flow_result);
+                    // Determine final status from collected results
+                    let all_results = results.lock().await;
+                    let has_failures = all_results
+                        .iter()
+                        .any(|(_, r)| matches!(r, FlowResult::Failed(_)));
+                    let final_status = if has_failures {
+                        stepflow_core::status::ExecutionStatus::Failed
+                    } else {
+                        stepflow_core::status::ExecutionStatus::Completed
+                    };
+
+                    // Update the run status (results already recorded individually)
+                    let _ = executor_clone
+                        .state_store()
+                        .update_run_status(run_id, final_status)
+                        .await;
+
+                    log::info!("Run {run_id} execution completed");
+                }
+                .in_span(run_span)
+                .await
             });
 
-            Ok(run_id)
+            // If wait=true, wait for completion and include results
+            if wait {
+                while let Ok(Some(details)) = state_store.get_run(run_id).await {
+                    match details.summary.status {
+                        stepflow_core::status::ExecutionStatus::Running
+                        | stepflow_core::status::ExecutionStatus::Paused => {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        }
+                        _ => {
+                            // Include results when wait=true
+                            return Ok(RunStatus::from_details_with_results(&details));
+                        }
+                    }
+                }
+            }
+
+            // Return current status without results
+            let details = state_store
+                .get_run(run_id)
+                .await
+                .change_context(stepflow_plugin::PluginError::Execution)?
+                .ok_or_else(|| {
+                    error_stack::report!(stepflow_plugin::PluginError::Execution)
+                        .attach_printable(format!("Run not found: {}", run_id))
+                })?;
+
+            Ok(RunStatus::from_details(&details))
         }
         .boxed()
     }
 
-    /// Retrieves the result of a previously submitted workflow.
-    ///
-    /// This method will wait for the workflow to complete if it's still running.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run ID returned by `submit_flow`
-    ///
-    /// # Returns
-    /// The result of the workflow execution
-    fn flow_result(&self, run_id: Uuid) -> BoxFuture<'_, stepflow_plugin::Result<FlowResult>> {
+    /// Get run status and optionally results.
+    fn get_run(
+        &self,
+        run_id: Uuid,
+        options: GetRunOptions,
+    ) -> BoxFuture<'_, stepflow_plugin::Result<RunStatus>> {
         async move {
-            // Remove and get the receiver for this execution
-            let receiver = {
-                let pending = self.pending.read().await;
-                pending.get(&run_id).cloned()
-            };
+            let state_store = self.state_store();
 
-            match receiver {
-                Some(rx) => {
-                    match rx.await {
-                        Ok(result) => Ok(result),
-                        Err(_) => {
-                            // The sender was dropped, indicating the execution was cancelled or failed
-                            Ok(FlowResult::Failed(stepflow_core::FlowError::new(
-                                410,
-                                "Nested flow execution was cancelled",
-                            )))
+            // If wait=true, poll until run completes
+            if options.wait {
+                while let Ok(Some(details)) = state_store.get_run(run_id).await {
+                    match details.summary.status {
+                        stepflow_core::status::ExecutionStatus::Running
+                        | stepflow_core::status::ExecutionStatus::Paused => {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         }
+                        _ => break,
                     }
                 }
-                None => {
-                    // Execution ID not found
-                    Ok(FlowResult::Failed(stepflow_core::FlowError::new(
-                        404,
-                        format!("No run found for ID: {run_id}"),
-                    )))
-                }
+            }
+
+            // Get run details
+            let details = state_store
+                .get_run(run_id)
+                .await
+                .change_context(stepflow_plugin::PluginError::Execution)?
+                .ok_or_else(|| {
+                    error_stack::report!(stepflow_plugin::PluginError::Execution)
+                        .attach_printable(format!("Run not found: {}", run_id))
+                })?;
+
+            // Convert to RunStatus with or without results
+            if options.include_results {
+                // TODO: Handle result_order (ByCompletion) when we have per-item completion tracking
+                Ok(RunStatus::from_details_with_results(&details))
+            } else {
+                Ok(RunStatus::from_details(&details))
             }
         }
         .boxed()
@@ -319,282 +412,130 @@ impl Context for StepflowExecutor {
     fn working_directory(&self) -> &std::path::Path {
         &self.working_directory
     }
+}
 
-    /// Submit a batch execution and return the batch ID immediately.
-    fn submit_batch(
+// ============================================================================
+// Private helper methods for workflow execution
+// ============================================================================
+
+impl StepflowExecutor {
+    /// Submits a single workflow item for execution and returns it's execution ID.
+    ///
+    /// This method starts the workflow execution in the background and immediately
+    /// returns a unique ID that can be used to retrieve the result later.
+    async fn submit_flow_item(
         &self,
-        params: SubmitBatchParams,
-    ) -> BoxFuture<'_, stepflow_plugin::Result<Uuid>> {
+        flow: std::sync::Arc<stepflow_core::workflow::Flow>,
+        flow_id: stepflow_core::BlobId,
+        input: ValueRef,
+        overrides: Option<stepflow_core::workflow::WorkflowOverrides>,
+        parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
+    ) -> stepflow_plugin::Result<Uuid> {
         let executor = self.executor();
+        let run_id = Uuid::now_v7();
 
-        async move {
-            let batch_id = Uuid::now_v7();
-            let state_store = executor.state_store();
+        let (tx, rx) = oneshot::channel();
 
-            let total_runs = params.inputs.len();
-            let max_concurrency = params.max_concurrency.unwrap_or(total_runs);
+        // Store the receiver for later retrieval
+        {
+            let mut pending = self.pending.write().await;
+            pending.insert(run_id, rx.shared());
+        }
 
-            // Create batch record
-            state_store
-                .create_batch(
-                    batch_id,
-                    params.flow_id.clone(),
-                    params.flow.name(),
-                    total_runs,
-                )
-                .await
-                .change_context(stepflow_plugin::PluginError::Execution)?;
+        // Spawn the execution
+        tokio::spawn(async move {
+            use stepflow_observability::fastrace::prelude::*;
 
-            // Create run records and collect (run_id, input, index) tuples
-            let mut run_inputs = Vec::with_capacity(total_runs);
-            for (idx, input) in params.inputs.into_iter().enumerate() {
-                let run_id = Uuid::now_v7();
+            log::info!("Executing workflow using tracker-based execution");
+            let state_store = executor.state_store.clone();
 
-                // Create run record
-                let mut run_params = stepflow_state::CreateRunParams::new(
-                    run_id,
-                    params.flow_id.clone(),
-                    input.clone(),
-                );
-                run_params.workflow_name = params.flow.name().map(|s| s.to_string());
-                if let Some(ref o) = params.overrides {
-                    run_params.overrides = o.clone();
-                }
-                state_store
-                    .create_run(run_params)
-                    .await
-                    .change_context(stepflow_plugin::PluginError::Execution)?;
-
-                // Link run to batch
-                state_store
-                    .add_run_to_batch(batch_id, run_id, idx)
-                    .await
-                    .change_context(stepflow_plugin::PluginError::Execution)?;
-
-                run_inputs.push((run_id, input, idx));
-            }
-
-            // Spawn background task for batch execution
-            let executor_clone = executor.clone();
-            let flow_clone = params.flow.clone();
-            let flow_id_clone = params.flow_id.clone();
-
-            tokio::spawn(async move {
-                use stepflow_observability::fastrace::prelude::*;
-
-                // Create span for batch execution
-                // When parent_context is provided, create a child span within the parent's trace.
-                // Otherwise, create a new root span with a fresh trace_id.
-                //
-                // Design: Always use unique trace_id, store batch_id as span attribute
-                let batch_span_context = params.parent_context.unwrap_or_else(|| {
-                    // Generate fresh trace_id for new trace
-                    SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default())
-                });
-
-                // Create the batch span and wrap the execution logic in in_span()
-                // This ensures child tasks can capture the batch span's context
-                let batch_span = Span::root("batch_execution", batch_span_context)
-                    .with_property(|| ("batch_id", batch_id.to_string()))
-                    .with_property(|| ("batch.total_items", total_runs.to_string()))
-                    .with_property(|| ("batch.max_concurrency", max_concurrency.to_string()));
-
-                async move {
-                    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
-                    let mut tasks = vec![];
-
-                    for (run_id, input, _idx) in run_inputs {
-                        let permit = match semaphore.clone().acquire_owned().await {
-                            Ok(permit) => permit,
-                            Err(_) => {
-                                log::error!("Semaphore closed, aborting batch execution");
-                                break;
-                            }
-                        };
-                        let executor_ref = executor_clone.clone();
-                        let flow_ref = flow_clone.clone();
-                        let flow_id_ref = flow_id_clone.clone();
-
-                        // Capture the current span context - this will be the batch span's context
-                        let batch_ctx = SpanContext::current_local_parent();
-
-                        let task = tokio::spawn(async move {
-                            let _permit = permit; // Hold permit during execution
-
-                            // Pass batch span context so each flow execution becomes a child span
-                            let mut submit_params =
-                                stepflow_core::SubmitFlowParams::new(flow_ref, flow_id_ref, input);
-                            if let Some(ctx) = batch_ctx {
-                                submit_params = submit_params.with_parent_context(ctx);
-                            }
-                            match executor_ref.submit_flow(submit_params).await {
-                                Ok(submitted_run_id) => {
-                                    // Wait for the result
-                                    match executor_ref.flow_result(submitted_run_id).await {
-                                        Ok(flow_result) => {
-                                            // Update run status based on result
-                                            let state_store = executor_ref.state_store();
-                                            let status = match &flow_result {
-                                            stepflow_core::FlowResult::Success(_) => {
-                                                stepflow_core::status::ExecutionStatus::Completed
-                                            }
-                                            stepflow_core::FlowResult::Failed(_) => {
-                                                stepflow_core::status::ExecutionStatus::Failed
-                                            }
-                                        };
-                                            let result_ref = match &flow_result {
-                                                stepflow_core::FlowResult::Success(r) => {
-                                                    Some(r.clone())
-                                                }
-                                                _ => None,
-                                            };
-                                            let _ = state_store
-                                                .update_run_status(run_id, status, result_ref)
-                                                .await;
-                                        }
-                                        Err(e) => {
-                                            log::error!(
-                                                "Batch run {run_id} failed to get result: {e:?}"
-                                            );
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("Batch run {run_id} failed to submit: {e:?}");
-                                }
-                            }
-                        });
-
-                        tasks.push(task);
-                    }
-
-                    // Wait for all tasks to complete
-                    for task in tasks {
-                        let _ = task.await;
-                    }
-
-                    log::info!("Batch {batch_id} execution completed");
-                }
-                .in_span(batch_span)
-                .await
+            // Create span for this flow execution
+            let span_context = parent_context.unwrap_or_else(|| {
+                SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default())
             });
 
-            Ok(batch_id)
-        }
-        .boxed()
+            let span = Span::root("flow_execution", span_context)
+                .with_property(|| ("run_id", run_id.to_string()));
+
+            // Apply overrides if provided
+            let final_flow = if let Some(overrides) = &overrides {
+                match stepflow_core::workflow::apply_overrides(flow.clone(), overrides) {
+                    Ok(modified_flow) => modified_flow,
+                    Err(e) => {
+                        log::error!("Failed to apply overrides: {e}");
+                        let _ = tx.send(FlowResult::Failed(FlowError::new(
+                            400,
+                            "Failed to apply overrides",
+                        )));
+                        return;
+                    }
+                }
+            } else {
+                flow.clone()
+            };
+
+            let result = execute_workflow(
+                executor,
+                final_flow,
+                flow_id,
+                run_id,
+                input,
+                state_store,
+                None, // Variables not supported in item execution
+            )
+            .in_span(span)
+            .await;
+
+            let flow_result = match result {
+                Ok(flow_result) => flow_result,
+                Err(e) => {
+                    if let Some(error) = e.downcast_ref::<FlowError>().cloned() {
+                        FlowResult::Failed(error)
+                    } else {
+                        log::error!("Flow execution failed: {:?}", e);
+                        FlowResult::Failed(stepflow_core::FlowError::from_error_stack(e))
+                    }
+                }
+            };
+
+            // Send the result back
+            let _ = tx.send(flow_result);
+        });
+
+        Ok(run_id)
     }
 
-    /// Get batch status and optionally results, with optional waiting.
-    fn get_batch(
-        &self,
-        batch_id: Uuid,
-        wait: bool,
-        include_results: bool,
-    ) -> BoxFuture<
-        '_,
-        stepflow_plugin::Result<(
-            stepflow_state::BatchDetails,
-            Option<Vec<stepflow_state::BatchOutputInfo>>,
-        )>,
-    > {
-        async move {
-            let state_store = self.state_store();
+    /// Retrieves the result of a previously submitted workflow item.
+    ///
+    /// This method will wait for the workflow to complete if it's still running.
+    async fn get_flow_item_result(&self, run_id: Uuid) -> stepflow_plugin::Result<FlowResult> {
+        // Get the receiver for this execution
+        let receiver = {
+            let pending = self.pending.read().await;
+            pending.get(&run_id).cloned()
+        };
 
-            // If wait=true, poll until completion
-            if wait {
-                loop {
-                    // Get batch metadata to verify batch exists
-                    let _metadata = state_store
-                        .get_batch(batch_id)
-                        .await
-                        .change_context(stepflow_plugin::PluginError::Execution)?
-                        .ok_or_else(|| {
-                            error_stack::report!(stepflow_plugin::PluginError::Execution)
-                                .attach_printable(format!("Batch not found: {}", batch_id))
-                        })?;
-
-                    // Get batch statistics
-                    let statistics = state_store
-                        .get_batch_statistics(batch_id)
-                        .await
-                        .change_context(stepflow_plugin::PluginError::Execution)?;
-
-                    // Check if all runs complete
-                    if statistics.running_runs == 0 && statistics.paused_runs == 0 {
-                        break;
+        match receiver {
+            Some(rx) => {
+                match rx.await {
+                    Ok(result) => Ok(result),
+                    Err(_) => {
+                        // The sender was dropped, indicating the execution was cancelled or failed
+                        Ok(FlowResult::Failed(stepflow_core::FlowError::new(
+                            410,
+                            "Flow execution was cancelled",
+                        )))
                     }
-
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 }
             }
-
-            // Get current batch details
-            let metadata = state_store
-                .get_batch(batch_id)
-                .await
-                .change_context(stepflow_plugin::PluginError::Execution)?
-                .ok_or_else(|| {
-                    error_stack::report!(stepflow_plugin::PluginError::Execution)
-                        .attach_printable(format!("Batch not found: {}", batch_id))
-                })?;
-
-            let statistics = state_store
-                .get_batch_statistics(batch_id)
-                .await
-                .change_context(stepflow_plugin::PluginError::Execution)?;
-
-            // Calculate completion time if all runs are complete
-            let completed_at = if metadata.status == stepflow_state::BatchStatus::Cancelled
-                || (statistics.running_runs == 0 && statistics.paused_runs == 0)
-            {
-                Some(chrono::Utc::now())
-            } else {
-                None
-            };
-
-            let details = stepflow_state::BatchDetails {
-                metadata,
-                statistics,
-                completed_at,
-            };
-
-            // Get outputs if requested
-            let outputs = if include_results {
-                // Get runs for this batch
-                let filters = stepflow_state::RunFilters::default();
-                let batch_runs = state_store
-                    .list_batch_runs(batch_id, &filters)
-                    .await
-                    .change_context(stepflow_plugin::PluginError::Execution)?;
-
-                // Fetch run details for each to get results
-                let mut output_infos = Vec::new();
-                for (run_summary, batch_input_index) in batch_runs {
-                    let run_details = state_store
-                        .get_run(run_summary.run_id)
-                        .await
-                        .change_context(stepflow_plugin::PluginError::Execution)?;
-
-                    let result = run_details.and_then(|details| details.result);
-
-                    output_infos.push(stepflow_state::BatchOutputInfo {
-                        batch_input_index,
-                        status: run_summary.status,
-                        result,
-                    });
-                }
-
-                // Sort by batch_input_index to maintain input order
-                output_infos.sort_by_key(|o| o.batch_input_index);
-
-                Some(output_infos)
-            } else {
-                None
-            };
-
-            Ok((details, outputs))
+            None => {
+                // Execution ID not found
+                Ok(FlowResult::Failed(stepflow_core::FlowError::new(
+                    404,
+                    format!("No run found for ID: {run_id}"),
+                )))
+            }
         }
-        .boxed()
     }
 }
 

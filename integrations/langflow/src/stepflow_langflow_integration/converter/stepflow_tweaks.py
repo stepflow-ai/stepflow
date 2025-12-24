@@ -308,7 +308,7 @@ def convert_tweaks_to_overrides(
         # the current tweaks modify step.input["input"][field_name]
         override_value = {"input": {"input": field_tweaks}}
 
-        # Create the override entry with merge patch type
+        # Create the override entry with merge patch type (snake_case for API)
         overrides[step_id] = {"$type": "merge_patch", "value": override_value}
 
     return overrides

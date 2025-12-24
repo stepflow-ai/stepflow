@@ -4,15 +4,14 @@ sidebar_position: 5
 
 # Bidirectional Communication
 
-The Stepflow Protocol supports bidirectional communication, enabling component servers to make requests back to the runtime during component execution. This capability enables powerful patterns like blob storage, flow evaluation, and runtime introspection while maintaining the JSON-RPC request-response model.
+The Stepflow Protocol supports bidirectional communication, enabling component servers to make requests back to the runtime during component execution. This capability enables powerful patterns like blob storage, run submission, and runtime introspection while maintaining the JSON-RPC request-response model.
 
 ## Overview
 
 While the primary communication flow is Runtime → Component Server, the protocol enables Component Server → Runtime requests for:
 
 - **Blob Storage**: Store and retrieve persistent data using content-addressable storage
-- **Flow Evaluation**: Resolve workflow expressions in runtime context
-- **Runtime Queries**: Access workflow metadata and execution state (future)
+- **Run Submission**: Submit and monitor sub-workflow executions
 - **Resource Access**: Request additional resources or capabilities (future)
 
 ## Communication Model
@@ -42,8 +41,8 @@ sequenceDiagram
     S->>+R: blobs/put request
     R-->>-S: blob_id response
 
-    S->>+R: flows/evaluate request
-    R-->>-S: evaluation result
+    S->>+R: runs/submit request
+    R-->>-S: run status response
 
     S-->>-R: component_execute response
 ```
@@ -58,7 +57,8 @@ Component servers can call these methods during execution:
 
 See [Blob Storage Methods](./methods/blobs.md) for detailed specifications.
 
-### Flow Evaluation Methods
-- **`flows/evaluate`**: Evaluate workflow expressions in runtime context
+### Run Methods
+- **`runs/submit`**: Submit a workflow run for execution
+- **`runs/get`**: Retrieve run status and results
 
-See [Flow Methods](./methods/flows.md) for detailed specifications.
+See [Run Methods](./methods/runs.md) for detailed specifications.

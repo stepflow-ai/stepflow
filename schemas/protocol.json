@@ -46,10 +46,8 @@
         "components/infer_schema",
         "blobs/put",
         "blobs/get",
-        "flows/evaluate",
-        "flows/get_metadata",
-        "flows/submit_batch",
-        "flows/get_batch"
+        "runs/submit",
+        "runs/get"
       ]
     },
     "Value": {
@@ -599,21 +597,36 @@
         "json_patch"
       ]
     },
-    "EvaluateFlowParams": {
+    "SubmitRunProtocolParams": {
       "type": "object",
-      "description": "Sent from the component server to the Stepflow to evaluate a flow with the provided input.",
+      "description": "Parameters for submitting a run via the protocol.",
       "required": [
-        "flow_id",
-        "input"
+        "flowId",
+        "inputs"
       ],
       "properties": {
-        "flow_id": {
+        "flowId": {
           "$ref": "#/$defs/BlobId",
-          "description": "The ID of the flow to evaluate (blob ID of the flow)."
+          "description": "The ID of the flow to execute (blob ID)."
         },
-        "input": {
-          "$ref": "#/$defs/Value",
-          "description": "The input to provide to the flow."
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Value"
+          },
+          "description": "Input values for each item in the run."
+        },
+        "wait": {
+          "type": "boolean",
+          "description": "If true, wait for completion before returning."
+        },
+        "maxConcurrency": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Maximum number of concurrent executions.",
+          "minimum": 0
         },
         "overrides": {
           "oneOf": [
@@ -622,7 +635,7 @@
             },
             {
               "$ref": "#/$defs/WorkflowOverrides",
-              "description": "Optional workflow overrides to apply before execution."
+              "description": "Optional workflow overrides to apply."
             }
           ]
         },
@@ -633,11 +646,134 @@
             },
             {
               "$ref": "#/$defs/ObservabilityContext",
-              "description": "Observability context for tracing nested flow execution."
+              "description": "Observability context for tracing."
             }
           ]
         }
       }
+    },
+    "ResultOrder": {
+      "type": "string",
+      "description": "Order in which to return results.",
+      "enum": [
+        "by_index",
+        "by_completion"
+      ]
+    },
+    "GetRunProtocolParams": {
+      "type": "object",
+      "description": "Parameters for getting a run via the protocol.",
+      "required": [
+        "runId"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "description": "The run ID to query."
+        },
+        "wait": {
+          "type": "boolean",
+          "description": "If true, wait for run completion before returning."
+        },
+        "includeResults": {
+          "type": "boolean",
+          "description": "If true, include item results in the response."
+        },
+        "resultOrder": {
+          "$ref": "#/$defs/ResultOrder",
+          "description": "Order of results (byIndex or byCompletion)."
+        },
+        "observability": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObservabilityContext",
+              "description": "Observability context for tracing."
+            }
+          ]
+        }
+      }
+    },
+    "ItemStatistics": {
+      "type": "object",
+      "description": "Statistics about items in a run.",
+      "required": [
+        "total",
+        "completed",
+        "running",
+        "failed",
+        "cancelled"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "description": "Total number of items in this run.",
+          "minimum": 0
+        },
+        "completed": {
+          "type": "integer",
+          "description": "Number of completed items.",
+          "minimum": 0
+        },
+        "running": {
+          "type": "integer",
+          "description": "Number of currently running items.",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "description": "Number of failed items.",
+          "minimum": 0
+        },
+        "cancelled": {
+          "type": "integer",
+          "description": "Number of cancelled items.",
+          "minimum": 0
+        }
+      }
+    },
+    "ItemResult": {
+      "type": "object",
+      "description": "Result for an individual item in a multi-item run.",
+      "required": [
+        "itemIndex",
+        "status"
+      ],
+      "properties": {
+        "itemIndex": {
+          "type": "integer",
+          "description": "Index of this item in the input array (0-based).",
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/ExecutionStatus",
+          "description": "Execution status of this item."
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/FlowResult",
+              "description": "Result of this item, if completed."
+            }
+          ]
+        }
+      }
+    },
+    "ExecutionStatus": {
+      "type": "string",
+      "description": "Status of a workflow execution",
+      "enum": [
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "paused"
+      ]
     },
     "FlowResult": {
       "oneOf": [
@@ -725,304 +861,58 @@
         }
       }
     },
-    "EvaluateFlowResult": {
+    "RunStatusProtocol": {
       "type": "object",
-      "description": "Sent from the Stepflow back to the component server with the result of the flow evaluation.",
+      "description": "Run status returned by the protocol (serializable version of RunStatus).",
       "required": [
-        "result"
-      ],
-      "properties": {
-        "result": {
-          "$ref": "#/$defs/FlowResult",
-          "description": "The result of the flow evaluation."
-        }
-      }
-    },
-    "GetFlowMetadataParams": {
-      "type": "object",
-      "description": "Sent from the component server to Stepflow to get flow and step metadata.\n\nThis request allows components to access workflow-level metadata and step-specific metadata\nduring execution. The metadata can contain arbitrary JSON values defined in the workflow\nYAML/JSON.",
-      "required": [
-        "flow_id"
-      ],
-      "properties": {
-        "flow_id": {
-          "$ref": "#/$defs/BlobId",
-          "description": "The flow to retrieve metadata for."
-        },
-        "step_id": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "The ID of the step to get metadata for (optional).\n\nIf not provided, only flow-level metadata is returned.\nIf provided, both flow metadata and the specified step's metadata are returned.\nIf the step_id doesn't exist, step_metadata will be None in the response."
-        },
-        "observability": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/ObservabilityContext",
-              "description": "Observability context for tracing metadata requests."
-            }
-          ]
-        }
-      }
-    },
-    "GetFlowMetadataResult": {
-      "type": "object",
-      "description": "Sent from Stepflow back to the component server with the requested metadata.\n\nContains the flow metadata and step metadata if a specific step was requested.\nThe metadata values are arbitrary JSON objects that can be accessed by components during\nworkflow execution.",
-      "required": [
-        "flow_metadata"
-      ],
-      "properties": {
-        "flow_metadata": {
-          "type": "object",
-          "description": "Metadata for the current flow.\n\nThis always contains the flow-level metadata defined in the workflow file.\nCommon fields include name, description, version, but can contain any\narbitrary JSON structure defined by the workflow author.",
-          "additionalProperties": {},
-          "propertyNames": {
-            "type": "string"
-          }
-        },
-        "step_metadata": {
-          "type": [
-            "object",
-            "null"
-          ],
-          "description": "Metadata for the specified step (only present if step_id was provided and found).\n\nThis contains step-specific metadata defined in the workflow file.\nWill be None if no step_id was provided in the request",
-          "additionalProperties": {},
-          "propertyNames": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "SubmitBatchParams": {
-      "type": "object",
-      "description": "Sent from the component server to Stepflow to submit a batch execution.",
-      "required": [
-        "flow_id",
-        "inputs"
-      ],
-      "properties": {
-        "flow_id": {
-          "$ref": "#/$defs/BlobId",
-          "description": "The ID of the flow to evaluate (blob ID of the flow)."
-        },
-        "inputs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Value"
-          },
-          "description": "The inputs to provide to the flow for each run."
-        },
-        "overrides": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/WorkflowOverrides",
-              "description": "Optional workflow overrides to apply to all runs before execution."
-            }
-          ]
-        },
-        "max_concurrency": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "description": "Maximum number of concurrent executions (defaults to number of inputs if not specified).",
-          "minimum": 0
-        },
-        "observability": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/ObservabilityContext",
-              "description": "Observability context for tracing batch submission."
-            }
-          ]
-        }
-      }
-    },
-    "SubmitBatchResult": {
-      "type": "object",
-      "description": "Sent from Stepflow back to the component server with the batch submission result.",
-      "required": [
-        "batch_id",
-        "total_runs"
-      ],
-      "properties": {
-        "batch_id": {
-          "type": "string",
-          "description": "The batch ID (UUID)."
-        },
-        "total_runs": {
-          "type": "integer",
-          "description": "Total number of runs in the batch.",
-          "minimum": 0
-        }
-      }
-    },
-    "GetBatchParams": {
-      "type": "object",
-      "description": "Sent from the component server to Stepflow to get batch status and optionally results.",
-      "required": [
-        "batch_id"
-      ],
-      "properties": {
-        "batch_id": {
-          "type": "string",
-          "description": "The batch ID to query."
-        },
-        "wait": {
-          "type": "boolean",
-          "description": "If true, wait for batch completion before returning."
-        },
-        "include_results": {
-          "type": "boolean",
-          "description": "If true, include full outputs in response."
-        },
-        "observability": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/ObservabilityContext",
-              "description": "Observability context for tracing batch queries."
-            }
-          ]
-        }
-      }
-    },
-    "BatchDetails": {
-      "type": "object",
-      "description": "Batch details including metadata and statistics.",
-      "required": [
-        "batch_id",
-        "flow_id",
-        "total_runs",
+        "runId",
+        "flowId",
         "status",
-        "created_at",
-        "completed_runs",
-        "running_runs",
-        "failed_runs",
-        "cancelled_runs",
-        "paused_runs"
+        "items",
+        "createdAt"
       ],
       "properties": {
-        "batch_id": {
-          "type": "string",
-          "description": "The batch ID."
+        "runId": {
+          "type": "string"
         },
-        "flow_id": {
-          "$ref": "#/$defs/BlobId",
-          "description": "The flow ID."
+        "flowId": {
+          "$ref": "#/$defs/BlobId"
         },
-        "flow_name": {
+        "flowName": {
           "type": [
             "string",
             "null"
-          ],
-          "description": "The flow name (optional)."
-        },
-        "total_runs": {
-          "type": "integer",
-          "description": "Total number of runs in the batch.",
-          "minimum": 0
-        },
-        "status": {
-          "type": "string",
-          "description": "Batch status (running | cancelled)."
-        },
-        "created_at": {
-          "type": "string",
-          "description": "Timestamp when the batch was created."
-        },
-        "completed_runs": {
-          "type": "integer",
-          "description": "Statistics for the batch.",
-          "minimum": 0
-        },
-        "running_runs": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "failed_runs": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "cancelled_runs": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "paused_runs": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "completed_at": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Completion timestamp (if all runs complete)."
-        }
-      }
-    },
-    "BatchOutputInfo": {
-      "type": "object",
-      "description": "Output information for a single run in a batch.",
-      "required": [
-        "batch_input_index",
-        "status"
-      ],
-      "properties": {
-        "batch_input_index": {
-          "type": "integer",
-          "description": "Position in the batch input array.",
-          "minimum": 0
-        },
-        "status": {
-          "type": "string",
-          "description": "The execution status."
-        },
-        "result": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/FlowResult",
-              "description": "The flow result (if completed)."
-            }
           ]
-        }
-      }
-    },
-    "GetBatchResult": {
-      "type": "object",
-      "description": "Sent from Stepflow back to the component server with batch details and optional outputs.",
-      "required": [
-        "details"
-      ],
-      "properties": {
-        "details": {
-          "$ref": "#/$defs/BatchDetails",
-          "description": "Always included: batch details with metadata and statistics."
         },
-        "outputs": {
+        "flowLabel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "items": {
+          "$ref": "#/$defs/ItemStatistics"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "completedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
           "type": [
             "array",
             "null"
           ],
           "items": {
-            "$ref": "#/$defs/BatchOutputInfo"
-          },
-          "description": "Only included if include_results=true."
+            "$ref": "#/$defs/ItemResult"
+          }
         }
       }
     },

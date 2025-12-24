@@ -66,7 +66,7 @@ pub(crate) async fn execute_workflow(
             workflow_name: flow.name().map(|s| s.to_string()),
             workflow_label: None, // No label for direct execution
             debug_mode: false,    // Not debug mode
-            input: input.clone(),
+            inputs: vec![input.clone()],
             overrides: WorkflowOverrides::default(), // No overrides for direct execution
             variables: variables.clone().unwrap_or_default(), // Variables for execution
         })

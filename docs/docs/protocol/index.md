@@ -98,10 +98,11 @@ See [Component Methods](./methods/components.md) for details.
 
 See [Blob Methods](./methods/blobs.md) for details.
 
-### Flow Methods
-- `flows/evaluate` - Evaluate flow expressions in runtime context
+### Run Methods
+- `runs/submit` - Submit a workflow run for execution
+- `runs/get` - Retrieve run status and results
 
-See [Flow Methods](./methods/flows.md) for details.
+See [Run Methods](./methods/runs.md) for details.
 
 ## Communication Patterns
 

@@ -9,9 +9,7 @@ Stepflow provides several commands for executing workflows in different ways. Th
 ## Commands
 
 - **[`run`](./run.md)** - Run a workflow directly
-- **[`run-batch`](./run-batch.md)** - Run a batch of workflows directly
 - **[`submit`](./submit.md)** - Submit a workflow to a Stepflow server
-- **[`submit-batch`](./submit-batch.md)** - Submit a batch workflow to a Stepflow service for execution
 - **[`test`](./test.md)** - Run tests defined in workflow files or directories
 - **[`list-components`](./list-components.md)** - List all available components from a stepflow config
 - **[`repl`](./repl.md)** - Start an interactive REPL for workflow development and debugging

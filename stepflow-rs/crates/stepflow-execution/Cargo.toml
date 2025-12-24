@@ -30,7 +30,6 @@ stepflow-state.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
-chrono.workspace = true
 
 [dev-dependencies]
 stepflow-mock.workspace = true

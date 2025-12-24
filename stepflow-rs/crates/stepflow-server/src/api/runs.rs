@@ -11,7 +11,7 @@
 // the License.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::Json,
 };
 use indexmap::IndexMap;
@@ -30,14 +30,21 @@ use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
 
-/// Request to create/execute a flow
+/// Request to create/execute a flow.
+///
+/// The `input` field is always an array of input values:
+/// - Single-item array `[value]`: Executes one run with `value` as input
+/// - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)
+///
+/// This design avoids ambiguity: to run a workflow with an array as input,
+/// wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunRequest {
     /// The flow hash to execute
     pub flow_id: BlobId,
-    /// Input data for the flow
-    pub input: ValueRef,
+    /// Input data for the flow - always an array (one element per run)
+    pub input: Vec<ValueRef>,
     /// Optional workflow overrides to apply before execution
     #[serde(default, skip_serializing_if = "WorkflowOverrides::is_empty")]
     pub overrides: WorkflowOverrides,
@@ -47,15 +54,20 @@ pub struct CreateRunRequest {
     /// Whether to run in debug mode (pauses execution for step-by-step control)
     #[serde(default)]
     pub debug: bool,
+    /// Maximum concurrency for batch execution (only used when input is an array)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_concurrency: Option<usize>,
 }
 
 /// Response for create run operations
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunResponse {
-    /// The run ID
+    /// The run ID (for single runs) or batch ID (for batch runs)
     pub run_id: Uuid,
-    /// The result of the flow execution (if completed)
+    /// Number of items in this run (1 for single runs, > 1 for batch runs)
+    pub item_count: u32,
+    /// The result of the flow execution (if completed, for single runs only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<FlowResult>,
     /// The run status
@@ -70,6 +82,59 @@ pub struct CreateRunResponse {
 pub struct ListRunsResponse {
     /// List of run summaries
     pub runs: Vec<RunSummary>,
+}
+
+/// Query parameters for listing runs
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRunsQuery {
+    /// Filter by execution status
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<stepflow_core::status::ExecutionStatus>,
+    /// Filter by flow name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_name: Option<String>,
+    /// Filter by flow label
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_label: Option<String>,
+    /// Filter to runs under this root (includes the root itself)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root_run_id: Option<Uuid>,
+    /// Filter to direct children of this parent run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_run_id: Option<Uuid>,
+    /// Maximum depth for hierarchy queries (0 = root only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_depth: Option<u32>,
+    /// Maximum number of results to return
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    /// Number of results to skip
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+}
+
+/// A single item result in a multi-item run
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemResult {
+    /// Item index (0-based)
+    pub item_index: usize,
+    /// The status of this item
+    pub status: ExecutionStatus,
+    /// The result of the flow execution for this item (if completed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<FlowResult>,
+}
+
+/// Response for listing run items
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListItemsResponse {
+    /// Total number of items in this run
+    pub item_count: usize,
+    /// Individual item results ordered by item index
+    pub items: Vec<ItemResult>,
 }
 
 /// Response for step run details
@@ -109,6 +174,10 @@ pub struct RunFlowResponse {
 }
 
 /// Create and execute a flow by hash
+///
+/// Supports both single and batch execution:
+/// - Single input: Executes one run and returns the result directly
+/// - Multiple inputs: Executes batch and waits for all results
 #[utoipa::path(
     post,
     path = "/runs",
@@ -125,7 +194,6 @@ pub async fn create_run(
     State(executor): State<Arc<StepflowExecutor>>,
     Json(req): Json<CreateRunRequest>,
 ) -> Result<Json<CreateRunResponse>, ErrorResponse> {
-    let run_id = Uuid::now_v7();
     let state_store = executor.state_store();
 
     // Get the flow from the state store
@@ -134,89 +202,77 @@ pub async fn create_run(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
 
-    // Create execution record
-    let mut params =
-        stepflow_state::CreateRunParams::new(run_id, req.flow_id.clone(), req.input.clone());
-    params.workflow_name = flow.name().map(|s| s.to_string());
-    params.debug_mode = req.debug;
-    params.overrides = req.overrides.clone();
-    params.variables = req.variables.clone();
-    state_store.create_run(params).await?;
-
+    let item_count = req.input.len() as u32;
     let debug_mode = req.debug;
-    let input = req.input;
-    let flow_id = req.flow_id;
 
+    // Debug mode: create a paused run for single-item debugging
+    // Debug mode only supports single-item runs
     if debug_mode {
-        // In debug mode, pause execution by default
-        // The execution will be controlled via debug endpoints
+        if item_count != 1 {
+            return Err(error_stack::report!(ServerError::InvalidRequest(
+                "Debug mode only supports single-item runs".to_string()
+            ))
+            .into());
+        }
+
+        let run_id = Uuid::now_v7();
+        let input = req.input.into_iter().next().unwrap();
+
+        // Create execution record in paused state
+        let mut params =
+            stepflow_state::CreateRunParams::new(run_id, req.flow_id.clone(), input.clone());
+        params.workflow_name = flow.name().map(|s| s.to_string());
+        params.debug_mode = true;
+        params.overrides = req.overrides.clone();
+        params.variables = req.variables.clone();
+        state_store.create_run(params).await?;
+
+        // Pause execution for step-by-step debugging
         state_store
-            .update_run_status(run_id, ExecutionStatus::Paused, None)
+            .update_run_status(run_id, ExecutionStatus::Paused)
             .await?;
 
         return Ok(Json(CreateRunResponse {
             run_id,
+            item_count: 1,
             result: None,
             status: ExecutionStatus::Paused,
-            debug: debug_mode,
+            debug: true,
         }));
     }
 
-    // Execute the flow using the Context trait methods
+    // Normal execution mode: unified path for single and batch runs
     use stepflow_plugin::Context as _;
 
-    // Submit the flow for execution
-    let overrides = if req.overrides.is_empty() {
-        None
+    let mut params = stepflow_core::SubmitRunParams::with_inputs(flow, req.flow_id, req.input);
+    params = params.with_wait(true);
+    if let Some(max_concurrency) = req.max_concurrency {
+        params = params.with_max_concurrency(max_concurrency);
+    }
+    if !req.overrides.is_empty() {
+        params = params.with_overrides(req.overrides);
+    }
+
+    let run_status = executor.submit_run(params).await?;
+
+    // For single-item runs, extract the result directly into the response
+    let result = if item_count == 1 {
+        run_status
+            .results
+            .as_ref()
+            .and_then(|r| r.first())
+            .and_then(|item| item.result.clone())
     } else {
-        Some(req.overrides)
+        None // Batch results should be fetched via items endpoint
     };
-    let variables = if req.variables.is_empty() {
-        None
-    } else {
-        Some(req.variables)
-    };
-    let mut params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input);
-    if let Some(overrides) = overrides {
-        params = params.with_overrides(overrides);
-    }
-    if let Some(variables) = variables {
-        params = params.with_variables(variables);
-    }
-    let submitted_run_id = executor.submit_flow(params).await?;
 
-    // Wait for the result (synchronous execution for the HTTP endpoint)
-    let flow_result = executor.flow_result(submitted_run_id).await?;
-
-    // Check if the workflow execution was successful
-    match &flow_result {
-        FlowResult::Success(result) => {
-            // Update execution status to completed
-            state_store
-                .update_run_status(run_id, ExecutionStatus::Completed, Some(result.clone()))
-                .await?;
-
-            Ok(Json(CreateRunResponse {
-                run_id,
-                result: Some(flow_result),
-                status: ExecutionStatus::Completed,
-                debug: debug_mode,
-            }))
-        }
-        FlowResult::Failed(_) => {
-            // Update execution status to failed
-            state_store
-                .update_run_status(run_id, ExecutionStatus::Failed, None)
-                .await?;
-
-            Ok(Json(CreateRunResponse {
-                run_id,
-                result: Some(flow_result),
-                status: ExecutionStatus::Failed,
-                debug: debug_mode,
-            }))
-        }
-    }
+    Ok(Json(CreateRunResponse {
+        run_id: run_status.run_id,
+        item_count,
+        result,
+        status: run_status.status,
+        debug: false,
+    }))
 }
 
 /// Get execution details by ID
@@ -247,6 +303,54 @@ pub async fn get_run(
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
     Ok(Json(details))
+}
+
+/// Get all item results for a run
+///
+/// Returns results for all items in the run, ordered by item index.
+/// For single-item runs (item_count=1), returns a single item.
+#[utoipa::path(
+    get,
+    path = "/runs/{run_id}/items",
+    params(
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Run items retrieved successfully", body = ListItemsResponse),
+        (status = 400, description = "Invalid run ID format"),
+        (status = 404, description = "Run not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = crate::api::RUN_TAG,
+)]
+pub async fn get_run_items(
+    State(executor): State<Arc<StepflowExecutor>>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<ListItemsResponse>, ErrorResponse> {
+    let state_store = executor.state_store();
+
+    // Get run details to get item_count
+    let run_details = state_store
+        .get_run(run_id)
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
+
+    let item_count = run_details.summary.items.total;
+
+    // Get item results from state store (ordered by item_index)
+    let state_items = state_store.get_item_results(run_id).await?;
+
+    // Convert to API response type
+    let items: Vec<ItemResult> = state_items
+        .into_iter()
+        .map(|item| ItemResult {
+            item_index: item.item_index,
+            status: item.status,
+            result: item.result,
+        })
+        .collect();
+
+    Ok(Json(ListItemsResponse { item_count, items }))
 }
 
 /// Get the workflow definition for an execution
@@ -293,6 +397,9 @@ pub async fn get_run_flow(
 #[utoipa::path(
     get,
     path = "/runs",
+    params(
+        ListRunsQuery
+    ),
     responses(
         (status = 200, description = "Runs listed successfully", body = ListRunsResponse),
         (status = 500, description = "Internal server error")
@@ -301,11 +408,20 @@ pub async fn get_run_flow(
 )]
 pub async fn list_runs(
     State(executor): State<Arc<StepflowExecutor>>,
+    Query(query): Query<ListRunsQuery>,
 ) -> Result<Json<ListRunsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
-    // TODO: Add query parameters for filtering (status, workflow_name, workflow_label, limit, offset)
-    let filters = stepflow_state::RunFilters::default();
+    let filters = stepflow_state::RunFilters {
+        status: query.status,
+        flow_name: query.flow_name,
+        flow_label: query.flow_label,
+        root_run_id: query.root_run_id,
+        parent_run_id: query.parent_run_id,
+        max_depth: query.max_depth,
+        limit: query.limit,
+        offset: query.offset,
+    };
 
     let executions = state_store.list_runs(&filters).await?;
 
@@ -435,7 +551,7 @@ pub async fn cancel_run(
             // TODO: Implement actual execution cancellation logic
             // For now, just update the status in the database
             state_store
-                .update_run_status(run_id, ExecutionStatus::Cancelled, None)
+                .update_run_status(run_id, ExecutionStatus::Cancelled)
                 .await?;
         }
     }

@@ -25,6 +25,6 @@ pub use flow_result::*;
 
 // Re-export commonly used types
 pub use blob::{BlobData, BlobId, BlobType};
-pub use context_params::{SubmitBatchParams, SubmitFlowParams};
+pub use context_params::{GetRunOptions, ResultOrder, SubmitRunParams};
 pub use error_stack::{ErrorStack, ErrorStackEntry};
 pub use values::ValueExpr;

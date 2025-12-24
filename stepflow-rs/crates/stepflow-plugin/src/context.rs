@@ -14,25 +14,43 @@ use futures::future::{BoxFuture, FutureExt as _};
 use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::{
-    BlobId, FlowResult,
+    BlobId, FlowResult, GetRunOptions, SubmitRunParams,
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_state::StateStore;
+use stepflow_state::{RunStatus, StateStore};
 use uuid::Uuid;
 
 /// Trait for interacting with the workflow runtime.
 pub trait Context: Send + Sync {
-    /// Submits a nested workflow for execution and returns its execution ID.
-    ///
-    /// Implementation should use Arc::clone on self if it needs to pass ownership
-    /// to spawned tasks or other async contexts.
-    fn submit_flow(
-        &self,
-        params: stepflow_core::SubmitFlowParams,
-    ) -> BoxFuture<'_, crate::Result<Uuid>>;
+    // ========================================================================
+    // New unified API
+    // ========================================================================
 
-    /// Retrieves the result of a previously submitted workflow.
-    fn flow_result(&self, run_id: Uuid) -> BoxFuture<'_, crate::Result<FlowResult>>;
+    /// Submit a run with 1 or N items.
+    ///
+    /// If `params.wait` is false, returns immediately with status=Running.
+    /// If `params.wait` is true, blocks until completion and returns final status.
+    fn submit_run(&self, params: SubmitRunParams) -> BoxFuture<'_, crate::Result<RunStatus>>;
+
+    /// Get run status and optionally results.
+    ///
+    /// If `options.wait` is true, blocks until all items complete.
+    /// If `options.include_results` is true, includes item results in the response.
+    fn get_run(
+        &self,
+        run_id: Uuid,
+        options: GetRunOptions,
+    ) -> BoxFuture<'_, crate::Result<RunStatus>>;
+
+    /// Get the state store for this executor.
+    fn state_store(&self) -> &Arc<dyn StateStore>;
+
+    /// Working directory of the Stepflow Config.
+    fn working_directory(&self) -> &Path;
+
+    // ========================================================================
+    // Convenience methods (using unified API)
+    // ========================================================================
 
     /// Executes a nested workflow and waits for its completion.
     fn execute_flow(
@@ -43,10 +61,27 @@ pub trait Context: Send + Sync {
         overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<FlowResult>> {
         async move {
-            let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input)
-                .with_overrides(overrides.unwrap_or_default());
-            let run_id = self.submit_flow(params).await?;
-            self.flow_result(run_id).await
+            let mut params = SubmitRunParams::new(flow, flow_id, input).with_wait(true);
+            if let Some(overrides) = overrides {
+                params = params.with_overrides(overrides);
+            }
+            let run_status = self.submit_run(params).await?;
+
+            // Extract the single result
+            let results = run_status.results.ok_or_else(|| {
+                error_stack::report!(crate::PluginError::Execution)
+                    .attach_printable("Expected results in response when wait=true")
+            })?;
+            let item_result = results.into_iter().next().ok_or_else(|| {
+                error_stack::report!(crate::PluginError::Execution)
+                    .attach_printable("Expected at least one result")
+            })?;
+            item_result.result.ok_or_else(|| {
+                error_stack::report!(crate::PluginError::Execution).attach_printable(format!(
+                    "Item has no result (status: {:?})",
+                    item_result.status
+                ))
+            })
         }
         .boxed()
     }
@@ -57,14 +92,6 @@ pub trait Context: Send + Sync {
     /// 1. Retrieving a flow blob by ID from the state store
     /// 2. Deserializing the flow from blob data
     /// 3. Executing the flow with given input and optional overrides
-    ///
-    /// # Arguments
-    /// * `flow_id` - The blob ID of the flow to execute
-    /// * `input` - The input data for the flow
-    /// * `overrides` - Optional workflow overrides to apply during execution
-    ///
-    /// # Returns
-    /// The result of the flow execution
     fn execute_flow_by_id(
         &self,
         flow_id: &BlobId,
@@ -88,55 +115,13 @@ pub trait Context: Send + Sync {
                 .ok_or_else(|| error_stack::report!(crate::PluginError::Execution))?
                 .clone();
 
-            // Submit the flow with overrides
-            let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input)
-                .with_overrides(overrides.unwrap_or_default());
-            let run_id = self.submit_flow(params).await?;
-            self.flow_result(run_id).await
+            // Execute the flow
+            self.execute_flow(flow, flow_id, input, overrides).await
         }
         .boxed()
     }
 
-    /// Get the state store for this executor.
-    fn state_store(&self) -> &Arc<dyn StateStore>;
-
-    /// Working directory of the Stepflow Config.
-    fn working_directory(&self) -> &Path;
-
-    /// Submit a batch execution and return the batch ID immediately.
-    ///
-    /// This method creates a batch execution with multiple inputs and returns
-    /// a batch ID that can be used to query status and results.
-    fn submit_batch(
-        &self,
-        params: stepflow_core::SubmitBatchParams,
-    ) -> BoxFuture<'_, crate::Result<uuid::Uuid>>;
-
-    /// Get batch status and optionally results, with optional waiting.
-    ///
-    /// # Arguments
-    /// * `batch_id` - The batch ID to query
-    /// * `wait` - If true, wait for batch completion before returning
-    /// * `include_results` - If true, include full outputs in response
-    ///
-    /// # Returns
-    /// Tuple of (batch details, optional outputs)
-    fn get_batch(
-        &self,
-        batch_id: uuid::Uuid,
-        wait: bool,
-        include_results: bool,
-    ) -> BoxFuture<
-        '_,
-        crate::Result<(
-            stepflow_state::BatchDetails,
-            Option<Vec<stepflow_state::BatchOutputInfo>>,
-        )>,
-    >;
-
     /// Convenience method: submit batch, wait for completion, and return results.
-    ///
-    /// This is equivalent to calling submit_batch followed by get_batch with wait=true and include_results=true.
     fn execute_batch(
         &self,
         flow: Arc<Flow>,
@@ -146,39 +131,35 @@ pub trait Context: Send + Sync {
         overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<Vec<FlowResult>>> {
         async move {
-            let params = stepflow_core::SubmitBatchParams::new(flow, flow_id, inputs);
-            let params = if let Some(max_concurrency) = max_concurrency {
-                params.with_max_concurrency(max_concurrency)
-            } else {
-                params
-            };
-            let params = if let Some(overrides) = overrides {
-                params.with_overrides(overrides)
-            } else {
-                params
-            };
-            let batch_id = self.submit_batch(params).await?;
-            let (_details, outputs) = self.get_batch(batch_id, true, true).await?;
-            let outputs = outputs.expect("include_results=true should return outputs");
+            let mut params = SubmitRunParams::with_inputs(flow, flow_id, inputs).with_wait(true);
+            if let Some(max_concurrency) = max_concurrency {
+                params = params.with_max_concurrency(max_concurrency);
+            }
+            if let Some(overrides) = overrides {
+                params = params.with_overrides(overrides);
+            }
+            let run_status = self.submit_run(params).await?;
 
-            // Extract FlowResult from each BatchOutputInfo
-            let results: Vec<FlowResult> = outputs
+            // Extract FlowResult from each result
+            let results = run_status.results.ok_or_else(|| {
+                error_stack::report!(crate::PluginError::Execution)
+                    .attach_printable("Expected results in response when wait=true")
+            })?;
+
+            results
                 .into_iter()
-                .map(|output_info| {
-                    output_info.result.unwrap_or_else(|| {
-                        // If no result, create a failed result based on status
-                        FlowResult::Failed(stepflow_core::FlowError::new(
-                            500,
+                .enumerate()
+                .map(|(idx, item_result)| {
+                    item_result.result.ok_or_else(|| {
+                        error_stack::report!(crate::PluginError::Execution).attach_printable(
                             format!(
-                                "Run at index {} has no result (status: {:?})",
-                                output_info.batch_input_index, output_info.status
+                                "Item at index {} has no result (status: {:?})",
+                                idx, item_result.status
                             ),
-                        ))
+                        )
                     })
                 })
-                .collect();
-
-            Ok(results)
+                .collect()
         }
         .boxed()
     }
@@ -316,57 +297,23 @@ impl ExecutionContext {
 }
 
 impl Context for ExecutionContext {
+    fn submit_run(&self, params: SubmitRunParams) -> BoxFuture<'_, crate::Result<RunStatus>> {
+        self.context.submit_run(params)
+    }
+
+    fn get_run(
+        &self,
+        run_id: Uuid,
+        options: GetRunOptions,
+    ) -> BoxFuture<'_, crate::Result<RunStatus>> {
+        self.context.get_run(run_id, options)
+    }
+
     fn state_store(&self) -> &Arc<dyn StateStore> {
         self.context.state_store()
     }
 
-    /// Submit a nested workflow for execution.
-    fn submit_flow(
-        &self,
-        params: stepflow_core::SubmitFlowParams,
-    ) -> BoxFuture<'_, crate::Result<Uuid>> {
-        self.context.submit_flow(params)
-    }
-
-    /// Get the result of a workflow execution.
-    fn flow_result(&self, run_id: Uuid) -> BoxFuture<'_, crate::Result<FlowResult>> {
-        self.context.flow_result(run_id)
-    }
-
-    /// Execute a nested workflow and wait for completion.
-    fn execute_flow(
-        &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        input: ValueRef,
-        overrides: Option<WorkflowOverrides>,
-    ) -> BoxFuture<'_, crate::Result<FlowResult>> {
-        self.context.execute_flow(flow, flow_id, input, overrides)
-    }
-
     fn working_directory(&self) -> &Path {
         self.context.working_directory()
-    }
-
-    fn submit_batch(
-        &self,
-        params: stepflow_core::SubmitBatchParams,
-    ) -> BoxFuture<'_, crate::Result<uuid::Uuid>> {
-        self.context.submit_batch(params)
-    }
-
-    fn get_batch(
-        &self,
-        batch_id: uuid::Uuid,
-        wait: bool,
-        include_results: bool,
-    ) -> BoxFuture<
-        '_,
-        crate::Result<(
-            stepflow_state::BatchDetails,
-            Option<Vec<stepflow_state::BatchOutputInfo>>,
-        )>,
-    > {
-        self.context.get_batch(batch_id, wait, include_results)
     }
 }
