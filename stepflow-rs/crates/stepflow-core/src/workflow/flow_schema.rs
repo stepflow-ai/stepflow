@@ -56,7 +56,7 @@ impl serde::Serialize for FlowSchema {
     where
         S: serde::Serializer,
     {
-        use serde::ser::SerializeMap;
+        use serde::ser::SerializeMap as _;
 
         // Build properties object
         let mut properties = serde_json::Map::new();
@@ -129,7 +129,7 @@ impl<'de> serde::Deserialize<'de> for FlowSchema {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::Error;
+        use serde::de::Error as _;
 
         // Deserialize as a generic JSON value first
         let value = serde_json::Value::deserialize(deserializer)?;
@@ -195,8 +195,8 @@ impl<'de> serde::Deserialize<'de> for FlowSchema {
                 {
                     let mut steps_map = IndexMap::new();
                     for (step_id, step_schema) in step_properties {
-                        let schema: SchemaRef =
-                            serde_json::from_value(step_schema.clone()).map_err(D::Error::custom)?;
+                        let schema: SchemaRef = serde_json::from_value(step_schema.clone())
+                            .map_err(D::Error::custom)?;
                         steps_map.insert(step_id.clone(), schema);
                     }
                     steps_map

@@ -20,9 +20,6 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-📊 Validation results: 0 fatal, 0 errors, 1 warnings
-
-⚠️  Warnings:
-  WARN Field access '$.message' on step 'workflow_input' cannot be validated: no input schema available ($.steps[0].input.user_prompt)
+✅ Validation passed with no errors
 
 ----- stderr -----

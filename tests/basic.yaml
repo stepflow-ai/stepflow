@@ -1,6 +1,16 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Basic Test Workflow
 description: Simple workflow to test the new test command
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
 steps:
 - id: message_step
   component: /builtin/create_messages
