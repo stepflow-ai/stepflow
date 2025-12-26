@@ -349,15 +349,19 @@ pub enum Command {
     /// ```bash
     ///
     /// # Validate workflow with auto-detected config
+    ///
     /// stepflow validate --flow=examples/basic/workflow.yaml
     ///
     /// # Validate with specific config
+    ///
     /// stepflow validate --flow=workflow.yaml --config=my-config.yml
     ///
     /// # Validate with type checking
+    ///
     /// stepflow validate --flow=workflow.yaml --type-check
     ///
     /// # Validate with strict type checking
+    ///
     /// stepflow validate --flow=workflow.yaml --type-check --strict
     ///
     /// ```

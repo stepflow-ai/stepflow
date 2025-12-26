@@ -18,6 +18,8 @@ use stepflow_core::schema::SchemaRef;
 ///
 /// The type system is based on JSON Schema, extended with special types
 /// for gradual typing support.
+// Note: Eq is not implemented because SchemaRef contains serde_json::Value,
+// which doesn't implement Eq due to floating-point values (f64).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     /// A concrete JSON Schema type.

@@ -182,7 +182,8 @@
               "$ref": "#/$defs/Schema",
               "description": "The input schema for the flow."
             }
-          ]
+          ],
+          "default": null
         },
         "output": {
           "oneOf": [
@@ -193,7 +194,8 @@
               "$ref": "#/$defs/Schema",
               "description": "The output schema for the flow."
             }
-          ]
+          ],
+          "default": null
         },
         "variables": {
           "oneOf": [
@@ -204,7 +206,8 @@
               "$ref": "#/$defs/Schema",
               "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types."
             }
-          ]
+          ],
+          "default": null
         },
         "steps": {
           "type": "object",
