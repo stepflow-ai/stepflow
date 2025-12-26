@@ -21,12 +21,9 @@ info:
 success: true
 exit_code: 0
 ----- stdout -----
-📊 Validation results: 0 fatal, 0 errors, 6 warnings
+📊 Validation results: 0 fatal, 0 errors, 3 warnings
 
 ⚠️  Warnings:
-  WARN Workflow has no name defined ($.name)
-  WARN Workflow has no description defined ($.description)
-  WARN Field access '$.data' on step 'workflow_input' cannot be validated: no input schema available ($.steps[0].input.data)
   WARN Field access '$.blob_id' on step 'put_blob' cannot be validated: no output schema available ($.steps[1].input.blob_id)
   WARN Field access '$.blob_id' on step 'put_blob' cannot be validated: no output schema available ($.output.blob_id)
   WARN Field access '$.data' on step 'get_blob' cannot be validated: no output schema available ($.output.retrieved_data)

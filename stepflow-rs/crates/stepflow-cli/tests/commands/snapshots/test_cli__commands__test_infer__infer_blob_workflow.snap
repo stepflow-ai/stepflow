@@ -22,6 +22,8 @@ exit_code: 0
 ----- stdout -----
 ✅ Validation passed with no errors
 schema: https://stepflow.org/schemas/v1/flow.json
+name: Blob Storage Test
+description: Test workflow for blob storage operations
 schemas:
   type: object
   properties:
@@ -29,7 +31,7 @@ schemas:
       type: object
       properties:
         data:
-          description: The JSON data to store as a blob
+          type: object
       required:
       - data
     output:
@@ -37,12 +39,8 @@ schemas:
       properties:
         blob_id:
           type: string
-          description: The blob ID for the stored data
         retrieved_data:
-          description: The JSON data stored in the blob
-      required:
-      - blob_id
-      - retrieved_data
+          type: object
     steps:
       type: object
       properties:

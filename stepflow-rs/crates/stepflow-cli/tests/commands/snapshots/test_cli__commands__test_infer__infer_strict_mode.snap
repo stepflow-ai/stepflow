@@ -32,7 +32,6 @@ schemas:
       properties:
         message:
           type: string
-          description: The user prompt to include in the message list.
       required:
       - message
     output:

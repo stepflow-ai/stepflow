@@ -1,0 +1,6 @@
+plugins:
+  builtin:
+    type: builtin
+routes:
+  "/builtin/{*component}":
+    - plugin: builtin
