@@ -1,20 +1,23 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
   properties:
-    message:
-      type: string
-    number:
-      type: number
-output_schema:
-  type: object
-  properties:
-    blob_id:
-      type: string
-    python_blob_id:
-      type: string
-    retrieved_data:
+    input:
       type: object
+      properties:
+        message:
+          type: string
+        number:
+          type: number
+    output:
+      type: object
+      properties:
+        blob_id:
+          type: string
+        python_blob_id:
+          type: string
+        retrieved_data:
+          type: object
 steps:
 - id: store_with_builtin
   component: /builtin/put_blob

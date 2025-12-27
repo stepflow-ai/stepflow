@@ -1,27 +1,30 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Basic Math Operations
 description: Demonstrates basic mathematical operations using UDFs
-input_schema:
+schemas:
   type: object
   properties:
-    m:
-      type: integer
-      description: First number
-    n:
-      type: integer
-      description: Second number
-output_schema:
-  type: object
-  properties:
-    m_plus_n:
-      type: integer
-      description: Sum of m and n
-    m_times_n:
-      type: integer
-      description: Product of m and n
-    m_plus_n_times_n:
-      type: integer
-      description: Sum of m and n, multiplied by n
+    input:
+      type: object
+      properties:
+        m:
+          type: integer
+          description: First number
+        n:
+          type: integer
+          description: Second number
+    output:
+      type: object
+      properties:
+        m_plus_n:
+          type: integer
+          description: Sum of m and n
+        m_times_n:
+          type: integer
+          description: Product of m and n
+        m_plus_n_times_n:
+          type: integer
+          description: Sum of m and n, multiplied by n
 steps:
 - id: create_addition_udf
   component: /builtin/put_blob

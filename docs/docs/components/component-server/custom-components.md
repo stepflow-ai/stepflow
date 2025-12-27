@@ -92,11 +92,15 @@ Reference your components in workflow YAML files:
 
 ```yaml
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+
+schemas:
   type: object
   properties:
-    user_name:
-      type: string
+    input:
+      type: object
+      properties:
+        user_name:
+          type: string
 
 steps:
 - id: greeting_step

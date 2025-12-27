@@ -1,15 +1,18 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: File Loading Sales Pipeline
 description: Load sales data from file and process it
-input_schema:
+schemas:
   type: object
   properties:
-    data_file_path:
-      type: string
-      description: Path to the sales data file
-    target_revenue:
-      type: number
-      description: Target revenue for analysis
+    input:
+      type: object
+      properties:
+        data_file_path:
+          type: string
+          description: Path to the sales data file
+        target_revenue:
+          type: number
+          description: Target revenue for analysis
 steps:
 - id: load_sales_data
   component: /builtin/load_file

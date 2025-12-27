@@ -2,18 +2,21 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: LangChain UDF Example
 description: Demonstrates using /udf component with self-contained Python code to
   create and execute LangChain runnables dynamically
-input_schema:
+schemas:
   type: object
   properties:
-    text:
-      type: string
-      description: Text to process
-output_schema:
-  type: object
-  properties:
-    text_processing_result:
+    input:
       type: object
-      description: Result from user-defined text processing runnable
+      properties:
+        text:
+          type: string
+          description: Text to process
+    output:
+      type: object
+      properties:
+        text_processing_result:
+          type: object
+          description: Result from user-defined text processing runnable
 steps:
 - id: create_text_processor_blob
   component: /builtin/put_blob

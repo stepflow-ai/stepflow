@@ -23,28 +23,31 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: "Secure API Workflow"
 description: "Workflow that handles sensitive API credentials"
 
-input_schema:
+schemas:
   type: object
   properties:
-    user_id:
-      type: string
-      description: "User identifier"
-    api_credentials:
+    input:
       type: object
       properties:
-        api_key:
+        user_id:
           type: string
-          is_secret: true
-          description: "API key for external service"
-        secret_token:
-          type: string
-          is_secret: true
-          description: "Authentication token"
-        endpoint:
-          type: string
-          description: "API endpoint URL"
-      required: ["api_key", "secret_token", "endpoint"]
-  required: ["user_id", "api_credentials"]
+          description: "User identifier"
+        api_credentials:
+          type: object
+          properties:
+            api_key:
+              type: string
+              is_secret: true
+              description: "API key for external service"
+            secret_token:
+              type: string
+              is_secret: true
+              description: "Authentication token"
+            endpoint:
+              type: string
+              description: "API endpoint URL"
+          required: ["api_key", "secret_token", "endpoint"]
+      required: ["user_id", "api_credentials"]
 
 steps:
   - id: call_api
@@ -160,29 +163,32 @@ steps:
 Secrets work with nested objects and arrays:
 
 ```yaml
-input_schema:
+schemas:
   type: object
   properties:
-    services:
-      type: array
-      items:
-        type: object
-        properties:
-          name:
-            type: string
-          credentials:
+    input:
+      type: object
+      properties:
+        services:
+          type: array
+          items:
             type: object
             properties:
-              username:
+              name:
                 type: string
-              password:
-                type: string
-                is_secret: true
-              api_key:
-                type: string
-                is_secret: true
-            required: ["username", "password"]
-        required: ["name", "credentials"]
+              credentials:
+                type: object
+                properties:
+                  username:
+                    type: string
+                  password:
+                    type: string
+                    is_secret: true
+                  api_key:
+                    type: string
+                    is_secret: true
+                required: ["username", "password"]
+            required: ["name", "credentials"]
 ```
 
 With this schema, input like:
@@ -222,17 +228,20 @@ Will be logged as:
 Mark entire arrays as secret:
 
 ```yaml
-input_schema:
+schemas:
   type: object
   properties:
-    sensitive_data:
-      type: array
-      is_secret: true
-      items:
-        type: object
-        properties:
-          id: { type: string }
-          value: { type: string }
+    input:
+      type: object
+      properties:
+        sensitive_data:
+          type: array
+          is_secret: true
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              value: { type: string }
 ```
 
 The entire array will be redacted as `[REDACTED]` in logs.

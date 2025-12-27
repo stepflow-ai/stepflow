@@ -52,13 +52,16 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: "Hello Stepflow"
 description: "A simple workflow combining built-in and Python components"
 
-input_schema:
+schemas:
   type: object
   properties:
-    name:
-      type: string
-      description: "User's name"
-  required: [name]
+    input:
+      type: object
+      properties:
+        name:
+          type: string
+          description: "User's name"
+      required: [name]
 
 steps:
   # Step 1: Use Python component to format greeting

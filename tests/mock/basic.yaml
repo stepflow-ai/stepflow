@@ -1,18 +1,21 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
   properties:
-    name:
-      type: string
-output_schema:
-  type: object
-  properties:
-    name:
-      type: string
-    x:
-      type: integer
-    y:
-      type: integer
+    input:
+      type: object
+      properties:
+        name:
+          type: string
+    output:
+      type: object
+      properties:
+        name:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
 steps:
 - id: step1
   component: /mock/one_output

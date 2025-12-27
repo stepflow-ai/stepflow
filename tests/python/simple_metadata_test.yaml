@@ -4,12 +4,15 @@ description: Test flow and step metadata access
 version: 1.0.0
 metadata:
   flow_type: test_workflow
-input_schema:
+schemas:
   type: object
   properties:
-    message:
-      type: string
-      default: hello
+    input:
+      type: object
+      properties:
+        message:
+          type: string
+          default: hello
 steps:
 - id: create_metadata_reader
   component: /builtin/put_blob

@@ -432,7 +432,7 @@ variables_schema:
 - Business data that changes per execution
 
 **Characteristics:**
-- Defined in workflow's `input_schema`
+- Defined in workflow's `schemas.properties.input`
 - Different for every workflow run
 - Represents the "what" to process
 - Validated against schema
@@ -441,11 +441,15 @@ variables_schema:
 
 **Example:**
 ```yaml
-input_schema:
+schemas:
+  type: object
   properties:
-    user_id: { type: string }
-    query: { type: string }
-    items: { type: array }
+    input:
+      type: object
+      properties:
+        user_id: { type: string }
+        query: { type: string }
+        items: { type: array }
 ```
 
 See [Input and Output](./input-output.md) for details.
@@ -478,7 +482,7 @@ See [Runtime Overrides](./overrides.md) for details.
 | Aspect | Variables | Input | Overrides |
 |--------|-----------|-------|-----------|
 | **Purpose** | Environment configuration | Business data | Temporary modifications |
-| **Defined in** | `variables_schema` | `input_schema` | Not in workflow |
+| **Defined in** | `schemas.properties.variables` | `schemas.properties.input` | Not in workflow |
 | **Changes** | Per environment | Per execution | Ad-hoc |
 | **Validated** | Yes (schema) | Yes (schema) | No |
 | **Use case** | API keys, endpoints | User queries, items | Debugging, testing |

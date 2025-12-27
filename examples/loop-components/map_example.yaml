@@ -1,21 +1,24 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Map Example
 description: Example of using the Python map component with doubling workflow
-input_schema:
+schemas:
   type: object
   properties:
-    items:
+    input:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: number
+          description: Array of numbers to process
+      required:
+      - items
+    output:
       type: array
       items:
         type: number
-      description: Array of numbers to process
-  required:
-  - items
-output_schema:
-  type: array
-  items:
-    type: number
-  description: Array of doubled numbers
+      description: Array of doubled numbers
 steps:
 - id: create_doubler_flow
   component: /builtin/put_blob

@@ -2,44 +2,47 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: Empty Flow Test
 description: Tests executing an empty flow that only connects input to output using
   JSON path syntax
-input_schema:
+schemas:
   type: object
   properties:
-    message:
-      type: string
-      description: Input message
-    numbers:
+    input:
       type: object
       properties:
-        a:
-          type: integer
-        b:
-          type: integer
-      required:
-      - a
-      - b
-    items:
-      type: array
-      items:
-        type: string
-output_schema:
-  type: object
-  properties:
-    message:
-      type: string
-      description: Passed through message
-    a_value:
-      type: integer
-      description: Value of a from input
-    b_value:
-      type: integer
-      description: Value of b from input
-    first_item:
-      type: string
-      description: First item from array
-    nested_data:
+        message:
+          type: string
+          description: Input message
+        numbers:
+          type: object
+          properties:
+            a:
+              type: integer
+            b:
+              type: integer
+          required:
+          - a
+          - b
+        items:
+          type: array
+          items:
+            type: string
+    output:
       type: object
-      description: The original numbers object
+      properties:
+        message:
+          type: string
+          description: Passed through message
+        a_value:
+          type: integer
+          description: Value of a from input
+        b_value:
+          type: integer
+          description: Value of b from input
+        first_item:
+          type: string
+          description: First item from array
+        nested_data:
+          type: object
+          description: The original numbers object
 steps: []
 output:
   message:

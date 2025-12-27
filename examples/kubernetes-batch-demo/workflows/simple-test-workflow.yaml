@@ -1,23 +1,26 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: simple-test-workflow
 description: Simple workflow to test k8s component execution
-input_schema:
+schemas:
   type: object
   properties:
-    value:
-      type: number
-      description: Input value to process
-output_schema:
-  type: object
-  properties:
-    original:
-      type: number
-    doubled:
-      type: number
-    squared:
-      type: number
-    sum:
-      type: number
+    input:
+      type: object
+      properties:
+        value:
+          type: number
+          description: Input value to process
+    output:
+      type: object
+      properties:
+        original:
+          type: number
+        doubled:
+          type: number
+        squared:
+          type: number
+        sum:
+          type: number
 steps:
 - id: double_it
   component: /python/double

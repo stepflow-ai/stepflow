@@ -2,16 +2,19 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: "Python Component Error Handling Test"
 description: "Test that Python component errors are properly surfaced via JSON-RPC using UDF"
 
-input_schema:
+schemas:
   type: object
   properties:
-    mode:
-      type: string
-      description: "Error mode: error, runtime_error, or success"
-    message:
-      type: string
-      description: "Error message to include"
-  required: [mode, message]
+    input:
+      type: object
+      properties:
+        mode:
+          type: string
+          description: "Error mode: error, runtime_error, or success"
+        message:
+          type: string
+          description: "Error message to include"
+      required: [mode, message]
 
 steps:
   # Create the error test function as a blob

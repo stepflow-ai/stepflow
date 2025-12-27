@@ -1,11 +1,14 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Math Eval Test
 description: Test eval with actual computation
-input_schema:
+schemas:
   type: object
   properties:
-    numbers:
-      type: array
+    input:
+      type: object
+      properties:
+        numbers:
+          type: array
 steps:
 - id: create_nested_flow
   component: /builtin/put_blob

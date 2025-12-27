@@ -2,13 +2,16 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: "Simple Workflow for Tracing Tests"
 description: "Multi-step workflow using only builtin components"
 
-input_schema:
+schemas:
   type: object
   properties:
-    message1:
-      type: string
-    message2:
-      type: string
+    input:
+      type: object
+      properties:
+        message1:
+          type: string
+        message2:
+          type: string
 
 steps:
   - id: create_msg1

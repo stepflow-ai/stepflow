@@ -2,38 +2,41 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: LangChain Named Runnable Example
 description: Demonstrates using /invoke_named component to directly execute LangChain
   runnables from Python import paths
-input_schema:
+schemas:
   type: object
   properties:
-    text:
-      type: string
-      description: Text to process
-    numbers:
-      type: array
-      items:
-        type: number
-      description: Numbers for statistical calculations
-    template:
-      type: string
-      description: String template for formatting
-      default: Hello {name}!
-    values:
+    input:
       type: object
-      description: Values for template formatting
-      default:
-        name: World
-output_schema:
-  type: object
-  properties:
-    text_processing:
+      properties:
+        text:
+          type: string
+          description: Text to process
+        numbers:
+          type: array
+          items:
+            type: number
+          description: Numbers for statistical calculations
+        template:
+          type: string
+          description: String template for formatting
+          default: Hello {name}!
+        values:
+          type: object
+          description: Values for template formatting
+          default:
+            name: World
+    output:
       type: object
-      description: Text processing results
-    stats_calculation:
-      type: object
-      description: Statistical calculation results
-    string_formatting:
-      type: object
-      description: String formatting results
+      properties:
+        text_processing:
+          type: object
+          description: Text processing results
+        stats_calculation:
+          type: object
+          description: Statistical calculation results
+        string_formatting:
+          type: object
+          description: String formatting results
 steps:
 - id: process_text
   component: /invoke_named

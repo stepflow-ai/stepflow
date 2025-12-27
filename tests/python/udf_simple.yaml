@@ -1,20 +1,23 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
   properties:
-    x:
-      type: number
-    y:
-      type: number
-output_schema:
-  type: object
-  properties:
-    custom_calculation:
-      type: number
-    product:
-      type: number
-    sum:
-      type: number
+    input:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+    output:
+      type: object
+      properties:
+        custom_calculation:
+          type: number
+        product:
+          type: number
+        sum:
+          type: number
 steps:
 - id: create_addition_blob
   component: /builtin/put_blob

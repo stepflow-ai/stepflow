@@ -1,15 +1,18 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Sales Analysis Pipeline (Metrics)
 description: Processes sales data and calculates business metrics
-input_schema:
+schemas:
   type: object
   properties:
-    sales_data:
-      type: array
-      description: Array of sales records
-    target_revenue:
-      type: number
-      description: Target revenue for analysis
+    input:
+      type: object
+      properties:
+        sales_data:
+          type: array
+          description: Array of sales records
+        target_revenue:
+          type: number
+          description: Target revenue for analysis
 steps:
 - id: sum_revenue_udf
   component: /builtin/put_blob
