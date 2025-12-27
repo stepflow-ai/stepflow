@@ -19,8 +19,8 @@ use stepflow_core::status::ExecutionStatus;
 use crate::{
     StateStore,
     state_store::{
-        BatchFilters, BatchMetadata, BatchStatistics, BatchStatus, CreateRunParams, RunDetails,
-        RunFilters, RunSummary, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
+        CreateRunParams, ItemStatistics, RunDetails, RunFilters, RunSummary, StepInfo, StepResult,
+        WorkflowLabelMetadata, WorkflowWithMetadata,
     },
 };
 use stepflow_core::{
@@ -85,25 +85,6 @@ impl RunState {
     }
 }
 
-/// Combined state for a batch.
-/// Groups batch metadata and associated runs together.
-#[derive(Debug)]
-struct BatchState {
-    /// Batch metadata
-    metadata: BatchMetadata,
-    /// List of (run_id, batch_input_index) tuples
-    runs: Vec<(Uuid, usize)>,
-}
-
-impl BatchState {
-    fn new(metadata: BatchMetadata) -> Self {
-        Self {
-            metadata,
-            runs: Vec::new(),
-        }
-    }
-}
-
 /// In-memory implementation of StateStore.
 ///
 /// This provides a simple, fast storage implementation suitable for
@@ -118,10 +99,6 @@ pub struct InMemoryStateStore {
     flows: DashMap<String, Arc<Flow>>,
     /// Map from (flow_name, label) to flow label metadata
     flow_labels: DashMap<(String, String), WorkflowLabelMetadata>,
-    /// Map from batch_id to combined batch state
-    batches: DashMap<Uuid, BatchState>,
-    /// Reverse map from run_id to (batch_id, batch_input_index)
-    run_to_batch: DashMap<Uuid, (Uuid, usize)>,
     /// Map from run_id to debug queue (step IDs queued for execution)
     debug_queues: DashMap<Uuid, Vec<String>>,
 }
@@ -134,8 +111,6 @@ impl InMemoryStateStore {
             runs: DashMap::new(),
             flows: DashMap::new(),
             flow_labels: DashMap::new(),
-            batches: DashMap::new(),
-            run_to_batch: DashMap::new(),
             debug_queues: DashMap::new(),
         }
     }
@@ -165,12 +140,13 @@ impl InMemoryStateStore {
                     flow_name: None,
                     flow_label: None,
                     status: ExecutionStatus::Running,
+                    items: ItemStatistics::single(ExecutionStatus::Running),
                     debug_mode: false,
                     created_at: chrono::Utc::now(),
                     completed_at: None,
                 },
-                input: ValueRef::new(serde_json::Value::Null),
-                result: None,
+                inputs: vec![ValueRef::new(serde_json::Value::Null)],
+                results: vec![None],
                 overrides: None,
             })
         });
@@ -478,6 +454,10 @@ impl StateStore for InMemoryStateStore {
         params: CreateRunParams,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let now = chrono::Utc::now();
+        let item_count = params.item_count();
+        let inputs = params.inputs.clone();
+        // Initialize results as None for each input
+        let results = vec![None; item_count];
         let execution_details = RunDetails {
             summary: RunSummary {
                 run_id: params.run_id,
@@ -485,12 +465,17 @@ impl StateStore for InMemoryStateStore {
                 flow_name: params.workflow_name,
                 flow_label: params.workflow_label,
                 status: ExecutionStatus::Running,
+                items: ItemStatistics {
+                    total: item_count,
+                    running: item_count,
+                    ..Default::default()
+                },
                 debug_mode: params.debug_mode,
                 created_at: now,
                 completed_at: None,
             },
-            input: params.input,
-            result: None,
+            inputs,
+            results,
             overrides: if params.overrides.is_empty() {
                 None
             } else {
@@ -524,14 +509,70 @@ impl StateStore for InMemoryStateStore {
         &self,
         run_id: Uuid,
         status: ExecutionStatus,
-        result: Option<ValueRef>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
                 run_state.details.summary.status = status;
-                run_state.details.result = result.map(FlowResult::Success);
 
-                if matches!(status, ExecutionStatus::Completed | ExecutionStatus::Failed) {
+                if matches!(
+                    status,
+                    ExecutionStatus::Completed
+                        | ExecutionStatus::Failed
+                        | ExecutionStatus::Cancelled
+                ) {
+                    run_state.details.summary.completed_at = Some(chrono::Utc::now());
+                }
+            }
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn record_item_result(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        result: FlowResult,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async move {
+            if let Some(mut run_state) = self.runs.get_mut(&run_id) {
+                // Ensure results vector has capacity for this index
+                if item_index >= run_state.details.results.len() {
+                    run_state
+                        .details
+                        .results
+                        .resize_with(item_index + 1, || None);
+                }
+
+                // Check if this slot was previously empty (running)
+                let was_running = run_state.details.results[item_index].is_none();
+
+                // Update the result
+                run_state.details.results[item_index] = Some(result.clone());
+
+                // Update item statistics
+                if was_running {
+                    run_state.details.summary.items.running =
+                        run_state.details.summary.items.running.saturating_sub(1);
+                }
+                match result {
+                    FlowResult::Success(_) => {
+                        run_state.details.summary.items.completed += 1;
+                    }
+                    FlowResult::Failed(_) => {
+                        run_state.details.summary.items.failed += 1;
+                    }
+                }
+
+                // Check if all items are complete
+                if run_state.details.summary.items.running == 0 {
+                    // Determine overall status based on item outcomes
+                    let status = if run_state.details.summary.items.failed > 0 {
+                        ExecutionStatus::Failed
+                    } else {
+                        ExecutionStatus::Completed
+                    };
+                    run_state.details.summary.status = status;
                     run_state.details.summary.completed_at = Some(chrono::Utc::now());
                 }
             }
@@ -733,239 +774,6 @@ impl StateStore for InMemoryStateStore {
             Ok(runnable_steps)
         }
         .boxed()
-    }
-
-    // Batch Execution Management
-
-    fn create_batch(
-        &self,
-        batch_id: Uuid,
-        flow_id: BlobId,
-        flow_name: Option<&str>,
-        total_inputs: usize,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let flow_name = flow_name.map(|s| s.to_string());
-
-        async move {
-            let batch_metadata = BatchMetadata {
-                batch_id,
-                flow_id,
-                flow_name,
-                total_inputs,
-                created_at: chrono::Utc::now(),
-                status: BatchStatus::Running,
-            };
-
-            self.batches
-                .insert(batch_id, BatchState::new(batch_metadata));
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn add_run_to_batch(
-        &self,
-        batch_id: Uuid,
-        run_id: Uuid,
-        batch_input_index: usize,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        async move {
-            // Add to batch's run list
-            if let Some(mut batch_state) = self.batches.get_mut(&batch_id) {
-                batch_state.runs.push((run_id, batch_input_index));
-            }
-
-            // Add to reverse map
-            self.run_to_batch
-                .insert(run_id, (batch_id, batch_input_index));
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn get_batch(
-        &self,
-        batch_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BatchMetadata>, StateError>> {
-        async move {
-            Ok(self
-                .batches
-                .get(&batch_id)
-                .map(|batch_state| batch_state.metadata.clone()))
-        }
-        .boxed()
-    }
-
-    fn get_batch_statistics(
-        &self,
-        batch_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<BatchStatistics, StateError>> {
-        async move {
-            let runs = self
-                .batches
-                .get(&batch_id)
-                .map(|batch_state| batch_state.runs.clone())
-                .unwrap_or_default();
-
-            let mut stats = BatchStatistics::default();
-
-            for (run_id, _) in runs {
-                if let Some(run_state) = self.runs.get(&run_id) {
-                    match run_state.details.summary.status {
-                        ExecutionStatus::Completed => stats.completed_runs += 1,
-                        ExecutionStatus::Running => stats.running_runs += 1,
-                        ExecutionStatus::Failed => stats.failed_runs += 1,
-                        ExecutionStatus::Cancelled => stats.cancelled_runs += 1,
-                        ExecutionStatus::Paused => stats.paused_runs += 1,
-                    }
-                }
-            }
-
-            Ok(stats)
-        }
-        .boxed()
-    }
-
-    fn update_batch_status(
-        &self,
-        batch_id: Uuid,
-        status: BatchStatus,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        async move {
-            if let Some(mut batch_state) = self.batches.get_mut(&batch_id) {
-                batch_state.metadata.status = status;
-            }
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn list_batches(
-        &self,
-        filters: &BatchFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<BatchMetadata>, StateError>> {
-        let filters = filters.clone();
-
-        async move {
-            let mut results: Vec<BatchMetadata> = self
-                .batches
-                .iter()
-                .map(|entry| entry.metadata.clone())
-                .filter(|batch| {
-                    // Apply status filter
-                    if let Some(ref status) = filters.status
-                        && &batch.status != status
-                    {
-                        return false;
-                    }
-
-                    // Apply flow name filter
-                    if let Some(ref flow_name) = filters.flow_name
-                        && batch.flow_name.as_ref() != Some(flow_name)
-                    {
-                        return false;
-                    }
-
-                    true
-                })
-                .collect();
-
-            // Sort by creation time (newest first)
-            results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-
-            // Apply pagination
-            if let Some(offset) = filters.offset {
-                if offset < results.len() {
-                    results = results[offset..].to_vec();
-                } else {
-                    results.clear();
-                }
-            }
-
-            if let Some(limit) = filters.limit {
-                results.truncate(limit);
-            }
-
-            Ok(results)
-        }
-        .boxed()
-    }
-
-    fn list_batch_runs(
-        &self,
-        batch_id: Uuid,
-        filters: &RunFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(RunSummary, usize)>, StateError>> {
-        let filters = filters.clone();
-
-        async move {
-            let runs = self
-                .batches
-                .get(&batch_id)
-                .map(|batch_state| batch_state.runs.clone())
-                .unwrap_or_default();
-
-            let mut results: Vec<(RunSummary, usize)> = runs
-                .iter()
-                .filter_map(|(run_id, batch_input_index)| {
-                    self.runs
-                        .get(run_id)
-                        .map(|run_state| (run_state.details.summary.clone(), *batch_input_index))
-                })
-                .filter(|(summary, _)| {
-                    // Apply status filter
-                    if let Some(ref status) = filters.status
-                        && &summary.status != status
-                    {
-                        return false;
-                    }
-
-                    // Apply flow name filter
-                    if let Some(ref flow_name) = filters.flow_name
-                        && summary.flow_name.as_ref() != Some(flow_name)
-                    {
-                        return false;
-                    }
-
-                    // Apply flow label filter
-                    if let Some(ref flow_label) = filters.flow_label
-                        && summary.flow_label.as_ref() != Some(flow_label)
-                    {
-                        return false;
-                    }
-
-                    true
-                })
-                .collect();
-
-            // Sort by batch input index
-            results.sort_by_key(|(_, idx)| *idx);
-
-            // Apply pagination
-            if let Some(offset) = filters.offset {
-                if offset < results.len() {
-                    results = results[offset..].to_vec();
-                } else {
-                    results.clear();
-                }
-            }
-
-            if let Some(limit) = filters.limit {
-                results.truncate(limit);
-            }
-
-            Ok(results)
-        }
-        .boxed()
-    }
-
-    fn get_run_batch_context(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<(Uuid, usize)>, StateError>> {
-        async move { Ok(self.run_to_batch.get(&run_id).map(|entry| *entry.value())) }.boxed()
     }
 
     fn add_to_debug_queue(
@@ -1203,351 +1011,5 @@ mod tests {
         // Verify list returns empty
         let all_results = store.list_step_results(run_id).await.unwrap();
         assert!(all_results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_batch_create_and_get() {
-        use crate::StateStore as _;
-
-        let store = InMemoryStateStore::new();
-        let batch_id = Uuid::now_v7();
-        let flow_id = BlobId::new("a".repeat(64)).unwrap();
-
-        // Create batch
-        store
-            .create_batch(batch_id, flow_id.clone(), Some("test-flow"), 10)
-            .await
-            .unwrap();
-
-        // Get batch metadata
-        let batch = store.get_batch(batch_id).await.unwrap();
-        assert!(batch.is_some());
-
-        let batch = batch.unwrap();
-        assert_eq!(batch.batch_id, batch_id);
-        assert_eq!(batch.flow_id, flow_id);
-        assert_eq!(batch.flow_name, Some("test-flow".to_string()));
-        assert_eq!(batch.total_inputs, 10);
-        assert_eq!(batch.status, BatchStatus::Running);
-    }
-
-    #[tokio::test]
-    async fn test_batch_add_runs() {
-        use crate::StateStore as _;
-
-        let store = InMemoryStateStore::new();
-        let batch_id = Uuid::now_v7();
-        let flow_id = BlobId::new("a".repeat(64)).unwrap();
-
-        // Create batch
-        store
-            .create_batch(batch_id, flow_id.clone(), Some("test-flow"), 3)
-            .await
-            .unwrap();
-
-        // Create some runs and add them to the batch
-        let run_ids: Vec<Uuid> = (0..3).map(|_| Uuid::now_v7()).collect();
-
-        for (idx, run_id) in run_ids.iter().enumerate() {
-            // Create run
-            store
-                .create_run(CreateRunParams {
-                    run_id: *run_id,
-                    flow_id: flow_id.clone(),
-                    workflow_name: Some("test-flow".to_string()),
-                    workflow_label: None,
-                    debug_mode: false,
-                    input: ValueRef::new(serde_json::json!({"input": idx})),
-                    overrides: Default::default(),
-                    variables: Default::default(),
-                })
-                .await
-                .unwrap();
-
-            // Add to batch
-            store
-                .add_run_to_batch(batch_id, *run_id, idx)
-                .await
-                .unwrap();
-        }
-
-        // List batch runs
-        let batch_runs = store
-            .list_batch_runs(batch_id, &RunFilters::default())
-            .await
-            .unwrap();
-
-        assert_eq!(batch_runs.len(), 3);
-        // Should be sorted by batch input index
-        for (idx, (summary, batch_idx)) in batch_runs.iter().enumerate() {
-            assert_eq!(*batch_idx, idx);
-            assert_eq!(summary.run_id, run_ids[idx]);
-        }
-
-        // Verify reverse lookup
-        for (idx, run_id) in run_ids.iter().enumerate() {
-            let context = store.get_run_batch_context(*run_id).await.unwrap();
-            assert!(context.is_some());
-            let (ctx_batch_id, ctx_idx) = context.unwrap();
-            assert_eq!(ctx_batch_id, batch_id);
-            assert_eq!(ctx_idx, idx);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_batch_statistics() {
-        use crate::StateStore as _;
-
-        let store = InMemoryStateStore::new();
-        let batch_id = Uuid::now_v7();
-        let flow_id = BlobId::new("a".repeat(64)).unwrap();
-
-        // Create batch
-        store
-            .create_batch(batch_id, flow_id.clone(), Some("test-flow"), 5)
-            .await
-            .unwrap();
-
-        // Create runs with different statuses
-        let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::now_v7()).collect();
-        let statuses = [
-            ExecutionStatus::Completed,
-            ExecutionStatus::Running,
-            ExecutionStatus::Failed,
-            ExecutionStatus::Cancelled,
-            ExecutionStatus::Paused,
-        ];
-
-        for (idx, (run_id, status)) in run_ids.iter().zip(statuses.iter()).enumerate() {
-            // Create run
-            store
-                .create_run(CreateRunParams {
-                    run_id: *run_id,
-                    flow_id: flow_id.clone(),
-                    workflow_name: Some("test-flow".to_string()),
-                    workflow_label: None,
-                    debug_mode: false,
-                    input: ValueRef::new(serde_json::json!({"input": idx})),
-                    overrides: Default::default(),
-                    variables: Default::default(),
-                })
-                .await
-                .unwrap();
-
-            // Update status
-            store
-                .update_run_status(*run_id, *status, None)
-                .await
-                .unwrap();
-
-            // Add to batch
-            store
-                .add_run_to_batch(batch_id, *run_id, idx)
-                .await
-                .unwrap();
-        }
-
-        // Get statistics
-        let stats = store.get_batch_statistics(batch_id).await.unwrap();
-        assert_eq!(stats.completed_runs, 1);
-        assert_eq!(stats.running_runs, 1);
-        assert_eq!(stats.failed_runs, 1);
-        assert_eq!(stats.cancelled_runs, 1);
-        assert_eq!(stats.paused_runs, 1);
-    }
-
-    #[tokio::test]
-    async fn test_batch_update_status() {
-        use crate::StateStore as _;
-
-        let store = InMemoryStateStore::new();
-        let batch_id = Uuid::now_v7();
-        let flow_id = BlobId::new("a".repeat(64)).unwrap();
-
-        // Create batch
-        store
-            .create_batch(batch_id, flow_id.clone(), Some("test-flow"), 10)
-            .await
-            .unwrap();
-
-        // Verify initial status
-        let batch = store.get_batch(batch_id).await.unwrap().unwrap();
-        assert_eq!(batch.status, BatchStatus::Running);
-
-        // Update status
-        store
-            .update_batch_status(batch_id, BatchStatus::Cancelled)
-            .await
-            .unwrap();
-
-        // Verify updated status
-        let batch = store.get_batch(batch_id).await.unwrap().unwrap();
-        assert_eq!(batch.status, BatchStatus::Cancelled);
-    }
-
-    #[tokio::test]
-    async fn test_list_batches_with_filters() {
-        use crate::StateStore as _;
-
-        let store = InMemoryStateStore::new();
-        let flow_id = BlobId::new("a".repeat(64)).unwrap();
-
-        // Create multiple batches
-        let batch_ids: Vec<Uuid> = (0..5).map(|_| Uuid::now_v7()).collect();
-
-        // Create batches with different statuses and names
-        for (idx, batch_id) in batch_ids.iter().enumerate() {
-            let flow_name = if idx % 2 == 0 {
-                "flow-even"
-            } else {
-                "flow-odd"
-            };
-
-            store
-                .create_batch(*batch_id, flow_id.clone(), Some(flow_name), 10)
-                .await
-                .unwrap();
-
-            // Cancel some batches
-            if idx < 2 {
-                store
-                    .update_batch_status(*batch_id, BatchStatus::Cancelled)
-                    .await
-                    .unwrap();
-            }
-        }
-
-        // List all batches
-        let all_batches = store.list_batches(&BatchFilters::default()).await.unwrap();
-        assert_eq!(all_batches.len(), 5);
-
-        // Filter by status
-        let cancelled_batches = store
-            .list_batches(&BatchFilters {
-                status: Some(BatchStatus::Cancelled),
-                ..Default::default()
-            })
-            .await
-            .unwrap();
-        assert_eq!(cancelled_batches.len(), 2);
-
-        // Filter by flow name
-        let even_batches = store
-            .list_batches(&BatchFilters {
-                flow_name: Some("flow-even".to_string()),
-                ..Default::default()
-            })
-            .await
-            .unwrap();
-        assert_eq!(even_batches.len(), 3);
-
-        // Filter by both
-        let filtered = store
-            .list_batches(&BatchFilters {
-                status: Some(BatchStatus::Running),
-                flow_name: Some("flow-odd".to_string()),
-                ..Default::default()
-            })
-            .await
-            .unwrap();
-        assert_eq!(filtered.len(), 1);
-
-        // Test pagination
-        let paginated = store
-            .list_batches(&BatchFilters {
-                limit: Some(2),
-                offset: Some(1),
-                ..Default::default()
-            })
-            .await
-            .unwrap();
-        assert_eq!(paginated.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_list_batch_runs_with_filters() {
-        use crate::StateStore as _;
-
-        let store = InMemoryStateStore::new();
-        let batch_id = Uuid::now_v7();
-        let flow_id = BlobId::new("a".repeat(64)).unwrap();
-
-        // Create batch
-        store
-            .create_batch(batch_id, flow_id.clone(), Some("test-flow"), 5)
-            .await
-            .unwrap();
-
-        // Create runs with different statuses
-        let run_ids: Vec<Uuid> = (0..5).map(|_| Uuid::now_v7()).collect();
-
-        for (idx, run_id) in run_ids.iter().enumerate() {
-            store
-                .create_run(CreateRunParams {
-                    run_id: *run_id,
-                    flow_id: flow_id.clone(),
-                    workflow_name: Some("test-flow".to_string()),
-                    workflow_label: None,
-                    debug_mode: false,
-                    input: ValueRef::new(serde_json::json!({"input": idx})),
-                    overrides: Default::default(),
-                    variables: Default::default(),
-                })
-                .await
-                .unwrap();
-
-            // Set different statuses
-            let status = if idx < 2 {
-                ExecutionStatus::Completed
-            } else {
-                ExecutionStatus::Running
-            };
-            store
-                .update_run_status(*run_id, status, None)
-                .await
-                .unwrap();
-
-            store
-                .add_run_to_batch(batch_id, *run_id, idx)
-                .await
-                .unwrap();
-        }
-
-        // List all batch runs
-        let all_runs = store
-            .list_batch_runs(batch_id, &RunFilters::default())
-            .await
-            .unwrap();
-        assert_eq!(all_runs.len(), 5);
-
-        // Filter by status
-        let completed_runs = store
-            .list_batch_runs(
-                batch_id,
-                &RunFilters {
-                    status: Some(ExecutionStatus::Completed),
-                    ..Default::default()
-                },
-            )
-            .await
-            .unwrap();
-        assert_eq!(completed_runs.len(), 2);
-
-        // Test pagination
-        let paginated = store
-            .list_batch_runs(
-                batch_id,
-                &RunFilters {
-                    limit: Some(2),
-                    offset: Some(1),
-                    ..Default::default()
-                },
-            )
-            .await
-            .unwrap();
-        assert_eq!(paginated.len(), 2);
-        // Should maintain sort by batch input index
-        assert_eq!(paginated[0].1, 1);
-        assert_eq!(paginated[1].1, 2);
     }
 }

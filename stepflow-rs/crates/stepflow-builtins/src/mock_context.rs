@@ -12,11 +12,12 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{pin::Pin, sync::Arc};
-use stepflow_core::{BlobId, FlowResult, workflow::ValueRef};
+use stepflow_core::status::ExecutionStatus;
+use stepflow_core::{FlowResult, GetRunOptions, SubmitRunParams, workflow::ValueRef};
 use stepflow_plugin::ExecutionContext;
-use stepflow_state::InMemoryStateStore;
+use stepflow_state::{InMemoryStateStore, ItemStatistics, RunStatus};
 use uuid::Uuid;
 
 /// A mock execution context for testing built-in components.
@@ -33,7 +34,7 @@ impl MockContext {
         Self {
             executor: Arc::new(MockExecutor {
                 state_store: Arc::new(InMemoryStateStore::new()),
-                batches: Arc::new(Mutex::new(HashMap::new())),
+                batch_inputs: RwLock::new(HashMap::new()),
             }),
         }
     }
@@ -54,35 +55,119 @@ impl Default for MockContext {
     }
 }
 
-/// Mock batch data stored for testing
-#[derive(Clone)]
-struct MockBatch {
-    flow_id: BlobId,
-    inputs: Vec<ValueRef>,
-}
-
 /// Mock executor implementation for testing.
 struct MockExecutor {
     state_store: Arc<dyn stepflow_state::StateStore>,
-    batches: Arc<Mutex<HashMap<Uuid, MockBatch>>>,
+    /// Track batch inputs so get_batch can return mock results
+    batch_inputs: RwLock<HashMap<Uuid, usize>>,
 }
 
 impl stepflow_plugin::Context for MockExecutor {
-    fn submit_flow(
+    fn submit_run(
         &self,
-        _params: stepflow_core::SubmitFlowParams,
-    ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
-        Box::pin(async { Ok(Uuid::now_v7()) })
+        params: SubmitRunParams,
+    ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<RunStatus>> + Send + '_>>
+    {
+        let run_id = Uuid::now_v7();
+        let input_count = params.item_count();
+        let wait = params.wait;
+        self.batch_inputs
+            .write()
+            .unwrap()
+            .insert(run_id, input_count);
+
+        Box::pin(async move {
+            let flow_id = stepflow_core::BlobId::new(
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            )
+            .expect("mock blob id");
+            let now = chrono::Utc::now();
+
+            // If wait=true, return completed status with mock results
+            let (status, completed_at, results) = if wait {
+                let mock_results = (0..input_count)
+                    .map(|i| stepflow_state::ItemResult {
+                        item_index: i,
+                        status: ExecutionStatus::Completed,
+                        result: Some(FlowResult::Success(ValueRef::new(
+                            serde_json::json!({"message": "Hello from nested flow"}),
+                        ))),
+                    })
+                    .collect();
+                (ExecutionStatus::Completed, Some(now), Some(mock_results))
+            } else {
+                (ExecutionStatus::Running, None, None)
+            };
+
+            Ok(RunStatus {
+                run_id,
+                flow_id,
+                flow_name: None,
+                flow_label: None,
+                status,
+                items: ItemStatistics {
+                    total: input_count,
+                    completed: if wait { input_count } else { 0 },
+                    running: if wait { 0 } else { input_count },
+                    failed: 0,
+                    cancelled: 0,
+                },
+                created_at: now,
+                completed_at,
+                results,
+            })
+        })
     }
 
-    fn flow_result(
+    fn get_run(
         &self,
-        _run_id: Uuid,
-    ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<FlowResult>> + Send + '_>>
+        run_id: Uuid,
+        options: GetRunOptions,
+    ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<RunStatus>> + Send + '_>>
     {
-        Box::pin(async {
-            let result = serde_json::json!({"message": "Hello from nested flow"});
-            Ok(FlowResult::Success(ValueRef::new(result)))
+        let input_count = self.batch_inputs.read().unwrap().get(&run_id).copied();
+
+        Box::pin(async move {
+            let count = input_count.unwrap_or(1);
+            let flow_id = stepflow_core::BlobId::new(
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            )
+            .expect("mock blob id");
+            let now = chrono::Utc::now();
+
+            let results = if options.include_results {
+                Some(
+                    (0..count)
+                        .map(|i| stepflow_state::ItemResult {
+                            item_index: i,
+                            status: ExecutionStatus::Completed,
+                            result: Some(FlowResult::Success(ValueRef::new(
+                                serde_json::json!({"message": "Hello from nested flow"}),
+                            ))),
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            };
+
+            Ok(RunStatus {
+                run_id,
+                flow_id,
+                flow_name: None,
+                flow_label: None,
+                status: ExecutionStatus::Completed,
+                items: ItemStatistics {
+                    total: count,
+                    completed: count,
+                    running: 0,
+                    failed: 0,
+                    cancelled: 0,
+                },
+                created_at: now,
+                completed_at: Some(now),
+                results,
+            })
         })
     }
 
@@ -92,99 +177,5 @@ impl stepflow_plugin::Context for MockExecutor {
 
     fn working_directory(&self) -> &std::path::Path {
         Path::new(".")
-    }
-
-    fn submit_batch(
-        &self,
-        params: stepflow_core::SubmitBatchParams,
-    ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<Uuid>> + Send + '_>> {
-        let batches = self.batches.clone();
-        Box::pin(async move {
-            let batch_id = Uuid::now_v7();
-            batches.lock().unwrap().insert(
-                batch_id,
-                MockBatch {
-                    flow_id: params.flow_id,
-                    inputs: params.inputs,
-                },
-            );
-            Ok(batch_id)
-        })
-    }
-
-    fn get_batch(
-        &self,
-        batch_id: Uuid,
-        _wait: bool,
-        include_results: bool,
-    ) -> Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = stepflow_plugin::Result<(
-                        stepflow_state::BatchDetails,
-                        Option<Vec<stepflow_state::BatchOutputInfo>>,
-                    )>,
-                > + Send
-                + '_,
-        >,
-    > {
-        let batches = self.batches.clone();
-        Box::pin(async move {
-            // Get the batch from our mock storage
-            let batch = batches
-                .lock()
-                .unwrap()
-                .get(&batch_id)
-                .cloned()
-                .ok_or_else(|| {
-                    error_stack::report!(stepflow_plugin::PluginError::Execution)
-                        .attach_printable("Batch not found")
-                })?;
-
-            let num_inputs = batch.inputs.len();
-
-            // Use a timestamp we can construct without chrono dependency
-            // BatchDetails expects chrono types, so we construct them via serialization
-            use stepflow_state::{BatchDetails, BatchMetadata, BatchStatistics, BatchStatus};
-
-            let batch_details = BatchDetails {
-                metadata: BatchMetadata {
-                    batch_id,
-                    flow_id: batch.flow_id.clone(),
-                    flow_name: None,
-                    total_inputs: num_inputs,
-                    status: BatchStatus::Running,
-                    // Use a mock timestamp - we're in test code
-                    created_at: serde_json::from_str("\"2024-01-01T00:00:00Z\"").unwrap(),
-                },
-                statistics: BatchStatistics {
-                    completed_runs: num_inputs,
-                    running_runs: 0,
-                    failed_runs: 0,
-                    cancelled_runs: 0,
-                    paused_runs: 0,
-                },
-                completed_at: Some(serde_json::from_str("\"2024-01-01T00:00:00Z\"").unwrap()),
-            };
-
-            let outputs = if include_results {
-                // Create mock successful results for each input
-                Some(
-                    (0..num_inputs)
-                        .map(|i| stepflow_state::BatchOutputInfo {
-                            batch_input_index: i,
-                            status: stepflow_core::status::ExecutionStatus::Completed,
-                            result: Some(FlowResult::Success(
-                                serde_json::json!({"doubled": 42}).into(),
-                            )),
-                        })
-                        .collect(),
-                )
-            } else {
-                None
-            };
-
-            Ok((batch_details, outputs))
-        })
     }
 }

@@ -98,17 +98,10 @@ impl<'a> ToSchema for Message<'a> {
         push_schema::<PutBlobParams>(schemas);
         push_schema::<PutBlobResult>(schemas);
 
-        // Flows
-        push_schema::<EvaluateFlowParams>(schemas);
-        push_schema::<EvaluateFlowResult>(schemas);
-        push_schema::<GetFlowMetadataParams>(schemas);
-        push_schema::<GetFlowMetadataResult>(schemas);
-        push_schema::<SubmitBatchParams>(schemas);
-        push_schema::<SubmitBatchResult>(schemas);
-        push_schema::<GetBatchParams>(schemas);
-        push_schema::<GetBatchResult>(schemas);
-        push_schema::<BatchDetails>(schemas);
-        push_schema::<BatchOutputInfo>(schemas);
+        // Runs
+        push_schema::<SubmitRunProtocolParams>(schemas);
+        push_schema::<GetRunProtocolParams>(schemas);
+        push_schema::<RunStatusProtocol>(schemas);
 
         // Observability
         push_schema::<ObservabilityContext>(schemas);
@@ -273,7 +266,7 @@ impl<'a> MethodRequest<'a> {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 /// The result of a successful method execution.
 pub struct MethodSuccess<'a> {
     #[serde(default)]
@@ -285,7 +278,7 @@ pub struct MethodSuccess<'a> {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub struct MethodError<'a> {
     #[serde(default)]
     pub jsonrpc: JsonRpc,

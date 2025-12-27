@@ -25,9 +25,7 @@ use crate::{
     infer,
     list_components::OutputFormat,
     repl::run_repl,
-    run::run,
     submit::submit,
-    submit_batch::submit_batch,
     test::TestOptions,
     validate,
     validation_display::display_diagnostics,
@@ -82,6 +80,14 @@ pub enum Command {
     ///
     /// stepflow run --flow=workflow.yaml --input=input.json --config=my-config.yml --output=result.json
     ///
+    /// # Run batch with multiple inputs from JSONL file
+    ///
+    /// stepflow run --flow=workflow.yaml --inputs=inputs.jsonl --output=results.jsonl
+    ///
+    /// # Run batch with limited concurrency
+    ///
+    /// stepflow run --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=5
+    ///
     /// ```
     Run {
         /// Path to the workflow file to execute.
@@ -94,97 +100,17 @@ pub enum Command {
         #[command(flatten)]
         input_args: InputArgs,
 
+        /// Maximum number of concurrent executions (only used with --inputs).
+        ///
+        /// Defaults to number of inputs if not specified.
+        #[arg(long = "max-concurrent", value_name = "N")]
+        max_concurrent: Option<usize>,
+
         #[command(flatten)]
         execution_args: ExecutionArgs,
 
         #[command(flatten)]
         output_args: OutputArgs,
-    },
-    /// Run a batch of workflows directly.
-    ///
-    /// Execute multiple workflow runs locally with concurrency control.
-    ///
-    /// # Examples
-    ///
-    /// ```bash
-    ///
-    /// # Run batch with inputs from JSONL file
-    ///
-    /// stepflow run-batch --flow=workflow.yaml --inputs=inputs.jsonl --config=stepflow-config.yml
-    ///
-    /// # Run batch with limited concurrency
-    ///
-    /// stepflow run-batch --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=5
-    ///
-    /// # Run batch with output to file
-    ///
-    /// stepflow run-batch --flow=workflow.yaml --inputs=inputs.jsonl --output=results.jsonl
-    ///
-    /// ```
-    RunBatch {
-        /// Path to the workflow file to execute.
-        #[arg(long="flow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        flow_path: PathBuf,
-
-        /// Path to JSONL file containing inputs (one JSON object per line).
-        #[arg(long="inputs", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        inputs_path: PathBuf,
-
-        /// Maximum number of concurrent executions. Defaults to number of inputs if not specified.
-        #[arg(long = "max-concurrent", value_name = "N")]
-        max_concurrent: Option<usize>,
-
-        /// Path to write batch results (JSONL format - one result per line).
-        #[arg(long="output", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        output_path: Option<PathBuf>,
-
-        #[command(flatten)]
-        config_args: ConfigArgs,
-
-        #[command(flatten)]
-        execution_args: ExecutionArgs,
-    },
-    /// Submit a batch workflow to a Stepflow service for execution.
-    ///
-    /// This submits a workflow and multiple inputs from a JSONL file to a remote Stepflow server
-    /// for batch execution with concurrency control and progress tracking.
-    ///
-    /// # Examples
-    ///
-    /// ```bash
-    ///
-    /// # Submit batch with default concurrency
-    ///
-    /// stepflow submit-batch --url=http://localhost:7837/api/v1 --flow=workflow.yaml --inputs=inputs.jsonl
-    ///
-    /// # Submit batch with limited concurrency and output file
-    ///
-    /// stepflow submit-batch --url=http://localhost:7837/api/v1 --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=10 --output=results.json
-    ///
-    /// ```
-    SubmitBatch {
-        /// The URL of the Stepflow service.
-        #[arg(long="url", value_name = "URL", value_hint = clap::ValueHint::Url)]
-        url: Url,
-
-        /// Path to the workflow file to execute.
-        #[arg(long="flow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        flow_path: PathBuf,
-
-        /// Path to JSONL file containing inputs (one JSON object per line).
-        #[arg(long="inputs", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        inputs_path: PathBuf,
-
-        /// Maximum number of concurrent executions on the server. Defaults to number of inputs if not specified.
-        #[arg(long = "max-concurrent", value_name = "N")]
-        max_concurrent: Option<usize>,
-
-        /// Path to write batch results (JSONL format - one result per line).
-        #[arg(long="output", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
-        output_path: Option<PathBuf>,
-
-        #[command(flatten)]
-        execution_args: ExecutionArgs,
     },
     /// Submit a workflow to a Stepflow server.
     ///
@@ -206,6 +132,10 @@ pub enum Command {
     ///
     /// stepflow submit --flow=workflow.yaml --input-yaml='param: value'
     ///
+    /// # Submit batch with multiple inputs from JSONL file
+    ///
+    /// stepflow submit --flow=workflow.yaml --inputs=inputs.jsonl --output=results.jsonl
+    ///
     /// ```
     Submit {
         /// The URL of the Stepflow service to submit the workflow to.
@@ -218,6 +148,12 @@ pub enum Command {
 
         #[command(flatten)]
         input_args: InputArgs,
+
+        /// Maximum number of concurrent executions on the server (only used with --inputs).
+        ///
+        /// Defaults to number of inputs if not specified.
+        #[arg(long = "max-concurrent", value_name = "N")]
+        max_concurrent: Option<usize>,
 
         #[command(flatten)]
         execution_args: ExecutionArgs,
@@ -520,8 +456,6 @@ impl Cli {
             "Executing CLI command: {}",
             match &self.command {
                 Command::Run { .. } => "run",
-                Command::RunBatch { .. } => "run-batch",
-                Command::SubmitBatch { .. } => "submit-batch",
                 Command::Test { .. } => "test",
                 Command::Submit { .. } => "submit",
                 Command::ListComponents { .. } => "list-components",
@@ -532,13 +466,17 @@ impl Cli {
             }
         );
         match self.command {
+            #[allow(clippy::print_stdout)]
             Command::Run {
                 flow_path,
                 config_args,
                 input_args,
+                max_concurrent,
                 execution_args,
                 output_args,
             } => {
+                use stepflow_plugin::Context as _;
+
                 let flow: Flow = load(&flow_path)?;
                 let flow_dir = flow_path.parent();
                 let config = config_args.load_config(flow_dir)?;
@@ -564,180 +502,160 @@ impl Cli {
                 }
 
                 let executor = WorkflowLoader::create_executor_from_config(config).await?;
-                let input = input_args.parse_input(true)?;
-
                 let flow_id =
                     BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
-                let (run_id, output) = run(executor, flow, flow_id, input, overrides).await?;
-                // Output run_id without hyphens for Jaeger trace ID compatibility
-                eprintln!("run_id: {}", run_id.simple());
-                output_args.write_output(output)?;
-            }
-            #[allow(clippy::print_stdout)]
-            Command::RunBatch {
-                flow_path,
-                inputs_path,
-                max_concurrent,
-                output_path,
-                config_args,
-                execution_args,
-            } => {
-                use stepflow_plugin::Context as _;
 
-                let flow: Arc<Flow> = load(&flow_path)?;
-                let flow_dir = flow_path.parent();
-                let config = config_args.load_config(flow_dir)?;
+                // Load inputs using unified API
+                let inputs = input_args.load_inputs(true)?;
+                let is_batch = input_args.is_batch();
 
-                // Validate workflow and configuration before execution
-                let diagnostics = stepflow_analysis::validate_with_config(
-                    &flow,
-                    &config.plugins,
-                    &config.routing,
-                )
-                .change_context(crate::MainError::ValidationError(
-                    "Validation failed".to_string(),
-                ))?;
-
-                let failure_count = display_diagnostics(&diagnostics);
-                if failure_count > 0 {
-                    std::process::exit(1);
+                if is_batch {
+                    eprintln!("Running batch with {} inputs", inputs.len());
                 }
 
-                // Parse overrides before execution
-                let overrides = execution_args.override_args.parse_overrides()?;
+                // Submit execution (works for both single and batch)
+                let mut submit_params =
+                    stepflow_core::SubmitRunParams::new(flow.clone(), flow_id, inputs);
+                submit_params = submit_params.with_wait(true);
+                if let Some(max_concurrent) = max_concurrent {
+                    submit_params = submit_params.with_max_concurrency(max_concurrent);
+                }
+                if let Some(overrides) = overrides {
+                    submit_params = submit_params.with_overrides(overrides);
+                }
+                let run_status = executor
+                    .submit_run(submit_params)
+                    .await
+                    .change_context(crate::MainError::Configuration)?;
 
-                let executor = WorkflowLoader::create_executor_from_config(config).await?;
-                let flow_id =
-                    BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
+                // Output run_id without hyphens for Jaeger trace ID compatibility
+                eprintln!("run_id: {}", run_status.run_id.simple());
 
-                // Read inputs from JSONL file
-                let inputs_content = std::fs::read_to_string(&inputs_path)
-                    .change_context(crate::MainError::Configuration)
-                    .attach_printable_lazy(|| {
-                        format!("Failed to read inputs file: {:?}", inputs_path)
-                    })?;
+                // Extract results from run status
+                let results: Vec<stepflow_core::FlowResult> = run_status
+                    .results
+                    .map(|items| items.into_iter().filter_map(|item| item.result).collect())
+                    .unwrap_or_default();
 
-                let inputs: Vec<stepflow_core::workflow::ValueRef> = inputs_content
-                    .lines()
-                    .enumerate()
-                    .map(|(idx, line)| {
-                        serde_json::from_str(line)
+                // Write output: JSONL for batch mode, single JSON for single mode
+                if is_batch {
+                    if let Some(output_path) = &output_args.output_path {
+                        let mut output_file = std::fs::File::create(output_path)
                             .change_context(crate::MainError::Configuration)
                             .attach_printable_lazy(|| {
-                                format!("Failed to parse input at line {}", idx + 1)
-                            })
-                    })
-                    .collect::<Result<Vec<_>>>()?;
+                                format!("Failed to create output file: {:?}", output_path)
+                            })?;
 
-                let total_inputs = inputs.len();
-                eprintln!("📦 Running batch with {} inputs", total_inputs);
-
-                // Submit batch execution
-                let params = stepflow_core::SubmitBatchParams::new(flow.clone(), flow_id, inputs);
-                let params = if let Some(max_concurrent) = max_concurrent {
-                    params.with_max_concurrency(max_concurrent)
-                } else {
-                    params
-                };
-                let params = if let Some(overrides) = overrides {
-                    params.with_overrides(overrides)
-                } else {
-                    params
-                };
-                let batch_id = executor
-                    .submit_batch(params)
-                    .await
-                    .change_context(crate::MainError::Configuration)?;
-
-                eprintln!("batch_id: {}", batch_id.simple());
-
-                // Wait for batch completion
-                let (_details, results) = executor
-                    .get_batch(batch_id, true, true)
-                    .await
-                    .change_context(crate::MainError::Configuration)?;
-
-                let results = results.expect("include_results=true should return results");
-
-                // Write results to output file or stdout
-                if let Some(output_path) = output_path {
-                    let mut output_file = std::fs::File::create(&output_path)
-                        .change_context(crate::MainError::Configuration)
-                        .attach_printable_lazy(|| {
-                            format!("Failed to create output file: {:?}", output_path)
-                        })?;
-
-                    use std::io::Write as _;
-                    for result_info in &results {
-                        if let Some(result) = &result_info.result {
+                        use std::io::Write as _;
+                        for result in &results {
                             let json = serde_json::to_string(result)
                                 .change_context(crate::MainError::Configuration)?;
                             writeln!(output_file, "{}", json)
                                 .change_context(crate::MainError::Configuration)?;
                         }
-                    }
-                    eprintln!(
-                        "✅ Batch execution completed. Results written to {:?}",
-                        output_path
-                    );
-                } else {
-                    // Write to stdout in JSONL format
-                    for result_info in &results {
-                        if let Some(result) = &result_info.result {
+                        eprintln!(
+                            "Batch execution completed. Results written to {:?}",
+                            output_path
+                        );
+                    } else {
+                        // Write to stdout in JSONL format
+                        for result in &results {
                             let json = serde_json::to_string(result)
                                 .change_context(crate::MainError::Configuration)?;
                             println!("{}", json);
                         }
+                        eprintln!("Batch execution completed with {} results", results.len());
                     }
-                    eprintln!(
-                        "✅ Batch execution completed with {} results",
-                        results.len()
-                    );
+                } else {
+                    // Single mode: write single result
+                    let output = results.into_iter().next().ok_or_else(|| {
+                        error_stack::report!(crate::MainError::FlowExecution)
+                            .attach_printable("No result available")
+                    })?;
+                    output_args.write_output(output)?;
                 }
             }
-            Command::SubmitBatch {
-                url,
-                flow_path,
-                inputs_path,
-                max_concurrent,
-                output_path,
-                execution_args: _,
-            } => {
-                let flow: Arc<Flow> = load(&flow_path)?;
-                submit_batch(
-                    url,
-                    flow,
-                    &inputs_path,
-                    max_concurrent,
-                    output_path.as_deref(),
-                )
-                .await?;
-            }
+            #[allow(clippy::print_stdout)]
             Command::Submit {
                 url,
                 flow_path,
                 input_args,
+                max_concurrent,
                 execution_args,
                 output_args,
             } => {
                 let flow: Flow = load(&flow_path)?;
-                let input = input_args.parse_input(true)?;
 
                 // Parse overrides for submission
                 let overrides = execution_args.override_args.parse_overrides()?;
 
-                let output = submit(
+                // Load inputs using unified API
+                let inputs = input_args.load_inputs(true)?;
+                let is_batch = input_args.is_batch();
+
+                // Handle empty inputs case (batch mode with 0 items)
+                if inputs.is_empty() {
+                    eprintln!("No inputs provided, nothing to submit");
+                    if let Some(output_path) = &output_args.output_path {
+                        // Create empty output file
+                        std::fs::File::create(output_path)
+                            .change_context(crate::MainError::Configuration)?;
+                    }
+                    return Ok(());
+                }
+                if is_batch {
+                    eprintln!("Submitting batch with {} inputs", inputs.len());
+                }
+
+                // Submit using the unified API (works for both single and batch)
+                let results = submit(
                     url,
                     flow,
-                    input,
+                    inputs,
                     overrides.as_ref().unwrap_or(&WorkflowOverrides::new()),
+                    max_concurrent,
                 )
                 .await?;
-                output_args.write_output(output.clone())?;
 
-                // Exit with non-zero status if workflow execution failed
-                if output.failed().is_some() {
-                    std::process::exit(1);
+                // Write results
+                if is_batch {
+                    // Batch mode: write results in JSONL format
+                    if let Some(output_path) = &output_args.output_path {
+                        let mut output_file = std::fs::File::create(output_path)
+                            .change_context(crate::MainError::Configuration)
+                            .attach_printable_lazy(|| {
+                                format!("Failed to create output file: {:?}", output_path)
+                            })?;
+
+                        use std::io::Write as _;
+                        for result in &results {
+                            let json = serde_json::to_string(result)
+                                .change_context(crate::MainError::Configuration)?;
+                            writeln!(output_file, "{}", json)
+                                .change_context(crate::MainError::Configuration)?;
+                        }
+                        eprintln!(
+                            "Batch submission completed. Results written to {:?}",
+                            output_path
+                        );
+                    } else {
+                        // Write to stdout in JSONL format
+                        for result in &results {
+                            let json = serde_json::to_string(result)
+                                .change_context(crate::MainError::Configuration)?;
+                            println!("{}", json);
+                        }
+                        eprintln!("Batch submission completed with {} results", results.len());
+                    }
+                } else {
+                    // Single mode: write single result
+                    let output = results.into_iter().next().expect("single result expected");
+                    output_args.write_output(output.clone())?;
+
+                    // Exit with non-zero status if workflow execution failed
+                    if output.failed().is_some() {
+                        std::process::exit(1);
+                    }
                 }
             }
             Command::Test {

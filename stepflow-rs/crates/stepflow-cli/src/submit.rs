@@ -73,13 +73,18 @@ pub(crate) fn display_server_error(
     }
 }
 
-/// Submit a workflow to a Stepflow service for execution
+/// Submit a workflow to a Stepflow service for execution.
+///
+/// This function handles both single-item and multi-item (batch) submissions.
+/// When a single input is provided, it returns a single result.
+/// When multiple inputs are provided, it returns results for all items.
 pub async fn submit(
     service_url: Url,
     flow: Flow,
-    input: ValueRef,
+    inputs: Vec<ValueRef>,
     overrides: &WorkflowOverrides,
-) -> Result<FlowResult> {
+    max_concurrency: Option<usize>,
+) -> Result<Vec<FlowResult>> {
     let client = reqwest::Client::new();
 
     // Step 1: Store the flow to get its hash
@@ -127,13 +132,14 @@ pub async fn submit(
         MainError::ValidationError("Workflow validation failed".to_string())
     })?;
 
-    // Step 2: Execute the workflow by hash
+    // Step 2: Execute the workflow - works for both single and batch
     let execute_request = CreateRunRequest {
         flow_id,
-        input,
+        input: inputs,
         overrides: overrides.clone(),
         variables: std::collections::HashMap::new(), // TODO: Add variables support to CLI submit
         debug: false,                                // TODO: Add debug option to CLI
+        max_concurrency,
     };
 
     let execute_url = service_url
@@ -165,14 +171,74 @@ pub async fn submit(
         MainError::Configuration
     })?;
 
-    // Return the result if available
-    match execute_result.result {
-        Some(result) => Ok(result),
-        None => {
-            log::error!("No result in response");
-            Err(MainError::Configuration.into())
+    // For single-item runs, the result is returned directly
+    // For multi-item runs, we need to fetch results from the items endpoint
+    if execute_result.item_count == 1 {
+        // Single item - result is in the response
+        match execute_result.result {
+            Some(result) => Ok(vec![result]),
+            None => {
+                log::error!("No result in response");
+                Err(MainError::Configuration.into())
+            }
         }
+    } else {
+        // Multi-item - fetch results from items endpoint
+        fetch_batch_results(&client, &service_url, execute_result.run_id).await
     }
+}
+
+/// Fetch results for a multi-item run from the items endpoint.
+async fn fetch_batch_results(
+    client: &reqwest::Client,
+    service_url: &Url,
+    run_id: uuid::Uuid,
+) -> Result<Vec<FlowResult>> {
+    // Use the items endpoint to get all results
+    let items_url = service_url
+        .join(&format!("/api/v1/runs/{}/items", run_id))
+        .map_err(|_| MainError::Configuration)?;
+
+    let response = client.get(items_url).send().await.map_err(|e| {
+        log::error!("Failed to get run items: {}", e);
+        MainError::Configuration
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        display_server_error(status, &error_text, "getting run items");
+        return Err(MainError::Configuration.into());
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ItemsResponse {
+        items: Vec<ItemInfo>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ItemInfo {
+        result: Option<FlowResult>,
+    }
+
+    let items_result: ItemsResponse = response.json().await.map_err(|e| {
+        log::error!("Failed to parse items response: {}", e);
+        MainError::Configuration
+    })?;
+
+    // Collect results (filtering out None values)
+    let results: Vec<FlowResult> = items_result
+        .items
+        .into_iter()
+        .filter_map(|r| r.result)
+        .collect();
+
+    Ok(results)
 }
 
 #[cfg(test)]

@@ -25,21 +25,6 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
-    // Apply batch execution migration
-    apply_migration(pool, "002_add_batch_execution", || {
-        add_batch_execution_tables(pool)
-    })
-    .await?;
-
-    // Apply overrides column migration
-    apply_migration(pool, "003_add_overrides_column", || {
-        add_overrides_column(pool)
-    })
-    .await?;
-
-    // Apply debug queue table migration
-    apply_migration(pool, "004_add_debug_queue", || add_debug_queue_table(pool)).await?;
-
     Ok(())
 }
 
@@ -112,7 +97,7 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         "#,
-        // Runs table with flow metadata
+        // Runs table with flow metadata (items stored in run_items table)
         r#"
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
@@ -121,8 +106,7 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 flow_label TEXT,       -- label used for execution (if any)
                 status TEXT DEFAULT 'running',
                 debug_mode BOOLEAN DEFAULT FALSE,
-                input_json TEXT,
-                result_json TEXT,
+                overrides_json TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 completed_at DATETIME,
                 FOREIGN KEY (flow_id) REFERENCES blobs(id)
@@ -166,6 +150,30 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 FOREIGN KEY (flow_id) REFERENCES blobs(id)
             )
         "#,
+        // Debug queue table for persisting debug session queue
+        r#"
+            CREATE TABLE IF NOT EXISTS debug_queue (
+                run_id TEXT NOT NULL,
+                step_id TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (run_id, step_id),
+                FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+            )
+        "#,
+        // Run items table for multi-item runs (input and result per item)
+        r#"
+            CREATE TABLE IF NOT EXISTS run_items (
+                run_id TEXT NOT NULL,
+                item_index INTEGER NOT NULL,
+                input_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                result_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                completed_at DATETIME,
+                PRIMARY KEY (run_id, item_index),
+                FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+            )
+        "#,
     ];
 
     // Execute table creation commands
@@ -193,6 +201,11 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         "CREATE INDEX IF NOT EXISTS idx_flow_labels_name ON flow_labels(name)",
         "CREATE INDEX IF NOT EXISTS idx_flow_labels_flow_id ON flow_labels(flow_id)",
         "CREATE INDEX IF NOT EXISTS idx_flow_labels_created_at ON flow_labels(created_at)",
+        // Debug queue indexes
+        "CREATE INDEX IF NOT EXISTS idx_debug_queue_run_id ON debug_queue(run_id)",
+        // Run items indexes
+        "CREATE INDEX IF NOT EXISTS idx_run_items_run_id ON run_items(run_id)",
+        "CREATE INDEX IF NOT EXISTS idx_run_items_status ON run_items(run_id, status)",
     ];
 
     // Execute index creation commands
@@ -202,104 +215,6 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
             .await
             .change_context(StateError::Initialization)?;
     }
-
-    Ok(())
-}
-
-/// Add batch execution tables
-async fn add_batch_execution_tables(pool: &SqlitePool) -> Result<(), StateError> {
-    let table_commands = vec![
-        // Batches table for storing batch metadata
-        r#"
-            CREATE TABLE IF NOT EXISTS batches (
-                id TEXT PRIMARY KEY,
-                flow_id TEXT NOT NULL,
-                flow_name TEXT,
-                total_inputs INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'running',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (flow_id) REFERENCES blobs(id)
-            )
-        "#,
-        // Batch runs join table for linking batches to runs
-        r#"
-            CREATE TABLE IF NOT EXISTS batch_runs (
-                batch_id TEXT NOT NULL,
-                run_id TEXT NOT NULL,
-                batch_input_index INTEGER NOT NULL,
-                PRIMARY KEY (batch_id, run_id),
-                FOREIGN KEY (batch_id) REFERENCES batches(id),
-                FOREIGN KEY (run_id) REFERENCES runs(id)
-            )
-        "#,
-    ];
-
-    // Execute table creation commands
-    for sql in table_commands {
-        sqlx::query(sql)
-            .execute(pool)
-            .await
-            .change_context(StateError::Initialization)?;
-    }
-
-    // Create indexes for batch queries
-    let index_commands = vec![
-        // Batch indexes for efficient queries
-        "CREATE INDEX IF NOT EXISTS idx_batches_flow_name ON batches(flow_name)",
-        "CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)",
-        "CREATE INDEX IF NOT EXISTS idx_batches_created_at ON batches(created_at)",
-        // Batch runs indexes for efficient joins and reverse lookups
-        "CREATE INDEX IF NOT EXISTS idx_batch_runs_run_id ON batch_runs(run_id)",
-        "CREATE INDEX IF NOT EXISTS idx_batch_runs_batch_id ON batch_runs(batch_id, batch_input_index)",
-    ];
-
-    // Execute index creation commands
-    for sql in index_commands {
-        sqlx::query(sql)
-            .execute(pool)
-            .await
-            .change_context(StateError::Initialization)?;
-    }
-
-    Ok(())
-}
-
-/// Add overrides column to runs table
-async fn add_overrides_column(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = "ALTER TABLE runs ADD COLUMN overrides_json TEXT";
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    Ok(())
-}
-
-/// Add debug_queue table for persisting debug session queue
-/// Uses a normalized structure with one row per step for efficient add/remove
-async fn add_debug_queue_table(pool: &SqlitePool) -> Result<(), StateError> {
-    let sql = r#"
-        CREATE TABLE IF NOT EXISTS debug_queue (
-            run_id TEXT NOT NULL,
-            step_id TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (run_id, step_id),
-            FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
-        )
-    "#;
-
-    sqlx::query(sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    // Add index for efficient lookups by run_id
-    let index_sql = "CREATE INDEX IF NOT EXISTS idx_debug_queue_run_id ON debug_queue(run_id)";
-    sqlx::query(index_sql)
-        .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
 
     Ok(())
 }

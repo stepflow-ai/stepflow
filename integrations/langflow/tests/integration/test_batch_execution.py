@@ -211,27 +211,23 @@ def test_batch_execution_with_output_file(
     expected_outputs = [2, 4, 6, 10, 16]
 
     # Verify results have expected structure and correct values
-    # Batch results have format:
-    #   {"index": N, "status": "completed/failed", "result": {...}}
+    # Results have format: {"outcome": "success", "result": {...}}
     for i, result in enumerate(results):
-        assert "status" in result, "Result should have status field"
-        assert result["status"] in [
-            "completed",
+        assert "outcome" in result, "Result should have outcome field"
+        assert result["outcome"] in [
+            "success",
             "failed",
-        ], "Status should be completed or failed"
-        assert "index" in result, "Result should have index field"
-        assert "result" in result, "Result should have result field"
+        ], "Outcome should be success or failed"
 
-        if result["status"] == "completed":
+        if result["outcome"] == "success":
             # Check that result has the workflow execution result
-            assert result["result"].get("outcome") == "success"
+            assert "result" in result, "Successful result should have result field"
 
             # Verify the actual computed value is correct (x * 2)
-            # The workflow output is result["result"]["result"]["result"]
-            # where the first "result" is the batch result field,
-            # the second "result" is the outcome wrapper,
-            # and the third "result" is the workflow output field name
-            workflow_output = result["result"]["result"]
+            # The workflow output is result["result"]["result"]
+            # where the first "result" is the outcome wrapper field,
+            # and the second "result" is the workflow output field name
+            workflow_output = result["result"]
             assert workflow_output is not None, f"Workflow result is None at index {i}"
             actual_result = workflow_output["result"]
             expected_result = expected_outputs[i]
@@ -287,30 +283,30 @@ def test_batch_execution_with_failures(
     assert len(results) == 5, "Expected 5 results (including failures)"
 
     # Count completed vs failed
-    completed_count = sum(1 for r in results if r["status"] == "completed")
-    failed_count = sum(1 for r in results if r["status"] == "failed")
+    completed_count = sum(1 for r in results if r.get("outcome") == "success")
+    failed_count = sum(1 for r in results if r.get("outcome") == "failed")
 
     assert completed_count == batch_stats["completed"], "Completed count mismatch"
     assert failed_count == batch_stats["failed"], "Failed count mismatch"
 
     # Verify specific results
     # Index 0: x=1, should succeed with result=2
-    assert results[0]["status"] == "completed"
-    assert results[0]["result"]["result"]["result"] == 2
+    assert results[0]["outcome"] == "success"
+    assert results[0]["result"]["result"] == 2
 
     # Index 1: x missing, should fail
-    assert results[1]["status"] == "failed"
+    assert results[1]["outcome"] == "failed"
 
     # Index 2: x=2, should succeed with result=4
-    assert results[2]["status"] == "completed"
-    assert results[2]["result"]["result"]["result"] == 4
+    assert results[2]["outcome"] == "success"
+    assert results[2]["result"]["result"] == 4
 
     # Index 3: x="not_a_number", should fail
-    assert results[3]["status"] == "failed"
+    assert results[3]["outcome"] == "failed"
 
     # Index 4: x=3, should succeed with result=6
-    assert results[4]["status"] == "completed"
-    assert results[4]["result"]["result"]["result"] == 6
+    assert results[4]["outcome"] == "success"
+    assert results[4]["result"]["result"] == 6
 
 
 def test_batch_execution_empty_inputs(

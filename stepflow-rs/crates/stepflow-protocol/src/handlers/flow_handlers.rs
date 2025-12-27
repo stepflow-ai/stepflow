@@ -12,6 +12,7 @@
 
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
+use stepflow_core::GetRunOptions;
 use stepflow_plugin::Context;
 use tokio::sync::mpsc;
 
@@ -20,19 +21,13 @@ use crate::{Error, MethodHandler, MethodRequest};
 
 use super::handle_method_call;
 
-/// Handler for flow evaluation method calls from component servers.
-pub struct EvaluateFlowHandler;
+/// Handler for run submission method calls from component servers.
+pub struct SubmitRunHandler;
 
-/// Handler for flow metadata method calls from component servers.
-pub struct GetFlowMetadataHandler;
+/// Handler for run retrieval method calls from component servers.
+pub struct GetRunHandler;
 
-/// Handler for batch submission method calls from component servers.
-pub struct SubmitBatchHandler;
-
-/// Handler for batch retrieval method calls from component servers.
-pub struct GetBatchHandler;
-
-impl MethodHandler for EvaluateFlowHandler {
+impl MethodHandler for SubmitRunHandler {
     fn handle_message<'a>(
         &self,
         request: &'a MethodRequest<'a>,
@@ -42,35 +37,7 @@ impl MethodHandler for EvaluateFlowHandler {
         handle_method_call(
             request,
             response_tx,
-            async move |request: crate::protocol::EvaluateFlowParams| {
-                // Execute the flow - overrides are handled deeper in the execution engine
-                let overrides = request.overrides;
-                let result = context
-                    .execute_flow_by_id(&request.flow_id, request.input, overrides)
-                    .await
-                    .map_err(|e| {
-                        log::error!("Failed to evaluate flow: {e}");
-                        Error::internal("Failed to evaluate flow")
-                    })?;
-
-                Ok(crate::protocol::EvaluateFlowResult { result })
-            },
-        )
-        .boxed()
-    }
-}
-
-impl MethodHandler for GetFlowMetadataHandler {
-    fn handle_message<'a>(
-        &self,
-        request: &'a MethodRequest<'a>,
-        response_tx: mpsc::Sender<String>,
-        context: Arc<dyn Context>,
-    ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
-        handle_method_call(
-            request,
-            response_tx,
-            async move |request: crate::protocol::GetFlowMetadataParams| {
+            async move |request: crate::protocol::SubmitRunProtocolParams| {
                 // Fetch the flow from the state store
                 let flow_id = &request.flow_id;
                 let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
@@ -82,28 +49,31 @@ impl MethodHandler for GetFlowMetadataHandler {
                     .ok_or_else(|| Error::internal("Invalid flow blob"))?
                     .clone();
 
-                let flow_metadata = flow.metadata().clone();
+                // Build submit params
+                let mut params =
+                    stepflow_core::SubmitRunParams::new(flow, request.flow_id, request.inputs);
+                params = params.with_wait(request.wait);
+                if let Some(max_concurrency) = request.max_concurrency {
+                    params = params.with_max_concurrency(max_concurrency);
+                }
+                if let Some(overrides) = request.overrides {
+                    params = params.with_overrides(overrides);
+                }
 
-                let step_metadata = if let Some(step_id) = request.step_id.as_ref() {
-                    let Some(step) = flow.steps().iter().find(|s| &s.id == step_id) else {
-                        return Err(Error::not_found("step", step_id.as_str()));
-                    };
-                    Some(step.metadata.clone())
-                } else {
-                    None
-                };
+                // Submit the run
+                let run_status = context.submit_run(params).await.map_err(|e| {
+                    log::error!("Failed to submit run: {e}");
+                    Error::internal("Failed to submit run")
+                })?;
 
-                Ok(crate::protocol::GetFlowMetadataResult {
-                    flow_metadata,
-                    step_metadata,
-                })
+                Ok(crate::protocol::RunStatusProtocol::from(run_status))
             },
         )
         .boxed()
     }
 }
 
-impl MethodHandler for SubmitBatchHandler {
+impl MethodHandler for GetRunHandler {
     fn handle_message<'a>(
         &self,
         request: &'a MethodRequest<'a>,
@@ -113,108 +83,27 @@ impl MethodHandler for SubmitBatchHandler {
         handle_method_call(
             request,
             response_tx,
-            async move |request: crate::protocol::SubmitBatchParams| {
-                // Fetch the flow from the state store
-                let flow_id = &request.flow_id;
-                let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
-                    log::error!("Failed to get flow blob: {e}");
-                    Error::not_found("flow", flow_id.as_str())
+            async move |request: crate::protocol::GetRunProtocolParams| {
+                let run_id = uuid::Uuid::parse_str(&request.run_id).map_err(|e| {
+                    log::error!("Invalid run ID: {e}");
+                    Error::invalid_value("run_id", "valid UUID")
                 })?;
-                let flow = blob_data
-                    .as_flow()
-                    .ok_or_else(|| Error::internal("Invalid flow blob"))?
-                    .clone();
 
-                // Submit the batch - overrides are handled deeper in the execution engine
-                let params =
-                    stepflow_core::SubmitBatchParams::new(flow, request.flow_id, request.inputs);
-                let params = if let Some(max_concurrency) = request.max_concurrency {
-                    params.with_max_concurrency(max_concurrency)
+                let options = GetRunOptions::new()
+                    .with_wait(request.wait)
+                    .with_result_order(request.result_order);
+                let options = if request.include_results {
+                    options.with_results()
                 } else {
-                    params
+                    options
                 };
-                let params = if let Some(overrides) = request.overrides {
-                    params.with_overrides(overrides)
-                } else {
-                    params
-                };
-                let batch_id = context.submit_batch(params).await.map_err(|e| {
-                    log::error!("Failed to submit batch: {e}");
-                    Error::internal("Failed to submit batch")
+
+                let run_status = context.get_run(run_id, options).await.map_err(|e| {
+                    log::error!("Failed to get run: {e}");
+                    Error::internal("Failed to get run")
                 })?;
 
-                let batch_metadata =
-                    context
-                        .state_store()
-                        .get_batch(batch_id)
-                        .await
-                        .map_err(|e| {
-                            log::error!("Failed to get batch metadata: {e}");
-                            Error::internal("Failed to get batch metadata")
-                        })?;
-
-                Ok(crate::protocol::SubmitBatchResult {
-                    batch_id: batch_id.to_string(),
-                    total_runs: batch_metadata.map(|m| m.total_inputs).unwrap_or(0),
-                })
-            },
-        )
-        .boxed()
-    }
-}
-
-impl MethodHandler for GetBatchHandler {
-    fn handle_message<'a>(
-        &self,
-        request: &'a MethodRequest<'a>,
-        response_tx: mpsc::Sender<String>,
-        context: Arc<dyn Context>,
-    ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
-        handle_method_call(
-            request,
-            response_tx,
-            async move |request: crate::protocol::GetBatchParams| {
-                let batch_id = uuid::Uuid::parse_str(&request.batch_id).map_err(|e| {
-                    log::error!("Invalid batch ID: {e}");
-                    Error::invalid_value("batch_id", "valid UUID")
-                })?;
-
-                // Get batch details and optionally outputs
-                let (state_details, state_outputs) = context
-                    .get_batch(batch_id, request.wait, request.include_results)
-                    .await
-                    .map_err(|e| {
-                        log::error!("Failed to get batch: {e}");
-                        Error::internal("Failed to get batch")
-                    })?;
-
-                // Convert state store types to protocol types
-                let details = crate::protocol::BatchDetails {
-                    batch_id: state_details.metadata.batch_id.to_string(),
-                    flow_id: state_details.metadata.flow_id,
-                    flow_name: state_details.metadata.flow_name,
-                    total_runs: state_details.metadata.total_inputs,
-                    status: format!("{:?}", state_details.metadata.status).to_lowercase(),
-                    created_at: state_details.metadata.created_at.to_rfc3339(),
-                    completed_runs: state_details.statistics.completed_runs,
-                    running_runs: state_details.statistics.running_runs,
-                    failed_runs: state_details.statistics.failed_runs,
-                    cancelled_runs: state_details.statistics.cancelled_runs,
-                    paused_runs: state_details.statistics.paused_runs,
-                    completed_at: state_details.completed_at.map(|dt| dt.to_rfc3339()),
-                };
-
-                let outputs = state_outputs.map(|outs| {
-                    outs.into_iter()
-                        .map(|out| crate::protocol::BatchOutputInfo {
-                            batch_input_index: out.batch_input_index,
-                            status: out.status.to_string(),
-                            result: out.result,
-                        })
-                        .collect()
-                });
-
-                Ok(crate::protocol::GetBatchResult { details, outputs })
+                Ok(crate::protocol::RunStatusProtocol::from(run_status))
             },
         )
         .boxed()

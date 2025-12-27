@@ -458,7 +458,7 @@ ai_analysis:
 ```
 
 ```bash
-stepflow run-batch --flow=workflow.yaml --inputs=batch-inputs.jsonl \
+stepflow run --flow=workflow.yaml --inputs=batch-inputs.jsonl \
   --overrides=batch-overrides.yaml --max-concurrent=20
 ```
 
@@ -476,8 +476,6 @@ Later overrides take precedence over earlier ones.
 
 - [Variables](./variables.md) - Environment-specific workflow parameters
 - [CLI: run](../cli/run.md) - Local workflow execution with overrides
-- [CLI: run-batch](../cli/run-batch.md) - Batch execution with overrides
 - [CLI: submit](../cli/submit.md) - Remote workflow submission with overrides
-- [CLI: submit-batch](../cli/submit-batch.md) - Remote batch submission with overrides
 - [Control Flow](./control-flow.md) - Skip conditions and error handling
 - [Configuration](../configuration.md) - Environment-specific configuration

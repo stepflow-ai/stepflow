@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import yaml
 
 from stepflow_langflow_integration.exceptions import ExecutionError, ValidationError
 
@@ -152,6 +153,162 @@ class StepflowServer:
         except Exception:
             return False
 
+    def store_flow(self, flow: dict[str, Any], timeout: float = 30.0) -> str | None:
+        """Store a flow and return its ID.
+
+        Args:
+            flow: Flow definition as a dictionary
+            timeout: Request timeout in seconds
+
+        Returns:
+            The flow ID if successful, None otherwise
+        """
+        try:
+            response = requests.post(
+                f"{self.url}/flows",
+                json={"flow": flow},
+                timeout=timeout,
+            )
+            if response.ok:
+                return response.json().get("flowId")
+            return None
+        except Exception:
+            return None
+
+    def submit_run(
+        self,
+        flow_id: str,
+        inputs: list[dict[str, Any]],
+        max_concurrent: int | None = None,
+        timeout: float = 300.0,
+    ) -> dict[str, Any]:
+        """Submit a run with one or more inputs.
+
+        Args:
+            flow_id: ID of the stored flow
+            inputs: List of input dictionaries (can be single or batch)
+            max_concurrent: Maximum concurrent executions for batch
+            timeout: Request timeout in seconds
+
+        Returns:
+            Run response with runId, itemCount, status, and optionally result
+        """
+        run_request: dict[str, Any] = {
+            "flowId": flow_id,
+            "input": inputs,
+        }
+        if max_concurrent is not None:
+            run_request["maxConcurrency"] = max_concurrent
+
+        response = requests.post(
+            f"{self.url}/runs",
+            json=run_request,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_run_items(self, run_id: str, timeout: float = 30.0) -> list[dict[str, Any]]:
+        """Get items for a batch run.
+
+        Args:
+            run_id: ID of the run
+            timeout: Request timeout in seconds
+
+        Returns:
+            List of item results
+        """
+        response = requests.get(
+            f"{self.url}/runs/{run_id}/items",
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json().get("items", [])
+
+    def submit_batch(
+        self,
+        workflow_yaml: str,
+        inputs: list[dict[str, Any]],
+        max_concurrent: int | None = None,
+        timeout: float = 300.0,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Submit a batch workflow using the API.
+
+        Args:
+            workflow_yaml: YAML content of the workflow
+            inputs: List of input dictionaries
+            max_concurrent: Maximum concurrent executions
+            timeout: Request timeout in seconds
+
+        Returns:
+            Tuple of (success, batch_stats)
+            batch_stats: {"total": N, "completed": N, "failed": N, "results": [...]}
+        """
+        try:
+            # Parse workflow YAML
+            flow = yaml.safe_load(workflow_yaml)
+
+            # Store the flow
+            flow_id = self.store_flow(flow, timeout=timeout)
+            if not flow_id:
+                return False, {
+                    "total": 0,
+                    "completed": 0,
+                    "failed": 0,
+                    "results": [],
+                    "error": "Failed to store flow",
+                }
+
+            # Handle empty inputs
+            if not inputs:
+                return True, {
+                    "total": 0,
+                    "completed": 0,
+                    "failed": 0,
+                    "results": [],
+                }
+
+            # Submit the run
+            run_result = self.submit_run(flow_id, inputs, max_concurrent, timeout)
+            run_id = run_result.get("runId")
+            item_count = run_result.get("itemCount", 1)
+
+            # Get results
+            results: list[dict[str, Any]] = []
+            if item_count == 1:
+                # Single result in response
+                if run_result.get("result"):
+                    results = [run_result["result"]]
+            else:
+                # Fetch from items endpoint
+                items = self.get_run_items(run_id, timeout)
+                results = [item["result"] for item in items if item.get("result")]
+
+            # Calculate stats
+            batch_stats = {
+                "total": len(inputs),
+                "completed": sum(1 for r in results if r.get("outcome") == "success"),
+                "failed": sum(1 for r in results if r.get("outcome") != "success"),
+                "results": results,
+                "batch_id": run_id,  # Include run ID for backward compatibility
+            }
+
+            # Check success
+            success = run_result.get("status") in ("success", "completed")
+            if not success and batch_stats["completed"] == batch_stats["total"]:
+                success = True
+
+            return success, batch_stats
+
+        except requests.RequestException as e:
+            return False, {
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "results": [],
+                "error": str(e),
+            }
+
 
 class StepflowBinaryRunner:
     """Helper class for running Stepflow binary commands in tests."""
@@ -177,7 +334,7 @@ class StepflowBinaryRunner:
                 )
                 binary_path = str(default_path)
 
-        self.binary_path = Path(binary_path)
+        self.binary_path = Path(binary_path).resolve()
         if not self.binary_path.exists():
             raise FileNotFoundError(
                 f"Stepflow binary not found at {self.binary_path}. "
@@ -192,6 +349,10 @@ class StepflowBinaryRunner:
                 f"Stepflow server binary not found at {self.server_binary_path}. "
                 "Please build stepflow-server first."
             )
+
+        # Log the binary paths for debugging
+        print(f"[StepflowBinaryRunner] CLI binary: {self.binary_path}")
+        print(f"[StepflowBinaryRunner] Server binary: {self.server_binary_path}")
 
     def start_server(
         self,
@@ -387,6 +548,8 @@ class StepflowBinaryRunner:
     ) -> tuple[bool, dict[str, Any], str, str]:
         """Submit batch workflow to Stepflow server.
 
+        Uses the HTTP API directly for batch execution via server.submit_batch().
+
         Args:
             server: Running StepflowServer instance
             workflow_yaml: YAML content of the workflow
@@ -397,106 +560,53 @@ class StepflowBinaryRunner:
 
         Returns:
             Tuple of (success, batch_stats, stdout, stderr)
-            batch_stats: {"total": N, "completed": N, "failed": N, "batch_id": uuid}
+            batch_stats: {"total": N, "completed": N, "failed": N, "results": [...]}
         """
-        # Write workflow to temporary file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as workflow_file:
-            workflow_file.write(workflow_yaml)
-            workflow_path = workflow_file.name
-
         try:
-            # Build command
-            cmd = [
-                str(self.binary_path),
-                "submit-batch",
-                "--url",
-                server.url,
-                "--flow",
-                workflow_path,
-                "--inputs",
-                inputs_jsonl_path,
-            ]
+            # Read inputs from JSONL file
+            inputs: list[dict[str, Any]] = []
+            with open(inputs_jsonl_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        inputs.append(json.loads(line))
 
-            if max_concurrent is not None:
-                cmd.extend(["--max-concurrent", str(max_concurrent)])
-
-            if output_path is not None:
-                cmd.extend(["--output", output_path])
-
-            # Run batch submission
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
+            # Use server's submit_batch method
+            success, batch_stats = server.submit_batch(
+                workflow_yaml=workflow_yaml,
+                inputs=inputs,
+                max_concurrent=max_concurrent,
                 timeout=timeout,
-                cwd=self.binary_path.parent,
             )
 
-            success = result.returncode == 0
-            stdout_content = result.stdout
-            stderr_content = result.stderr
+            # Write results to output file if specified
+            if output_path and batch_stats.get("results"):
+                with open(output_path, "w") as f:
+                    for result in batch_stats["results"]:
+                        f.write(json.dumps(result) + "\n")
 
-            # Parse batch statistics from output
-            batch_stats: dict[str, Any] = {
-                "total": 0,
-                "completed": 0,
-                "failed": 0,
-                "batch_id": None,
-            }
-
-            # Try to extract statistics from stdout
-            if stdout_content:
-                lines = stdout_content.split("\n")
-                for line in lines:
-                    if "Batch ID:" in line:
-                        # Extract batch ID
-                        parts = line.split("Batch ID:")
-                        if len(parts) > 1:
-                            batch_stats["batch_id"] = parts[1].strip()
-                    elif "Total:" in line:
-                        # Extract total count
-                        parts = line.split("Total:")
-                        if len(parts) > 1:
-                            try:
-                                batch_stats["total"] = int(parts[1].strip())
-                            except ValueError:
-                                pass
-                    elif "Completed:" in line or "✅ Completed:" in line:
-                        # Extract completed count
-                        parts = line.split("Completed:")
-                        if len(parts) > 1:
-                            try:
-                                batch_stats["completed"] = int(parts[1].strip())
-                            except ValueError:
-                                pass
-                    elif "Failed:" in line or "❌ Failed:" in line:
-                        # Extract failed count
-                        parts = line.split("Failed:")
-                        if len(parts) > 1:
-                            try:
-                                batch_stats["failed"] = int(parts[1].strip())
-                            except ValueError:
-                                pass
-
-            # If submission failed, include server logs in stderr
+            stderr_content = ""
             if not success:
+                error = batch_stats.get("error", "")
                 server_stderr = server.get_stderr()
                 if server_stderr:
-                    stderr_content = "\n".join(
-                        (stderr_content, "--- Server Logs ---", server_stderr)
-                    ).strip()
+                    stderr_content = f"{error}\n--- Server Logs ---\n{server_stderr}"
+                else:
+                    stderr_content = error
 
-            return success, batch_stats, stdout_content, stderr_content
+            return success, batch_stats, json.dumps(batch_stats), stderr_content
 
-        except subprocess.TimeoutExpired as e:
+        except requests.Timeout as e:
             raise ExecutionError(
-                f"Stepflow submit-batch command timed out after {timeout}s"
+                f"Stepflow batch submission timed out after {timeout}s"
             ) from e
-        finally:
-            # Clean up temp workflow file
-            Path(workflow_path).unlink(missing_ok=True)
+        except Exception as e:
+            return (
+                False,
+                {"total": 0, "completed": 0, "failed": 0, "results": []},
+                "",
+                f"Error during batch submission: {e}",
+            )
 
     def validate_workflow(
         self,

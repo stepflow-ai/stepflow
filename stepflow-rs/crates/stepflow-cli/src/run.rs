@@ -25,19 +25,25 @@ pub async fn run(
     input: stepflow_core::workflow::ValueRef,
     overrides: Option<stepflow_core::workflow::WorkflowOverrides>,
 ) -> Result<(uuid::Uuid, FlowResult)> {
-    let params = stepflow_core::SubmitFlowParams::new(flow, flow_id, input);
-    let params = if let Some(overrides) = overrides {
-        params.with_overrides(overrides)
-    } else {
-        params
-    };
-    let run_id = executor
-        .submit_flow(params)
+    let mut submit_params = stepflow_core::SubmitRunParams::new(flow, flow_id, vec![input]);
+    submit_params = submit_params.with_wait(true);
+    if let Some(overrides) = overrides {
+        submit_params = submit_params.with_overrides(overrides);
+    }
+
+    let run_status = executor
+        .submit_run(submit_params)
         .await
         .change_context(MainError::FlowExecution)?;
-    let output = executor
-        .flow_result(run_id)
-        .await
-        .change_context(MainError::FlowExecution)?;
-    Ok((run_id, output))
+
+    // Extract result from run status
+    let output = run_status
+        .results
+        .and_then(|r| r.into_iter().next())
+        .and_then(|item| item.result)
+        .ok_or_else(|| {
+            error_stack::report!(MainError::FlowExecution).attach_printable("No result available")
+        })?;
+
+    Ok((run_status.run_id, output))
 }

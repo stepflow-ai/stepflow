@@ -253,9 +253,9 @@ async fn test_create_run_without_overrides() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {
+                "input": [{
                     "test_input": "Hello from run execution"
-                },
+                }],
                 "debug": false
             }))
             .unwrap(),
@@ -323,9 +323,9 @@ async fn test_create_run_with_overrides() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {
+                "input": [{
                     "test_input": "Hello with overrides"
-                },
+                }],
                 "overrides": {
                     "step1": {
                         "value": {
@@ -414,9 +414,9 @@ async fn test_create_run_with_invalid_overrides() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {
+                "input": [{
                     "test_input": "Hello"
-                },
+                }],
                 "overrides": {
                     "nonexistent_step": {
                         "value": {
@@ -493,9 +493,9 @@ async fn test_create_run_empty_overrides() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {
+                "input": [{
                     "test_input": "Hello"
-                },
+                }],
                 "overrides": {},
                 "debug": false
             }))
@@ -632,7 +632,7 @@ async fn test_hash_based_execution() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {"message": "test input"},
+                "input": [{"message": "test input"}],
                 "debug": false
             }))
             .unwrap(),
@@ -689,7 +689,7 @@ async fn test_run_details() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {"message": "test input"},
+                "input": [{"message": "test input"}],
                 "debug": false
             }))
             .unwrap(),
@@ -720,7 +720,7 @@ async fn test_run_details() {
     assert_eq!(details_response["runId"], run_id);
     assert_eq!(details_response["flowId"], flow_id);
     assert_eq!(details_response["status"], "completed");
-    assert!(details_response["input"].is_object());
+    assert!(details_response["inputs"].is_array());
 
     // Get run flow
     let flow_request = Request::builder()
@@ -944,7 +944,7 @@ async fn test_status_updates_during_regular_execution() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": false
             }))
             .unwrap(),
@@ -1057,7 +1057,7 @@ async fn test_status_updates_during_debug_execution() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": true
             }))
             .unwrap(),
@@ -1189,7 +1189,7 @@ async fn test_debug_api_eval_walkthrough() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": true
             }))
             .unwrap(),
@@ -1372,7 +1372,7 @@ async fn test_debug_queue_returns_dependencies() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": true
             }))
             .unwrap(),
@@ -1489,7 +1489,7 @@ async fn test_debug_queue_persists_across_requests() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": true
             }))
             .unwrap(),
@@ -1707,7 +1707,7 @@ async fn test_debug_eval_endpoint() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": true
             }))
             .unwrap(),
@@ -1823,7 +1823,7 @@ async fn test_debug_queue_accepts_single_or_list() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": true
             }))
             .unwrap(),
@@ -1944,7 +1944,7 @@ async fn test_status_transitions_with_error_handling() {
         .body(Body::from(
             serde_json::to_string(&json!({
                 "flowId": flow_id,
-                "input": {},
+                "input": [{}],
                 "debug": false
             }))
             .unwrap(),

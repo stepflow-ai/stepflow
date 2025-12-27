@@ -33,7 +33,7 @@ impl Format {
             .unwrap_or_default();
         match extension {
             "yml" | "yaml" => Ok(Self::Yaml),
-            "json" => Ok(Self::Json),
+            "json" | "jsonl" => Ok(Self::Json),
             _ => Err(MainError::UnrecognizedFileExtension(path.to_owned()).into()),
         }
     }

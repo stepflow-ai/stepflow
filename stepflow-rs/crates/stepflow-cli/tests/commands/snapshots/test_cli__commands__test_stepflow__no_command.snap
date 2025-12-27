@@ -20,7 +20,7 @@ exit_code: 2
 
 ----- stderr -----
 error: 'stepflow' requires a subcommand but one was not provided
-  [subcommands: run, run-batch, submit-batch, submit, test, list-components, repl, validate, infer, visualize, help]
+  [subcommands: run, submit, test, list-components, repl, validate, infer, visualize, help]
 
 Usage: stepflow [OPTIONS] <COMMAND>
 

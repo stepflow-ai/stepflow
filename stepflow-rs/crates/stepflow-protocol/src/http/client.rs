@@ -485,9 +485,9 @@ mod tests {
     use futures::future::{BoxFuture, FutureExt as _};
     use std::path::Path;
     use std::sync::Arc;
-    use stepflow_core::{BlobId, FlowResult, workflow::ValueRef};
+    use stepflow_core::{FlowResult, GetRunOptions, SubmitRunParams, workflow::ValueRef};
     use stepflow_plugin::{Context, Result as PluginResult};
-    use stepflow_state::{InMemoryStateStore, StateStore};
+    use stepflow_state::{InMemoryStateStore, ItemResult, ItemStatistics, RunStatus, StateStore};
     use uuid::Uuid;
 
     // Mock context for testing
@@ -504,15 +504,79 @@ mod tests {
     }
 
     impl Context for MockContext {
-        fn submit_flow(
-            &self,
-            _params: stepflow_core::SubmitFlowParams,
-        ) -> BoxFuture<'_, PluginResult<Uuid>> {
-            async { Ok(Uuid::now_v7()) }.boxed()
+        fn submit_run(&self, params: SubmitRunParams) -> BoxFuture<'_, PluginResult<RunStatus>> {
+            let input_count = params.inputs.len();
+            async move {
+                let flow_id = stepflow_core::BlobId::new(
+                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                )
+                .expect("mock blob id");
+                let now = chrono::Utc::now();
+
+                Ok(RunStatus {
+                    run_id: Uuid::now_v7(),
+                    flow_id,
+                    flow_name: None,
+                    flow_label: None,
+                    status: stepflow_core::status::ExecutionStatus::Running,
+                    items: ItemStatistics {
+                        total: input_count,
+                        completed: 0,
+                        running: input_count,
+                        failed: 0,
+                        cancelled: 0,
+                    },
+                    created_at: now,
+                    completed_at: None,
+                    results: None,
+                })
+            }
+            .boxed()
         }
 
-        fn flow_result(&self, _run_id: Uuid) -> BoxFuture<'_, PluginResult<FlowResult>> {
-            async { Ok(FlowResult::Success(ValueRef::default())) }.boxed()
+        fn get_run(
+            &self,
+            run_id: Uuid,
+            options: GetRunOptions,
+        ) -> BoxFuture<'_, PluginResult<RunStatus>> {
+            async move {
+                let flow_id = stepflow_core::BlobId::new(
+                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                )
+                .expect("mock blob id");
+                let now = chrono::Utc::now();
+
+                let results = if options.include_results {
+                    Some(vec![ItemResult {
+                        item_index: 0,
+                        status: stepflow_core::status::ExecutionStatus::Completed,
+                        result: Some(FlowResult::Success(ValueRef::new(
+                            serde_json::json!({"message": "Hello from mock"}),
+                        ))),
+                    }])
+                } else {
+                    None
+                };
+
+                Ok(RunStatus {
+                    run_id,
+                    flow_id,
+                    flow_name: None,
+                    flow_label: None,
+                    status: stepflow_core::status::ExecutionStatus::Completed,
+                    items: ItemStatistics {
+                        total: 1,
+                        completed: 1,
+                        running: 0,
+                        failed: 0,
+                        cancelled: 0,
+                    },
+                    created_at: now,
+                    completed_at: Some(now),
+                    results,
+                })
+            }
+            .boxed()
         }
 
         fn state_store(&self) -> &Arc<dyn StateStore> {
@@ -521,54 +585,6 @@ mod tests {
 
         fn working_directory(&self) -> &Path {
             Path::new("/tmp")
-        }
-
-        fn submit_batch(
-            &self,
-            _params: stepflow_core::SubmitBatchParams,
-        ) -> BoxFuture<'_, PluginResult<Uuid>> {
-            async { Ok(Uuid::now_v7()) }.boxed()
-        }
-
-        fn get_batch(
-            &self,
-            _batch_id: Uuid,
-            _wait: bool,
-            _include_results: bool,
-        ) -> BoxFuture<
-            '_,
-            PluginResult<(
-                stepflow_state::BatchDetails,
-                Option<Vec<stepflow_state::BatchOutputInfo>>,
-            )>,
-        > {
-            async {
-                // Return a minimal batch details for testing
-                let dummy_flow_id = BlobId::new(
-                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                )
-                .unwrap();
-                let batch_details = stepflow_state::BatchDetails {
-                    metadata: stepflow_state::BatchMetadata {
-                        batch_id: Uuid::now_v7(),
-                        flow_id: dummy_flow_id,
-                        flow_name: None,
-                        total_inputs: 0,
-                        status: stepflow_state::BatchStatus::Running,
-                        created_at: chrono::Utc::now(),
-                    },
-                    statistics: stepflow_state::BatchStatistics {
-                        completed_runs: 0,
-                        running_runs: 0,
-                        failed_runs: 0,
-                        cancelled_runs: 0,
-                        paused_runs: 0,
-                    },
-                    completed_at: None,
-                };
-                Ok((batch_details, None))
-            }
-            .boxed()
         }
     }
 

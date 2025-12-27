@@ -34,14 +34,10 @@ pub enum Method {
     BlobsPut,
     #[serde(rename = "blobs/get")]
     BlobsGet,
-    #[serde(rename = "flows/evaluate")]
-    FlowsEvaluate,
-    #[serde(rename = "flows/get_metadata")]
-    FlowsGetMetadata,
-    #[serde(rename = "flows/submit_batch")]
-    FlowsSubmitBatch,
-    #[serde(rename = "flows/get_batch")]
-    FlowsGetBatch,
+    #[serde(rename = "runs/submit")]
+    RunsSubmit,
+    #[serde(rename = "runs/get")]
+    RunsGet,
 }
 
 impl Method {
@@ -61,10 +57,8 @@ impl std::fmt::Display for Method {
             Method::ComponentsInferSchema => write!(f, "components/infer_schema"),
             Method::BlobsPut => write!(f, "blobs/put"),
             Method::BlobsGet => write!(f, "blobs/get"),
-            Method::FlowsEvaluate => write!(f, "flows/evaluate"),
-            Method::FlowsGetMetadata => write!(f, "flows/get_metadata"),
-            Method::FlowsSubmitBatch => write!(f, "flows/submit_batch"),
-            Method::FlowsGetBatch => write!(f, "flows/get_batch"),
+            Method::RunsSubmit => write!(f, "runs/submit"),
+            Method::RunsGet => write!(f, "runs/get"),
         }
     }
 }
@@ -97,12 +91,12 @@ mod tests {
             r#""components/list""#
         );
         assert_eq!(
-            serde_json::to_string(&Method::FlowsEvaluate).unwrap(),
-            r#""flows/evaluate""#
+            serde_json::to_string(&Method::RunsSubmit).unwrap(),
+            r#""runs/submit""#
         );
         assert_eq!(
-            serde_json::to_string(&Method::FlowsGetMetadata).unwrap(),
-            r#""flows/get_metadata""#
+            serde_json::to_string(&Method::RunsGet).unwrap(),
+            r#""runs/get""#
         );
     }
 
@@ -117,12 +111,12 @@ mod tests {
             Method::ComponentsList
         );
         assert_eq!(
-            serde_json::from_str::<Method>(r#""flows/evaluate""#).unwrap(),
-            Method::FlowsEvaluate
+            serde_json::from_str::<Method>(r#""runs/submit""#).unwrap(),
+            Method::RunsSubmit
         );
         assert_eq!(
-            serde_json::from_str::<Method>(r#""flows/get_metadata""#).unwrap(),
-            Method::FlowsGetMetadata
+            serde_json::from_str::<Method>(r#""runs/get""#).unwrap(),
+            Method::RunsGet
         );
     }
 

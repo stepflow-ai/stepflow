@@ -330,9 +330,10 @@ class TestExecutor:
         import requests
 
         # Create request payload for /runs endpoint
+        # Note: input must be an array (even for single items)
         payload = {
             "flowId": flow_id,
-            "input": input_data,
+            "input": [input_data],
             "debug": False,
         }
 

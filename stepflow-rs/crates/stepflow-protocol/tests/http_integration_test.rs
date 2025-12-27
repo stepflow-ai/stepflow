@@ -19,10 +19,10 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use stepflow_core::{FlowResult, workflow::ValueRef};
+use stepflow_core::{FlowResult, GetRunOptions, SubmitRunParams, workflow::ValueRef};
 use stepflow_plugin::{Context, ExecutionContext, Plugin as _, PluginConfig as _, PluginError};
 use stepflow_protocol::{StepflowPluginConfig, StepflowTransport};
-use stepflow_state::{InMemoryStateStore, StateStore};
+use stepflow_state::{InMemoryStateStore, ItemResult, ItemStatistics, RunStatus, StateStore};
 use tokio::process::Command;
 use tokio::time::{sleep, timeout};
 use uuid::Uuid;
@@ -41,55 +41,92 @@ impl MockContext {
 }
 
 impl Context for MockContext {
+    fn submit_run(
+        &self,
+        params: SubmitRunParams,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<RunStatus, error_stack::Report<PluginError>>> + Send + '_>,
+    > {
+        let input_count = params.inputs.len();
+        Box::pin(async move {
+            let flow_id = stepflow_core::BlobId::new(
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            )
+            .expect("mock blob id");
+            let now = chrono::Utc::now();
+
+            Ok(RunStatus {
+                run_id: Uuid::now_v7(),
+                flow_id,
+                flow_name: None,
+                flow_label: None,
+                status: stepflow_core::status::ExecutionStatus::Running,
+                items: ItemStatistics {
+                    total: input_count,
+                    completed: 0,
+                    running: input_count,
+                    failed: 0,
+                    cancelled: 0,
+                },
+                created_at: now,
+                completed_at: None,
+                results: None,
+            })
+        })
+    }
+
+    fn get_run(
+        &self,
+        run_id: Uuid,
+        options: GetRunOptions,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<RunStatus, error_stack::Report<PluginError>>> + Send + '_>,
+    > {
+        Box::pin(async move {
+            let flow_id = stepflow_core::BlobId::new(
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            )
+            .expect("mock blob id");
+            let now = chrono::Utc::now();
+
+            let results = if options.include_results {
+                Some(vec![ItemResult {
+                    item_index: 0,
+                    status: stepflow_core::status::ExecutionStatus::Completed,
+                    result: Some(FlowResult::Success(ValueRef::new(
+                        serde_json::json!({"message": "Hello from mock"}),
+                    ))),
+                }])
+            } else {
+                None
+            };
+
+            Ok(RunStatus {
+                run_id,
+                flow_id,
+                flow_name: None,
+                flow_label: None,
+                status: stepflow_core::status::ExecutionStatus::Completed,
+                items: ItemStatistics {
+                    total: 1,
+                    completed: 1,
+                    running: 0,
+                    failed: 0,
+                    cancelled: 0,
+                },
+                created_at: now,
+                completed_at: Some(now),
+                results,
+            })
+        })
+    }
+
     fn state_store(&self) -> &Arc<dyn StateStore> {
         &self.state_store
     }
 
     fn working_directory(&self) -> &Path {
         Path::new(".")
-    }
-
-    fn submit_flow(
-        &self,
-        _params: stepflow_core::SubmitFlowParams,
-    ) -> Pin<Box<dyn Future<Output = Result<Uuid, error_stack::Report<PluginError>>> + Send>> {
-        Box::pin(async { Err(PluginError::Execution.into()) })
-    }
-
-    fn flow_result(
-        &self,
-        _execution_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = Result<FlowResult, error_stack::Report<PluginError>>> + Send>>
-    {
-        Box::pin(async { Err(PluginError::Execution.into()) })
-    }
-
-    fn submit_batch(
-        &self,
-        _params: stepflow_core::SubmitBatchParams,
-    ) -> Pin<Box<dyn Future<Output = Result<Uuid, error_stack::Report<PluginError>>> + Send>> {
-        Box::pin(async { Err(PluginError::Execution.into()) })
-    }
-
-    fn get_batch(
-        &self,
-        _batch_id: Uuid,
-        _wait: bool,
-        _include_results: bool,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        (
-                            stepflow_state::BatchDetails,
-                            Option<Vec<stepflow_state::BatchOutputInfo>>,
-                        ),
-                        error_stack::Report<PluginError>,
-                    >,
-                > + Send,
-        >,
-    > {
-        Box::pin(async { Err(PluginError::Execution.into()) })
     }
 }
 

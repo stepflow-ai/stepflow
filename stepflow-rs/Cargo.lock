@@ -4595,6 +4595,7 @@ dependencies = [
 name = "stepflow-builtins"
 version = "0.8.0"
 dependencies = [
+ "chrono",
  "dynosaur",
  "error-stack",
  "log",
@@ -4661,6 +4662,7 @@ dependencies = [
 name = "stepflow-components-mcp"
 version = "0.8.0"
 dependencies = [
+ "chrono",
  "error-stack",
  "futures",
  "indexmap 2.12.1",
@@ -4725,7 +4727,6 @@ name = "stepflow-execution"
 version = "0.8.0"
 dependencies = [
  "bit-set",
- "chrono",
  "error-stack",
  "futures",
  "log",
