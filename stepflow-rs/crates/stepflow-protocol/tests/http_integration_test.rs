@@ -41,7 +41,6 @@ impl MockContext {
 }
 
 impl Context for MockContext {
-    // New unified API
     fn submit_run(
         &self,
         params: SubmitRunParams,

@@ -504,7 +504,6 @@ mod tests {
     }
 
     impl Context for MockContext {
-        // New unified API
         fn submit_run(&self, params: SubmitRunParams) -> BoxFuture<'_, PluginResult<RunStatus>> {
             let input_count = params.inputs.len();
             async move {

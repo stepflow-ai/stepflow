@@ -22,10 +22,6 @@ use uuid::Uuid;
 
 /// Trait for interacting with the workflow runtime.
 pub trait Context: Send + Sync {
-    // ========================================================================
-    // New unified API
-    // ========================================================================
-
     /// Submit a run with 1 or N items.
     ///
     /// If `params.wait` is false, returns immediately with status=Running.
@@ -61,7 +57,7 @@ pub trait Context: Send + Sync {
         overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<FlowResult>> {
         async move {
-            let mut params = SubmitRunParams::new(flow, flow_id, input).with_wait(true);
+            let mut params = SubmitRunParams::new(flow, flow_id, vec![input]).with_wait(true);
             if let Some(overrides) = overrides {
                 params = params.with_overrides(overrides);
             }
@@ -131,7 +127,7 @@ pub trait Context: Send + Sync {
         overrides: Option<WorkflowOverrides>,
     ) -> BoxFuture<'_, crate::Result<Vec<FlowResult>>> {
         async move {
-            let mut params = SubmitRunParams::with_inputs(flow, flow_id, inputs).with_wait(true);
+            let mut params = SubmitRunParams::new(flow, flow_id, inputs).with_wait(true);
             if let Some(max_concurrency) = max_concurrency {
                 params = params.with_max_concurrency(max_concurrency);
             }

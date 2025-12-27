@@ -25,15 +25,14 @@ pub async fn run(
     input: stepflow_core::workflow::ValueRef,
     overrides: Option<stepflow_core::workflow::WorkflowOverrides>,
 ) -> Result<(uuid::Uuid, FlowResult)> {
-    // Use the unified submit_run API with wait=true
-    let mut params = stepflow_core::SubmitRunParams::new(flow, flow_id, input);
-    params = params.with_wait(true);
+    let mut submit_params = stepflow_core::SubmitRunParams::new(flow, flow_id, vec![input]);
+    submit_params = submit_params.with_wait(true);
     if let Some(overrides) = overrides {
-        params = params.with_overrides(overrides);
+        submit_params = submit_params.with_overrides(overrides);
     }
 
     let run_status = executor
-        .submit_run(params)
+        .submit_run(submit_params)
         .await
         .change_context(MainError::FlowExecution)?;
 

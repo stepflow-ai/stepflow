@@ -29,22 +29,10 @@ pub struct SubmitRunParams {
 }
 
 impl SubmitRunParams {
-    /// Create params for a single-item run.
-    pub fn new(flow: Arc<Flow>, flow_id: BlobId, input: ValueRef) -> Self {
-        Self {
-            flow,
-            flow_id,
-            inputs: vec![input],
-            wait: false,
-            max_concurrency: None,
-            parent_context: None,
-            overrides: None,
-            variables: None,
-        }
-    }
-
-    /// Create params for a multi-item run.
-    pub fn with_inputs(flow: Arc<Flow>, flow_id: BlobId, inputs: Vec<ValueRef>) -> Self {
+    /// Create params with the given inputs.
+    ///
+    /// For single-item runs, pass `vec![input]`.
+    pub fn new(flow: Arc<Flow>, flow_id: BlobId, inputs: Vec<ValueRef>) -> Self {
         Self {
             flow,
             flow_id,

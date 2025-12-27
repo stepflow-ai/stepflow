@@ -63,7 +63,6 @@ struct MockExecutor {
 }
 
 impl stepflow_plugin::Context for MockExecutor {
-    // New unified API
     fn submit_run(
         &self,
         params: SubmitRunParams,

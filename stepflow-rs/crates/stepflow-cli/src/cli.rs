@@ -25,7 +25,6 @@ use crate::{
     infer,
     list_components::OutputFormat,
     repl::run_repl,
-    run::run,
     submit::submit,
     test::TestOptions,
     validate,
@@ -101,14 +100,6 @@ pub enum Command {
         #[command(flatten)]
         input_args: InputArgs,
 
-        /// Path to JSONL file containing multiple inputs (one JSON object per line).
-        ///
-        /// When specified, the workflow is executed once per line in the file.
-        /// Results are written in JSONL format (one result per line).
-        #[arg(long="inputs", value_name = "FILE", value_hint = clap::ValueHint::FilePath,
-              conflicts_with_all = ["input", "input_json", "input_yaml", "stdin_format"])]
-        inputs_path: Option<PathBuf>,
-
         /// Maximum number of concurrent executions (only used with --inputs).
         ///
         /// Defaults to number of inputs if not specified.
@@ -157,14 +148,6 @@ pub enum Command {
 
         #[command(flatten)]
         input_args: InputArgs,
-
-        /// Path to JSONL file containing multiple inputs (one JSON object per line).
-        ///
-        /// When specified, the workflow is executed once per line in the file.
-        /// Results are written in JSONL format (one result per line).
-        #[arg(long="inputs", value_name = "FILE", value_hint = clap::ValueHint::FilePath,
-              conflicts_with_all = ["input", "input_json", "input_yaml", "stdin_format"])]
-        inputs_path: Option<PathBuf>,
 
         /// Maximum number of concurrent executions on the server (only used with --inputs).
         ///
@@ -488,7 +471,6 @@ impl Cli {
                 flow_path,
                 config_args,
                 input_args,
-                inputs_path,
                 max_concurrent,
                 execution_args,
                 output_args,
@@ -523,54 +505,40 @@ impl Cli {
                 let flow_id =
                     BlobId::from_flow(&flow).change_context(crate::MainError::Configuration)?;
 
-                // Check if we're in batch mode
-                if let Some(inputs_path) = inputs_path {
-                    // Batch mode: read inputs from JSONL file
-                    let inputs_content = std::fs::read_to_string(&inputs_path)
-                        .change_context(crate::MainError::Configuration)
-                        .attach_printable_lazy(|| {
-                            format!("Failed to read inputs file: {:?}", inputs_path)
-                        })?;
+                // Load inputs using unified API
+                let inputs = input_args.load_inputs(true)?;
+                let is_batch = input_args.is_batch();
 
-                    let inputs: Vec<stepflow_core::workflow::ValueRef> = inputs_content
-                        .lines()
-                        .enumerate()
-                        .map(|(idx, line)| {
-                            serde_json::from_str(line)
-                                .change_context(crate::MainError::Configuration)
-                                .attach_printable_lazy(|| {
-                                    format!("Failed to parse input at line {}", idx + 1)
-                                })
-                        })
-                        .collect::<Result<Vec<_>>>()?;
+                if is_batch {
+                    eprintln!("Running batch with {} inputs", inputs.len());
+                }
 
-                    let total_inputs = inputs.len();
-                    eprintln!("Running batch with {} inputs", total_inputs);
+                // Submit execution (works for both single and batch)
+                let mut submit_params =
+                    stepflow_core::SubmitRunParams::new(flow.clone(), flow_id, inputs);
+                submit_params = submit_params.with_wait(true);
+                if let Some(max_concurrent) = max_concurrent {
+                    submit_params = submit_params.with_max_concurrency(max_concurrent);
+                }
+                if let Some(overrides) = overrides {
+                    submit_params = submit_params.with_overrides(overrides);
+                }
+                let run_status = executor
+                    .submit_run(submit_params)
+                    .await
+                    .change_context(crate::MainError::Configuration)?;
 
-                    // Submit batch execution using unified runs API
-                    let mut params =
-                        stepflow_core::SubmitRunParams::with_inputs(flow.clone(), flow_id, inputs);
-                    params = params.with_wait(true);
-                    if let Some(max_concurrent) = max_concurrent {
-                        params = params.with_max_concurrency(max_concurrent);
-                    }
-                    if let Some(overrides) = overrides {
-                        params = params.with_overrides(overrides);
-                    }
-                    let run_status = executor
-                        .submit_run(params)
-                        .await
-                        .change_context(crate::MainError::Configuration)?;
+                // Output run_id without hyphens for Jaeger trace ID compatibility
+                eprintln!("run_id: {}", run_status.run_id.simple());
 
-                    eprintln!("run_id: {}", run_status.run_id.simple());
+                // Extract results from run status
+                let results: Vec<stepflow_core::FlowResult> = run_status
+                    .results
+                    .map(|items| items.into_iter().filter_map(|item| item.result).collect())
+                    .unwrap_or_default();
 
-                    // Extract results from run status
-                    let results: Vec<Option<stepflow_core::FlowResult>> = run_status
-                        .results
-                        .map(|items| items.into_iter().map(|item| item.result).collect())
-                        .unwrap_or_default();
-
-                    // Write results using output_args or stdout in JSONL format
+                // Write output: JSONL for batch mode, single JSON for single mode
+                if is_batch {
                     if let Some(output_path) = &output_args.output_path {
                         let mut output_file = std::fs::File::create(output_path)
                             .change_context(crate::MainError::Configuration)
@@ -579,7 +547,7 @@ impl Cli {
                             })?;
 
                         use std::io::Write as _;
-                        for result in results.iter().flatten() {
+                        for result in &results {
                             let json = serde_json::to_string(result)
                                 .change_context(crate::MainError::Configuration)?;
                             writeln!(output_file, "{}", json)
@@ -591,7 +559,7 @@ impl Cli {
                         );
                     } else {
                         // Write to stdout in JSONL format
-                        for result in results.iter().flatten() {
+                        for result in &results {
                             let json = serde_json::to_string(result)
                                 .change_context(crate::MainError::Configuration)?;
                             println!("{}", json);
@@ -599,11 +567,11 @@ impl Cli {
                         eprintln!("Batch execution completed with {} results", results.len());
                     }
                 } else {
-                    // Single input mode
-                    let input = input_args.parse_input(true)?;
-                    let (run_id, output) = run(executor, flow, flow_id, input, overrides).await?;
-                    // Output run_id without hyphens for Jaeger trace ID compatibility
-                    eprintln!("run_id: {}", run_id.simple());
+                    // Single mode: write single result
+                    let output = results.into_iter().next().ok_or_else(|| {
+                        error_stack::report!(crate::MainError::FlowExecution)
+                            .attach_printable("No result available")
+                    })?;
                     output_args.write_output(output)?;
                 }
             }
@@ -612,7 +580,6 @@ impl Cli {
                 url,
                 flow_path,
                 input_args,
-                inputs_path,
                 max_concurrent,
                 execution_args,
                 output_args,
@@ -622,31 +589,9 @@ impl Cli {
                 // Parse overrides for submission
                 let overrides = execution_args.override_args.parse_overrides()?;
 
-                // Parse inputs (single or batch mode)
-                let inputs: Vec<stepflow_core::workflow::ValueRef> =
-                    if let Some(inputs_path) = inputs_path {
-                        // Batch mode: read inputs from JSONL file
-                        let inputs_content = std::fs::read_to_string(&inputs_path)
-                            .change_context(crate::MainError::Configuration)
-                            .attach_printable_lazy(|| {
-                                format!("Failed to read inputs file: {:?}", inputs_path)
-                            })?;
-
-                        inputs_content
-                            .lines()
-                            .enumerate()
-                            .map(|(idx, line)| {
-                                serde_json::from_str(line)
-                                    .change_context(crate::MainError::Configuration)
-                                    .attach_printable_lazy(|| {
-                                        format!("Failed to parse input at line {}", idx + 1)
-                                    })
-                            })
-                            .collect::<Result<Vec<_>>>()?
-                    } else {
-                        // Single input mode
-                        vec![input_args.parse_input(true)?]
-                    };
+                // Load inputs using unified API
+                let inputs = input_args.load_inputs(true)?;
+                let is_batch = input_args.is_batch();
 
                 // Handle empty inputs case (batch mode with 0 items)
                 if inputs.is_empty() {
@@ -658,8 +603,6 @@ impl Cli {
                     }
                     return Ok(());
                 }
-
-                let is_batch = inputs.len() > 1;
                 if is_batch {
                     eprintln!("Submitting batch with {} inputs", inputs.len());
                 }

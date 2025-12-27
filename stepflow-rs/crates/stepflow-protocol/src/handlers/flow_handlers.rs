@@ -50,11 +50,8 @@ impl MethodHandler for SubmitRunHandler {
                     .clone();
 
                 // Build submit params
-                let mut params = stepflow_core::SubmitRunParams::with_inputs(
-                    flow,
-                    request.flow_id,
-                    request.inputs,
-                );
+                let mut params =
+                    stepflow_core::SubmitRunParams::new(flow, request.flow_id, request.inputs);
                 params = params.with_wait(request.wait);
                 if let Some(max_concurrency) = request.max_concurrency {
                     params = params.with_max_concurrency(max_concurrency);

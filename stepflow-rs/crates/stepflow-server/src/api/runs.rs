@@ -220,7 +220,7 @@ pub async fn create_run(
 
         // Create execution record in paused state
         let mut params =
-            stepflow_state::CreateRunParams::new(run_id, req.flow_id.clone(), input.clone());
+            stepflow_state::CreateRunParams::new(run_id, req.flow_id.clone(), vec![input.clone()]);
         params.workflow_name = flow.name().map(|s| s.to_string());
         params.debug_mode = true;
         params.overrides = req.overrides.clone();
@@ -244,7 +244,7 @@ pub async fn create_run(
     // Normal execution mode: unified path for single and batch runs
     use stepflow_plugin::Context as _;
 
-    let mut params = stepflow_core::SubmitRunParams::with_inputs(flow, req.flow_id, req.input);
+    let mut params = stepflow_core::SubmitRunParams::new(flow, req.flow_id, req.input);
     params = params.with_wait(true);
     if let Some(max_concurrency) = req.max_concurrency {
         params = params.with_max_concurrency(max_concurrency);

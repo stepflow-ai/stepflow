@@ -49,16 +49,15 @@ impl LastRun {
 
     /// Execute this workflow normally (non-debug mode)
     pub async fn execute_normal(&self, executor: &StepflowExecutor) -> Result<()> {
-        // Use the unified submit_run API with wait=true
-        let mut params = stepflow_core::SubmitRunParams::new(
+        let mut submit_params = stepflow_core::SubmitRunParams::new(
             self.flow.clone(),
             self.flow_id.clone(),
-            self.input.clone(),
+            vec![self.input.clone()],
         );
-        params = params.with_wait(true);
+        submit_params = submit_params.with_wait(true);
 
         let run_status = executor
-            .submit_run(params)
+            .submit_run(submit_params)
             .await
             .change_context(MainError::FlowExecution)?;
 

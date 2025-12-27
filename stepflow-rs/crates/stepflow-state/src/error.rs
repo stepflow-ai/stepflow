@@ -35,9 +35,6 @@ pub enum StateError {
     #[error("Run not found: {run_id}")]
     RunNotFound { run_id: Uuid },
 
-    #[error("Item not found for run {run_id}, item index {item_index}")]
-    ItemNotFound { run_id: Uuid, item_index: u32 },
-
     #[error("Serialization error")]
     Serialization,
 }

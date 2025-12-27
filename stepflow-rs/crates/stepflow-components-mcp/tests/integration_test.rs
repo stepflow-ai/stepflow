@@ -30,7 +30,6 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
         state_store: Arc<dyn stepflow_state::StateStore>,
     }
     impl stepflow_plugin::Context for TestContext {
-        // New unified API
         fn submit_run(
             &self,
             params: SubmitRunParams,

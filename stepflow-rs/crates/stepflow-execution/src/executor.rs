@@ -170,10 +170,6 @@ impl StepflowExecutor {
 }
 
 impl Context for StepflowExecutor {
-    // ========================================================================
-    // New unified API
-    // ========================================================================
-
     /// Submit a run with 1 or N items.
     ///
     /// If `params.wait` is false, returns immediately with status=Running.
@@ -199,7 +195,7 @@ impl Context for StepflowExecutor {
                 .change_context(stepflow_plugin::PluginError::Execution)?;
 
             // Create run record with all inputs
-            let mut run_params = stepflow_state::CreateRunParams::with_inputs(
+            let mut run_params = stepflow_state::CreateRunParams::new(
                 run_id,
                 params.flow_id.clone(),
                 params.inputs.clone(),

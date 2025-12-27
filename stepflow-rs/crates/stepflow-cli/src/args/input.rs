@@ -31,28 +31,76 @@ pub struct InputArgs {
     ///
     /// Should be JSON or YAML. Format is inferred from file extension.
     #[arg(long = "input", value_name = "FILE", value_hint = clap::ValueHint::FilePath,
-          conflicts_with_all = ["input_json", "input_yaml", "stdin_format"])]
+          conflicts_with_all = ["input_json", "input_yaml", "stdin_format", "inputs_path"])]
     pub input: Option<PathBuf>,
 
     /// The input value as a JSON string.
     #[arg(long = "input-json", value_name = "JSON",
-          conflicts_with_all = ["input", "input_yaml", "stdin_format"])]
+          conflicts_with_all = ["input", "input_yaml", "stdin_format", "inputs_path"])]
     pub input_json: Option<String>,
 
     /// The input value as a YAML string.
     #[arg(long = "input-yaml", value_name = "YAML",
-          conflicts_with_all = ["input", "input_json", "stdin_format"])]
+          conflicts_with_all = ["input", "input_json", "stdin_format", "inputs_path"])]
     pub input_yaml: Option<String>,
 
     /// The format for stdin input (json or yaml).
     ///
     /// Only used when reading from stdin (no other input options specified).
     #[arg(long = "stdin-format", value_name = "FORMAT", default_value = "json",
-          conflicts_with_all = ["input", "input_json", "input_yaml"])]
+          conflicts_with_all = ["input", "input_json", "input_yaml", "inputs_path"])]
     pub stdin_format: InputFormat,
+
+    /// Path to JSONL file containing multiple inputs (one JSON object per line).
+    ///
+    /// When specified, the workflow is executed once per line in the file.
+    /// Results are written in JSONL format (one result per line).
+    #[arg(long="inputs", value_name = "FILE", value_hint = clap::ValueHint::FilePath,
+          conflicts_with_all = ["input", "input_json", "input_yaml", "stdin_format"])]
+    pub inputs_path: Option<PathBuf>,
 }
 
 impl InputArgs {
+    /// Check if this is batch mode (multiple inputs from JSONL file).
+    pub fn is_batch(&self) -> bool {
+        self.inputs_path.is_some()
+    }
+
+    /// Load inputs from any source, returning a vector of inputs.
+    ///
+    /// For batch mode (--inputs), returns multiple inputs from JSONL file.
+    /// For single mode, returns a single input wrapped in a vector.
+    ///
+    /// # Arguments
+    ///
+    /// * `allow_stdin` - Whether to allow reading from stdin when no input is provided
+    pub fn load_inputs(&self, allow_stdin: bool) -> Result<Vec<ValueRef>> {
+        if let Some(inputs_path) = &self.inputs_path {
+            // Batch mode: read inputs from JSONL file
+            let inputs_content = std::fs::read_to_string(inputs_path)
+                .change_context(MainError::Configuration)
+                .attach_printable_lazy(|| {
+                    format!("Failed to read inputs file: {:?}", inputs_path)
+                })?;
+
+            inputs_content
+                .lines()
+                .enumerate()
+                .map(|(idx, line)| {
+                    serde_json::from_str(line)
+                        .change_context(MainError::Configuration)
+                        .attach_printable_lazy(|| {
+                            format!("Failed to parse input at line {}", idx + 1)
+                        })
+                })
+                .collect()
+        } else {
+            // Single mode: parse single input and wrap in vector
+            let input = self.parse_input(allow_stdin)?;
+            Ok(vec![input])
+        }
+    }
+
     /// Parse input from the various input sources into a ValueRef
     ///
     /// # Arguments
@@ -113,6 +161,7 @@ impl InputArgs {
             input_json,
             input_yaml,
             stdin_format: InputFormat::Json, // Default, but won't be used in REPL
+            inputs_path: None,               // Batch mode not supported in REPL
         }
     }
 }

@@ -24,10 +24,9 @@ use uuid::Uuid;
 
 use crate::StateError;
 
-/// Parameters for creating a new workflow run
+/// Parameters for creating a new workflow run.
 ///
-/// A run can have one or more input items. For single-item runs, use `new()`.
-/// For multi-item (batch) runs, use `with_inputs()`.
+/// A run can have one or more input items. Use `vec![input]` for single-item runs.
 #[derive(Debug, Clone)]
 pub struct CreateRunParams {
     /// Unique identifier for the workflow execution
@@ -49,22 +48,10 @@ pub struct CreateRunParams {
 }
 
 impl CreateRunParams {
-    /// Create params for a single-item run.
-    pub fn new(run_id: Uuid, flow_id: BlobId, input: ValueRef) -> Self {
-        Self {
-            run_id,
-            flow_id,
-            inputs: vec![input],
-            workflow_name: None,
-            workflow_label: None,
-            debug_mode: false,
-            overrides: WorkflowOverrides::default(),
-            variables: HashMap::new(),
-        }
-    }
-
-    /// Create params for a multi-item run.
-    pub fn with_inputs(run_id: Uuid, flow_id: BlobId, inputs: Vec<ValueRef>) -> Self {
+    /// Create run params with the given inputs.
+    ///
+    /// For single-item runs, pass `vec![input]`.
+    pub fn new(run_id: Uuid, flow_id: BlobId, inputs: Vec<ValueRef>) -> Self {
         Self {
             run_id,
             flow_id,
