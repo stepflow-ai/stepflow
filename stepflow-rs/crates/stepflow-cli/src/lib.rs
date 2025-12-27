@@ -20,7 +20,6 @@ mod list_components;
 mod repl;
 mod run;
 mod schema_provider;
-pub mod stepflow_config;
 mod submit;
 mod submit_batch;
 pub mod test;
