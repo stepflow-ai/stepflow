@@ -25,6 +25,7 @@ serde_json.workspace = true
 serde_yaml_ng.workspace = true
 stepflow-analysis.workspace = true
 stepflow-builtins.workspace = true
+stepflow-config.workspace = true
 stepflow-components-mcp.workspace = true
 stepflow-core.workspace = true
 stepflow-execution.workspace = true

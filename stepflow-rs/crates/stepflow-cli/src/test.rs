@@ -14,7 +14,8 @@
 
 use crate::args::{ConfigArgs, OutputArgs, WorkflowLoader, load};
 use crate::test_server::TestServerManager;
-use crate::{MainError, Result, stepflow_config::StepflowConfig};
+use crate::{MainError, Result};
+use stepflow_config::StepflowConfig;
 use clap::Args;
 use error_stack::ResultExt as _;
 use similar::{ChangeTag, TextDiff};
