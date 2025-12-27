@@ -37,13 +37,17 @@ Use MCP tools in your workflows with the `/plugin_name/tool_name` format:
 
 ```yaml
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+
+schemas:
   type: object
   properties:
-    filename:
-      type: string
-    content:
-      type: string
+    input:
+      type: object
+      properties:
+        filename:
+          type: string
+        content:
+          type: string
 
 steps:
 - id: write_file

@@ -12,7 +12,9 @@
 
 use std::collections::HashMap;
 
-use super::{Step, ValueRef, VariableSchema};
+use serde_with::{DefaultOnNull, serde_as};
+
+use super::{FlowSchema, Step, ValueRef, VariableSchema};
 use crate::{FlowResult, ValueExpr, schema::SchemaRef};
 
 /// A workflow consisting of a sequence of steps and their outputs.
@@ -113,10 +115,17 @@ impl Flow {
         }
     }
 
-    pub fn variables(&self) -> Option<&VariableSchema> {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.variables.as_ref(),
-        }
+    /// Get the variable schema for the flow.
+    ///
+    /// This constructs a `VariableSchema` from the schema definition, extracting
+    /// runtime metadata like defaults, secrets, and required variables.
+    pub fn variables(&self) -> Option<VariableSchema> {
+        self.schemas().variables.clone().map(VariableSchema::from)
+    }
+
+    /// Get a reference to the variable schema (raw SchemaRef).
+    pub fn variable_schema(&self) -> Option<&SchemaRef> {
+        self.schemas().variables.as_ref()
     }
 
     /// Returns a reference to the step at the given index.
@@ -154,6 +163,56 @@ impl Flow {
         }
     }
 
+    /// Get the flow's schema information.
+    pub fn schemas(&self) -> &FlowSchema {
+        &self.latest().schemas
+    }
+
+    /// Get a mutable reference to the flow's schema information.
+    pub fn schemas_mut(&mut self) -> &mut FlowSchema {
+        match self {
+            Flow::V1(flow_v1) => &mut flow_v1.schemas,
+        }
+    }
+
+    /// Get the flow's input schema.
+    pub fn input_schema(&self) -> Option<&SchemaRef> {
+        self.latest().schemas.input.as_ref()
+    }
+
+    /// Set the flow's input schema.
+    pub fn set_input_schema(&mut self, input_schema: Option<SchemaRef>) {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.schemas.input = input_schema,
+        }
+    }
+
+    /// Get the flow's output schema.
+    pub fn output_schema(&self) -> Option<&SchemaRef> {
+        self.latest().schemas.output.as_ref()
+    }
+
+    /// Set the flow's output schema.
+    pub fn set_output_schema(&mut self, output_schema: Option<SchemaRef>) {
+        match self {
+            Flow::V1(flow_v1) => flow_v1.schemas.output = output_schema,
+        }
+    }
+
+    /// Get the output schema for a specific step.
+    pub fn step_output_schema(&self, step_id: &str) -> Option<&SchemaRef> {
+        self.latest().schemas.steps.get(step_id)
+    }
+
+    /// Set the output schema for a specific step.
+    pub fn set_step_output_schema(&mut self, step_id: String, step_schema: SchemaRef) {
+        match self {
+            Flow::V1(flow_v1) => {
+                flow_v1.schemas.steps.insert(step_id, step_schema);
+            }
+        }
+    }
+
     /// Get all example inputs, including those derived from test cases.
     pub fn get_all_examples(&self) -> Vec<ExampleInput> {
         let mut examples = self.examples().to_vec();
@@ -173,6 +232,7 @@ impl Flow {
 }
 
 /// # FlowV1
+#[serde_as]
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, utoipa::ToSchema,
 )]
@@ -190,17 +250,11 @@ pub struct FlowV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 
-    /// The input schema of the flow.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub input_schema: Option<SchemaRef>,
-
-    /// The output schema of the flow.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_schema: Option<SchemaRef>,
-
-    /// Schema for workflow variables that can be referenced in steps.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variables: Option<VariableSchema>,
+    /// Consolidated schema information for the flow.
+    /// Contains input/output schemas, step output schemas, and shared `$defs`.
+    #[serde(default, skip_serializing_if = "FlowSchema::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
+    pub schemas: FlowSchema,
 
     /// The steps to execute for the flow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -455,14 +509,24 @@ mod tests {
         name: test
         description: test
         version: 1.0.0
-        inputSchema:
+        schemas:
             type: object
             properties:
-                name:
-                    type: string
-                    description: The name to echo
-                count:
-                    type: integer
+                input:
+                    type: object
+                    properties:
+                        name:
+                            type: string
+                            description: The name to echo
+                        count:
+                            type: integer
+                output:
+                    type: object
+                    properties:
+                        s1a:
+                            type: string
+                        s2b:
+                            type: string
         steps:
           - component: /langflow/echo
             id: s1
@@ -475,13 +539,6 @@ mod tests {
         output:
             s1a: { $step: s1, path: "a" }
             s2b: { $step: s2, path: a }
-        outputSchema:
-            type: object
-            properties:
-                s1a:
-                    type: string
-                s2b:
-                    type: string
         "#;
         let flow: Flow = serde_yaml_ng::from_str(yaml).unwrap();
         let input_schema = SchemaRef::parse_json(r#"{"type":"object","properties":{"name":{"type":"string","description":"The name to echo"},"count":{"type":"integer"}}}"#).unwrap();
@@ -494,8 +551,8 @@ mod tests {
         assert_eq!(latest.name, Some("test".to_owned()));
         assert_eq!(latest.description, Some("test".to_owned()));
         assert_eq!(latest.version, Some("1.0.0".to_owned()));
-        assert_eq!(latest.input_schema, Some(input_schema.clone()));
-        assert_eq!(latest.output_schema, Some(output_schema.clone()));
+        assert_eq!(latest.schemas.input, Some(input_schema.clone()));
+        assert_eq!(latest.schemas.output, Some(output_schema.clone()));
         assert_eq!(latest.steps.len(), 2);
 
         // Verify step details

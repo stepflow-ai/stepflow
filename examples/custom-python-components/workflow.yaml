@@ -1,48 +1,51 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Customer Business Intelligence Pipeline
 description: Demonstrates custom Python components for business logic
-input_schema:
+schemas:
   type: object
   properties:
-    customers:
-      type: array
-      description: Array of customer records
-      items:
-        type: object
-        properties:
-          id:
-            type: string
-          name:
-            type: string
-          email:
-            type: string
-          tier:
-            type: string
-            enum:
-            - bronze
-            - silver
-            - gold
-        required:
-        - id
-        - name
-        - email
-        - tier
-    orders:
-      type: array
-      description: Array of order records
-      items:
-        type: object
-        properties:
-          customer_id:
-            type: string
-          amount:
-            type: number
-          product:
-            type: string
-        required:
-        - customer_id
-        - amount
-        - product
+    input:
+      type: object
+      properties:
+        customers:
+          type: array
+          description: Array of customer records
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              email:
+                type: string
+              tier:
+                type: string
+                enum:
+                - bronze
+                - silver
+                - gold
+            required:
+            - id
+            - name
+            - email
+            - tier
+        orders:
+          type: array
+          description: Array of order records
+          items:
+            type: object
+            properties:
+              customer_id:
+                type: string
+              amount:
+                type: number
+              product:
+                type: string
+            required:
+            - customer_id
+            - amount
+            - product
 steps:
 - id: analyze_customer_data
   component: /custom/analyze_customers

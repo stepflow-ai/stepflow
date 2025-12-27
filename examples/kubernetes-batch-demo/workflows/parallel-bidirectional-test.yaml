@@ -1,21 +1,24 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: parallel-bidirectional-test
 description: Test parallel component execution with bidirectional communication
-input_schema:
+schemas:
   type: object
   properties:
-    workflow_id:
-      type: number
-      description: Unique ID for this workflow run
-output_schema:
-  type: object
-  properties:
-    blob_id_1:
-      type: string
-    blob_id_2:
-      type: string
-    blob_id_3:
-      type: string
+    input:
+      type: object
+      properties:
+        workflow_id:
+          type: number
+          description: Unique ID for this workflow run
+    output:
+      type: object
+      properties:
+        blob_id_1:
+          type: string
+        blob_id_2:
+          type: string
+        blob_id_3:
+          type: string
 steps:
 - id: blob_test_1
   component: /python/store_and_retrieve_blob

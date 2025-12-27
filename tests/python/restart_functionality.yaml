@@ -1,21 +1,24 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Restart Functionality Test
 description: Test automatic process restart when Python component crashes
-input_schema:
+schemas:
   type: object
   properties:
-    message:
-      type: string
-      description: Test message to process
-output_schema:
-  type: object
-  properties:
-    attempt_count:
-      type: integer
-      description: Number of attempts before success
-    message:
-      type: string
-      description: Processed message
+    input:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Test message to process
+    output:
+      type: object
+      properties:
+        attempt_count:
+          type: integer
+          description: Number of attempts before success
+        message:
+          type: string
+          description: Processed message
 steps:
 - id: create_crash_test_blob
   component: /builtin/put_blob

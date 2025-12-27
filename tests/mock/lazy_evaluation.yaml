@@ -24,12 +24,15 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: Lazy Evaluation Test
 description: Test that $if conditionally executes only the needed branch
 
-input_schema:
+schemas:
   type: object
   properties:
-    use_success:
-      type: boolean
-      description: If true, use success step; if false, use failing step
+    input:
+      type: object
+      properties:
+        use_success:
+          type: boolean
+          description: If true, use success step; if false, use failing step
 
 steps:
   # This step always succeeds

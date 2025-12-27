@@ -1,25 +1,26 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
   properties:
-    x:
-      type: number
-    y:
-      type: number
-output_schema:
-  type: object
-  properties:
-    custom_calculation:
-      type: number
-    product:
-      type: number
-    sum:
-      type: number
+    input:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+    output:
+      type: object
+      properties:
+        custom_calculation:
+          type: number
+        product:
+          type: number
+        sum:
+          type: number
 steps:
 - id: create_addition_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -36,8 +37,6 @@ steps:
     blob_type: data
 - id: create_multiplication_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -54,8 +53,6 @@ steps:
     blob_type: data
 - id: create_complex_calculation_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -72,8 +69,6 @@ steps:
     blob_type: data
 - id: simple_addition
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_addition_blob
@@ -85,8 +80,6 @@ steps:
         $input: y
 - id: simple_multiplication
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_multiplication_blob
@@ -98,8 +91,6 @@ steps:
         $input: y
 - id: complex_calculation
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_complex_calculation_blob

@@ -2,17 +2,20 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: "Python Component Error Handling Test (STDIO)"
 description: "Test that Python component errors are properly surfaced via JSON-RPC using stdio transport"
 
-input_schema:
+schemas:
   type: object
   properties:
-    mode:
-      type: string
-      description: "Error mode: error, runtime_error, or success"
-    message:
-      type: string
-      description: "Error message to include"
-      default: ""
-  required: [mode]
+    input:
+      type: object
+      properties:
+        mode:
+          type: string
+          description: "Error mode: error, runtime_error, or success"
+        message:
+          type: string
+          description: "Error message to include"
+          default: ""
+      required: [mode]
 
 steps:
   - id: error_step

@@ -108,14 +108,17 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: "Data Processing Pipeline"
 description: "Process data items in parallel"
 
-input_schema:
+schemas:
   type: object
   properties:
-    item_id:
-      type: string
-    data:
+    input:
       type: object
-  required: ["item_id", "data"]
+      properties:
+        item_id:
+          type: string
+        data:
+          type: object
+      required: ["item_id", "data"]
 
 steps:
   - id: validate
@@ -161,17 +164,20 @@ Analyze multiple documents or items with AI:
 schema: https://stepflow.org/schemas/v1/flow.json
 name: "AI Document Analysis"
 
-input_schema:
+schemas:
   type: object
   properties:
-    document_id:
-      type: string
-    content:
-      type: string
-    analysis_type:
-      type: string
-      enum: ["sentiment", "summary", "classification"]
-  required: ["document_id", "content", "analysis_type"]
+    input:
+      type: object
+      properties:
+        document_id:
+          type: string
+        content:
+          type: string
+        analysis_type:
+          type: string
+          enum: ["sentiment", "summary", "classification"]
+      required: ["document_id", "content", "analysis_type"]
 
 steps:
   - id: analyze
@@ -211,16 +217,19 @@ Run the same workflow with different test inputs:
 schema: https://stepflow.org/schemas/v1/flow.json
 name: "API Integration Test"
 
-input_schema:
+schemas:
   type: object
   properties:
-    test_case:
-      type: string
-    endpoint:
-      type: string
-    expected_status:
-      type: integer
-  required: ["test_case", "endpoint", "expected_status"]
+    input:
+      type: object
+      properties:
+        test_case:
+          type: string
+        endpoint:
+          type: string
+        expected_status:
+          type: integer
+      required: ["test_case", "endpoint", "expected_status"]
 
 steps:
   - id: call_api

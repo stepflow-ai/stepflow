@@ -33,6 +33,7 @@ Commands:
   list-components  List all available components from a stepflow config
   repl             Start an interactive REPL for workflow development and debugging
   validate         Validate workflow files and configuration
+  infer            Infer types for a workflow and output an annotated flow
   visualize        Visualize workflow structure as a graph
   help             Print this message or the help of the given subcommand(s)
 

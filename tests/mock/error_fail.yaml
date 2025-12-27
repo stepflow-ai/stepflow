@@ -1,16 +1,17 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
-  type: object
-output_schema:
+schemas:
   type: object
   properties:
-    result:
-      type: string
+    input:
+      type: object
+    output:
+      type: object
+      properties:
+        result:
+          type: string
 steps:
 - id: error
   component: /mock/error
-  input_schema: null
-  output_schema: null
   input:
     mode:
       $input: mode

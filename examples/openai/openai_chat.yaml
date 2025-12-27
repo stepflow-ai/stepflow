@@ -1,16 +1,19 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
-  required:
-  - prompt
   properties:
-    prompt:
-      type: string
-      description: The prompt to send to OpenAI
-    system_message:
-      type: string
-      description: Optional system message to set context
-      default: You are a helpful assistant, explaining complex things in simple terms.
+    input:
+      type: object
+      required:
+      - prompt
+      properties:
+        prompt:
+          type: string
+          description: The prompt to send to OpenAI
+        system_message:
+          type: string
+          description: Optional system message to set context
+          default: You are a helpful assistant, explaining complex things in simple terms.
 steps:
 - id: create_messages
   component: /create_messages

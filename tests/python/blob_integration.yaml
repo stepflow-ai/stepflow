@@ -1,20 +1,23 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
   properties:
-    user_data:
+    input:
       type: object
-    processing_config:
+      properties:
+        user_data:
+          type: object
+        processing_config:
+          type: object
+    output:
       type: object
-output_schema:
-  type: object
-  properties:
-    original_blob_id:
-      type: string
-    processed_blob_id:
-      type: string
-    final_result:
-      type: object
+      properties:
+        original_blob_id:
+          type: string
+        processed_blob_id:
+          type: string
+        final_result:
+          type: object
 steps:
 - id: store_original_data
   component: /builtin/put_blob

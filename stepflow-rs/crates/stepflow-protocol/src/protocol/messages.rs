@@ -89,6 +89,8 @@ impl<'a> ToSchema for Message<'a> {
         push_schema::<ComponentInfoResult>(schemas);
         push_schema::<ComponentListParams>(schemas);
         push_schema::<ListComponentsResult>(schemas);
+        push_schema::<ComponentInferSchemaParams>(schemas);
+        push_schema::<ComponentInferSchemaResult>(schemas);
 
         // Blobs
         push_schema::<GetBlobParams>(schemas);

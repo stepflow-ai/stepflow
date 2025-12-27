@@ -30,13 +30,17 @@ Here's a basic example of creating and using a UDF:
 
 ```yaml
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+
+schemas:
   type: object
   properties:
-    numbers:
-      type: array
-      items:
-        type: number
+    input:
+      type: object
+      properties:
+        numbers:
+          type: array
+          items:
+            type: number
 
 steps:
 # Store the UDF code as a blob

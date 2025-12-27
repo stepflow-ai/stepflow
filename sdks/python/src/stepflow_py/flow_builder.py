@@ -25,6 +25,7 @@ from .generated_flow import (
     Component,
     ErrorAction,
     Flow,
+    FlowSchema,
     InputRef,
     LiteralExpr,
     Schema,
@@ -146,11 +147,13 @@ class FlowBuilder:
             version=flow.version,
             metadata=flow.metadata,
         )
-        builder.input_schema = flow.inputSchema
-        builder.output_schema = flow.outputSchema
-        # For now, mark that variables schema was present but we can't reconstruct it
-        # since Schema objects don't hold the actual schema data
-        builder.variables_schema = {} if flow.variables is not None else None
+        # Extract schemas from the consolidated FlowSchema
+        if flow.schemas is not None:
+            builder.input_schema = flow.schemas.input
+            builder.output_schema = flow.schemas.output
+            # Mark variables schema was present (can't fully reconstruct)
+            if flow.schemas.variables is not None:
+                builder.variables_schema = {}
         builder._output = flow.output
 
         # Recreate steps as dict and step handles
@@ -237,8 +240,6 @@ class FlowBuilder:
         id: str,
         component: Component,
         input_data: Any = None,  # Accept any data structure
-        input_schema: dict[str, Any] | Schema | None = None,
-        output_schema: dict[str, Any] | Schema | None = None,
         on_error: ErrorAction | None = None,
         must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
@@ -259,25 +260,14 @@ class FlowBuilder:
         # Convert input data to ValueExpr
         input_expr = self._convert_to_value_expr(converted_input)
 
-        # Do not convert schemas.
-        input_schema_obj = input_schema
-        output_schema_obj = output_schema
-
         # on_error is already an ErrorAction or None
         on_error_action = on_error
 
-        # Create the step.
-        #
-        # We currently ignore the type checking for inputSchema and outputSchema
-        # because the datamodel code generated doesn't populate with the JSON
-        # schema fields (creating an empty struct), so there is no way to populate
-        # it correctly. The result is still correct (the JSON-encoded dictionary).
+        # Create the step
         step = Step(
             id=unique_id,
             component=component,
             input=input_expr,
-            inputSchema=input_schema_obj,  # type: ignore
-            outputSchema=output_schema_obj,  # type: ignore
             onError=on_error_action,
             mustExecute=must_execute,
             metadata=metadata or {},
@@ -385,14 +375,27 @@ class FlowBuilder:
                 "add_output_field() to specify the flow output."
             )
 
+        # Build FlowSchema if any schemas are set
+        schemas = None
+        if (
+            self.input_schema is not None
+            or self.output_schema is not None
+            or self.variables_schema is not None
+        ):
+            schemas = FlowSchema(
+                defs={},
+                steps={},
+                input=self.input_schema,
+                output=self.output_schema,
+                variables=self.variables_schema,  # type: ignore
+            )
+
         return Flow(
             schema_="https://stepflow.org/schemas/v1/flow.json",
             name=self.name,
             description=self.description,
             version=self.version,
-            inputSchema=self.input_schema,
-            outputSchema=self.output_schema,
-            variables=self.variables_schema,  # type: ignore
+            schemas=schemas,
             steps=list(self.steps.values()),
             output=output_to_use,
             metadata=self.metadata,

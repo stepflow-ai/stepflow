@@ -89,6 +89,28 @@ pub enum DiagnosticMessage {
     #[serde(rename_all = "camelCase")]
     MissingVariableSchema,
 
+    // Type checking diagnostics
+    #[serde(rename_all = "camelCase")]
+    TypeMismatch {
+        step_id: String,
+        expected: String,
+        actual: String,
+        detail: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    UntypedComponentOutput { step_id: String, component: String },
+    #[serde(rename_all = "camelCase")]
+    UnknownPropertyInPath {
+        step_id: Option<String>,
+        path: String,
+        property: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    TypeCheckIndeterminate {
+        step_id: Option<String>,
+        reason: String,
+    },
+
     // Configuration validation diagnostics
     #[serde(rename_all = "camelCase")]
     NoPluginsConfigured,
@@ -123,6 +145,12 @@ impl DiagnosticMessage {
             DiagnosticMessage::UndefinedVariable { .. } => DiagnosticLevel::Error,
             DiagnosticMessage::UndefinedRequiredVariable { .. } => DiagnosticLevel::Error,
             DiagnosticMessage::InvalidSubflowLiteral { .. } => DiagnosticLevel::Error,
+
+            // Type checking diagnostics
+            DiagnosticMessage::TypeMismatch { .. } => DiagnosticLevel::Error,
+            DiagnosticMessage::UntypedComponentOutput { .. } => DiagnosticLevel::Warning,
+            DiagnosticMessage::UnknownPropertyInPath { .. } => DiagnosticLevel::Error,
+            DiagnosticMessage::TypeCheckIndeterminate { .. } => DiagnosticLevel::Warning,
 
             // Warning diagnostics
             DiagnosticMessage::MissingVariableSchema => DiagnosticLevel::Warning,
@@ -228,6 +256,35 @@ impl DiagnosticMessage {
                 "Workflow has no variable schema defined - variable references cannot be validated"
                     .to_string()
             }
+            DiagnosticMessage::TypeMismatch {
+                step_id,
+                expected,
+                actual,
+                detail,
+            } => {
+                format!(
+                    "Type mismatch in step '{step_id}': expected {expected}, got {actual}. {detail}"
+                )
+            }
+            DiagnosticMessage::UntypedComponentOutput { step_id, component } => {
+                format!(
+                    "Component '{component}' in step '{step_id}' does not provide output schema"
+                )
+            }
+            DiagnosticMessage::UnknownPropertyInPath {
+                step_id,
+                path,
+                property,
+            } => match step_id {
+                Some(step) => {
+                    format!("Unknown property '{property}' in path '{path}' in step '{step}'")
+                }
+                None => format!("Unknown property '{property}' in path '{path}'"),
+            },
+            DiagnosticMessage::TypeCheckIndeterminate { step_id, reason } => match step_id {
+                Some(step) => format!("Cannot determine type in step '{step}': {reason}"),
+                None => format!("Cannot determine type: {reason}"),
+            },
             DiagnosticMessage::NoPluginsConfigured => "No plugins configured".to_string(),
             DiagnosticMessage::NoRoutingRulesConfigured => {
                 "No routing rules configured".to_string()

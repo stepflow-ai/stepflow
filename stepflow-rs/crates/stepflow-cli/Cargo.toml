@@ -34,6 +34,7 @@ stepflow-protocol.workspace = true
 stepflow-server.workspace = true
 stepflow-state.workspace = true
 stepflow-state-sql.workspace = true
+stepflow-typecheck.workspace = true
 reqwest.workspace = true
 walkdir.workspace = true
 similar.workspace = true

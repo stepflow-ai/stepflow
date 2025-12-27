@@ -1,29 +1,32 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+name: Blob Storage Test
+description: Test workflow for blob storage operations
+schemas:
   type: object
   properties:
-    data:
+    input:
       type: object
-output_schema:
-  type: object
-  properties:
-    blob_id:
-      type: string
-    retrieved_data:
+      properties:
+        data:
+          type: object
+      required:
+        - data
+    output:
       type: object
+      properties:
+        blob_id:
+          type: string
+        retrieved_data:
+          type: object
 steps:
 - id: put_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       $input: data
     blob_type: data
 - id: get_blob
   component: /builtin/get_blob
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: put_blob

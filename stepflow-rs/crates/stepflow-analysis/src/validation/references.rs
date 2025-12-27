@@ -117,8 +117,8 @@ fn validate_value_expr(
         }
         ValueExpr::Input { input } => {
             // Workflow input reference is always valid
-            // Generate ignored diagnostic about unvalidated field access on workflow input
-            if !input.is_empty() {
+            // Generate warning about unvalidated field access only if there's no input schema
+            if !input.is_empty() && flow.input_schema().is_none() {
                 diagnostics.add(
                     DiagnosticMessage::UnvalidatedFieldAccess {
                         step_id: "workflow_input".to_string(),

@@ -2,37 +2,40 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: AI Research Assistant
 description: Combines LangChain AI processing with MCP filesystem tools to create
   an automated research workflow
-input_schema:
+schemas:
   type: object
   properties:
-    topic:
-      type: string
-      description: Research topic to explore
-    initial_context:
-      type: string
-      description: Initial context or background information about the topic
-    output_dir:
-      type: string
-      description: Directory to save research files
-      default: /tmp/research
-  required:
-  - topic
-  - initial_context
-output_schema:
-  type: object
-  properties:
-    research_questions:
+    input:
       type: object
-      description: Generated research questions
-    analysis_summary:
+      properties:
+        topic:
+          type: string
+          description: Research topic to explore
+        initial_context:
+          type: string
+          description: Initial context or background information about the topic
+        output_dir:
+          type: string
+          description: Directory to save research files
+          default: /tmp/research
+      required:
+      - topic
+      - initial_context
+    output:
       type: object
-      description: Analysis of the initial context
-    created_files:
-      type: array
-      description: List of created research files
-    report_location:
-      type: string
-      description: Location of saved research
+      properties:
+        research_questions:
+          type: object
+          description: Generated research questions
+        analysis_summary:
+          type: object
+          description: Analysis of the initial context
+        created_files:
+          type: array
+          description: List of created research files
+        report_location:
+          type: string
+          description: Location of saved research
 steps:
 - id: generate_questions
   component: /research/question_generator

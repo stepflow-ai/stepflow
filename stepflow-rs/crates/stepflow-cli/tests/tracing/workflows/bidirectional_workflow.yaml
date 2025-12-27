@@ -2,14 +2,17 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: "Bidirectional Workflow for Tracing Tests"
 description: "Workflow with Python components that use StepflowContext (blob operations)"
 
-input_schema:
+schemas:
   type: object
   properties:
-    data:
-      type: array
-      items: { type: number }
-    multiplier:
-      type: number
+    input:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { type: number }
+        multiplier:
+          type: number
 
 steps:
   # Step 1: Store initial data using builtin

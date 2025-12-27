@@ -102,6 +102,7 @@ stepflow-protocol = { path = "./crates/stepflow-protocol" }
 stepflow-server = { path = "./crates/stepflow-server" }
 stepflow-state = { path = "./crates/stepflow-state" }
 stepflow-state-sql = { path = "./crates/stepflow-state-sql" }
+stepflow-typecheck = { path = "./crates/stepflow-typecheck" }
 tempfile = "3.8"
 test-with = { version = "0.14.10", features = ["runtime"] }
 testcontainers = "0.26.0"

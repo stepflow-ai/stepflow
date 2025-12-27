@@ -267,43 +267,45 @@ Use comprehensive input and output schemas:
 ```yaml
 name: "User Data Processor"
 
-input_schema:
+schemas:
   type: object
   properties:
-    user_id:
-      type: string
-      pattern: "^[a-zA-Z0-9]{8,}$"
-      description: "Unique user identifier"
-    processing_options:
+    input:
       type: object
       properties:
-        include_analytics:
-          type: boolean
-          default: true
-        output_format:
+        user_id:
           type: string
-          enum: ["json", "xml", "csv"]
-          default: "json"
+          pattern: "^[a-zA-Z0-9]{8,}$"
+          description: "Unique user identifier"
+        processing_options:
+          type: object
+          properties:
+            include_analytics:
+              type: boolean
+              default: true
+            output_format:
+              type: string
+              enum: ["json", "xml", "csv"]
+              default: "json"
+          additionalProperties: false
+      required: ["user_id"]
       additionalProperties: false
-  required: ["user_id"]
-  additionalProperties: false
-
-output_schema:
-  type: object
-  properties:
-    processed_data:
-      type: object
-      description: "Processed user data"
-    metadata:
+    output:
       type: object
       properties:
-        processing_time_ms:
-          type: integer
-          minimum: 0
-        version:
-          type: string
-      required: ["processing_time_ms", "version"]
-  required: ["processed_data", "metadata"]
+        processed_data:
+          type: object
+          description: "Processed user data"
+        metadata:
+          type: object
+          properties:
+            processing_time_ms:
+              type: integer
+              minimum: 0
+            version:
+              type: string
+          required: ["processing_time_ms", "version"]
+      required: ["processed_data", "metadata"]
 ```
 
 ### Validate at Step Level

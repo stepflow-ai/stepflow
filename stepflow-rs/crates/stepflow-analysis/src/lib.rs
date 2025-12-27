@@ -12,8 +12,10 @@
 
 mod diagnostics;
 mod error;
+mod typecheck;
 mod validation;
 
 pub use diagnostics::*;
 pub use error::*;
+pub use typecheck::type_check_to_diagnostics;
 pub use validation::*;

@@ -1,0 +1,66 @@
+---
+source: crates/stepflow-cli/tests/commands/test_infer.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - infer
+    - "--help"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
+---
+success: true
+exit_code: 0
+----- stdout -----
+Infer types for a workflow and output an annotated flow.
+
+Perform static type checking on a workflow and optionally output an annotated version with inferred output schemas. This helps catch type mismatches before execution and documents the expected data flow through the workflow.
+
+# Examples
+
+```bash # Output annotated flow to stdout stepflow infer --flow=workflow.yaml
+
+# Output to auto-named file (workflow.inferred.yaml) stepflow infer --flow=workflow.yaml --output
+
+# Output to specific file stepflow infer --flow=workflow.yaml --output=annotated.yaml
+
+# Strict mode (untyped outputs are errors) stepflow infer --flow=workflow.yaml --strict ```
+
+Usage: stepflow infer [OPTIONS] --flow <FILE>
+
+Options:
+      --flow <FILE>
+          Path to the workflow file to type check
+
+  -o, --output [<FILE>]
+          Output path for the annotated workflow.
+          
+          If specified without a value, writes to `<flow>.inferred.yaml`. If specified with a value, writes to that path. If not specified, outputs to stdout.
+
+      --show-step-inputs
+          Show inferred input types for each step.
+          
+          This prints the expected input type for each step based on component schemas. Useful for understanding what data each step receives.
+
+      --strict
+          Treat untyped component outputs as errors instead of warnings
+
+      --config <FILE>
+          The path to the stepflow config file.
+          
+          If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
+
+      --omit-stack-trace
+          Omit stack traces (line numbers of errors)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+----- stderr -----

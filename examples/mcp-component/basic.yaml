@@ -1,20 +1,23 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: MCP Filesystem Example
 description: Demonstrates using MCP filesystem tools to read and write files
-input_schema:
+schemas:
   type: object
   properties:
-    filename:
-      type: string
-      description: Name of the file to create
-      default: /tmp/stepflow-mcp-example.txt
-    content:
-      type: string
-      description: Content to write to the file
-      default: Hello from Stepflow using MCP tools!
-  required:
-  - filename
-  - content
+    input:
+      type: object
+      properties:
+        filename:
+          type: string
+          description: Name of the file to create
+          default: /tmp/stepflow-mcp-example.txt
+        content:
+          type: string
+          description: Content to write to the file
+          default: Hello from Stepflow using MCP tools!
+      required:
+      - filename
+      - content
 steps:
 - id: create_file
   component: /filesystem/write_file

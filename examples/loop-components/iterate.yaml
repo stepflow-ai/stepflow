@@ -1,33 +1,36 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Iterate Example
 description: Example of using the Python iterate component with counter workflow
-input_schema:
+schemas:
   type: object
   properties:
-    current:
-      type: integer
-      description: Starting count value
-    target:
-      type: integer
-      description: Target count value
-  required:
-  - current
-  - target
-output_schema:
-  type: object
-  properties:
-    result:
+    input:
+      type: object
+      properties:
+        current:
+          type: integer
+          description: Starting count value
+        target:
+          type: integer
+          description: Target count value
+      required:
+      - current
+      - target
+    output:
       type: object
       properties:
         result:
-          type: string
-          description: Final result message
-        iterations:
-          type: integer
-          description: Number of iterations performed
-        terminated:
-          type: boolean
-          description: Whether iteration was terminated by max_iterations
+          type: object
+          properties:
+            result:
+              type: string
+              description: Final result message
+            iterations:
+              type: integer
+              description: Number of iterations performed
+            terminated:
+              type: boolean
+              description: Whether iteration was terminated by max_iterations
 steps:
 - id: create_counter_flow
   component: /builtin/put_blob

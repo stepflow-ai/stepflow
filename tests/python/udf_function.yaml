@@ -1,26 +1,27 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
   properties:
-    data:
-      type: array
-      items:
-        type: object
-        properties:
-          name:
-            type: string
-          score:
-            type: number
-output_schema:
-  type: object
-  properties:
-    analytics:
+    input:
       type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              score:
+                type: number
+    output:
+      type: object
+      properties:
+        analytics:
+          type: object
 steps:
 - id: create_analyze_scores_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -51,8 +52,6 @@ steps:
     blob_type: data
 - id: analyze_scores
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_analyze_scores_blob

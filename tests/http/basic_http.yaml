@@ -1,30 +1,33 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: HTTP Transport Basic Test
 description: Test basic HTTP transport functionality with non-bidirectional components
-input_schema:
+schemas:
   type: object
   properties:
-    message:
-      type: string
-      description: Message to echo
-    numbers:
+    input:
       type: object
       properties:
-        a:
-          type: number
-        b:
-          type: number
+        message:
+          type: string
+          description: Message to echo
+        numbers:
+          type: object
+          properties:
+            a:
+              type: number
+            b:
+              type: number
+          required:
+          - a
+          - b
+        items:
+          type: array
+          items:
+            type: string
       required:
-      - a
-      - b
-    items:
-      type: array
-      items:
-        type: string
-  required:
-  - message
-  - numbers
-  - items
+      - message
+      - numbers
+      - items
 steps:
 - id: echo_test
   component: /test/echo

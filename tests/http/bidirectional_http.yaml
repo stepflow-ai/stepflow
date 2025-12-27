@@ -1,26 +1,29 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: HTTP Transport Bidirectional Test
 description: Test HTTP transport with bidirectional (context-using) components
-input_schema:
+schemas:
   type: object
   properties:
-    data_points:
-      type: array
-      items:
-        type: number
-    analysis_type:
-      type: string
-      enum:
-      - statistics
-      - distribution
-    processing_steps:
-      type: array
-      items:
-        type: string
-  required:
-  - data_points
-  - analysis_type
-  - processing_steps
+    input:
+      type: object
+      properties:
+        data_points:
+          type: array
+          items:
+            type: number
+        analysis_type:
+          type: string
+          enum:
+          - statistics
+          - distribution
+        processing_steps:
+          type: array
+          items:
+            type: string
+      required:
+      - data_points
+      - analysis_type
+      - processing_steps
 steps:
 - id: analyze_data
   component: /test/data_analysis

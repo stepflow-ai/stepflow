@@ -15,9 +15,11 @@ pub mod cli;
 #[cfg(test)]
 mod cli_docs;
 mod error;
+mod infer;
 mod list_components;
 mod repl;
 mod run;
+mod schema_provider;
 pub mod stepflow_config;
 mod submit;
 mod submit_batch;

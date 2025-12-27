@@ -2,15 +2,18 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: AI-Powered Sales Analysis with Regional Breakdown
 description: Processes sales data, calculates metrics, analyzes regions using nested
   workflows, and generates AI insights
-input_schema:
+schemas:
   type: object
   properties:
-    sales_data:
-      type: array
-      description: Array of sales records
-    target_revenue:
-      type: number
-      description: Target revenue for analysis
+    input:
+      type: object
+      properties:
+        sales_data:
+          type: array
+          description: Array of sales records
+        target_revenue:
+          type: number
+          description: Target revenue for analysis
 steps:
 - id: sum_revenue_udf
   component: /put_blob

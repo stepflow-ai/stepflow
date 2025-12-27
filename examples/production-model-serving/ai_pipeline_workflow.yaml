@@ -22,41 +22,44 @@ description: 'Demonstrates production-ready AI model serving with:
   - Graceful error handling and fallbacks
 
   '
-input_schema:
+schemas:
   type: object
   properties:
-    user_text:
-      type: string
-      description: Text content to analyze
-    user_image:
-      type: string
-      description: Base64 encoded image to classify
-    processing_mode:
-      type: string
-      enum:
-      - fast
-      - accurate
-      - batch
-      default: fast
-    batch_size:
-      type: integer
-      default: 4
-      description: Batch size for processing
-    prefer_gpu:
-      type: boolean
-      default: false
-      description: Prefer GPU models when available
-  required:
-  - user_text
-output_schema:
-  type: object
-  properties:
-    processing_summary:
+    input:
       type: object
-    text_analysis:
+      properties:
+        user_text:
+          type: string
+          description: Text content to analyze
+        user_image:
+          type: string
+          description: Base64 encoded image to classify
+        processing_mode:
+          type: string
+          enum:
+          - fast
+          - accurate
+          - batch
+          default: fast
+        batch_size:
+          type: integer
+          default: 4
+          description: Batch size for processing
+        prefer_gpu:
+          type: boolean
+          default: false
+          description: Prefer GPU models when available
+      required:
+      - user_text
+    output:
       type: object
-    image_analysis:
-      type: object
+      properties:
+        processing_summary:
+          type: object
+        text_analysis:
+          type: object
+        image_analysis:
+          type: object
 steps:
 - id: text_health_check
   component: /models/text/model_health_check

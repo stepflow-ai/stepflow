@@ -1,22 +1,25 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: Map Component Batch Execution Test
 description: Test the map component using batch execution with parallel processing
-input_schema:
+schemas:
   type: object
   properties:
-    prompts:
-      type: array
-      items:
-        type: string
-output_schema:
-  type: object
-  properties:
-    results:
-      type: array
-    successful:
-      type: integer
-    failed:
-      type: integer
+    input:
+      type: object
+      properties:
+        prompts:
+          type: array
+          items:
+            type: string
+    output:
+      type: object
+      properties:
+        results:
+          type: array
+        successful:
+          type: integer
+        failed:
+          type: integer
 steps:
 - id: map_prompts
   component: /builtin/map

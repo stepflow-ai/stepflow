@@ -2,24 +2,27 @@ schema: https://stepflow.org/schemas/v1/flow.json
 name: LangChain Decorated Runnable Example
 description: Demonstrates using @server.langchain_component decorator to register
   LangChain runnables as Stepflow components
-input_schema:
+schemas:
   type: object
   properties:
-    text:
-      type: string
-      description: Text to analyze and process
-output_schema:
-  type: object
-  properties:
-    text_analysis:
+    input:
       type: object
-      description: Text analysis results
-    sentiment:
+      properties:
+        text:
+          type: string
+          description: Text to analyze and process
+    output:
       type: object
-      description: Sentiment analysis results
-    math_results:
-      type: object
-      description: Mathematical operation results
+      properties:
+        text_analysis:
+          type: object
+          description: Text analysis results
+        sentiment:
+          type: object
+          description: Sentiment analysis results
+        math_results:
+          type: object
+          description: Mathematical operation results
 steps:
 - id: analyze_text
   component: /text_analyzer

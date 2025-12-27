@@ -1,0 +1,104 @@
+---
+source: crates/stepflow-cli/tests/commands/test_infer.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - infer
+    - "--flow=tests/basic.yaml"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
+---
+success: true
+exit_code: 0
+----- stdout -----
+✅ Validation passed with no errors
+schema: https://stepflow.org/schemas/v1/flow.json
+name: Basic Test Workflow
+description: Simple workflow to test the new test command
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    output:
+      type: object
+      properties:
+        result:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          title: CreateMessagesOutput
+          type: object
+          required:
+          - messages
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/$defs/ChatMessage'
+      required:
+      - result
+    steps:
+      type: object
+      properties:
+        message_step:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          title: CreateMessagesOutput
+          type: object
+          required:
+          - messages
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/$defs/ChatMessage'
+steps:
+- id: message_step
+  component: /builtin/create_messages
+  input:
+    user_prompt:
+      $input: $.message
+output:
+  result:
+    $step: message_step
+test:
+  cases:
+  - name: simple_echo
+    description: Test basic echo functionality
+    input:
+      message: Hello
+    output:
+      outcome: success
+      result:
+        result:
+          messages:
+          - role: user
+            content: Hello
+  - name: different_message
+    description: Test with different input
+    input:
+      message: Hi
+    output:
+      outcome: success
+      result:
+        result:
+          messages:
+          - role: user
+            content: Hi
+
+
+----- stderr -----
+
+📊 Inferred step output types:
+  message_step: { messages: ChatMessage[] }

@@ -13,9 +13,12 @@
 use std::collections::HashMap;
 
 use super::Component;
-use crate::{ValueExpr, schema::SchemaRef};
+use crate::ValueExpr;
 
 /// A step in a workflow that executes a component with specific arguments.
+///
+/// Note: Step output schemas are stored in the flow's `types.steps` field,
+/// not on individual steps. This allows for shared `$defs` and avoids duplication.
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
@@ -24,12 +27,6 @@ pub struct Step {
 
     /// The component to execute in this step
     pub component: Component,
-
-    /// The input schema for this step.
-    pub input_schema: Option<SchemaRef>,
-
-    /// The output schema for this step.
-    pub output_schema: Option<SchemaRef>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_error: Option<ErrorAction>,

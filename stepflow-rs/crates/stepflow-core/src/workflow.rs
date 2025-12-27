@@ -13,6 +13,7 @@
 mod builders;
 mod component;
 mod flow;
+mod flow_schema;
 mod overrides;
 mod step;
 mod step_id;
@@ -21,6 +22,7 @@ mod variable_schema;
 pub use builders::*;
 pub use component::*;
 pub use flow::*;
+pub use flow_schema::*;
 pub use overrides::*;
 pub use step::*;
 pub use step_id::*;

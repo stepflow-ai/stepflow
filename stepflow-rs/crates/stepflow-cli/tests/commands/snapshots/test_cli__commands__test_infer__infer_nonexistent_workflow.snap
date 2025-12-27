@@ -1,0 +1,24 @@
+---
+source: crates/stepflow-cli/tests/commands/test_infer.rs
+info:
+  program: stepflow
+  args:
+    - "--log-file=/dev/null"
+    - "--omit-stack-trace"
+    - infer
+    - "--flow=nonexistent.yaml"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Missing file: nonexistent.yaml

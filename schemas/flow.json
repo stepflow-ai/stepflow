@@ -27,38 +27,9 @@
           ],
           "description": "The version of the flow."
         },
-        "inputSchema": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "The input schema of the flow."
-            }
-          ]
-        },
-        "outputSchema": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "The output schema of the flow."
-            }
-          ]
-        },
-        "variables": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "Schema for workflow variables that can be referenced in steps."
-            }
-          ]
+        "schemas": {
+          "$ref": "#/$defs/FlowSchema",
+          "description": "Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`."
         },
         "steps": {
           "type": "array",
@@ -138,38 +109,9 @@
           ],
           "description": "The version of the flow."
         },
-        "inputSchema": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "The input schema of the flow."
-            }
-          ]
-        },
-        "outputSchema": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "The output schema of the flow."
-            }
-          ]
-        },
-        "variables": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "Schema for workflow variables that can be referenced in steps."
-            }
-          ]
+        "schemas": {
+          "$ref": "#/$defs/FlowSchema",
+          "description": "Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`."
         },
         "steps": {
           "type": "array",
@@ -213,13 +155,75 @@
         }
       }
     },
-    "Schema": {
+    "FlowSchema": {
       "type": "object",
-      "description": "A valid JSON Schema object."
+      "description": "Consolidated schema information for a flow.\n\nThis struct contains all schema/type information for the flow in a single location,\nallowing shared `$defs` across all schemas and avoiding duplication.\n\nSerializes as a valid JSON Schema with `type: \"object\"` and flow-specific\nproperties (`input`, `output`, `variables`, `steps`) under the `properties` key.",
+      "required": [
+        "defs",
+        "steps"
+      ],
+      "properties": {
+        "defs": {
+          "type": "object",
+          "description": "Shared type definitions that can be referenced by other schemas.\nReferences use the format `#/schemas/$defs/TypeName`.",
+          "additionalProperties": {
+            "$ref": "#/$defs/Schema"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        },
+        "input": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Schema",
+              "description": "The input schema for the flow."
+            }
+          ],
+          "default": null
+        },
+        "output": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Schema",
+              "description": "The output schema for the flow."
+            }
+          ],
+          "default": null
+        },
+        "variables": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Schema",
+              "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types."
+            }
+          ],
+          "default": null
+        },
+        "steps": {
+          "type": "object",
+          "description": "Output schemas for each step, keyed by step ID.\nNote: Step input schemas are not included here as they are\ncomponent metadata, not flow-specific schemas.\nUses IndexMap to preserve insertion order for deterministic serialization.",
+          "additionalProperties": {
+            "$ref": "#/$defs/Schema"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        }
+      }
     },
     "Step": {
       "type": "object",
-      "description": "A step in a workflow that executes a component with specific arguments.",
+      "description": "A step in a workflow that executes a component with specific arguments.\n\nNote: Step output schemas are stored in the flow's `types.steps` field,\nnot on individual steps. This allows for shared `$defs` and avoids duplication.",
       "required": [
         "id",
         "component"
@@ -232,28 +236,6 @@
         "component": {
           "$ref": "#/$defs/Component",
           "description": "The component to execute in this step"
-        },
-        "inputSchema": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "The input schema for this step."
-            }
-          ]
-        },
-        "outputSchema": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Schema",
-              "description": "The output schema for this step."
-            }
-          ]
         },
         "onError": {
           "oneOf": [
@@ -478,6 +460,10 @@
           "description": "The input data for this example."
         }
       }
+    },
+    "Schema": {
+      "type": "object",
+      "description": "A valid JSON Schema object."
     },
     "Component": {
       "type": "string",

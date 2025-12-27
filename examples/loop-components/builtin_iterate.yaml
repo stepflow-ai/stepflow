@@ -33,34 +33,37 @@ steps:
     max_iterations: 20
 output:
   $step: count_to_target
-input_schema:
+schemas:
   type: object
   properties:
-    current:
-      type: integer
-      description: Starting value for the counter
-    target:
-      type: integer
-      description: Target value to count to
-  required:
-  - current
-  - target
-output_schema:
-  type: object
-  properties:
-    result:
-      type: string
-      description: Final counter value
-    iterations:
-      type: integer
-      description: Number of iterations performed
-    terminated:
-      type: boolean
-      description: Whether iteration was terminated by max_iterations
-  required:
-  - result
-  - iterations
-  - terminated
+    input:
+      type: object
+      properties:
+        current:
+          type: integer
+          description: Starting value for the counter
+        target:
+          type: integer
+          description: Target value to count to
+      required:
+      - current
+      - target
+    output:
+      type: object
+      properties:
+        result:
+          type: string
+          description: Final counter value
+        iterations:
+          type: integer
+          description: Number of iterations performed
+        terminated:
+          type: boolean
+          description: Whether iteration was terminated by max_iterations
+      required:
+      - result
+      - iterations
+      - terminated
 test:
   cases:
   - name: Count from 0 to 5

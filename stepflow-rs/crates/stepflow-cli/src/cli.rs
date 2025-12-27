@@ -11,7 +11,8 @@
 // the License.
 
 use error_stack::ResultExt as _;
-use std::{path::PathBuf, sync::Arc};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use stepflow_core::{
     BlobId,
     workflow::{Flow, WorkflowOverrides},
@@ -21,6 +22,7 @@ use url::Url;
 use crate::{
     args::{ConfigArgs, ExecutionArgs, InputArgs, OutputArgs, WorkflowLoader, load},
     error::Result,
+    infer,
     list_components::OutputFormat,
     repl::run_repl,
     run::run,
@@ -347,10 +349,20 @@ pub enum Command {
     /// ```bash
     ///
     /// # Validate workflow with auto-detected config
+    ///
     /// stepflow validate --flow=examples/basic/workflow.yaml
     ///
     /// # Validate with specific config
+    ///
     /// stepflow validate --flow=workflow.yaml --config=my-config.yml
+    ///
+    /// # Validate with type checking
+    ///
+    /// stepflow validate --flow=workflow.yaml --type-check
+    ///
+    /// # Validate with strict type checking
+    ///
+    /// stepflow validate --flow=workflow.yaml --type-check --strict
     ///
     /// ```
     Validate {
@@ -361,6 +373,77 @@ pub enum Command {
             value_hint = clap::ValueHint::FilePath
         )]
         flow_path: PathBuf,
+
+        /// Enable type checking in addition to validation.
+        ///
+        /// Performs static type analysis to catch type mismatches before execution.
+        #[arg(long)]
+        type_check: bool,
+
+        /// Treat untyped component outputs as errors instead of warnings.
+        ///
+        /// Only applicable when --type-check is enabled.
+        #[arg(long)]
+        strict: bool,
+
+        #[command(flatten)]
+        config_args: ConfigArgs,
+    },
+    /// Infer types for a workflow and output an annotated flow.
+    ///
+    /// Perform static type checking on a workflow and optionally output an annotated
+    /// version with inferred output schemas. This helps catch type mismatches before
+    /// execution and documents the expected data flow through the workflow.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// # Output annotated flow to stdout
+    /// stepflow infer --flow=workflow.yaml
+    ///
+    /// # Output to auto-named file (workflow.inferred.yaml)
+    /// stepflow infer --flow=workflow.yaml --output
+    ///
+    /// # Output to specific file
+    /// stepflow infer --flow=workflow.yaml --output=annotated.yaml
+    ///
+    /// # Strict mode (untyped outputs are errors)
+    /// stepflow infer --flow=workflow.yaml --strict
+    /// ```
+    Infer {
+        /// Path to the workflow file to type check.
+        #[arg(
+            long = "flow",
+            value_name = "FILE",
+            value_hint = clap::ValueHint::FilePath
+        )]
+        flow_path: PathBuf,
+
+        /// Output path for the annotated workflow.
+        ///
+        /// If specified without a value, writes to `<flow>.inferred.yaml`.
+        /// If specified with a value, writes to that path.
+        /// If not specified, outputs to stdout.
+        #[arg(
+            long = "output",
+            short = 'o',
+            value_name = "FILE",
+            num_args = 0..=1,
+            default_missing_value = "",
+            value_hint = clap::ValueHint::FilePath
+        )]
+        output: Option<String>,
+
+        /// Show inferred input types for each step.
+        ///
+        /// This prints the expected input type for each step based on component schemas.
+        /// Useful for understanding what data each step receives.
+        #[arg(long = "show-step-inputs")]
+        show_step_inputs: bool,
+
+        /// Treat untyped component outputs as errors instead of warnings.
+        #[arg(long = "strict")]
+        strict: bool,
 
         #[command(flatten)]
         config_args: ConfigArgs,
@@ -444,6 +527,7 @@ impl Cli {
                 Command::ListComponents { .. } => "list-components",
                 Command::Repl { .. } => "repl",
                 Command::Validate { .. } => "validate",
+                Command::Infer { .. } => "infer",
                 Command::Visualize { .. } => "visualize",
             }
         );
@@ -686,10 +770,51 @@ impl Cli {
             }
             Command::Validate {
                 flow_path,
+                type_check,
+                strict,
                 config_args,
             } => {
-                let failures =
-                    validate::validate(&flow_path, config_args.config_path.as_deref()).await?;
+                let failures = validate::validate(
+                    &flow_path,
+                    config_args.config_path.as_deref(),
+                    type_check,
+                    strict,
+                )
+                .await?;
+                if failures > 0 {
+                    std::process::exit(1);
+                }
+            }
+            Command::Infer {
+                flow_path,
+                output,
+                show_step_inputs,
+                strict,
+                config_args,
+            } => {
+                // Determine output path
+                let output_path = match output {
+                    Some(path) if path.is_empty() => {
+                        // --output without value: auto-generate filename
+                        let stem = flow_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("workflow");
+                        let parent = flow_path.parent().unwrap_or(Path::new("."));
+                        Some(parent.join(format!("{}.inferred.yaml", stem)))
+                    }
+                    Some(path) => Some(PathBuf::from(path)),
+                    None => None,
+                };
+
+                let failures = infer::infer(
+                    &flow_path,
+                    config_args.config_path.as_deref(),
+                    output_path.as_deref(),
+                    strict,
+                    show_step_inputs,
+                )
+                .await?;
                 if failures > 0 {
                     std::process::exit(1);
                 }

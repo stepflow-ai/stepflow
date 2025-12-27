@@ -1,25 +1,26 @@
 schema: https://stepflow.org/schemas/v1/flow.json
-input_schema:
+schemas:
   type: object
   properties:
-    pattern:
-      type: string
-    text:
-      type: string
-output_schema:
-  type: object
-  properties:
-    pattern_matches:
-      type: array
-    sentiment_score:
-      type: number
-    word_analysis:
+    input:
       type: object
+      properties:
+        pattern:
+          type: string
+        text:
+          type: string
+    output:
+      type: object
+      properties:
+        pattern_matches:
+          type: array
+        sentiment_score:
+          type: number
+        word_analysis:
+          type: object
 steps:
 - id: create_word_analysis_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -42,8 +43,6 @@ steps:
     blob_type: data
 - id: create_pattern_search_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -62,8 +61,6 @@ steps:
     blob_type: data
 - id: create_sentiment_analysis_blob
   component: /builtin/put_blob
-  input_schema: null
-  output_schema: null
   input:
     data:
       input_schema:
@@ -86,8 +83,6 @@ steps:
     blob_type: data
 - id: word_analysis
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_word_analysis_blob
@@ -97,8 +92,6 @@ steps:
         $input: text
 - id: pattern_search
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_pattern_search_blob
@@ -110,8 +103,6 @@ steps:
         $input: pattern
 - id: sentiment_analysis
   component: /python/udf
-  input_schema: null
-  output_schema: null
   input:
     blob_id:
       $step: create_sentiment_analysis_blob

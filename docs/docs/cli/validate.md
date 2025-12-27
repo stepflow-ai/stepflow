@@ -20,9 +20,21 @@ Validate workflow files and configuration without executing them. This performs 
 
 ```bash
 
-# Validate workflow with auto-detected config stepflow validate --flow=examples/basic/workflow.yaml
+# Validate workflow with auto-detected config
 
-# Validate with specific config stepflow validate --flow=workflow.yaml --config=my-config.yml
+stepflow validate --flow=examples/basic/workflow.yaml
+
+# Validate with specific config
+
+stepflow validate --flow=workflow.yaml --config=my-config.yml
+
+# Validate with type checking
+
+stepflow validate --flow=workflow.yaml --type-check
+
+# Validate with strict type checking
+
+stepflow validate --flow=workflow.yaml --type-check --strict
 
 ```
 
@@ -31,6 +43,12 @@ Validate workflow files and configuration without executing them. This performs 
 ###### **Options:**
 
 * `--flow <FILE>` — Path to the workflow file to validate
+* `--type-check` — Enable type checking in addition to validation.
+
+   Performs static type analysis to catch type mismatches before execution.
+* `--strict` — Treat untyped component outputs as errors instead of warnings.
+
+   Only applicable when --type-check is enabled.
 * `--config <FILE>` — The path to the stepflow config file.
 
    If not specified, will look for `stepflow-config.yml` in the directory containing the workflow file. If that isn't found, will also look in the current directory.
