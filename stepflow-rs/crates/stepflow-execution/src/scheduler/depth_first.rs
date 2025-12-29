@@ -1,0 +1,273 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing permissions and limitations under
+// the License.
+
+//! Depth-first scheduler implementation.
+//!
+//! This scheduler prioritizes completing items sequentially, minimizing
+//! time-to-first-result. It tries to complete item 0 before starting
+//! substantive work on item 1, etc.
+
+use std::collections::BinaryHeap;
+
+use crate::scheduler::{Scheduler, SchedulerDecision};
+use crate::task::Task;
+
+/// Wrapper for Task with depth-first ordering (item_index, step_index).
+///
+/// Uses `Reverse` to convert BinaryHeap's max-heap into a min-heap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+struct DepthFirstTask(Task);
+
+impl PartialOrd for DepthFirstTask {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DepthFirstTask {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Reverse ordering: smaller (item_index, step_index) should come first
+        // BinaryHeap is max-heap, so we reverse the comparison
+        (other.0.item_index, other.0.step_index).cmp(&(self.0.item_index, self.0.step_index))
+    }
+}
+
+/// A scheduler that prioritizes completing items sequentially.
+///
+/// DepthFirstScheduler minimizes time-to-first-result by focusing on
+/// completing item 0 before item 1, and so on. Within an item, it
+/// executes ready steps as soon as possible.
+///
+/// Uses a binary heap for O(log n) insertion and O(log n) extraction.
+///
+/// # Example
+///
+/// For a batch with 2 items and 3 steps each:
+/// ```text
+/// Item 0: step0 -> step1 -> step2
+/// Item 1: step0 -> step1 -> step2
+/// ```
+///
+/// Depth-first ordering (assuming no parallelism):
+/// ```text
+/// item0/step0 -> item0/step1 -> item0/step2 -> item1/step0 -> item1/step1 -> item1/step2
+/// ```
+#[derive(Debug, Default)]
+pub struct DepthFirstScheduler {
+    /// Heap of ready tasks, ordered by (item_index, step_index) ascending.
+    ready_heap: BinaryHeap<DepthFirstTask>,
+}
+
+impl DepthFirstScheduler {
+    /// Create a new depth-first scheduler.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Scheduler for DepthFirstScheduler {
+    fn select_next(&mut self, max_tasks: usize) -> SchedulerDecision {
+        let mut tasks = Vec::with_capacity(max_tasks.min(self.ready_heap.len()));
+        while tasks.len() < max_tasks {
+            if let Some(DepthFirstTask(task)) = self.ready_heap.pop() {
+                tasks.push(task);
+            } else {
+                break;
+            }
+        }
+        SchedulerDecision::execute(tasks)
+    }
+
+    fn task_completed(&mut self, _task: Task) {
+        // No-op: newly ready tasks are provided via notify_new_tasks
+    }
+
+    fn notify_new_tasks(&mut self, tasks: &[Task]) {
+        for &task in tasks {
+            self.ready_heap.push(DepthFirstTask(task));
+        }
+    }
+
+    fn reset(&mut self) {
+        self.ready_heap.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::ItemsState;
+    use serde_json::json;
+    use std::sync::Arc;
+    use stepflow_core::values::ValueRef;
+    use stepflow_core::workflow::{FlowBuilder, StepBuilder};
+
+    fn create_simple_flow(step_count: usize) -> stepflow_core::workflow::Flow {
+        let steps = (0..step_count)
+            .map(|i| StepBuilder::mock_step(format!("step{}", i)).build())
+            .collect::<Vec<_>>();
+        FlowBuilder::test_flow().steps(steps).build()
+    }
+
+    #[test]
+    fn test_depth_first_ordering() {
+        let mut scheduler = DepthFirstScheduler::new();
+
+        // Notify with tasks in arbitrary order
+        scheduler.notify_new_tasks(&[
+            Task::new(1, 0),
+            Task::new(0, 1),
+            Task::new(0, 0),
+            Task::new(1, 1),
+        ]);
+
+        // Get all tasks
+        let tasks: Vec<_> = scheduler
+            .select_next(10)
+            .into_tasks()
+            .unwrap()
+            .into_iter()
+            .collect();
+
+        // Should be sorted by (item_index, step_index)
+        assert_eq!(tasks.len(), 4);
+        assert_eq!(tasks[0], Task::new(0, 0));
+        assert_eq!(tasks[1], Task::new(0, 1));
+        assert_eq!(tasks[2], Task::new(1, 0));
+        assert_eq!(tasks[3], Task::new(1, 1));
+    }
+
+    #[test]
+    fn test_depth_first_with_limit() {
+        let mut scheduler = DepthFirstScheduler::new();
+
+        // Notify with 6 tasks
+        scheduler.notify_new_tasks(&[
+            Task::new(0, 0),
+            Task::new(0, 1),
+            Task::new(0, 2),
+            Task::new(1, 0),
+            Task::new(1, 1),
+            Task::new(1, 2),
+        ]);
+
+        // Request only 2 tasks
+        let tasks: Vec<_> = scheduler
+            .select_next(2)
+            .into_tasks()
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(tasks.len(), 2);
+
+        // Both should be from item 0 (depth-first)
+        for task in &tasks {
+            assert_eq!(task.item_index, 0);
+        }
+    }
+
+    #[test]
+    fn test_notify_new_tasks() {
+        let mut scheduler = DepthFirstScheduler::new();
+
+        // Notify with out-of-order tasks
+        scheduler.notify_new_tasks(&[Task::new(1, 0), Task::new(0, 1), Task::new(0, 0)]);
+
+        // Heap should contain all tasks; verify by popping in order
+        let mut tasks = Vec::new();
+        while let Some(DepthFirstTask(task)) = scheduler.ready_heap.pop() {
+            tasks.push(task);
+        }
+        assert_eq!(tasks[0], Task::new(0, 0));
+        assert_eq!(tasks[1], Task::new(0, 1));
+        assert_eq!(tasks[2], Task::new(1, 0));
+    }
+
+    #[test]
+    fn test_incremental_notification() {
+        // Tests the executor contract: tasks are notified as they become ready
+        let mut scheduler = DepthFirstScheduler::new();
+
+        // Initial task
+        scheduler.notify_new_tasks(&[Task::new(0, 0)]);
+
+        // Get first task
+        let task = scheduler.select_next(1).into_tasks().unwrap().head;
+        assert_eq!(task, Task::new(0, 0));
+
+        // Simulate task completion - executor notifies newly ready tasks
+        scheduler.task_completed(task);
+        scheduler.notify_new_tasks(&[Task::new(0, 1)]);
+
+        // Get next task
+        let task = scheduler.select_next(1).into_tasks().unwrap().head;
+        assert_eq!(task, Task::new(0, 1));
+    }
+
+    #[test]
+    fn test_empty_returns_idle() {
+        let mut scheduler = DepthFirstScheduler::new();
+        assert!(scheduler.select_next(10).is_idle());
+    }
+
+    #[test]
+    fn test_reset() {
+        let mut scheduler = DepthFirstScheduler::new();
+
+        scheduler.notify_new_tasks(&[Task::new(0, 0), Task::new(1, 0)]);
+        scheduler.reset();
+
+        assert!(scheduler.ready_heap.is_empty());
+        assert!(scheduler.select_next(10).is_idle());
+    }
+
+    // Keep one test that uses ItemsState to verify integration
+    #[test]
+    fn test_integration_with_state() {
+        let flow = Arc::new(create_simple_flow(2));
+        let mut state = ItemsState::single(
+            flow,
+            ValueRef::new(json!({})),
+            std::collections::HashMap::new(),
+        );
+
+        // Initialize state
+        {
+            let item = state.item_mut(0);
+            item.mark_needed(0);
+            item.mark_needed(1);
+        }
+
+        let mut scheduler = DepthFirstScheduler::new();
+
+        // Simulate executor: get initial ready tasks and notify
+        let initial_tasks = state.all_ready_tasks();
+        scheduler.notify_new_tasks(&initial_tasks);
+
+        // Get first task
+        let task = scheduler.select_next(1).into_tasks().unwrap().head;
+        state.mark_executing(task);
+
+        // Complete and get newly ready
+        let new_ready = state.complete_task_and_get_ready(
+            task,
+            stepflow_core::FlowResult::Success(ValueRef::new(json!(null))),
+        );
+        scheduler.task_completed(task);
+        scheduler.notify_new_tasks(&new_ready);
+
+        // Should have next task ready
+        let next = scheduler.select_next(1).into_tasks();
+        assert!(next.is_some());
+    }
+}

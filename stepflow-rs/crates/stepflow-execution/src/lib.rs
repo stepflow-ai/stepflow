@@ -10,11 +10,60 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+//! Workflow execution engine for Stepflow.
+//!
+//! This crate provides the core execution infrastructure:
+//!
+//! - [`FlowExecutor`] - batch/single workflow execution with scheduler
+//! - [`DebugExecutor`] - step-by-step debugging with queue/eval API
+//! - [`StepflowExecutor`] - main entry point for workflow execution
+//!
+//! ## Execution State
+//!
+//! - [`ItemState`] - per-item execution state (dependency tracking, results)
+//! - [`ItemsState`] - cross-item coordinator for batch execution
+//!
+//! ## Scheduling
+//!
+//! - [`Scheduler`] - trait for custom execution strategies
+//! - [`DepthFirstScheduler`] - complete items sequentially (time-to-first-result)
+//! - [`BreadthFirstScheduler`] - group by step (throughput, batch invocation)
+//!
+//! ## Debug Mode
+//!
+//! Debug execution differs from batch mode in *when* steps are added to the
+//! needed set, not in how they are executed. [`DebugExecutor`] composes a
+//! [`FlowExecutor`] and controls execution through task addition - steps are
+//! added incrementally via `queue_step()` rather than all at once.
+
+mod debug_executor;
 mod error;
 mod executor;
-mod tracker;
-mod workflow_executor;
+mod flow_executor;
+mod scheduler;
+mod state;
+mod step_runner;
+mod task;
 
+#[cfg(test)]
+pub(crate) mod testing;
+
+// Main exports
+pub use debug_executor::{DebugExecutor, StepInspection};
 pub use error::{ExecutionError, Result};
 pub use executor::StepflowExecutor;
-pub use workflow_executor::{StepExecutionResult, StepInspection, StepMetadata, WorkflowExecutor};
+pub use flow_executor::{FlowExecutor, FlowExecutorBuilder};
+
+// State types
+pub use state::{ItemState, ItemsState, StepIndex};
+
+// Scheduling
+pub use scheduler::{
+    BreadthFirstScheduler, DepthFirstScheduler, NonEmpty, Scheduler, SchedulerDecision,
+};
+
+// Task types
+pub use task::{Task, TaskResult};
+
+// Step execution
+pub use step_runner::{StepMetadata, StepRunResult};

@@ -82,6 +82,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
                         result: Some(FlowResult::Success(ValueRef::new(
                             serde_json::json!({"message": "Hello from test"}),
                         ))),
+                        completed_at: Some(now),
                     }])
                 } else {
                     None
@@ -119,11 +120,7 @@ fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext
     let test_context = Arc::new(TestContext {
         state_store: Arc::new(InMemoryStateStore::new()),
     });
-    let exec_context = ExecutionContext::new(
-        test_context.clone(),
-        Uuid::now_v7(),
-        Some("test_step".to_string()),
-    );
+    let exec_context = ExecutionContext::for_testing(test_context.clone(), Uuid::now_v7());
 
     (test_context, exec_context)
 }

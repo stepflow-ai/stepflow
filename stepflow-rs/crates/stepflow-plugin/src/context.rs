@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::{
     BlobId, FlowResult, GetRunOptions, SubmitRunParams,
-    workflow::{Flow, ValueRef, WorkflowOverrides},
+    workflow::{Flow, StepId, ValueRef, WorkflowOverrides},
 };
 use stepflow_state::{RunStatus, StateStore};
 use uuid::Uuid;
@@ -166,65 +166,41 @@ pub trait Context: Send + Sync {
 pub struct ExecutionContext {
     context: Arc<dyn Context>,
     run_id: Uuid,
-    step_id: Option<String>,
+    /// The current step being executed (contains flow reference and step index).
+    step: Option<StepId>,
+    /// Flow reference for workflow-level contexts (when step is None).
     flow: Option<Arc<Flow>>,
     flow_id: Option<BlobId>,
 }
 
 impl ExecutionContext {
-    /// Create a new ExecutionContext.
-    pub fn new(context: Arc<dyn Context>, run_id: Uuid, step_id: Option<String>) -> Self {
-        Self {
-            context,
-            run_id,
-            step_id,
-            flow: None,
-            flow_id: None,
-        }
-    }
-
-    /// Create a new ExecutionContext with a flow for metadata access.
-    pub fn new_with_flow(
-        context: Arc<dyn Context>,
-        run_id: Uuid,
-        step_id: Option<String>,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-    ) -> Self {
-        Self {
-            context,
-            run_id,
-            step_id,
-            flow: Some(flow),
-            flow_id: Some(flow_id),
-        }
-    }
-
     /// Create a new ExecutionContext for a specific step.
-    pub fn for_step(context: Arc<dyn Context>, run_id: Uuid, step_id: String) -> Self {
-        Self {
-            context,
-            run_id,
-            step_id: Some(step_id),
-            flow: None,
-            flow_id: None,
-        }
-    }
-
-    /// Create a new ExecutionContext for a specific step with flow metadata access.
-    pub fn for_step_with_flow(
+    pub fn for_step(
         context: Arc<dyn Context>,
         run_id: Uuid,
-        step_id: String,
-        flow: Arc<Flow>,
+        step: StepId,
         flow_id: BlobId,
     ) -> Self {
         Self {
             context,
             run_id,
-            step_id: Some(step_id),
-            flow: Some(flow),
+            step: Some(step),
+            flow: None,
             flow_id: Some(flow_id),
+        }
+    }
+
+    /// Create a new ExecutionContext for testing without a flow.
+    ///
+    /// This is only for unit tests where a full Flow is not available.
+    /// In production code, use `for_step()` or `for_workflow_with_flow()`.
+    pub fn for_testing(context: Arc<dyn Context>, run_id: Uuid) -> Self {
+        Self {
+            context,
+            run_id,
+            step: None,
+            flow: None,
+            flow_id: None,
         }
     }
 
@@ -233,7 +209,7 @@ impl ExecutionContext {
         Self {
             context,
             run_id,
-            step_id: None,
+            step: None,
             flow: None,
             flow_id: None,
         }
@@ -249,19 +225,19 @@ impl ExecutionContext {
         Self {
             context,
             run_id,
-            step_id: None,
+            step: None,
             flow: Some(flow),
             flow_id: Some(flow_id),
         }
     }
 
-    /// Create a new ExecutionContext with a different step ID, reusing the same context and run_id.
-    pub fn with_step(&self, step_id: String) -> Self {
+    /// Create a new ExecutionContext with a step, reusing the same context and run_id.
+    pub fn with_step(&self, step: StepId) -> Self {
         Self {
             context: self.context.clone(),
             run_id: self.run_id,
-            step_id: Some(step_id),
-            flow: self.flow.clone(),
+            step: Some(step),
+            flow: None, // Flow is accessible via step.flow
             flow_id: self.flow_id.clone(),
         }
     }
@@ -271,9 +247,19 @@ impl ExecutionContext {
         self.run_id
     }
 
-    /// Get the step ID for this context, if available.
+    /// Get the step for this context, if available.
+    pub fn step(&self) -> Option<&StepId> {
+        self.step.as_ref()
+    }
+
+    /// Get the step name for this context, if available.
     pub fn step_id(&self) -> Option<&str> {
-        self.step_id.as_deref()
+        self.step.as_ref().map(|s| s.step_name())
+    }
+
+    /// Get the flow for this context, if available.
+    pub fn flow(&self) -> Option<&Arc<Flow>> {
+        self.step.as_ref().map(|s| &s.flow).or(self.flow.as_ref())
     }
 
     /// Get the flow ID for this context, if available.

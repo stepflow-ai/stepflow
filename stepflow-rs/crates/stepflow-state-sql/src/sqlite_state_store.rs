@@ -22,8 +22,9 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_state::{
-    ItemStatistics, RunDetails, RunFilters, RunSummary, StateError, StateStore,
-    StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
+    ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StateError,
+    StateStore, StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata,
+    WorkflowWithMetadata,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -164,7 +165,8 @@ impl SqliteStateStore {
         };
 
         // Insert run metadata (items stored separately in run_items)
-        let sql = "INSERT INTO runs (id, flow_id, flow_name, flow_label, status, debug_mode, overrides_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
+        // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
+        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, flow_label, status, debug_mode, overrides_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
 
         sqlx::query(sql)
             .bind(params.run_id.to_string())
@@ -177,8 +179,8 @@ impl SqliteStateStore {
             .await
             .change_context(StateError::Internal)?;
 
-        // Insert each input as a run_item
-        let item_sql = "INSERT INTO run_items (run_id, item_index, input_json, status) VALUES (?, ?, ?, 'running')";
+        // Insert each input as a run_item (also idempotent)
+        let item_sql = "INSERT OR IGNORE INTO run_items (run_id, item_index, input_json, status) VALUES (?, ?, ?, 'running')";
         for (idx, input) in params.inputs.iter().enumerate() {
             let input_json =
                 serde_json::to_string(input.as_ref()).change_context(StateError::Serialization)?;
@@ -891,8 +893,8 @@ impl StateStore for SqliteStateStore {
                         .get::<Option<String>, _>("completed_at")
                         .and_then(|s| parse_sqlite_datetime(&s));
 
-                    // Fetch items from run_items table
-                    let items_sql = "SELECT item_index, input_json, status, result_json FROM run_items WHERE run_id = ? ORDER BY item_index";
+                    // Fetch items from run_items table (inputs and status only, not results)
+                    let items_sql = "SELECT item_index, input_json, status FROM run_items WHERE run_id = ? ORDER BY item_index";
                     let item_rows = sqlx::query(items_sql)
                         .bind(run_id.to_string())
                         .fetch_all(&pool)
@@ -900,7 +902,6 @@ impl StateStore for SqliteStateStore {
                         .change_context(StateError::Internal)?;
 
                     let mut inputs = Vec::new();
-                    let mut results = Vec::new();
                     let mut running = 0usize;
                     let mut completed = 0usize;
                     let mut failed = 0usize;
@@ -913,7 +914,7 @@ impl StateStore for SqliteStateStore {
                             .change_context(StateError::Serialization)?;
                         inputs.push(ValueRef::new(input_value));
 
-                        // Parse result
+                        // Count item statuses for statistics
                         let item_status: String = item_row.get("status");
                         match item_status.as_str() {
                             "running" => running += 1,
@@ -922,15 +923,6 @@ impl StateStore for SqliteStateStore {
                             "cancelled" => cancelled += 1,
                             _ => running += 1,
                         }
-
-                        let result = if let Some(result_json) = item_row.get::<Option<String>, _>("result_json") {
-                            let flow_result: FlowResult = serde_json::from_str(&result_json)
-                                .change_context(StateError::Serialization)?;
-                            Some(flow_result)
-                        } else {
-                            None
-                        };
-                        results.push(result);
                     }
 
                     let items = ItemStatistics {
@@ -954,7 +946,6 @@ impl StateStore for SqliteStateStore {
                             completed_at,
                         },
                         inputs,
-                        results,
                         overrides: None, // TODO: Store and retrieve overrides from database
                     };
 
@@ -1389,6 +1380,72 @@ impl StateStore for SqliteStateStore {
 
             let step_ids: Vec<String> = rows.iter().map(|row| row.get("step_id")).collect();
             Ok(Some(step_ids))
+        }
+        .boxed()
+    }
+
+    fn get_item_results(
+        &self,
+        run_id: Uuid,
+        order: ResultOrder,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
+        let pool = self.pool.clone();
+        let run_id_str = run_id.to_string();
+
+        async move {
+            // Choose ordering based on order parameter
+            let order_clause = match order {
+                ResultOrder::ByIndex => "ORDER BY item_index",
+                ResultOrder::ByCompletion => {
+                    // Items with completed_at first (sorted by time), then incomplete items by index
+                    "ORDER BY CASE WHEN completed_at IS NULL THEN 1 ELSE 0 END, completed_at, item_index"
+                }
+            };
+
+            let sql = format!(
+                "SELECT item_index, status, result_json, completed_at FROM run_items WHERE run_id = ? {}",
+                order_clause
+            );
+
+            let rows = sqlx::query(&sql)
+                .bind(&run_id_str)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut items = Vec::new();
+            for row in rows {
+                let item_index: i64 = row.get("item_index");
+                let status_str: String = row.get("status");
+                let status = match status_str.as_str() {
+                    "completed" => ExecutionStatus::Completed,
+                    "failed" => ExecutionStatus::Failed,
+                    "cancelled" => ExecutionStatus::Cancelled,
+                    _ => ExecutionStatus::Running,
+                };
+
+                let result = if let Some(result_json) = row.get::<Option<String>, _>("result_json")
+                {
+                    let flow_result: FlowResult = serde_json::from_str(&result_json)
+                        .change_context(StateError::Serialization)?;
+                    Some(flow_result)
+                } else {
+                    None
+                };
+
+                let completed_at = row
+                    .get::<Option<String>, _>("completed_at")
+                    .and_then(|s| parse_sqlite_datetime(&s));
+
+                items.push(ItemResult {
+                    item_index: item_index as usize,
+                    status,
+                    result,
+                    completed_at,
+                });
+            }
+
+            Ok(items)
         }
         .boxed()
     }

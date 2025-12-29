@@ -435,6 +435,12 @@ class ItemResult(Struct, kw_only=True):
         ExecutionStatus, Meta(description='Execution status of this item.')
     ]
     result: FlowResult | None = None
+    completedAt: (
+        Annotated[
+            str | None, Meta(description='When this item completed (if completed).')
+        ]
+        | None
+    ) = None
 
 
 class RunStatusProtocol(Struct, kw_only=True):

@@ -20,7 +20,7 @@ use stepflow_core::{
     BlobId,
     workflow::{Flow, ValueRef},
 };
-use stepflow_execution::{StepflowExecutor, WorkflowExecutor};
+use stepflow_execution::{DebugExecutor, StepflowExecutor};
 use stepflow_plugin::Context as _;
 
 use crate::{
@@ -34,7 +34,7 @@ pub struct LastRun {
     pub flow: Arc<Flow>,
     pub flow_id: BlobId,
     pub input: ValueRef,
-    pub last_execution: Option<WorkflowExecutor>,
+    pub last_execution: Option<DebugExecutor>,
 }
 
 impl LastRun {
@@ -83,10 +83,10 @@ impl LastRun {
     pub async fn create_debug_execution(
         &mut self,
         executor: &Arc<StepflowExecutor>,
-    ) -> Result<&mut WorkflowExecutor> {
+    ) -> Result<&mut DebugExecutor> {
         let state_store = executor.state_store();
         let run_id = uuid::Uuid::now_v7();
-        let workflow_executor = WorkflowExecutor::new(
+        let debug_executor = DebugExecutor::new(
             executor.clone(),
             self.flow.clone(),
             self.flow_id.clone(),
@@ -95,14 +95,15 @@ impl LastRun {
             state_store.clone(),
             None, // TODO: Add variables support to REPL
         )
+        .await
         .change_context(MainError::FlowExecution)?;
 
-        self.last_execution = Some(workflow_executor);
+        self.last_execution = Some(debug_executor);
         Ok(self.last_execution.as_mut().unwrap())
     }
 
     /// Get the current debug execution, if any
-    pub fn debug_execution(&mut self) -> Option<&mut WorkflowExecutor> {
+    pub fn debug_execution(&mut self) -> Option<&mut DebugExecutor> {
         self.last_execution.as_mut()
     }
 
@@ -459,7 +460,7 @@ async fn handle_queue_command(step_id: String, state: &mut ReplState) -> Result<
 
     if let Some(last_run) = &mut state.last_run {
         if let Some(debug_session) = last_run.debug_execution() {
-            match debug_session.queue_step(&step_id) {
+            match debug_session.queue_step(&step_id).await {
                 Ok(newly_queued) => {
                     if newly_queued.is_empty() {
                         println!("Step '{step_id}' already queued.");

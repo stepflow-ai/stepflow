@@ -96,6 +96,7 @@ impl Context for MockContext {
                     result: Some(FlowResult::Success(ValueRef::new(
                         serde_json::json!({"message": "Hello from mock"}),
                     ))),
+                    completed_at: Some(now),
                 }])
             } else {
                 None
@@ -261,11 +262,8 @@ async fn test_http_protocol_integration() {
                                 });
                                 let input_ref = ValueRef::from(input_json);
 
-                                let execution_context = ExecutionContext::for_step(
-                                    context.clone(),
-                                    Uuid::now_v7(),
-                                    "test_step".to_string(),
-                                );
+                                let execution_context =
+                                    ExecutionContext::for_testing(context.clone(), Uuid::now_v7());
 
                                 let execute_result = timeout(
                                     Duration::from_secs(5),

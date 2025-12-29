@@ -19,8 +19,8 @@ use stepflow_core::status::ExecutionStatus;
 use crate::{
     StateStore,
     state_store::{
-        CreateRunParams, ItemStatistics, RunDetails, RunFilters, RunSummary, StepInfo, StepResult,
-        WorkflowLabelMetadata, WorkflowWithMetadata,
+        CreateRunParams, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters,
+        RunSummary, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
     },
 };
 use stepflow_core::{
@@ -67,8 +67,12 @@ impl Default for ExecutionState {
 /// Groups all run-related data together under a single key.
 #[derive(Debug)]
 struct RunState {
-    /// Run metadata and input/result information
+    /// Run metadata and input information (no results - stored separately)
     details: RunDetails,
+    /// Item results by item index
+    item_results: HashMap<usize, FlowResult>,
+    /// Per-item completion timestamps
+    item_completed_at: HashMap<usize, chrono::DateTime<chrono::Utc>>,
     /// Execution state (step results and ID mappings)
     execution: ExecutionState,
     /// Step information by step index
@@ -79,6 +83,8 @@ impl RunState {
     fn new(details: RunDetails) -> Self {
         Self {
             details,
+            item_results: HashMap::new(),
+            item_completed_at: HashMap::new(),
             execution: ExecutionState::default(),
             steps: HashMap::new(),
         }
@@ -146,7 +152,6 @@ impl InMemoryStateStore {
                     completed_at: None,
                 },
                 inputs: vec![ValueRef::new(serde_json::Value::Null)],
-                results: vec![None],
                 overrides: None,
             })
         });
@@ -456,8 +461,6 @@ impl StateStore for InMemoryStateStore {
         let now = chrono::Utc::now();
         let item_count = params.item_count();
         let inputs = params.inputs.clone();
-        // Initialize results as None for each input
-        let results = vec![None; item_count];
         let execution_details = RunDetails {
             summary: RunSummary {
                 run_id: params.run_id,
@@ -475,7 +478,6 @@ impl StateStore for InMemoryStateStore {
                 completed_at: None,
             },
             inputs,
-            results,
             overrides: if params.overrides.is_empty() {
                 None
             } else {
@@ -484,8 +486,10 @@ impl StateStore for InMemoryStateStore {
         };
 
         async move {
+            // Idempotent: only insert if not exists (preserves existing run)
             self.runs
-                .insert(params.run_id, RunState::new(execution_details));
+                .entry(params.run_id)
+                .or_insert_with(|| RunState::new(execution_details));
             Ok(())
         }
         .boxed()
@@ -536,19 +540,14 @@ impl StateStore for InMemoryStateStore {
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-                // Ensure results vector has capacity for this index
-                if item_index >= run_state.details.results.len() {
-                    run_state
-                        .details
-                        .results
-                        .resize_with(item_index + 1, || None);
-                }
+                let now = chrono::Utc::now();
 
-                // Check if this slot was previously empty (running)
-                let was_running = run_state.details.results[item_index].is_none();
+                // Check if this item was previously not recorded (running)
+                let was_running = !run_state.item_results.contains_key(&item_index);
 
-                // Update the result
-                run_state.details.results[item_index] = Some(result.clone());
+                // Update the result and record completion time
+                run_state.item_results.insert(item_index, result.clone());
+                run_state.item_completed_at.insert(item_index, now);
 
                 // Update item statistics
                 if was_running {
@@ -573,7 +572,7 @@ impl StateStore for InMemoryStateStore {
                         ExecutionStatus::Completed
                     };
                     run_state.details.summary.status = status;
-                    run_state.details.summary.completed_at = Some(chrono::Utc::now());
+                    run_state.details.summary.completed_at = Some(now);
                 }
             }
             Ok(())
@@ -822,6 +821,55 @@ impl StateStore for InMemoryStateStore {
             .map(|entry| entry.clone())
             .filter(|v| !v.is_empty());
         async move { Ok(queue) }.boxed()
+    }
+
+    fn get_item_results(
+        &self,
+        run_id: Uuid,
+        order: ResultOrder,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
+        async move {
+            let run_state = match self.runs.get(&run_id) {
+                Some(state) => state,
+                None => return Ok(Vec::new()),
+            };
+
+            let item_count = run_state.details.summary.items.total;
+            let mut items: Vec<ItemResult> = (0..item_count)
+                .map(|idx| {
+                    let result = run_state.item_results.get(&idx).cloned();
+                    let status = match &result {
+                        Some(FlowResult::Success(_)) => ExecutionStatus::Completed,
+                        Some(FlowResult::Failed(_)) => ExecutionStatus::Failed,
+                        None => ExecutionStatus::Running,
+                    };
+                    ItemResult {
+                        item_index: idx,
+                        status,
+                        result,
+                        completed_at: run_state.item_completed_at.get(&idx).copied(),
+                    }
+                })
+                .collect();
+
+            // Sort by completion time if requested
+            if order == ResultOrder::ByCompletion {
+                items.sort_by(|a, b| {
+                    match (&a.completed_at, &b.completed_at) {
+                        // Both have completion times - sort by time
+                        (Some(a_time), Some(b_time)) => a_time.cmp(b_time),
+                        // Items with completion time come first
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        // Neither has completion time - preserve index order
+                        (None, None) => a.item_index.cmp(&b.item_index),
+                    }
+                });
+            }
+
+            Ok(items)
+        }
+        .boxed()
     }
 }
 

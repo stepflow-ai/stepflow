@@ -41,11 +41,7 @@ impl MockContext {
 
     /// Get an execution context for testing from this mock context.
     pub fn execution_context(&self) -> ExecutionContext {
-        ExecutionContext::new(
-            self.executor.clone(),
-            Uuid::now_v7(),
-            Some("test_step".to_string()),
-        )
+        ExecutionContext::for_testing(self.executor.clone(), Uuid::now_v7())
     }
 }
 
@@ -92,6 +88,7 @@ impl stepflow_plugin::Context for MockExecutor {
                         result: Some(FlowResult::Success(ValueRef::new(
                             serde_json::json!({"message": "Hello from nested flow"}),
                         ))),
+                        completed_at: Some(now),
                     })
                     .collect();
                 (ExecutionStatus::Completed, Some(now), Some(mock_results))
@@ -144,6 +141,7 @@ impl stepflow_plugin::Context for MockExecutor {
                             result: Some(FlowResult::Success(ValueRef::new(
                                 serde_json::json!({"message": "Hello from nested flow"}),
                             ))),
+                            completed_at: Some(now),
                         })
                         .collect(),
                 )

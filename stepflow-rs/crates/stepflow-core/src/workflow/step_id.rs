@@ -17,12 +17,20 @@ use crate::workflow::Flow;
 /// A step identifier that combines the step index with a reference to the flow.
 /// This allows efficient lookup using the index while maintaining access to
 /// the step ID string and other step metadata through the flow reference.
-#[derive(Debug, Clone)]
+///
+/// NOTE: Using this will keep the Flow alive.
+#[derive(Clone)]
 pub struct StepId {
-    /// The step index in the workflow
-    pub index: usize,
     /// Reference to the flow containing this step
     pub flow: Arc<Flow>,
+    /// The step index in the workflow
+    pub index: usize,
+}
+
+impl StepId {
+    pub fn for_step(flow: Arc<Flow>, index: usize) -> Self {
+        Self { flow, index }
+    }
 }
 
 impl PartialEq for StepId {
@@ -32,6 +40,16 @@ impl PartialEq for StepId {
 }
 
 impl Eq for StepId {}
+
+impl PartialOrd for StepId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if Arc::ptr_eq(&self.flow, &other.flow) {
+            Some(self.index.cmp(&other.index))
+        } else {
+            None
+        }
+    }
+}
 
 impl std::hash::Hash for StepId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -48,6 +66,12 @@ impl StepId {
 }
 
 impl std::fmt::Display for StepId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.step_name())
+    }
+}
+
+impl std::fmt::Debug for StepId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.step_name())
     }

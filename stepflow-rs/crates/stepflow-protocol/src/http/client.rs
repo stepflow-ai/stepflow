@@ -553,6 +553,7 @@ mod tests {
                         result: Some(FlowResult::Success(ValueRef::new(
                             serde_json::json!({"message": "Hello from mock"}),
                         ))),
+                        completed_at: Some(now),
                     }])
                 } else {
                     None

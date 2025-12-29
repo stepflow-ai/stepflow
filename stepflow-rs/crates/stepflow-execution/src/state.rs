@@ -10,14 +10,15 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-mod error;
-mod in_memory;
-mod state_store;
+//! Execution state tracking.
+//!
+//! This module provides state tracking for workflow execution:
+//! - [`ItemState`] - tracks execution state for a single item
+//! - [`ItemsState`] - manages multiple items for batch execution
+//! - [`StepIndex`] - efficient step ID to index mapping
 
-pub use error::{Result, StateError};
-pub use in_memory::InMemoryStateStore;
-pub use state_store::{
-    CreateRunParams, DebugSessionData, ItemResult, ItemStatistics, ResultOrder, RunDetails,
-    RunFilters, RunStatus, RunStepDetails, RunSummary, RunWithBlobs, StateStore,
-    StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
-};
+mod item_state;
+mod items_state;
+
+pub use item_state::{ItemState, StepIndex};
+pub use items_state::ItemsState;
