@@ -15,7 +15,6 @@
 use crate::args::{ConfigArgs, OutputArgs, WorkflowLoader, load};
 use crate::test_server::TestServerManager;
 use crate::{MainError, Result};
-use stepflow_config::StepflowConfig;
 use clap::Args;
 use error_stack::ResultExt as _;
 use similar::{ChangeTag, TextDiff};
@@ -23,6 +22,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use stepflow_config::StepflowConfig;
 use stepflow_core::workflow::Flow;
 use stepflow_core::{BlobId, FlowError, FlowResult};
 use walkdir::WalkDir;
