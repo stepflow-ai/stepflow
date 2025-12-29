@@ -13,7 +13,8 @@
 use error_stack::{self, ensure};
 use std::path::{Path, PathBuf};
 
-use crate::{MainError, Result, args::file_loader::load, stepflow_config::StepflowConfig};
+use crate::{MainError, Result, args::file_loader::load};
+use stepflow_config::StepflowConfig;
 
 /// Shared config arguments related to locating stepflow config.
 #[derive(clap::Args, Debug, Clone)]
