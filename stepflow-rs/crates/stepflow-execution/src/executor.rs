@@ -225,7 +225,7 @@ impl Context for StepflowExecutor {
 
                     log::info!(
                         "Run {run_id} execution completed with {} items",
-                        flow_executor.item_count()
+                        flow_executor.state().item_count()
                     );
                 }
                 .in_span(run_span)

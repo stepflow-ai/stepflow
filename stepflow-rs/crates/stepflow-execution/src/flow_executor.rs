@@ -228,7 +228,7 @@ impl FlowExecutor {
         self.run(None).await?;
 
         // Check for deadlock: run() returned but not complete
-        if !self.state.is_all_complete() {
+        if self.state.incomplete() > 0 {
             return Err(error_stack::report!(ExecutionError::Deadlock)
                 .attach_printable("No tasks ready and none in flight"));
         }
@@ -361,28 +361,9 @@ impl FlowExecutor {
         flow.output().resolve(item)
     }
 
-    /// Record final item result to state store.
-    pub async fn record_item_result(&self, item_index: u32, result: FlowResult) -> Result<()> {
-        self.state_store
-            .record_item_result(self.run_id, item_index as usize, result)
-            .await
-            .change_context(ExecutionError::StateError)?;
-        Ok(())
-    }
-
     /// Get the run ID for this execution.
     pub fn run_id(&self) -> Uuid {
         self.run_id
-    }
-
-    /// Get the number of items.
-    pub fn item_count(&self) -> u32 {
-        self.state.item_count()
-    }
-
-    /// Check if all items have completed.
-    pub fn is_complete(&self) -> bool {
-        self.state.is_all_complete()
     }
 
     /// Get read access to the execution state.
@@ -401,11 +382,6 @@ impl FlowExecutor {
         // Then mark as completed (which will update the counter)
         let item = self.state.item_mut(item_index);
         item.mark_completed(step_index, result);
-    }
-
-    /// Get the flow for an item.
-    pub fn flow(&self, item_index: u32) -> Arc<Flow> {
-        self.state.item(item_index).flow().clone()
     }
 
     /// Add a step to the needed set for an item.
@@ -1054,7 +1030,7 @@ mod tests {
             .unwrap();
 
         // Should not be complete yet (only 1 of 3 steps done)
-        assert!(!items_executor.is_complete());
+        assert!(items_executor.state.incomplete() > 0);
 
         // Run with fuel=1 again
         items_executor
@@ -1063,13 +1039,13 @@ mod tests {
             .unwrap();
 
         // Still not complete (2 of 3 steps done)
-        assert!(!items_executor.is_complete());
+        assert!(items_executor.state.incomplete() > 0);
 
         // Run with fuel=None to complete
         items_executor.run(None).await.unwrap();
 
         // Now should be complete
-        assert!(items_executor.is_complete());
+        assert_eq!(items_executor.state.incomplete(), 0);
     }
 
     #[tokio::test]
@@ -1116,7 +1092,7 @@ mod tests {
         assert!(result.is_none());
 
         // Should be complete
-        assert!(items_executor.is_complete());
+        assert_eq!(items_executor.state.incomplete(), 0);
     }
 
     #[tokio::test]

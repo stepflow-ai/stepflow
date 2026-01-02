@@ -39,7 +39,7 @@ pub struct ItemsState {
     items: Vec<ItemState>,
     /// Shared variables across all items (e.g., API keys, environment config).
     variables: Arc<HashMap<String, ValueRef>>,
-    /// Count of incomplete items (for O(1) is_all_complete check).
+    /// Count of incomplete items (for O(1) incomplete() check).
     /// Decremented when an item transitions from incomplete to complete.
     incomplete_count: usize,
 }
@@ -113,51 +113,10 @@ impl ItemsState {
         &mut self.items[item_index as usize]
     }
 
-    /// Get all tasks that are ready to execute across all items.
-    pub fn all_ready_tasks(&self) -> Vec<Task> {
-        let mut tasks = Vec::new();
-        for (item_index, item) in self.items.iter().enumerate() {
-            for step_index in item.ready_steps().iter() {
-                tasks.push(Task::new(item_index as u32, step_index));
-            }
-        }
-        tasks
-    }
-
-    /// Get ready tasks for a specific step across all items.
-    ///
-    /// Useful for breadth-first scheduling where we want to batch
-    /// component calls for the same step.
-    #[cfg(test)]
-    pub fn ready_tasks_for_step(&self, step_index: usize) -> Vec<Task> {
-        let mut tasks = Vec::new();
-        for (item_index, item) in self.items.iter().enumerate() {
-            let ready = item.ready_steps();
-            if ready.contains(step_index) {
-                tasks.push(Task::new(item_index as u32, step_index));
-            }
-        }
-        tasks
-    }
-
     /// Mark a task as currently executing.
     pub fn mark_executing(&mut self, task: Task) {
         self.item_mut(task.item_index)
             .mark_executing(task.step_index);
-    }
-
-    /// Mark a step as needed for an item, updating the incomplete counter.
-    ///
-    /// This is the preferred way to mark steps as needed (vs direct `mark_needed` on item)
-    /// because it properly tracks the incomplete count for O(1) completion checks.
-    #[cfg(test)]
-    pub fn mark_step_needed(&mut self, item_index: u32, step_index: usize) {
-        let item = self.item_mut(item_index);
-        let was_complete = item.is_complete();
-        item.mark_needed(step_index);
-        if was_complete && !item.is_complete() {
-            self.incomplete_count += 1;
-        }
     }
 
     /// Complete a task and record its result.
@@ -204,11 +163,12 @@ impl ItemsState {
             .collect()
     }
 
-    /// Check if all items have completed execution.
+    /// Get the count of incomplete items.
     ///
     /// This is O(1) using a counter, not O(n) iterating items.
-    pub fn is_all_complete(&self) -> bool {
-        self.incomplete_count == 0
+    /// Returns 0 when all items have completed.
+    pub fn incomplete(&self) -> usize {
+        self.incomplete_count
     }
 
     /// Check if a specific item has completed execution.
@@ -327,20 +287,41 @@ mod tests {
 
     #[test]
     fn test_single_item() {
-        let flow = Arc::new(create_simple_flow(&["step1", "step2"]));
+        // Create a flow where step2 depends on step1
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::mock_step("step2")
+                        .input(ValueExpr::Step {
+                            step: "step1".to_string(),
+                            path: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Step {
+                    step: "step2".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        );
+
         let mut state = ItemsState::single(flow, ValueRef::new(json!({})), HashMap::new());
 
         assert_eq!(state.item_count(), 1);
 
-        // Before marking steps as needed, state is trivially complete
-        assert!(state.is_all_complete());
+        // Before initializing, state is trivially complete
+        assert_eq!(state.incomplete(), 0);
 
-        // Mark steps as needed (using mark_step_needed for proper counter tracking)
-        state.mark_step_needed(0, 0);
-        state.mark_step_needed(0, 1);
+        // Initialize discovers needed steps based on output expression
+        state.initialize_item(0);
 
-        // Now it's not complete
-        assert!(!state.is_all_complete());
+        // Now it's not complete (has steps to execute)
+        assert_eq!(state.incomplete(), 1);
     }
 
     #[test]
@@ -377,113 +358,131 @@ mod tests {
     }
 
     #[test]
-    fn test_all_ready_tasks() {
-        let flow = Arc::new(create_simple_flow(&["step1", "step2"]));
+    fn test_initialize_all_returns_ready_tasks() {
+        // Create a flow where step2 depends on step1 (via output expression)
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::mock_step("step2")
+                        .input(ValueExpr::Step {
+                            step: "step1".to_string(),
+                            path: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Step {
+                    step: "step2".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        );
+
         let mut state = ItemsState::batch(
             flow,
             vec![ValueRef::new(json!(1)), ValueRef::new(json!(2))],
             HashMap::new(),
         );
 
-        // Mark all steps as needed for both items
-        for item_index in 0..2 {
-            let item = state.item_mut(item_index);
-            item.mark_needed(0);
-            item.mark_needed(1);
-        }
+        // Initialize all items - should discover dependencies
+        let ready = state.initialize_all();
 
-        let ready = state.all_ready_tasks();
-        // 2 items x 2 steps = 4 tasks
-        assert_eq!(ready.len(), 4);
-
-        // Should contain tasks for both items and both steps
-        assert!(ready.contains(&Task::new(0, 0)));
-        assert!(ready.contains(&Task::new(0, 1)));
-        assert!(ready.contains(&Task::new(1, 0)));
-        assert!(ready.contains(&Task::new(1, 1)));
-    }
-
-    #[test]
-    fn test_ready_tasks_for_step() {
-        let flow = Arc::new(create_simple_flow(&["step1", "step2"]));
-        let mut state = ItemsState::batch(
-            flow,
-            vec![ValueRef::new(json!(1)), ValueRef::new(json!(2))],
-            HashMap::new(),
-        );
-
-        // Mark step 0 as needed for both items
-        for item_index in 0..2 {
-            state.item_mut(item_index).mark_needed(0);
-        }
-
-        let ready_step0 = state.ready_tasks_for_step(0);
-        assert_eq!(ready_step0.len(), 2);
-        assert!(ready_step0.contains(&Task::new(0, 0)));
-        assert!(ready_step0.contains(&Task::new(1, 0)));
-
-        let ready_step1 = state.ready_tasks_for_step(1);
-        assert!(ready_step1.is_empty());
+        // Each item has step1 as the only ready task (step2 depends on step1)
+        assert_eq!(ready.len(), 2);
+        assert!(ready.contains(&Task::new(0, 0))); // item 0, step1
+        assert!(ready.contains(&Task::new(1, 0))); // item 1, step1
     }
 
     #[test]
     fn test_complete_task() {
-        let flow = Arc::new(create_simple_flow(&["step1", "step2"]));
+        // Create a flow where step2 depends on step1
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::mock_step("step2")
+                        .input(ValueExpr::Step {
+                            step: "step1".to_string(),
+                            path: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Step {
+                    step: "step2".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        );
+
         let mut state = ItemsState::single(flow, ValueRef::new(json!({})), HashMap::new());
 
-        {
-            let item = state.item_mut(0);
-            item.mark_needed(0);
-            item.mark_needed(1);
-            // step2 waits on step1
-            let mut waiting = bit_set::BitSet::new();
-            waiting.insert(0);
-            item.set_waiting(1, waiting);
-        }
+        // Initialize item - discovers needed steps
+        let ready = state.initialize_item(0);
 
-        // Only step1 should be ready
-        let ready = state.all_ready_tasks();
+        // Only step1 should be ready (step2 depends on it)
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0], Task::new(0, 0));
 
         // Complete step1
         state.mark_executing(Task::new(0, 0));
-        let newly_unblocked = state.complete_task(Task::new(0, 0), success_result());
-        assert_eq!(newly_unblocked, vec![1]); // step2 unblocked
+        let newly_ready = state.complete_task_and_get_ready(Task::new(0, 0), success_result());
 
-        // Now step2 should be ready
-        let ready = state.all_ready_tasks();
-        assert_eq!(ready.len(), 1);
-        assert_eq!(ready[0], Task::new(0, 1));
+        // step2 should now be ready
+        assert_eq!(newly_ready.len(), 1);
+        assert_eq!(newly_ready[0], Task::new(0, 1));
     }
 
     #[test]
-    fn test_is_all_complete() {
-        let flow = Arc::new(create_simple_flow(&["step1"]));
+    fn test_incomplete_count() {
+        // Create a flow with one step
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Step {
+                    step: "step1".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        );
+
         let mut state = ItemsState::batch(
             flow,
             vec![ValueRef::new(json!(1)), ValueRef::new(json!(2))],
             HashMap::new(),
         );
 
-        // Initially complete (no steps needed)
-        assert!(state.is_all_complete());
+        // Initially complete (no items initialized)
+        assert_eq!(state.incomplete(), 0);
 
-        // Mark step as needed for item 0 (using mark_step_needed for proper counter tracking)
-        state.mark_step_needed(0, 0);
-        assert!(!state.is_all_complete());
+        // Initialize item 0 - discovers needed steps
+        state.initialize_item(0);
+        assert_eq!(state.incomplete(), 1);
 
         // Complete item 0
         state.complete_task(Task::new(0, 0), success_result());
-        assert!(state.is_all_complete());
+        assert_eq!(state.incomplete(), 0);
 
-        // Mark step as needed for item 1 (using mark_step_needed for proper counter tracking)
-        state.mark_step_needed(1, 0);
-        assert!(!state.is_all_complete());
+        // Initialize item 1
+        state.initialize_item(1);
+        assert_eq!(state.incomplete(), 1);
 
         // Complete item 1
         state.complete_task(Task::new(1, 0), success_result());
-        assert!(state.is_all_complete());
+        assert_eq!(state.incomplete(), 0);
     }
 
     #[test]
@@ -562,11 +561,6 @@ mod tests {
                             input: Default::default(),
                         })
                         .build(),
-                    StepBuilder::mock_step("step2")
-                        .input(ValueExpr::Input {
-                            input: Default::default(),
-                        })
-                        .build(),
                 ])
                 .output(ValueExpr::Step {
                     step: "step1".to_string(),
@@ -581,9 +575,8 @@ mod tests {
             HashMap::new(),
         );
 
-        // Mark steps as needed (use mark_step_needed for proper counter tracking)
-        state.mark_step_needed(0, 0);
-        state.mark_step_needed(0, 1);
+        // Initialize item - discovers step1 as needed
+        state.initialize_item(0);
 
         // Item is not complete yet
         assert!(state.get_item_result(0).is_none());
@@ -594,15 +587,6 @@ mod tests {
             FlowResult::Success(ValueRef::new(
                 json!({"result": "hello world", "extra": "ignored"}),
             )),
-        );
-
-        // Still not complete (step2 not done)
-        assert!(state.get_item_result(0).is_none());
-
-        // Complete step2 with different data
-        state.complete_task(
-            Task::new(0, 1),
-            FlowResult::Success(ValueRef::new(json!({"result": "step2 output"}))),
         );
 
         // Now it's complete - get_item_result should evaluate output expression
@@ -621,6 +605,7 @@ mod tests {
         use stepflow_core::values::JsonPath;
 
         // Create a flow where output is $input (passes through the input)
+        // with a must_execute step so initialize_item marks it as needed
         let flow = Arc::new(
             FlowBuilder::test_flow()
                 .steps(vec![
@@ -628,6 +613,7 @@ mod tests {
                         .input(ValueExpr::Input {
                             input: Default::default(),
                         })
+                        .must_execute(true)
                         .build(),
                 ])
                 .output(ValueExpr::Input {
@@ -642,8 +628,8 @@ mod tests {
             HashMap::new(),
         );
 
-        // Mark step as needed (use mark_step_needed for proper counter tracking)
-        state.mark_step_needed(0, 0);
+        // Initialize item - discovers step1 as needed via must_execute
+        state.initialize_item(0);
 
         // Complete step1
         state.complete_task(

@@ -109,18 +109,10 @@ impl Scheduler for BreadthFirstScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::ItemsState;
     use serde_json::json;
     use std::sync::Arc;
     use stepflow_core::values::ValueRef;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
-
-    fn create_simple_flow(step_count: usize) -> stepflow_core::workflow::Flow {
-        let steps = (0..step_count)
-            .map(|i| StepBuilder::mock_step(format!("step{}", i)).build())
-            .collect::<Vec<_>>();
-        FlowBuilder::test_flow().steps(steps).build()
-    }
 
     #[test]
     fn test_breadth_first_ordering() {
@@ -261,31 +253,54 @@ mod tests {
         assert!(scheduler.select_next(10).is_idle());
     }
 
-    // Keep one test that uses ItemsState to verify integration
+    // Integration test that mirrors real executor behavior
     #[test]
     fn test_integration_with_state() {
-        let flow = Arc::new(create_simple_flow(2));
+        use crate::state::ItemsState;
+        use stepflow_core::ValueExpr;
+
+        // Create a flow where step2 depends on step1
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::mock_step("step1")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::mock_step("step2")
+                        .input(ValueExpr::Step {
+                            step: "step1".to_string(),
+                            path: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Step {
+                    step: "step2".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        );
+
         let mut state = ItemsState::single(
             flow,
             ValueRef::new(json!({})),
             std::collections::HashMap::new(),
         );
 
-        // Initialize state
-        {
-            let item = state.item_mut(0);
-            item.mark_needed(0);
-            item.mark_needed(1);
-        }
-
         let mut scheduler = BreadthFirstScheduler::new();
 
-        // Simulate executor: get initial ready tasks and notify
-        let initial_tasks = state.all_ready_tasks();
+        // Executor pattern: initialize_item returns ready tasks
+        let initial_tasks = state.initialize_item(0);
         scheduler.notify_new_tasks(&initial_tasks);
+
+        // Only step1 should be ready (step2 depends on it)
+        assert_eq!(initial_tasks.len(), 1);
+        assert_eq!(initial_tasks[0], Task::new(0, 0));
 
         // Get first task
         let task = scheduler.select_next(1).into_tasks().unwrap().head;
+        assert_eq!(task, Task::new(0, 0));
         state.mark_executing(task);
 
         // Complete and get newly ready
@@ -296,8 +311,12 @@ mod tests {
         scheduler.task_completed(task);
         scheduler.notify_new_tasks(&new_ready);
 
-        // Should have next task ready
-        let next = scheduler.select_next(1).into_tasks();
-        assert!(next.is_some());
+        // step2 should now be ready
+        assert_eq!(new_ready.len(), 1);
+        assert_eq!(new_ready[0], Task::new(0, 1));
+
+        // Scheduler should return step2
+        let next = scheduler.select_next(1).into_tasks().unwrap().head;
+        assert_eq!(next, Task::new(0, 1));
     }
 }

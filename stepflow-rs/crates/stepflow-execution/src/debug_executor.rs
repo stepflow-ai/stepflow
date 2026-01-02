@@ -354,15 +354,6 @@ impl DebugExecutor {
     }
 
     // ========================================================================
-    // Public Query Methods
-    // ========================================================================
-
-    /// Get currently runnable step indices.
-    pub fn get_runnable_step_indices(&self) -> BitSet {
-        self.ready_steps()
-    }
-
-    // ========================================================================
     // Queue/Eval API
     // ========================================================================
 
@@ -790,7 +781,7 @@ mod tests {
         assert!(queued.contains(&"step2".to_string()));
 
         // step1 should be ready (no deps), step2 blocked
-        let ready = debug.get_runnable_step_indices();
+        let ready = debug.ready_steps();
         assert!(ready.contains(0)); // step1
         assert!(!ready.contains(1)); // step2 waiting on step1
     }
@@ -925,7 +916,7 @@ mod tests {
 
         // Queue step2 and run it
         debug.queue_step("step2").await.unwrap();
-        let ready = debug.get_runnable_step_indices();
+        let ready = debug.ready_steps();
         assert!(
             ready.contains(1),
             "step2 should be ready since step1 is already completed"
@@ -1005,7 +996,7 @@ mod tests {
         assert!(!queued.is_empty(), "Debug queue should be recovered");
 
         // step1 should be runnable (recovered from queue)
-        let ready = debug.get_runnable_step_indices();
+        let ready = debug.ready_steps();
         assert!(
             ready.contains(0),
             "step1 should be runnable after queue recovery"
