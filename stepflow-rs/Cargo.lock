@@ -2576,6 +2576,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nonempty"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "549e471b99ccaf2f89101bec68f4d244457d5a95a9c3d0672e9564124397741d"
+
+[[package]]
 name = "ntapi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4640,7 +4646,6 @@ dependencies = [
  "stepflow-observability",
  "stepflow-plugin",
  "stepflow-server",
- "stepflow-state",
  "stepflow-typecheck",
  "strum",
  "tempfile",
@@ -4726,9 +4731,9 @@ dependencies = [
  "error-stack",
  "futures",
  "log",
+ "nonempty",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "stepflow-analysis",
  "stepflow-core",
  "stepflow-mock",

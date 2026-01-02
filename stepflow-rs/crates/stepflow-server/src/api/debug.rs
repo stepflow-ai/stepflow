@@ -175,12 +175,10 @@ pub async fn debug_queue(
 
     let mut all_queued = Vec::new();
     for step_id in &req.step_ids {
-        let queued = debug_session.queue_step(step_id)?;
+        // queue_step is async and auto-persists to the debug queue
+        let queued = debug_session.queue_step(step_id).await?;
         all_queued.extend(queued);
     }
-
-    // Persist the newly queued steps
-    debug_session.add_steps_to_debug_queue(&all_queued).await?;
 
     let ready_steps = debug_session.get_queued_steps();
     let ready: Vec<String> = ready_steps
@@ -219,16 +217,11 @@ pub async fn debug_next(
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
+    // run_next_step is async and auto-removes from the debug queue
     let step_result = debug_session.run_next_step().await?;
 
-    // Remove the executed step from the persistent queue
     let (step_id, result) = match &step_result {
-        Some(r) => {
-            debug_session
-                .remove_steps_from_debug_queue(std::slice::from_ref(&r.metadata.step_id))
-                .await?;
-            (Some(r.metadata.step_id.clone()), Some(r.result.clone()))
-        }
+        Some(r) => (Some(r.metadata.step_id.clone()), Some(r.result.clone())),
         None => (None, None),
     };
 
@@ -270,16 +263,8 @@ pub async fn debug_run_queue(
         .await
         .change_context(ServerError::ExecutionNotFound(run_id))?;
 
+    // run_queue is async and auto-removes executed steps from the debug queue
     let step_results = debug_session.run_queue().await?;
-
-    // Remove all executed steps from the persistent queue
-    let executed_step_ids: Vec<String> = step_results
-        .iter()
-        .map(|r| r.metadata.step_id.clone())
-        .collect();
-    debug_session
-        .remove_steps_from_debug_queue(&executed_step_ids)
-        .await?;
 
     let mut results = std::collections::HashMap::new();
     for step_result in &step_results {

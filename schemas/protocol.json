@@ -761,6 +761,14 @@
               "description": "Result of this item, if completed."
             }
           ]
+        },
+        "completedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When this item completed (if completed)."
         }
       }
     },

@@ -20,6 +20,7 @@ bit-set.workspace = true
 error-stack.workspace = true
 futures.workspace = true
 log.workspace = true
+nonempty.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 stepflow-analysis.workspace = true
@@ -33,4 +34,3 @@ uuid.workspace = true
 
 [dev-dependencies]
 stepflow-mock.workspace = true
-serde_yaml_ng.workspace = true

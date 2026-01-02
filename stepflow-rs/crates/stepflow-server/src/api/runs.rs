@@ -338,7 +338,9 @@ pub async fn get_run_items(
     let item_count = run_details.summary.items.total;
 
     // Get item results from state store (ordered by item_index)
-    let state_items = state_store.get_item_results(run_id).await?;
+    let state_items = state_store
+        .get_item_results(run_id, stepflow_state::ResultOrder::ByIndex)
+        .await?;
 
     // Convert to API response type
     let items: Vec<ItemResult> = state_items

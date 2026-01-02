@@ -17,7 +17,7 @@ use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{
     BlobData, BlobId, BlobType, FlowResult,
-    workflow::{Component, Flow, ValueRef, WorkflowOverrides},
+    workflow::{Component, Flow, StepId, ValueRef, WorkflowOverrides},
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -322,13 +322,14 @@ pub trait StateStore: Send + Sync {
         label: &str,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Create a new run record.
+    /// Create a new run record (idempotent).
+    ///
+    /// If a run with the same ID already exists, this is a no-op.
+    /// This allows callers to ensure a run exists without tracking
+    /// whether it was already created.
     ///
     /// # Arguments
     /// * `params` - Parameters for creating the run
-    ///
-    /// # Returns
-    /// Success if the run was created
     fn create_run(
         &self,
         params: CreateRunParams,
@@ -522,50 +523,22 @@ pub trait StateStore: Send + Sync {
 
     // Item Result Management
 
-    /// Get all item results for a run, ordered by item index.
+    /// Get all item results for a run.
     ///
     /// For single-item runs (item_count=1), returns a single item derived from run details.
     /// For multi-item runs, returns results from the item_results table.
     ///
     /// # Arguments
     /// * `run_id` - The run identifier
+    /// * `order` - How to order the results (by index or by completion time)
     ///
     /// # Returns
-    /// A vector of item results ordered by item_index
+    /// A vector of item results in the requested order
     fn get_item_results(
         &self,
         run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
-        // Default implementation: derive item results from run details
-        async move {
-            let run_details = self
-                .get_run(run_id)
-                .await?
-                .ok_or_else(|| error_stack::report!(StateError::RunNotFound { run_id }))?;
-
-            // Build item results from the results vector
-            let items: Vec<ItemResult> = run_details
-                .results
-                .into_iter()
-                .enumerate()
-                .map(|(idx, result)| {
-                    let status = match &result {
-                        Some(FlowResult::Success(_)) => ExecutionStatus::Completed,
-                        Some(FlowResult::Failed(_)) => ExecutionStatus::Failed,
-                        None => ExecutionStatus::Running,
-                    };
-                    ItemResult {
-                        item_index: idx,
-                        status,
-                        result,
-                    }
-                })
-                .collect();
-
-            Ok(items)
-        }
-        .boxed()
-    }
+        order: ResultOrder,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>>;
 }
 
 /// The step result.
@@ -582,6 +555,18 @@ impl StepResult {
         Self {
             step_idx,
             step_id: step_id.into(),
+            result,
+        }
+    }
+
+    /// Create a step result from a StepId.
+    ///
+    /// This extracts the step index and name from the StepId, avoiding
+    /// the need to pass them separately.
+    pub fn from_step_id(step_id: StepId, result: FlowResult) -> Self {
+        Self {
+            step_idx: step_id.index,
+            step_id: step_id.step_name().to_string(),
             result,
         }
     }
@@ -694,7 +679,12 @@ pub struct RunSummary {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-/// Detailed flow run information including inputs and results.
+/// Detailed flow run information including inputs.
+///
+/// Note: Item results are not included here. Use `get_item_results()` to
+/// fetch item results separately. This design reflects that items are stored
+/// in a separate table and avoids loading all results when just querying
+/// run metadata.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunDetails {
@@ -702,8 +692,6 @@ pub struct RunDetails {
     pub summary: RunSummary,
     /// Input values for each item in this run.
     pub inputs: Vec<ValueRef>,
-    /// Results for each item (None if not yet complete).
-    pub results: Vec<Option<FlowResult>>,
     /// Optional workflow overrides applied to this run (per-run, not per-item).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub overrides: Option<WorkflowOverrides>,
@@ -725,6 +713,17 @@ pub struct RunFilters {
     pub offset: Option<usize>,
 }
 
+/// Ordering for item results.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultOrder {
+    /// Return results in item index order (0, 1, 2, ...).
+    #[default]
+    ByIndex,
+    /// Return results in completion order (first completed first).
+    ByCompletion,
+}
+
 /// Result for an individual item in a multi-item run.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -736,6 +735,9 @@ pub struct ItemResult {
     /// Result of this item, if completed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<FlowResult>,
+    /// When this item completed (if completed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Unified run status returned by submit_run and get_run.
@@ -777,26 +779,10 @@ impl RunStatus {
         }
     }
 
-    /// Create RunStatus from RunDetails with results.
-    pub fn from_details_with_results(details: &RunDetails) -> Self {
-        let results: Vec<ItemResult> = details
-            .results
-            .iter()
-            .enumerate()
-            .map(|(idx, result)| {
-                let status = match result {
-                    Some(FlowResult::Success(_)) => ExecutionStatus::Completed,
-                    Some(FlowResult::Failed(_)) => ExecutionStatus::Failed,
-                    None => ExecutionStatus::Running,
-                };
-                ItemResult {
-                    item_index: idx,
-                    status,
-                    result: result.clone(),
-                }
-            })
-            .collect();
-
+    /// Create RunStatus from RunDetails with item results.
+    ///
+    /// Item results should be fetched separately via `get_item_results()`.
+    pub fn from_details_with_items(details: &RunDetails, items: Vec<ItemResult>) -> Self {
         Self {
             run_id: details.summary.run_id,
             flow_id: details.summary.flow_id.clone(),
@@ -806,7 +792,7 @@ impl RunStatus {
             items: details.summary.items.clone(),
             created_at: details.summary.created_at,
             completed_at: details.summary.completed_at,
-            results: Some(results),
+            results: Some(items),
         }
     }
 
@@ -897,9 +883,6 @@ mod tests {
             inputs: vec![stepflow_core::workflow::ValueRef::new(
                 json!({"test": "input"}),
             )],
-            results: vec![Some(FlowResult::Success(
-                stepflow_core::workflow::ValueRef::new(json!({"test": "output"})),
-            ))],
             overrides: None,
         };
 
@@ -919,10 +902,6 @@ mod tests {
 
         // Verify that detail-specific fields are also present
         assert_eq!(value["inputs"], json!([{"test": "input"}]));
-        assert_eq!(
-            value["results"],
-            json!([{"outcome": "success", "result": {"test": "output"}}])
-        );
 
         // Verify there's no nested "summary" object
         assert!(value.get("summary").is_none());

@@ -67,6 +67,8 @@ pub enum ExecutionError {
     ResolveStepOutput(String),
     #[error("failed to resolve workflow output")]
     ResolveWorkflowOutput,
+    #[error("failed to apply workflow overrides")]
+    OverrideError,
 }
 
 impl ExecutionError {

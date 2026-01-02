@@ -1,0 +1,656 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing permissions and limitations under
+// the License.
+
+//! Test utilities for the execution module.
+//!
+//! This module provides shared test helpers for creating mock executors,
+//! test flows, and common result values. These utilities are used by tests
+//! in `flow_executor`, `debug_executor`, and other execution-related modules.
+
+use std::sync::Arc;
+
+use serde_json::json;
+use stepflow_core::values::ValueRef;
+use stepflow_core::workflow::{Flow, FlowBuilder, StepBuilder};
+use stepflow_core::{FlowResult, ValueExpr};
+use stepflow_mock::{MockComponentBehavior, MockPlugin};
+use stepflow_state::InMemoryStateStore;
+
+use crate::StepflowExecutor;
+
+/// Builder for creating a mock [`StepflowExecutor`] for testing.
+///
+/// This provides a convenient way to set up a test executor with mock plugins
+/// that return predictable results.
+///
+/// # Example
+///
+/// ```ignore
+/// let executor = MockExecutorBuilder::new()
+///     .with_success_result(json!({"result": "ok"}))
+///     .build()
+///     .await;
+/// ```
+pub struct MockExecutorBuilder {
+    /// The result to return for successful component executions.
+    success_result: serde_json::Value,
+    /// Additional inputs to register with the mock plugin.
+    additional_inputs: Vec<serde_json::Value>,
+}
+
+impl Default for MockExecutorBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MockExecutorBuilder {
+    /// Create a new mock executor builder with default settings.
+    pub fn new() -> Self {
+        Self {
+            success_result: json!({"result": "ok"}),
+            additional_inputs: Vec::new(),
+        }
+    }
+
+    /// Set the result value returned by successful component executions.
+    pub fn with_success_result(mut self, result: serde_json::Value) -> Self {
+        self.success_result = result;
+        self
+    }
+
+    /// Add additional input values that the mock plugin will accept.
+    pub fn with_input(mut self, input: serde_json::Value) -> Self {
+        self.additional_inputs.push(input);
+        self
+    }
+
+    /// Build the mock executor.
+    pub async fn build(self) -> Arc<StepflowExecutor> {
+        // Create mock plugin that returns success for any component
+        let mut mock_plugin = MockPlugin::new();
+        let behavior = MockComponentBehavior::result(FlowResult::Success(ValueRef::new(
+            self.success_result.clone(),
+        )));
+
+        // Register common inputs that tests typically use
+        let mut inputs = vec![
+            json!({}),
+            json!({"x": 1}),
+            json!({"x": 2}),
+            json!({"x": 3}),
+            json!({"value": 1}),
+            json!({"value": 2}),
+            self.success_result.clone(),
+        ];
+        inputs.extend(self.additional_inputs);
+
+        for input in &inputs {
+            mock_plugin
+                .mock_component("/mock/test")
+                .behavior(ValueRef::new(input.clone()), behavior.clone());
+        }
+
+        let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
+
+        // Create plugin router
+        use stepflow_plugin::routing::RouteRule;
+        let rules = vec![RouteRule {
+            conditions: vec![],
+            component_allow: None,
+            component_deny: None,
+            plugin: "mock".into(),
+            component: None,
+        }];
+
+        let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
+            .with_routing_path("/{*component}".to_string(), rules)
+            .register_plugin("mock".to_string(), dyn_plugin)
+            .build()
+            .unwrap();
+
+        let state_store = Arc::new(InMemoryStateStore::new());
+        StepflowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router)
+    }
+}
+
+/// Create a simple flow with the specified number of independent steps.
+///
+/// Each step uses the `/mock/test` component and takes `$input` as its input.
+/// The flow output references the last step.
+///
+/// # Example
+///
+/// ```ignore
+/// let flow = create_linear_flow(3);
+/// // Creates: step0 -> step1 -> step2 (all independent, output = step2)
+/// ```
+pub fn create_linear_flow(step_count: usize) -> Flow {
+    let steps = (0..step_count)
+        .map(|i| {
+            StepBuilder::new(format!("step{}", i))
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build()
+        })
+        .collect::<Vec<_>>();
+
+    let last_step_id = format!("step{}", step_count.saturating_sub(1));
+    FlowBuilder::test_flow()
+        .steps(steps)
+        .output(ValueExpr::Step {
+            step: last_step_id,
+            path: Default::default(),
+        })
+        .build()
+}
+
+/// Create a flow with steps that form a dependency chain.
+///
+/// Each step depends on the previous step's output (except the first which takes `$input`).
+/// The flow output references the last step.
+///
+/// # Example
+///
+/// ```ignore
+/// let flow = create_chain_flow(3);
+/// // Creates: step0($input) -> step1($step.step0) -> step2($step.step1)
+/// ```
+pub fn create_chain_flow(step_count: usize) -> Flow {
+    let steps = (0..step_count)
+        .map(|i| {
+            let input = if i == 0 {
+                ValueExpr::Input {
+                    input: Default::default(),
+                }
+            } else {
+                ValueExpr::Step {
+                    step: format!("step{}", i - 1),
+                    path: Default::default(),
+                }
+            };
+            StepBuilder::new(format!("step{}", i))
+                .component("/mock/test")
+                .input(input)
+                .build()
+        })
+        .collect::<Vec<_>>();
+
+    let last_step_id = format!("step{}", step_count.saturating_sub(1));
+    FlowBuilder::test_flow()
+        .steps(steps)
+        .output(ValueExpr::Step {
+            step: last_step_id,
+            path: Default::default(),
+        })
+        .build()
+}
+
+/// Create a flow with named steps (for more readable tests).
+///
+/// Each step uses the `/mock/test` component and takes `$input` as its input.
+/// The flow output references the last step.
+///
+/// # Example
+///
+/// ```ignore
+/// let flow = create_flow_with_names(&["fetch", "transform", "store"]);
+/// ```
+pub fn create_flow_with_names(step_names: &[&str]) -> Flow {
+    let steps = step_names
+        .iter()
+        .map(|name| {
+            StepBuilder::new(*name)
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build()
+        })
+        .collect::<Vec<_>>();
+
+    let last_step_id = step_names.last().copied().unwrap_or("step0").to_string();
+    FlowBuilder::test_flow()
+        .steps(steps)
+        .output(ValueExpr::Step {
+            step: last_step_id,
+            path: Default::default(),
+        })
+        .build()
+}
+
+/// Create a diamond-shaped DAG flow: A → B, A → C, B+C → D.
+///
+/// Step A takes input, B and C depend on A, D depends on both B and C.
+/// The flow output references step D.
+///
+/// This tests parallel execution of independent steps (B and C can run in parallel).
+pub fn create_diamond_flow() -> Flow {
+    FlowBuilder::test_flow()
+        .steps(vec![
+            // Step A: takes input
+            StepBuilder::new("A")
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build(),
+            // Step B: depends on A
+            StepBuilder::new("B")
+                .component("/mock/test")
+                .input(ValueExpr::Step {
+                    step: "A".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+            // Step C: depends on A (can run in parallel with B)
+            StepBuilder::new("C")
+                .component("/mock/test")
+                .input(ValueExpr::Step {
+                    step: "A".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+            // Step D: depends on both B and C (uses object literal)
+            StepBuilder::new("D")
+                .component("/mock/test")
+                .input(ValueExpr::Object(
+                    vec![
+                        (
+                            "b".to_string(),
+                            ValueExpr::Step {
+                                step: "B".to_string(),
+                                path: Default::default(),
+                            },
+                        ),
+                        (
+                            "c".to_string(),
+                            ValueExpr::Step {
+                                step: "C".to_string(),
+                                path: Default::default(),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ))
+                .build(),
+        ])
+        .output(ValueExpr::Step {
+            step: "D".to_string(),
+            path: Default::default(),
+        })
+        .build()
+}
+
+/// Create a single-step flow that takes input and outputs the step result.
+///
+/// This is the simplest possible flow for testing basic execution.
+pub fn create_single_step_flow() -> Flow {
+    FlowBuilder::test_flow()
+        .steps(vec![
+            StepBuilder::new("step1")
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build(),
+        ])
+        .output(ValueExpr::Step {
+            step: "step1".to_string(),
+            path: Default::default(),
+        })
+        .build()
+}
+
+/// Create a two-step chain flow: step1 → step2.
+///
+/// step1 takes input, step2 depends on step1's output.
+/// The flow output references step2.
+pub fn create_two_step_chain_flow() -> Flow {
+    FlowBuilder::test_flow()
+        .steps(vec![
+            StepBuilder::new("step1")
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build(),
+            StepBuilder::new("step2")
+                .component("/mock/test")
+                .input(ValueExpr::Step {
+                    step: "step1".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        ])
+        .output(ValueExpr::Step {
+            step: "step2".to_string(),
+            path: Default::default(),
+        })
+        .build()
+}
+
+/// Create a test executor with custom input-to-behavior mapping.
+///
+/// Each tuple maps an input JSON value to the FlowResult that should be returned.
+/// This is useful for testing flows where different steps receive different inputs.
+///
+/// # Example
+///
+/// ```ignore
+/// let executor = create_executor_with_behaviors(vec![
+///     (json!({"x": 1}), FlowResult::Success(ValueRef::new(json!({"y": 2})))),
+///     (json!({"y": 2}), FlowResult::Failed(FlowError::new(500, "step2 failed"))),
+/// ]).await;
+/// ```
+pub async fn create_executor_with_behaviors(
+    behaviors: Vec<(serde_json::Value, FlowResult)>,
+) -> Arc<crate::StepflowExecutor> {
+    let mut mock_plugin = MockPlugin::new();
+
+    for (input, result) in &behaviors {
+        mock_plugin.mock_component("/mock/test").behavior(
+            ValueRef::new(input.clone()),
+            MockComponentBehavior::result(result.clone()),
+        );
+    }
+
+    let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
+
+    use stepflow_plugin::routing::RouteRule;
+    let rules = vec![RouteRule {
+        conditions: vec![],
+        component_allow: None,
+        component_deny: None,
+        plugin: "mock".into(),
+        component: None,
+    }];
+
+    let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
+        .with_routing_path("/{*component}".to_string(), rules)
+        .register_plugin("mock".to_string(), dyn_plugin)
+        .build()
+        .unwrap();
+
+    let state_store = Arc::new(InMemoryStateStore::new());
+    crate::StepflowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router)
+}
+
+/// Builder for creating a [`DebugExecutor`] with minimal boilerplate.
+///
+/// This reduces the common 10+ line setup pattern to a concise builder chain.
+///
+/// # Example
+///
+/// ```ignore
+/// let debug = DebugExecutorBuilder::new()
+///     .with_two_step_chain()
+///     .build()
+///     .await;
+///
+/// debug.queue_step("step2").await.unwrap();
+/// ```
+pub struct DebugExecutorBuilder {
+    flow: Option<Arc<Flow>>,
+    input: serde_json::Value,
+    state_store: Option<Arc<InMemoryStateStore>>,
+    success_result: serde_json::Value,
+    additional_inputs: Vec<serde_json::Value>,
+}
+
+impl Default for DebugExecutorBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DebugExecutorBuilder {
+    /// Create a new builder with default settings.
+    pub fn new() -> Self {
+        Self {
+            flow: None,
+            input: json!({"value": 1}),
+            state_store: None,
+            success_result: json!({"result": "ok"}),
+            additional_inputs: Vec::new(),
+        }
+    }
+
+    /// Use a single-step flow.
+    pub fn with_single_step(mut self) -> Self {
+        self.flow = Some(Arc::new(create_single_step_flow()));
+        self
+    }
+
+    /// Use a two-step chain flow (step1 → step2).
+    pub fn with_two_step_chain(mut self) -> Self {
+        self.flow = Some(Arc::new(create_two_step_chain_flow()));
+        self
+    }
+
+    /// Use a custom flow.
+    pub fn with_flow(mut self, flow: Arc<Flow>) -> Self {
+        self.flow = Some(flow);
+        self
+    }
+
+    /// Set the input value (default: `{"value": 1}`).
+    #[allow(dead_code)]
+    pub fn with_input(mut self, input: serde_json::Value) -> Self {
+        self.input = input;
+        self
+    }
+
+    /// Set the success result value (default: `{"result": "ok"}`).
+    #[allow(dead_code)]
+    pub fn with_success_result(mut self, result: serde_json::Value) -> Self {
+        self.success_result = result;
+        self
+    }
+
+    /// Add an additional input that the mock should accept.
+    #[allow(dead_code)]
+    pub fn accepting_input(mut self, input: serde_json::Value) -> Self {
+        self.additional_inputs.push(input);
+        self
+    }
+
+    /// Use a shared state store (for testing persistence).
+    #[allow(dead_code)]
+    pub fn with_state_store(mut self, state_store: Arc<InMemoryStateStore>) -> Self {
+        self.state_store = Some(state_store);
+        self
+    }
+
+    /// Build the DebugExecutor.
+    pub async fn build(self) -> crate::DebugExecutor {
+        use stepflow_core::BlobId;
+        use uuid::Uuid;
+
+        let flow = self
+            .flow
+            .unwrap_or_else(|| Arc::new(create_single_step_flow()));
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let run_id = Uuid::now_v7();
+        let state_store = self
+            .state_store
+            .unwrap_or_else(|| Arc::new(InMemoryStateStore::new()));
+
+        let mut executor_builder = MockExecutorBuilder::new()
+            .with_success_result(self.success_result.clone())
+            .with_input(self.input.clone());
+
+        for input in self.additional_inputs {
+            executor_builder = executor_builder.with_input(input);
+        }
+
+        // Also accept the success result as input (for chained steps)
+        executor_builder = executor_builder.with_input(self.success_result);
+
+        let executor = executor_builder.build().await;
+
+        crate::DebugExecutor::new(
+            executor,
+            flow.clone(),
+            flow_id,
+            run_id,
+            ValueRef::new(self.input),
+            state_store,
+            None,
+        )
+        .await
+        .expect("DebugExecutorBuilder::build() failed")
+    }
+
+    /// Build the DebugExecutor and return it along with the state store.
+    ///
+    /// Useful when you need to verify persistence behavior.
+    pub async fn build_with_state_store(self) -> (crate::DebugExecutor, Arc<InMemoryStateStore>) {
+        use stepflow_core::BlobId;
+        use uuid::Uuid;
+
+        let flow = self
+            .flow
+            .unwrap_or_else(|| Arc::new(create_single_step_flow()));
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let run_id = Uuid::now_v7();
+        let state_store = self
+            .state_store
+            .unwrap_or_else(|| Arc::new(InMemoryStateStore::new()));
+
+        let mut executor_builder = MockExecutorBuilder::new()
+            .with_success_result(self.success_result.clone())
+            .with_input(self.input.clone());
+
+        for input in &self.additional_inputs {
+            executor_builder = executor_builder.with_input(input.clone());
+        }
+
+        executor_builder = executor_builder.with_input(self.success_result);
+
+        let executor = executor_builder.build().await;
+
+        let debug = crate::DebugExecutor::new(
+            executor,
+            flow.clone(),
+            flow_id,
+            run_id,
+            ValueRef::new(self.input),
+            state_store.clone(),
+            None,
+        )
+        .await
+        .expect("DebugExecutorBuilder::build() failed");
+
+        (debug, state_store)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_linear_flow() {
+        let flow = create_linear_flow(3);
+        assert_eq!(flow.steps().len(), 3);
+        assert_eq!(flow.steps()[0].id, "step0");
+        assert_eq!(flow.steps()[1].id, "step1");
+        assert_eq!(flow.steps()[2].id, "step2");
+    }
+
+    #[test]
+    fn test_create_chain_flow() {
+        let flow = create_chain_flow(3);
+        assert_eq!(flow.steps().len(), 3);
+
+        // First step should reference $input
+        match &flow.steps()[0].input {
+            ValueExpr::Input { .. } => {}
+            _ => panic!("Expected Input expression for step0"),
+        }
+
+        // Second step should reference step0
+        match &flow.steps()[1].input {
+            ValueExpr::Step { step, .. } => assert_eq!(step, "step0"),
+            _ => panic!("Expected Step expression for step1"),
+        }
+
+        // Third step should reference step1
+        match &flow.steps()[2].input {
+            ValueExpr::Step { step, .. } => assert_eq!(step, "step1"),
+            _ => panic!("Expected Step expression for step2"),
+        }
+    }
+
+    #[test]
+    fn test_create_flow_with_names() {
+        let flow = create_flow_with_names(&["fetch", "transform", "store"]);
+        assert_eq!(flow.steps().len(), 3);
+        assert_eq!(flow.steps()[0].id, "fetch");
+        assert_eq!(flow.steps()[1].id, "transform");
+        assert_eq!(flow.steps()[2].id, "store");
+    }
+
+    #[tokio::test]
+    async fn test_mock_executor_builder() {
+        let executor = MockExecutorBuilder::new()
+            .with_success_result(json!({"custom": "result"}))
+            .build()
+            .await;
+
+        // Verify the executor was created by checking state_store is accessible
+        // (We can't easily test get_blob without a valid blob ID, so just verify construction)
+        let _ = executor.state_store();
+    }
+
+    #[test]
+    fn test_create_diamond_flow() {
+        let flow = create_diamond_flow();
+        assert_eq!(flow.steps().len(), 4);
+
+        // Verify step names
+        assert_eq!(flow.steps()[0].id, "A");
+        assert_eq!(flow.steps()[1].id, "B");
+        assert_eq!(flow.steps()[2].id, "C");
+        assert_eq!(flow.steps()[3].id, "D");
+
+        // Step A should reference input
+        match &flow.steps()[0].input {
+            ValueExpr::Input { .. } => {}
+            _ => panic!("Expected Input expression for A"),
+        }
+
+        // Steps B and C should reference A
+        match &flow.steps()[1].input {
+            ValueExpr::Step { step, .. } => assert_eq!(step, "A"),
+            _ => panic!("Expected Step expression for B"),
+        }
+        match &flow.steps()[2].input {
+            ValueExpr::Step { step, .. } => assert_eq!(step, "A"),
+            _ => panic!("Expected Step expression for C"),
+        }
+
+        // Step D should be an object referencing B and C
+        match &flow.steps()[3].input {
+            ValueExpr::Object(obj) => {
+                let keys: Vec<_> = obj.iter().map(|(k, _)| k.as_str()).collect();
+                assert!(keys.contains(&"b"));
+                assert!(keys.contains(&"c"));
+            }
+            _ => panic!("Expected Object expression for D"),
+        }
+    }
+}
