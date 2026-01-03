@@ -11,7 +11,7 @@
 // the License.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::Json,
 };
 use error_stack::ResultExt as _;
@@ -20,6 +20,7 @@ use serde_with::{OneOrMany, serde_as};
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::status::StepStatus;
+use stepflow_dtos::DebugEvent;
 use stepflow_execution::StepflowExecutor;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -355,4 +356,77 @@ pub async fn debug_show(
         completed: result.is_some(),
         result,
     }))
+}
+
+/// Query parameters for debug events
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugEventsQuery {
+    /// Maximum number of events to return (default: 100)
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    /// Offset for pagination (default: 0)
+    #[serde(default)]
+    pub offset: usize,
+}
+
+fn default_limit() -> usize {
+    100
+}
+
+impl Default for DebugEventsQuery {
+    fn default() -> Self {
+        Self {
+            limit: default_limit(),
+            offset: 0,
+        }
+    }
+}
+
+/// Response containing debug events
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugEventsResponse {
+    /// Debug events (newest first)
+    pub events: Vec<DebugEvent>,
+    /// Total number of events returned
+    pub count: usize,
+}
+
+/// Get debug event history for a run
+///
+/// Returns debug events in newest-first order, with optional pagination.
+#[utoipa::path(
+    get,
+    path = "/runs/{run_id}/debug/events",
+    params(
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)"),
+        ("limit" = Option<usize>, Query, description = "Maximum number of events to return (default: 100)"),
+        ("offset" = Option<usize>, Query, description = "Offset for pagination (default: 0)")
+    ),
+    responses(
+        (status = 200, description = "Debug events retrieved", body = DebugEventsResponse),
+        (status = 400, description = "Invalid run ID"),
+        (status = 404, description = "Run not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = crate::api::DEBUG_TAG,
+)]
+pub async fn debug_events(
+    State(executor): State<Arc<StepflowExecutor>>,
+    Path(run_id): Path<Uuid>,
+    Query(query): Query<DebugEventsQuery>,
+) -> Result<Json<DebugEventsResponse>, ErrorResponse> {
+    let debug_session = executor
+        .debug_session(run_id)
+        .await
+        .change_context(ServerError::ExecutionNotFound(run_id))?;
+
+    let events = debug_session
+        .get_debug_events(query.limit, query.offset)
+        .await?;
+
+    let count = events.len();
+
+    Ok(Json(DebugEventsResponse { events, count }))
 }
