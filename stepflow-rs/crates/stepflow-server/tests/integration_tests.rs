@@ -1105,14 +1105,37 @@ async fn test_status_updates_during_debug_execution() {
     assert!(step1.get("status").is_some());
     assert!(step2.get("status").is_some());
 
-    // Test that debug API endpoint exists and is accessible
-    let queue_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/queue"))
+    // Test that new debug API endpoints exist and are accessible
+
+    // GET /debug/steps - list steps
+    let steps_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps"))
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(queue_request).await.unwrap();
+    let response = app.clone().oneshot(steps_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let debug_steps_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(debug_steps_response["steps"].is_array());
+    assert_eq!(debug_steps_response["total"], 2);
+
+    // GET /debug/status - session status
+    let status_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/status"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(status_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let status_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(status_response["pending"].is_object());
+    assert!(status_response["totalSteps"].is_number());
 
     // The key test for debug mode is that:
     // 1. The workflow starts with debug=true and status="paused"
@@ -1207,21 +1230,22 @@ async fn test_debug_api_eval_walkthrough() {
     assert_eq!(execute_response["debug"], true);
     assert_eq!(execute_response["status"], "paused");
 
-    // 1. Show step1 (not completed yet)
-    let show_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/show/step1"))
+    // 1. Get step1 details (not completed yet)
+    let step_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps/step1"))
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(show_request).await.unwrap();
+    let response = app.clone().oneshot(step_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let show_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let step_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(show_response["stepId"], "step1");
-    assert_eq!(show_response["completed"], false);
+    assert_eq!(step_response["stepId"], "step1");
+    // Status should not be "completed" (will be "runnable" or "blocked")
+    assert_ne!(step_response["status"], "completed");
 
     // 2. Eval step1 directly
     let eval_request = Request::builder()
@@ -1244,23 +1268,25 @@ async fn test_debug_api_eval_walkthrough() {
     let eval_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(eval_response["result"].is_object());
+    // New API also returns status
+    assert!(eval_response["status"].is_object());
 
-    // 3. Show step1 (now completed)
-    let show_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/show/step1"))
+    // 3. Get step1 details (now completed)
+    let step_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps/step1"))
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(show_request).await.unwrap();
+    let response = app.clone().oneshot(step_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let show_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let step_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(show_response["stepId"], "step1");
-    assert_eq!(show_response["completed"], true);
-    assert!(show_response["result"].is_object());
+    assert_eq!(step_response["stepId"], "step1");
+    assert_eq!(step_response["status"], "completed");
+    assert!(step_response["result"].is_object());
 
     // 4. Eval step2 (auto-runs step1 if needed, but it's already done)
     let eval_request = Request::builder()
@@ -1284,38 +1310,36 @@ async fn test_debug_api_eval_walkthrough() {
 
     assert!(eval_response["result"].is_object());
 
-    // 5. Show step2 (now completed)
-    let show_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/show/step2"))
+    // 5. Get step2 details (now completed)
+    let step_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps/step2"))
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(show_request).await.unwrap();
+    let response = app.clone().oneshot(step_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let show_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let step_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(show_response["stepId"], "step2");
-    assert_eq!(show_response["completed"], true);
-    assert!(show_response["result"].is_object());
+    assert_eq!(step_response["stepId"], "step2");
+    assert_eq!(step_response["status"], "completed");
+    assert!(step_response["result"].is_object());
 }
 
 #[tokio::test]
-async fn test_debug_queue_returns_dependencies() {
-    // Test that the queue endpoint correctly discovers and returns dependencies.
-    // Note: The queue state is not persisted across HTTP requests, so the
-    // queue+next workflow requires queue persistence (not yet implemented).
-    // This test verifies the queue endpoint's dependency discovery works.
+async fn test_debug_step_details_endpoint() {
+    // Test that the GET /debug/steps/{step_id} endpoint returns detailed step info
+    // including dependencies derived from the step's input expression.
     init_test_logging();
 
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow with dependent steps
     let workflow = FlowBuilder::new()
-        .name("debug_queue_deps_test")
-        .description("Test workflow for queue dependency discovery")
+        .name("debug_step_details_test")
+        .description("Test workflow for step detail retrieval")
         .steps(vec![
             StepBuilder::new("step1")
                 .component("/mock/one_output")
@@ -1390,53 +1414,62 @@ async fn test_debug_queue_returns_dependencies() {
     assert_eq!(execute_response["debug"], true);
     assert_eq!(execute_response["status"], "paused");
 
-    // Queue step2 (should also discover step1 as dependency)
-    let queue_post_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/queue"))
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "stepIds": "step2"
-            }))
-            .unwrap(),
-        ))
+    // Get step2 details - should show dependencies on step1
+    let step_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps/step2"))
+        .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(queue_post_request).await.unwrap();
+    let response = app.clone().oneshot(step_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let queue_post_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let step_detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    // Should have queued both steps (step1 as dependency)
-    let queued = queue_post_response["queued"].as_array().unwrap();
-    assert!(queued.contains(&json!("step1"))); // Discovered as dependency
-    assert!(queued.contains(&json!("step2"))); // Explicitly requested
+    // Verify step detail structure
+    assert_eq!(step_detail["stepId"], "step2");
+    assert_eq!(step_detail["component"], "/mock/two_outputs");
+    assert!(step_detail["input"].is_object());
 
-    // Only step1 should be ready (step2 depends on it)
-    let ready = queue_post_response["ready"].as_array().unwrap();
-    assert!(ready.contains(&json!("step1")));
-    assert!(!ready.contains(&json!("step2"))); // Blocked on step1
+    // Dependencies should include step1
+    let deps = step_detail["dependencies"].as_array().unwrap();
+    assert!(deps.contains(&json!("step1")));
+
+    // step1 should have no dependencies
+    let step1_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps/step1"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(step1_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let step1_detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(step1_detail["stepId"], "step1");
+    let step1_deps = step1_detail["dependencies"].as_array().unwrap();
+    assert!(step1_deps.is_empty());
 }
 
 #[tokio::test]
-async fn test_debug_queue_persists_across_requests() {
-    // Test that the debug queue persists across HTTP requests,
-    // allowing the queue+next workflow to work correctly.
+async fn test_debug_next_endpoint() {
+    // Test the next endpoint executes steps in dependency order.
     init_test_logging();
 
     let (app, _executor) = create_test_server_with_mocks().await;
 
     // Create workflow with dependent steps
     let workflow = FlowBuilder::new()
-        .name("debug_queue_persistence_test")
-        .description("Test workflow for queue persistence")
+        .name("debug_next_test")
+        .description("Test workflow for next endpoint")
         .steps(vec![
             StepBuilder::new("step1")
                 .component("/mock/one_output")
                 .input_json(json!({"input": "debug_step"}))
+                .must_execute(true) // Mark as must_execute so it's ready
                 .build(),
             StepBuilder::new("step2")
                 .component("/mock/two_outputs")
@@ -1446,6 +1479,7 @@ async fn test_debug_queue_persists_across_requests() {
                         "path": "output"
                     }
                 }))
+                .must_execute(true)
                 .build(),
         ])
         .output(ValueExpr::Object(
@@ -1503,60 +1537,22 @@ async fn test_debug_queue_persists_across_requests() {
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let run_id = execute_response["runId"].as_str().unwrap();
 
-    // 1. Queue step2 (should also queue step1 as dependency)
-    let queue_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/queue"))
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "stepIds": "step2"
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.clone().oneshot(queue_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let queue_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(
-        queue_response["queued"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("step1"))
-    );
-    assert!(
-        queue_response["queued"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("step2"))
-    );
-
-    // 2. Verify queue persists - new request should see the queue
-    let queue_get_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/queue"))
+    // Check initial status
+    let status_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/status"))
         .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(queue_get_request).await.unwrap();
+    let response = app.clone().oneshot(status_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let queue_status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status["completedCount"], 0);
+    assert_eq!(status["totalSteps"], 2);
 
-    // Queue should have 2 steps
-    let queued = queue_status["queued"].as_array().unwrap();
-    assert_eq!(queued.len(), 2);
-
-    // step1 should be ready
-    let ready = queue_status["ready"].as_array().unwrap();
-    assert!(ready.contains(&json!("step1")));
-
-    // 3. Run next step (should execute step1)
+    // Run next step (should execute step1)
     let next_request = Request::builder()
         .uri(format!("/api/v1/runs/{run_id}/debug/next"))
         .method("POST")
@@ -1571,74 +1567,10 @@ async fn test_debug_queue_persists_across_requests() {
         .unwrap();
     let next_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(next_response["stepId"], "step1");
+    assert!(next_response["stepId"].is_string());
     assert!(next_response["result"].is_object());
-
-    // step2 should now be ready
-    let ready_after = next_response["ready"].as_array().unwrap();
-    assert!(ready_after.contains(&json!("step2")));
-
-    // 4. Verify queue updated - step1 complete, step2 remaining
-    let queue_get_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/queue"))
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(queue_get_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let queue_status: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    // Only step2 should be in queue (step1 completed)
-    let queued = queue_status["queued"].as_array().unwrap();
-    assert_eq!(queued.len(), 1);
-    assert_eq!(queued[0]["stepId"], "step2");
-
-    // 5. Run next step (should execute step2)
-    let next_request = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/next"))
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.clone().oneshot(next_request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let next_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(next_response["stepId"], "step2");
-    assert!(next_response["result"].is_object());
-
-    // Queue should now be empty
-    assert!(next_response["ready"].as_array().unwrap().is_empty());
-
-    // 6. Verify both steps completed
-    let show_step1 = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/show/step1"))
-        .body(Body::empty())
-        .unwrap();
-    let response = app.clone().oneshot(show_step1).await.unwrap();
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let show_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(show_response["completed"], true);
-
-    let show_step2 = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/show/step2"))
-        .body(Body::empty())
-        .unwrap();
-    let response = app.clone().oneshot(show_step2).await.unwrap();
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let show_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(show_response["completed"], true);
+    // Status should be updated
+    assert_eq!(next_response["status"]["completedCount"], 1);
 }
 
 #[tokio::test]
@@ -1743,53 +1675,60 @@ async fn test_debug_eval_endpoint() {
 
     // Should have step2 result
     assert!(eval_response["result"].is_object());
+    // eval also returns status
+    assert!(eval_response["status"].is_object());
 
-    // Both steps should now be completed
-    let show_step1 = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/show/step1"))
+    // Both steps should now be completed - check via steps endpoint
+    let step1_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps/step1"))
         .body(Body::empty())
         .unwrap();
-    let response = app.clone().oneshot(show_step1).await.unwrap();
+    let response = app.clone().oneshot(step1_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let show_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(show_response["completed"], true);
+    let step1_detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(step1_detail["status"], "completed");
 
-    let show_step2 = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/show/step2"))
+    let step2_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/steps/step2"))
         .body(Body::empty())
         .unwrap();
-    let response = app.clone().oneshot(show_step2).await.unwrap();
+    let response = app.clone().oneshot(step2_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let show_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(show_response["completed"], true);
+    let step2_detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(step2_detail["status"], "completed");
 }
 
 #[tokio::test]
-async fn test_debug_queue_accepts_single_or_list() {
+async fn test_debug_continue_endpoint() {
     init_test_logging();
 
     let (app, _executor) = create_test_server_with_mocks().await;
 
-    // Create workflow with multiple independent steps
+    // Create workflow with must_execute steps so continue will run them
     let workflow = FlowBuilder::new()
-        .name("debug_queue_format_test")
-        .description("Test workflow for debug queue format")
+        .name("debug_continue_test")
+        .description("Test workflow for debug continue endpoint")
         .steps(vec![
             StepBuilder::new("step1")
                 .component("/mock/one_output")
                 .input_json(json!({"input": "debug_step"}))
+                .must_execute(true)
                 .build(),
             StepBuilder::new("step2")
                 .component("/mock/one_output")
                 .input_json(json!({"input": "debug_step"}))
+                .must_execute(true)
                 .build(),
             StepBuilder::new("step3")
                 .component("/mock/one_output")
                 .input_json(json!({"input": "debug_step"}))
+                .must_execute(true)
                 .build(),
         ])
         .output(ValueExpr::Literal(json!(null)))
@@ -1837,54 +1776,52 @@ async fn test_debug_queue_accepts_single_or_list() {
     let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let run_id = execute_response["runId"].as_str().unwrap();
 
-    // Test 1: Queue with single string
-    let queue_single = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/queue"))
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "stepIds": "step1"
-            }))
-            .unwrap(),
-        ))
+    // Check initial status - should have pending action
+    let status_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/status"))
+        .method("GET")
+        .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(queue_single).await.unwrap();
+    let response = app.clone().oneshot(status_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let queue_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(
-        queue_response["queued"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("step1"))
-    );
+    let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status["completedCount"], 0);
+    assert_eq!(status["totalSteps"], 3);
 
-    // Test 2: Queue with array of strings
-    let queue_array = Request::builder()
-        .uri(format!("/api/v1/runs/{run_id}/debug/queue"))
+    // Use continue to run all steps to completion
+    let continue_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/continue"))
         .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "stepIds": ["step2", "step3"]
-            }))
-            .unwrap(),
-        ))
+        .body(Body::empty())
         .unwrap();
 
-    let response = app.clone().oneshot(queue_array).await.unwrap();
+    let response = app.clone().oneshot(continue_request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let queue_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let queued = queue_response["queued"].as_array().unwrap();
-    assert!(queued.contains(&json!("step2")));
-    assert!(queued.contains(&json!("step3")));
+    let continue_result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(continue_result["stepsExecuted"], 3);
+
+    // Check final status - all steps should be complete
+    let status_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/debug/status"))
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(status_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status["completedCount"], 3);
+    assert_eq!(status["pending"]["type"], "complete");
 }
 
 #[tokio::test]

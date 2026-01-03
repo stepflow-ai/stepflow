@@ -1296,92 +1296,23 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn add_to_debug_queue(
+    fn append_debug_event(
         &self,
-        run_id: Uuid,
-        step_ids: &[String],
+        _run_id: Uuid,
+        _event: stepflow_dtos::DebugEvent,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-        let run_id_str = run_id.to_string();
-        let step_ids = step_ids.to_vec();
-
-        async move {
-            if step_ids.is_empty() {
-                return Ok(());
-            }
-
-            // Use INSERT OR IGNORE to handle duplicates gracefully
-            let sql = "INSERT OR IGNORE INTO debug_queue (run_id, step_id) VALUES (?, ?)";
-
-            for step_id in &step_ids {
-                sqlx::query(sql)
-                    .bind(&run_id_str)
-                    .bind(step_id)
-                    .execute(&pool)
-                    .await
-                    .change_context(StateError::Internal)?;
-            }
-
-            Ok(())
-        }
-        .boxed()
+        // TODO: Implement when debug events table is added
+        async move { Ok(()) }.boxed()
     }
 
-    fn remove_from_debug_queue(
+    fn get_debug_events(
         &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-        let run_id_str = run_id.to_string();
-        let step_ids = step_ids.to_vec();
-
-        async move {
-            if step_ids.is_empty() {
-                return Ok(());
-            }
-
-            // Delete each step_id from the queue
-            let sql = "DELETE FROM debug_queue WHERE run_id = ? AND step_id = ?";
-
-            for step_id in &step_ids {
-                sqlx::query(sql)
-                    .bind(&run_id_str)
-                    .bind(step_id)
-                    .execute(&pool)
-                    .await
-                    .change_context(StateError::Internal)?;
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn get_debug_queue(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>> {
-        let pool = self.pool.clone();
-        let run_id_str = run_id.to_string();
-
-        async move {
-            let sql = "SELECT step_id FROM debug_queue WHERE run_id = ? ORDER BY created_at";
-
-            let rows = sqlx::query(sql)
-                .bind(&run_id_str)
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            if rows.is_empty() {
-                return Ok(None);
-            }
-
-            let step_ids: Vec<String> = rows.iter().map(|row| row.get("step_id")).collect();
-            Ok(Some(step_ids))
-        }
-        .boxed()
+        _run_id: Uuid,
+        _limit: usize,
+        _offset: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<stepflow_dtos::DebugEvent>, StateError>> {
+        // TODO: Implement when debug events table is added
+        async move { Ok(Vec::new()) }.boxed()
     }
 
     fn get_item_results(

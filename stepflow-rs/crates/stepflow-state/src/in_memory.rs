@@ -15,6 +15,7 @@ use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
 use stepflow_core::status::ExecutionStatus;
+use stepflow_dtos::DebugEvent;
 
 use crate::{
     StateStore,
@@ -91,6 +92,13 @@ impl RunState {
     }
 }
 
+/// Debug state for a run.
+#[derive(Debug, Default)]
+struct DebugState {
+    /// Events in insertion order (newest at the end).
+    events: Vec<DebugEvent>,
+}
+
 /// In-memory implementation of StateStore.
 ///
 /// This provides a simple, fast storage implementation suitable for
@@ -105,8 +113,8 @@ pub struct InMemoryStateStore {
     flows: DashMap<String, Arc<Flow>>,
     /// Map from (flow_name, label) to flow label metadata
     flow_labels: DashMap<(String, String), WorkflowLabelMetadata>,
-    /// Map from run_id to debug queue (step IDs queued for execution)
-    debug_queues: DashMap<Uuid, Vec<String>>,
+    /// Map from run_id to debug state (events)
+    debug_states: DashMap<Uuid, DebugState>,
 }
 
 impl InMemoryStateStore {
@@ -117,7 +125,7 @@ impl InMemoryStateStore {
             runs: DashMap::new(),
             flows: DashMap::new(),
             flow_labels: DashMap::new(),
-            debug_queues: DashMap::new(),
+            debug_states: DashMap::new(),
         }
     }
 
@@ -775,52 +783,41 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn add_to_debug_queue(
+    fn append_debug_event(
         &self,
         run_id: Uuid,
-        step_ids: &[String],
+        event: DebugEvent,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        if step_ids.is_empty() {
-            return async move { Ok(()) }.boxed();
-        }
-
-        let mut entry = self.debug_queues.entry(run_id).or_default();
-        // Use a HashSet to avoid duplicates - collect existing as owned strings
-        let existing: std::collections::HashSet<String> = entry.iter().cloned().collect();
-        for step_id in step_ids {
-            if !existing.contains(step_id) {
-                entry.push(step_id.clone());
-            }
-        }
+        self.debug_states
+            .entry(run_id)
+            .or_default()
+            .events
+            .push(event);
         async move { Ok(()) }.boxed()
     }
 
-    fn remove_from_debug_queue(
+    fn get_debug_events(
         &self,
         run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        if step_ids.is_empty() {
-            return async move { Ok(()) }.boxed();
-        }
-
-        if let Some(mut entry) = self.debug_queues.get_mut(&run_id) {
-            let to_remove: std::collections::HashSet<&String> = step_ids.iter().collect();
-            entry.retain(|id| !to_remove.contains(id));
-        }
-        async move { Ok(()) }.boxed()
-    }
-
-    fn get_debug_queue(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>> {
-        let queue = self
-            .debug_queues
+        limit: usize,
+        offset: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<DebugEvent>, StateError>> {
+        let events = self
+            .debug_states
             .get(&run_id)
-            .map(|entry| entry.clone())
-            .filter(|v| !v.is_empty());
-        async move { Ok(queue) }.boxed()
+            .map(|state| {
+                // Events are stored oldest-first, return newest-first
+                let len = state.events.len();
+                let start = len.saturating_sub(offset + limit);
+                let end = len.saturating_sub(offset);
+                state.events[start..end]
+                    .iter()
+                    .rev() // Reverse to get newest first
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        async move { Ok(events) }.boxed()
     }
 
     fn get_item_results(

@@ -29,12 +29,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::debug_history::DebugHistory;
 use bit_set::BitSet;
 use error_stack::ResultExt as _;
 use stepflow_core::BlobId;
 use stepflow_core::status::{StepExecution, StepStatus};
 use stepflow_core::workflow::Flow;
 use stepflow_core::{FlowResult, values::ValueRef};
+use stepflow_dtos::DebugEvent;
 use stepflow_state::StateStore;
 use uuid::Uuid;
 
@@ -287,24 +289,29 @@ impl DebugExecutor {
             );
         }
 
-        // Step 6: Recover the debug queue if present
-        if let Some(queued_step_ids) = self
+        // Step 6: Recover queued steps from debug events
+        // Use DebugHistory to derive pending steps from event history
+        let events = self
             .state_store
-            .get_debug_queue(self.run_id)
+            .get_debug_events(self.run_id, 1000, 0) // Get all events
             .await
-            .change_context(ExecutionError::StateError)?
-        {
-            for step_id in &queued_step_ids {
-                // Find step index and add to needed (will re-discover deps if needed)
-                if let Some(step_index) = self.step_index_map.step_index(step_id) {
-                    // Only add if not already completed
-                    if !self.flow_executor.state().item(0).is_completed(step_index) {
-                        self.flow_executor.add_needed(0, step_index);
-                    }
+            .change_context(ExecutionError::StateError)?;
+
+        let history = DebugHistory::from_events(events);
+        let queued_step_ids = history.pending_step_ids();
+
+        for step_id in &queued_step_ids {
+            // Find step index and add to needed (will re-discover deps if needed)
+            if let Some(step_index) = self.step_index_map.step_index(step_id) {
+                // Only add if not already completed
+                if !self.flow_executor.state().item(0).is_completed(step_index) {
+                    self.flow_executor.add_needed(0, step_index);
                 }
             }
+        }
+        if !queued_step_ids.is_empty() {
             log::debug!(
-                "Recovered debug queue with {} steps: [{}]",
+                "Recovered queued steps from events: {} steps: [{}]",
                 queued_step_ids.len(),
                 queued_step_ids.join(", ")
             );
@@ -376,10 +383,12 @@ impl DebugExecutor {
             .map(|idx| self.flow.step(*idx).id.clone())
             .collect();
 
-        // Persist the newly queued steps
-        if !newly_queued.is_empty() {
+        // Emit StepQueued events for each newly discovered step
+        for &idx in &newly_needed {
+            let step = self.flow.step(idx);
+            let event = DebugEvent::step_queued(idx, &step.id);
             self.state_store
-                .add_to_debug_queue(self.run_id, &newly_queued)
+                .append_debug_event(self.run_id, event)
                 .await
                 .change_context(ExecutionError::StateError)?;
         }
@@ -408,17 +417,21 @@ impl DebugExecutor {
             .collect();
 
         let mut all_newly_queued = Vec::new();
+        let mut all_newly_needed = Vec::new();
         for idx in must_execute_indices {
             let newly_needed = self.flow_executor.add_needed(0, idx);
             for dep_idx in newly_needed {
                 all_newly_queued.push(self.flow.step(dep_idx).id.clone());
+                all_newly_needed.push(dep_idx);
             }
         }
 
-        // Persist the newly queued steps
-        if !all_newly_queued.is_empty() {
+        // Emit StepQueued events for each newly discovered step
+        for idx in all_newly_needed {
+            let step = self.flow.step(idx);
+            let event = DebugEvent::step_queued(idx, &step.id);
             self.state_store
-                .add_to_debug_queue(self.run_id, &all_newly_queued)
+                .append_debug_event(self.run_id, event)
                 .await
                 .change_context(ExecutionError::StateError)?;
         }
@@ -512,18 +525,20 @@ impl DebugExecutor {
 
     /// Run the next ready step from the queue.
     ///
-    /// The executed step is automatically removed from the persistent debug queue.
+    /// Emits StepCompleted debug events for the executed step.
     /// Returns the execution result, or None if no steps are ready.
     pub async fn run_next_step(&mut self) -> Result<Option<StepRunResult>> {
         let result = self.flow_executor.run_single_task().await?;
 
-        // Remove executed step from persistent queue
+        // Emit StepCompleted event
         if let Some(ref step_result) = result {
+            let event = DebugEvent::step_completed(
+                step_result.step_index(),
+                step_result.step_id(),
+                step_result.result.clone(),
+            );
             self.state_store
-                .remove_from_debug_queue(
-                    self.run_id,
-                    std::slice::from_ref(&step_result.metadata.step_id),
-                )
+                .append_debug_event(self.run_id, event)
                 .await
                 .change_context(ExecutionError::StateError)?;
         }
@@ -533,10 +548,13 @@ impl DebugExecutor {
 
     /// Run all steps in the queue until empty.
     ///
-    /// The executed steps are automatically removed from the persistent debug queue.
+    /// Emits StepCompleted debug events for each executed step.
     /// Returns all execution results.
     pub async fn run_queue(&mut self) -> Result<Vec<StepRunResult>> {
         let mut results = Vec::new();
+
+        // Track which steps we've already collected results for
+        let mut collected = BitSet::new();
 
         loop {
             let ready_before = self.ready_steps();
@@ -544,32 +562,36 @@ impl DebugExecutor {
                 break;
             }
 
-            // Capture which steps are ready before running
-            let ready_indices: Vec<usize> = ready_before.iter().collect();
-
             // Run until no more ready steps
             self.flow_executor.run(None).await?;
 
-            // Collect results for the steps that were ready
-            for step_index in ready_indices {
+            // Collect results for ALL completed steps (not just those that were ready before)
+            // This handles steps that became ready and executed during run(None)
+            for (step_index, step) in self.flow.steps().iter().enumerate() {
+                if collected.contains(step_index) {
+                    continue;
+                }
                 if let Some(result) = self.step_result(step_index) {
-                    let step = self.flow.step(step_index);
                     results.push(StepRunResult::new(
                         step_index,
                         step.id.clone(),
                         step.component.to_string(),
                         result,
                     ));
+                    collected.insert(step_index);
                 }
             }
         }
 
-        // Remove all executed steps from persistent queue
-        if !results.is_empty() {
-            let step_ids: Vec<String> =
-                results.iter().map(|r| r.metadata.step_id.clone()).collect();
+        // Emit StepCompleted events for each executed step
+        for step_result in &results {
+            let event = DebugEvent::step_completed(
+                step_result.step_index(),
+                step_result.step_id(),
+                step_result.result.clone(),
+            );
             self.state_store
-                .remove_from_debug_queue(self.run_id, &step_ids)
+                .append_debug_event(self.run_id, event)
                 .await
                 .change_context(ExecutionError::StateError)?;
         }
@@ -681,6 +703,16 @@ impl DebugExecutor {
         Ok(completed_steps)
     }
 
+    /// Get debug events for this run.
+    ///
+    /// Returns events in newest-first order, up to `limit` events starting at `offset`.
+    pub async fn get_debug_events(&self, limit: usize, offset: usize) -> Result<Vec<DebugEvent>> {
+        self.state_store
+            .get_debug_events(self.run_id, limit, offset)
+            .await
+            .change_context(ExecutionError::StateError)
+    }
+
     /// Execute the workflow to completion using parallel execution with lazy evaluation.
     ///
     /// This is equivalent to: `queue_must_execute() + eval_output()`
@@ -755,6 +787,195 @@ impl DebugExecutor {
             on_error: step.on_error_or_default(),
             state,
         })
+    }
+
+    // ========================================================================
+    // GDB-like Debug API Methods
+    // ========================================================================
+
+    /// Get brief info for all steps (for `info` command / GET /steps).
+    pub async fn get_steps_info(&self) -> Vec<stepflow_dtos::StepInfo> {
+        let ready = self.ready_steps();
+
+        self.flow
+            .steps()
+            .iter()
+            .enumerate()
+            .map(|(idx, step)| {
+                let status = if self.is_step_completed(idx) {
+                    match self.step_result(idx) {
+                        Some(FlowResult::Success(_)) => StepStatus::Completed,
+                        Some(FlowResult::Failed(_)) => StepStatus::Failed,
+                        None => StepStatus::Blocked, // Shouldn't happen
+                    }
+                } else if ready.contains(idx) {
+                    StepStatus::Runnable
+                } else {
+                    StepStatus::Blocked
+                };
+
+                stepflow_dtos::StepInfo::new(idx, &step.id, step.component.to_string(), status)
+            })
+            .collect()
+    }
+
+    /// Get detailed info for a specific step (for `info <step_id>` / GET /steps/{step_id}).
+    pub async fn get_step_detail(&self, step_id: &str) -> Result<stepflow_dtos::StepDetail> {
+        let step_index = self.step_index_map.step_index(step_id).ok_or_else(|| {
+            ExecutionError::StepNotFound {
+                step: step_id.to_string(),
+            }
+        })?;
+
+        let step = self.flow.step(step_index);
+        let ready = self.ready_steps();
+
+        let status = if self.is_step_completed(step_index) {
+            match self.step_result(step_index) {
+                Some(FlowResult::Success(_)) => StepStatus::Completed,
+                Some(FlowResult::Failed(_)) => StepStatus::Failed,
+                None => StepStatus::Blocked,
+            }
+        } else if ready.contains(step_index) {
+            StepStatus::Runnable
+        } else {
+            StepStatus::Blocked
+        };
+
+        let result = self.step_result(step_index);
+
+        // Get dependencies (step IDs that this step depends on)
+        let dependencies = collect_step_refs(&step.input);
+
+        Ok(stepflow_dtos::StepDetail {
+            info: stepflow_dtos::StepInfo::new(
+                step_index,
+                step_id,
+                step.component.to_string(),
+                status,
+            ),
+            input: step.input.clone(),
+            on_error: step.on_error_or_default(),
+            result,
+            dependencies,
+        })
+    }
+
+    /// Get the current debug session status (for `status` command / GET /status).
+    pub fn get_status(&self) -> stepflow_dtos::DebugStatus {
+        let ready = self.ready_steps();
+        let item = self.item_state();
+
+        // Derive pending action from current state
+        let pending = if item.is_complete() {
+            stepflow_dtos::PendingAction::Complete
+        } else if let Some(next_step_index) = ready.iter().next() {
+            let step = self.flow.step(next_step_index);
+            stepflow_dtos::PendingAction::execute_step(next_step_index, &step.id)
+        } else {
+            stepflow_dtos::PendingAction::AwaitingInput
+        };
+
+        // Get ready step IDs
+        let ready_steps: Vec<String> = ready
+            .iter()
+            .map(|idx| self.flow.step(idx).id.clone())
+            .collect();
+
+        // Count completed steps
+        let completed_count = self
+            .flow
+            .steps()
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| item.is_completed(*idx))
+            .count();
+
+        stepflow_dtos::DebugStatus {
+            run_id: self.run_id,
+            current_run_id: self.run_id, // Same for now; will differ with sub-flows
+            pending,
+            ready_steps,
+            completed_count,
+            total_steps: self.flow.steps().len(),
+        }
+    }
+
+    /// Continue execution to completion (for `continue` command / POST /continue).
+    ///
+    /// Returns the final result and number of steps executed.
+    pub async fn continue_to_completion(&mut self) -> Result<(FlowResult, usize)> {
+        let start_completed = self
+            .flow
+            .steps()
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| self.is_step_completed(*idx))
+            .count();
+
+        // Queue must_execute steps and run to completion
+        self.queue_must_execute().await?;
+        let result = self.eval_output().await?;
+
+        let end_completed = self
+            .flow
+            .steps()
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| self.is_step_completed(*idx))
+            .count();
+
+        Ok((result, end_completed - start_completed))
+    }
+}
+
+/// Recursively collect step references from a ValueExpr.
+fn collect_step_refs(expr: &stepflow_core::ValueExpr) -> Vec<String> {
+    let mut refs = Vec::new();
+    collect_step_refs_inner(expr, &mut refs);
+    refs
+}
+
+fn collect_step_refs_inner(expr: &stepflow_core::ValueExpr, refs: &mut Vec<String>) {
+    use stepflow_core::ValueExpr;
+
+    match expr {
+        ValueExpr::Step { step, .. } => {
+            if !refs.contains(step) {
+                refs.push(step.clone());
+            }
+        }
+        ValueExpr::Array(items) => {
+            for item in items {
+                collect_step_refs_inner(item, refs);
+            }
+        }
+        ValueExpr::Object(fields) => {
+            for (_, value) in fields {
+                collect_step_refs_inner(value, refs);
+            }
+        }
+        ValueExpr::If {
+            condition,
+            then,
+            else_expr,
+        } => {
+            collect_step_refs_inner(condition, refs);
+            collect_step_refs_inner(then, refs);
+            if let Some(else_expr) = else_expr {
+                collect_step_refs_inner(else_expr, refs);
+            }
+        }
+        ValueExpr::Coalesce { values } => {
+            for expr in values {
+                collect_step_refs_inner(expr, refs);
+            }
+        }
+        // These don't contain step references
+        ValueExpr::Literal(_)
+        | ValueExpr::EscapedLiteral { .. }
+        | ValueExpr::Input { .. }
+        | ValueExpr::Variable { .. } => {}
     }
 }
 
@@ -929,8 +1150,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resume_recovers_debug_queue() {
-        // Test that resume() recovers the debug queue from the state store
+    async fn test_resume_recovers_from_events() {
+        // Test that resume() recovers queued steps from debug events
         let state_store = Arc::new(InMemoryStateStore::new());
         let flow = Arc::new(create_two_step_chain_flow());
         let flow_id = BlobId::from_flow(&flow).unwrap();
@@ -952,9 +1173,13 @@ mod tests {
         run_params.workflow_name = flow.name().map(|s: &str| s.to_string());
         state_store.create_run(run_params).await.unwrap();
 
-        // Add steps to the debug queue
+        // Add StepQueued events (simulating steps that were queued but not completed)
         state_store
-            .add_to_debug_queue(run_id, &["step1".to_string(), "step2".to_string()])
+            .append_debug_event(run_id, DebugEvent::step_queued(0, "step1"))
+            .await
+            .unwrap();
+        state_store
+            .append_debug_event(run_id, DebugEvent::step_queued(1, "step2"))
             .await
             .unwrap();
 
@@ -991,15 +1216,15 @@ mod tests {
         // Resume the execution
         let debug = DebugExecutor::resume(executor, run_id).await.unwrap();
 
-        // The queued steps should be needed (queue was recovered)
+        // The queued steps should be needed (recovered from events)
         let queued = debug.get_queued_steps();
-        assert!(!queued.is_empty(), "Debug queue should be recovered");
+        assert!(!queued.is_empty(), "Steps should be recovered from events");
 
-        // step1 should be runnable (recovered from queue)
+        // step1 should be runnable (recovered from events)
         let ready = debug.ready_steps();
         assert!(
             ready.contains(0),
-            "step1 should be runnable after queue recovery"
+            "step1 should be runnable after event recovery"
         );
     }
 
@@ -1126,7 +1351,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_queue_persistence() {
+    async fn test_queue_emits_events() {
         let (mut debug, state_store) = DebugExecutorBuilder::new()
             .with_two_step_chain()
             .build_with_state_store()
@@ -1137,14 +1362,18 @@ mod tests {
         // Queue a step
         debug.queue_step("step1").await.unwrap();
 
-        // Check state store has the queue
-        let persisted_queue = state_store.get_debug_queue(run_id).await.unwrap();
-        assert!(persisted_queue.is_some());
-        assert!(persisted_queue.unwrap().contains(&"step1".to_string()));
+        // Check state store has the event
+        let events = state_store.get_debug_events(run_id, 10, 0).await.unwrap();
+        assert!(!events.is_empty());
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, DebugEvent::StepQueued { step_id, .. } if step_id == "step1"))
+        );
     }
 
     #[tokio::test]
-    async fn test_run_removes_from_queue() {
+    async fn test_run_emits_completed_event() {
         let (mut debug, state_store) = DebugExecutorBuilder::new()
             .with_single_step()
             .build_with_state_store()
@@ -1154,20 +1383,19 @@ mod tests {
 
         // Queue and run step1
         debug.queue_step("step1").await.unwrap();
-
-        // Verify it's in the queue
-        let queue_before = state_store.get_debug_queue(run_id).await.unwrap();
-        assert!(queue_before.is_some());
-        assert!(queue_before.unwrap().contains(&"step1".to_string()));
-
-        // Run the step
         debug.run_next_step().await.unwrap();
 
-        // Check queue is now empty
-        let queue_after = state_store.get_debug_queue(run_id).await.unwrap();
+        // Check we have both queued and completed events
+        let events = state_store.get_debug_events(run_id, 10, 0).await.unwrap();
         assert!(
-            queue_after.is_none() || queue_after.unwrap().is_empty(),
-            "Queue should be empty after running the step"
+            events
+                .iter()
+                .any(|e| matches!(e, DebugEvent::StepQueued { step_id, .. } if step_id == "step1"))
+        );
+        assert!(
+            events.iter().any(
+                |e| matches!(e, DebugEvent::StepCompleted { step_id, .. } if step_id == "step1")
+            )
         );
     }
 
@@ -1260,5 +1488,85 @@ mod tests {
         // Second eval - should return cached result
         let result2 = debug.eval_step("step1").await.unwrap();
         assert!(matches!(result2, FlowResult::Success(_)));
+    }
+
+    #[tokio::test]
+    async fn test_debug_events_emitted() {
+        let (mut debug, _state_store) = DebugExecutorBuilder::new()
+            .with_two_step_chain()
+            .build_with_state_store()
+            .await;
+
+        // Queue step2 - should emit StepQueued events for step1 and step2
+        debug.queue_step("step2").await.unwrap();
+
+        // Check events were emitted (newest first)
+        let events = debug.get_debug_events(10, 0).await.unwrap();
+        assert_eq!(events.len(), 2);
+
+        // Events are newest-first, so step2 queued event comes first
+        assert!(matches!(
+            &events[0],
+            DebugEvent::StepQueued { step_id, .. } if step_id == "step2"
+        ));
+        assert!(matches!(
+            &events[1],
+            DebugEvent::StepQueued { step_id, .. } if step_id == "step1"
+        ));
+
+        // Run step1
+        let result = debug.run_next_step().await.unwrap();
+        assert!(result.is_some());
+
+        // Check StepCompleted event was emitted
+        let events = debug.get_debug_events(10, 0).await.unwrap();
+        assert_eq!(events.len(), 3);
+        assert!(matches!(
+            &events[0],
+            DebugEvent::StepCompleted { step_id, .. } if step_id == "step1"
+        ));
+
+        // Run step2
+        let result = debug.run_next_step().await.unwrap();
+        assert!(result.is_some());
+
+        // Check all 4 events
+        let events = debug.get_debug_events(10, 0).await.unwrap();
+        assert_eq!(events.len(), 4);
+        assert!(matches!(
+            &events[0],
+            DebugEvent::StepCompleted { step_id, .. } if step_id == "step2"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_debug_events_run_queue() {
+        let (mut debug, _state_store) = DebugExecutorBuilder::new()
+            .with_two_step_chain()
+            .build_with_state_store()
+            .await;
+
+        // Queue step2 - discovers both steps
+        debug.queue_step("step2").await.unwrap();
+
+        // Run all steps at once
+        let results = debug.run_queue().await.unwrap();
+        assert!(!results.is_empty());
+
+        // Should have StepQueued + StepCompleted events for each step
+        let events = debug.get_debug_events(10, 0).await.unwrap();
+        assert_eq!(events.len(), 4); // 2 queued + 2 completed
+
+        // Count event types
+        let queued_count = events
+            .iter()
+            .filter(|e| matches!(e, DebugEvent::StepQueued { .. }))
+            .count();
+        let completed_count = events
+            .iter()
+            .filter(|e| matches!(e, DebugEvent::StepCompleted { .. }))
+            .count();
+        assert_eq!(queued_count, 2);
+        assert_eq!(completed_count, 2);
     }
 }

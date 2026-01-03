@@ -19,6 +19,7 @@ use stepflow_core::{
     BlobData, BlobId, BlobType, FlowResult,
     workflow::{Component, Flow, StepId, ValueRef, WorkflowOverrides},
 };
+use stepflow_dtos::DebugEvent;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -470,56 +471,36 @@ pub trait StateStore: Send + Sync {
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
 
-    // Debug State Management
+    // Debug Event Management
 
-    /// Add steps to the debug queue for a run.
+    /// Append a debug event to the history for a run.
     ///
-    /// This adds step IDs to the queue of steps awaiting execution in debug mode.
-    /// The queue persists across HTTP requests, allowing step-through debugging
-    /// with queue + next workflow.
+    /// Events are stored with an auto-incrementing index for ordering.
     ///
     /// # Arguments
     /// * `run_id` - The run identifier
-    /// * `step_ids` - The step IDs to add to the debug queue
-    ///
-    /// # Returns
-    /// Success if the steps were added
-    fn add_to_debug_queue(
+    /// * `event` - The debug event to append
+    fn append_debug_event(
         &self,
         run_id: Uuid,
-        step_ids: &[String],
+        event: DebugEvent,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Remove steps from the debug queue for a run.
-    ///
-    /// This removes step IDs from the queue after they have been executed.
+    /// Get debug events for a run, newest first.
     ///
     /// # Arguments
     /// * `run_id` - The run identifier
-    /// * `step_ids` - The step IDs to remove from the debug queue
+    /// * `limit` - Maximum number of events to return
+    /// * `offset` - Number of events to skip (for pagination)
     ///
     /// # Returns
-    /// Success if the steps were removed
-    fn remove_from_debug_queue(
+    /// Events in reverse chronological order (newest first)
+    fn get_debug_events(
         &self,
         run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Get the debug queue for a run.
-    ///
-    /// Retrieves the list of step IDs that were previously queued for
-    /// execution in debug mode.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    ///
-    /// # Returns
-    /// The queued step IDs if any exist, or None if no debug queue is set
-    fn get_debug_queue(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>>;
+        limit: usize,
+        offset: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<DebugEvent>, StateError>>;
 
     // Item Result Management
 

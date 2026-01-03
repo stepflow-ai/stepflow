@@ -47,12 +47,17 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
     paths(
         health::health_check,
         components::list_components,
-        debug::debug_eval,
-        debug::debug_queue,
-        debug::debug_next,
-        debug::debug_run_queue,
-        debug::debug_get_queue,
-        debug::debug_show,
+        // Debug endpoints
+        debug::list_steps,
+        debug::get_step,
+        debug::get_status,
+        debug::get_events,
+        debug::eval,
+        debug::next,
+        debug::step,
+        debug::up,
+        debug::continue_execution,
+        // Run endpoints
         runs::create_run,
         runs::get_run,
         runs::get_run_items,
@@ -68,17 +73,25 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
     components(schemas(
         components::ListComponentsResponse,
         components::ListComponentsQuery,
-        debug::DebugEvalRequest,
-        debug::DebugQueueRequest,
-        debug::DebugEvalResponse,
-        debug::DebugQueueResponse,
-        debug::DebugNextResponse,
-        debug::DebugRunQueueResponse,
-        debug::DebugQueueStatusResponse,
-        debug::QueuedStep,
-        debug::DebugShowResponse,
+        // Debug schemas
+        debug::ListStepsQuery,
+        debug::ListStepsResponse,
+        debug::DebugEventsQuery,
+        debug::DebugEventsResponse,
+        debug::EvalRequest,
+        debug::EvalResponse,
+        stepflow_dtos::DebugEvent,
+        stepflow_dtos::DebugStatus,
+        stepflow_dtos::PendingAction,
+        stepflow_dtos::StepInfo,
+        stepflow_dtos::StepDetail,
+        stepflow_dtos::StepStatusFilter,
+        stepflow_dtos::StepExecutionResult,
+        stepflow_dtos::ContinueResult,
+        // Health schemas
         health::HealthQuery,
         health::HealthResponse,
+        // Run schemas
         runs::CreateRunRequest,
         runs::CreateRunResponse,
         runs::ListRunsResponse,
@@ -90,6 +103,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         runs::StepRunResponse,
         runs::ListStepRunsResponse,
         runs::RunFlowResponse,
+        // Flow schemas
         flows::StoreFlowRequest,
         flows::StoreFlowResponse,
         flows::FlowResponse,
@@ -108,12 +122,17 @@ pub fn create_api_router() -> OpenApiRouter<Arc<StepflowExecutor>> {
     OpenApiRouter::with_openapi(StepflowApi::openapi())
         .routes(routes!(health::health_check))
         .routes(routes!(components::list_components))
-        .routes(routes!(debug::debug_eval))
-        .routes(routes!(debug::debug_queue))
-        .routes(routes!(debug::debug_next))
-        .routes(routes!(debug::debug_run_queue))
-        .routes(routes!(debug::debug_get_queue))
-        .routes(routes!(debug::debug_show))
+        // Debug endpoints
+        .routes(routes!(debug::list_steps))
+        .routes(routes!(debug::get_step))
+        .routes(routes!(debug::get_status))
+        .routes(routes!(debug::get_events))
+        .routes(routes!(debug::eval))
+        .routes(routes!(debug::next))
+        .routes(routes!(debug::step))
+        .routes(routes!(debug::up))
+        .routes(routes!(debug::continue_execution))
+        // Run endpoints
         .routes(routes!(runs::create_run))
         .routes(routes!(runs::get_run))
         .routes(routes!(runs::get_run_items))
@@ -122,6 +141,7 @@ pub fn create_api_router() -> OpenApiRouter<Arc<StepflowExecutor>> {
         .routes(routes!(runs::get_run_steps))
         .routes(routes!(runs::cancel_run))
         .routes(routes!(runs::delete_run))
+        // Flow endpoints
         .routes(routes!(flows::store_flow))
         .routes(routes!(flows::get_flow))
         .routes(routes!(flows::delete_flow))

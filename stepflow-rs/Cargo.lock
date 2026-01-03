@@ -4642,6 +4642,7 @@ dependencies = [
  "stepflow-analysis",
  "stepflow-config",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-execution",
  "stepflow-observability",
  "stepflow-plugin",
@@ -4724,6 +4725,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "stepflow-dtos"
+version = "0.8.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "stepflow-core",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "stepflow-execution"
 version = "0.8.0"
 dependencies = [
@@ -4736,6 +4748,7 @@ dependencies = [
  "serde_json",
  "stepflow-analysis",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-mock",
  "stepflow-observability",
  "stepflow-plugin",
@@ -4862,11 +4875,11 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
- "serde_with",
  "stepflow-analysis",
  "stepflow-builtins",
  "stepflow-config",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-execution",
  "stepflow-mock",
  "stepflow-observability",
@@ -4894,6 +4907,7 @@ dependencies = [
  "serde",
  "serde_json",
  "stepflow-core",
+ "stepflow-dtos",
  "thiserror 2.0.17",
  "tokio",
  "utoipa",
@@ -4913,6 +4927,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-state",
  "tokio",
  "uuid",
