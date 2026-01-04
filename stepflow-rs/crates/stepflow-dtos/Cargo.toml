@@ -1,6 +1,6 @@
 [package]
-name = "stepflow-state-sql"
-description = "SQL-based StateStore implementation for Stepflow"
+name = "stepflow-dtos"
+description = "Shared data transfer objects for Stepflow"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -16,18 +16,8 @@ workspace = true
 doctest = false
 
 [dependencies]
-bit-set.workspace = true
-chrono.workspace = true
-error-stack.workspace = true
-futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sqlx.workspace = true
 stepflow-core.workspace = true
-stepflow-dtos.workspace = true
-stepflow-state.workspace = true
-tokio.workspace = true
-log.workspace = true
+utoipa.workspace = true
 uuid.workspace = true
-
-[dev-dependencies]

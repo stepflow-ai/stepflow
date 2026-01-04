@@ -53,6 +53,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         debug::debug_run_queue,
         debug::debug_get_queue,
         debug::debug_show,
+        debug::debug_events,
         runs::create_run,
         runs::get_run,
         runs::get_run_items,
@@ -77,6 +78,9 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         debug::DebugQueueStatusResponse,
         debug::QueuedStep,
         debug::DebugShowResponse,
+        debug::DebugEventsQuery,
+        debug::DebugEventsResponse,
+        stepflow_dtos::DebugEvent,
         health::HealthQuery,
         health::HealthResponse,
         runs::CreateRunRequest,
@@ -114,6 +118,7 @@ pub fn create_api_router() -> OpenApiRouter<Arc<StepflowExecutor>> {
         .routes(routes!(debug::debug_run_queue))
         .routes(routes!(debug::debug_get_queue))
         .routes(routes!(debug::debug_show))
+        .routes(routes!(debug::debug_events))
         .routes(routes!(runs::create_run))
         .routes(routes!(runs::get_run))
         .routes(routes!(runs::get_run_items))

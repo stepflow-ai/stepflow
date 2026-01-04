@@ -37,6 +37,7 @@
 //! added incrementally via `queue_step()` rather than all at once.
 
 mod debug_executor;
+mod debug_history;
 mod error;
 mod executor;
 mod flow_executor;
@@ -50,6 +51,7 @@ pub(crate) mod testing;
 
 // Main exports
 pub use debug_executor::{DebugExecutor, StepInspection};
+pub use debug_history::{DebugEvent, DebugHistory, PendingAction};
 pub use error::{ExecutionError, Result};
 pub use executor::StepflowExecutor;
 pub use flow_executor::{FlowExecutor, FlowExecutorBuilder};

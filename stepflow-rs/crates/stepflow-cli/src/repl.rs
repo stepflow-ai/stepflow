@@ -217,6 +217,13 @@ pub enum ReplCommand {
     /// Show completed steps and their results (debug mode only)
     #[command(name = "completed")]
     Completed,
+    /// Show debug event history (debug mode only)
+    #[command(name = "history")]
+    History {
+        /// Maximum number of events to show
+        #[arg(default_value = "20")]
+        limit: usize,
+    },
 }
 
 /// Parse a command line into a ReplCommand using clap
@@ -262,6 +269,7 @@ async fn handle_command(command: ReplCommand, state: &mut ReplState) -> Result<(
         ReplCommand::Show { step_id } => handle_show_command(step_id, state).await,
         ReplCommand::Inspect { step_id } => handle_inspect_command(step_id, state).await,
         ReplCommand::Completed => handle_completed_command(state).await,
+        ReplCommand::History { limit } => handle_history_command(limit, state).await,
     }
 }
 
@@ -704,6 +712,71 @@ async fn handle_completed_command(state: &ReplState) -> Result<()> {
     Ok(())
 }
 
+/// Handle the history command - show debug event history
+async fn handle_history_command(limit: usize, state: &ReplState) -> Result<()> {
+    if !state.debug_mode {
+        println!(
+            "History command is only available in debug mode. Use 'run --debug' to enable debug mode."
+        );
+        return Ok(());
+    }
+
+    if let Some(last_run) = &state.last_run {
+        if let Some(debug_session) = &last_run.last_execution {
+            match debug_session.get_debug_events(limit, 0).await {
+                Ok(events) => {
+                    if events.is_empty() {
+                        println!("No debug events recorded yet.");
+                    } else {
+                        println!("Debug event history ({} events, newest first):", events.len());
+                        for (i, event) in events.iter().enumerate() {
+                            let event_str = format_debug_event(event);
+                            println!("  [{i}] {event_str}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Failed to get debug events: {e}");
+                }
+            }
+        } else {
+            println!(
+                "No debug session active. Use 'run --flow=<file> --debug' to start debugging."
+            );
+        }
+    } else {
+        println!("No debug session active. Use 'run --flow=<file> --debug' to start debugging.");
+    }
+    Ok(())
+}
+
+/// Format a debug event for display
+fn format_debug_event(event: &stepflow_dtos::DebugEvent) -> String {
+    use stepflow_dtos::DebugEvent;
+    match event {
+        DebugEvent::StepQueued { step_index, step_id } => {
+            format!("QUEUED: [{step_index}] {step_id}")
+        }
+        DebugEvent::StepStarted { step_index, step_id, .. } => {
+            format!("STARTED: [{step_index}] {step_id}")
+        }
+        DebugEvent::StepCompleted { step_index, step_id, result } => {
+            let status = match result {
+                stepflow_core::FlowResult::Success(_) => "SUCCESS",
+                stepflow_core::FlowResult::Failed(_) => "FAILED",
+            };
+            format!("COMPLETED: [{step_index}] {step_id} - {status}")
+        }
+        DebugEvent::StepFailed { step_index, step_id, error } => {
+            format!("FAILED: [{step_index}] {step_id} - {error}")
+        }
+        DebugEvent::RunCompleted { run_id, success } => {
+            let status = if *success { "SUCCESS" } else { "FAILED" };
+            format!("RUN COMPLETED: {run_id} - {status}")
+        }
+    }
+}
+
 /// Print a FlowResult in a formatted way
 fn print_flow_result(result: &stepflow_core::FlowResult) -> Result<()> {
     match result {
@@ -888,6 +961,27 @@ mod tests {
                 assert!(!input_args.has_input());
             }
             _ => panic!("Expected run command, got: {result:?}"),
+        }
+    }
+
+    #[test]
+    fn test_history_command_parsing() {
+        // Test default limit
+        let result = parse_command("history");
+        match result {
+            Ok(ReplCommand::History { limit }) => {
+                assert_eq!(limit, 20); // Default limit
+            }
+            _ => panic!("Expected history command, got: {result:?}"),
+        }
+
+        // Test custom limit
+        let result = parse_command("history 50");
+        match result {
+            Ok(ReplCommand::History { limit }) => {
+                assert_eq!(limit, 50);
+            }
+            _ => panic!("Expected history command with limit, got: {result:?}"),
         }
     }
 }

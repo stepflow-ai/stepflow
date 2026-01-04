@@ -96,6 +96,7 @@ stepflow-builtins = { path = "./crates/stepflow-builtins" }
 stepflow-components-mcp = { path = "./crates/stepflow-components-mcp" }
 stepflow-config = { path = "./crates/stepflow-config" }
 stepflow-core = { path = "./crates/stepflow-core" }
+stepflow-dtos = { path = "./crates/stepflow-dtos" }
 stepflow-execution = { path = "./crates/stepflow-execution" }
 stepflow-mock = { path = "./crates/stepflow-mock" }
 stepflow-observability = { path = "./crates/stepflow-observability" }
