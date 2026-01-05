@@ -1,1 +1,1 @@
-"""Contains methods for accessing the API"""
+"""API endpoint modules."""

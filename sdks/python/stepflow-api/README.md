@@ -52,10 +52,14 @@ stepflow-api/
 │   │   ├── __init__.py       # Auto-generated exports + compatibility methods
 │   │   ├── *.py              # Re-export stubs OR custom overrides
 │   │   └── ...
-│   ├── api/                  # Static API endpoint modules
-│   ├── client.py             # Static HTTP client wrapper
-│   ├── types.py              # Static utility types (UNSET, Response)
-│   └── errors.py             # Static error types
+│   ├── api/                  # Thin declarative endpoint layer (~290 lines)
+│   │   ├── _base.py          # Generic Endpoint class
+│   │   ├── run.py            # Run endpoint definitions
+│   │   ├── batch.py          # Batch endpoint definitions
+│   │   └── ...
+│   ├── client.py             # HTTP client wrapper
+│   ├── types.py              # Utility types (UNSET, Response)
+│   └── errors.py             # Error types
 └── ...
 ```
 
@@ -66,11 +70,25 @@ stepflow-api/
 - **`models/__init__.py`**: Exports + compatibility methods. Never edit.
 - **`models/*.py` (stubs)**: Simple re-exports. Can be replaced with custom overrides.
 
-**Static (maintained manually, not regenerated):**
-- **`api/`**: Endpoint modules for API calls.
+**Declarative (manually maintained, but minimal):**
+- **`api/`**: Thin endpoint definitions using the `Endpoint` class. One-line per endpoint.
 - **`client.py`**: HTTP client wrapper.
 - **`types.py`**: Utility types (UNSET, Response).
 - **`errors.py`**: Error types.
+
+### Adding New Endpoints
+
+When the Rust server adds new API endpoints, update the appropriate file in `api/`:
+
+```python
+# In api/run.py - add one line per endpoint:
+from ._base import Endpoint
+from ..models import NewResponseType
+
+new_endpoint = Endpoint("GET", "/new/{id}", NewResponseType)
+```
+
+The `Endpoint` class handles sync/async, detailed/simple variants automatically.
 
 Custom model overrides (files that don't start with `"""Re-export`) are automatically preserved when regenerating.
 
