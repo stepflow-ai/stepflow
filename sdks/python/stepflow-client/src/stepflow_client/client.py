@@ -88,7 +88,7 @@ class StepflowClient:
         async with StepflowClient("http://localhost:7837") as client:
             # Store a flow (from file or dict)
             store_response = await client.store_flow("workflow.yaml")
-            flow_id = store_response.flow_id
+            flow_id = store_response.flowId
 
             # Create and execute a run
             run_response = await client.create_run(flow_id, {"x": 1})
@@ -278,13 +278,19 @@ class StepflowClient:
         Returns:
             CreateRunResponse with run_id, status, and result
         """
-        request = CreateRunRequest(
-            flow_id=flow_id,
-            input_=input,
-            debug=debug,  # Always pass the boolean value
-            overrides=overrides if overrides is not None else UNSET,
-            variables=variables if variables is not None else UNSET,
-        )
+        # Build request with only set values to avoid sending null fields
+        # which the server may reject
+        request_kwargs: dict[str, Any] = {
+            "flowId": flow_id,
+            "input": input,
+        }
+        if debug:  # Only include debug if True
+            request_kwargs["debug"] = debug
+        if overrides is not None:
+            request_kwargs["overrides"] = overrides
+        if variables is not None:
+            request_kwargs["variables"] = variables
+        request = CreateRunRequest(**request_kwargs)
         response = await create_run.asyncio_detailed(client=self._client, body=request)
 
         if response.status_code.value >= 400:
@@ -422,12 +428,16 @@ class StepflowClient:
         Returns:
             CreateBatchResponse with batch_id
         """
-        request = CreateBatchRequest(
-            flow_id=flow_id,
-            inputs=inputs,
-            max_concurrency=max_concurrency if max_concurrency is not None else UNSET,
-            overrides=overrides if overrides is not None else UNSET,
-        )
+        # Build request with only set values to avoid sending null fields
+        request_kwargs: dict[str, Any] = {
+            "flowId": flow_id,
+            "inputs": inputs,
+        }
+        if max_concurrency is not None:
+            request_kwargs["maxConcurrency"] = max_concurrency
+        if overrides is not None:
+            request_kwargs["overrides"] = overrides
+        request = CreateBatchRequest(**request_kwargs)
         response = await create_batch.asyncio_detailed(client=self._client, body=request)
 
         if response.status_code.value >= 400:

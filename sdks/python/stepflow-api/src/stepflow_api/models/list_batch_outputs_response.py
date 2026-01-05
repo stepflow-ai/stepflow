@@ -1,5 +1,14 @@
-"""Re-export ListBatchOutputsResponse from generated models."""
+"""Custom ListBatchOutputsResponse that uses flexible BatchOutputInfo."""
 
-from .generated import ListBatchOutputsResponse
+from pydantic import BaseModel
+
+from .batch_output_info import BatchOutputInfo
+
+
+class ListBatchOutputsResponse(BaseModel):
+    """Custom ListBatchOutputsResponse that uses flexible BatchOutputInfo."""
+
+    outputs: list[BatchOutputInfo]
+
 
 __all__ = ["ListBatchOutputsResponse"]

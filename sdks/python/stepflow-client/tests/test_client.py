@@ -69,7 +69,7 @@ class TestStepflowClientIntegration:
                 "output": {"result": {"$from": {"step": "echo"}}},
             }
             response = await client.store_flow(flow)
-            assert response.flow_id is not None
+            assert response.flowId is not None
 
     @pytest.mark.skip(reason="Requires running stepflow server")
     async def test_client_create_run(self):
@@ -93,10 +93,10 @@ class TestStepflowClientIntegration:
 
             # Then create a run
             run_response = await client.create_run(
-                flow_id=store_response.flow_id,
+                flow_id=store_response.flowId,
                 input={},
             )
-            assert run_response.run_id is not None
+            assert run_response.runId is not None
 
     @pytest.mark.skip(reason="Requires running stepflow server")
     async def test_client_get_run(self):
@@ -118,12 +118,12 @@ class TestStepflowClientIntegration:
             }
             store_response = await client.store_flow(flow)
             run_response = await client.create_run(
-                flow_id=store_response.flow_id,
+                flow_id=store_response.flowId,
                 input={},
             )
 
             # Then get the run details
-            details = await client.get_run(str(run_response.run_id))
+            details = await client.get_run(str(run_response.runId))
             assert details.status is not None
 
     @pytest.mark.skip(reason="Requires running stepflow server")

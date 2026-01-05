@@ -22,7 +22,7 @@ Example:
     async with StepflowClient("http://localhost:7837") as client:
         # Store a flow (from file or dict)
         store_result = await client.store_flow("workflow.yaml")
-        flow_id = store_result.flow_id
+        flow_id = store_result.flowId
 
         # Create and execute a run
         run_result = await client.create_run(flow_id, {"x": 1})

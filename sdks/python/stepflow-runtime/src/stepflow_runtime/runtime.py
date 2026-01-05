@@ -39,9 +39,9 @@ from stepflow import (
 )
 from stepflow_api.models import (
     ExecutionStatus,
-    FlowResultType0,
-    FlowResultType1,
-    FlowResultType2,
+    FlowResult1,
+    FlowResult2,
+    FlowResult3,
 )
 from stepflow_api.types import UNSET, Unset
 from stepflow_client import StepflowClient
@@ -54,11 +54,11 @@ if TYPE_CHECKING:
 
 
 def _convert_api_result_to_flow_result(
-    result: FlowResultType0 | FlowResultType1 | FlowResultType2 | dict[str, Any] | None,
+    result: FlowResult1 | FlowResult2 | FlowResult3 | dict[str, Any] | None,
 ) -> FlowResult | None:
     """Convert API FlowResult types to stepflow FlowResult.
 
-    Handles both typed objects (FlowResultType0/1/2) and raw dicts
+    Handles both typed objects (FlowResult1/2/3) and raw dicts
     with the {outcome, result/error} format.
     """
     if result is None:
@@ -109,19 +109,19 @@ def _convert_api_result_to_flow_result(
             return FlowResult.failed(code, message, details)
 
     # Handle typed object format
-    if isinstance(result, FlowResultType0):
+    if isinstance(result, FlowResult1):
         # Success variant
-        output = result.success if isinstance(result.success, dict) else {"value": result.success}
+        output = result.Success if isinstance(result.Success, dict) else {"value": result.Success}
         return FlowResult.success(output)
-    elif isinstance(result, FlowResultType1):
+    elif isinstance(result, FlowResult2):
         # Skipped variant
         reason = None
-        if hasattr(result, "skipped") and hasattr(result.skipped, "reason"):
-            reason = result.skipped.reason
+        if hasattr(result, "Skipped_1") and hasattr(result.Skipped_1, "reason"):
+            reason = result.Skipped_1.reason
         return FlowResult.skipped(reason)
-    elif isinstance(result, FlowResultType2):
+    elif isinstance(result, FlowResult3):
         # Failed variant
-        error = result.failed
+        error = result.Failed
         details = None
         if hasattr(error, "data") and not isinstance(error.data, Unset):
             details = error.data if isinstance(error.data, dict) else {"data": error.data}
@@ -503,7 +503,7 @@ class StepflowRuntime:
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+        if store_response.flowId is None or isinstance(store_response.flowId, Unset):
             # Check diagnostics for errors
             from stepflow_api.models import DiagnosticLevel
 
@@ -523,15 +523,15 @@ class StepflowRuntime:
         # Create the run
         workflow_overrides = None
         if overrides:
-            from stepflow_api.models import StepOverride, WorkflowOverridesSteps
+            from stepflow_api.models import StepOverride
 
-            steps = WorkflowOverridesSteps()
+            steps: dict[str, StepOverride] = {}
             for step_id, step_override_dict in overrides.items():
-                steps[step_id] = StepOverride.from_dict(step_override_dict)
+                steps[step_id] = StepOverride.model_validate(step_override_dict)
             workflow_overrides = WorkflowOverrides(steps=steps)
 
         run_response = await self.client.create_run(
-            flow_id=store_response.flow_id,
+            flow_id=store_response.flowId,
             input=input,
             overrides=workflow_overrides,
         )
@@ -566,12 +566,11 @@ class StepflowRuntime:
             DiagnosticLevel,
             StepOverride,
             WorkflowOverrides,
-            WorkflowOverridesSteps,
         )
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+        if store_response.flowId is None or isinstance(store_response.flowId, Unset):
             errors = [
                 d
                 for d in store_response.diagnostics.diagnostics
@@ -583,18 +582,18 @@ class StepflowRuntime:
         # Create the run
         workflow_overrides = None
         if overrides:
-            steps = WorkflowOverridesSteps()
+            steps: dict[str, StepOverride] = {}
             for step_id, step_override_dict in overrides.items():
-                steps[step_id] = StepOverride.from_dict(step_override_dict)
+                steps[step_id] = StepOverride.model_validate(step_override_dict)
             workflow_overrides = WorkflowOverrides(steps=steps)
 
         run_response = await self.client.create_run(
-            flow_id=store_response.flow_id,
+            flow_id=store_response.flowId,
             input=input,
             overrides=workflow_overrides,
         )
 
-        return str(run_response.run_id)
+        return str(run_response.runId)
 
     async def get_result(self, run_id: str) -> FlowResult:
         """Get the result of a workflow run.
@@ -639,7 +638,7 @@ class StepflowRuntime:
             )
 
         # Valid if we got a flow_id
-        valid = store_response.flow_id is not None and not isinstance(store_response.flow_id, Unset)
+        valid = store_response.flowId is not None and not isinstance(store_response.flowId, Unset)
 
         return ValidationResult(valid=valid, diagnostics=diagnostics)
 
@@ -672,9 +671,16 @@ class StepflowRuntime:
             if hasattr(comp, "description") and not isinstance(comp.description, Unset):
                 description = comp.description
 
+            # Extract the component path string from the Component RootModel
+            component_path = (
+                comp.component.root
+                if hasattr(comp.component, "root")
+                else str(comp.component)
+            )
+
             components.append(
                 ComponentInfo(
-                    path=comp.component,  # API uses 'component' not 'path'
+                    path=component_path,
                     description=description,
                     input_schema=input_schema,
                     output_schema=output_schema,
@@ -717,12 +723,11 @@ class StepflowRuntime:
             DiagnosticLevel,
             StepOverride,
             WorkflowOverrides,
-            WorkflowOverridesSteps,
         )
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+        if store_response.flowId is None or isinstance(store_response.flowId, Unset):
             errors = [
                 d
                 for d in store_response.diagnostics.diagnostics
@@ -734,19 +739,19 @@ class StepflowRuntime:
         # Create the batch
         workflow_overrides = None
         if overrides:
-            steps = WorkflowOverridesSteps()
+            steps: dict[str, StepOverride] = {}
             for step_id, step_override_dict in overrides.items():
-                steps[step_id] = StepOverride.from_dict(step_override_dict)
+                steps[step_id] = StepOverride.model_validate(step_override_dict)
             workflow_overrides = WorkflowOverrides(steps=steps)
 
         batch_response = await self.client.create_batch(
-            flow_id=store_response.flow_id,
+            flow_id=store_response.flowId,
             inputs=inputs,
             max_concurrency=max_concurrent,
             overrides=workflow_overrides,
         )
 
-        return str(batch_response.batch_id)
+        return str(batch_response.batchId)
 
     async def get_batch(
         self, batch_id: str, include_results: bool = True
