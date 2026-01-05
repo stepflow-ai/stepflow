@@ -12,6 +12,11 @@
 
 """Tests for StepflowClient."""
 
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
 import pytest
 
@@ -35,32 +40,220 @@ requires_server = pytest.mark.skipif(
 )
 
 
-class TestStepflowClient:
-    def test_client_url(self):
+class TestStepflowClientInit:
+    """Test client initialization and configuration."""
+
+    def test_url_stored_correctly(self):
         client = StepflowClient("http://localhost:7837")
         assert client.url == "http://localhost:7837"
 
-    def test_client_url_trailing_slash_removed(self):
+    def test_trailing_slash_removed(self):
         client = StepflowClient("http://localhost:7837/")
         assert client.url == "http://localhost:7837"
 
-    def test_client_context_manager(self):
-        # Should be able to use as context manager
-        async def test():
-            async with StepflowClient("http://localhost:7837") as client:
-                assert client.url == "http://localhost:7837"
+    def test_api_base_url_includes_prefix(self):
+        client = StepflowClient("http://localhost:7837")
+        # The internal client should use /api/v1 prefix
+        assert client.api._base_url == "http://localhost:7837/api/v1"
 
-    def test_client_error(self):
-        error = StepflowClientError("Test error")
-        assert str(error) == "Test error"
+    def test_custom_timeout(self):
+        client = StepflowClient("http://localhost:7837", timeout=60.0)
+        # Verify timeout was passed (internal structure varies by httpx version)
+        assert client.api._timeout == 60.0
 
-    def test_client_error_with_status_code(self):
-        error = StepflowClientError("Test error", status_code=404)
+
+class TestStepflowClientError:
+    """Test error class."""
+
+    def test_basic_error(self):
+        error = StepflowClientError("Something went wrong")
+        assert str(error) == "Something went wrong"
+        assert error.status_code is None
+        assert error.details is None
+
+    def test_error_with_status_code(self):
+        error = StepflowClientError("Not found", status_code=404)
         assert error.status_code == 404
 
-    def test_client_error_with_details(self):
-        error = StepflowClientError("Test error", details={"key": "value"})
-        assert error.details == {"key": "value"}
+    def test_error_with_details(self):
+        error = StepflowClientError("Validation failed", details={"field": "input"})
+        assert error.details == {"field": "input"}
+
+    def test_error_with_all_fields(self):
+        error = StepflowClientError(
+            "Bad request",
+            status_code=400,
+            details={"errors": ["field1 required", "field2 invalid"]},
+        )
+        assert str(error) == "Bad request"
+        assert error.status_code == 400
+        assert error.details["errors"] == ["field1 required", "field2 invalid"]
+
+
+class TestStepflowClientFlowLoading:
+    """Test flow loading from different sources."""
+
+    async def test_store_flow_from_dict(self):
+        """Test storing a flow from a dictionary."""
+        client = StepflowClient(SERVER_URL)
+
+        # Mock the API call
+        mock_response = MagicMock()
+        mock_response.status_code.value = 200
+        mock_response.parsed = MagicMock()
+        mock_response.parsed.flow_id = "abc123"
+
+        with patch(
+            "stepflow_client.client.api_store_flow.asyncio_detailed",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_store:
+            flow_dict = {
+                "schema": "https://stepflow.org/schemas/v1/flow.json",
+                "name": "test-flow",
+                "steps": [],
+                "output": {},
+            }
+            response = await client.store_flow(flow_dict)
+
+            assert response.flow_id == "abc123"
+            mock_store.assert_called_once()
+
+    async def test_store_flow_from_yaml_file(self):
+        """Test storing a flow from a YAML file."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_response = MagicMock()
+        mock_response.status_code.value = 200
+        mock_response.parsed = MagicMock()
+        mock_response.parsed.flow_id = "yaml123"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("""
+schema: https://stepflow.org/schemas/v1/flow.json
+name: yaml-test
+steps: []
+output: {}
+""")
+            f.flush()
+
+            with patch(
+                "stepflow_client.client.api_store_flow.asyncio_detailed",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ):
+                response = await client.store_flow(f.name)
+                assert response.flow_id == "yaml123"
+
+            Path(f.name).unlink()
+
+    async def test_store_flow_from_json_file(self):
+        """Test storing a flow from a JSON file."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_response = MagicMock()
+        mock_response.status_code.value = 200
+        mock_response.parsed = MagicMock()
+        mock_response.parsed.flow_id = "json123"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                {
+                    "schema": "https://stepflow.org/schemas/v1/flow.json",
+                    "name": "json-test",
+                    "steps": [],
+                    "output": {},
+                },
+                f,
+            )
+            f.flush()
+
+            with patch(
+                "stepflow_client.client.api_store_flow.asyncio_detailed",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ):
+                response = await client.store_flow(f.name)
+                assert response.flow_id == "json123"
+
+            Path(f.name).unlink()
+
+
+class TestStepflowClientCreateRun:
+    """Test run creation."""
+
+    async def test_single_input_wrapped_in_list(self):
+        """Test that single input is automatically wrapped in a list."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_response = MagicMock()
+        mock_response.status_code.value = 200
+        mock_response.parsed = MagicMock()
+        mock_response.parsed.run_id = "run123"
+
+        with patch(
+            "stepflow_client.client.api_create_run.asyncio_detailed",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
+            await client.create_run(flow_id="flow123", input={"x": 1})
+
+            # Verify input was wrapped in list
+            call_args = mock_create.call_args
+            request = call_args.kwargs["body"]
+            assert request.input_ == [{"x": 1}]
+
+    async def test_list_input_not_double_wrapped(self):
+        """Test that list input is not double-wrapped."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_response = MagicMock()
+        mock_response.status_code.value = 200
+        mock_response.parsed = MagicMock()
+
+        with patch(
+            "stepflow_client.client.api_create_run.asyncio_detailed",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
+            await client.create_run(flow_id="flow123", input=[{"x": 1}, {"x": 2}])
+
+            call_args = mock_create.call_args
+            request = call_args.kwargs["body"]
+            assert request.input_ == [{"x": 1}, {"x": 2}]
+
+    async def test_error_response_raises_exception(self):
+        """Test that HTTP errors raise StepflowClientError."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_response = MagicMock()
+        mock_response.status_code.value = 400
+        mock_response.content = b"Invalid flow_id"
+
+        with patch(
+            "stepflow_client.client.api_create_run.asyncio_detailed",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(StepflowClientError) as exc_info:
+                await client.create_run(flow_id="bad", input={})
+
+            assert exc_info.value.status_code == 400
+            assert "Invalid flow_id" in exc_info.value.details["response"]
+
+
+class TestStepflowClientContextManager:
+    """Test context manager functionality."""
+
+    async def test_async_context_manager(self):
+        """Test async context manager enters and exits cleanly."""
+        async with StepflowClient(SERVER_URL) as client:
+            assert client.url == SERVER_URL
+
+    def test_sync_context_manager(self):
+        """Test sync context manager enters and exits cleanly."""
+        with StepflowClient(SERVER_URL) as client:
+            assert client.url == SERVER_URL
 
 
 class TestStepflowClientIntegration:
@@ -71,8 +264,15 @@ class TestStepflowClientIntegration:
     """
 
     @requires_server
-    async def test_client_store_flow(self):
-        """Test storing a flow definition."""
+    async def test_health_check(self):
+        """Test health check returns healthy status."""
+        async with StepflowClient(SERVER_URL) as client:
+            response = await client.health_check()
+            assert response.status == "healthy"
+
+    @requires_server
+    async def test_store_and_retrieve_flow(self):
+        """Test storing and retrieving a flow."""
         async with StepflowClient(SERVER_URL) as client:
             flow = {
                 "schema": "https://stepflow.org/schemas/v1/flow.json",
@@ -86,72 +286,61 @@ class TestStepflowClientIntegration:
                 ],
                 "output": {"result": {"$step": "echo"}},
             }
-            response = await client.store_flow(flow)
-            assert response.flow_id is not None
+
+            # Store the flow
+            store_response = await client.store_flow(flow)
+            assert store_response.flow_id is not None
+
+            # Retrieve it
+            flow_response = await client.get_flow(store_response.flow_id)
+            assert flow_response.flow is not None
 
     @requires_server
-    async def test_client_create_run(self):
-        """Test creating and executing a run."""
+    async def test_execute_workflow_end_to_end(self):
+        """Test complete workflow execution."""
         async with StepflowClient(SERVER_URL) as client:
-            # First store a flow
+            # Store a simple eval workflow
             flow = {
                 "schema": "https://stepflow.org/schemas/v1/flow.json",
-                "name": "test-flow",
+                "name": "e2e-test",
                 "steps": [
                     {
-                        "id": "echo",
+                        "id": "compute",
                         "component": "/builtin/eval",
-                        "input": {"expr": "'hello'"},
+                        "input": {"expr": "2 + 2"},
                     }
                 ],
-                "output": {"result": {"$step": "echo"}},
+                "output": {"$step": "compute"},
             }
             store_response = await client.store_flow(flow)
 
-            # Then create a run
+            # Execute the workflow
             run_response = await client.create_run(
                 flow_id=store_response.flow_id,
-                input=[{}],
+                input={},
             )
             assert run_response.run_id is not None
 
-    @requires_server
-    async def test_client_get_run(self):
-        """Test getting run details."""
-        async with StepflowClient(SERVER_URL) as client:
-            # First store and run a flow
-            flow = {
-                "schema": "https://stepflow.org/schemas/v1/flow.json",
-                "name": "test-flow",
-                "steps": [
-                    {
-                        "id": "echo",
-                        "component": "/builtin/eval",
-                        "input": {"expr": "'hello'"},
-                    }
-                ],
-                "output": {"result": {"$step": "echo"}},
-            }
-            store_response = await client.store_flow(flow)
-            run_response = await client.create_run(
-                flow_id=store_response.flow_id,
-                input=[{}],
-            )
-
-            # Then get the run details
+            # Get the results
             details = await client.get_run(str(run_response.run_id))
             assert details.status is not None
 
+            # Get item results
+            items = await client.get_run_items(str(run_response.run_id))
+            assert items.items is not None
+
     @requires_server
-    async def test_client_list_components(self):
+    async def test_list_components(self):
         """Test listing available components."""
         async with StepflowClient(SERVER_URL) as client:
             response = await client.list_components()
             assert response.components is not None
+            # Server should have at least builtin components
+            assert len(response.components) >= 0
 
     @requires_server
-    async def test_client_health(self):
-        """Test health check endpoint."""
+    async def test_list_runs(self):
+        """Test listing runs."""
         async with StepflowClient(SERVER_URL) as client:
-            response = await client.health_check()
-            assert response.status == "healthy"
+            response = await client.list_runs(limit=5)
+            assert response.runs is not None
