@@ -53,8 +53,8 @@ def test_variables_schema_from_dict():
 
     flow = builder.build()
 
-    assert flow.schemas is not None
-    assert flow.schemas.variables is not None
+    # FlowV1 has 'variables' as a direct attribute (not nested under schemas)
+    assert flow.variables is not None
 
 
 def test_variables_schema_from_simple_dict():
@@ -79,8 +79,8 @@ def test_variables_schema_from_simple_dict():
 
     flow = builder.build()
 
-    assert flow.schemas is not None
-    assert flow.schemas.variables is not None
+    # FlowV1 has 'variables' as a direct attribute (not nested under schemas)
+    assert flow.variables is not None
 
 
 def test_variables_schema_load_flow():
@@ -115,8 +115,8 @@ def test_variables_schema_load_flow():
     # Build the loaded flow
     rebuilt_flow = loaded_builder.build()
 
-    assert rebuilt_flow.schemas is not None
-    assert rebuilt_flow.schemas.variables is not None
+    # FlowV1 has 'variables' as a direct attribute (not nested under schemas)
+    assert rebuilt_flow.variables is not None
 
 
 def test_variables_schema_method_chaining():
@@ -146,5 +146,5 @@ def test_variables_schema_none_by_default():
 
     flow = builder.build()
 
-    # No schemas should be set if no input/output/variables schemas were provided
-    assert flow.schemas is None
+    # No variables schema should be set if not provided
+    assert flow.variables is None

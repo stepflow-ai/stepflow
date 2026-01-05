@@ -20,13 +20,13 @@ uv run --project sdks/python pytest
 
 ```bash
 # Run in stdio mode (default)
-uv run --project sdks/python stepflow_py
+uv run --project sdks/python/stepflow-server stepflow_server
 
 # Run in HTTP mode
-uv run --project sdks/python --extra http stepflow_py --http --port 8080
+uv run --project sdks/python/stepflow-server --extra http stepflow_server --http --port 8080
 
 # Run with custom host and port
-uv run --project sdks/python --extra http stepflow_py --http --host 0.0.0.0 --port 8080
+uv run --project sdks/python/stepflow-server --extra http stepflow_server --http --host 0.0.0.0 --port 8080
 ```
 
 ### Type Generation
@@ -74,7 +74,7 @@ JSON-RPC over stdio communication with the parent process.
 **Usage**:
 ```bash
 # Run in stdio mode
-uv run --project sdks/python stepflow_py
+uv run --project sdks/python/stepflow-server stepflow_server
 
 # No additional dependencies required
 ```
@@ -86,7 +86,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../sdks/python/stepflow-server", "run", "stepflow_server"]
 
 routes:
   "/python/{*component}":
@@ -106,19 +106,19 @@ JSON-RPC over HTTP with Server-Sent Events (SSE) for bidirectional communication
 **Installation**:
 ```bash
 # Install with HTTP support
-pip install stepflow-py[http]
+pip install stepflow-server[http]
 
 # Or with uv
-uv add stepflow-py[http]
+uv add stepflow-server[http]
 ```
 
 **Usage**:
 ```bash
 # Basic HTTP mode
-stepflow_py --http
+stepflow_server --http
 
 # Custom host and port
-stepflow_py --http --host 0.0.0.0 --port 8080
+stepflow_server --http --host 0.0.0.0 --port 8080
 ```
 
 **Configuration** (in stepflow-config.yml):
@@ -184,7 +184,7 @@ The HTTP transport implements MCP-style session negotiation for proper connectio
 ### Basic Component Registration
 
 ```python
-from stepflow_py import StepflowStdioServer
+from stepflow_server import StepflowStdioServer
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -209,7 +209,7 @@ server.run()
 Components can receive a `StepflowContext` parameter to access runtime operations:
 
 ```python
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_server import StepflowStdioServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -242,7 +242,7 @@ server.run()
 Components work identically in both stdio and HTTP modes:
 
 ```python
-from stepflow_py import StepflowHttpServer, StepflowContext
+from stepflow_server import StepflowHttpServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):

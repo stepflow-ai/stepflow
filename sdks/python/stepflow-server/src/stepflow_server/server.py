@@ -489,7 +489,7 @@ class StepflowServer:
         if not _HAS_LANGCHAIN:
             raise StepflowExecutionError(
                 "LangChain integration requires langchain-core. "
-                "Install with: pip install stepflow-py[langchain]"
+                "Install with: pip install stepflow-server[langchain]"
             )
 
         def decorator(f: Callable) -> Callable:
