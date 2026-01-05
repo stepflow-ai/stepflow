@@ -23,37 +23,39 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
 import yaml
 from stepflow_api import Client
-from stepflow_api.api.batch import (
-    cancel_batch,
-    create_batch,
-    get_batch,
-    get_batch_outputs,
-    list_batch_runs,
-    list_batches,
+from stepflow_api.api.component import list_components as api_list_components
+from stepflow_api.api.flow import (
+    delete_flow as api_delete_flow,
+    get_flow as api_get_flow,
+    store_flow as api_store_flow,
 )
-from stepflow_api.api.component import list_components
-from stepflow_api.api.flow import delete_flow, get_flow, store_flow
-from stepflow_api.api.health import health_check
-from stepflow_api.api.run import cancel_run, create_run, get_run, get_run_steps, list_runs
+from stepflow_api.api.health import health_check as api_health_check
+from stepflow_api.api.run import (
+    cancel_run as api_cancel_run,
+    create_run as api_create_run,
+    delete_run as api_delete_run,
+    get_run as api_get_run,
+    get_run_flow as api_get_run_flow,
+    get_run_items as api_get_run_items,
+    get_run_steps as api_get_run_steps,
+    list_runs as api_list_runs,
+)
 from stepflow_api.models import (
-    BatchDetails,
-    BatchStatus,
-    CancelBatchResponse,
-    CreateBatchRequest,
-    CreateBatchResponse,
     CreateRunRequest,
     CreateRunResponse,
+    ExecutionStatus,
+    Flow,
+    FlowResponse,
     HealthResponse,
-    ListBatchesResponse,
-    ListBatchOutputsResponse,
-    ListBatchRunsResponse,
     ListComponentsResponse,
+    ListItemsResponse,
     ListRunsResponse,
     ListStepRunsResponse,
     RunDetails,
+    RunFlowResponse,
+    StoreFlowRequest,
     StoreFlowResponse,
     WorkflowOverrides,
 )
@@ -88,75 +90,41 @@ class StepflowClient:
         async with StepflowClient("http://localhost:7837") as client:
             # Store a flow (from file or dict)
             store_response = await client.store_flow("workflow.yaml")
-            flow_id = store_response.flowId
+            flow_id = store_response.flow_id
 
             # Create and execute a run
             run_response = await client.create_run(flow_id, {"x": 1})
             print(f"Run status: {run_response.status}")
 
             # Access low-level API if needed
-            from stepflow_api.api.flow import get_flow
-            response = await get_flow.asyncio_detailed(client=client.api, flow_id=flow_id)
+            from stepflow_api.api.run import get_run
+            response = get_run.sync_detailed(client=client.api, run_id=run_id)
         ```
     """
 
-    def __init__(
-        self,
-        url: str = "http://localhost:7837",
-        *,
-        timeout: float = 300.0,
-        headers: dict[str, str] | None = None,
-    ):
-        """Initialize the Stepflow client.
+    def __init__(self, base_url: str, timeout: float = 30.0):
+        """Initialize the client.
 
         Args:
-            url: Base URL of the Stepflow server (e.g., "http://localhost:7837")
-            timeout: Request timeout in seconds (default: 300s for long workflows)
-            headers: Optional additional headers to include in requests
+            base_url: Base URL of the Stepflow server (e.g., "http://localhost:7837")
+            timeout: Request timeout in seconds
         """
-        # Ensure URL ends with /api/v1
-        base_url = url.rstrip("/")
-        if not base_url.endswith("/api/v1"):
-            base_url = f"{base_url}/api/v1"
-
-        self._url = url.rstrip("/")
-        self._client = Client(
-            base_url=base_url,
-            timeout=httpx.Timeout(timeout),
-            headers=headers or {},
-        )
+        # Remove trailing slash for consistency
+        self._url = base_url.rstrip("/")
+        # The generated client uses paths like /health, /flows, /runs
+        # but the server uses /api/v1 prefix
+        api_base_url = f"{self._url}/api/v1"
+        self._client = Client(base_url=api_base_url, timeout=timeout)
 
     @property
     def url(self) -> str:
-        """Base URL of the Stepflow server."""
+        """Get the base URL of the Stepflow server."""
         return self._url
 
     @property
     def api(self) -> Client:
-        """Access the low-level generated API client.
-
-        Use this property when you need direct access to the generated API
-        methods or want to use features not exposed by the wrapper.
-
-        Example:
-            ```python
-            # Use wrapper methods for common operations
-            response = await client.store_flow("workflow.yaml")
-
-            # Use low-level API for advanced operations
-            from stepflow_api.api.flow import store_flow
-            detailed = await store_flow.asyncio_detailed(
-                client=client.api,
-                flow=my_flow_dict
-            )
-            print(f"Headers: {detailed.headers}")
-            ```
-        """
+        """Access the low-level generated API client."""
         return self._client
-
-    async def close(self) -> None:
-        """Close the HTTP client and release resources."""
-        await self._client.get_async_httpx_client().aclose()
 
     async def __aenter__(self) -> "StepflowClient":
         """Async context manager entry."""
@@ -164,193 +132,225 @@ class StepflowClient:
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
-        await self.close()
+        pass
 
-    def _load_flow(self, flow: str | Path | dict[str, Any]) -> dict[str, Any]:
-        """Load a flow from file path or return as-is if already a dict.
+    def __enter__(self) -> "StepflowClient":
+        """Sync context manager entry."""
+        return self
 
-        Args:
-            flow: Path to a YAML/JSON workflow file, or a dict
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Sync context manager exit."""
+        pass
+
+    # =========================================================================
+    # Health
+    # =========================================================================
+
+    async def health_check(self) -> HealthResponse:
+        """Check server health.
 
         Returns:
-            The flow as a dictionary
-
-        Raises:
-            FileNotFoundError: If the file doesn't exist
+            HealthResponse with server status
         """
-        if isinstance(flow, dict):
-            return flow
-        path = Path(flow)
-        if not path.exists():
-            raise FileNotFoundError(f"Workflow file not found: {path}")
-        with open(path) as f:
-            return yaml.safe_load(f)
+        response = await api_health_check.asyncio_detailed(client=self._client)
+        if response.status_code.value != 200:
+            raise StepflowClientError(
+                f"Health check failed: HTTP {response.status_code.value}",
+                status_code=response.status_code.value,
+            )
+        if response.parsed is None:
+            raise StepflowClientError("Failed to parse health response")
+        return response.parsed
 
     # =========================================================================
-    # Flow endpoints
+    # Flow Management
     # =========================================================================
 
-    async def store_flow(
-        self,
-        flow: str | Path | dict[str, Any],
-    ) -> StoreFlowResponse:
+    async def store_flow(self, flow: str | Path | dict) -> StoreFlowResponse:
         """Store a flow definition.
 
         Args:
-            flow: Path to a YAML/JSON workflow file, or flow dict
+            flow: Flow definition - can be:
+                - Path to a YAML/JSON file (str or Path)
+                - Dict containing the flow definition
 
         Returns:
-            StoreFlowResponse with flow_id and diagnostics
-
-        Raises:
-            StepflowClientError: If the request fails
+            StoreFlowResponse with flow_id
         """
-        flow_dict = self._load_flow(flow)
-        response = await store_flow.asyncio_detailed(client=self._client, flow=flow_dict)
+        # Load flow from file if needed
+        if isinstance(flow, (str, Path)):
+            path = Path(flow)
+            content = path.read_text()
+            if path.suffix in (".yaml", ".yml"):
+                flow_dict = yaml.safe_load(content)
+            else:
+                flow_dict = json.loads(content)
+        else:
+            flow_dict = flow
 
-        if response.status_code.value >= 400:
+        # Convert dict to Flow model
+        flow_model = Flow.from_dict(flow_dict)
+        request = StoreFlowRequest(flow=flow_model)
+        response = await api_store_flow.asyncio_detailed(client=self._client, body=request)
+
+        if response.status_code.value != 200:
             raise StepflowClientError(
                 f"Failed to store flow: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
-
         if response.parsed is None:
             raise StepflowClientError("Failed to parse store flow response")
-
         return response.parsed
 
-    async def get_flow(self, flow_id: str) -> dict[str, Any]:
+    async def get_flow(self, flow_id: str) -> FlowResponse:
         """Get a stored flow by ID.
 
         Args:
-            flow_id: The flow ID
+            flow_id: The flow hash
 
         Returns:
-            Flow response as a dictionary (raw API response)
+            FlowResponse with the flow definition
         """
-        response = await get_flow.asyncio_detailed(client=self._client, flow_id=flow_id)
+        response = await api_get_flow.asyncio_detailed(client=self._client, flow_id=flow_id)
 
-        if response.status_code.value >= 400:
+        if response.status_code.value != 200:
             raise StepflowClientError(
                 f"Failed to get flow: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
-
-        # Response is raw JSON since generator couldn't create proper model
-        return json.loads(response.content)
+        if response.parsed is None:
+            raise StepflowClientError("Failed to parse get flow response")
+        return response.parsed
 
     async def delete_flow(self, flow_id: str) -> None:
         """Delete a stored flow.
 
         Args:
-            flow_id: The flow ID to delete
+            flow_id: The flow hash
         """
-        response = await delete_flow.asyncio_detailed(client=self._client, flow_id=flow_id)
+        response = await api_delete_flow.asyncio_detailed(client=self._client, flow_id=flow_id)
 
-        if response.status_code.value >= 400:
+        if response.status_code.value not in (200, 204):
             raise StepflowClientError(
                 f"Failed to delete flow: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
 
     # =========================================================================
-    # Run endpoints
+    # Run Management
     # =========================================================================
 
     async def create_run(
         self,
         flow_id: str,
-        input: dict[str, Any],
+        input: Any,
         *,
-        debug: bool = False,
         overrides: WorkflowOverrides | None = None,
         variables: dict[str, Any] | None = None,
+        debug: bool = False,
+        max_concurrency: int | None = None,
     ) -> CreateRunResponse:
-        """Create and execute a run.
+        """Create and execute a flow run.
 
         Args:
-            flow_id: The flow ID to execute
-            input: Input data for the workflow
-            debug: Whether to run in debug mode
+            flow_id: The flow hash to execute
+            input: Input data for the flow. Can be a single value or a list for batch execution.
             overrides: Optional workflow overrides
-            variables: Optional workflow variables
+            variables: Optional variables for the workflow
+            debug: Whether to run in debug mode
+            max_concurrency: Max concurrency for batch runs
 
         Returns:
-            CreateRunResponse with run_id, status, and result
+            CreateRunResponse with run_id and status
         """
-        # Build request with only set values to avoid sending null fields
-        # which the server may reject
-        request_kwargs: dict[str, Any] = {
-            "flowId": flow_id,
-            "input": input,
-        }
-        if debug:  # Only include debug if True
-            request_kwargs["debug"] = debug
-        if overrides is not None:
-            request_kwargs["overrides"] = overrides
-        if variables is not None:
-            request_kwargs["variables"] = variables
-        request = CreateRunRequest(**request_kwargs)
-        response = await create_run.asyncio_detailed(client=self._client, body=request)
+        # Wrap input in a list if not already (API always expects array)
+        if not isinstance(input, list):
+            input = [input]
 
-        if response.status_code.value >= 400:
+        request = CreateRunRequest(
+            flow_id=flow_id,
+            input_=input,
+            overrides=overrides if overrides else UNSET,
+            variables=variables if variables else UNSET,
+            debug=debug,
+            max_concurrency=max_concurrency if max_concurrency else UNSET,
+        )
+
+        response = await api_create_run.asyncio_detailed(client=self._client, body=request)
+
+        if response.status_code.value != 200:
+            # Try to extract error details from response
+            try:
+                details = response.content.decode() if response.content else None
+            except Exception:
+                details = None
             raise StepflowClientError(
                 f"Failed to create run: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
+                details={"response": details} if details else None,
             )
-
         if response.parsed is None:
             raise StepflowClientError("Failed to parse create run response")
-
         return response.parsed
 
     async def get_run(self, run_id: str) -> RunDetails:
-        """Get details of a run.
+        """Get run details.
 
         Args:
             run_id: The run ID
 
         Returns:
-            RunDetails with status and result
+            RunDetails with run status and metadata
         """
-        response = await get_run.asyncio_detailed(client=self._client, run_id=run_id)
+        response = await api_get_run.asyncio_detailed(client=self._client, run_id=run_id)
 
-        if response.status_code.value >= 400:
+        if response.status_code.value != 200:
             raise StepflowClientError(
                 f"Failed to get run: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
-
         if response.parsed is None:
             raise StepflowClientError("Failed to parse get run response")
-
         return response.parsed
 
     async def cancel_run(self, run_id: str) -> RunDetails:
-        """Cancel a running workflow.
+        """Cancel a running execution.
 
         Args:
-            run_id: The run ID to cancel
+            run_id: The run ID
 
         Returns:
             RunDetails with updated status
         """
-        response = await cancel_run.asyncio_detailed(client=self._client, run_id=run_id)
+        response = await api_cancel_run.asyncio_detailed(client=self._client, run_id=run_id)
 
-        if response.status_code.value >= 400:
+        if response.status_code.value != 200:
             raise StepflowClientError(
                 f"Failed to cancel run: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
-
         if response.parsed is None:
             raise StepflowClientError("Failed to parse cancel run response")
-
         return response.parsed
+
+    async def delete_run(self, run_id: str) -> None:
+        """Delete a run.
+
+        Args:
+            run_id: The run ID
+        """
+        response = await api_delete_run.asyncio_detailed(client=self._client, run_id=run_id)
+
+        if response.status_code.value not in (200, 204):
+            raise StepflowClientError(
+                f"Failed to delete run: HTTP {response.status_code.value}",
+                status_code=response.status_code.value,
+            )
 
     async def list_runs(
         self,
         *,
+        status: ExecutionStatus | None = None,
         flow_id: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
@@ -358,273 +358,114 @@ class StepflowClient:
         """List runs with optional filtering.
 
         Args:
+            status: Filter by execution status
             flow_id: Filter by flow ID
             limit: Maximum number of results
-            offset: Number of results to skip
+            offset: Offset for pagination
 
         Returns:
-            ListRunsResponse with list of run summaries
+            ListRunsResponse with list of runs
         """
-        response = await list_runs.asyncio_detailed(
+        response = await api_list_runs.asyncio_detailed(
             client=self._client,
-            flow_id=flow_id,
-            limit=limit,
-            offset=offset,
+            status=status if status else UNSET,
+            flow_id=flow_id if flow_id else UNSET,
+            limit=limit if limit else UNSET,
+            offset=offset if offset else UNSET,
         )
 
-        if response.status_code.value >= 400:
+        if response.status_code.value != 200:
             raise StepflowClientError(
                 f"Failed to list runs: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
-
         if response.parsed is None:
             raise StepflowClientError("Failed to parse list runs response")
-
         return response.parsed
 
-    async def get_run_steps(self, run_id: str) -> ListStepRunsResponse:
-        """Get step-level details of a run.
+    async def get_run_items(self, run_id: str) -> ListItemsResponse:
+        """Get items for a run.
 
         Args:
             run_id: The run ID
 
         Returns:
-            ListStepRunsResponse with step details
+            ListItemsResponse with item results
         """
-        response = await get_run_steps.asyncio_detailed(client=self._client, run_id=run_id)
+        response = await api_get_run_items.asyncio_detailed(client=self._client, run_id=run_id)
 
-        if response.status_code.value >= 400:
+        if response.status_code.value != 200:
+            raise StepflowClientError(
+                f"Failed to get run items: HTTP {response.status_code.value}",
+                status_code=response.status_code.value,
+            )
+        if response.parsed is None:
+            raise StepflowClientError("Failed to parse run items response")
+        return response.parsed
+
+    async def get_run_steps(self, run_id: str) -> ListStepRunsResponse:
+        """Get step runs for a run.
+
+        Args:
+            run_id: The run ID
+
+        Returns:
+            ListStepRunsResponse with step execution details
+        """
+        response = await api_get_run_steps.asyncio_detailed(client=self._client, run_id=run_id)
+
+        if response.status_code.value != 200:
             raise StepflowClientError(
                 f"Failed to get run steps: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
-
         if response.parsed is None:
-            raise StepflowClientError("Failed to parse get run steps response")
+            raise StepflowClientError("Failed to parse run steps response")
+        return response.parsed
 
+    async def get_run_flow(self, run_id: str) -> RunFlowResponse:
+        """Get the flow used for a run.
+
+        Args:
+            run_id: The run ID
+
+        Returns:
+            RunFlowResponse with the flow definition
+        """
+        response = await api_get_run_flow.asyncio_detailed(client=self._client, run_id=run_id)
+
+        if response.status_code.value != 200:
+            raise StepflowClientError(
+                f"Failed to get run flow: HTTP {response.status_code.value}",
+                status_code=response.status_code.value,
+            )
+        if response.parsed is None:
+            raise StepflowClientError("Failed to parse run flow response")
         return response.parsed
 
     # =========================================================================
-    # Batch endpoints
+    # Components
     # =========================================================================
 
-    async def create_batch(
-        self,
-        flow_id: str,
-        inputs: list[dict[str, Any]],
-        *,
-        max_concurrency: int | None = None,
-        overrides: WorkflowOverrides | None = None,
-    ) -> CreateBatchResponse:
-        """Create a batch of runs.
-
-        Args:
-            flow_id: The flow ID to execute
-            inputs: List of input data for each run
-            max_concurrency: Maximum concurrent executions
-            overrides: Optional workflow overrides
-
-        Returns:
-            CreateBatchResponse with batch_id
-        """
-        # Build request with only set values to avoid sending null fields
-        request_kwargs: dict[str, Any] = {
-            "flowId": flow_id,
-            "inputs": inputs,
-        }
-        if max_concurrency is not None:
-            request_kwargs["maxConcurrency"] = max_concurrency
-        if overrides is not None:
-            request_kwargs["overrides"] = overrides
-        request = CreateBatchRequest(**request_kwargs)
-        response = await create_batch.asyncio_detailed(client=self._client, body=request)
-
-        if response.status_code.value >= 400:
-            raise StepflowClientError(
-                f"Failed to create batch: HTTP {response.status_code.value}",
-                status_code=response.status_code.value,
-            )
-
-        if response.parsed is None:
-            raise StepflowClientError("Failed to parse create batch response")
-
-        return response.parsed
-
-    async def get_batch(self, batch_id: str) -> BatchDetails:
-        """Get batch details.
-
-        Args:
-            batch_id: The batch ID
-
-        Returns:
-            BatchDetails with batch status and statistics
-        """
-        response = await get_batch.asyncio_detailed(client=self._client, batch_id=batch_id)
-
-        if response.status_code.value >= 400:
-            raise StepflowClientError(
-                f"Failed to get batch: HTTP {response.status_code.value}",
-                status_code=response.status_code.value,
-            )
-
-        if response.parsed is None:
-            raise StepflowClientError("Failed to parse get batch response")
-
-        return response.parsed
-
-    async def get_batch_outputs(self, batch_id: str) -> ListBatchOutputsResponse:
-        """Get outputs from a batch.
-
-        Args:
-            batch_id: The batch ID
-
-        Returns:
-            ListBatchOutputsResponse with individual run results
-        """
-        response = await get_batch_outputs.asyncio_detailed(client=self._client, batch_id=batch_id)
-
-        if response.status_code.value >= 400:
-            raise StepflowClientError(
-                f"Failed to get batch outputs: HTTP {response.status_code.value}",
-                status_code=response.status_code.value,
-            )
-
-        if response.parsed is None:
-            raise StepflowClientError("Failed to parse get batch outputs response")
-
-        return response.parsed
-
-    async def list_batch_runs(self, batch_id: str) -> ListBatchRunsResponse:
-        """List runs in a batch.
-
-        Args:
-            batch_id: The batch ID
-
-        Returns:
-            ListBatchRunsResponse with list of batch run info
-        """
-        response = await list_batch_runs.asyncio_detailed(client=self._client, batch_id=batch_id)
-
-        if response.status_code.value >= 400:
-            raise StepflowClientError(
-                f"Failed to list batch runs: HTTP {response.status_code.value}",
-                status_code=response.status_code.value,
-            )
-
-        if response.parsed is None:
-            raise StepflowClientError("Failed to parse list batch runs response")
-
-        return response.parsed
-
-    async def cancel_batch(self, batch_id: str) -> CancelBatchResponse:
-        """Cancel a batch.
-
-        Args:
-            batch_id: The batch ID to cancel
-
-        Returns:
-            CancelBatchResponse with updated status
-        """
-        response = await cancel_batch.asyncio_detailed(client=self._client, batch_id=batch_id)
-
-        if response.status_code.value >= 400:
-            raise StepflowClientError(
-                f"Failed to cancel batch: HTTP {response.status_code.value}",
-                status_code=response.status_code.value,
-            )
-
-        if response.parsed is None:
-            raise StepflowClientError("Failed to parse cancel batch response")
-
-        return response.parsed
-
-    async def list_batches(
-        self,
-        *,
-        flow_name: str | None = None,
-        status: BatchStatus | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> ListBatchesResponse:
-        """List batches with optional filtering.
-
-        Args:
-            flow_name: Filter by flow name
-            status: Filter by batch status
-            limit: Maximum number of results
-            offset: Number of results to skip
-
-        Returns:
-            ListBatchesResponse with list of batch metadata
-        """
-        response = await list_batches.asyncio_detailed(
-            client=self._client,
-            flow_name=flow_name,
-            status=status,
-            limit=limit,
-            offset=offset,
-        )
-
-        if response.status_code.value >= 400:
-            raise StepflowClientError(
-                f"Failed to list batches: HTTP {response.status_code.value}",
-                status_code=response.status_code.value,
-            )
-
-        if response.parsed is None:
-            raise StepflowClientError("Failed to parse list batches response")
-
-        return response.parsed
-
-    # =========================================================================
-    # Component endpoints
-    # =========================================================================
-
-    async def list_components(self, *, include_schemas: bool = True) -> ListComponentsResponse:
+    async def list_components(self, *, include_schemas: bool = False) -> ListComponentsResponse:
         """List available components.
 
         Args:
-            include_schemas: Whether to include input/output schemas
+            include_schemas: Whether to include input/output schemas in response
 
         Returns:
-            ListComponentsResponse with list of components
+            ListComponentsResponse with component list
         """
-        response = await list_components.asyncio_detailed(
+        response = await api_list_components.asyncio_detailed(
             client=self._client,
-            include_schemas=include_schemas,
+            include_schemas=include_schemas if include_schemas else UNSET,
         )
 
-        if response.status_code.value >= 400:
+        if response.status_code.value != 200:
             raise StepflowClientError(
                 f"Failed to list components: HTTP {response.status_code.value}",
                 status_code=response.status_code.value,
             )
-
         if response.parsed is None:
             raise StepflowClientError("Failed to parse list components response")
-
-        return response.parsed
-
-    # =========================================================================
-    # Health endpoints
-    # =========================================================================
-
-    async def health(self) -> HealthResponse:
-        """Check server health.
-
-        Returns:
-            HealthResponse with status, version, and timestamp
-        """
-        response = await health_check.asyncio_detailed(client=self._client)
-
-        if response.status_code.value >= 400:
-            raise StepflowClientError(
-                f"Health check failed: HTTP {response.status_code.value}",
-                status_code=response.status_code.value,
-            )
-
-        if response.parsed is None:
-            raise StepflowClientError("Failed to parse health response")
-
         return response.parsed

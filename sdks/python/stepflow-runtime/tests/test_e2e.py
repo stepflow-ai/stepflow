@@ -47,15 +47,15 @@ STORE_DATA_WORKFLOW = {
             "component": "/put_blob",
             "input": {
                 "data": {
-                    "stored_message": {"$from": {"workflow": "input"}, "path": "$.message"},
-                    "stored_value": {"$from": {"workflow": "input"}, "path": "$.value"},
+                    "stored_message": {"$input": "message"},
+                    "stored_value": {"$input": "value"},
                 },
                 "blob_type": "data",
             },
         },
     ],
     "output": {
-        "blob_id": {"$from": {"step": "store"}, "path": "$.blob_id"},
+        "blob_id": {"$step": "store", "path": "$.blob_id"},
     },
 }
 
@@ -188,11 +188,11 @@ class TestWorkflowExecution:
                     "id": "retrieve",
                     "component": "/get_blob",
                     "input": {
-                        "blob_id": {"$from": {"workflow": "input"}, "path": "$.blob_id"},
+                        "blob_id": {"$input": "blob_id"},
                     },
                 },
             ],
-            "output": {"$from": {"step": "retrieve"}, "path": "$.data"},
+            "output": {"$step": "retrieve", "path": "$.data"},
         }
 
         result = await runtime.run(workflow, {"blob_id": "nonexistent-id"})
@@ -232,7 +232,7 @@ class TestValidation:
                     "input": {"data": {}, "blob_type": "data"},
                 },
             ],
-            "output": {"$from": {"step": "store"}},
+            "output": {"$step": "store"},
         }
 
         validation = await runtime.validate(workflow_with_issues)
@@ -344,7 +344,7 @@ class TestSmokeTests:
                     "id": "store",
                     "component": "/put_blob",
                     "input": {
-                        "data": {"$from": {"workflow": "input"}, "path": "$.data"},
+                        "data": {"$input": "data"},
                         "blob_type": "data",
                     },
                 },
@@ -352,11 +352,11 @@ class TestSmokeTests:
                     "id": "retrieve",
                     "component": "/get_blob",
                     "input": {
-                        "blob_id": {"$from": {"step": "store"}, "path": "$.blob_id"},
+                        "blob_id": {"$step": "store", "path": "$.blob_id"},
                     },
                 },
             ],
-            "output": {"$from": {"step": "retrieve"}, "path": "$.data"},
+            "output": {"$step": "retrieve", "path": "$.data"},
         }
 
         input_data = {"key": "value", "numbers": [1, 2, 3]}
@@ -380,7 +380,7 @@ class TestSmokeTests:
                     "id": "store1",
                     "component": "/put_blob",
                     "input": {
-                        "data": {"$from": {"workflow": "input"}, "path": "$.items"},
+                        "data": {"$input": "items"},
                         "blob_type": "data",
                     },
                 },
@@ -389,15 +389,15 @@ class TestSmokeTests:
                     "component": "/put_blob",
                     "input": {
                         "data": {
-                            "first_blob": {"$from": {"step": "store1"}, "path": "$.blob_id"},
+                            "first_blob": {"$step": "store1", "path": "$.blob_id"},
                         },
                         "blob_type": "data",
                     },
                 },
             ],
             "output": {
-                "blob1": {"$from": {"step": "store1"}, "path": "$.blob_id"},
-                "blob2": {"$from": {"step": "store2"}, "path": "$.blob_id"},
+                "blob1": {"$step": "store1", "path": "$.blob_id"},
+                "blob2": {"$step": "store2", "path": "$.blob_id"},
             },
         }
 

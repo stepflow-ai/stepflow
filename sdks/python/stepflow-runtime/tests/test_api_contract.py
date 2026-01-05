@@ -56,12 +56,9 @@ class TestApiContract:
             # Runs
             ("/runs", "post"),  # create run
             ("/runs/{run_id}", "get"),  # get run result
+            ("/runs/{run_id}/items", "get"),  # get run items (for batch results)
             # Components
             ("/components", "get"),  # list components
-            # Batches
-            ("/batches", "post"),  # create batch
-            ("/batches/{batch_id}", "get"),  # get batch details
-            ("/batches/{batch_id}/outputs", "get"),  # get batch outputs
         }
 
         missing = []
@@ -107,28 +104,20 @@ class TestApiContract:
         assert "content" in request_body
         assert "application/json" in request_body["content"]
 
-    def test_batch_endpoints_schema(self, openapi_spec):
-        """Verify batch endpoints match client expectations."""
+    def test_items_endpoint_schema(self, openapi_spec):
+        """Verify items endpoint matches client expectations."""
         paths = openapi_spec["paths"]
 
-        # POST /batches - create batch
-        batches_post = paths["/batches"]["post"]
-        assert "requestBody" in batches_post
-
-        # GET /batches/{batch_id} - get details
-        batch_get = paths["/batches/{batch_id}"]["get"]
-        assert "200" in batch_get["responses"]
-
-        # GET /batches/{batch_id}/outputs - get results
-        outputs_get = paths["/batches/{batch_id}/outputs"]["get"]
-        assert "200" in outputs_get["responses"]
+        # GET /runs/{run_id}/items - get run items (replaces batch endpoints)
+        items_get = paths["/runs/{run_id}/items"]["get"]
+        assert "200" in items_get["responses"]
 
     def test_response_uses_camel_case(self, openapi_spec):
         """Verify API uses camelCase for JSON fields (client assumption)."""
         schemas = openapi_spec.get("components", {}).get("schemas", {})
 
         # Check a few key schemas for camelCase
-        camel_case_fields = ["flowId", "runId", "batchId", "flowName", "totalInputs"]
+        camel_case_fields = ["flowId", "runId", "flowName", "itemCount"]
 
         found_camel = []
         for schema_name, schema in schemas.items():

@@ -26,7 +26,6 @@ use super::FlowV1;
 /// Overrides are keyed by step ID and contain merge patches or other transformation
 /// specifications to modify step properties before execution.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(transparent)]
 pub struct WorkflowOverrides {
     /// Map of step ID to override specification
     pub steps: HashMap<String, StepOverride>,
@@ -169,23 +168,20 @@ impl OverrideProcessor for DefaultOverrideProcessor {
         // Need to clone the flow to apply modifications
         let mut cloned_flow = flow.slow_clone();
 
-        // Apply overrides to each step - need to handle the enum structure properly
-        match &mut cloned_flow {
-            Flow::V1(flow_v1) => {
-                for step in &mut flow_v1.steps {
-                    if let Some(step_override) = overrides.steps.get(&step.id) {
-                        log::debug!(
-                            "Applying override to step '{}' with type '{:?}'",
-                            step.id,
-                            step_override.override_type
-                        );
-                        self.apply_step_override(step, step_override)
-                            .change_context(OverrideError::InvalidOverrideValue {
-                                step_id: step.id.clone(),
-                                reason: "Failed to apply step override".to_string(),
-                            })?;
-                    }
-                }
+        // Apply overrides to each step
+        let flow_v1 = cloned_flow.latest_mut();
+        for step in &mut flow_v1.steps {
+            if let Some(step_override) = overrides.steps.get(&step.id) {
+                log::debug!(
+                    "Applying override to step '{}' with type '{:?}'",
+                    step.id,
+                    step_override.override_type
+                );
+                self.apply_step_override(step, step_override)
+                    .change_context(OverrideError::InvalidOverrideValue {
+                        step_id: step.id.clone(),
+                        reason: "Failed to apply step override".to_string(),
+                    })?;
             }
         }
 
@@ -286,6 +282,7 @@ mod tests {
 
     fn create_test_flow() -> Flow {
         Flow::V1(FlowV1 {
+            schema: super::super::FLOW_V1_SCHEMA_URL.to_string(),
             name: Some("test_flow".to_string()),
             description: None,
             version: None,

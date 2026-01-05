@@ -1,93 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Flow",
-  "oneOf": [
-    {
-      "type": "object",
-      "description": "# FlowV1",
-      "properties": {
-        "name": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "The name of the flow."
-        },
-        "description": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "The description of the flow."
-        },
-        "version": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "The version of the flow."
-        },
-        "schemas": {
-          "$ref": "#/$defs/FlowSchema",
-          "description": "Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`."
-        },
-        "steps": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Step"
-          },
-          "description": "The steps to execute for the flow."
-        },
-        "output": {
-          "$ref": "#/$defs/ValueExpr",
-          "description": "The outputs of the flow, mapping output names to their values."
-        },
-        "test": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/TestConfig",
-              "description": "Test configuration for the flow."
-            }
-          ]
-        },
-        "examples": {
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": {
-            "$ref": "#/$defs/ExampleInput"
-          },
-          "description": "Example inputs for the workflow that can be used for testing and UI dropdowns."
-        },
-        "metadata": {
-          "type": "object",
-          "description": "Extensible metadata for the flow that can be used by tools and frameworks.",
-          "additionalProperties": {},
-          "propertyNames": {
-            "type": "string"
-          }
-        },
-        "schema": {
-          "type": "string",
-          "const": "https://stepflow.org/schemas/v1/flow.json"
-        }
-      },
-      "title": "FlowV1",
-      "required": [
-        "schema"
-      ]
-    }
-  ],
-  "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.",
+  "$ref": "#/$defs/FlowV1",
+  "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.\nA Flow is a transparent wrapper around FlowV1.\n\nThis uses `#[serde(transparent)]` to serialize directly as FlowV1,\navoiding complex allOf/oneOf patterns in OpenAPI schemas that some\ncode generators (like openapi-python-client) cannot handle.",
   "$defs": {
     "FlowV1": {
       "type": "object",
       "description": "# FlowV1",
       "properties": {
+        "schema": {
+          "type": "string",
+          "description": "The schema URL that identifies this workflow format version.\nDefaults to the V1 schema URL."
+        },
         "name": {
           "type": [
             "string",
@@ -269,146 +193,8 @@
       }
     },
     "ValueExpr": {
-      "oneOf": [
-        {
-          "type": "object",
-          "title": "StepRef",
-          "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
-          "required": [
-            "$step"
-          ],
-          "properties": {
-            "$step": {
-              "type": "string"
-            },
-            "path": {
-              "type": "string",
-              "description": "JSONPath expression"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "title": "InputRef",
-          "description": "Workflow input reference: { $input: \"path\" }",
-          "required": [
-            "$input"
-          ],
-          "properties": {
-            "$input": {
-              "type": "string",
-              "description": "JSONPath expression"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "title": "VariableRef",
-          "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
-          "required": [
-            "$variable"
-          ],
-          "properties": {
-            "$variable": {
-              "type": "string",
-              "description": "JSONPath expression including variable name"
-            },
-            "default": {
-              "$ref": "#/$defs/ValueExpr"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "title": "LiteralExpr",
-          "description": "Escaped literal: { $literal: any }",
-          "required": [
-            "$literal"
-          ],
-          "properties": {
-            "$literal": {
-              "allOf": []
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "title": "If",
-          "description": "Conditional: { $if: condition, then: expr, else?: expr }",
-          "required": [
-            "$if",
-            "then"
-          ],
-          "properties": {
-            "$if": {
-              "$ref": "#/$defs/ValueExpr"
-            },
-            "then": {
-              "$ref": "#/$defs/ValueExpr"
-            },
-            "else": {
-              "$ref": "#/$defs/ValueExpr"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "title": "Coalesce",
-          "description": "Coalesce: { $coalesce: [expr1, expr2, ...] }",
-          "required": [
-            "$coalesce"
-          ],
-          "properties": {
-            "$coalesce": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/ValueExpr"
-              }
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "array",
-          "title": "ArrayExpr",
-          "items": {
-            "$ref": "#/$defs/ValueExpr"
-          },
-          "description": "Array of expressions"
-        },
-        {
-          "type": "object",
-          "title": "ObjectExpr",
-          "description": "Object with expression values",
-          "additionalProperties": {
-            "$ref": "#/$defs/ValueExpr"
-          }
-        },
-        {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "title": "PrimitiveValue",
-          "description": "Literal primitive value"
-        }
-      ],
-      "description": "A value expression that can contain literal data or references to other values"
+      "type": "object",
+      "description": "A value expression that can contain literal data or references to other values.\n\nValid forms:\n- Step reference: { \"$step\": \"step_id\", \"path\"?: \"...\" }\n- Input reference: { \"$input\": \"path\" }\n- Variable reference: { \"$variable\": \"path\", \"default\"?: ValueExpr }\n- Escaped literal: { \"$literal\": any }\n- Conditional: { \"$if\": ValueExpr, \"then\": ValueExpr, \"else\"?: ValueExpr }\n- Coalesce: { \"$coalesce\": [ValueExpr, ...] }\n- Array of expressions: [ValueExpr, ...]\n- Object with expression values: { key: ValueExpr, ... }\n- Primitive values: null, boolean, number, string"
     },
     "TestConfig": {
       "type": "object",
@@ -574,24 +360,15 @@
           "description": "Working directory for the server process."
         },
         "portRange": {
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": false,
-          "prefixItems": [
+          "oneOf": [
             {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
+              "type": "null"
             },
             {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
+              "$ref": "#/$defs/PortRange",
+              "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used."
             }
-          ],
-          "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used."
+          ]
         },
         "healthCheck": {
           "oneOf": [
@@ -653,6 +430,28 @@
               "description": "Expected output from the workflow for this test case."
             }
           ]
+        }
+      }
+    },
+    "PortRange": {
+      "type": "object",
+      "description": "Port range for automatic port allocation.",
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Minimum port number (inclusive).",
+          "minimum": 0
+        },
+        "max": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Maximum port number (inclusive).",
+          "minimum": 0
         }
       }
     },

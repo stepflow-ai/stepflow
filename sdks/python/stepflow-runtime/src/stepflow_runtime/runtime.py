@@ -39,9 +39,8 @@ from stepflow_core import (
 )
 from stepflow_api.models import (
     ExecutionStatus,
-    FlowResult1,
-    FlowResult2,
-    FlowResult3,
+    FlowResultFailed,
+    FlowResultSuccess,
 )
 from stepflow_api.types import UNSET, Unset
 from stepflow_client import StepflowClient
@@ -54,11 +53,11 @@ if TYPE_CHECKING:
 
 
 def _convert_api_result_to_flow_result(
-    result: FlowResult1 | FlowResult2 | FlowResult3 | dict[str, Any] | None,
+    result: FlowResultSuccess | FlowResultFailed | dict[str, Any] | None,
 ) -> FlowResult | None:
     """Convert API FlowResult types to stepflow FlowResult.
 
-    Handles both typed objects (FlowResult1/2/3) and raw dicts
+    Handles both typed objects (FlowResultSuccess/FlowResultFailed) and raw dicts
     with the {outcome, result/error} format.
     """
     if result is None:
@@ -108,22 +107,14 @@ def _convert_api_result_to_flow_result(
                 details = None
             return FlowResult.failed(code, message, details)
 
-    # Handle typed object format
-    if isinstance(result, FlowResult1):
-        # Success variant
-        output = result.Success if isinstance(result.Success, dict) else {"value": result.Success}
+    # Handle typed object format (new internally-tagged format)
+    if isinstance(result, FlowResultSuccess):
+        output = result.result if isinstance(result.result, dict) else {"value": result.result}
         return FlowResult.success(output)
-    elif isinstance(result, FlowResult2):
-        # Skipped variant
-        reason = None
-        if hasattr(result, "Skipped_1") and hasattr(result.Skipped_1, "reason"):
-            reason = result.Skipped_1.reason
-        return FlowResult.skipped(reason)
-    elif isinstance(result, FlowResult3):
-        # Failed variant
-        error = result.Failed
+    elif isinstance(result, FlowResultFailed):
+        error = result.error
         details = None
-        if hasattr(error, "data") and not isinstance(error.data, Unset):
+        if hasattr(error, "data") and error.data is not None:
             details = error.data if isinstance(error.data, dict) else {"data": error.data}
         return FlowResult.failed(error.code, error.message, details)
 
@@ -425,10 +416,8 @@ class StepflowRuntime:
         Args:
             timeout: Seconds to wait for graceful shutdown before force killing.
         """
-        # Close the async client properly
-        if self._client is not None:
-            await self._client.close()
-            self._client = None
+        # Clear the client reference
+        self._client = None
 
         # Run the rest synchronously (subprocess operations)
         await asyncio.get_event_loop().run_in_executor(None, lambda: self._stop_process(timeout))
@@ -503,7 +492,7 @@ class StepflowRuntime:
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flowId is None or isinstance(store_response.flowId, Unset):
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
             # Check diagnostics for errors
             from stepflow_api.models import DiagnosticLevel
 
@@ -523,15 +512,15 @@ class StepflowRuntime:
         # Create the run
         workflow_overrides = None
         if overrides:
-            from stepflow_api.models import StepOverride
+            from stepflow_api.models import StepOverride, WorkflowOverridesSteps
 
-            steps: dict[str, StepOverride] = {}
+            steps_obj = WorkflowOverridesSteps()
             for step_id, step_override_dict in overrides.items():
-                steps[step_id] = StepOverride.model_validate(step_override_dict)
-            workflow_overrides = WorkflowOverrides(steps=steps)
+                steps_obj[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps_obj)
 
         run_response = await self.client.create_run(
-            flow_id=store_response.flowId,
+            flow_id=store_response.flow_id,
             input=input,
             overrides=workflow_overrides,
         )
@@ -566,11 +555,12 @@ class StepflowRuntime:
             DiagnosticLevel,
             StepOverride,
             WorkflowOverrides,
+            WorkflowOverridesSteps,
         )
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flowId is None or isinstance(store_response.flowId, Unset):
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
             errors = [
                 d
                 for d in store_response.diagnostics.diagnostics
@@ -582,18 +572,18 @@ class StepflowRuntime:
         # Create the run
         workflow_overrides = None
         if overrides:
-            steps: dict[str, StepOverride] = {}
+            steps_obj = WorkflowOverridesSteps()
             for step_id, step_override_dict in overrides.items():
-                steps[step_id] = StepOverride.model_validate(step_override_dict)
-            workflow_overrides = WorkflowOverrides(steps=steps)
+                steps_obj[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps_obj)
 
         run_response = await self.client.create_run(
-            flow_id=store_response.flowId,
+            flow_id=store_response.flow_id,
             input=input,
             overrides=workflow_overrides,
         )
 
-        return str(run_response.runId)
+        return str(run_response.run_id)
 
     async def get_result(self, run_id: str) -> FlowResult:
         """Get the result of a workflow run.
@@ -605,6 +595,19 @@ class StepflowRuntime:
             FlowResult with execution outcome
         """
         run_details = await self.client.get_run(run_id)
+
+        # RunDetails doesn't include results - we need to fetch items
+        if run_details.status == ExecutionStatus.COMPLETED:
+            items_response = await self.client.get_run_items(run_id)
+            if items_response.items and len(items_response.items) > 0:
+                # For single-item runs, return the first item's result
+                first_item = items_response.items[0]
+                result = getattr(first_item, "result", UNSET)
+                if not isinstance(result, Unset) and result is not None:
+                    converted = _convert_api_result_to_flow_result(result)
+                    if converted is not None:
+                        return converted
+
         return _get_flow_result_from_response(run_details)
 
     async def validate(self, flow: str | Path) -> ValidationResult:
@@ -627,8 +630,18 @@ class StepflowRuntime:
                 if hasattr(item.level, "value")
                 else str(item.level).lower()
             )
-            # Path is a list of strings, join them
-            location = "/".join(item.path) if item.path else None
+            # Path is a list of PathPartType0 (String) or PathPartType1 (Index)
+            location = None
+            if item.path and not isinstance(item.path, Unset):
+                path_parts = []
+                for part in item.path:
+                    if hasattr(part, "string"):
+                        path_parts.append(part.string)
+                    elif hasattr(part, "index"):
+                        path_parts.append(str(part.index))
+                    else:
+                        path_parts.append(str(part))
+                location = "/".join(path_parts) if path_parts else None
             diagnostics.append(
                 Diagnostic(
                     level=level,
@@ -638,7 +651,7 @@ class StepflowRuntime:
             )
 
         # Valid if we got a flow_id
-        valid = store_response.flowId is not None and not isinstance(store_response.flowId, Unset)
+        valid = store_response.flow_id is not None and not isinstance(store_response.flow_id, Unset)
 
         return ValidationResult(valid=valid, diagnostics=diagnostics)
 
@@ -695,7 +708,7 @@ class StepflowRuntime:
         Returns:
             Dict with health information (status, version, timestamp)
         """
-        response = await self.client.health()
+        response = await self.client.health_check()
         return response.to_dict()
 
     async def submit_batch(
@@ -714,20 +727,21 @@ class StepflowRuntime:
             overrides: Optional workflow overrides
 
         Returns:
-            The batch_id for checking status later
+            The run_id for checking status later
 
         Raises:
-            StepflowRuntimeError: If flow storage or batch creation fails
+            StepflowRuntimeError: If flow storage or run creation fails
         """
         from stepflow_api.models import (
             DiagnosticLevel,
             StepOverride,
             WorkflowOverrides,
+            WorkflowOverridesSteps,
         )
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flowId is None or isinstance(store_response.flowId, Unset):
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
             errors = [
                 d
                 for d in store_response.diagnostics.diagnostics
@@ -736,45 +750,46 @@ class StepflowRuntime:
             msg = errors[0].text if errors else "Unknown error"
             raise StepflowRuntimeError(f"Failed to store flow: {msg}")
 
-        # Create the batch
+        # Create the run with multiple inputs (batch mode)
         workflow_overrides = None
         if overrides:
-            steps: dict[str, StepOverride] = {}
+            steps_obj = WorkflowOverridesSteps()
             for step_id, step_override_dict in overrides.items():
-                steps[step_id] = StepOverride.model_validate(step_override_dict)
-            workflow_overrides = WorkflowOverrides(steps=steps)
+                steps_obj[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps_obj)
 
-        batch_response = await self.client.create_batch(
-            flow_id=store_response.flowId,
-            inputs=inputs,
+        # Pass inputs as a list directly - create_run handles batch mode
+        run_response = await self.client.create_run(
+            flow_id=store_response.flow_id,
+            input=inputs,
             max_concurrency=max_concurrent,
             overrides=workflow_overrides,
         )
 
-        return str(batch_response.batchId)
+        return str(run_response.run_id)
 
     async def get_batch(
-        self, batch_id: str, include_results: bool = True
+        self, run_id: str, include_results: bool = True
     ) -> tuple[dict[str, Any], list[FlowResult] | None]:
         """Get batch execution status and results.
 
         Args:
-            batch_id: The batch ID
-            include_results: Whether to include individual run results
+            run_id: The run ID (returned from submit_batch)
+            include_results: Whether to include individual item results
 
         Returns:
-            Tuple of (batch_details dict, list of FlowResult or None)
+            Tuple of (run_details dict, list of FlowResult or None)
         """
-        # Get batch details
-        batch_details = await self.client.get_batch(batch_id)
-        details_dict = batch_details.to_dict()
+        # Get run details
+        run_details = await self.client.get_run(run_id)
+        details_dict = run_details.to_dict()
 
         results: list[FlowResult] | None = None
         if include_results:
-            outputs_response = await self.client.get_batch_outputs(batch_id)
+            items_response = await self.client.get_run_items(run_id)
             results = []
-            for output in outputs_response.outputs:
-                result = getattr(output, "result", None)
+            for item in items_response.items:
+                result = getattr(item, "result", None)
                 if result is not None:
                     converted = _convert_api_result_to_flow_result(result)
                     if converted:
