@@ -1,6 +1,6 @@
 # stepflow-client
 
-HTTP client for Stepflow servers.
+HTTP client for Stepflow servers, implementing the `StepflowExecutor` protocol.
 
 ## Installation
 
@@ -10,7 +10,15 @@ pip install stepflow-client
 
 ## Overview
 
-This package provides an async HTTP client for communicating with remote Stepflow servers. It wraps the generated `stepflow-api` client with quality-of-life improvements like automatic file loading and simplified method signatures.
+This package provides an async HTTP client that implements the `StepflowExecutor` protocol, enabling interoperability with `StepflowRuntime`. Use either backend interchangeably:
+
+```python
+from stepflow_core import StepflowExecutor
+
+async def run_workflow(executor: StepflowExecutor):
+    result = await executor.run("workflow.yaml", {"x": 1})
+    return result
+```
 
 ## Quick Start
 
@@ -18,21 +26,64 @@ This package provides an async HTTP client for communicating with remote Stepflo
 from stepflow_client import StepflowClient
 
 async with StepflowClient("http://localhost:7837") as client:
-    # Store a workflow
-    store_response = await client.store_flow("workflow.yaml")
+    # Run a workflow and get the result
+    result = await client.run("workflow.yaml", {"message": "hello"})
 
-    # Execute it
-    run_response = await client.create_run(
-        flow_id=store_response.flow_id,
-        input={"message": "hello"}
-    )
-
-    # Check the result
-    details = await client.get_run(str(run_response.run_id))
-    print(f"Status: {details.status}")
+    if result.is_success:
+        print(f"Output: {result.output}")
+    else:
+        print(f"Error: {result.error.message}")
 ```
 
-## API Reference
+## StepflowExecutor Protocol
+
+`StepflowClient` implements the `StepflowExecutor` protocol, providing these high-level methods:
+
+### run() - Execute and wait
+
+```python
+result = await client.run(
+    flow="workflow.yaml",       # Path to workflow file or dict
+    input={"x": 1, "y": 2},     # Input data
+    overrides={"step1": {...}}  # Optional step overrides
+)
+
+if result.is_success:
+    print(result.output)
+elif result.is_failed:
+    print(f"Error {result.error.code}: {result.error.message}")
+```
+
+### submit() - Execute without waiting
+
+```python
+# Submit and get a run ID immediately
+run_id = await client.submit("workflow.yaml", {"x": 1})
+
+# Check result later
+result = await client.get_result(run_id)
+```
+
+### validate() - Validate workflow
+
+```python
+validation = await client.validate("workflow.yaml")
+if not validation.valid:
+    for diag in validation.errors:
+        print(f"Error: {diag.message} at {diag.location}")
+```
+
+### list_components() - Discover components
+
+```python
+components = await client.list_components()
+for comp in components:
+    print(f"{comp.path}: {comp.description}")
+```
+
+## Low-Level API
+
+For fine-grained control, use the lower-level methods that map directly to API endpoints:
 
 ### Flow Management
 
@@ -81,8 +132,6 @@ runs = await client.list_runs(status=ExecutionStatus.COMPLETED, limit=10)
 
 ### Batch Execution
 
-The `input` parameter accepts a list for batch execution:
-
 ```python
 # Execute multiple inputs in one request
 run = await client.create_run(
@@ -93,21 +142,6 @@ run = await client.create_run(
 
 # Get all results
 items = await client.get_run_items(str(run.run_id))
-for item in items.items:
-    if item.result.is_success:
-        print(f"Input {item.index}: {item.result.output}")
-```
-
-### Component Discovery
-
-```python
-# List available components
-components = await client.list_components()
-for comp in components.components:
-    print(f"{comp.path}: {comp.description}")
-
-# Include input/output schemas
-components = await client.list_components(include_schemas=True)
 ```
 
 ### Health Check
@@ -117,7 +151,7 @@ health = await client.health_check()
 print(f"Server status: {health.status}")  # "healthy"
 ```
 
-## Low-Level API Access
+## Generated API Access
 
 For advanced use cases, access the generated API client directly:
 
@@ -147,10 +181,16 @@ except StepflowClientError as e:
 
 ## Response Types
 
-All methods return typed response objects from `stepflow-api`:
+All methods return typed response objects:
 
 ```python
 from stepflow_client import (
+    # StepflowExecutor protocol types
+    FlowResult,           # run(), get_result() response
+    ValidationResult,     # validate() response
+    ComponentInfo,        # list_components() item type
+
+    # API response types
     StoreFlowResponse,    # store_flow() response
     CreateRunResponse,    # create_run() response
     RunDetails,           # get_run() response

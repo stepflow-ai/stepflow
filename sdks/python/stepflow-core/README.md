@@ -129,9 +129,10 @@ class StepflowExecutor(Protocol):
 ```
 
 **Implementations:**
+- `StepflowClient` (from `stepflow-client`) - HTTP client for remote servers
 - `StepflowRuntime` (from `stepflow-runtime`) - Embedded server with subprocess management
 
-**Note:** `StepflowClient` does NOT implement this protocol. It provides lower-level API access (`store_flow`, `create_run`, `get_run`, etc.) and is used internally by `StepflowRuntime`.
+Both implementations are interchangeable, allowing code to work with either backend.
 
 ## License
 

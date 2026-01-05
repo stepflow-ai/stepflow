@@ -20,7 +20,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from stepflow_client import StepflowClient, StepflowClientError
+from stepflow_client import (
+    StepflowClient,
+    StepflowClientError,
+    StepflowExecutor,
+    FlowResult,
+    ValidationResult,
+    ComponentInfo,
+)
 
 SERVER_URL = "http://localhost:7837"
 
@@ -254,6 +261,107 @@ class TestStepflowClientContextManager:
         """Test sync context manager enters and exits cleanly."""
         with StepflowClient(SERVER_URL) as client:
             assert client.url == SERVER_URL
+
+
+class TestStepflowExecutorProtocol:
+    """Test that StepflowClient implements the StepflowExecutor protocol."""
+
+    def test_client_has_executor_methods(self):
+        """Test that StepflowClient has all StepflowExecutor methods."""
+        client = StepflowClient(SERVER_URL)
+        # url property
+        assert hasattr(client, "url")
+        # Protocol methods
+        assert hasattr(client, "run")
+        assert hasattr(client, "submit")
+        assert hasattr(client, "get_result")
+        assert hasattr(client, "validate")
+        assert hasattr(client, "list_components")
+
+    def test_client_satisfies_protocol(self):
+        """Test that StepflowClient is recognized as implementing StepflowExecutor."""
+        client = StepflowClient(SERVER_URL)
+        # Protocol is runtime_checkable, so isinstance should work
+        assert isinstance(client, StepflowExecutor)
+
+    async def test_run_returns_flow_result(self):
+        """Test that run() returns a FlowResult."""
+        client = StepflowClient(SERVER_URL)
+
+        # Mock store_flow
+        mock_store_response = MagicMock()
+        mock_store_response.flow_id = "flow123"
+        mock_store_response.diagnostics = MagicMock()
+        mock_store_response.diagnostics.diagnostics = []
+
+        # Mock create_run
+        mock_run_response = MagicMock()
+        mock_run_response.run_id = "run123"
+        mock_run_response.status = MagicMock()
+        mock_run_response.status.value = "completed"
+        # Set the result attribute
+        mock_run_response.result = {"outcome": "success", "result": {"value": 42}}
+
+        with patch.object(client, "store_flow", new_callable=AsyncMock, return_value=mock_store_response):
+            with patch.object(client, "create_run", new_callable=AsyncMock, return_value=mock_run_response):
+                result = await client.run({"name": "test"}, {"x": 1})
+                assert isinstance(result, FlowResult)
+                assert result.is_success
+                assert result.output == {"value": 42}
+
+    async def test_submit_returns_run_id(self):
+        """Test that submit() returns a run ID string."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_store_response = MagicMock()
+        mock_store_response.flow_id = "flow123"
+        mock_store_response.diagnostics = MagicMock()
+        mock_store_response.diagnostics.diagnostics = []
+
+        mock_run_response = MagicMock()
+        mock_run_response.run_id = "run-abc-123"
+
+        with patch.object(client, "store_flow", new_callable=AsyncMock, return_value=mock_store_response):
+            with patch.object(client, "create_run", new_callable=AsyncMock, return_value=mock_run_response):
+                run_id = await client.submit({"name": "test"}, {"x": 1})
+                assert isinstance(run_id, str)
+                assert run_id == "run-abc-123"
+
+    async def test_validate_returns_validation_result(self):
+        """Test that validate() returns a ValidationResult."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_store_response = MagicMock()
+        mock_store_response.flow_id = "flow123"
+        mock_store_response.diagnostics = MagicMock()
+        mock_store_response.diagnostics.diagnostics = []
+
+        with patch.object(client, "store_flow", new_callable=AsyncMock, return_value=mock_store_response):
+            result = await client.validate({"name": "test"})
+            assert isinstance(result, ValidationResult)
+            assert result.valid is True
+            assert result.diagnostics == []
+
+    async def test_list_components_returns_component_info_list(self):
+        """Test that list_components() returns list of ComponentInfo."""
+        client = StepflowClient(SERVER_URL)
+
+        mock_component = MagicMock()
+        mock_component.component = MagicMock()
+        mock_component.component.root = "/builtin/eval"
+        mock_component.description = "Evaluate expression"
+        mock_component.input_schema = None
+        mock_component.output_schema = None
+
+        mock_response = MagicMock()
+        mock_response.components = [mock_component]
+
+        with patch.object(client, "list_components_detailed", new_callable=AsyncMock, return_value=mock_response):
+            components = await client.list_components()
+            assert isinstance(components, list)
+            assert len(components) == 1
+            assert isinstance(components[0], ComponentInfo)
+            assert components[0].path == "/builtin/eval"
 
 
 class TestStepflowClientIntegration:

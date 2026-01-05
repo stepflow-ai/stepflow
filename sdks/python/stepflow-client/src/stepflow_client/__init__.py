@@ -12,25 +12,22 @@
 
 """HTTP client for Stepflow servers.
 
-This package provides an async HTTP client wrapper around the generated stepflow_api
-client with quality-of-life improvements while preserving exact API semantics.
+This package provides an async HTTP client that implements the StepflowExecutor
+protocol, enabling interoperability with StepflowRuntime.
 
 Example:
     ```python
     from stepflow_client import StepflowClient
 
     async with StepflowClient("http://localhost:7837") as client:
-        # Store a flow (from file or dict)
+        # High-level API (StepflowExecutor protocol)
+        result = await client.run("workflow.yaml", {"x": 1})
+        if result.is_success:
+            print(f"Output: {result.output}")
+
+        # Or use the lower-level API methods
         store_result = await client.store_flow("workflow.yaml")
-        flow_id = store_result.flowId
-
-        # Create and execute a run
-        run_result = await client.create_run(flow_id, {"x": 1})
-        print(f"Status: {run_result.status}")
-
-        # Access low-level API if needed
-        from stepflow_api.api.flow import get_flow
-        detailed = await get_flow.asyncio_detailed(client=client.api, flow_id=flow_id)
+        run_result = await client.create_run(store_result.flow_id, {"x": 1})
     ```
 
 For the low-level generated API client, use `stepflow_api` directly:
@@ -40,6 +37,17 @@ For the low-level generated API client, use `stepflow_api` directly:
     from stepflow_api.models import StoreFlowResponse
     ```
 """
+
+# Re-export types from stepflow_core (for StepflowExecutor protocol)
+from stepflow_core import (
+    ComponentInfo,
+    Diagnostic,
+    FlowError,
+    FlowResult,
+    FlowResultStatus,
+    StepflowExecutor,
+    ValidationResult,
+)
 
 # Re-export commonly used types from stepflow_api for convenience
 from stepflow_api.models import (
@@ -65,7 +73,15 @@ __all__ = [
     # Client
     "StepflowClient",
     "StepflowClientError",
-    # Response types
+    # StepflowExecutor protocol types
+    "StepflowExecutor",
+    "FlowResult",
+    "FlowResultStatus",
+    "FlowError",
+    "ValidationResult",
+    "Diagnostic",
+    "ComponentInfo",
+    # API response types
     "CreateRunResponse",
     "ExecutionStatus",
     "HealthResponse",

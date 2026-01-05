@@ -25,6 +25,12 @@ from typing import Any
 
 import yaml
 from stepflow_api import Client
+from stepflow_core import (
+    ComponentInfo,
+    Diagnostic,
+    FlowResult,
+    ValidationResult,
+)
 from stepflow_api.api.component import list_components as api_list_components
 from stepflow_api.api.flow import (
     delete_flow as api_delete_flow,
@@ -45,9 +51,12 @@ from stepflow_api.api.run import (
 from stepflow_api.models import (
     CreateRunRequest,
     CreateRunResponse,
+    DiagnosticLevel,
     ExecutionStatus,
     Flow,
     FlowResponse,
+    FlowResultFailed,
+    FlowResultSuccess,
     HealthResponse,
     ListComponentsResponse,
     ListItemsResponse,
@@ -55,11 +64,13 @@ from stepflow_api.models import (
     ListStepRunsResponse,
     RunDetails,
     RunFlowResponse,
+    StepOverride,
     StoreFlowRequest,
     StoreFlowResponse,
     WorkflowOverrides,
+    WorkflowOverridesSteps,
 )
-from stepflow_api.types import UNSET
+from stepflow_api.types import UNSET, Unset
 
 
 class StepflowClientError(Exception):
@@ -447,8 +458,10 @@ class StepflowClient:
     # Components
     # =========================================================================
 
-    async def list_components(self, *, include_schemas: bool = False) -> ListComponentsResponse:
-        """List available components.
+    async def list_components_detailed(
+        self, *, include_schemas: bool = False
+    ) -> ListComponentsResponse:
+        """List available components (returns full API response).
 
         Args:
             include_schemas: Whether to include input/output schemas in response
@@ -469,3 +482,315 @@ class StepflowClient:
         if response.parsed is None:
             raise StepflowClientError("Failed to parse list components response")
         return response.parsed
+
+    # =========================================================================
+    # StepflowExecutor Protocol Methods
+    # =========================================================================
+    # These methods implement the StepflowExecutor protocol for interoperability
+    # with StepflowRuntime.
+
+    async def run(
+        self,
+        flow: str | Path | dict[str, Any],
+        input: dict[str, Any],
+        overrides: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Run a workflow and wait for the result.
+
+        This is a convenience method that stores the flow, executes it,
+        and returns the result as a FlowResult.
+
+        Args:
+            flow: Path to workflow file, or workflow dict
+            input: Input data for the workflow
+            overrides: Optional step overrides
+
+        Returns:
+            FlowResult with success/failure status and output
+        """
+        # Store the flow
+        store_response = await self.store_flow(flow)
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+            errors = [
+                d
+                for d in store_response.diagnostics.diagnostics
+                if d.level == DiagnosticLevel.ERROR
+            ]
+            if errors:
+                return FlowResult.failed(
+                    400,
+                    f"Flow validation failed: {errors[0].text}",
+                    {"diagnostics": [d.to_dict() for d in errors]},
+                )
+            return FlowResult.failed(400, "Failed to store flow")
+
+        # Create the run
+        workflow_overrides = None
+        if overrides:
+            steps_obj = WorkflowOverridesSteps()
+            for step_id, step_override_dict in overrides.items():
+                steps_obj[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps_obj)
+
+        run_response = await self.create_run(
+            flow_id=store_response.flow_id,
+            input=input,
+            overrides=workflow_overrides,
+        )
+
+        return _get_flow_result_from_response(run_response)
+
+    async def submit(
+        self,
+        flow: str | Path | dict[str, Any],
+        input: dict[str, Any],
+        overrides: dict[str, Any] | None = None,
+    ) -> str:
+        """Submit a workflow for execution and return immediately.
+
+        Args:
+            flow: Path to workflow file, or workflow dict
+            input: Input data for the workflow
+            overrides: Optional step overrides
+
+        Returns:
+            Run ID for tracking the execution
+        """
+        # Store the flow
+        store_response = await self.store_flow(flow)
+        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+            errors = [
+                d
+                for d in store_response.diagnostics.diagnostics
+                if d.level == DiagnosticLevel.ERROR
+            ]
+            msg = errors[0].text if errors else "Unknown error"
+            raise StepflowClientError(f"Failed to store flow: {msg}")
+
+        # Create the run
+        workflow_overrides = None
+        if overrides:
+            steps_obj = WorkflowOverridesSteps()
+            for step_id, step_override_dict in overrides.items():
+                steps_obj[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps_obj)
+
+        run_response = await self.create_run(
+            flow_id=store_response.flow_id,
+            input=input,
+            overrides=workflow_overrides,
+        )
+
+        return str(run_response.run_id)
+
+    async def get_result(self, run_id: str) -> FlowResult:
+        """Get the result of a submitted workflow run.
+
+        Args:
+            run_id: The run ID returned from submit()
+
+        Returns:
+            FlowResult with the execution outcome
+        """
+        run_details = await self.get_run(run_id)
+
+        # For completed runs, fetch items to get the actual result
+        if run_details.status == ExecutionStatus.COMPLETED:
+            items_response = await self.get_run_items(run_id)
+            if items_response.items and len(items_response.items) > 0:
+                first_item = items_response.items[0]
+                result = getattr(first_item, "result", UNSET)
+                if not isinstance(result, Unset) and result is not None:
+                    converted = _convert_api_result_to_flow_result(result)
+                    if converted is not None:
+                        return converted
+
+        return _get_flow_result_from_response(run_details)
+
+    async def validate(
+        self,
+        flow: str | Path | dict[str, Any],
+    ) -> ValidationResult:
+        """Validate a workflow without executing it.
+
+        Args:
+            flow: Path to workflow file, or workflow dict
+
+        Returns:
+            ValidationResult with diagnostics
+        """
+        store_response = await self.store_flow(flow)
+
+        # Convert API diagnostics to stepflow Diagnostic type
+        diagnostics = []
+        for item in store_response.diagnostics.diagnostics:
+            level = (
+                str(item.level.value).lower()
+                if hasattr(item.level, "value")
+                else str(item.level).lower()
+            )
+            location = None
+            if item.path and not isinstance(item.path, Unset):
+                path_parts = []
+                for part in item.path:
+                    if hasattr(part, "string"):
+                        path_parts.append(part.string)
+                    elif hasattr(part, "index"):
+                        path_parts.append(str(part.index))
+                    else:
+                        path_parts.append(str(part))
+                location = "/".join(path_parts) if path_parts else None
+            diagnostics.append(
+                Diagnostic(
+                    level=level,
+                    message=item.text,
+                    location=location,
+                )
+            )
+
+        valid = store_response.flow_id is not None and not isinstance(
+            store_response.flow_id, Unset
+        )
+        return ValidationResult(valid=valid, diagnostics=diagnostics)
+
+    async def list_components(self) -> list[ComponentInfo]:
+        """List all available components.
+
+        Returns:
+            List of ComponentInfo with component details
+        """
+        response = await self.list_components_detailed(include_schemas=True)
+
+        components = []
+        for comp in response.components:
+            input_schema = None
+            output_schema = None
+            if hasattr(comp, "input_schema") and not isinstance(comp.input_schema, Unset):
+                input_schema = (
+                    comp.input_schema.to_dict()
+                    if hasattr(comp.input_schema, "to_dict")
+                    else comp.input_schema
+                )
+            if hasattr(comp, "output_schema") and not isinstance(comp.output_schema, Unset):
+                output_schema = (
+                    comp.output_schema.to_dict()
+                    if hasattr(comp.output_schema, "to_dict")
+                    else comp.output_schema
+                )
+
+            description = None
+            if hasattr(comp, "description") and not isinstance(comp.description, Unset):
+                description = comp.description
+
+            component_path = (
+                comp.component.root
+                if hasattr(comp.component, "root")
+                else str(comp.component)
+            )
+
+            components.append(
+                ComponentInfo(
+                    path=component_path,
+                    description=description,
+                    input_schema=input_schema,
+                    output_schema=output_schema,
+                )
+            )
+
+        return components
+
+
+# =============================================================================
+# Helper functions for result conversion
+# =============================================================================
+
+
+def _convert_api_result_to_flow_result(
+    result: FlowResultSuccess | FlowResultFailed | dict[str, Any] | None,
+) -> FlowResult | None:
+    """Convert API FlowResult types to stepflow FlowResult."""
+    if result is None:
+        return None
+
+    # Handle raw dict format
+    if isinstance(result, dict):
+        outcome = result.get("outcome", "").lower()
+        if outcome == "success":
+            output = result.get("result", {})
+            if not isinstance(output, dict):
+                output = {"value": output}
+            return FlowResult.success(output)
+        elif outcome == "skipped":
+            reason = result.get("reason")
+            return FlowResult.skipped(reason)
+        elif outcome in ("failure", "failed"):
+            error_data = result.get("error", {})
+            if isinstance(error_data, dict):
+                code = error_data.get("code", 500)
+                message = error_data.get("message", "Unknown error")
+                details = error_data.get("data")
+            else:
+                code = 500
+                message = str(error_data)
+                details = None
+            return FlowResult.failed(code, message, details)
+        # Handle typed dict format
+        elif "Success" in result:
+            output = result["Success"]
+            if not isinstance(output, dict):
+                output = {"value": output}
+            return FlowResult.success(output)
+        elif "Skipped" in result:
+            skipped = result["Skipped"]
+            reason = skipped.get("reason") if isinstance(skipped, dict) else None
+            return FlowResult.skipped(reason)
+        elif "Failed" in result:
+            failed = result["Failed"]
+            if isinstance(failed, dict):
+                code = failed.get("code", 500)
+                message = failed.get("message", "Unknown error")
+                details = failed.get("data")
+            else:
+                code = 500
+                message = str(failed)
+                details = None
+            return FlowResult.failed(code, message, details)
+
+    # Handle typed object format
+    if isinstance(result, FlowResultSuccess):
+        output = result.result if isinstance(result.result, dict) else {"value": result.result}
+        return FlowResult.success(output)
+    elif isinstance(result, FlowResultFailed):
+        error = result.error
+        details = None
+        if hasattr(error, "data") and error.data is not None:
+            details = error.data if isinstance(error.data, dict) else {"data": error.data}
+        return FlowResult.failed(error.code, error.message, details)
+
+    return None
+
+
+def _get_flow_result_from_response(
+    response: CreateRunResponse | RunDetails,
+) -> FlowResult:
+    """Extract FlowResult from a CreateRunResponse or RunDetails."""
+    result = getattr(response, "result", UNSET)
+    if isinstance(result, Unset) or result is None:
+        status = response.status
+        if status == ExecutionStatus.COMPLETED:
+            return FlowResult.success({})
+        elif status == ExecutionStatus.FAILED:
+            return FlowResult.failed(500, f"Execution failed with status: {status}")
+        elif status == ExecutionStatus.CANCELLED:
+            return FlowResult.failed(499, "Execution was cancelled")
+        elif status == ExecutionStatus.RUNNING:
+            return FlowResult.failed(202, "Execution still running")
+        elif status == ExecutionStatus.PAUSED:
+            return FlowResult.failed(202, "Execution is paused")
+        else:
+            return FlowResult.failed(500, f"Unknown status: {status}")
+
+    converted = _convert_api_result_to_flow_result(result)
+    if converted is None:
+        return FlowResult.failed(500, "Failed to parse result")
+    return converted
