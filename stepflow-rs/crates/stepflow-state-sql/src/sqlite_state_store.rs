@@ -23,8 +23,7 @@ use stepflow_core::{
 };
 use stepflow_state::{
     ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StateError,
-    StateStore, StateWriteOperation, StepInfo, StepResult, WorkflowLabelMetadata,
-    WorkflowWithMetadata,
+    StateStore, StateWriteOperation, StepInfo, StepResult,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -468,273 +467,6 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
-    fn get_flows(
-        &self,
-        name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(BlobId, chrono::DateTime<chrono::Utc>)>, StateError>>
-    {
-        let pool = self.pool.clone();
-        let name = name.to_string();
-
-        async move {
-            // Query both labeled flows and flows with matching names directly from blob data
-            let sql = r#"
-                SELECT DISTINCT b.id, b.created_at 
-                FROM blobs b 
-                LEFT JOIN flow_labels l ON l.flow_id = b.id 
-                WHERE b.blob_type = 'flow' 
-                AND (
-                    l.name = ? 
-                    OR json_extract(b.data, '$.name') = ?
-                )
-                ORDER BY b.created_at DESC
-            "#;
-
-            let rows = sqlx::query(sql)
-                .bind(&name)
-                .bind(&name)
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            let mut results = Vec::new();
-            for row in rows {
-                let flow_id =
-                    BlobId::new(row.get::<String, _>("id")).change_context(StateError::Internal)?;
-                let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                    .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-                results.push((flow_id, created_at));
-            }
-
-            Ok(results)
-        }
-        .boxed()
-    }
-
-    fn get_named_flow(
-        &self,
-        name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>> {
-        let pool = self.pool.clone();
-        let name = name.to_string();
-        let label = label.map(|s| s.to_string());
-
-        async move {
-            match label {
-                Some(label_str) => {
-                    // Get workflow by label
-                    let sql = r#"
-                        SELECT l.name, l.label, l.flow_id, l.created_at, l.updated_at, 
-                               b.data, b.created_at as flow_created_at
-                        FROM flow_labels l 
-                        JOIN blobs b ON l.flow_id = b.id 
-                        WHERE l.name = ? AND l.label = ? AND b.blob_type = 'flow'
-                    "#;
-
-                    let row = sqlx::query(sql)
-                        .bind(&name)
-                        .bind(&label_str)
-                        .fetch_optional(&pool)
-                        .await
-                        .change_context(StateError::Internal)?;
-
-                    match row {
-                        Some(row) => {
-                            let workflow_content: String = row.get("data");
-                            let workflow: Flow = serde_json::from_str(&workflow_content)
-                                .change_context(StateError::Internal)?;
-                            let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
-                                .change_context(StateError::Internal)?;
-                            let label_metadata = WorkflowLabelMetadata {
-                                name: row.get("name"),
-                                label: row.get("label"),
-                                flow_id: flow_id.clone(),
-                                created_at: parse_sqlite_datetime(
-                                    &row.get::<String, _>("created_at"),
-                                )
-                                .ok_or_else(|| error_stack::report!(StateError::Internal))?,
-                                updated_at: parse_sqlite_datetime(
-                                    &row.get::<String, _>("updated_at"),
-                                )
-                                .ok_or_else(|| error_stack::report!(StateError::Internal))?,
-                            };
-                            let created_at =
-                                parse_sqlite_datetime(&row.get::<String, _>("flow_created_at"))
-                                    .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-
-                            Ok(Some(WorkflowWithMetadata {
-                                workflow: Arc::new(workflow),
-                                flow_id,
-                                created_at,
-                                label_info: Some(label_metadata),
-                            }))
-                        }
-                        None => Ok(None),
-                    }
-                }
-                None => {
-                    // Get latest workflow by name
-                    let sql = r#"
-                        SELECT DISTINCT b.id, b.data, b.created_at
-                        FROM blobs b
-                        LEFT JOIN flow_labels l ON l.flow_id = b.id
-                        WHERE b.blob_type = 'flow'
-                        AND (
-                            l.name = ?
-                            OR json_extract(b.data, '$.name') = ?
-                        )
-                        ORDER BY b.created_at DESC
-                        LIMIT 1
-                    "#;
-
-                    let row = sqlx::query(sql)
-                        .bind(&name)
-                        .bind(&name)
-                        .fetch_optional(&pool)
-                        .await
-                        .change_context(StateError::Internal)?;
-
-                    match row {
-                        Some(row) => {
-                            let workflow_content: String = row.get("data");
-                            let workflow: Flow = serde_json::from_str(&workflow_content)
-                                .change_context(StateError::Internal)?;
-                            let flow_id = BlobId::new(row.get::<String, _>("id"))
-                                .change_context(StateError::Internal)?;
-                            let created_at =
-                                parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                                    .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-
-                            Ok(Some(WorkflowWithMetadata {
-                                workflow: Arc::new(workflow),
-                                flow_id,
-                                created_at,
-                                label_info: None,
-                            }))
-                        }
-                        None => Ok(None),
-                    }
-                }
-            }
-        }
-        .boxed()
-    }
-
-    fn create_or_update_label(
-        &self,
-        name: &str,
-        label: &str,
-        flow_id: BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-        let name = name.to_string();
-        let label = label.to_string();
-
-        async move {
-            let sql = "INSERT OR REPLACE INTO flow_labels (name, label, flow_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
-
-            sqlx::query(sql)
-                .bind(&name)
-                .bind(&label)
-                .bind(flow_id.to_string())
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(())
-        }.boxed()
-    }
-
-    fn list_labels_for_name(
-        &self,
-        name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>> {
-        let pool = self.pool.clone();
-        let name = name.to_string();
-
-        async move {
-            let sql = "SELECT name, label, flow_id, created_at, updated_at FROM flow_labels WHERE name = ? ORDER BY created_at DESC";
-
-            let rows = sqlx::query(sql)
-                .bind(&name)
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            let mut labels = Vec::new();
-            for row in rows {
-                let workflow_label = WorkflowLabelMetadata {
-                    name: row.get("name"),
-                    label: row.get("label"),
-                    flow_id: BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?,
-                    created_at: parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                        .ok_or_else(|| error_stack::report!(StateError::Internal))?,
-                    updated_at: parse_sqlite_datetime(&row.get::<String, _>("updated_at"))
-                        .ok_or_else(|| error_stack::report!(StateError::Internal))?,
-                };
-
-                labels.push(workflow_label);
-            }
-
-            Ok(labels)
-        }.boxed()
-    }
-
-    fn list_flow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            let sql = r#"
-                SELECT DISTINCT name FROM flow_labels 
-                UNION 
-                SELECT DISTINCT json_extract(data, '$.name') as name 
-                FROM blobs 
-                WHERE blob_type = 'flow' 
-                AND json_extract(data, '$.name') IS NOT NULL 
-                ORDER BY name
-            "#;
-
-            let rows = sqlx::query(sql)
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            let mut names = Vec::new();
-            for row in rows {
-                let name: String = row.get("name");
-                names.push(name);
-            }
-
-            Ok(names)
-        }
-        .boxed()
-    }
-
-    fn delete_label(
-        &self,
-        name: &str,
-        label: &str,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-        let name = name.to_string();
-        let label = label.to_string();
-
-        async move {
-            let sql = "DELETE FROM flow_labels WHERE name = ? AND label = ?";
-
-            sqlx::query(sql)
-                .bind(&name)
-                .bind(&label)
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(())
-        }
-        .boxed()
-    }
-
     fn create_run(
         &self,
         params: stepflow_state::CreateRunParams,
@@ -1099,7 +831,7 @@ impl StateStore for SqliteStateStore {
 
     // Step Status Management
 
-    fn initialize_step_info(
+    fn initialize_run_steps(
         &self,
         run_id: Uuid,
         steps: &[StepInfo],
@@ -1197,7 +929,7 @@ impl StateStore for SqliteStateStore {
             .map_err(|_| error_stack::report!(StateError::Internal))
     }
 
-    fn get_step_info_for_execution(
+    fn get_step_info_for_run(
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>> {
@@ -1245,52 +977,6 @@ impl StateStore for SqliteStateStore {
 
             Ok(step_infos)
         }.boxed()
-    }
-
-    fn get_runnable_steps(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            // Simply return steps with 'runnable' status - dependency checking is done by the caller
-            let sql = r#"
-                SELECT step_index, step_id, component, status, created_at, updated_at
-                FROM step_info
-                WHERE run_id = ? AND status = 'runnable'
-                ORDER BY step_index
-            "#;
-
-            let rows = sqlx::query(sql)
-                .bind(run_id.to_string())
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            let mut runnable_steps = Vec::new();
-            for row in rows {
-                let component_str: String = row.get("component");
-                let component = Component::from_string(&component_str);
-
-                let step_info = StepInfo {
-                    run_id,
-                    step_index: row.get::<i64, _>("step_index") as usize,
-                    step_id: row.get("step_id"),
-                    component,
-                    status: stepflow_core::status::StepStatus::Runnable, // These are now runnable
-                    created_at: parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                        .ok_or_else(|| error_stack::report!(StateError::Internal))?,
-                    updated_at: parse_sqlite_datetime(&row.get::<String, _>("updated_at"))
-                        .ok_or_else(|| error_stack::report!(StateError::Internal))?,
-                };
-
-                runnable_steps.push(step_info);
-            }
-
-            Ok(runnable_steps)
-        }
-        .boxed()
     }
 
     fn get_item_results(

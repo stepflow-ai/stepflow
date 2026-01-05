@@ -437,7 +437,7 @@ pub async fn get_run_steps(
 
     // Get step status from state store
     let step_statuses = {
-        let step_info_list = state_store.get_step_info_for_execution(run_id).await?;
+        let step_info_list = state_store.get_step_info_for_run(run_id).await?;
         let mut status_map = HashMap::new();
         for step_info in step_info_list {
             status_map.insert(step_info.step_index, step_info.status);
