@@ -62,11 +62,15 @@ cmd = "uv run python generate.py"
 
 [tool.poe.tasks.api-gen]
 help = "Regenerate API client from OpenAPI spec"
-cmd = "python scripts/generate_api_client.py"
+cmd = "python scripts/generate_api_client.py generate"
 
 [tool.poe.tasks.api-check]
 help = "Check if API client is up-to-date"
-cmd = "python scripts/generate_api_client.py --check"
+cmd = "python scripts/generate_api_client.py check"
+
+[tool.poe.tasks.api-update]
+help = "Update OpenAPI spec from server and regenerate"
+cmd = "python scripts/generate_api_client.py update-spec --generate"
 
 # =============================================================================
 # Shared tool configuration

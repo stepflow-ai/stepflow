@@ -17,10 +17,12 @@ Only the models/ directory is generated. Other files (client.py, types.py, error
 are static source files maintained in the repository.
 
 Usage:
-    python scripts/generate_api_client.py                    # Regenerate from stored spec
-    python scripts/generate_api_client.py --from-spec FILE   # Regenerate from spec file
-    python scripts/generate_api_client.py --check            # Check if models are up-to-date
-    python scripts/generate_api_client.py --update-spec      # Update stored spec from server
+    python scripts/generate_api_client.py                       # Regenerate from stored spec
+    python scripts/generate_api_client.py generate              # Same as above
+    python scripts/generate_api_client.py generate --from FILE  # Regenerate from specific file
+    python scripts/generate_api_client.py check                 # Check if models are up-to-date
+    python scripts/generate_api_client.py update-spec           # Update stored spec from server
+    python scripts/generate_api_client.py update-spec --generate  # Update spec AND regenerate
 """
 
 from __future__ import annotations
@@ -241,81 +243,167 @@ def find_custom_overrides(models_dir: Path) -> list[str]:
     return custom
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Generate stepflow-api models")
-    parser.add_argument("--check", action="store_true", help="Check if models are up-to-date")
-    parser.add_argument("--update-spec", action="store_true", help="Update stored spec from server")
-    parser.add_argument("--from-spec", type=Path, help="Generate from specific spec file")
-    args = parser.parse_args()
-
+def do_generate(spec_file: Path) -> None:
+    """Generate models from a spec file."""
     global _temp_dir
     _temp_dir = Path(tempfile.mkdtemp())
 
+    print(f">>> Using spec: {spec_file}")
+
+    # Find custom overrides before regenerating
+    custom_overrides = find_custom_overrides(MODELS_DIR)
+
+    # Generate to temp directory
+    temp_models = _temp_dir / "models"
+    generate_models(spec_file, temp_models)
+    create_model_stubs(temp_models)
+    generate_models_init(temp_models, custom_overrides)
+
+    # Copy custom overrides to temp
+    if custom_overrides:
+        print(f">>> Preserving {len(custom_overrides)} custom model overrides...")
+        for name in custom_overrides:
+            shutil.copy(MODELS_DIR / name, temp_models / name)
+
+    # Replace models directory
+    if MODELS_DIR.exists():
+        shutil.rmtree(MODELS_DIR)
+    shutil.copytree(temp_models, MODELS_DIR)
+
+    # Format
+    print(">>> Formatting...")
+    format_files(MODELS_DIR)
+
+    print(f">>> Updated: {MODELS_DIR}")
+
+
+def cmd_generate(args: argparse.Namespace) -> int:
+    """Handle 'generate' subcommand."""
+    if args.from_spec:
+        spec_file = args.from_spec
+        if not spec_file.exists():
+            print(f"ERROR: Spec file not found: {spec_file}")
+            return 1
+    elif STORED_SPEC.exists():
+        spec_file = STORED_SPEC
+    else:
+        print(f"ERROR: No stored spec at {STORED_SPEC}")
+        print("Run 'update-spec' first to fetch from server.")
+        return 1
+
+    do_generate(spec_file)
+    return 0
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    """Handle 'check' subcommand."""
+    global _temp_dir
+    _temp_dir = Path(tempfile.mkdtemp())
+
+    print(">>> Checking if models match stored spec...")
+
+    if not STORED_SPEC.exists():
+        print(f"ERROR: No stored spec at {STORED_SPEC}")
+        return 1
+
+    temp_models = _temp_dir / "models"
+    generate_models(STORED_SPEC, temp_models)
+    format_files(temp_models)
+
+    if not compare_models(temp_models / "generated.py", MODELS_DIR / "generated.py"):
+        print("ERROR: Models are out of date!")
+        print("\nTo fix: uv run poe api-gen")
+        return 1
+
+    print(">>> Models are up-to-date")
+    return 0
+
+
+def cmd_update_spec(args: argparse.Namespace) -> int:
+    """Handle 'update-spec' subcommand."""
+    print(">>> Updating stored OpenAPI spec from server...")
+    fetch_spec_from_server(STORED_SPEC)
+    print(f">>> Stored spec updated: {STORED_SPEC}")
+
+    if args.generate:
+        print()
+        do_generate(STORED_SPEC)
+
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate stepflow-api models from OpenAPI spec",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+subcommands:
+  generate      Regenerate models from stored spec (default)
+  check         Check if models are up-to-date with stored spec
+  update-spec   Fetch new spec from running stepflow-server
+
+examples:
+  %(prog)s                          # Regenerate from stored spec
+  %(prog)s generate --from FILE     # Regenerate from specific file
+  %(prog)s check                    # Verify models are current
+  %(prog)s update-spec              # Fetch new spec from server
+  %(prog)s update-spec --generate   # Fetch spec AND regenerate
+""",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", metavar="command")
+
+    # generate subcommand
+    gen_parser = subparsers.add_parser(
+        "generate",
+        help="Regenerate models from OpenAPI spec",
+        description="Regenerate models from the stored OpenAPI spec or a specific file.",
+    )
+    gen_parser.add_argument(
+        "--from", dest="from_spec", type=Path, metavar="FILE",
+        help="Generate from specific spec file instead of stored spec",
+    )
+
+    # check subcommand
+    subparsers.add_parser(
+        "check",
+        help="Check if models are up-to-date",
+        description="Verify generated models match the stored OpenAPI spec. Exits non-zero if out of date.",
+    )
+
+    # update-spec subcommand
+    update_parser = subparsers.add_parser(
+        "update-spec",
+        help="Update stored spec from server",
+        description="Build stepflow-server, run it, and fetch the OpenAPI spec.",
+    )
+    update_parser.add_argument(
+        "--generate", action="store_true",
+        help="Also regenerate models after updating spec",
+    )
+
+    args = parser.parse_args()
+
     print("=== stepflow-api model generation ===")
 
-    if args.update_spec:
-        print(">>> Updating stored OpenAPI spec...")
-        fetch_spec_from_server(STORED_SPEC)
-        print(f">>> Stored spec updated: {STORED_SPEC}")
-        print("\nNow regenerate models with: uv run poe api-gen")
+    # Default to 'generate' if no subcommand given
+    if args.command is None:
+        args.command = "generate"
+        args.from_spec = None
 
-    elif args.check:
-        print(">>> Checking if models match stored spec...")
-        if not STORED_SPEC.exists():
-            print(f"ERROR: No stored spec at {STORED_SPEC}")
-            sys.exit(1)
-
-        temp_models = _temp_dir / "models"
-        generate_models(STORED_SPEC, temp_models)
-        format_files(temp_models)
-
-        if not compare_models(temp_models / "generated.py", MODELS_DIR / "generated.py"):
-            print("ERROR: Models are out of date!")
-            print("\nTo fix: uv run poe api-gen")
-            sys.exit(1)
-
-        print(">>> Models are up-to-date")
-
+    if args.command == "generate":
+        result = cmd_generate(args)
+    elif args.command == "check":
+        result = cmd_check(args)
+    elif args.command == "update-spec":
+        result = cmd_update_spec(args)
     else:
-        # Determine spec source
-        if args.from_spec:
-            spec_file = args.from_spec
-        elif STORED_SPEC.exists():
-            spec_file = STORED_SPEC
-            print(f">>> Using stored spec: {STORED_SPEC}")
-        else:
-            print(">>> No stored spec found, fetching from server...")
-            spec_file = _temp_dir / "openapi.json"
-            fetch_spec_from_server(spec_file)
-
-        # Find custom overrides before regenerating
-        custom_overrides = find_custom_overrides(MODELS_DIR)
-
-        # Generate to temp directory
-        temp_models = _temp_dir / "models"
-        generate_models(spec_file, temp_models)
-        create_model_stubs(temp_models)
-        generate_models_init(temp_models, custom_overrides)
-
-        # Copy custom overrides to temp
-        if custom_overrides:
-            print(f">>> Preserving {len(custom_overrides)} custom model overrides...")
-            for name in custom_overrides:
-                shutil.copy(MODELS_DIR / name, temp_models / name)
-
-        # Replace models directory
-        if MODELS_DIR.exists():
-            shutil.rmtree(MODELS_DIR)
-        shutil.copytree(temp_models, MODELS_DIR)
-
-        # Format
-        print(">>> Formatting...")
-        format_files(MODELS_DIR)
-
-        print(f">>> Updated: {MODELS_DIR}")
+        parser.print_help()
+        result = 1
 
     print("=== Done ===")
+    return result
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

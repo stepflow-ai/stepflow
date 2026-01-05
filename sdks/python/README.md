@@ -111,6 +111,7 @@ uv run poe typecheck  # Run type checking
 uv run poe codegen    # Regenerate protocol types
 uv run poe api-gen    # Regenerate API client from OpenAPI
 uv run poe api-check  # Check if API client is up-to-date
+uv run poe api-update # Update OpenAPI spec from server and regenerate
 ```
 
 ## Code Generation
@@ -146,8 +147,8 @@ API client models are generated from the OpenAPI specification:
 # Regenerate from stored spec
 uv run poe api-gen
 
-# Update spec from running server (builds and runs Rust server temporarily)
-uv run poe api-gen --update-spec
+# Update spec from server AND regenerate (builds and runs Rust server temporarily)
+uv run poe api-update
 
 # Check if models are up-to-date (CI)
 uv run poe api-check

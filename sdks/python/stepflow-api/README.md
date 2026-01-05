@@ -79,13 +79,10 @@ Custom model overrides (files that don't start with `"""Re-export`) are automati
 When the Rust API changes:
 
 ```bash
-# 1. Update the stored OpenAPI spec (requires building Rust server)
-uv run poe api-gen --update-spec
+# Update spec from server AND regenerate (single command)
+uv run poe api-update
 
-# 2. Regenerate Python models
-uv run poe api-gen
-
-# 3. Run tests to verify
+# Then run tests to verify
 uv run poe test
 ```
 
@@ -99,6 +96,16 @@ To check if models are up-to-date (used in CI):
 
 ```bash
 uv run poe api-check
+```
+
+For more control, use the script directly:
+
+```bash
+python scripts/generate_api_client.py generate              # Regenerate from stored spec
+python scripts/generate_api_client.py generate --from FILE  # Regenerate from specific file
+python scripts/generate_api_client.py check                 # Check if up-to-date
+python scripts/generate_api_client.py update-spec           # Only update spec (no regenerate)
+python scripts/generate_api_client.py update-spec --generate  # Update AND regenerate
 ```
 
 ### Generation Tools
