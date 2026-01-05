@@ -115,7 +115,18 @@ uv run poe api-check  # Check if API client is up-to-date
 
 ## Code Generation
 
-This workspace uses code generation for two purposes:
+This workspace uses code generation for two purposes. Both depend on JSON schema files in `../../schemas/` which are generated from the Rust codebase.
+
+### Schema Sources
+
+The JSON schemas are **not hand-written** - they're generated from Rust types:
+
+| Schema | Generated From | How to Update |
+|--------|----------------|---------------|
+| `flow.json`, `protocol.json` | Rust types in `stepflow-protocol` | `STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-protocol` |
+| `openapi.json` | Running stepflow-server | `uv run poe api-gen --update-spec` |
+
+See [stepflow-rs/CLAUDE.md](../../stepflow-rs/CLAUDE.md#schema-generation) for details on Rust schema generation.
 
 ### Protocol Types (`stepflow-server`)
 
@@ -125,17 +136,17 @@ Protocol types (JSON-RPC messages, flow definitions) are generated from JSON sch
 uv run poe codegen
 ```
 
-Source: `../../schemas/*.json` → Target: `stepflow-server/src/stepflow_server/generated_*.py`
+Source: `../../schemas/flow.json`, `../../schemas/protocol.json` → Target: `stepflow-server/src/stepflow_server/generated_*.py`
 
 ### API Client (`stepflow-api`)
 
-API client models are generated from the Stepflow server's OpenAPI specification:
+API client models are generated from the OpenAPI specification:
 
 ```bash
 # Regenerate from stored spec
 uv run poe api-gen
 
-# Update spec from running server (requires Rust build)
+# Update spec from running server (builds and runs Rust server temporarily)
 uv run poe api-gen --update-spec
 
 # Check if models are up-to-date (CI)
