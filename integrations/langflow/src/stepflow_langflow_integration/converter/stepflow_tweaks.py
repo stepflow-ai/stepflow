@@ -31,7 +31,7 @@ tests/helpers/tweaks_builder.py to keep this production code lean.
 import copy
 from typing import Any
 
-from stepflow_py import Flow
+from stepflow_server import Flow
 
 
 class StepflowTweaks:

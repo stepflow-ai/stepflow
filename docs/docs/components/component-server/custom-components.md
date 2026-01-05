@@ -36,7 +36,7 @@ Create a simple component server:
 
 ```python
 # my_server.py
-from stepflow_py import StepflowServer
+from stepflow_server import StepflowServer
 import msgspec
 
 # Define input and output types

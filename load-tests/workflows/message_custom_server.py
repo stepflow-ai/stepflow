@@ -19,7 +19,7 @@ Used for load testing Stepflow with Python custom components (no OpenAI)
 """
 
 import msgspec
-from stepflow_py import StepflowStdioServer
+from stepflow_server import StepflowStdioServer
 
 
 class MessageInput(msgspec.Struct):

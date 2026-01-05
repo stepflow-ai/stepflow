@@ -80,7 +80,7 @@ This repository contains multiple components:
 
 - **`stepflow-rs/`** - Main Rust-based execution engine and runtime
 - **`stepflow-ui/`** - Web-based frontend for workflow management
-- **`sdks/python/`** (`stepflow-py`) - Python SDK for building components
+- **`sdks/python/`** - Python SDK packages (stepflow-server, stepflow-client, stepflow-runtime)
 - **`sdks/typescript/`** (`stepflow-ts`) - TypeScript SDK for building components
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -181,7 +181,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../sdks/python/stepflow-server", "run", "stepflow_server"]
 
 routes:
   "/python/{*component}":

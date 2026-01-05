@@ -74,7 +74,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../sdks/python/stepflow-server", "run", "stepflow_server"]
     env:  # Optional, supports ${VAR:-default} substitution
       PYTHONPATH: "${HOME}/custom/path"
       USER_CONFIG: "${USER:-anonymous}"
@@ -253,7 +253,7 @@ The protocol supports bidirectional communication allowing components to make ca
 ### Python SDK Example
 
 ```python
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_server import StepflowStdioServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):

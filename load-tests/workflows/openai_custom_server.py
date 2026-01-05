@@ -21,7 +21,7 @@ Used for load testing Stepflow with Python custom components
 import os
 import msgspec
 import openai
-from stepflow_py import StepflowStdioServer
+from stepflow_server import StepflowStdioServer
 
 
 class OpenAIChatInput(msgspec.Struct):

@@ -273,7 +273,7 @@ stepflow run --flow=workflow.yaml --input=input.json --overrides=overrides.yaml
 Use overrides when executing workflows programmatically via the Python SDK:
 
 ```python
-from stepflow_py import StepflowContext, Flow
+from stepflow_server import StepflowContext, Flow
 import asyncio
 
 async def execute_with_overrides():

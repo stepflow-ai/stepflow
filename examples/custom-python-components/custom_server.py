@@ -24,7 +24,7 @@ This demonstrates:
 4. Handling both sync and async components
 """
 
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_server import StepflowStdioServer, StepflowContext
 import msgspec
 from typing import List, Optional
 import asyncio

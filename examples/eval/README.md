@@ -134,7 +134,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../../sdks/python/stepflow-server", "run", "stepflow_server"]
 
 routes:
   "/python/{*component}":

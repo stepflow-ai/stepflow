@@ -93,7 +93,7 @@ output:
 ### 3. Create `hello_formatter.py` (Python Component)
 
 ```python
-from stepflow_py import StepflowStdioServer
+from stepflow_server import StepflowStdioServer
 import msgspec
 
 class Input(msgspec.Struct):

@@ -20,7 +20,7 @@ Clean architecture without CachedStepflowContext.
 import logging
 from typing import Any
 
-from stepflow_py import StepflowContext, StepflowServer
+from stepflow_server import StepflowContext, StepflowServer
 
 from .udf_executor import UDFExecutor
 

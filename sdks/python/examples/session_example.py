@@ -23,7 +23,7 @@ import logging
 
 import msgspec
 
-from stepflow_py import StepflowContext, StepflowServer
+from stepflow_server import StepflowContext, StepflowServer
 
 # Create server instance
 server = StepflowServer()

@@ -24,7 +24,7 @@ This demonstrates three practical approaches to using LangChain with Stepflow:
 Run with: python examples/langchain/langchain_server.py
 """
 
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_server import StepflowStdioServer, StepflowContext
 import msgspec
 
 # Only run examples if LangChain is available
@@ -137,7 +137,7 @@ if LANGCHAIN_AVAILABLE:
         """Directly invoke a runnable from Python import path with caching."""
 
         # Use the SDK function for the core functionality
-        from stepflow_py.langchain_integration import invoke_named_runnable
+        from stepflow_server.langchain_integration import invoke_named_runnable
 
         result = await invoke_named_runnable(
             import_path=input.import_path,

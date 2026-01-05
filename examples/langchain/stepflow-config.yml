@@ -5,14 +5,14 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../../sdks/python/stepflow-server", "run", "stepflow_server"]
   langchain:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../../sdks/python", "run", "python", "langchain_server.py"]
+    args: ["--project", "../../sdks/python/stepflow-server", "run", "python", "langchain_server.py"]
     env:
-      PYTHONPATH: "${PYTHONPATH:-}:../../sdks/python/src"
+      PYTHONPATH: "${PYTHONPATH:-}:../../sdks/python/stepflow-server/src"
 
 routes:
   # Route builtin components directly to builtin plugin

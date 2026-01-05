@@ -41,7 +41,7 @@ def batch_config():
                     "--project",
                     str(python_sdk_path),
                     "run",
-                    "stepflow_py",
+                    "stepflow_server",
                 ],
             },
         },

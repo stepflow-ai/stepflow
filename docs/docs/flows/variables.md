@@ -623,7 +623,7 @@ Use environment variables or secret management systems for sensitive values.
 ## Programmatic Usage (Python SDK)
 
 ```python
-from stepflow_py import StepflowContext, Flow
+from stepflow_server import StepflowContext, Flow
 import asyncio
 
 async def execute_with_variables():

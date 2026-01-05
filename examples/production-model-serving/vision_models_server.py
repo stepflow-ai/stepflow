@@ -30,11 +30,11 @@ import sys
 import os
 
 try:
-    from stepflow_py import StepflowStdioServer, StepflowContext
-    from stepflow_py.server import StepflowServer
+    from stepflow_server import StepflowStdioServer, StepflowContext
+    from stepflow_server.server import StepflowServer
 
     try:
-        from stepflow_py.http_server import StepflowHttpServer
+        from stepflow_server.http_server import StepflowHttpServer
     except ImportError:
         StepflowHttpServer = None
     import msgspec

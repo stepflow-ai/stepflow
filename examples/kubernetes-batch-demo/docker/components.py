@@ -20,7 +20,7 @@ Provides basic mathematical and test components for demonstrating
 distributed component execution in Kubernetes.
 """
 
-from stepflow_py import StepflowServer, StepflowContext
+from stepflow_server import StepflowServer, StepflowContext
 import msgspec
 import logging
 import time
@@ -173,7 +173,7 @@ if __name__ == "__main__":
         logger.info(f"Instance ID: {INSTANCE_ID}")
 
         # Import and start HTTP server with instance ID
-        from stepflow_py.http_server import StepflowHttpServer
+        from stepflow_server.http_server import StepflowHttpServer
         import asyncio
 
         http_server = StepflowHttpServer(

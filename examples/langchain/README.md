@@ -122,7 +122,7 @@ def process_text(data):
 text_processor = RunnableLambda(process_text)
 
 # Use the SDK-provided invoke_named component with caching
-from stepflow_py import create_invoke_named_component
+from stepflow_server import create_invoke_named_component
 create_invoke_named_component(server)
 ```
 
@@ -152,7 +152,7 @@ create_invoke_named_component(server)
 
 **SDK Functions:**
 ```python
-from stepflow_py import (
+from stepflow_server import (
     create_invoke_named_component,  # Add /invoke_named to your server
     invoke_named_runnable,          # Core async function for direct use
     get_runnable_from_import_path,  # Import runnables with caching

@@ -105,7 +105,7 @@ Sample output structure:
 The `custom_server.py` file demonstrates the Python SDK library usage:
 
 ```python
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_server import StepflowStdioServer, StepflowContext
 
 # Create server instance
 server = StepflowStdioServer()

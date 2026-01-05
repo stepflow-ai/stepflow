@@ -247,7 +247,7 @@ stepflow run \
 Use Python SDK components for programmatic batch execution:
 
 ```python
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_server import StepflowStdioServer, StepflowContext
 import msgspec
 
 class Input(msgspec.Struct):

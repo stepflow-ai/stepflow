@@ -67,7 +67,7 @@ Custom components can also define secret fields in their input schemas:
 
 ```python
 # Python component with secret input
-from stepflow_py import StepflowStdioServer
+from stepflow_server import StepflowStdioServer
 import msgspec
 
 class DatabaseConfig(msgspec.Struct):

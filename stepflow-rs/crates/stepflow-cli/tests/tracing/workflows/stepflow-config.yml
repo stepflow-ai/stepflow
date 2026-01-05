@@ -8,7 +8,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["run", "--project", "../../../../../../sdks/python", "stepflow_py"]
+    args: ["run", "--project", "../../../../../../sdks/python/stepflow-server", "stepflow_server"]
     env:
       STEPFLOW_TRACE_ENABLED: "${STEPFLOW_TRACE_ENABLED:-false}"
       STEPFLOW_OTLP_ENDPOINT: "${STEPFLOW_OTLP_ENDPOINT}"

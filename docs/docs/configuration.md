@@ -25,7 +25,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../sdks/python/stepflow-server", "run", "stepflow_server"]
     env:
       LOG_LEVEL: "${LOG_LEVEL:-info}"
 
@@ -108,7 +108,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_py"]
+    args: ["--project", "${PROJECT_DIR:-../sdks/python/stepflow-server}", "run", "stepflow_server"]
     env:
       PYTHONPATH: "${HOME}/custom/path"
       DEBUG: "true"
@@ -263,7 +263,7 @@ plugins:
     type: stepflow
     transport: stdio
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../../sdks/python/stepflow-server", "run", "stepflow_server"]
     env:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
 
