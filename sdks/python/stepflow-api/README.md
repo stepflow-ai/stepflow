@@ -114,18 +114,40 @@ The generation script (`scripts/generate_api_client.py`) uses:
 - **datamodel-code-generator**: Generates Pydantic v2 models from OpenAPI
 - **ruff**: Formats generated code
 
-### Custom Model Overrides
+### Custom Model Overrides (Known Issue)
 
-Some API responses don't match the generated types exactly (e.g., flexible union types, RootModel unwrapping). Custom overrides in `models/` handle these cases:
+Several models require custom overrides due to mismatches between the Rust server's serde representation and what the OpenAPI schema generator produces. These are preserved during regeneration.
 
-- `create_run_request.py` - Flexible overrides format
-- `create_run_response.py` - Flexible result format
-- `run_details.py` - Flexible result format
-- `batch_output_info.py` - Flexible result format
-- `list_batch_outputs_response.py` - Custom list type
-- `workflow_overrides.py` - Custom serialization
+#### Current Overrides
 
-These files are preserved during regeneration.
+| File | Issue | Root Cause |
+|------|-------|------------|
+| `create_run_response.py` | FlowResult format | Serde tagging mismatch |
+| `run_details.py` | FlowResult format | Serde tagging mismatch |
+| `batch_output_info.py` | FlowResult format | Serde tagging mismatch |
+| `list_batch_outputs_response.py` | Uses custom BatchOutputInfo | Depends on above |
+| `create_run_request.py` | RootModel unwrapping | Pydantic RootModel behavior |
+| `workflow_overrides.py` | Transparent serialization | `#[serde(transparent)]` |
+
+#### Why These Exist
+
+1. **FlowResult tagging mismatch** (4 files): The Rust server uses internally-tagged enums (`{"outcome": "success", "result": ...}`) via `#[serde(tag = "outcome")]`, but the OpenAPI generator produces externally-tagged unions (`{"Success": ...}`).
+
+2. **RootModel handling** (1 file): `BlobId` and `ValueRef` are generated as Pydantic `RootModel` types, requiring special `.root` access for serialization.
+
+3. **Transparent serialization** (1 file): Rust's `#[serde(transparent)]` on `WorkflowOverrides` means the server expects `{step_id: ...}` directly, not `{"steps": {step_id: ...}}`.
+
+#### Path to Resolution
+
+These overrides can be eliminated by fixing the source:
+
+1. **FlowResult**: Change Rust to use externally-tagged enums, or fix the OpenAPI schema generator to represent internally-tagged enums correctly.
+
+2. **WorkflowOverrides**: Remove `#[serde(transparent)]` from the Rust type definition.
+
+3. **RootModel**: Configure datamodel-code-generator differently, or post-process generated code.
+
+Until these are fixed upstream, the overrides are necessary and are automatically preserved during regeneration.
 
 ## License
 
