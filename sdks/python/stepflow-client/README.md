@@ -72,7 +72,7 @@ for comp in components:
 ## Interchangeable with StepflowRuntime
 
 ```python
-from stepflow import StepflowExecutor
+from stepflow_core import StepflowExecutor
 
 def get_executor(local: bool = True) -> StepflowExecutor:
     if local:

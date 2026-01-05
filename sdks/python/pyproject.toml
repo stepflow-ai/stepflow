@@ -1,35 +1,15 @@
 # Stepflow Python SDK Workspace
 #
-# This is the workspace root for all Stepflow Python packages.
-# Individual packages are in subdirectories:
-#   - stepflow/          - Shared types and interfaces
+# Individual packages:
+#   - stepflow-core/     - Core types and interfaces
 #   - stepflow-api/      - Generated API client models
 #   - stepflow-client/   - HTTP client for remote servers
 #   - stepflow-runtime/  - Embedded runtime with bundled binary
-#   - stepflow-server/   - Component server SDK (main package)
-
-[dependency-groups]
-dev = [
-    "datamodel-code-generator[http,ruff]>=0.31.2",
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.26.0",
-    "pytest-cov>=4.1.0",
-    "poethepoet>=0.24.0",
-    "ruff>=0.9.4",
-    "mypy>=1.8.0",
-    "deptry>=0.22.0",
-    "fastapi>=0.104.1",
-    "uvicorn>=0.24.0",
-    "sse-starlette>=1.6.5",
-    "openai>=1.97.1",
-    "httpx>=0.25.0",
-    "pytest-mock>=3.14.1",
-    "langchain-core>=0.3.72",
-]
+#   - stepflow-server/   - Component server SDK
 
 [tool.uv.workspace]
 members = [
-    "stepflow",
+    "stepflow-core",
     "stepflow-api",
     "stepflow-client",
     "stepflow-runtime",
@@ -37,78 +17,59 @@ members = [
 ]
 
 [tool.uv.sources]
-stepflow = { workspace = true }
+stepflow-core = { workspace = true }
 stepflow-api = { workspace = true }
 stepflow-client = { workspace = true }
 stepflow-runtime = { workspace = true }
 stepflow-server = { workspace = true }
 
 # =============================================================================
-# Workspace-wide tool configuration
+# Development tasks (run with: uv run poe <task>)
 # =============================================================================
 
+[dependency-groups]
+dev = ["poethepoet>=0.24.0"]
+
 [tool.poe]
-# comment this out to debug poe tasks
 verbosity = -1
 
-[tool.poe.env]
-RUFF = "ruff@0.9.4"
-DEPTRY = "deptry@0.22.0"
+[tool.poe.tasks.fmt]
+help = "Format all code"
+cmd = "uvx ruff@0.9.4 format ."
 
-[tool.poe.tasks.fmt-check]
-help = "Check formatting across all packages"
-cmd = "uvx ${RUFF} format --check ."
+[tool.poe.tasks.lint]
+help = "Lint and fix all code"
+cmd = "uvx ruff@0.9.4 check --fix ."
 
-[tool.poe.tasks.fmt-fix]
-help = "Fix formatting across all packages"
-cmd = "uvx ${RUFF} format ."
-
-[tool.poe.tasks.lint-check]
-help = "Check linting across all packages"
-cmd = "uvx ${RUFF} check ."
-
-[tool.poe.tasks.lint-fix]
-help = "Fix linting issues across all packages"
-cmd = "uvx ${RUFF} check --fix ."
-
-[tool.poe.tasks.type-check]
-help = "Run type checking on stepflow-server"
-cmd = "uv run mypy stepflow-server/src stepflow-server/tests"
-
-[tool.poe.tasks.dep-check]
-help = "Check dependencies in stepflow-server"
-cmd = "uvx ${DEPTRY} stepflow-server/src stepflow-server/tests"
-
-[tool.poe.tasks.codegen-check]
-help = "Check that generated types are up-to-date"
-cmd = "uv run python generate.py --check"
-
-[tool.poe.tasks.codegen-fix]
-help = "Regenerate types from schemas"
-cmd = "uv run python generate.py"
+[tool.poe.tasks.check]
+help = "Check formatting and linting (no fixes)"
+sequence = [
+    { cmd = "uvx ruff@0.9.4 format --check ." },
+    { cmd = "uvx ruff@0.9.4 check ." },
+]
 
 [tool.poe.tasks.test]
 help = "Run all tests"
-cmd = "uv run pytest stepflow-server/tests stepflow-client/tests stepflow/tests"
-
-[tool.poe.tasks.fmt]
-help = "Alias for fmt-fix"
-ref = "fmt-fix"
-
-[tool.poe.tasks.lint]
-help = "Run all checks (fixing where possible)"
-sequence = ["codegen-fix", "fmt-fix", "lint-fix"]
+cmd = "uv run pytest"
 
 [tool.poe.tasks.typecheck]
-help = "Alias for type-check"
-ref = "type-check"
+help = "Run type checking"
+cmd = "uv run mypy stepflow-server/src"
 
-[tool.poe.tasks.check]
-help = "Run all checks and tests"
-sequence = ["lint", "test"]
+[tool.poe.tasks.codegen]
+help = "Regenerate protocol types from schemas"
+cmd = "uv run python generate.py"
+
+[tool.poe.tasks.api-gen]
+help = "Regenerate API client from OpenAPI spec"
+cmd = "python scripts/generate_api_client.py"
+
+[tool.poe.tasks.api-check]
+help = "Check if API client is up-to-date"
+cmd = "python scripts/generate_api_client.py --check"
 
 # =============================================================================
-# Ruff configuration (applies to all packages)
+# Shared tool configuration
 # =============================================================================
 
 [tool.ruff]
@@ -118,67 +79,26 @@ extend-exclude = ["**/generated_*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4"]
-ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
+"**/{tests,scripts}/*" = ["T201", "B018", "F841"]
 "generate.py" = ["T201", "E501"]
 "**/generated_*.py" = ["E501", "UP006", "UP035"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-docstring-code-format = true
 exclude = ["**/generated_*.py"]
-
-# =============================================================================
-# Deptry configuration
-# =============================================================================
-
-[tool.deptry]
-ignore = ["DEP002"]
-extend_exclude = ["types-jsonschema"]
-
-[tool.deptry.package_module_name_map]
-opentelemetry-api = "opentelemetry"
-opentelemetry-sdk = "opentelemetry"
-opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
-
-# =============================================================================
-# Mypy configuration (applies to all packages)
-# =============================================================================
 
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disallow_untyped_decorators = false
-no_implicit_optional = false
-strict_equality = false
 
 [[tool.mypy.overrides]]
-module = "tests.*"
+module = ["tests.*", "stepflow_server.generated_*"]
 ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "stepflow_server.generated_flow"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "stepflow_server.generated_protocol"
-ignore_errors = true
-
-# =============================================================================
-# Pytest configuration
-# =============================================================================
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"

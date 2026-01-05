@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
-from stepflow import (
+from stepflow_core import (
     ComponentInfo,
     Diagnostic,
     FlowResult,

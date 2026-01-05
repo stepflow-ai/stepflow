@@ -32,7 +32,7 @@ classifiers = [
     "Typing :: Typed"
 ]
 dependencies = [
-    "stepflow>=0.1.0",
+    "stepflow-core>=0.1.0",
     "stepflow-client>=0.1.0",
     "httpx>=0.25",
 ]
@@ -78,5 +78,5 @@ asyncio_default_fixture_loop_scope = "function"
 asyncio_mode = "auto"
 
 [tool.uv.sources]
-stepflow = { workspace = true }
+stepflow-core = { workspace = true }
 stepflow-client = { workspace = true }

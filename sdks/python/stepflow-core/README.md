@@ -1,11 +1,11 @@
-# stepflow
+# stepflow-core
 
-Shared types and interfaces for the Stepflow Python ecosystem.
+Core types and interfaces for the Stepflow Python ecosystem.
 
 ## Installation
 
 ```bash
-pip install stepflow
+pip install stepflow-core
 ```
 
 ## Overview
@@ -18,7 +18,7 @@ This package provides common types used by:
 ## Usage
 
 ```python
-from stepflow import FlowResult, StepflowExecutor, RestartPolicy
+from stepflow_core import FlowResult, StepflowExecutor, RestartPolicy
 
 # Use StepflowExecutor as a type hint for interchangeable backends
 async def run_workflow(executor: StepflowExecutor) -> FlowResult:

@@ -104,7 +104,7 @@ async with StepflowRuntime.start() as runtime:
 The runtime implements the same `StepflowExecutor` protocol as `StepflowClient`, making them interchangeable:
 
 ```python
-from stepflow import StepflowExecutor
+from stepflow_core import StepflowExecutor
 
 def get_executor(local: bool = True) -> StepflowExecutor:
     if local:

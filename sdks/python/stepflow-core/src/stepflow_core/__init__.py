@@ -21,7 +21,7 @@ This package provides common types and interfaces used by:
 
 Example:
     ```python
-    from stepflow import FlowResult, StepflowExecutor, RestartPolicy
+    from stepflow_core import FlowResult, StepflowExecutor, RestartPolicy
 
 
     # Use the protocol for type hints

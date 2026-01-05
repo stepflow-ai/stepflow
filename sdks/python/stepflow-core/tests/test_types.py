@@ -16,7 +16,7 @@
 
 from datetime import datetime
 
-from stepflow import (
+from stepflow_core import (
     ComponentInfo,
     Diagnostic,
     FlowError,

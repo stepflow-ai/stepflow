@@ -35,7 +35,7 @@ The runtime implements the StepflowExecutor protocol, making it interchangeable
 with StepflowClient for remote server access.
 """
 
-from stepflow import (
+from stepflow_core import (
     ComponentInfo,
     FlowError,
     FlowResult,
@@ -63,7 +63,7 @@ __all__ = [
     "find_free_port",
     "is_port_in_use",
     "LogForwarder",
-    # Re-exported types from stepflow
+    # Re-exported types from stepflow-core
     "FlowResult",
     "FlowResultStatus",
     "FlowError",

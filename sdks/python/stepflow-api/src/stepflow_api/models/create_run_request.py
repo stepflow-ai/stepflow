@@ -13,7 +13,9 @@ class CreateRunRequest(BaseModel):
     debug: bool | None = None
     flowId: Annotated[BlobId, Field(description="The flow hash to execute")]
     input: Annotated[ValueRef, Field(description="Input data for the flow")]
-    overrides: Any = None  # Accept any format - will be serialized by WorkflowOverrides.to_dict()
+    overrides: Any = (
+        None  # Accept any format - will be serialized by WorkflowOverrides.to_dict()
+    )
     variables: dict[str, ValueRef] | None = None
 
     def to_dict(self) -> dict[str, Any]:

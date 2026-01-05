@@ -14,7 +14,9 @@ from .generated import ExecutionStatus
 class BatchOutputInfo(BaseModel):
     """Custom BatchOutputInfo that accepts flexible result format."""
 
-    batchInputIndex: Annotated[int, Field(description="Position in the batch input array", ge=0)]
+    batchInputIndex: Annotated[
+        int, Field(description="Position in the batch input array", ge=0)
+    ]
     result: Any = None  # Accept any format, handle in runtime
     status: Annotated[ExecutionStatus, Field(description="The execution status")]
 

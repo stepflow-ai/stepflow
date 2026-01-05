@@ -8,7 +8,7 @@ This workspace contains multiple packages:
 
 | Package | Description |
 |---------|-------------|
-| **stepflow** | Shared types and interfaces (`FlowResult`, `StepflowExecutor` protocol) |
+| **stepflow-core** | Core types and interfaces (`FlowResult`, `StepflowExecutor` protocol) |
 | **stepflow-api** | Generated API client models from OpenAPI spec |
 | **stepflow-client** | HTTP client for remote Stepflow servers |
 | **stepflow-runtime** | Embedded runtime with bundled server binary |
@@ -100,31 +100,51 @@ cd sdks/python
 uv sync
 ```
 
-### Running Tests
+### Available Tasks
 
 ```bash
-uv run poe test
+uv run poe test       # Run all tests
+uv run poe fmt        # Format code
+uv run poe lint       # Lint and fix code
+uv run poe check      # Check formatting and linting (no fixes)
+uv run poe typecheck  # Run type checking
+uv run poe codegen    # Regenerate protocol types
+uv run poe api-gen    # Regenerate API client from OpenAPI
+uv run poe api-check  # Check if API client is up-to-date
 ```
 
-### Type Checking
+## Code Generation
+
+This workspace uses code generation for two purposes:
+
+### Protocol Types (`stepflow-server`)
+
+Protocol types (JSON-RPC messages, flow definitions) are generated from JSON schemas:
 
 ```bash
-uv run poe typecheck
+uv run poe codegen
 ```
 
-### Linting
+Source: `../../schemas/*.json` → Target: `stepflow-server/src/stepflow_server/generated_*.py`
+
+### API Client (`stepflow-api`)
+
+API client models are generated from the Stepflow server's OpenAPI specification:
 
 ```bash
-uv run poe lint
+# Regenerate from stored spec
+uv run poe api-gen
+
+# Update spec from running server (requires Rust build)
+uv run poe api-gen --update-spec
+
+# Check if models are up-to-date (CI)
+uv run poe api-check
 ```
 
-### Protocol Generation
+Source: `../../schemas/openapi.json` → Target: `stepflow-api/src/stepflow_api/models/`
 
-Regenerate protocol types when the schema changes:
-
-```bash
-uv run python generate.py
-```
+See [stepflow-api README](stepflow-api/README.md) for details on the generation process and custom overrides.
 
 ## License
 

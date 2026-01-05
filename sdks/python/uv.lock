@@ -8,31 +8,15 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "stepflow",
     "stepflow-api",
     "stepflow-client",
+    "stepflow-core",
     "stepflow-runtime",
     "stepflow-server",
 ]
 
 [manifest.dependency-groups]
-dev = [
-    { name = "datamodel-code-generator", extras = ["http", "ruff"], specifier = ">=0.31.2" },
-    { name = "deptry", specifier = ">=0.22.0" },
-    { name = "fastapi", specifier = ">=0.104.1" },
-    { name = "httpx", specifier = ">=0.25.0" },
-    { name = "langchain-core", specifier = ">=0.3.72" },
-    { name = "mypy", specifier = ">=1.8.0" },
-    { name = "openai", specifier = ">=1.97.1" },
-    { name = "poethepoet", specifier = ">=0.24.0" },
-    { name = "pytest", specifier = ">=7.4.0" },
-    { name = "pytest-asyncio", specifier = ">=0.26.0" },
-    { name = "pytest-cov", specifier = ">=4.1.0" },
-    { name = "pytest-mock", specifier = ">=3.14.1" },
-    { name = "ruff", specifier = ">=0.9.4" },
-    { name = "sse-starlette", specifier = ">=1.6.5" },
-    { name = "uvicorn", specifier = ">=0.24.0" },
-]
+dev = [{ name = "poethepoet", specifier = ">=0.24.0" }]
 
 [[package]]
 name = "annotated-types"
@@ -1421,11 +1405,6 @@ wheels = [
 ]
 
 [[package]]
-name = "stepflow"
-version = "0.1.0"
-source = { editable = "stepflow" }
-
-[[package]]
 name = "stepflow-api"
 version = "0.1.0"
 source = { editable = "stepflow-api" }
@@ -1476,13 +1455,18 @@ dev = [
 ]
 
 [[package]]
+name = "stepflow-core"
+version = "0.1.0"
+source = { editable = "stepflow-core" }
+
+[[package]]
 name = "stepflow-runtime"
 version = "0.1.0"
 source = { editable = "stepflow-runtime" }
 dependencies = [
     { name = "httpx" },
-    { name = "stepflow" },
     { name = "stepflow-client" },
+    { name = "stepflow-core" },
 ]
 
 [package.dev-dependencies]
@@ -1497,8 +1481,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.25" },
-    { name = "stepflow", editable = "stepflow" },
     { name = "stepflow-client", editable = "stepflow-client" },
+    { name = "stepflow-core", editable = "stepflow-core" },
 ]
 
 [package.metadata.requires-dev]
@@ -1520,7 +1504,7 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-sdk" },
-    { name = "stepflow" },
+    { name = "stepflow-core" },
     { name = "types-jsonschema" },
 ]
 
@@ -1563,7 +1547,7 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.20.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
     { name = "sse-starlette", marker = "extra == 'http'", specifier = ">=1.6.5" },
-    { name = "stepflow", editable = "stepflow" },
+    { name = "stepflow-core", editable = "stepflow-core" },
     { name = "types-jsonschema", specifier = ">=4.17.0" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]

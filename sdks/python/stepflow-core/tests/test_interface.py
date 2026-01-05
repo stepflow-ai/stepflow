@@ -17,7 +17,7 @@
 from pathlib import Path
 from typing import Any, runtime_checkable
 
-from stepflow import (
+from stepflow_core import (
     ComponentInfo,
     FlowResult,
     FlowResultStatus,

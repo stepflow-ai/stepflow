@@ -22,7 +22,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import IO
 
-from stepflow import LogEntry
+from stepflow_core import LogEntry
 
 # Map log level strings to Python logging levels
 LOG_LEVEL_MAP = {
