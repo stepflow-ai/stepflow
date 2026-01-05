@@ -12,9 +12,27 @@
 
 """Tests for StepflowClient."""
 
+import httpx
 import pytest
 
 from stepflow_client import StepflowClient, StepflowClientError
+
+SERVER_URL = "http://localhost:7837"
+
+
+def server_available() -> bool:
+    """Check if a stepflow server is running."""
+    try:
+        response = httpx.get(f"{SERVER_URL}/api/v1/health", timeout=1.0)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+requires_server = pytest.mark.skipif(
+    not server_available(),
+    reason="Requires running stepflow server at localhost:7837",
+)
 
 
 class TestStepflowClient:
@@ -48,14 +66,14 @@ class TestStepflowClient:
 class TestStepflowClientIntegration:
     """Integration tests that require a running server.
 
-    These tests are skipped by default. The stepflow-runtime package
-    has comprehensive e2e tests that exercise the client through the runtime.
+    These tests are skipped if no server is running at localhost:7837.
+    Start a server with: stepflow-server --port 7837
     """
 
-    @pytest.mark.skip(reason="Requires running stepflow server")
+    @requires_server
     async def test_client_store_flow(self):
         """Test storing a flow definition."""
-        async with StepflowClient("http://localhost:7837") as client:
+        async with StepflowClient(SERVER_URL) as client:
             flow = {
                 "schema": "https://stepflow.org/schemas/v1/flow.json",
                 "name": "test-flow",
@@ -66,20 +84,19 @@ class TestStepflowClientIntegration:
                         "input": {"expr": "'hello'"},
                     }
                 ],
-                "output": {"result": {"$from": {"step": "echo"}}},
+                "output": {"result": {"$step": "echo"}},
             }
             response = await client.store_flow(flow)
-            assert response.flowId is not None
+            assert response.flow_id is not None
 
-    @pytest.mark.skip(reason="Requires running stepflow server")
+    @requires_server
     async def test_client_create_run(self):
         """Test creating and executing a run."""
-        async with StepflowClient("http://localhost:7837") as client:
+        async with StepflowClient(SERVER_URL) as client:
             # First store a flow
             flow = {
                 "schema": "https://stepflow.org/schemas/v1/flow.json",
                 "name": "test-flow",
-                "inputSchema": {"type": "object"},
                 "steps": [
                     {
                         "id": "echo",
@@ -87,26 +104,25 @@ class TestStepflowClientIntegration:
                         "input": {"expr": "'hello'"},
                     }
                 ],
-                "output": {"result": {"$from": {"step": "echo"}}},
+                "output": {"result": {"$step": "echo"}},
             }
             store_response = await client.store_flow(flow)
 
             # Then create a run
             run_response = await client.create_run(
-                flow_id=store_response.flowId,
-                input={},
+                flow_id=store_response.flow_id,
+                input=[{}],
             )
-            assert run_response.runId is not None
+            assert run_response.run_id is not None
 
-    @pytest.mark.skip(reason="Requires running stepflow server")
+    @requires_server
     async def test_client_get_run(self):
         """Test getting run details."""
-        async with StepflowClient("http://localhost:7837") as client:
+        async with StepflowClient(SERVER_URL) as client:
             # First store and run a flow
             flow = {
                 "schema": "https://stepflow.org/schemas/v1/flow.json",
                 "name": "test-flow",
-                "inputSchema": {"type": "object"},
                 "steps": [
                     {
                         "id": "echo",
@@ -114,28 +130,28 @@ class TestStepflowClientIntegration:
                         "input": {"expr": "'hello'"},
                     }
                 ],
-                "output": {"result": {"$from": {"step": "echo"}}},
+                "output": {"result": {"$step": "echo"}},
             }
             store_response = await client.store_flow(flow)
             run_response = await client.create_run(
-                flow_id=store_response.flowId,
-                input={},
+                flow_id=store_response.flow_id,
+                input=[{}],
             )
 
             # Then get the run details
-            details = await client.get_run(str(run_response.runId))
+            details = await client.get_run(str(run_response.run_id))
             assert details.status is not None
 
-    @pytest.mark.skip(reason="Requires running stepflow server")
+    @requires_server
     async def test_client_list_components(self):
         """Test listing available components."""
-        async with StepflowClient("http://localhost:7837") as client:
+        async with StepflowClient(SERVER_URL) as client:
             response = await client.list_components()
             assert response.components is not None
 
-    @pytest.mark.skip(reason="Requires running stepflow server")
+    @requires_server
     async def test_client_health(self):
         """Test health check endpoint."""
-        async with StepflowClient("http://localhost:7837") as client:
-            response = await client.health()
-            assert response.status == "ok"
+        async with StepflowClient(SERVER_URL) as client:
+            response = await client.health_check()
+            assert response.status == "healthy"

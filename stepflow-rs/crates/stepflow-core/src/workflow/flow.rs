@@ -80,6 +80,12 @@ impl Flow {
         }
     }
 
+    pub fn latest_mut(&mut self) -> &mut FlowV1 {
+        match self {
+            Flow::V1(flow_v1) => flow_v1,
+        }
+    }
+
     pub fn name(&self) -> Option<&str> {
         match self {
             Flow::V1(flow_v1) => flow_v1.name.as_deref(),
