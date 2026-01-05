@@ -28,7 +28,7 @@ Commands:
   submit           Submit a workflow to a Stepflow server
   test             Run tests defined in workflow files or directories
   list-components  List all available components from a stepflow config
-  repl             Start an interactive REPL for workflow development and debugging
+  repl             Start an interactive REPL for workflow development
   validate         Validate workflow files and configuration
   infer            Infer types for a workflow and output an annotated flow
   visualize        Visualize workflow structure as a graph

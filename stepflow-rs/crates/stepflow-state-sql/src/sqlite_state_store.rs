@@ -166,14 +166,13 @@ impl SqliteStateStore {
 
         // Insert run metadata (items stored separately in run_items)
         // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
-        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, flow_label, status, debug_mode, overrides_json) VALUES (?, ?, ?, ?, 'running', ?, ?)";
+        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, flow_label, status, overrides_json) VALUES (?, ?, ?, ?, 'running', ?)";
 
         sqlx::query(sql)
             .bind(params.run_id.to_string())
             .bind(params.flow_id.to_string())
             .bind(&params.workflow_name)
             .bind(&params.workflow_label)
-            .bind(params.debug_mode)
             .bind(&overrides_json)
             .execute(pool)
             .await
@@ -860,7 +859,7 @@ impl StateStore for SqliteStateStore {
 
         async move {
             // First get run metadata
-            let sql = "SELECT id, flow_name, flow_label, flow_id, status, debug_mode, created_at, completed_at FROM runs WHERE id = ?";
+            let sql = "SELECT id, flow_name, flow_label, flow_id, status, created_at, completed_at FROM runs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(run_id.to_string())
@@ -941,7 +940,6 @@ impl StateStore for SqliteStateStore {
                             flow_id,
                             status,
                             items,
-                            debug_mode: row.get("debug_mode"),
                             created_at,
                             completed_at,
                         },
@@ -978,7 +976,7 @@ impl StateStore for SqliteStateStore {
             // Use a subquery to get item statistics per run
             let mut sql = r#"
                 SELECT
-                    r.id, r.flow_name, r.flow_label, r.flow_id, r.status, r.debug_mode,
+                    r.id, r.flow_name, r.flow_label, r.flow_id, r.status,
                     r.created_at, r.completed_at,
                     COALESCE(i.total, 0) as item_total,
                     COALESCE(i.running, 0) as item_running,
@@ -1087,7 +1085,6 @@ impl StateStore for SqliteStateStore {
                     flow_id,
                     status,
                     items,
-                    debug_mode: row.get("debug_mode"),
                     created_at,
                     completed_at,
                 };
@@ -1292,94 +1289,6 @@ impl StateStore for SqliteStateStore {
             }
 
             Ok(runnable_steps)
-        }
-        .boxed()
-    }
-
-    fn add_to_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-        let run_id_str = run_id.to_string();
-        let step_ids = step_ids.to_vec();
-
-        async move {
-            if step_ids.is_empty() {
-                return Ok(());
-            }
-
-            // Use INSERT OR IGNORE to handle duplicates gracefully
-            let sql = "INSERT OR IGNORE INTO debug_queue (run_id, step_id) VALUES (?, ?)";
-
-            for step_id in &step_ids {
-                sqlx::query(sql)
-                    .bind(&run_id_str)
-                    .bind(step_id)
-                    .execute(&pool)
-                    .await
-                    .change_context(StateError::Internal)?;
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn remove_from_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-        let run_id_str = run_id.to_string();
-        let step_ids = step_ids.to_vec();
-
-        async move {
-            if step_ids.is_empty() {
-                return Ok(());
-            }
-
-            // Delete each step_id from the queue
-            let sql = "DELETE FROM debug_queue WHERE run_id = ? AND step_id = ?";
-
-            for step_id in &step_ids {
-                sqlx::query(sql)
-                    .bind(&run_id_str)
-                    .bind(step_id)
-                    .execute(&pool)
-                    .await
-                    .change_context(StateError::Internal)?;
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn get_debug_queue(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>> {
-        let pool = self.pool.clone();
-        let run_id_str = run_id.to_string();
-
-        async move {
-            let sql = "SELECT step_id FROM debug_queue WHERE run_id = ? ORDER BY created_at";
-
-            let rows = sqlx::query(sql)
-                .bind(&run_id_str)
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            if rows.is_empty() {
-                return Ok(None);
-            }
-
-            let step_ids: Vec<String> = rows.iter().map(|row| row.get("step_id")).collect();
-            Ok(Some(step_ids))
         }
         .boxed()
     }

@@ -105,8 +105,6 @@ pub struct InMemoryStateStore {
     flows: DashMap<String, Arc<Flow>>,
     /// Map from (flow_name, label) to flow label metadata
     flow_labels: DashMap<(String, String), WorkflowLabelMetadata>,
-    /// Map from run_id to debug queue (step IDs queued for execution)
-    debug_queues: DashMap<Uuid, Vec<String>>,
 }
 
 impl InMemoryStateStore {
@@ -117,7 +115,6 @@ impl InMemoryStateStore {
             runs: DashMap::new(),
             flows: DashMap::new(),
             flow_labels: DashMap::new(),
-            debug_queues: DashMap::new(),
         }
     }
 
@@ -147,7 +144,6 @@ impl InMemoryStateStore {
                     flow_label: None,
                     status: ExecutionStatus::Running,
                     items: ItemStatistics::single(ExecutionStatus::Running),
-                    debug_mode: false,
                     created_at: chrono::Utc::now(),
                     completed_at: None,
                 },
@@ -473,7 +469,6 @@ impl StateStore for InMemoryStateStore {
                     running: item_count,
                     ..Default::default()
                 },
-                debug_mode: params.debug_mode,
                 created_at: now,
                 completed_at: None,
             },
@@ -773,54 +768,6 @@ impl StateStore for InMemoryStateStore {
             Ok(runnable_steps)
         }
         .boxed()
-    }
-
-    fn add_to_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        if step_ids.is_empty() {
-            return async move { Ok(()) }.boxed();
-        }
-
-        let mut entry = self.debug_queues.entry(run_id).or_default();
-        // Use a HashSet to avoid duplicates - collect existing as owned strings
-        let existing: std::collections::HashSet<String> = entry.iter().cloned().collect();
-        for step_id in step_ids {
-            if !existing.contains(step_id) {
-                entry.push(step_id.clone());
-            }
-        }
-        async move { Ok(()) }.boxed()
-    }
-
-    fn remove_from_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        if step_ids.is_empty() {
-            return async move { Ok(()) }.boxed();
-        }
-
-        if let Some(mut entry) = self.debug_queues.get_mut(&run_id) {
-            let to_remove: std::collections::HashSet<&String> = step_ids.iter().collect();
-            entry.retain(|id| !to_remove.contains(id));
-        }
-        async move { Ok(()) }.boxed()
-    }
-
-    fn get_debug_queue(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>> {
-        let queue = self
-            .debug_queues
-            .get(&run_id)
-            .map(|entry| entry.clone())
-            .filter(|v| !v.is_empty());
-        async move { Ok(queue) }.boxed()
     }
 
     fn get_item_results(

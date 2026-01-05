@@ -138,7 +138,6 @@ pub async fn submit(
         input: inputs,
         overrides: overrides.clone(),
         variables: std::collections::HashMap::new(), // TODO: Add variables support to CLI submit
-        debug: false,                                // TODO: Add debug option to CLI
         max_concurrency,
     };
 

@@ -121,8 +121,6 @@ impl FlowExecutor {
     ///   - `Some(n)`: Complete at most `n` tasks, then return
     ///
     /// Results are recorded to the state store as tasks complete.
-    ///
-    /// For single-task execution (debug stepping), use [`run_single_task`] instead.
     pub async fn run(&mut self, fuel: Option<std::num::NonZeroUsize>) -> Result<()> {
         let mut in_flight: FuturesUnordered<futures::future::BoxFuture<'static, TaskResult>> =
             FuturesUnordered::new();
@@ -172,30 +170,6 @@ impl FlowExecutor {
                 }
             }
         }
-    }
-
-    /// Execute a single ready task and return its result.
-    ///
-    /// This is optimized for debug mode where we want exactly one result
-    /// without the overhead of the general `run()` machinery.
-    ///
-    /// Returns `None` if no tasks are ready.
-    pub async fn run_single_task(&mut self) -> Result<Option<StepRunResult>> {
-        // Get one task from scheduler
-        let Some(tasks) = self.scheduler.select_next(1).into_tasks() else {
-            return Ok(None);
-        };
-
-        // Execute the single task
-        let task = tasks.into_iter().next().unwrap();
-        self.state.mark_executing(task);
-        let future = self.prepare_task_future(task)?;
-        let task_result = future.await;
-
-        // Complete and return
-        let step_result = task_result.step.clone();
-        self.complete_task(task_result);
-        Ok(Some(step_result))
     }
 
     /// Execute all items to completion.
@@ -369,44 +343,6 @@ impl FlowExecutor {
     /// Get read access to the execution state.
     pub fn state(&self) -> &ItemsState {
         &self.state
-    }
-
-    /// Recover a completed step from persistent storage.
-    ///
-    /// This is used during session recovery to restore step results.
-    /// It properly tracks the incomplete counter.
-    pub fn recover_step(&mut self, item_index: u32, step_index: usize, result: FlowResult) {
-        // First ensure the step is in the needed set (with proper counter tracking)
-        self.state.add_needed(item_index, step_index);
-
-        // Then mark as completed (which will update the counter)
-        let item = self.state.item_mut(item_index);
-        item.mark_completed(step_index, result);
-    }
-
-    /// Add a step to the needed set for an item.
-    ///
-    /// This is the primary method for debug mode's "task addition control".
-    /// It marks the step and its dependencies as needed, then notifies the
-    /// scheduler of any newly ready tasks.
-    ///
-    /// Returns the step indices that were newly added to the needed set.
-    pub fn add_needed(&mut self, item_index: u32, step_index: usize) -> Vec<usize> {
-        let newly_needed = self.state.add_needed(item_index, step_index);
-
-        // Notify scheduler of ready tasks
-        if !newly_needed.is_empty() {
-            let item = self.state.item(item_index);
-            let ready_steps = item.ready_steps();
-            let ready_tasks: Vec<Task> = newly_needed
-                .iter()
-                .filter(|idx| ready_steps.contains(**idx))
-                .map(|idx| Task::new(item_index, *idx))
-                .collect();
-            self.scheduler.notify_new_tasks(&ready_tasks);
-        }
-
-        newly_needed
     }
 }
 
@@ -1045,53 +981,6 @@ mod tests {
         items_executor.run(None).await.unwrap();
 
         // Now should be complete
-        assert_eq!(items_executor.state.incomplete(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_run_single_task() {
-        // Use chain flow so steps execute sequentially (each depends on previous)
-        use crate::testing::create_chain_flow;
-
-        let flow = Arc::new(create_chain_flow(3));
-        let flow_id = BlobId::from_flow(&flow).unwrap();
-        let input = ValueRef::new(json!({"x": 1}));
-
-        let executor = MockExecutorBuilder::new().build().await;
-        let state_store = executor.state_store();
-
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(input)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        // Initialize state
-        items_executor.scheduler.reset();
-        let initial_tasks = items_executor.state.initialize_all();
-        items_executor.scheduler.notify_new_tasks(&initial_tasks);
-
-        // Run single task
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_some());
-        let step_result = result.unwrap();
-        assert!(matches!(step_result.result, FlowResult::Success(_)));
-
-        // Run another single task
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_some());
-
-        // Run third task
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_some());
-
-        // No more tasks
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_none());
-
-        // Should be complete
         assert_eq!(items_executor.state.incomplete(), 0);
     }
 

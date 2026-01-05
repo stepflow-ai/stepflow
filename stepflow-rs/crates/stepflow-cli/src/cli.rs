@@ -250,11 +250,11 @@ pub enum Command {
         #[arg(long = "hide-unreachable", default_value = "true", action = clap::ArgAction::Set)]
         hide_unreachable: bool,
     },
-    /// Start an interactive REPL for workflow development and debugging.
+    /// Start an interactive REPL for workflow development.
     ///
-    /// Start an interactive REPL (Read-Eval-Print Loop) for workflow development and debugging.
-    /// The REPL provides an interactive environment for testing workflow fragments, debugging
-    /// step execution, exploring component capabilities, and iterative workflow development.
+    /// Start an interactive REPL (Read-Eval-Print Loop) for workflow development.
+    /// The REPL provides an interactive environment for running workflows,
+    /// exploring component capabilities, and iterative workflow development.
     ///
     /// # Examples
     ///

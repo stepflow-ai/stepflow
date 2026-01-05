@@ -51,9 +51,6 @@ pub struct CreateRunRequest {
     /// Optional variables to provide for variable references in the workflow
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub variables: HashMap<String, ValueRef>,
-    /// Whether to run in debug mode (pauses execution for step-by-step control)
-    #[serde(default)]
-    pub debug: bool,
     /// Maximum concurrency for batch execution (only used when input is an array)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_concurrency: Option<usize>,
@@ -72,8 +69,6 @@ pub struct CreateRunResponse {
     pub result: Option<FlowResult>,
     /// The run status
     pub status: ExecutionStatus,
-    /// Whether this run is in debug mode
-    pub debug: bool,
 }
 
 /// Response for listing runs
@@ -203,45 +198,8 @@ pub async fn create_run(
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
 
     let item_count = req.input.len() as u32;
-    let debug_mode = req.debug;
 
-    // Debug mode: create a paused run for single-item debugging
-    // Debug mode only supports single-item runs
-    if debug_mode {
-        if item_count != 1 {
-            return Err(error_stack::report!(ServerError::InvalidRequest(
-                "Debug mode only supports single-item runs".to_string()
-            ))
-            .into());
-        }
-
-        let run_id = Uuid::now_v7();
-        let input = req.input.into_iter().next().unwrap();
-
-        // Create execution record in paused state
-        let mut params =
-            stepflow_state::CreateRunParams::new(run_id, req.flow_id.clone(), vec![input.clone()]);
-        params.workflow_name = flow.name().map(|s| s.to_string());
-        params.debug_mode = true;
-        params.overrides = req.overrides.clone();
-        params.variables = req.variables.clone();
-        state_store.create_run(params).await?;
-
-        // Pause execution for step-by-step debugging
-        state_store
-            .update_run_status(run_id, ExecutionStatus::Paused)
-            .await?;
-
-        return Ok(Json(CreateRunResponse {
-            run_id,
-            item_count: 1,
-            result: None,
-            status: ExecutionStatus::Paused,
-            debug: true,
-        }));
-    }
-
-    // Normal execution mode: unified path for single and batch runs
+    // Execute the run
     use stepflow_plugin::Context as _;
 
     let mut params = stepflow_core::SubmitRunParams::new(flow, req.flow_id, req.input);
@@ -271,7 +229,6 @@ pub async fn create_run(
         item_count,
         result,
         status: run_status.status,
-        debug: false,
     }))
 }
 
